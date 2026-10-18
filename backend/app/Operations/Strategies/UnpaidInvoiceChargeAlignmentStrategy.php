@@ -82,10 +82,9 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     {
         $s = $result['snapshot'] ?? [];
         $ok = ($result['ok'] ?? false) && isset($s['parameters'], $s['after_hash'])
-            && hash_equals($s['after_hash'], $this->hash($this->capture($s['parameters'], false)));
+            && hash_equals($s['after_hash'], $this->hash($this->capture($s['parameters'], true)));
         return ['ok' => (bool) $ok, 'checks' => ['invoice_total_aligned', 'course_payments_reports_unchanged']];
     }
-
     public function rollback(array $snapshot, array $context): array
     {
         return DB::transaction(function () use ($snapshot, $context): array {
@@ -105,7 +104,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             return ['ok' => true, 'restored' => 1];
         }, 3);
     }
-
     private function capture(array $p, bool $lock): array
     {
         foreach (['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge'] as $key)
@@ -133,7 +131,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         if (count($epoch) > 100) $this->fail('history_budget');
         return ['student' => $student, 'course' => $course, 'invoice' => $invoices[0], 'items' => $items, 'payments' => $payments, 'reports' => $reports, 'amendments' => $amendments, 'rollback_epoch' => $epoch];
     }
-
     private function eligible(array $g, array $p): void
     {
         $c = $g['course']; $i = $g['invoice'];
@@ -147,7 +144,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         foreach ($g['reports'] as $r) if (!in_array($r['status'], ['voided', 'rejected'], true)) $this->fail('standing_report');
         if (array_sum(array_column($g['payments'], 'Amount')) !== 0 || ContractMoneyState::blocksUnpaidCorrection($p['course_id'], true)) $this->fail('money_evidence');
     }
-
     private function request(array $context, array $p): object
     {
         if (!Str::isUuid($context['operation_id'] ?? '') || !is_string($context['actor'] ?? null) || trim($context['actor']) === '') $this->fail('invalid_context');

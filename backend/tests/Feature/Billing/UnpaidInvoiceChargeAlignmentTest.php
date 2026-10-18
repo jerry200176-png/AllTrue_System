@@ -181,6 +181,10 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $this->assertTrue($recovered['ok']); $this->assertTrue($recovered['already_applied']);
             $this->assertSame('succeeded', $recovered['result']);
             $this->assertEquals($direct['snapshot'], $recovered['snapshot']); // MySQL JSON normalizes numeric/object representation.
+            $verifyFault = (object) ['armed' => true];
+            DB::listen(function ($q) use ($verifyFault): void { if ($verifyFault->armed && str_starts_with($q->sql, 'insert ignore into `pop_execution_records`') && in_array('verify', $q->bindings, true)) { $verifyFault->armed = false; throw new \RuntimeException('synthetic_verify_receipt_fault'); } });
+            $this->assertFalse($pop->run($ctx['operation_id'], 'verify', $approved['token'], $sha, 'synthetic-pop')['ok']); $this->assertFalse($verifyFault->armed);
+            $this->assertSame(1, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->where('phase', 'verify')->where('result', 'verification_failed')->count());
             $verified = $pop->run($ctx['operation_id'], 'verify', $approved['token'], $sha, 'synthetic-pop');
             $this->assertTrue($verified['ok']);
             $rollback = $pop->run($ctx['operation_id'], 'rollback', $approved['token'], $sha, 'synthetic-pop');
