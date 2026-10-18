@@ -162,6 +162,17 @@ class ContractMoneyStateTest extends TestCase
         $this->assertFalse(ContractMoneyState::hasActivePayment($voidInvoice));
     }
 
+    public function test_correction_refuses_case_or_space_ambiguous_void_methods(): void
+    {
+        foreach (['VOID', 'void '] as $method) {
+            $course = $this->seedCourse();
+            $invoice = $this->invoice($course, 'unpaid', 8000, 0);
+            $this->payment($invoice, 8000, 'cash', '2026-09-02 10:00:00');
+            $this->payment($invoice, 8000, $method, '2026-09-03 10:00:00');
+            $this->assertTrue(ContractMoneyState::blocksUnpaidCorrection($course));
+        }
+    }
+
     public function test_invoice_aggregate_and_last_paid_at(): void
     {
         $id = $this->seedCourse();
@@ -271,4 +282,24 @@ class ContractMoneyStateTest extends TestCase
             'status' => 'confirmed', 'payment_id' => $paymentId, 'report_token_hash' => hash('sha256', "r{$invoiceId}-{$date}"),
             'token_expires_at' => now()])->id;
     }
+
+    public function test_include_voided_scopes_retained_void_history_without_changing_legacy_default(): void
+    {
+        // Live unpaid invoice alone: neither default nor includeVoided blocks on empty money.
+        $liveOnly = $this->seedCourse();
+        $this->invoice($liveOnly, 'unpaid', 8000, 0);
+        $this->assertFalse(ContractMoneyState::blocksUnpaidCorrection($liveOnly));
+        $this->assertFalse(ContractMoneyState::blocksUnpaidCorrection($liveOnly, true));
+
+        // Void invoice with +cash/-void and no payment_report_id on the reversal: default
+        // (#4217 live-invoice filter) ignores void history; includeVoided=true must see it and block.
+        $course = $this->seedCourse();
+        $this->invoice($course, 'unpaid', 8000, 0); // live bill remains open
+        $voided = $this->invoice($course, 'void', 500, 0);
+        $this->payment($voided, 500, 'cash', '2026-09-01 10:00:00');
+        $this->payment($voided, -500, 'void', '2026-09-02 10:00:00');
+        $this->assertFalse(ContractMoneyState::blocksUnpaidCorrection($course), 'legacy default excludes void invoices');
+        $this->assertTrue(ContractMoneyState::blocksUnpaidCorrection($course, true), 'includeVoided inspects retained void history');
+    }
+
 }

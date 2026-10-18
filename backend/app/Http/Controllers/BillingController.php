@@ -345,7 +345,7 @@ class BillingController extends Controller
             $reason = trim((string) $data['reason']);
             $audit = sprintf(
                 '[void: %s; user_id=%s; at=%s]',
-                str_replace(["\r", "\n"], ' ', $reason),
+                str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a note tag
                 $authUser?->id ?? 'system',
                 now()->format('Y-m-d H:i:s')
             );
