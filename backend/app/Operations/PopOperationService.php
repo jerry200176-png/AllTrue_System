@@ -385,7 +385,7 @@ final class PopOperationService
                     : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
                 return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
             };
-            return $phase === 'rollback' && $this->atomicFinancialRepair($strategy)
+            return $this->atomicFinancialRepair($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             return $this->record($request, $entry, $parameters, $phase, [
@@ -1182,7 +1182,7 @@ final class PopOperationService
         $idempotencyKey = $request->idempotency_key . ':' . $phase;
         $attemptNo = 1;
         $attemptKey = $idempotencyKey;
-        if ($phase === 'dry-run' || (in_array($phase, ['execute', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id))) {
+        if ($phase === 'dry-run' || (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id))) {
             $attemptNo = ((int) DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)
                 ->where('phase', $phase)
@@ -1329,7 +1329,7 @@ final class PopOperationService
 
     private function existing(object $request, string $phase): ?array
     {
-        if (in_array($phase, ['execute', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id)) {
+        if (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id)) {
             $row = DB::table('pop_execution_records')->where('operation_id', $request->id)
                 ->where('phase', $phase)->where('result', $this->resultFor($phase, true, null))->orderByDesc('attempt_no')->first();
             return $row ? json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR)
