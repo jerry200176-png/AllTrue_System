@@ -204,5 +204,5 @@ class XinzhuangFeeScope(unittest.TestCase):
             self.assertNotIn(marker, block)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
