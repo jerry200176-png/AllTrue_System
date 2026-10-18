@@ -196,7 +196,7 @@ class ScheduleGuardService
             $conflicts[] = $teacherConflict;
         }
 
-        $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
+        $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps, $lock);
         if ($roomConflict) {
             $conflicts[] = $roomConflict;
         }
@@ -1000,13 +1000,13 @@ class ScheduleGuardService
      * @param  array<int, array<string, mixed>>  $overlaps
      * @return array<string, mixed>|null
      */
-    private function buildRoomCapacityConflict(?int $roomId, array $slot, array $overlaps): ?array
+    private function buildRoomCapacityConflict(?int $roomId, array $slot, array $overlaps, bool $lock = false): ?array
     {
         if (!$roomId) {
             return null;
         }
 
-        $room = $this->loadRoom($roomId);
+        $room = $this->loadRoom($roomId, $lock);
         if (!$room) {
             return null;
         }
@@ -1081,8 +1081,11 @@ class ScheduleGuardService
         return $conflict;
     }
 
-    private function loadRoom(int $roomId): ?object
+    private function loadRoom(int $roomId, bool $lock = false): ?object
     {
+        if ($lock) {
+            return DB::table('rooms')->where('id', $roomId)->lockForUpdate()->first(['id', 'name', 'capacity']);
+        }
         if (!array_key_exists($roomId, $this->roomCache)) {
             $this->roomCache[$roomId] = DB::table('rooms')
                 ->where('id', $roomId)
@@ -1321,10 +1324,10 @@ class ScheduleGuardService
         ?string $targetEndTime = null,
         bool $lock = false
     ): array {
-        $scheduleRowsQuery = DB::table('schedules')
+        $scheduleRowsQuery = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_schedules_teacher_day)') : 'schedules')
             ->where('branch_id', $branchId)
             ->where('teacher_id', $teacherId)
-            ->whereDate('schedule_date', $date)
+            ->where('schedule_date', $date)
             ->select([
                 'id',
                 'student_id',

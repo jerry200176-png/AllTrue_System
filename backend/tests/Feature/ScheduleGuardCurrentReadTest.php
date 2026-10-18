@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\{Campus, Student, StudentClass};
 use App\Services\ScheduleGuardService;
-use Illuminate\Foundation\Testing\{RefreshDatabase, RefreshDatabaseState};
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -18,7 +18,9 @@ class ScheduleGuardCurrentReadTest extends TestCase
     private array $initialSubjectIds = [];
     private array $ownedStudentIds = [];
     private array $ownedCourseIds = [];
-    private ?int $ownedCampusId = null;
+    private array $ownedCampusIds = [];
+    private array $ownedRoomIds = [];
+    private array $ownedScheduleIds = [];
 
     protected function afterRefreshingDatabase(): void
     {
@@ -37,18 +39,19 @@ class ScheduleGuardCurrentReadTest extends TestCase
         try {
             DB::table('LearningRecord')->whereIn('StudentClassID', $this->ownedCourseIds)->delete();
             DB::table('schedules')->whereIn('student_course_id', $this->ownedCourseIds)->delete();
+            DB::table('schedules')->whereIn('id', $this->ownedScheduleIds)->delete();
             DB::table('ClassSession')->whereIn('StudentClassID', $this->ownedCourseIds)->delete();
             DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->delete();
             DB::table('Student')->whereIn('id', $this->ownedStudentIds)->delete();
-            if ($this->ownedCampusId !== null) DB::table('Campus')->where('id', $this->ownedCampusId)->delete();
+            DB::table('rooms')->whereIn('id', $this->ownedRoomIds)->delete();
+            DB::table('Campus')->whereIn('id', $this->ownedCampusIds)->delete();
             DB::table('Subject')->whereIn('id', $this->seededSubjectIds)->delete();
             $this->assertSame(0, DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->count());
             $this->assertSame(0, DB::table('Student')->whereIn('id', $this->ownedStudentIds)->count());
-            $this->assertSame(0, DB::table('Campus')->where('id', $this->ownedCampusId)->count());
+            $this->assertSame(0, DB::table('Campus')->whereIn('id', $this->ownedCampusIds)->count());
             $this->assertSame(0, DB::table('Subject')->whereIn('id', $this->seededSubjectIds)->count());
         } finally {
-            // Reset remains a schema-isolation backstop, not fixture cleanup.
-            RefreshDatabaseState::$migrated = false;
+            // Only owned data changed; the base schema remains valid for later tests.
             parent::tearDown();
         }
     }
@@ -60,18 +63,21 @@ class ScheduleGuardCurrentReadTest extends TestCase
         config(['database.connections.occupancy_current' => config('database.connections.' . $original)]);
         $reader = DB::connection('occupancy_current');
         $campus = Campus::factory()->create();
-        $this->ownedCampusId = $campus->id;
+        $this->ownedCampusIds[] = $campus->id;
         $targetTeacher = 78171;
         $date = '2026-12-29';
         try {
-            foreach (['class_session', 'schedule', 'reactivated', 'makeup_substitute', 'returned_teacher'] as $kind) {
+            foreach (['class_session', 'schedule', 'reactivated', 'makeup_substitute', 'returned_teacher', 'room_capacity'] as $kind) {
                 config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => in_array($kind, ['makeup_substitute', 'returned_teacher'], true)]);
                 $student = Student::factory()->create(['CampusID' => $campus->id]);
                 $this->ownedStudentIds[] = $student->id;
+                $roomId = $kind === 'room_capacity' ? DB::table('rooms')->insertGetId(['campus_id' => $campus->id, 'name' => 'synthetic room', 'capacity' => 4]) : null;
+                if ($roomId) $this->ownedRoomIds[] = $roomId;
+                $classType = $roomId ? 'one_on_three' : 'one_on_one';
                 $course = StudentClass::create([
                     'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
                     'TeacherID' => $kind === 'makeup_substitute' ? $targetTeacher + 1 : $targetTeacher,
-                    'ClassType' => 'one_on_one', 'by1' => 1, 'Period' => 4, 'Stop' => 0,
+                    'ClassType' => $classType, 'room_id' => $roomId, 'by1' => 1, 'Period' => 4, 'Stop' => 0,
                     'StartDate' => '2026-12-01', 'TotalHours' => 16, 'SessionCount' => 8,
                     'SessionDuration' => 120, 'RemainingSessions' => 8, 'UsedSessions' => 0,
                     'Charge' => 1600, 'Pay' => 0, 'Paid' => 0, 'Rate' => 200,
@@ -86,7 +92,9 @@ class ScheduleGuardCurrentReadTest extends TestCase
                     'start_time' => '13:00', 'end_time' => '15:00', 'duration_hours' => 2,
                     'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'extra', 'deduction' => 1];
                 $sessionId = $scheduleId = $recordId = null;
-                if ($kind === 'reactivated') {
+                if ($kind === 'room_capacity') {
+                    $sessionId = DB::table('ClassSession')->insertGetId($slot);
+                } elseif ($kind === 'reactivated') {
                     $sessionId = DB::table('ClassSession')->insertGetId(array_replace($slot, ['Status' => 'cancelled']));
                     $scheduleId = DB::table('schedules')->insertGetId($schedule);
                 } elseif ($kind === 'makeup_substitute') {
@@ -109,9 +117,10 @@ class ScheduleGuardCurrentReadTest extends TestCase
                 DB::setDefaultConnection('occupancy_current');
                 $guard = app(ScheduleGuardService::class);
                 $payload = ['teacher_id' => $targetTeacher, 'branch_id' => $campus->id,
-                    'schedule_date' => $date, 'start_time' => '13:00', 'end_time' => '15:00', 'class_type' => 'one_on_one'];
+                    'schedule_date' => $date, 'start_time' => '13:00', 'end_time' => '15:00', 'class_type' => $classType, 'room_id' => $roomId];
                 $this->assertSame([], $guard->validateScheduleOccurrence($payload), $kind . ': initial slot free');
                 DB::setDefaultConnection($original);
+                if ($roomId) DB::table('rooms')->where('id', $roomId)->update(['capacity' => 2]);
                 if ($kind === 'class_session') $sessionId = DB::table('ClassSession')->insertGetId($slot);
                 if ($kind === 'schedule') $scheduleId = DB::table('schedules')->insertGetId($schedule);
                 if ($kind === 'reactivated') DB::table('ClassSession')->where('id', $sessionId)->update(['Status' => 'scheduled']);
@@ -120,9 +129,9 @@ class ScheduleGuardCurrentReadTest extends TestCase
                 DB::setDefaultConnection('occupancy_current');
                 $this->assertSame([], $guard->validateScheduleOccurrence($payload), $kind . ': prove snapshot remains stale');
                 $conflicts = $guard->validateScheduleOccurrence($payload, true);
-                $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null, $kind . ': current read sees conflict');
-                $proposed = new StudentClass(['TeacherID' => $targetTeacher, 'ClassType' => 'one_on_one']);
-                $this->assertSame('teacher_capacity', $guard->validateCourseOccurrence($proposed, $campus->id, $date, '13:00', '15:00', true)[0]['type'] ?? null);
+                $this->assertSame($roomId ? 'room_capacity' : 'teacher_capacity', $conflicts[0]['type'] ?? null, $kind . ': current read sees conflict');
+                $proposed = new StudentClass(['TeacherID' => $targetTeacher, 'ClassType' => $classType, 'room_id' => $roomId]);
+                $this->assertSame($roomId ? 'room_capacity' : 'teacher_capacity', $guard->validateCourseOccurrence($proposed, $campus->id, $date, '13:00', '15:00', true)[0]['type'] ?? null);
                 $this->assertSame([], $guard->validateCourseOccurrence($course, $campus->id, $date, '13:00', '15:00', true), 'self exclusion survives current reads');
                 $this->assertSame([], $guard->validateScheduleOccurrence(array_replace($payload, ['branch_id' => $campus->id + 100000]), true), 'campus scope survives current reads');
                 $reader->rollBack();
@@ -137,4 +146,39 @@ class ScheduleGuardCurrentReadTest extends TestCase
             DB::purge('occupancy_current');
         }
     }
+    public function test_current_schedule_scan_does_not_block_another_campus(): void
+    {
+        $original = DB::getDefaultConnection();
+        config(['database.connections.occupancy_scope' => config('database.connections.' . $original)]);
+        $reader = DB::connection('occupancy_scope');
+        $timeout = (int) DB::selectOne('SELECT @@innodb_lock_wait_timeout AS value')->value;
+        $campuses = [Campus::factory()->create(), Campus::factory()->create()];
+        $payloads = [];
+        foreach ($campuses as $campus) {
+            $this->ownedCampusIds[] = $campus->id;
+            $student = Student::factory()->create(['CampusID' => $campus->id]);
+            $this->ownedStudentIds[] = $student->id;
+            $payload = ['student_id' => $student->id, 'teacher_id' => 78171, 'branch_id' => $campus->id,
+                'schedule_date' => '2026-12-29', 'day_of_week' => 2, 'subject' => 'synthetic',
+                'start_time' => '13:00', 'end_time' => '15:00', 'duration_hours' => 2,
+                'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'extra', 'deduction' => 1];
+            $this->ownedScheduleIds[] = DB::table('schedules')->insertGetId($payload);
+            $payloads[] = $payload;
+        }
+        try {
+            $reader->beginTransaction();
+            DB::setDefaultConnection('occupancy_scope');
+            $this->assertSame('teacher_capacity', app(ScheduleGuardService::class)->validateScheduleOccurrence($payloads[0], true)[0]['type']);
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+            $this->ownedScheduleIds[] = DB::table('schedules')->insertGetId($payloads[1]);
+            $this->assertCount(3, $this->ownedScheduleIds, 'unrelated-campus insert completes while original scan remains locked');
+        } finally {
+            while ($reader->transactionLevel() > 0) $reader->rollBack();
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = ' . $timeout);
+            DB::purge('occupancy_scope');
+        }
+    }
+
 }
