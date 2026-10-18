@@ -173,7 +173,8 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
             $oldApprovals = DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->orderBy('id')->get()->toJson(); $this->travel(61)->minutes();
             $this->refuse(fn () => $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop'), 'expired');
             $this->assertFalse($pop->approve($ctx['operation_id'], 'RECOVER-DIRECTOR', 'reviewer-director', 'director', $sha, 900, [1])['ready']);
-            $approved = $pop->approve($ctx['operation_id'], 'RECOVER-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901); $this->assertTrue($approved['ready']); $this->assertSame('failed', $approved['status']);
+            $quorumExpiry = now()->addMinutes(60)->timestamp; $this->travel(5)->minutes();
+            $approved = $pop->approve($ctx['operation_id'], 'RECOVER-FOUNDER', 'reviewer-founder', 'super_admin', $sha, 901); $this->assertTrue($approved['ready']); $this->assertSame('failed', $approved['status']); $this->assertSame($quorumExpiry, (int) explode('.', $approved['token'])[0]); $this->assertSame($quorumExpiry, \Carbon\Carbon::parse($approved['expires_at'])->timestamp);
             $this->assertSame('execute-recovery', DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->latest('id')->value('phase')); $this->assertSame($oldApprovals, DB::table('pop_approval_events')->where('operation_id', $ctx['operation_id'])->orderBy('id')->limit(2)->get()->toJson());
             foreach (['rollback', 'verify'] as $phase) $this->refuse(fn () => $pop->run($ctx['operation_id'], $phase, $approved['token'], $sha, 'synthetic-pop'), 'bound'); $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $ctx['operation_id'])->whereIn('phase', ['rollback', 'verify'])->count());
             $recovered = $pop->run($ctx['operation_id'], 'execute', $approved['token'], $sha, 'synthetic-pop');
