@@ -9,12 +9,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
-/** Preparation only: deliberately absent from the POP catalog and public routes. */
 final class UnpaidInvoiceChargeAlignmentStrategy
 {
     public const STRATEGY = self::class;
-
-    /** Operator preview only; the resulting hash must be bound into the POP request before approval. */
     public function preview(array $parameters): array
     {
         $graph = $this->capture($parameters, false);
@@ -25,8 +22,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     public function plan(array $parameters, array $context = []): array
     {
         try {
-            // A process may stop after our atomic commit but before POP records phase=execute.
-            // Keep replay reachable through POP's planning gate using the retained proof.
+            // Recover the originating request through POP planning if its outer execute receipt is missing.
             $proof = DB::table('pop_execution_records')->where('id', $this->proofId($parameters, 'repair-proof'))
                 ->where('phase', 'repair-proof')->first();
             if ($proof) {
@@ -56,8 +52,8 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             if ($prior) {
                 if ($this->proof($request->id, 'repair-proof-rollback')) $this->fail('reapply_requires_new_request');
                 $snapshot = json_decode($prior->snapshot, true, 512, JSON_THROW_ON_ERROR);
-                $course = DB::table('StudentClass')->where('ID', $p['course_id'])->lockForUpdate()->first();
                 $student = DB::table('Student')->where('id', $p['student_id'])->lockForUpdate()->first();
+                $course = DB::table('StudentClass')->where('ID', $p['course_id'])->lockForUpdate()->first();
                 $invoice = DB::table('Invoice')->where('id', $p['invoice_id'])->lockForUpdate()->first();
                 if ((int) ($course->StudentID ?? 0) !== $p['student_id'] || (int) ($student->CampusID ?? 0) !== $p['campus_id']
                     || (int) ($invoice->StudentID ?? 0) !== $p['student_id'] || (int) ($invoice->StudentClassID ?? 0) !== $p['course_id']
@@ -110,9 +106,9 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             if (!isset($p[$key]) || !is_int($p[$key]) || $p[$key] <= 0) $this->fail('invalid_parameters');
         if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'] ?? '')) $this->fail('invalid_decision');
         $one = fn ($q) => (array) $q->when($lock, fn ($q) => $q->lockForUpdate())->first();
-        // Match the course-first serialization used by normal payment writers.
-        $course = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
+        // Match Student -> StudentClass -> Invoice ordering used by invoice creation and purge.
         $student = $one(DB::table('Student')->where('id', $p['student_id'])->select('id', 'CampusID'));
+        $course = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
         if ((int) ($course['StudentID'] ?? 0) !== $p['student_id'] || (int) ($student['CampusID'] ?? 0) !== $p['campus_id']) $this->fail('owner_mismatch');
         $rows = function ($q) use ($lock): array {
             $r = $q->when($lock, fn ($q) => $q->lockForUpdate())->limit(101)->get();
@@ -140,7 +136,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             || !empty($c['PayDate']) || (int) $c['Stop'] !== 0 || $c['ScheduleMode'] !== 'count'
             || (int) ($c['PackageID'] ?? 0) > 0 || strtolower(trim((string) $c['ClassType'])) === 'tutoring'
             || strtolower(trim((string) ($c['closed_reason'] ?? ''))) === 'waived'
-            || !empty($i['zero_amount_reason'])) $this->fail('unsupported_state');
+            || !empty($i['zero_amount_reason']) || (($i['ScheduleModeAtIssue'] ?? null) !== null && $i['ScheduleModeAtIssue'] !== $c['ScheduleMode'])) $this->fail('unsupported_state');
         foreach ($g['reports'] as $r) if (!in_array($r['status'], ['voided', 'rejected'], true)) $this->fail('standing_report');
         if (array_sum(array_column($g['payments'], 'Amount')) !== 0 || ContractMoneyState::blocksUnpaidCorrection($p['course_id'], true)) $this->fail('money_evidence');
     }
@@ -151,12 +147,10 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         if (!$r || $r->strategy_id !== self::STRATEGY || !hash_equals($this->hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), $this->hash($p))) $this->fail('request_mismatch');
         return $r; // POP owns approval validation; this unregistered strategy cannot grant approval.
     }
-
     private function proof(string $id, string $phase): ?object
     {
         return DB::table('pop_execution_records')->where('attempt_key', $id.':'.$phase)->first();
     }
-
     private function persistProof(object $request, array $context, string $phase, array $snapshot): void
     {
         $id = $this->proofId($snapshot['parameters'], $phase);
@@ -166,21 +160,18 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'payload' => json_encode(['kind' => self::STRATEGY], JSON_THROW_ON_ERROR),
             'actor' => substr($context['actor'], 0, 128), 'created_at' => now()]);
     }
-
     private function proofId(array $parameters, string $phase): string
     {
         // Existing UUID primary index makes recovery a point lookup; no new financial DDL.
         return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_OID,
             'alltrue:invoice-alignment:'.$phase.':'.$this->hash($parameters))->toString();
     }
-
     private function audit(array $p, string $id, string $event): void
     {
         SecurityAuditEvent::append($event, 'success', ['actor_type' => 'pop-runner', 'campus_id' => $p['campus_id'],
             'subject_type' => 'invoice', 'subject_id' => $p['invoice_id'], 'correlation_id' => $id],
             ['operation_id' => $id, 'reason_code' => $p['decision_reference'], 'row_count' => 1], true);
     }
-
     private function hash(array $data): string
     {
         return hash('sha256', json_encode(PopOperationService::canonicalParameters($data), JSON_THROW_ON_ERROR));
