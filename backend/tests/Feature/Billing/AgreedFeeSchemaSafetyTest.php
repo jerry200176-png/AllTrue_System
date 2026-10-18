@@ -14,6 +14,7 @@ class AgreedFeeSchemaSafetyTest extends TestCase
     /** @dataProvider unsafeTargets */
     public function test_unsafe_targets_are_refused_before_schema_access(array $overrides): void
     {
+        Schema::swap(\Mockery::mock(\Illuminate\Database\Schema\Builder::class));
         $config = array_replace(['driver' => 'mysql', 'host' => '127.0.0.1', 'database' => 'AllTrue_test'], $overrides);
         $connection = \Mockery::mock(Connection::class);
         $connection->shouldReceive('getConfig')->andReturn($config);
@@ -36,6 +37,7 @@ class AgreedFeeSchemaSafetyTest extends TestCase
 
     public function test_missing_extensions_cannot_implicit_commit_a_test_transaction(): void
     {
+        Schema::swap(\Mockery::mock(\Illuminate\Database\Schema\Builder::class));
         $connection = \Mockery::mock(Connection::class);
         $connection->shouldReceive('getConfig')->andReturn(['host' => '127.0.0.1']);
         $connection->shouldReceive('getDriverName')->andReturn('mysql');
