@@ -2365,12 +2365,15 @@ jobs:
             base64 -w76 /tmp/production_case_probe.php
             echo 'PROBE_B64'
             echo 'cd /home/admin/backend'
-            if [[ "$CASE_KEY" == 'inapp_414_amount_source' || "$CASE_KEY" == 'xinzhuang_fee_cases' ]]; then
+            if [[ "$CASE_KEY" == 'inapp_414_amount_source' ]]; then
               # A missing GNU timeout fails closed; no fallback to unbounded execution.
               echo 'command -v timeout >/dev/null'
               echo 'if timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"; then :; else'
               echo '  probe_rc=$?; echo "remote_execution_failed_or_timed_out" >&2; exit "$probe_rc"'
               echo 'fi'
+            elif [[ "$CASE_KEY" == 'xinzhuang_fee_cases' ]]; then
+              echo 'command -v timeout >/dev/null'
+              echo 'timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
             else
               echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
             fi
@@ -2453,7 +2456,10 @@ jobs:
               'bytes': {n: size(n) for n in ('production-case.log', 'production-case.stderr.log', 'production-case.json')},
           }
           # This restricted case exposes only execution status, never payload-derived reason strings.
-          if case in {'inapp_414_amount_source', 'xinzhuang_fee_cases'}:
+          if case == 'inapp_414_amount_source':
+              status.pop('reason')
+              status.pop('completeness')
+          if case == 'xinzhuang_fee_cases':
               status.pop('reason')
               status.pop('completeness')
           print('case status:', json.dumps(status, sort_keys=True))

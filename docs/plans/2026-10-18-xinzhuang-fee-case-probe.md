@@ -1,6 +1,6 @@
 # Xinzhuang fee cases: bounded read-only evidence
 
-Repository AllTrue_System; base e60821ed; task chore/task-xinzhuang-fee-case-probe-20261018. R2/T2 read-only production-case-dump extension per AGENTS.md. Existing case references supplied by the user; no new credentials or rights.
+Repository AllTrue_System; base e60821ed; task chore/task-xinzhuang-fee-case-probe-20261018. Machine R3/T3: read-only production-case-dump extension with extracted reader/test companions, outside the narrow workflow-only T2 classification. Existing-rule code merge follows Founder standing decision2026-10-12§1 after full CI/review; no new billing/authz semantics or production mutation. Existing case references supplied by the user; no new credentials or rights.
 
 Goal: obtain current contract/invoice/report/payment relationships for the three supplied references under campus11. Public production branch metadata confirms 新莊分校=11; campus9 probes were mis-scoped and are not case evidence. No names, screenshots, free text or decrypted financial payload goes to GitHub.
 
@@ -17,3 +17,5 @@ Stop points: no direct production SSH, writes, migrations, enablement, credentia
 Synthetic MySQL suite6tests/44assertions passed in1:18.876, including real SQLSTATE25006 on an attempted write, rollback/outer-transaction ownership, net-zero reversal versus stale stored PaidAmount, private-text exclusion, campus identity, invoice/report ownership, shared-item redaction, row budgets and unlinked obligations. After adding optional correction-history projections, the affected real-ledger/unlinked test passed1test/17assertions in14.198seconds. Existing workflow render/lint/bounds/transport/encryption/cleanup suites plus new allowlist/transport cases passed39tests in33.825seconds; no SSH host contacted.
 
 Initial DatabaseMigrations teardown hit an existing unrelated migration-down FK dependency; switched to the maintained AgreedFeeRefreshDatabase transaction/schema lifecycle, ending its outer transaction before the server READ ONLY transaction. No production migration or unrelated down method was changed. Hosted CI and independent review remain required.
+
+Presubmit classified companion-reader changes as R3/T3; declaration corrected without changing the classifier. Recent-work protection also flagged extensions of existing414 timeout/status and render inputs. Keep those original branches/lines intact and add separate new-case branches, preserving every prior restricted-case behavior instead of taking a revert exemption.

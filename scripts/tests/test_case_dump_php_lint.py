@@ -21,13 +21,16 @@ WRITE_MARKERS = ("->insert", "->update(", "->delete(", "->execute(", "DB::statem
 
 
 def render(case):
+    if case == 'xinzhuang_fee_cases':
+        return subprocess.run(['python3', '-'], input=PROBE_PY, capture_output=True, text=True,
+                              env={**os.environ, 'CASE_KEY': case, 'TARGET_STUDENT_ID': '',
+                                   'TARGET_STUDENT_CLASS_ID': '4064', 'EXPECTED_TEACHER_IDS': ''})
     if case in SECRET_ID_CASES:
         return render_secret_case(case)
     run = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Run bounded"))["run"]
     py = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)\nPY\n", run, re.S).group(1)
     return subprocess.run(["python3", "-"], input=py, capture_output=True, text=True,
-                          env={**os.environ, "CASE_KEY": case, "TARGET_STUDENT_ID": "" if case == "xinzhuang_fee_cases" else "1",
-                               "TARGET_STUDENT_CLASS_ID": "4064" if case == "xinzhuang_fee_cases" else "",
+                          env={**os.environ, "CASE_KEY": case, "TARGET_STUDENT_ID": "1", "TARGET_STUDENT_CLASS_ID": "",
                                "EXPECTED_TEACHER_IDS": "7,42" if case == "contract_muzha_student" else ""})
 
 
