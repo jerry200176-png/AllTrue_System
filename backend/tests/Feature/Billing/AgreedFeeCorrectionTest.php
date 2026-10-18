@@ -139,8 +139,9 @@ class AgreedFeeCorrectionTest extends TestCase
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'billing.agreed_fee_corrected')->count());
     }
 
-    public function test_4217_pending_8000_requires_rejection_before_agreeing_8800_without_receipt(): void
+    public function test_4217_pending_8000_is_rejected_then_8800_can_be_recorded_and_confirmed_once(): void
     {
+        Http::fake(); Notification::fake(); Queue::fake();
         config(['billing.agreed_fee_correction_enabled' => true]);
         $f = $this->fixture(); $f['invoice']->update(['TotalAmount' => 8000]);
         $report = $this->reportFor($f); $report->update(['reported_amount' => 8000]);
@@ -154,6 +155,29 @@ class AgreedFeeCorrectionTest extends TestCase
         $this->assertSame('rejected', $report->fresh()->status);
         $this->assertSame(8000, (int) $report->fresh()->reported_amount);
         $this->assertSame(1, PaymentReport::count()); $this->assertSame(0, Payment::count());
+        // A corrected obligation must also be usable by the real collection path.
+        // Recording is still pending-only; only confirmation may create Payment/receipt.
+        $replacementId = $result['replacement_invoice_id'];
+        $newReportId = $this->withToken($f['token'])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $f['course']->ID, 'invoice_id' => $replacementId,
+            'payment_date' => now()->toDateString(), 'payment_method' => 'cash', 'amount' => 8800,
+        ])->assertOk()->assertJsonPath('status', 'pending')->json('report_id');
+        $this->assertSame(0, Payment::count());
+        $this->assertSame(8800, (int) PaymentReport::findOrFail($newReportId)->reported_amount);
+        $this->withToken($f['token'])->getJson('/api/v1/payment-reports/'.$newReportId.'/receipt')->assertStatus(422);
+        $this->withToken($f['token'])->putJson('/api/v1/payment-reports/'.$newReportId.'/confirm')->assertOk();
+        $this->assertSame(1, Payment::count());
+        $payment = Payment::sole();
+        $this->assertSame(8800, (int) $payment->Amount);
+        $this->assertSame((int) $replacementId, (int) $payment->InvoiceID);
+        $this->assertSame('paid', Invoice::findOrFail($replacementId)->Status);
+        $this->assertSame(8800, (int) Invoice::findOrFail($replacementId)->PaidAmount);
+        $this->withToken($f['token'])->getJson('/api/v1/payment-reports/'.$newReportId.'/receipt')
+            ->assertOk()->assertJsonPath('amount', 8800);
+        $this->withToken($f['token'])->putJson('/api/v1/payment-reports/'.$newReportId.'/confirm')->assertStatus(422);
+        $this->assertSame(1, Payment::count(), 'confirmation retry must not collect twice');
+        $this->assertSame('void', $f['invoice']->fresh()->Status);
+        $this->assertSame('rejected', $report->fresh()->status);
     }
 
     public function test_unbilled_trial_changes_only_charge_keeps_history_and_replays_after_later_invoice(): void
