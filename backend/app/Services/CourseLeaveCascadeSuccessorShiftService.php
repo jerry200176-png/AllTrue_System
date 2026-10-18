@@ -9,6 +9,7 @@ use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Support\SessionStatus;
+use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -180,6 +181,8 @@ class CourseLeaveCascadeSuccessorShiftService
                 $this->leaveAttendance->createClosedForSession($leave, $old, $actorUserId ?: null, null, $campusId ?: null);
             }
 
+            CourseLeaveCascadeService::recordLeaveMarker($old, $leave, $campusId);
+
             // Last lesson first, so each row moves into a slot its successor has already left.
             foreach (array_reverse($plan['moves']) as $move) {
                 if ($move['role'] !== 'successor') {
@@ -215,14 +218,15 @@ class CourseLeaveCascadeSuccessorShiftService
             DB::table('StudentClass')->where('ID', $plan['successor_course_id'])->update(['EndDate' => $plan['successor_end_date']]);
 
             return $plan + ['applied' => true];
-        });
+        }, 3); // Existing leave entry points can contend; retry the whole atomic re-plan, never a partial write.
     }
 
     /** @return array<string, mixed> */
     private function plan(int $leaveSessionId, bool $lock): array
     {
-        // Lock order matches the ordinary leave path: course first, then its sessions.
-        $courseId = (int) ClassSession::query()->whereKey($leaveSessionId)->value('StudentClassID');
+        // Match leaveBySession: selected ClassSession, its course, then the remaining sessions.
+        $identity = ClassSession::query()->whereKey($leaveSessionId)->when($lock, fn ($q) => $q->lockForUpdate())->first();
+        $courseId = (int) ($identity->StudentClassID ?? 0);
         $old = StudentClass::query()->whereKey($courseId)->when($lock, fn ($q) => $q->lockForUpdate())->first();
         if (!$old) {
             throw new \InvalidArgumentException('找不到堂次');
@@ -256,25 +260,36 @@ class CourseLeaveCascadeSuccessorShiftService
         }
 
         $blockers = [];
-        if ($this->hasApprovedEvaluation((int) $leave->id)) {
-            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $old->ID, 'session_id' => (int) $leave->id, 'message' => '請假堂次已有核准評量'];
+        $leaveReason = $this->ineligibleReason($leave, '請假堂次', $lock);
+        if ($leaveReason !== null) {
+            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $old->ID, 'session_id' => (int) $leave->id, 'message' => $leaveReason];
         }
-        if ((string) ($successor->scheduling_policy ?? 'auto_recurrence') !== 'auto_recurrence'
-            || $successor->isUsageSettlementLocked() || $old->isUsageSettlementLocked()) {
+        if ($old->isUsageSettlementLocked()) {
+            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $old->ID, 'session_id' => (int) $leave->id, 'message' => '原課程已結算，無法自動順延'];
+        }
+        if ((string) ($successor->scheduling_policy ?? 'auto_recurrence') !== 'auto_recurrence' || $successor->isUsageSettlementLocked()) {
             $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => null, 'message' => '續約課程為手動排課或已結算，無法自動順延'];
         }
         foreach ($chain as $row) {
-            if ($reason = $this->ineligibleReason($row)) {
+            if ($reason = $this->ineligibleReason($row, '續約堂次', $lock)) {
                 $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => (int) $row->id, 'date' => Carbon::parse($row->SessionDate)->toDateString(), 'message' => $reason];
             }
         }
 
         $slots = $chain->map(fn ($s) => $this->slot($s->SessionDate, $s->StartTime, $s->EndTime))->values()->all();
-        $minutes = max(30, Carbon::parse($leaveDate . ' ' . $leave->StartTime)->diffInMinutes(Carbon::parse($leaveDate . ' ' . $leave->EndTime)));
+        $minutes = Carbon::parse($leaveDate . ' ' . $leave->StartTime)->diffInMinutes(Carbon::parse($leaveDate . ' ' . $leave->EndTime), false);
+        if ($minutes <= 0) {
+            throw new \InvalidArgumentException('堂次時間無效，無法自動順延');
+        }
         $first = $slots[0];
+        $tailStart = Carbon::parse($first['date'] . ' ' . $first['start']);
+        $tailEnd = $tailStart->copy()->addMinutes($minutes);
+        if (!$tailEnd->isSameDay($tailStart)) {
+            throw new \InvalidArgumentException('跨日補堂需先核對，無法自動順延');
+        }
         $moves = [[
             'role' => 'old_tail', 'course_id' => (int) $old->ID, 'session_id' => null, 'from' => null,
-            'to' => $this->slot($first['date'], $first['start'], Carbon::parse($first['date'] . ' ' . $first['start'])->addMinutes($minutes)->format('H:i:s')),
+            'to' => $this->slot($first['date'], $first['start'], $tailEnd->format('H:i:s')),
         ]];
         foreach ($chain->values() as $i => $row) {
             $moves[] = [
@@ -287,7 +302,7 @@ class CourseLeaveCascadeSuccessorShiftService
         $branchId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
         foreach ($moves as $move) {
             $course = $move['role'] === 'old_tail' ? $old : $successor;
-            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id']));
+            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock, $move['from']));
         }
 
         $oldDates = $oldSessions->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')
@@ -297,6 +312,11 @@ class CourseLeaveCascadeSuccessorShiftService
             'leave_session' => ['id' => (int) $leave->id, 'date' => $leaveDate, 'start' => substr((string) $leave->StartTime, 0, 5), 'end' => substr((string) $leave->EndTime, 0, 5)],
             'old_course_id' => (int) $old->ID,
             'successor_course_id' => (int) $successor->ID,
+            // Bind current boundaries as well as proposed endings before overwriting either contract.
+            'current_end_dates' => [
+                'old' => $old->EndDate ? Carbon::parse($old->EndDate)->toDateString() : null,
+                'successor' => $successor->EndDate ? Carbon::parse($successor->EndDate)->toDateString() : null,
+            ],
             'moves' => $moves,
             'old_end_date' => max($oldDates),
             'successor_end_date' => (string) end($moves)['to']['date'],
@@ -316,11 +336,10 @@ class CourseLeaveCascadeSuccessorShiftService
             ->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))
             ->whereRaw("LOWER(COALESCE(ScheduleMode, 'count')) <> 'date'")
             ->orderBy('ID')
-            ->when($lock, fn ($q) => $q->lockForUpdate())
             ->get();
         $best = [null, collect()];
         foreach ($candidates as $candidate) {
-            $chain = $this->sessions((int) $candidate->ID, $lock)
+            $chain = $this->sessions((int) $candidate->ID, false)
                 ->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values();
             $start = $chain->isEmpty() ? null : Carbon::parse($chain->first()->SessionDate)->toDateString();
             if ($start !== null && $start > $leaveDate
@@ -329,6 +348,16 @@ class CourseLeaveCascadeSuccessorShiftService
             }
         }
 
+        if ($lock && $best[0] !== null) {
+            $chosen = StudentClass::query()->whereKey((int) $best[0]->ID)->lockForUpdate()->first();
+            if (!$chosen) throw new \InvalidArgumentException('續約課程已變動，請重新預覽');
+            $best = [$chosen, $this->sessions((int) $chosen->ID, true)
+                ->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values()];
+            if ((int) $chosen->StudentID !== (int) $old->StudentID || (int) $chosen->SubjectID !== (int) $old->SubjectID
+                || (int) $chosen->Stop === 1 || $best[1]->isEmpty()) {
+                throw new \InvalidArgumentException('續約課程已變動，請重新預覽');
+            }
+        }
         return $best;
     }
 
@@ -341,35 +370,62 @@ class CourseLeaveCascadeSuccessorShiftService
             ->get();
     }
 
-    private function ineligibleReason(ClassSession $row): ?string
+    private function ineligibleReason(ClassSession $row, string $label = '續約堂次', bool $lock = false): ?string
     {
         $id = (int) $row->id;
 
         return match (true) {
-            strtolower((string) $row->Status) !== 'scheduled' => '續約堂次不是排定狀態（已上課、請假或其他）',
-            Carbon::parse($row->SessionDate)->toDateString() < Carbon::today()->toDateString() => '續約堂次日期已過',
-            StudentSignIn::query()->where('ClassSessionID', $id)->whereNull('VoidedAt')->exists() => '續約堂次已有出缺勤紀錄',
-            SessionDeductionLedger::query()->where('class_session_id', $id)->exists() => '續約堂次已有扣堂紀錄',
-            $this->hasApprovedEvaluation($id) => '續約堂次已有核准評量',
+            strtolower((string) $row->Status) !== 'scheduled' => $label . '不是排定狀態（已上課、請假或其他）',
+            Carbon::parse($row->SessionDate . ' ' . $row->EndTime)->lte(Carbon::parse($row->SessionDate . ' ' . $row->StartTime)) => $label . '時間無效或跨日，需先核對',
+            Carbon::parse($row->SessionDate . ' ' . $row->StartTime)->lte(Carbon::now()) => $label . '上課時間已過',
+            StudentSignIn::query()->where('ClassSessionID', $id)->whereNull('VoidedAt')
+                ->when($lock, fn ($q) => $q->lockForUpdate())->first(['id']) !== null => $label . '已有出缺勤紀錄',
+            SessionDeductionLedger::query()->where('class_session_id', $id)
+                ->when($lock, fn ($q) => $q->lockForUpdate())->first(['id']) !== null => $label . '已有扣堂紀錄',
+            $this->hasApprovedEvaluation($id, $lock) => $label . '已有核准評量',
+            StudentSignIn::query()->where('ClassSessionID', $id)->whereNotNull('VoidedAt')
+                ->when($lock, fn ($q) => $q->lockForUpdate())->first(['id']) !== null => $label . '已有作廢出缺勤歷史，需先核對紀錄，無法自動順延',
+            LearningRecord::query()->where('ClassSessionID', $id)->whereNotNull('VoidedAt')
+                ->when($lock, fn ($q) => $q->lockForUpdate())->first(['id']) !== null => $label . '已有作廢評量歷史，需先核對紀錄，無法自動順延',
+            $this->hasOccurrenceAnchor((int) $row->StudentClassID, (string) $row->SessionDate, (string) $row->StartTime, $lock)
+                || ($row->OriginalSessionDate && $this->hasOccurrenceAnchor((int) $row->StudentClassID, (string) $row->OriginalSessionDate, (string) $row->OriginalStartTimeHM, $lock)) => $label . '已有單堂排課或代課紀錄，請先核對該堂，無法自動順延',
             default => null,
         };
     }
 
-    private function hasApprovedEvaluation(int $sessionId): bool
+    private function hasApprovedEvaluation(int $sessionId, bool $lock = false): bool
     {
-        return LearningRecord::query()->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->where('Status', 'approved')->exists();
+        return LearningRecord::query()->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->where('Status', 'approved')
+            ->when($lock, fn ($q) => $q->lockForUpdate())->first(['id']) !== null;
     }
 
     /** @return array{date: string, start: string, end: string} */
     private function nextSuccessorSlot(StudentClass $successor, Collection $chain): array
     {
         $last = $chain->last();
-        $occupied = $chain->mapWithKeys(fn ($s) => [Carbon::parse($s->SessionDate)->toDateString() => true])->all();
-        $weekdays = CourseLeaveCascadeService::resolveCourseWeekdays($successor, (int) Carbon::parse($last->SessionDate)->dayOfWeekIso);
-        $date = CourseLeaveCascadeService::nextRecurringDate(Carbon::parse($last->SessionDate)->startOfDay(), $weekdays, $occupied);
-        $times = CourseLeaveCascadeService::resolveContractSlotTimes($successor, $date);
+        $slots = ContractSessionSchedule::buildSlotsByWeekdayMap(
+            ContractSessionSchedule::resolveScheduleSlotsForRebuild($successor), (int) $successor->SessionDuration);
+        $cursor = Carbon::parse($last->SessionDate)->startOfDay();
+        $after = Carbon::parse($last->SessionDate . ' ' . $last->EndTime);
+        for ($i = 0; $i < 3660; $i++, $cursor->addDay()) {
+            foreach ($slots[(int) $cursor->dayOfWeekIso] ?? [] as $slot) {
+                $start = Carbon::parse($cursor->toDateString() . ' ' . $slot['time']);
+                if ($start->lt($after) || $slot['dur'] <= 0) continue;
+                $end = $start->copy()->addMinutes($slot['dur']);
+                if (!$end->isSameDay($start)) throw new \InvalidArgumentException('跨日堂次需先核對，無法自動順延');
+                return $this->slot($cursor->toDateString(), $start->format('H:i:s'), $end->format('H:i:s'));
+            }
+        }
+        throw new \InvalidArgumentException('找不到續約下一個合約時段');
+    }
 
-        return $this->slot($date, $times['start'] ?: $last->StartTime, $times['end'] ?: $last->EndTime);
+    private function hasOccurrenceAnchor(int $courseId, string $date, string $start, bool $lock): bool
+    {
+        return DB::table('schedules')->where('student_course_id', $courseId)
+            ->where(function ($q) use ($date, $start) {
+                $q->where(fn ($q) => $q->whereDate('schedule_date', $date)->whereRaw('SUBSTRING(start_time,1,5) = ?', [substr($start, 0, 5)]))
+                    ->orWhere(fn ($q) => $q->whereDate('original_schedule_date', $date)->whereRaw('SUBSTRING(original_start_time,1,5) = ?', [substr($start, 0, 5)]));
+            })->when($lock, fn ($q) => $q->lockForUpdate())->first(['id']) !== null;
     }
 
     /** @return array{date: string, start: string, end: string} */
@@ -389,12 +445,19 @@ class CourseLeaveCascadeSuccessorShiftService
      * @param  list<int>  $movingIds
      * @return list<array<string, mixed>>
      */
-    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId): array
+    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock, ?array $from): array
     {
         $out = [];
         $at = ['course_id' => (int) $course->ID, 'session_id' => $sessionId, 'date' => $to['date'], 'start' => $to['start']];
-        foreach ($this->guard->validateCourseOccurrence($course, $branchId, $to['date'], $to['start'], $to['end']) as $c) {
-            $out[] = ['type' => str_contains((string) ($c['type'] ?? ''), 'room') ? 'classroom' : 'teacher'] + $at + ['message' => (string) ($c['message'] ?? '時段衝突')];
+        if ($this->hasOccurrenceAnchor((int) $course->ID, $to['date'], $to['start'], $lock)) {
+            $out[] = ['type' => 'ineligible'] + $at + ['message' => '目的時段已有單堂排課紀錄，請先核對'];
+        }
+        $source = $from ?? $to;
+        $effective = clone $course;
+        $effective->TeacherID = SubstituteScheduleService::teacherForOccurrence((int) $course->ID, $source['date'], (int) $course->TeacherID, $source['start']);
+        foreach ($this->guard->validateCourseOccurrence($effective, $branchId, $to['date'], $to['start'], $to['end']) as $c) {
+            $room = str_contains((string) ($c['type'] ?? ''), 'room');
+            $out[] = ['type' => $room ? 'classroom' : 'teacher'] + $at + ['message' => $room ? '教室在此時段已有課程衝突，請核對課表' : '授課老師在此時段已有課程衝突，請核對課表'];
         }
         $studentClash = ClassSession::query()->from('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
