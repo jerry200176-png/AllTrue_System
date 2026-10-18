@@ -1,4 +1,5 @@
 name: CI — PHPUnit Tests
+run-name: "Targeted RED only - not delivery acceptance"
 
 on:
   push:
@@ -408,6 +409,7 @@ jobs:
         run: |
           mkdir -p storage/test-results
           ./vendor/bin/phpunit \
+            --filter='test_pop_recovers_after_strategy_commit_without_outer_execute_record|test_permanent_restatement_is_not_a_cash_receipt_or_permission_to_correct_a_pending_report|test_pop_adapter_refuses_scope_and_current_staff_permission_drift' \
             --coverage-text \
             --coverage-clover=storage/test-results/coverage.xml \
             --log-junit=storage/test-results/junit.xml
