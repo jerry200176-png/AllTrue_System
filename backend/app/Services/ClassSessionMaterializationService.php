@@ -176,8 +176,9 @@ class ClassSessionMaterializationService
      * The write-time student overlap guard for a new 'scheduled' row of this course, as a value: null when the slot
      * is free (or in the past, where the save path does not guard), else the conflict upsertSlot() would throw.
      * Planners that pick slots themselves ask this instead of re-implementing the rule (in-app #380, R142).
+     * @param list<int> $excludeSessionIds Authoritative rows moved by the same atomic plan.
      */
-    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null): ?SlotOccupiedException
+    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null, array $excludeSessionIds = []): ?SlotOccupiedException
     {
         $date = $this->normalizeDate($sessionDate);
         // $asOf: a planner's own reference day (e.g. a report run --as-of a past date); defaults to the write path's today.
@@ -191,6 +192,7 @@ class ClassSessionMaterializationService
                 $date,
                 $this->normalizeTimeForStorage($startTime),
                 $this->normalizeTimeForStorage($endTime),
+                null, $excludeSessionIds,
             );
 
             return null;
@@ -199,6 +201,7 @@ class ClassSessionMaterializationService
         }
     }
 
+    /** @param list<int> $excludeSessionIds */
     private function assertStudentSlotAvailable(
         StudentClass $studentClass,
         int $studentClassId,
@@ -206,6 +209,7 @@ class ClassSessionMaterializationService
         string $startTime,
         string $endTime,
         ?int $excludeSessionId = null,
+        array $excludeSessionIds = [],
     ): void {
         $studentId = (int) $studentClass->getAttribute('StudentID');
         $packageId = (int) $studentClass->getAttribute('PackageID');
@@ -232,6 +236,7 @@ class ClassSessionMaterializationService
                 });
             })
             ->when($excludeSessionId !== null, fn ($query) => $query->where('cs.id', '!=', $excludeSessionId))
+            ->whereNotIn('cs.id', $excludeSessionIds)
             ->whereDate('cs.SessionDate', $sessionDate)
             ->where(function ($query) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');

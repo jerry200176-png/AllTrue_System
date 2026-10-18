@@ -8,7 +8,6 @@ use App\Models\LearningRecord;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
-use App\Support\SessionStatus;
 use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -341,12 +340,12 @@ class CourseLeaveCascadeSuccessorShiftService
             ->where('SubjectID', (int) $old->SubjectID)
             ->where('ID', '!=', (int) $old->ID)
             ->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))
-            ->whereRaw("LOWER(COALESCE(ScheduleMode, 'count')) <> 'date'")
-            ->orderBy('ID')
+            ->whereRaw("LOWER(COALESCE(NULLIF(TRIM(ScheduleMode), ''), 'count')) = 'count'")
+            ->orderBy('ID')->when($lock, fn ($q) => $q->lockForUpdate())
             ->get();
         $best = [null, collect()];
         foreach ($candidates as $candidate) {
-            $chain = $this->sessions((int) $candidate->ID, false)
+            $chain = $this->sessions((int) $candidate->ID, $lock)
                 ->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values();
             $start = $chain->isEmpty() ? null : Carbon::parse($chain->first()->SessionDate)->toDateString();
             if ($start !== null && $start > $leaveDate
@@ -355,13 +354,14 @@ class CourseLeaveCascadeSuccessorShiftService
             }
         }
 
+        if ($lock && $best[0] === null) throw new \InvalidArgumentException('續約課程已變動，請重新預覽');
         if ($lock && $best[0] !== null) {
             $chosen = StudentClass::query()->whereKey((int) $best[0]->ID)->lockForUpdate()->first();
             if (!$chosen) throw new \InvalidArgumentException('續約課程已變動，請重新預覽');
             $best = [$chosen, $this->sessions((int) $chosen->ID, true)
                 ->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values()];
             if ((int) $chosen->StudentID !== (int) $old->StudentID || (int) $chosen->SubjectID !== (int) $old->SubjectID
-                || strtolower((string) ($chosen->ScheduleMode ?? 'count')) !== 'count'
+                || (strtolower(trim((string) $chosen->ScheduleMode)) ?: 'count') !== 'count'
                 || (int) $chosen->Stop === 1 || $best[1]->isEmpty()) {
                 throw new \InvalidArgumentException('續約課程已變動，請重新預覽');
             }
@@ -419,6 +419,7 @@ class CourseLeaveCascadeSuccessorShiftService
         if ($duration <= 0) throw new \InvalidArgumentException('續約堂次時間無效，無法自動順延');
         $slots = ContractSessionSchedule::buildSlotsByWeekdayMap(
             ContractSessionSchedule::resolveScheduleSlotsForRebuild($successor), $duration);
+        if ($slots === []) $slots[(int) Carbon::parse($last->SessionDate)->dayOfWeekIso] = [['time' => substr((string) $last->StartTime, 0, 5), 'dur' => $duration]];
         $cursor = Carbon::parse($last->SessionDate)->startOfDay();
         $after = Carbon::parse($last->SessionDate . ' ' . $last->EndTime);
         for ($i = 0; $i < 3660; $i++, $cursor->addDay()) {
@@ -473,16 +474,8 @@ class CourseLeaveCascadeSuccessorShiftService
             $room = str_contains((string) ($c['type'] ?? ''), 'room');
             $out[] = ['type' => $room ? 'classroom' : 'teacher'] + $at + ['message' => $room ? '教室在此時段已有課程衝突，請核對課表' : '授課老師在此時段已有課程衝突，請核對課表'];
         }
-        $studentClash = ClassSession::query()->from('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->where('sc.StudentID', (int) $course->StudentID)
-            ->whereDate('cs.SessionDate', $to['date'])
-            ->whereNotIn('cs.id', $movingIds)
-            ->whereRaw('LOWER(cs.Status) NOT IN (' . implode(',', array_fill(0, count(SessionStatus::futureReservationExclusionStatuses()), '?')) . ')', SessionStatus::futureReservationExclusionStatuses())
-            ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
-            ->where('cs.StartTime', '<', $to['end'])
-            ->where('cs.EndTime', '>', $to['start'])
-            ->exists();
+        $studentClash = app(ClassSessionMaterializationService::class)
+            ->findStudentSlotConflict($course, $to['date'], $to['start'], $to['end'], null, $movingIds) !== null;
         if ($studentClash) {
             $out[] = ['type' => 'student'] + $at + ['message' => '學生在此時段已有其他課程'];
         }

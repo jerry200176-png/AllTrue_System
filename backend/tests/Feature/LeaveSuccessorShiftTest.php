@@ -200,6 +200,31 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame(90, (int) DB::table('StudentClass')->where('ID', $this->renewal)->value('standard_lesson_minutes'));
     }
 
+    /** @dataProvider legacySuccessorShapes */
+    public function test_legacy_successor_shapes_remain_shiftable(bool $blankMode): void
+    {
+        DB::table('StudentClass')->where('ID', $this->renewal)->update($blankMode ? ['ScheduleMode' => '']
+            : array_fill_keys(['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'], null));
+        $id = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $id])->assertOk()->assertJsonPath('eligible', true);
+        $this->shift('apply', ['class_session_id' => $id, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
+    }
+
+    public static function legacySuccessorShapes(): array
+    {
+        return ['blank count mode' => [true], 'missing cadence fields' => [false]];
+    }
+
+    public function test_schedule_only_student_occupancy_is_a_preview_blocker(): void
+    {
+        $other = $this->course(self::STUDENT, '2026-12-29', '2026-12-29', ['SubjectID' => 2]);
+        DB::table('schedules')->insert(['student_id' => self::STUDENT, 'student_course_id' => $other,
+            'teacher_id' => self::TEACHER, 'branch_id' => 1, 'day_of_week' => 2, 'schedule_date' => '2026-12-29',
+            'start_time' => '19:00', 'end_time' => '21:00', 'status' => 'scheduled', 'type' => 'normal']);
+        $this->assertBlockedWithoutWrites('student', $this->sessions['2026-12-22']);
+    }
+
     public function test_old_tail_cannot_silently_cross_midnight(): void
     {
         DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['StartTime' => '23:00:00', 'EndTime' => '23:30:00']);
@@ -212,7 +237,7 @@ class LeaveSuccessorShiftTest extends TestCase
         }
     }
 
-    public function test_apply_locks_session_before_course_and_only_the_selected_renewal(): void
+    public function test_apply_locks_session_before_course_and_revalidates_the_candidate_set(): void
     {
         $other = $this->course(self::STUDENT, '2027-01-05', '2027-01-05');
         $this->lesson($other, '2027-01-05');
@@ -225,10 +250,16 @@ class LeaveSuccessorShiftTest extends TestCase
             $this->assertStringContainsString('`ClassSession`', $locks[0]['query']);
             foreach ($locks as $query) {
                 if (str_contains($query['query'], '`StudentClass`')) {
-                    $this->assertStringContainsString('`ID` = ?', $query['query']);
-                    $this->assertNotContains($other, $query['bindings']);
+                    if (str_contains($query['query'], '`StudentID`')) {
+                        $this->assertStringContainsString('`SubjectID` = ?', $query['query']);
+                        $this->assertContains(self::STUDENT, $query['bindings']);
+                    } else {
+                        $this->assertStringContainsString('`ID` = ?', $query['query']);
+                        $this->assertNotContains($other, $query['bindings']);
+                    }
                 }
             }
+            $this->assertTrue(collect($locks)->contains(fn ($q) => str_contains($q['query'], '`ClassSession`') && in_array($other, $q['bindings'], true)));
         } finally { DB::disableQueryLog(); DB::flushQueryLog(); }
     }
 
@@ -345,7 +376,7 @@ class LeaveSuccessorShiftTest extends TestCase
 
     public static function staleApplyEvidence(): array
     {
-        return self::lateOldLeaveEvidence() + ['renewal changed to date mode' => ['renewal_mode']];
+        return self::lateOldLeaveEvidence() + ['renewal changed to date mode' => ['renewal_mode'], 'another successor moved earlier' => ['earlier_candidate']];
     }
 
     /** #4210: locking reads must defeat a pre-existing REPEATABLE READ snapshot. @dataProvider staleApplyEvidence */
@@ -355,6 +386,8 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame('mysql', DB::connection()->getDriverName());
         $this->assertSame(1, DB::transactionLevel());
         $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
+        $candidate = $kind === 'earlier_candidate' ? $this->course(self::STUDENT, '2026-11-25', '2026-12-30') : null;
+        if ($candidate) $this->lesson($candidate, '2026-12-30');
         DB::commit();
         config(['database.connections.shift_stale_apply' => config('database.connections.' . $original)]);
         $apply = DB::connection('shift_stale_apply');
@@ -362,9 +395,11 @@ class LeaveSuccessorShiftTest extends TestCase
         $table = $kind === 'anchor' ? 'schedules' : ($kind === 'ledger' ? (new SessionDeductionLedger)->getTable() : 'StudentSingIn');
         $column = $kind === 'anchor' ? 'student_course_id' : ($kind === 'ledger' ? 'class_session_id' : 'ClassSessionID');
         $lookup = $kind === 'anchor' ? $this->old : $leaveId;
-        $observed = fn () => $kind === 'renewal_mode'
-            ? $apply->table('StudentClass')->where('ID', $this->renewal)->where('ScheduleMode', 'date')->count()
-            : $apply->table($table)->where($column, $lookup)->count();
+        $observed = fn () => match ($kind) {
+            'renewal_mode' => $apply->table('StudentClass')->where('ID', $this->renewal)->where('ScheduleMode', 'date')->count(),
+            'earlier_candidate' => $apply->table('ClassSession')->where('StudentClassID', $candidate)->whereDate('SessionDate', '2026-11-30')->count(),
+            default => $apply->table($table)->where($column, $lookup)->count(),
+        };
         try {
             $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
             $apply->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
@@ -372,6 +407,8 @@ class LeaveSuccessorShiftTest extends TestCase
             $this->assertSame(0, $observed());
             if ($kind === 'renewal_mode') {
                 DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => 'date']);
+            } elseif ($candidate) {
+                DB::table('ClassSession')->where('StudentClassID', $candidate)->update(['SessionDate' => '2026-11-30']);
             } else {
                 $this->seedOldLeaveEvidence($leaveId, $kind);
             } // Committed on the independent original connection.
@@ -382,6 +419,8 @@ class LeaveSuccessorShiftTest extends TestCase
                 ->assertStatus(422);
             if ($kind === 'renewal_mode') {
                 $response->assertJsonPath('message', '續約課程已變動，請重新預覽');
+            } elseif ($candidate) {
+                $response->assertJsonPath('plan.successor_course_id', $candidate)->assertJsonPath('plan.blockers.0.type', 'student');
             } else {
                 $response->assertJsonPath('plan.blockers.0.course_id', $this->old)->assertJsonPath('plan.blockers.0.session_id', $leaveId);
             }
@@ -393,8 +432,8 @@ class LeaveSuccessorShiftTest extends TestCase
                 $apply->rollBack();
             }
             DB::purge('shift_stale_apply');
-            DB::transaction(function () use ($userId) {
-                $courseIds = [$this->old, $this->renewal];
+            DB::transaction(function () use ($userId, $candidate) {
+                $courseIds = array_filter([$this->old, $this->renewal, $candidate]);
                 $ids = DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id');
                 DB::table('schedule_audit_logs')->whereIn('session_id', $ids)->delete();
                 DB::table('schedules')->whereIn('student_course_id', $courseIds)->delete();
@@ -560,6 +599,7 @@ class LeaveSuccessorShiftTest extends TestCase
         $beforeArtifacts = $this->undoSnapshot();
         // The renewal rows move first; the tail write then fails.
         $this->mock(ClassSessionMaterializationService::class, function ($mock) {
+            $mock->makePartial();
             $mock->shouldReceive('assertStudentSlotAvailableForSession')->andReturnNull();
             $mock->shouldReceive('upsertSlot')->andThrow(new \RuntimeException('simulated failure'));
         });
