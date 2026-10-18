@@ -187,75 +187,9 @@ parameters:
 			path: app/Console/Commands/SyncPackageSessionCounts.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$InvoiceID\.$#'
-			identifier: property.notFound
-			count: 5
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$StudentClassID\.$#'
-			identifier: property.notFound
-			count: 7
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$StudentID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/AccountingController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$confirmedByUser\.$#'
 			identifier: property.notFound
 			count: 2
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$confirmed_at\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 10
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$payment_date\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$payment_id\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$reported_amount\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$reported_by_name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$status\.$#'
-			identifier: property.notFound
-			count: 4
-			path: app/Http/Controllers/AccountingController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$voided_at\.$#'
-			identifier: property.notFound
-			count: 1
 			path: app/Http/Controllers/AccountingController.php
 
 		-
@@ -3467,12 +3401,6 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Models/PartTimeRateCard.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$status\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Models/PaymentReport.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\PayrollBranchRule\:\:\$base_rates\.$#'
