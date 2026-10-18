@@ -22,7 +22,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     public function plan(array $parameters, array $context = []): array
     {
         try {
-            // Recover the originating request through POP planning if its outer execute receipt is missing.
             $proof = DB::table('pop_execution_records')->where('id', $this->proofId($parameters, 'repair-proof'))
                 ->where('phase', 'repair-proof')->first();
             if ($proof) {
@@ -106,7 +105,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             if (!isset($p[$key]) || !is_int($p[$key]) || $p[$key] <= 0) $this->fail('invalid_parameters');
         if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'] ?? '')) $this->fail('invalid_decision');
         $one = fn ($q) => (array) $q->when($lock, fn ($q) => $q->lockForUpdate())->first();
-        // Match Student -> StudentClass -> Invoice ordering used by invoice creation and purge.
         $student = $one(DB::table('Student')->where('id', $p['student_id'])->select('id', 'CampusID'));
         $course = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
         if ((int) ($course['StudentID'] ?? 0) !== $p['student_id'] || (int) ($student['CampusID'] ?? 0) !== $p['campus_id']) $this->fail('owner_mismatch');
@@ -119,7 +117,8 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         if (count($invoices) !== 1 || (int) $invoices[0]['id'] !== $p['invoice_id'] || (int) $invoices[0]['StudentID'] !== $p['student_id']) $this->fail('invoice_scope');
         $items = $rows(DB::table('InvoiceItem')->where(fn ($q) => $q->where('InvoiceID', $p['invoice_id'])->orWhere('StudentClassID', $p['course_id']))->orderBy('id'));
         $payments = $rows(DB::table('Payment')->where('InvoiceID', $p['invoice_id'])->orderBy('id'));
-        $reports = $rows(DB::table('payment_reports')->where(fn ($q) => $q->where('InvoiceID', $p['invoice_id'])->orWhere('StudentClassID', $p['course_id']))->orderBy('id'));
+        if (DB::table('payment_reports')->where('InvoiceID', $p['invoice_id'])->where('StudentClassID', '<>', $p['course_id'])->exists()) $this->fail('report_owner');
+        $reports = $rows(DB::table(DB::raw('`payment_reports` FORCE INDEX (`payment_reports_studentclassid_index`)'))->where('StudentClassID', $p['course_id'])->orderBy('id'));
         foreach ($reports as $r) if ((int) $r['StudentID'] !== $p['student_id'] || (int) $r['StudentClassID'] !== $p['course_id'] || (int) $r['InvoiceID'] !== $p['invoice_id']) $this->fail('report_owner');
         $amendments = $rows(DB::table('student_class_pricing_amendments')->where('student_class_id', $p['course_id'])->orderBy('id'));
         $epoch = DB::table('pop_execution_records')->where('phase', 'repair-proof-rollback')

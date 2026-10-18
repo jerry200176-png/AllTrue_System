@@ -335,6 +335,7 @@ final class PopOperationService
         if (!$approval) {
             throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
         }
+        if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery') throw new RuntimeException('POP recovery requires its successful execute receipt first.');
         $existing = $this->existing($request, $phase);
         if ($existing) {
             return $existing;
@@ -377,12 +378,9 @@ final class PopOperationService
             }
             $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
             $strategy = app((string) $entry['strategy_class']);
-            $complete = function () use ($phase, $strategy, $plan, $payload, $request, $entry, $parameters, $actor, $approval, $commitSha, $startedAt): array {
-                $result = $phase === 'verify'
-                    ? $strategy->verify($plan, $payload)
-                    : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
-                return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
-            };
+            $complete = fn () => $this->record($request, $entry, $parameters, $phase,
+                $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
+                $actor, $approval, $commitSha, $this->durationMs($startedAt));
             return $this->atomicFinancialRepair($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
@@ -395,11 +393,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, [
-            'App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
-            'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
-            'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy',
-        ], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'], true);
     }
 
     /**
@@ -1097,8 +1091,7 @@ final class PopOperationService
         if ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists())
             return (clone $records)->where('phase', 'rollback')->exists() ? 'rollback' : 'recovery';
         $proof = (clone $records)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->first();
-        $snapshot = $proof ? json_decode((string) $proof->snapshot, true, 512, JSON_THROW_ON_ERROR) : [];
-        $parameters = $snapshot['parameters'] ?? $snapshot['request_parameters'] ?? [];
+        $snapshot = $proof ? json_decode((string) $proof->snapshot, true, 512, JSON_THROW_ON_ERROR) : []; $parameters = $snapshot['parameters'] ?? $snapshot['request_parameters'] ?? [];
         return $proof && hash_equals((string) $request->parameters_hash, hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR)))
             && !(clone $records)->where('phase', 'rollback')->exists() ? 'execute-recovery' : null;
     }
