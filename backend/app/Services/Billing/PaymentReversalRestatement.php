@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
-/** Internal preparation only; exact POP adapter/registration and protected approval remain required. */
+/** Internal preparation only; protected registration/activation and case approval remain required. */
 final class PaymentReversalRestatement
 {
     public const OPERATION = 'reviewed-legacy-reversal-restatement';
@@ -24,6 +24,7 @@ final class PaymentReversalRestatement
 
     public function requestParameters(array $plan, string $decision): array
     {
+        if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $decision)) $this->fail('invalid_manifest');
         return ['campus_id' => $plan['scope']['campus_id'], 'plan' => $plan, 'decision_reference' => $decision];
     }
 
@@ -38,7 +39,10 @@ final class PaymentReversalRestatement
             $prior = $this->proof($operationId, 'reversal-proof');
             if ($this->proof($operationId, 'reversal-proof-rollback')) $this->fail('reapply_requires_new_decision');
             if (!hash_equals($plan['rollback_epoch'], $this->rollbackEpoch($scope['payment_id']))) $this->fail('stale_rollback_epoch');
-            if ($prior) return ['state' => 'already_applied', 'restatement_id' => $prior->id];
+            if ($prior) {
+                $this->assertReplay($prior, $this->requestParameters($plan, $decision), true);
+                return ['state' => 'already_applied', 'restatement_id' => $prior->id];
+            }
             $graph = $this->capture($scope, $actor, true);
             if (!hash_equals($plan['state_hash'], $this->hash($graph))) $this->fail('state_changed');
             $before = $this->proveExcess($graph, $scope);
@@ -86,7 +90,7 @@ final class PaymentReversalRestatement
 
     public function actorContext(int $userId, int $studentId): array
     {
-        $user = \App\Models\User::find($userId);
+        $user = \App\Models\User::query()->find($userId);
         if (!$user || in_array($user->status, ['inactive', 'suspended'], true)) $this->fail('forbidden');
         $auth = app(\App\Services\StaffCapabilityAuthorizer::class);
         $role = $user->type === 'S' ? 'super_admin' : 'director';
@@ -114,6 +118,7 @@ final class PaymentReversalRestatement
             if ($this->proof($record->operation_id, 'reversal-proof-rollback')) $this->fail('reapply_requires_new_decision');
             $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
             if (!hash_equals($this->hash($s['request_parameters']), $this->hash($p))) $this->fail('history_mismatch');
+            $this->assertReplay($record, $p, false);
             return;
         }
         if (!hash_equals($this->hash($plan), $this->hash($this->plan($plan['scope'], $actor)))) $this->fail('state_changed');
@@ -152,13 +157,21 @@ final class PaymentReversalRestatement
             if (!$p || (int) ($s['scope']['invoice_id'] ?? 0) !== (int) $p->InvoiceID
                 || ($s['before_payment']['Method'] ?? null) !== 'void' || (int) ($s['before_payment']['Amount'] ?? 0) >= 0) continue;
             $intact = true;
-            foreach (['id', 'InvoiceID', 'Amount', 'Method', 'Note', 'payment_report_id', 'PaidAt'] as $key) {
+            foreach (['id', 'InvoiceID', 'Amount', 'Method', 'Note', 'payment_report_id', 'PaidAt', 'receipt_url'] as $key) {
                 $raw = $p->getRawOriginal($key); $after = $s['after_payment'];
                 if (!array_key_exists($key, $after) || ($after[$key] === null ? $raw !== null : (string) $after[$key] !== (string) $raw)) $intact = false;
             }
             if ($intact) $out[(int) $p->id] = true;
         }
         return $out;
+    }
+
+    private function assertReplay(object $record, array $parameters, bool $lock): void
+    {
+        $s = json_decode($record->snapshot, true, 512, JSON_THROW_ON_ERROR);
+        if (!hash_equals($this->hash($s['request_parameters']), $this->hash($parameters))) $this->fail('history_mismatch');
+        $row = DB::table('Payment')->where('id', $parameters['plan']['scope']['payment_id'])->when($lock, fn ($q) => $q->lockForUpdate())->first();
+        if (!$row || !hash_equals($this->hash($s['after_payment']), $this->hash((array) $row))) $this->fail('target_moved_on');
     }
 
     private function proofId(array $p, string $phase): string

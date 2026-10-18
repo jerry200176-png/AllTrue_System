@@ -462,7 +462,7 @@ class AccountingController extends Controller
             ->pluck('first_session_date', 'StudentClassID');
 
         $invoices = Invoice::with(['studentClass', 'items', 'payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id', 'receipt_url'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
@@ -560,7 +560,7 @@ class AccountingController extends Controller
                 }
 
                 // 轉課 transfer_in is a ledger carry-over, not a receipted cash payment.
-                if (!$isVoid && !$report && !$isRestatement && (string) ($payment->Method ?? '') !== 'transfer_in') {
+                if (!$isVoid && !$report && (string) ($payment->Method ?? '') !== 'transfer_in') {
                     $invoiceAnomalies[] = $this->ledgerAnomaly(
                         'payment_without_receipt',
                         'warning',
