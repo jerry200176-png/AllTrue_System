@@ -86,21 +86,65 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         });
     }
 
-    public function test_kind_only_schema_left_by_receipt_tests_can_be_completed(): void
+    /** @dataProvider existingCourseKeys */
+    public function test_kind_only_schema_left_by_receipt_tests_can_be_completed(bool $keepCourseKey): void
     {
-        $this->endOuterTestingTransactions();
-        AgreedFeeTestSchema::assertTestConnection();
-        DB::statement('ALTER TABLE invoice_corrections DROP campus_id, DROP old_charge,
-            DROP new_charge, DROP original_invoice_total, DROP request_hash, DROP state_hash');
+        $this->leaveNullableKindOnlySchema($keepCourseKey);
         $this->assertTrue(Schema::hasColumn('invoice_corrections', 'kind'));
         $this->assertFalse(AgreedFeeTestSchema::hasExtensionColumns());
+        $this->assertSame('YES', collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))
+            ->firstWhere('Field', 'kind')->Null, 'match the real receipt-test nullable definition');
         AgreedFeeTestSchema::ensureExtensionColumns();
         $this->assertTrue(AgreedFeeTestSchema::hasExtensionColumns());
-        $this->assertSame('receipt_reissue', collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))
-            ->firstWhere('Field', 'kind')->Default);
+        $kind = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->firstWhere('Field', 'kind');
+        $this->assertSame('NO', $kind->Null);
+        $this->assertSame('receipt_reissue', $kind->Default);
         $index = collect(DB::select('SHOW INDEX FROM invoice_corrections'))
             ->where('Key_name', 'uq_invoice_corrections_course_key');
         $this->assertCount(2, $index, 'existing unique index must not be added twice');
         $this->beginDatabaseTransaction();
+    }
+
+    public static function existingCourseKeys(): array
+    {
+        return [[false], [true]];
+    }
+
+    public function test_null_kind_history_is_refused_without_reclassifying_it(): void
+    {
+        $this->leaveNullableKindOnlySchema(false);
+        $id = DB::table('invoice_corrections')->insertGetId([
+            'kind' => null, 'original_invoice_id' => 101, 'replacement_invoice_id' => 102,
+            'student_class_id' => 1, 'amount' => 500, 'reason' => 'Synthetic unclassified history',
+            'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+        ]);
+        try {
+            try {
+                AgreedFeeTestSchema::ensureExtensionColumns();
+                $this->fail('Null kind history must not be silently classified.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Retain unclassified correction history', $e->getMessage());
+            }
+            $this->assertNull(DB::table('invoice_corrections')->where('id', $id)->value('kind'));
+            $this->assertFalse(AgreedFeeTestSchema::hasExtensionColumns());
+            $this->assertSame(1, DB::table('invoice_corrections')->where('id', $id)->count());
+        } finally {
+            $this->rebuildIsolatedSchema();
+        }
+    }
+
+    private function leaveNullableKindOnlySchema(bool $keepCourseKey): void
+    {
+        $this->endOuterTestingTransactions();
+        AgreedFeeTestSchema::assertTestConnection();
+        DB::statement("ALTER TABLE invoice_corrections DROP campus_id, DROP old_charge,
+            DROP new_charge, DROP original_invoice_total, DROP request_hash, DROP state_hash,
+            MODIFY kind VARCHAR(32) NULL DEFAULT 'receipt_reissue',
+            MODIFY original_invoice_id BIGINT UNSIGNED NOT NULL,
+            MODIFY replacement_invoice_id BIGINT UNSIGNED NOT NULL,
+            MODIFY amount INT UNSIGNED NOT NULL");
+        if (!$keepCourseKey) {
+            Schema::table('invoice_corrections', fn ($table) => $table->dropUnique('uq_invoice_corrections_course_key'));
+        }
     }
 }
