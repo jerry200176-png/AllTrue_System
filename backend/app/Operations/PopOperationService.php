@@ -34,6 +34,7 @@ final class PopOperationService
     ): array {
         $entry = $this->catalog->operation($operationId);
         $this->assertActor($actor);
+        if ($this->isReviewedFinancialCase($entry) && ($actorId === null || $actor !== 'user:'.$actorId || $actorRole === 'pop_machine')) throw new RuntimeException('Reviewed financial repair requires an authenticated human requester.');
         $this->assertIdempotencyKey($idempotencyKey);
         $normalized = self::canonicalParameters($parameters);
         $this->assertParameterContract($entry, $normalized);
@@ -403,12 +404,9 @@ final class PopOperationService
             }
             $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
             $strategy = app((string) $entry['strategy_class']);
-            $complete = function () use ($phase, $strategy, $plan, $payload, $request, $entry, $parameters, $actor, $approval, $commitSha, $startedAt): array {
-                $result = $phase === 'verify'
-                    ? $strategy->verify($plan, $payload)
-                    : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
-                return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
-            };
+            $complete = fn () => $this->record($request, $entry, $parameters, $phase,
+                $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
+                $actor, $approval, $commitSha, $this->durationMs($startedAt));
             return $this->atomicFinancialRepair($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
@@ -421,11 +419,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, [
-            'App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
-            'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
-            'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy',
-        ], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'], true);
     }
 
     /**
@@ -919,7 +913,7 @@ final class PopOperationService
         foreach (['founder_approval_required', 'reversible', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required'] as $key)
             if (($e[$key] ?? false) !== true) return false;
         return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
-            && ($e['approval_policy'] ?? null) === 'founder-explicit-single-repair' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
+            && ($e['approval_policy'] ?? null) === 'founder-exact-reviewed-financial' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
