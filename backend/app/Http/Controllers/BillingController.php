@@ -216,7 +216,7 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($invoice, $data) {
-            // Same order as 確認不收 (courses, then invoice) so the two cannot deadlock.
+            // Keep course-before-invoice ordering with invoice void and correction writers.
             $courseIds = $this->lockInvoiceCourses($invoice, true);
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
@@ -310,18 +310,19 @@ class BillingController extends Controller
     }
 
     /**
-     * Single-course voids join the fee-correction mutex. Consolidated bills are
-     * ineligible for fee correction and keep invoice-only void serialization:
-     * adding a new multi-course lock set would invert existing transfer locks.
-     * Direct payments retain their pre-existing sorted multi-course protocol.
+     * Void joins the header owner's count-correction mutex, or the sole item
+     * owner when there is no header. Never add a multi-course void lock set:
+     * it would invert existing transfer locks. Direct payments retain their
+     * pre-existing sorted multi-course protocol.
      */
     private function lockInvoiceCourses(Invoice $invoice, bool $allCourses = false): array
     {
         $headerId = DB::table('Invoice')->where('id', $invoice->getKey())->value('StudentClassID');
         $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
             ->push($headerId)->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
-        if ($courseIds !== [] && ($allCourses || count($courseIds) === 1)) {
-            StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+        $lockIds = $allCourses ? $courseIds : ($headerId ? [(int) $headerId] : (count($courseIds) === 1 ? $courseIds : []));
+        if ($lockIds !== []) {
+            StudentClass::query()->whereIn('ID', $lockIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
         }
 
         return $courseIds;

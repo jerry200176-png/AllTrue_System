@@ -98,13 +98,18 @@ class InvoiceVoidSerializationTest extends TestCase
         $this->assertSame(0, Payment::count());
     }
 
-    /** @dataProvider operations */
-    public function test_consolidated_void_does_not_invert_reverse_id_transfer_locks(string $operation): void
+    /** @dataProvider consolidatedPairs */
+    public function test_consolidated_void_does_not_invert_transfer_locks(string $operation, bool $headerIsHigher): void
     {
-        [$course, $invoice, $higher] = $this->fixture('multiple');
+        [$course, $invoice, $other] = $this->fixture('multiple');
+        if ($headerIsHigher) {
+            $invoice->update(['StudentClassID' => $other->ID]);
+            InvoiceItem::where('InvoiceID', $invoice->id)->update(['StudentClassID' => $course->ID]);
+            [$course, $other] = [$other, $course];
+        }
         DB::beginTransaction();
-        // Existing transfer owns higher-ID source before lower-ID target.
-        StudentClass::whereKey($higher->ID)->lockForUpdate()->firstOrFail();
+        // Transfer owns its source first; void must never wait on this non-header.
+        StudentClass::whereKey($other->ID)->lockForUpdate()->firstOrFail();
         [$worker] = $this->spawnVoid($invoice, $operation);
         $result = $this->raceFinish($worker);
         $this->assertSame(200, $result['status'], json_encode($result));
@@ -113,7 +118,31 @@ class InvoiceVoidSerializationTest extends TestCase
         $this->assertSame('void', $invoice->fresh()->Status);
         $this->assertSame(0, Payment::count());
         $this->assertSame(8000, (int) $course->fresh()->Charge);
-        $this->assertSame(8000, (int) $higher->fresh()->Charge);
+        $this->assertSame(8000, (int) $other->fresh()->Charge);
+    }
+
+    /** @dataProvider operations */
+    public function test_consolidated_void_waits_for_header_count_correction(string $operation): void
+    {
+        [$course, $invoice, $other] = $this->fixture('multiple');
+        $service = app(\App\Services\Billing\BillingCorrection::class);
+        $token = $service->confirmationToken($course, 1, 500, 0, [], 1);
+        DB::beginTransaction();
+        StudentClass::whereKey($course->ID)->lockForUpdate()->firstOrFail();
+        [$worker, $connection, $after, $bindings] = $this->spawnVoid($invoice, $operation);
+        $this->awaitBlockedQuery($worker, $connection, $after, $bindings, (int) $course->ID);
+        $result = $service->applyCountCorrection($course, 1, 500,
+            'Synthetic header count correction', 8, 8000, $token, 1);
+        $this->assertSame(1, $result['adjusted_invoice_count'], 'correction must still see its obligation');
+        $this->assertSame(500, (int) $invoice->fresh()->TotalAmount);
+        DB::commit();
+        $void = $this->raceFinish($worker);
+        $this->assertSame(200, $void['status'], json_encode($void));
+        $this->assertSame('void', $invoice->fresh()->Status);
+        $this->assertSame(500, (int) $course->fresh()->Charge);
+        $this->assertSame(1, (int) $course->fresh()->SessionCount);
+        $this->assertSame(8000, (int) $other->fresh()->Charge);
+        $this->assertSame(0, Payment::count());
     }
 
     private function spawnVoid(Invoice $invoice, string $operation, ?array $pause = null): array
@@ -181,6 +210,12 @@ class InvoiceVoidSerializationTest extends TestCase
     {
         return [['voidInvoice', 'header'], ['exceptionVoidInvoice', 'header'],
             ['voidInvoice', 'item'], ['exceptionVoidInvoice', 'item']];
+    }
+
+    public static function consolidatedPairs(): array
+    {
+        return [['voidInvoice', false], ['exceptionVoidInvoice', false],
+            ['voidInvoice', true], ['exceptionVoidInvoice', true]];
     }
 
     public static function operations(): array { return [['voidInvoice'], ['exceptionVoidInvoice']]; }

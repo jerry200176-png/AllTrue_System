@@ -14,11 +14,13 @@ code, no new financial policy. No production activation/schema/account changes.
   inversion, and insufficient proof of server-side blocking. Current code reads
   current header ownership, revalidates fresh invoice/item owners and returns409
   on drift. Reparenting RED observed200 instead of409 before this repair.
-- Single-course voids take the course mutex; consolidated voids keep invoice-only
-  serialization. Fee correction already refuses foreign/shared items (API test
-  test_pending_reports_shared_items_and_ambiguous_reversal_provenance_block).
-  Do not introduce multi-course fee support or change session-transfer semantics.
-  Direct payments keep their prior sorted lock set and gain owner revalidation.
+- Void locks its current header owner, or the sole item course without a header.
+  Second review correctly found legacy count correction still accepts a shared-item
+  bill via its header even though the new fee API refuses shared items. The new
+  consolidated-header race failed RED: void returned200 while the header was held.
+  Lock only the header, preserving count correction without introducing a new
+  multi-course lock set. Test existing transfers in both ID orders. Do not change
+  billing eligibility or transfer semantics. Direct payments keep their sorted set.
 - Race tests observe the worker CONNECTION_ID in server PROCESSLIST and an
   absent post-query marker while parent owns the row, rather than a pre-SQL signal.
   Own-user visibility needs no PROCESS grant: [MySQL8.0 reference](https://dev.mysql.com/doc/refman/8.0/en/information-schema-processlist-table.html).
@@ -38,8 +40,11 @@ code, no new financial policy. No production activation/schema/account changes.
    cases (including direct payment), all six index-flag producers, the failing
    D1→void→leave sequence, flag lifecycle unit and existing money regressions.
    No assertion, unique-index check, CI deadline or coverage threshold removed.
-5. After targeted GREEN: final-head hosted CI and independent review; reply/resolve
-   all3 review findings; normal queue only after exact-head gates. Revalidate held
+5. Second-review correction: two consolidated header/count cases passed2/38;
+   final focused race/void/direct-payment/count-correction suite passed55tests/
+   523assertions in203seconds, including16 independent-process race cases.
+6. After targeted GREEN: final-head hosted CI and independent review; reply/resolve
+   each review finding; normal queue only after exact-head gates. Revalidate held
    combined source separately before claiming integration or production acceptance.
 
 Rollback: revert code, retain all financial history. Stops: new billing/access
