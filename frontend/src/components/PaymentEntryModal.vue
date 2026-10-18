@@ -84,7 +84,7 @@
           <textarea v-model="form.note" rows="2" placeholder="選填…"></textarea>
         </div>
 
-        <div v-if="submitError" class="pe-error">{{ submitError }}</div>
+        <div v-if="submitError" class="pe-error" role="alert">{{ submitError }}</div>
 
         <div class="pe-actions">
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
@@ -108,7 +108,7 @@ const props = defineProps({
   row: { type: Object, default: null },
 });
 
-const emit = defineEmits(['close', 'confirmed', 'pending']);
+const emit = defineEmits(['close', 'confirmed', 'pending', 'conflict']);
 
 const today = computed(() => new Date().toISOString().slice(0, 10));
 
@@ -190,11 +190,17 @@ async function submit() {
     if (!res.ok) {
       if (res.code === 'pending_report_exists') {
         submitError.value = `此課程已有「${REPORT_STATUS_LABELS.pending}」回報，不要重複送出。請先核對該回報金額與實收金額；相符才確認入帳，金額不符請先退回，再重新登記。退回回報不會更改帳單應繳金額。`;
-        // Keep this refusal and the entered amount visible; parent pending handlers navigate away.
+        // Refresh authoritative owner data without closing or resetting the entered amount.
+        emit('conflict', res.data);
         return;
       }
       if (res.code === 'amount_exceeds_outstanding') {
-        submitError.value = '這筆金額超過帳單未收餘額。請先核對實收款項與應繳金額，不要為了送出而改小實收金額。帳單金額有誤，請先核對約定費用並走帳務更正流程；款項屬於其他帳單，請分別登記。尚未完成核對前，請勿確認入帳。';
+        const expected = res.data?.expected_amount;
+        const detail = expected != null && expected !== '' && Number.isFinite(Number(expected))
+          ? `目前帳單未收餘額為 NT$${Number(expected).toLocaleString('zh-TW')}。`
+          : (res.message ? `${res.message}。` : '');
+        submitError.value = `${detail}這筆金額超過帳單未收餘額。請先核對實收款項與應繳金額，不要為了送出而改小實收金額。帳單金額有誤，請先核對約定費用並走帳務更正流程；款項屬於其他帳單，請分別登記。尚未完成核對前，請勿確認入帳。`;
+        emit('conflict', res.data);
         return;
       }
       throw new Error(res.message);
