@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\WithClassSessionIndexFlag;
 use Tests\TestCase;
 
 /**
@@ -28,7 +29,7 @@ use Tests\TestCase;
  */
 class LeaveCascadeShiftCollisionTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, WithClassSessionIndexFlag;
 
     /** DDL cannot run inside the RefreshDatabase transaction wrapper. */
     protected array $connectionsToTransact = [];
@@ -107,8 +108,7 @@ class LeaveCascadeShiftCollisionTest extends TestCase
         DB::table('migrations')
             ->where('migration', '2026_07_09_100000_add_unique_class_session_slot_index')
             ->delete();
-        putenv('APPLY_CLASS_SESSION_UNIQUE_INDEX=1');
-        $_ENV['APPLY_CLASS_SESSION_UNIQUE_INDEX'] = '1';
+        $this->enableClassSessionIndexFlag();
         $this->assertSame(0, Artisan::call('migrate', ['--path' => self::MIGRATION]));
         $this->assertTrue($this->uniqueIndexExists());
     }
