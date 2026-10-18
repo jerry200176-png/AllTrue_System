@@ -22,7 +22,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         return ['state_hash' => $this->hash($graph), 'old_total' => (int) $graph['invoice']['TotalAmount'],
             'new_total' => (int) $graph['course']['Charge']];
     }
-
     public function plan(array $parameters, array $context = []): array
     {
         try {
@@ -47,7 +46,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             return ['ok' => false, 'errors' => ['invoice_alignment_precondition_failed']];
         }
     }
-
     public function execute(array $plan, array $context): array
     {
         if (($plan['ok'] ?? false) !== true) $this->fail('plan_not_ready');
@@ -80,7 +78,6 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             return ['ok' => true, 'updated' => 1, 'snapshot' => $snapshot];
         }, 3);
     }
-
     public function verify(array $plan, array $result): array
     {
         $s = $result['snapshot'] ?? [];
@@ -96,8 +93,10 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             $request = $this->request($context, $p);
             $proof = $this->proof($request->id, 'repair-proof');
             if (!$proof || !hash_equals($this->hash(json_decode($proof->snapshot, true, 512, JSON_THROW_ON_ERROR)), $this->hash($snapshot))) $this->fail('history_mismatch');
-            if ($this->proof($request->id, 'repair-proof-rollback')) return ['ok' => true, 'already_rolled_back' => true, 'restored' => 0];
-            if (!hash_equals($snapshot['after_hash'], $this->hash($this->capture($p, true)))) $this->fail('values_moved_on');
+            $rolledBack = $this->proof($request->id, 'repair-proof-rollback');
+            $current = $this->capture($p, true);
+            if (!hash_equals($rolledBack ? $this->hash($snapshot['before']['invoice']) : $snapshot['after_hash'], $this->hash($rolledBack ? $current['invoice'] : $current))) $this->fail('values_moved_on');
+            if ($rolledBack) return ['ok' => true, 'already_rolled_back' => true, 'restored' => 0];
             $old = $snapshot['before']['invoice'];
             DB::table('Invoice')->where('id', $p['invoice_id'])->update(['TotalAmount' => $old['TotalAmount'], 'updated_at' => $old['updated_at']]);
             if (!hash_equals($p['expected_state_hash'], $this->hash($this->capture($p, true)))) $this->fail('restore_mismatch');

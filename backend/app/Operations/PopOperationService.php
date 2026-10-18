@@ -313,10 +313,11 @@ final class PopOperationService
     ): array
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
-        if (!in_array($phase, ['execute', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
         // Serialize replay lookup, attempt allocation, mutation and its receipt for this request.
-        return DB::transaction(function () use ($requestId, $run): array {
+        return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
             return $run();
         }, 3);
     }
@@ -505,7 +506,8 @@ final class PopOperationService
         if ((string) $request->status !== 'failed' || !$this->atomicFinancialRepair((string) $request->strategy_id)) return false;
         $executions = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute');
         return (clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
-            && !(clone $executions)->where('result', 'succeeded')->exists();
+            && !(clone $executions)->where('result', 'succeeded')->exists()
+            && !DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rollback')->exists();
     }
 
     /** @param array<string,mixed> $parameters */
