@@ -217,11 +217,7 @@ class BillingController extends Controller
 
         return DB::transaction(function () use ($invoice, $data) {
             // Same order as 確認不收 (courses, then invoice) so the two cannot deadlock.
-            $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
-                ->push($invoice->getAttribute('StudentClassID'))->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
-            if ($courseIds !== []) {
-                StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
-            }
+            $courseIds = $this->lockInvoiceCourses($invoice);
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
             if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->isMarkedFreeGift()) { // #3991: a 免費／贈送 bill takes no payment
@@ -312,6 +308,18 @@ class BillingController extends Controller
         return $projection;
     }
 
+    /** Payment and void paths share sorted course locks before the invoice. */
+    private function lockInvoiceCourses(Invoice $invoice): array
+    {
+        $courseIds = DB::table('InvoiceItem')->where('InvoiceID', $invoice->getKey())->pluck('StudentClassID')
+            ->push($invoice->getAttribute('StudentClassID'))->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        if ($courseIds !== []) {
+            StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID']);
+        }
+
+        return $courseIds;
+    }
+
     public function voidInvoice(Request $request, Invoice $invoice)
     {
         $invoice->loadMissing('student');
@@ -325,6 +333,7 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($request, $invoice, $data) {
+            $this->lockInvoiceCourses($invoice);
             $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             $status = strtolower((string) ($invoice->Status ?? ''));
 
@@ -387,6 +396,7 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($request, $invoice, $data) {
+            $this->lockInvoiceCourses($invoice);
             $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             $status = strtolower((string) ($invoice->Status ?? ''));
 

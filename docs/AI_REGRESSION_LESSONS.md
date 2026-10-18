@@ -695,6 +695,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：對帳視窗若列出可處理的 Invoice，就必須同頁提供正確操作；一般作廢只看 `can_direct_void`，沖銷作廢只看 `can_exception_void`，不可用 anomaly 標籤自行推導按鈕。
 - **強制規則**：未收款錯帳不可因使用者按到沖銷作廢而卡住；後端若判斷淨收款與 `PaidAmount` 都是 0，必須安全降級為一般作廢。
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
+- **Invoice 作廢也須加入課程交易鎖（#4247 整合回歸）**：一般作廢與例外沖銷先依 ID 排序鎖定 header／item 的相關課程，再鎖帳單並重查狀態；僅鎖帳單會搶先覆寫尚持有課程鎖的費用更正。`InvoiceVoidSerializationTest` 用獨立程序證明作廢必須等待課程擁有者，之後拒絕已被取代的舊帳單，且不新增沖銷或覆寫原備註。
 
 ---
 
