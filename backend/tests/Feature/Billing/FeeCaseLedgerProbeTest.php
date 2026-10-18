@@ -58,6 +58,13 @@ class FeeCaseLedgerProbeTest extends TestCase
             $this->assertStringNotContainsString($private, $json);
         }
         $this->assertSame($before, [$f['course']->fresh()->getRawOriginal(), Payment::count(), Invoice::count()]);
+        foreach (['transfer_out' => -200, 'transfer_in' => 200] as $method => $amount) {
+            Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => $amount, 'Method' => $method, 'PaidAt' => '2026-10-01']);
+        }
+        $r = $this->probe($f);
+        $this->assertContains('transfer_out', array_column($r['payments'], 'Method'));
+        $this->assertContains('transfer_in', array_column($r['payments'], 'Method'));
+        $this->assertSame(0, $r['invoices'][0]['net_paid']);
         $replacement = Invoice::create(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
             'IssueDate' => '2026-10-01', 'TotalAmount' => 500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
         $correction = DB::table('invoice_corrections')->insertGetId(['student_class_id' => $f['course']->ID,

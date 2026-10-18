@@ -137,7 +137,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             $a['status'] = $enum($r->status, ['pending', 'confirmed', 'rejected', 'voided']); return $a;
         })->all();
         $out['payments'] = $payments->map(static function ($p) use ($enum) {
-            $a = (array) $p; $a['Method'] = $enum($p->Method, ['cash', 'transfer', 'credit_card', 'void', 'other']); return $a;
+            $a = (array) $p; $a['Method'] = $enum($p->Method, ['cash', 'transfer', 'credit_card', 'void', 'transfer_out', 'transfer_in', 'other']); return $a;
         })->all();
         $stage = 'unlinked_invoices';
         $unlinked = $rows($conn->table('Invoice as i')->where('i.StudentID', $studentId)
