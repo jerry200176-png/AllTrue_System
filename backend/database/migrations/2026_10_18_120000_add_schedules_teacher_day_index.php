@@ -2,34 +2,29 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/** Additive teacher/day access path; atomic current reads must not lock a table scan. */
+/** Retryable additive lookups; retain indexes on rollback because pre-existing ownership is unknown. */
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('schedules', function (Blueprint $table) {
-            $table->index(['branch_id', 'teacher_id', 'schedule_date'], 'idx_schedules_teacher_day');
-        });
-        Schema::table('StudentClass', function (Blueprint $table) {
-            $table->index(['StudentID', 'TeacherID'], 'idx_sc_student_teacher');
-        });
-        Schema::table('LearningRecord', function (Blueprint $table) {
-            $table->index(['ClassSessionID', 'TeacherID'], 'idx_lr_class_session_teacher');
-        });
+        foreach ([
+            ['schedules', 'idx_schedules_teacher_day', ['branch_id', 'teacher_id', 'schedule_date']],
+            ['StudentClass', 'idx_sc_student_teacher', ['StudentID', 'TeacherID']],
+            ['LearningRecord', 'idx_lr_class_session_teacher', ['ClassSessionID', 'TeacherID']],
+        ] as [$table, $index, $columns]) {
+            if (DB::select("SHOW INDEX FROM `$table` WHERE Key_name = ?", [$index]) !== []) {
+                continue;
+            }
+            Schema::table($table, fn (Blueprint $blueprint) => $blueprint->index($columns, $index));
+        }
     }
 
     public function down(): void
     {
-        Schema::table('StudentClass', function (Blueprint $table) {
-            $table->dropIndex('idx_sc_student_teacher');
-        });
-        Schema::table('LearningRecord', function (Blueprint $table) {
-            $table->dropIndex('idx_lr_class_session_teacher');
-        });
-        Schema::table('schedules', function (Blueprint $table) {
-            $table->dropIndex('idx_schedules_teacher_day');
-        });
+        // Guarded adoption cannot distinguish indexes from a prior partial run or another owner.
+        // Roll back callers/code first; any index removal needs a separately reviewed migration.
     }
 };

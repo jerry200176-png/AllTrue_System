@@ -56,6 +56,17 @@ class ScheduleGuardCurrentReadTest extends TestCase
         }
     }
 
+    public function test_lookup_migration_recovers_a_partially_applied_run(): void
+    {
+        $migration = require database_path('migrations/2026_10_18_120000_add_schedules_teacher_day_index.php');
+        $migration->up(); // already-applied first/second/third indexes must be harmless
+        DB::statement('ALTER TABLE LearningRecord DROP INDEX idx_lr_class_session_teacher');
+        try {
+            $migration->up();
+            $this->assertCount(2, DB::select("SHOW INDEX FROM LearningRecord WHERE Key_name = 'idx_lr_class_session_teacher'"));
+        } finally { $migration->up(); }
+    }
+
     public function test_current_guard_sees_commits_after_a_proven_stale_snapshot(): void
     {
         $original = DB::getDefaultConnection();
@@ -271,6 +282,8 @@ class ScheduleGuardCurrentReadTest extends TestCase
             $this->assertSame($schedules[0], (int) $rows[0]->id);
             DB::setDefaultConnection($original);
             DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+            $this->assertSame(1, DB::table('StudentClass')->where('ID', $course->ID)->update(['Period' => 5]));
+            $this->assertSame(1, DB::table('ClassSession')->where('id', $sessionId)->update(['EndTime' => '16:00']));
             $this->assertSame(1, DB::table('schedules')->where('id', $schedules[1])->update(['end_time' => '16:00']));
         } finally {
             while ($reader->transactionLevel() > 0) $reader->rollBack();
