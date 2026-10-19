@@ -13,6 +13,7 @@ return new class extends Migration
         foreach ([
             ['schedules', 'idx_schedules_teacher_day', ['branch_id', 'teacher_id', 'schedule_date']],
             ['StudentClass', 'idx_sc_student_teacher', ['StudentID', 'TeacherID']],
+            ['StudentClass', 'idx_sc_current_metadata', ['ID', 'StudentID', 'TeacherID', 'ClassType', 'room_id']],
             ['LearningRecord', 'idx_lr_class_session_teacher', ['ClassSessionID', 'TeacherID']],
         ] as [$table, $index, $columns]) {
             if (DB::select("SHOW INDEX FROM `$table` WHERE Key_name = ?", [$index]) !== []) {

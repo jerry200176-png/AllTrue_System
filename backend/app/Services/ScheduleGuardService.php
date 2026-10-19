@@ -214,13 +214,19 @@ class ScheduleGuardService
     public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false): array
     {
         if ($lock && $course->exists) {
-            $currentCourse = \App\Models\StudentClass::query()->whereKey($course->getKey())->lockForUpdate()->first();
+            // Protect proposed metadata keys; defer clustered X until after shared occupancy.
+            $currentQuery = \App\Models\StudentClass::query()->whereKey($course->getKey());
+            $currentQuery
+                ->from(DB::raw('StudentClass FORCE INDEX (idx_sc_current_metadata)'))
+                ->select(['ID', 'StudentID', 'TeacherID', 'ClassType', 'room_id'])
+                ->sharedLock();
+            $currentCourse = $currentQuery->first();
             if (!$currentCourse instanceof \App\Models\StudentClass) {
                 throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())->setModel(\App\Models\StudentClass::class, [$course->getKey()]);
             }
             $course = $currentCourse;
         }
-        return $this->validateScheduleOccurrence([
+        $conflicts = $this->validateScheduleOccurrence([
             'teacher_id' => (int) $course->getAttribute('TeacherID'),
             'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
             'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
@@ -231,6 +237,10 @@ class ScheduleGuardService
             'exclude_course_id' => (int) $course->getAttribute('ID') ?: null,
             'exclude_student_id' => (int) ($course->getAttribute('StudentID') ?? 0) ?: null,
         ], $lock);
+        if ($lock && $course->exists) {
+            \App\Models\StudentClass::query()->whereKey($course->getKey())->lockForUpdate()->first();
+        }
+        return $conflicts;
     }
 
     /**

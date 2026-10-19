@@ -299,17 +299,28 @@ class SubstituteScheduleService
         if ($teacherId <= 0 || !self::anyCampusOn()) {
             return [];
         }
-        // Bound locks by campus and canonical ClassSession date BEFORE touching
-        // LearningRecord. Its denormalized date can drift; a teacher-first scan
-        // would lock that teacher's entire historical record range.
         if ($lock && (!$branchId || $branchId <= 0)) {
             throw new \InvalidArgumentException('Current makeup occupancy requires a campus');
         }
+        if ($lock && !\App\Helpers\FeatureFlag::enabled(RescheduleSessionService::OCCURRENCE_V2_FLAG, (int) $branchId)) return [];
+        // Each discovery read is CURRENT and covering: hold ownership/index keys,
+        // not unrelated clustered payload rows. Same PDO includes caller writes.
+        $lrIds = [];
+        if ($lock) {
+            $students = DB::table(DB::raw('Student FORCE INDEX (idx_student_campus_name)'))
+                ->where('CampusID', $branchId)->sharedLock()->pluck('id');
+            $courses = DB::table(DB::raw('StudentClass FORCE INDEX (idx_sc_student_id)'))
+                ->whereIn('StudentID', $students)->sharedLock()->pluck('ID');
+            $sessions = DB::table(DB::raw('ClassSession FORCE INDEX (cs_scid_sessiondate_idx)'))
+                ->whereIn('StudentClassID', $courses)->where('SessionDate', $ymd)->sharedLock()->pluck('id');
+            $lrIds = DB::table(DB::raw('LearningRecord FORCE INDEX (idx_lr_class_session_teacher)'))
+                ->whereIn('ClassSessionID', $sessions)->where('TeacherID', $teacherId)->sharedLock()->pluck('id')->all();
+        }
         $q = $lock
-            ? DB::table(DB::raw('Student as st FORCE INDEX (idx_student_campus_name)'))
-                ->join(DB::raw('StudentClass as sc FORCE INDEX (idx_sc_student_id)'), 'sc.StudentID', '=', 'st.id')
-                ->join(DB::raw('ClassSession as current_cs FORCE INDEX (cs_scid_sessiondate_idx)'), 'current_cs.StudentClassID', '=', 'sc.ID')
-                ->join(DB::raw('LearningRecord as current_lr FORCE INDEX (idx_lr_class_session_teacher)'), 'current_lr.ClassSessionID', '=', 'current_cs.id')
+            ? DB::table(DB::raw('LearningRecord as current_lr FORCE INDEX (PRIMARY)'))->whereIn('current_lr.id', $lrIds)
+                ->join(DB::raw('ClassSession as current_cs FORCE INDEX (PRIMARY)'), 'current_cs.id', '=', 'current_lr.ClassSessionID')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'current_cs.StudentClassID')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->join(DB::raw('schedules as m FORCE INDEX (idx_sched_course_date_time_status)'), 'm.student_course_id', '=', 'sc.ID')
                 ->where('st.CampusID', $branchId)->where('current_cs.SessionDate', $ymd)
                 ->where('current_lr.TeacherID', $teacherId)->whereNull('current_lr.VoidedAt')
