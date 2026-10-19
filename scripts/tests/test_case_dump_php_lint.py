@@ -205,5 +205,50 @@ class XinzhuangFeeScope(unittest.TestCase):
             self.assertNotIn(marker, block)
 
 
+class Contract4131StaleTeacherCase(unittest.TestCase):
+    """in-app #401/#402 / #4245: fixed contract 4131 campus-16 leftover teacher occupancy provenance."""
+
+    CASE = "contract_4131_stale_teacher"
+
+    def block(self):
+        r = render(self.CASE)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return case_block(r.stdout, self.CASE)
+
+    def test_case_is_offered_and_allowlisted(self):
+        self.assertIn(self.CASE, OPTIONS)
+        allow = re.search(r"if case not in \{(.*?)\}:", PROBE_PY).group(1)
+        self.assertIn(f"'{self.CASE}'", allow)
+
+    def test_fixed_scope_campus_16_course_4131(self):
+        block = self.block()
+        self.assertIn("$courseId = 4131;", block)
+        self.assertIn("$requiredCampusId = 16;", block)
+        self.assertIn("JOIN Student s ON s.id = sc.StudentID", block)
+        self.assertRegex(block, r"if \(\(int\) \$course->campus_id !== \$requiredCampusId\) \{ throw ")
+
+    def test_mirrors_h1_keep_skip_and_is_read_only(self):
+        block = self.block()
+        self.assertIn("extra", block)
+        self.assertIn("makeup", block)
+        self.assertIn("original_schedule_id", block)
+        self.assertIn("stale_skip_vs_contract", block)
+        self.assertIn("'fix_sha_hint' => 'eb39beb5f'", block)
+        for bad in WRITE_MARKERS + ("->commit", "->save(", "DB::statement"):
+            self.assertNotIn(bad, block)
+        self.assertNotRegex(
+            block,
+            r"(?i)\b(insert\s+into|update\s+\w+\s+set|delete\s+from|replace\s+into|alter\s+table|drop\s+table|truncate)\b",
+        )
+
+    def test_outputs_ids_enums_dates_only(self):
+        block = self.block()
+        keys = set(re.findall(r"'([a-z_]+)' =>", block))
+        for bad in ("name", "phone", "note", "memo", "description", "title", "body", "comment", "amount", "charge"):
+            self.assertFalse([k for k in keys if bad in k], bad)
+        self.assertIn("$out['stale_skip_teacher_ids']", block)
+        self.assertIn("$out['schedule_rows']", block)
+
+
 if __name__ == "__main__":
     unittest.main()
