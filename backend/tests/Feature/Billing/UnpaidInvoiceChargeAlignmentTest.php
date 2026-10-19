@@ -289,4 +289,39 @@ class UnpaidInvoiceChargeAlignmentTest extends TestCase
         $this->refuse(fn () => $svc->execute($preview, $ctx), 'plan_not_ready');
         $this->assertSame(8000, (int) $f['invoice']->fresh()->TotalAmount);
     }
+
+    /** Exact refuse codes for Local preview taxonomy (release readiness; no production writes). */
+    public function test_preview_and_rollback_refuse_with_exact_eligibility_codes(): void
+    {
+        $svc = app(Alignment::class);
+        [$f, $p] = $this->candidate(8000, 500);
+        $pending = $this->reportFor($f, 'pending');
+        $this->refuse(fn () => $svc->preview($p), 'standing_report');
+        $pending->delete();
+
+        $orphanVoid = Payment::create(['InvoiceID' => $f['invoice']->id, 'Amount' => -8000, 'Method' => 'void', 'PaidAt' => '2026-10-01']);
+        $this->refuse(fn () => $svc->preview($p), 'money_evidence');
+        $orphanVoid->delete();
+
+        $extraInvoice = \App\Models\Invoice::create(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
+            'IssueDate' => '2026-10-02', 'DueDate' => '2026-10-21', 'TotalAmount' => 1, 'PaidAmount' => 0, 'Status' => 'unpaid', 'ScheduleModeAtIssue' => 'count']);
+        $this->refuse(fn () => $svc->preview($p), 'invoice_scope');
+        $extraInvoice->delete();
+
+        $cross = $this->reportFor($f, 'rejected');
+        DB::table('payment_reports')->where('id', $cross->id)->update(['StudentClassID' => $f['course']->ID + 999001]);
+        $this->refuse(fn () => $svc->preview($p), 'report_owner');
+        $cross->delete();
+
+        $f['student']->update(['CampusID' => 2]);
+        $this->refuse(fn () => $svc->preview($p), 'owner_mismatch');
+        $f['student']->update(['CampusID' => 1]);
+
+        \App\Models\InvoiceItem::create(['InvoiceID' => $f['invoice']->id, 'StudentClassID' => $f['course']->ID, 'Description' => 'blocks align', 'Amount' => 1]);
+        $this->refuse(fn () => $svc->preview($p), 'unsupported_state');
+        DB::table('InvoiceItem')->where('InvoiceID', $f['invoice']->id)->delete();
+
+        // restore_mismatch / update_failed need in-transaction CAS races; covered by concurrency + history_mismatch paths.
+        $this->assertTrue($svc->plan($p)['ok']);
+    }
 }
