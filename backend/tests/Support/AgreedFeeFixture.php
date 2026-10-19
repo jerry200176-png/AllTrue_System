@@ -21,6 +21,11 @@ trait AgreedFeeFixture
         $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
             'DueDate' => '2026-10-20', 'TotalAmount' => 7600, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => 'Original retained note', 'ScheduleModeAtIssue' => 'count']);
         InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => 'Original retained line', 'Amount' => 7600]);
+        // Keep synthetic API fixtures inside their own test-only scope.
+        // Production config defaults remain empty env-derived arrays (fail closed).
+        $courseIds = array_map('intval', (array) config('billing.agreed_fee_correction_course_ids', []));
+        $courseIds[] = (int) $course->ID;
+        config(['billing.agreed_fee_correction_campus_ids' => [1], 'billing.agreed_fee_correction_course_ids' => array_values(array_unique($courseIds))]);
         return compact('user', 'token', 'student', 'course', 'invoice');
     }
 
