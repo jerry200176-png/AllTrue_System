@@ -246,7 +246,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       const stop = field(row, 'Stop', 'stop');
       return stop !== null && stop !== undefined && (stop === 0 || stop === '0');
     };
-    const receivables = invoiceReceivableControls(scopedCourses, BRANCH_ID);
+    const receivables = invoiceReceivableControls(courses, BRANCH_ID);
     const regularUnpaid = scopedCourses.filter((row) => receivables.regularIds.includes(String(field(row, 'id', 'ID', 'class_id') || '')));
     const activeTutoring = tutoring.filter(active);
     const tutoringOutstanding = activeTutoring.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);

@@ -14,6 +14,7 @@ export function invoiceReceivableControls(courses, branchId) {
     if (!id || seen.has(id) || campus !== branchId || !verdict
       || !['paid', 'partial', 'unpaid', 'unbilled', 'free', 'review_required'].includes(verdict.status)
       || !['invoice', 'none', 'legacy_flag'].includes(verdict.source)
+      || typeof verdict.ar_candidate !== 'boolean'
       || !Number.isSafeInteger(verdict.outstanding) || verdict.outstanding < 0) {
       throw new Error('incomplete or invalid scoped billing verdict evidence');
     }
@@ -21,7 +22,7 @@ export function invoiceReceivableControls(courses, branchId) {
     const tutoring = String(course.ClassType ?? course.class_type ?? '').trim().toLowerCase() === 'tutoring';
     if (tutoring) tutoringIds.push(id);
     if (tutoring || course.closed_reason === 'waived') continue;
-    if (verdict.source === 'invoice' && ['unpaid', 'partial'].includes(verdict.status) && verdict.outstanding > 0) {
+    if (verdict.ar_candidate && verdict.source === 'invoice' && ['unpaid', 'partial'].includes(verdict.status) && verdict.outstanding > 0) {
       regularIds.push(id);
       regularOutstanding += verdict.outstanding;
       if (!Number.isSafeInteger(regularOutstanding)) throw new Error('receivable control exceeds safe integer range');

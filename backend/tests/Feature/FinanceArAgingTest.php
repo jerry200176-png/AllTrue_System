@@ -114,11 +114,12 @@ class FinanceArAgingTest extends TestCase
             ->assertOk()->json('data'))->keyBy('ID');
         $this->assertCount(6, $listed);
         $this->assertFalse($listed->has($other->ID));
-        $this->assertSame(['status' => 'unpaid', 'source' => 'invoice', 'outstanding' => 3000], $listed[$stopped->ID]['billing_verdict']);
-        $this->assertSame(['status' => 'partial', 'source' => 'invoice', 'outstanding' => 1200], $listed[$partial->ID]['billing_verdict']);
+        $this->assertSame(['status' => 'unpaid', 'source' => 'invoice', 'outstanding' => 3000, 'ar_candidate' => true], $listed[$stopped->ID]['billing_verdict']);
+        $this->assertSame(['status' => 'partial', 'source' => 'invoice', 'outstanding' => 1200, 'ar_candidate' => true], $listed[$partial->ID]['billing_verdict']);
         foreach ([$unbilled, $voided] as $course) {
             $this->assertSame('unbilled', $listed[$course->ID]['billing_verdict']['status']);
             $this->assertSame('none', $listed[$course->ID]['billing_verdict']['source']);
+            $this->assertFalse($listed[$course->ID]['billing_verdict']['ar_candidate']);
         }
         $this->assertSame('free', $listed[$tutoring->ID]['billing_verdict']['status']);
         $this->assertSame('waived', $listed[$waived->ID]['closed_reason']);

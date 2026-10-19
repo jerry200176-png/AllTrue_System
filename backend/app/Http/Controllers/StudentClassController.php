@@ -211,6 +211,11 @@ class StudentClassController extends Controller
         // F7 S3b: one resolver batch per page is the payment_status authority (B7).
         $courseStatuses = app(\App\Services\BillingPayableResolver::class)
             ->courseStatusesByStudentClassIds($classIds, $classes->items());
+        // Match AR's invoice eligibility gate, including the paid-package hold.
+        $arCandidates = in_array($role, ['director', 'super_admin'], true)
+            ? Invoice::query()->whereIn('StudentClassID', $classIds)->whereRaw(Invoice::mayOweSql())
+                ->distinct()->pluck('StudentClassID')->flip()->all()
+            : [];
         // #4114 (Founder Q3): contracts with a standing receipt; a `paid` without one is the legacy flag alone (需核對).
         // Package expansion stays inside the caller's campuses (teachers / super admin: the owner-student rule alone).
         $paymentEvidence = app(\App\Services\BillingPayableResolver::class)->validPaymentEvidence(
@@ -331,7 +336,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -583,6 +588,7 @@ class StudentClassController extends Controller
                     'status' => $verdict['status'] ?? 'review_required',
                     'source' => $verdict['source'] ?? null,
                     'outstanding' => $verdict['outstanding'] ?? null,
+                    'ar_candidate' => isset($arCandidates[(int) $class->ID]),
                 ]);
             }
             $class->setAttribute('payment_status', match (true) {

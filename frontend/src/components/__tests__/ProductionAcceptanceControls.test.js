@@ -8,7 +8,7 @@ describe('production acceptance controls', () => {
   it('counts invoice debt across stopped and package courses without inventing unbilled AR', () => {
     const row = (id, status, source, outstanding, extra = {}) => ({
       ID: id, CampusID: 15, ClassType: 'one_on_one', Stop: 0, Charge: 99999, Pay: 0,
-      billing_verdict: { status, source, outstanding }, ...extra,
+      billing_verdict: { status, source, outstanding, ar_candidate: true }, ...extra,
     });
     const courses = [
       row(1, 'unpaid', 'invoice', 3000, { Stop: 1 }),
@@ -19,6 +19,7 @@ describe('production acceptance controls', () => {
       row(6, 'paid', 'invoice', 0),
       row(7, 'review_required', 'invoice', 600),
       row(8, 'paid', 'legacy_flag', 0),
+      row(9, 'partial', 'invoice', 6000, { PackageID: 8, billing_verdict: { status: 'partial', source: 'invoice', outstanding: 6000, ar_candidate: false } }),
     ];
     expect(invoiceReceivableControls(courses, 15)).toEqual({ regularIds: ['1', '2'], tutoringIds: ['5'], regularOutstanding: 4200 });
     const control = invoiceReceivableControls(courses, 15);
@@ -29,11 +30,12 @@ describe('production acceptance controls', () => {
   });
 
   it('fails closed on missing, duplicated, cross-campus or malformed verdict evidence', () => {
-    const valid = { ID: 1, CampusID: 15, billing_verdict: { status: 'unpaid', source: 'invoice', outstanding: 100 } };
+    const valid = { ID: 1, CampusID: 15, billing_verdict: { status: 'unpaid', source: 'invoice', outstanding: 100, ar_candidate: true } };
     for (const rows of [[{ ...valid, billing_verdict: undefined }], [valid, valid],
       [{ ...valid, CampusID: 16 }], [{ ...valid, ID: '' }],
       ...[null, -1, NaN, Infinity, '100', 0.5].map((outstanding) => [{ ...valid, billing_verdict: { ...valid.billing_verdict, outstanding } }]),
-      [{ ...valid, billing_verdict: { ...valid.billing_verdict, status: 'unknown' } }]]) {
+      [{ ...valid, billing_verdict: { ...valid.billing_verdict, status: 'unknown' } }],
+      [{ ...valid, billing_verdict: { ...valid.billing_verdict, ar_candidate: undefined } }]]) {
       expect(() => invoiceReceivableControls(rows, 15)).toThrow();
     }
   });
