@@ -67,6 +67,5 @@ jobs:
             "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
           ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" \
-            'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json; python3 -c "import json;d=json.load(open(\"/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json\")); assert d.get(\"version\")==1 and len(d.get(\"eligible_cases\") or [])==1; print(\"pi_mount_verified\", d[\"eligible_cases\"][0][\"valid_until\"])"'
+            "$PI_SSH_USER@$PI_SSH_HOST" 'set -euo pipefail; f=/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json; chmod 640 "$f"; if id -u www-data >/dev/null 2>&1; then chown www-data:www-data "$f"; elif id -u nginx >/dev/null 2>&1; then chown nginx:nginx "$f"; fi; stat -c \'%U:%G %a %n\' "$f"; python3 -c \'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); assert d.get("version")==1 and len(d.get("eligible_cases") or [])==1; print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])\''
           rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"
