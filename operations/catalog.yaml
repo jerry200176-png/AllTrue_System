@@ -4,7 +4,7 @@ version: 14
 
 operations:
   reviewed-legacy-reversal-restatement:
-    lifecycle: planned
+    lifecycle: active
     domain: billing-entitlement
     business_owner: director-data
     technical_owner: platform-data
@@ -30,7 +30,7 @@ operations:
     strategy_class: App\Operations\Strategies\PaymentReversalRestatementStrategy
     parameter_keys: [campus_id, plan, decision_reference]
     tags: [repair, billing, historical-reversal]
-    notes: Planned only; protected activation and case approval required. No cash receipt/refund or invoice/course/report write. Complete original row retained atomically in POP proof.
+    notes: Active exact-single-record strategy; exact Founder case reference and super_admin approval remain required before Pi-local execution. No cash receipt/refund or invoice/course/report write. Complete original row retained atomically in POP proof.
 
   muzha-fixed-schedule-20261001:
     lifecycle: active
@@ -531,7 +531,7 @@ operations:
     notes: ADR-POP-015 (c). Closes each listed report only if it is still eligible for the 14-day reporter timeout under its row lock; the rest are skipped. Pi-local POP only.
 
   reviewed-mismatched-pending-return:
-    lifecycle: planned
+    lifecycle: active
     domain: billing-entitlement
     business_owner: director-data
     technical_owner: platform-data
@@ -557,10 +557,10 @@ operations:
     strategy_class: App\Operations\Strategies\PaymentReportPendingReturnStrategy
     parameter_keys: [campus_id, student_id, course_id, invoice_id, report_id, expected_reported_amount, expected_charge, expected_invoice_total, decision_reference, reason, expected_state_hash]
     tags: [repair, billing, reviewed-case]
-    notes: Planned only; protected activation and exact case approval required. Source classes must be delivered and integrated before activation; no cash receipt/refund.
+    notes: Active exact-single-report strategy; exact Founder case reference and super_admin approval remain required before Pi-local execution. Preserve reported amount; no cash receipt/refund.
 
   reviewed-unpaid-invoice-charge-alignment:
-    lifecycle: planned
+    lifecycle: active
     domain: billing-entitlement
     business_owner: director-data
     technical_owner: platform-data
@@ -586,4 +586,4 @@ operations:
     strategy_class: App\Operations\Strategies\UnpaidInvoiceChargeAlignmentStrategy
     parameter_keys: [student_id, course_id, campus_id, invoice_id, expected_invoice_total, expected_charge, decision_reference, expected_state_hash]
     tags: [repair, billing, reviewed-case]
-    notes: Planned only; protected activation and exact case approval required. Source classes must be delivered and integrated before activation; no cash receipt/refund.
+    notes: Active exact-single-invoice strategy; exact Founder case reference and super_admin approval remain required before Pi-local execution. No payment/report/course write, receipt confirmation or refund.

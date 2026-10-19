@@ -192,11 +192,11 @@ class PaymentReportPendingReturnTest extends TestCase
         }
     }
 
-    public function test_committed_catalog_keeps_all_three_prepared_operations_planned(): void
+    public function test_committed_catalog_activates_only_the_three_founder_exact_financial_operations(): void
     {
         [$f, $p] = $this->candidate(); $catalog = app(\App\Operations\PopOperationCatalog::class);
         foreach ([ReturnReport::OPERATION, 'reviewed-unpaid-invoice-charge-alignment', 'reviewed-legacy-reversal-restatement'] as $operation) {
-            $entry = $catalog->operation($operation); $this->assertSame('planned', $entry['lifecycle']);
+            $entry = $catalog->operation($operation); $this->assertSame('active', $entry['lifecycle']);
             $this->assertTrue($entry['founder_approval_required']); $this->assertSame(['super_admin'], $entry['approver_roles']);
             $this->assertSame('founder-exact-reviewed-financial', $entry['approval_policy']); $policy = file_get_contents(dirname(base_path()).'/operations/policies/default.yaml');
             $this->assertSame(1, preg_match('/- id: founder-exact-reviewed-financial(.*?)(?=\n  - id:|\z)/s', $policy, $m)); $this->assertStringContainsString($operation, $m[1]); $this->assertStringContainsString($entry['blast_radius'], $m[1]);
@@ -204,7 +204,7 @@ class PaymentReportPendingReturnTest extends TestCase
         $pop = app(\App\Operations\PopOperationService::class);
         $r = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
         $this->assertTrue($pop->runDryRun($r['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
-        $this->refuse(fn () => $pop->approve($r['id'], 'founder-go-synthetic', 'reviewer-founder', 'super_admin', str_repeat('c', 40), $f['user']->id + 100001), 'not active');
+        $this->refuse(fn () => $pop->approve($r['id'], 'not-a-founder-decision', 'reviewer-founder', 'super_admin', str_repeat('c', 40), $f['user']->id + 100001), 'founder-go');
     }
 
     public function test_exact_founder_shape_allows_same_human_requester_only_after_explicit_activation(): void
