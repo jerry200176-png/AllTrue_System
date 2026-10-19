@@ -84,6 +84,20 @@ class AgreedFeeCorrectionTest extends TestCase
         $this->assertSame(8000, (int) $f['course']->fresh()->Charge);
     }
 
+    public function test_enabled_with_empty_allowlists_fail_closed(): void
+    {
+        $f = $this->fixture();
+        config([
+            'billing.agreed_fee_correction_enabled' => true,
+            'billing.agreed_fee_correction_campus_ids' => [],
+            'billing.agreed_fee_correction_course_ids' => [],
+        ]);
+        $this->withToken($f['token'])->postJson($this->path($f).'/preview', $this->feePayload($f['invoice']))->assertNotFound();
+        $this->assertSame(1, Invoice::count());
+        $this->assertSame(0, DB::table('invoice_corrections')->count());
+        $this->assertSame(8000, (int) $f['course']->fresh()->Charge);
+    }
+
     public function test_missing_extension_columns_fail_closed_even_when_flag_on(): void
     {
         // End outer Testing txn *before* DROP — MySQL DDL implicit-commits and must not

@@ -65,6 +65,9 @@ abstract class AgreedFeeConcurrencyHarness extends TestCase
         $worker = $this->raceSpawn(base_path('tests/Support/agreed-fee-worker.php'), [
             'actor' => $this->actor($f), 'course_id' => $f['course']->ID,
             'op' => $op, 'input' => $input, 'id' => $id, 'pause' => $pause, 'connection_file' => $connectionFile,
+            // Child process must receive the fixture allowlists (config is not inherited).
+            'allowlist_campus_ids' => array_map('intval', (array) config('billing.agreed_fee_correction_campus_ids', [])),
+            'allowlist_course_ids' => array_map('intval', (array) config('billing.agreed_fee_correction_course_ids', [])),
         ]);
         return $worker + ['connection_file' => $connectionFile];
     }
