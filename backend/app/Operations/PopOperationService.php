@@ -366,7 +366,7 @@ final class PopOperationService
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         $this->assertRequestIntegrity($request, $entry, $parameters, $context, false);
         if ($this->isReviewedFinancialCase($entry)) {
-            $events = $this->approvals($request)->where('event_type', 'approved');
+            $events = $this->approvals($request)->get();
             foreach ($events as $event) {
                 $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key,
                     (string) $request->actor, (string) $event->approval_reference, (string) $event->approver,
