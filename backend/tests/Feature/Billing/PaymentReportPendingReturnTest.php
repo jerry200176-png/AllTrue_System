@@ -192,7 +192,7 @@ class PaymentReportPendingReturnTest extends TestCase
         }
     }
 
-    public function test_committed_catalog_activates_only_the_three_founder_exact_financial_operations(): void
+    public function test_committed_catalog_marks_all_three_reviewed_repair_operations_active(): void
     {
         [$f, $p] = $this->candidate(); $catalog = app(\App\Operations\PopOperationCatalog::class);
         foreach ([ReturnReport::OPERATION, 'reviewed-unpaid-invoice-charge-alignment', 'reviewed-legacy-reversal-restatement'] as $operation) {
