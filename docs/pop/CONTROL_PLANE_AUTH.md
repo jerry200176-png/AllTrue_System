@@ -80,3 +80,25 @@ preserves the independently verified cash correction. Automatic financial
 rollback is disabled. Founder GO must explicitly cover policy activation
 and the immutable case result; the actual authenticated DB approval is still required. Remove the
 eligibility tuple after the completed audit to retire this one-case allowance.
+
+## Reviewed financial repair case binding
+
+The three reviewed single-record billing operations use a separate one-case
+authorization manifest mounted outside the repository at
+`POP_REVIEWED_FINANCIAL_CASES_PATH` (default:
+`backend/storage/app/private/pop/reviewed-financial-cases.json`). A missing or
+empty file denies draft creation. Keep the file owner-readable only (mode
+`0600`), and remove the tuple after its short UTC expiry and audit closeout.
+Never commit the file or put private case payloads, identifiers, tokens or
+keys in GitHub.
+
+The single tuple binds `operation_id`, canonical `parameters_sha256` (including
+the fresh `expected_state_hash`), `idempotency_sha256`, requester and approver
+actor digests, the exact `founder-go-{operation_id}-{parameter_hash_prefix}`
+reference, and `valid_until`. The application checks that tuple at draft,
+approval, and execution; approval also recomputes the strategy preview against
+live evidence, and execution repeats the authorization and strategy guards.
+Any catalog version change invalidates old requests and previews. The database
+super_admin approval, deployed SHA, Pi-local executor, atomic proof, verification
+and rollback guards remain mandatory. A release approval or merge is not a
+case-specific financial authorization.

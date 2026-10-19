@@ -17,7 +17,7 @@ final class PopOperationService
     private const ACTOR_PATTERN = '/^[A-Za-z0-9:_-]{1,128}$/';
     private const REFERENCE_PATTERN = '/^[A-Za-z0-9_.:#\/-]{3,128}$/';
 
-    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null)
+    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null, private readonly ?string $financialCaseAuthorizationPath = null)
     {
     }
 
@@ -41,6 +41,9 @@ final class PopOperationService
         $this->assertCampusScope($normalized, $actorRole, $actorCampusIds);
         $hash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
         $contextHash = $this->contextHash($context);
+        if ($this->isReviewedFinancialCase($entry)) {
+            $this->reviewedFinancialCaseTuple($entry, $normalized, $idempotencyKey, $actor, null, null, null);
+        }
         if ($this->isReviewedMonthly($entry)) {
             if ($actorRole !== 'super_admin' || $actorId === null || $actor !== 'user:' . $actorId) {
                 throw new RuntimeException('Reviewed monthly repair requires an authenticated human requester.');
@@ -157,6 +160,10 @@ final class PopOperationService
             throw new RuntimeException('POP approver role is not authorized for this operation.');
         }
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        if ($this->isReviewedFinancialCase($entry)) {
+            $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key, (string) $request->actor,
+                $approvalReference, $approver, $approverId);
+        }
         if (!$byStandingPolicy) $this->assertCampusScope($parameters, $approverRole, $approverCampusIds); // the requester's scope was checked at draft
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
         if ($this->isReviewedMonthly($entry)) {
@@ -175,6 +182,9 @@ final class PopOperationService
         if (!$dryRun || (string) $dryRun->result !== 'succeeded') {
             throw new RuntimeException('POP approval requires a successful dry-run.');
         }
+        if ($this->isReviewedFinancialCase($entry) && !(bool) ($this->safePlan($entry, $parameters, (string) $request->id)['ok'] ?? false)) {
+            throw new RuntimeException('POP approval requires a current preview; refresh the case evidence and create a new draft.');
+        }
         if ((int) $request->catalog_version !== $this->catalog->version()) {
             throw new RuntimeException('POP request catalog version is stale; create a new draft.');
         }
@@ -189,6 +199,13 @@ final class PopOperationService
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
+            if ($this->isReviewedFinancialCase($entry)) {
+                $this->reviewedFinancialCaseTuple($entry, $lockedParameters, (string) $locked->idempotency_key,
+                    (string) $locked->actor, $approvalReference, $approver, $approverId);
+                if (!(bool) ($this->safePlan($entry, $lockedParameters, (string) $locked->id)['ok'] ?? false)) {
+                    throw new RuntimeException('POP approval requires a current preview; refresh the case evidence and create a new draft.');
+                }
+            }
             if ($this->isReviewedMonthly($entry)) {
                 $this->assertMonthlyApprover($locked, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
             }
@@ -348,6 +365,14 @@ final class PopOperationService
         }
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         $this->assertRequestIntegrity($request, $entry, $parameters, $context, false);
+        if ($this->isReviewedFinancialCase($entry)) {
+            $events = $this->approvals($request)->where('event_type', 'approved');
+            foreach ($events as $event) {
+                $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key,
+                    (string) $request->actor, (string) $event->approval_reference, (string) $event->approver,
+                    $event->approver_id === null ? null : (int) $event->approver_id);
+            }
+        }
         if ((string) $entry['lifecycle'] !== 'active') {
             throw new RuntimeException('POP operation is not active; Founder activation is required.');
         }
@@ -856,6 +881,54 @@ final class PopOperationService
         if (!str_starts_with(strtolower($reference), 'founder-go-')) {
             throw new RuntimeException('Founder-scoped POP approval requires a founder-go reference; fail closed.');
         }
+    }
+
+    /**
+     * A reviewed financial approval is usable only when a protected, expiring
+     * Founder decision manifest binds the operation, immutable request, requester,
+     * approver and exact approval reference. The checked-in policy stays empty.
+     * @param array<string,mixed> $entry @param array<string,mixed> $parameters
+     */
+    private function reviewedFinancialCaseTuple(array $entry, array $parameters, string $key, string $requester,
+        ?string $reference, ?string $approver, ?int $approverId): array
+    {
+        $configuredPath = config('pop.reviewed_financial_cases_path');
+        $path = $this->financialCaseAuthorizationPath
+            ?? (is_string($configuredPath) && $configuredPath !== '' ? $configuredPath : storage_path('app/private/pop/reviewed-financial-cases.json'));
+        $policy = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $cases = is_array($policy) ? ($policy['eligible_cases'] ?? null) : null;
+        if (($policy['version'] ?? null) !== 1 || !is_array($cases) || !array_is_list($cases) || count($cases) !== 1) {
+            throw new RuntimeException('Reviewed financial operation has no exact active Founder authorization.');
+        }
+        $case = $cases[0];
+        $fields = ['operation_id', 'parameters_sha256', 'idempotency_sha256', 'requester_sha256', 'approver_sha256', 'approval_reference', 'valid_until'];
+        if (!is_array($case) || array_diff(array_keys($case), $fields) !== [] || array_diff($fields, array_keys($case)) !== []) {
+            throw new RuntimeException('Reviewed financial Founder authorization tuple is malformed.');
+        }
+        foreach (['parameters_sha256', 'idempotency_sha256', 'requester_sha256', 'approver_sha256'] as $field) {
+            if (!is_string($case[$field]) || !preg_match('/^[0-9a-f]{64}$/', $case[$field])) {
+                throw new RuntimeException('Reviewed financial Founder authorization digest is malformed.');
+            }
+        }
+        try { $expiry = is_string($case['valid_until']) ? Carbon::parse($case['valid_until']) : null; }
+        catch (Throwable) { throw new RuntimeException('Reviewed financial Founder authorization expiry is malformed.'); }
+        $parametersHash = hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        $requesterHash = hash('sha256', $requester);
+        if (($case['operation_id'] ?? null) !== ($entry['id'] ?? null)
+            || !hash_equals($case['parameters_sha256'], $parametersHash)
+            || !hash_equals($case['idempotency_sha256'], hash('sha256', $key))
+            || !hash_equals($case['requester_sha256'], $requesterHash)
+            || !is_string($case['approval_reference'])
+            || $case['approval_reference'] !== 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16)
+            || !$expiry || $expiry->utc()->format('Y-m-d\\TH:i:s\\Z') !== $case['valid_until']
+            || $expiry->timestamp <= now()->timestamp) {
+            throw new RuntimeException('Reviewed financial request does not match the exact Founder authorization.');
+        }
+        if ($reference !== null && ($reference !== $case['approval_reference'] || $approverId === null
+            || $approver !== 'user:' . $approverId || !hash_equals($case['approver_sha256'], hash('sha256', $approver)))) {
+            throw new RuntimeException('Reviewed financial approval does not match the authorized case and operation.');
+        }
+        return $case;
     }
 
     /** Eligibility is policy, never approval: an authenticated DB event is still required. */

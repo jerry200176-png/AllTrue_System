@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 14
+version: 15
 
 operations:
   reviewed-legacy-reversal-restatement:
@@ -30,7 +30,7 @@ operations:
     strategy_class: App\Operations\Strategies\PaymentReversalRestatementStrategy
     parameter_keys: [campus_id, plan, decision_reference]
     tags: [repair, billing, historical-reversal]
-    notes: Active exact-single-record strategy; exact Founder case reference and super_admin approval remain required before Pi-local execution. No cash receipt/refund or invoice/course/report write. Complete original row retained atomically in POP proof.
+    notes: Active after catalog v15 deployment; every request requires a mounted, expiring Founder tuple binding operation, full parameters hash, idempotency key, requester and approver before Pi-local execution. No cash receipt/refund or invoice/course/report write. Complete original row retained atomically in POP proof.
 
   muzha-fixed-schedule-20261001:
     lifecycle: active
@@ -557,7 +557,7 @@ operations:
     strategy_class: App\Operations\Strategies\PaymentReportPendingReturnStrategy
     parameter_keys: [campus_id, student_id, course_id, invoice_id, report_id, expected_reported_amount, expected_charge, expected_invoice_total, decision_reference, reason, expected_state_hash]
     tags: [repair, billing, reviewed-case]
-    notes: Active exact-single-report strategy; exact Founder case reference and super_admin approval remain required before Pi-local execution. Preserve reported amount; no cash receipt/refund.
+    notes: Active after catalog v15 deployment; every request requires a mounted, expiring Founder tuple binding operation, full parameters hash, idempotency key, requester and approver before Pi-local execution. Preserve reported amount; no cash receipt/refund.
 
   reviewed-unpaid-invoice-charge-alignment:
     lifecycle: active
@@ -586,4 +586,4 @@ operations:
     strategy_class: App\Operations\Strategies\UnpaidInvoiceChargeAlignmentStrategy
     parameter_keys: [student_id, course_id, campus_id, invoice_id, expected_invoice_total, expected_charge, decision_reference, expected_state_hash]
     tags: [repair, billing, reviewed-case]
-    notes: Active exact-single-invoice strategy; exact Founder case reference and super_admin approval remain required before Pi-local execution. No payment/report/course write, receipt confirmation or refund.
+    notes: Active after catalog v15 deployment; every request requires a mounted, expiring Founder tuple binding operation, full parameters hash, idempotency key, requester and approver before Pi-local execution. No payment/report/course write, receipt confirmation or refund.

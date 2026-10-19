@@ -48,6 +48,18 @@ class PaymentReportPendingReturnTest extends TestCase
         $this->fail('Expected refusal '.$code);
     }
 
+    private function writeFinancialAuthorization(string $path, array $parameters, string $key, string $actor): string
+    {
+        $hash = hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        $reference = 'founder-go-'.ReturnReport::OPERATION.'-'.substr($hash, 0, 16);
+        file_put_contents($path, json_encode(['version' => 1, 'eligible_cases' => [[
+            'operation_id' => ReturnReport::OPERATION, 'parameters_sha256' => $hash, 'idempotency_sha256' => hash('sha256', $key),
+            'requester_sha256' => hash('sha256', $actor), 'approver_sha256' => hash('sha256', $actor),
+            'approval_reference' => $reference, 'valid_until' => now()->addHour()->utc()->format('Y-m-d\\TH:i:s\\Z'),
+        ]]], JSON_THROW_ON_ERROR));
+        return $reference;
+    }
+
     public function test_return_retains_reported_amount_and_money_history_with_replay_and_exact_rollback(): void
     {
         [$f, $p] = $this->candidate(); $svc = app(ReturnReport::class); $ctx = $this->context($f, $p);
@@ -192,7 +204,7 @@ class PaymentReportPendingReturnTest extends TestCase
         }
     }
 
-    public function test_committed_catalog_marks_all_three_reviewed_repair_operations_active(): void
+    public function test_committed_catalog_requires_an_exact_private_founder_case_authorization(): void
     {
         [$f, $p] = $this->candidate(); $catalog = app(\App\Operations\PopOperationCatalog::class);
         foreach ([ReturnReport::OPERATION, 'reviewed-unpaid-invoice-charge-alignment', 'reviewed-legacy-reversal-restatement'] as $operation) {
@@ -201,26 +213,41 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertSame('founder-exact-reviewed-financial', $entry['approval_policy']); $policy = file_get_contents(dirname(base_path()).'/operations/policies/default.yaml');
             $this->assertSame(1, preg_match('/- id: founder-exact-reviewed-financial(.*?)(?=\n  - id:|\z)/s', $policy, $m)); $this->assertStringContainsString($operation, $m[1]); $this->assertStringContainsString($entry['blast_radius'], $m[1]);
         }
+        $this->assertSame(15, $catalog->version());
         $pop = app(\App\Operations\PopOperationService::class);
-        $r = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'director', [1], $f['user']->id);
-        $this->assertTrue($pop->runDryRun($r['id'], 'user:'.$f['user']->id, $f['user']->id, 'director', [1])['ok']);
-        $this->refuse(fn () => $pop->approve($r['id'], 'not-a-founder-decision', 'reviewer-founder', 'super_admin', str_repeat('c', 40), $f['user']->id + 100001), 'founder-go');
+        $this->refuse(fn () => $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'super_admin', [], $f['user']->id), 'exact active Founder authorization');
+        $this->assertSame(0, DB::table('pop_operation_requests')->count());
     }
 
-    public function test_exact_founder_shape_allows_same_human_requester_only_after_explicit_activation(): void
+    public function test_exact_case_and_operation_binding_rejects_invented_reference_and_approver(): void
     {
         [$f, $p] = $this->candidate(); $f['user']->update(['type' => 'S']);
         $dir = sys_get_temp_dir().'/pending-founder-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
+        $authorization = $dir.'/case.json'; $actor = 'user:'.$f['user']->id; $key = (string) Str::uuid();
         try {
             $yaml = file_get_contents(dirname(base_path()).'/operations/catalog.yaml');
-            $yaml = str_replace(ReturnReport::OPERATION.":\n    lifecycle: planned", ReturnReport::OPERATION.":\n    lifecycle: active", $yaml);
             file_put_contents($dir.'/catalog.yaml', $yaml); file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
             $catalog = new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml');
-            $pop = new \App\Operations\PopOperationService($catalog); $actor = 'user:'.$f['user']->id;
-            $r = $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), $actor, 'super_admin', [], $f['user']->id);
+            $pop = new \App\Operations\PopOperationService($catalog, null, null, $authorization);
+            $reference = $this->writeFinancialAuthorization($authorization, $p, $key, $actor);
+            $r = $pop->createDraft(ReturnReport::OPERATION, $p, $key, $actor, 'super_admin', [], $f['user']->id);
             $this->assertTrue($pop->runDryRun($r['id'], $actor, $f['user']->id, 'super_admin', [])['ok']);
-            $approval = $pop->approve($r['id'], 'founder-go-synthetic-case', $actor, 'super_admin', str_repeat('c', 40), $f['user']->id);
+            DB::beginTransaction();
+            try {
+                $f['pending']->update(['reported_amount' => 8800]);
+                $this->refuse(fn () => $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id), 'current preview');
+                $this->assertSame(0, DB::table('pop_approval_events')->where('operation_id', $r['id'])->count());
+            } finally { DB::rollBack(); }
+            $this->refuse(fn () => $pop->approve($r['id'], 'founder-go-synthetic-case', $actor, 'super_admin', str_repeat('c', 40), $f['user']->id), 'exact');
+            $this->refuse(fn () => $pop->approve($r['id'], $reference, 'user:999999', 'super_admin', str_repeat('c', 40), 999999), 'exact');
+            $approval = $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id);
             $this->assertTrue($approval['ready']); $this->assertSame(['super_admin'], $approval['required_roles']);
+            $authorized = file_get_contents($authorization);
+            $changed = json_decode($authorized, true); $changed['eligible_cases'][0]['approver_sha256'] = hash('sha256', 'user:999999');
+            file_put_contents($authorization, json_encode($changed, JSON_THROW_ON_ERROR));
+            $this->refuse(fn () => $pop->run($r['id'], 'execute', $approval['token'], str_repeat('c', 40), 'pop-runner'), 'exact');
+            $this->assertSame('pending', $f['pending']->fresh()->status);
+            file_put_contents($authorization, $authorized);
             $this->assertTrue($pop->run($r['id'], 'execute', $approval['token'], str_repeat('c', 40), 'pop-runner')['ok']);
             $method = new \ReflectionMethod($pop, 'approvalRoles'); $entry = $catalog->operation(ReturnReport::OPERATION);
             foreach (['strategy_class', 'parameter_keys', 'blast_radius', 'risk', 'founder_approval_required', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required', 'approval_policy', 'execution_authority', 'approver_roles'] as $key) {
@@ -228,20 +255,47 @@ class PaymentReportPendingReturnTest extends TestCase
                 $this->refuse(fn () => $method->invoke($pop, $bad), 'approval');
             }
         } finally {
-            unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
+            @unlink($authorization); unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
+    }
+
+    public function test_request_dry_run_from_catalog_14_is_stale_after_activation_at_15(): void
+    {
+        [$f, $p] = $this->candidate(); $dir = sys_get_temp_dir().'/pending-stale-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
+        $authorization = $dir.'/case.json'; $actor = 'user:'.$f['user']->id; $key = (string) Str::uuid();
+        try {
+            $reference = $this->writeFinancialAuthorization($authorization, $p, $key, $actor);
+            $yaml = file_get_contents(dirname(base_path()).'/operations/catalog.yaml');
+            $yaml = preg_replace('/^version: 15$/m', 'version: 14', $yaml, 1);
+            $yaml = preg_replace('/(^  '.preg_quote(ReturnReport::OPERATION, '/').":\n    lifecycle: )active/m", '$1planned', $yaml, 1);
+            file_put_contents($dir.'/catalog.yaml', $yaml); file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
+            $oldCatalog = new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml');
+            $oldPop = new \App\Operations\PopOperationService($oldCatalog, null, null, $authorization);
+            $request = $oldPop->createDraft(ReturnReport::OPERATION, $p, $key, $actor, 'super_admin', [], $f['user']->id);
+            $this->assertSame('succeeded', $oldPop->runDryRun($request['id'], $actor, $f['user']->id, 'super_admin')['result']);
+            $currentPop = new \App\Operations\PopOperationService(app(\App\Operations\PopOperationCatalog::class), null, null, $authorization);
+            $this->refuse(fn () => $currentPop->approve($request['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id), 'catalog version is stale');
+            $this->assertSame(0, DB::table('pop_approval_events')->where('operation_id', $request['id'])->count());
+            $this->assertSame('pending', $f['pending']->fresh()->status);
+        } finally { @unlink($authorization); @unlink($dir.'/catalog.yaml'); @unlink($dir.'/policies/default.yaml'); @rmdir($dir.'/policies'); rmdir($dir); }
     }
 
     public function test_initial_authenticated_http_preview_is_read_only_and_requires_new_confirmed_draft(): void
     {
         [$f, $p] = $this->candidate(); $this->refuse(fn () => app(\App\Operations\PopOperationService::class)->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'api_client:synthetic', 'pop_machine', [1], 1), 'human'); $p['expected_state_hash'] = ''; $headers = ['Authorization' => 'Bearer '.$f['token']];
-        $draft = fn ($p) => $this->postJson('/api/v1/pop/operations/'.ReturnReport::OPERATION.'/draft',
-            ['parameters' => $p, 'idempotency_key' => (string) Str::uuid()], $headers)->assertCreated()->json('data.id');
+        $dir = sys_get_temp_dir().'/pending-http-auth-'.Str::uuid(); mkdir($dir, 0700); $authorization = $dir.'/case.json';
+        config(['pop.reviewed_financial_cases_path' => $authorization]); $actor = 'user:'.$f['user']->id;
+        $draft = function ($parameters) use ($headers, $authorization, $actor) {
+            $key = (string) Str::uuid(); $this->writeFinancialAuthorization($authorization, $parameters, $key, $actor);
+            return $this->postJson('/api/v1/pop/operations/'.ReturnReport::OPERATION.'/draft',
+                ['parameters' => $parameters, 'idempotency_key' => $key], $headers)->assertCreated()->json('data.id');
+        };
         $id = $draft($p); $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');
         $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
         $id = $draft($preview['preview_parameters']);
         $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertOk()->assertJsonPath('data.ok', true);
         $this->assertSame('pending', $f['pending']->fresh()->status);
+        @unlink($authorization); rmdir($dir);
     }
 
     public function test_read_only_status_is_campus_scoped_and_never_returns_private_proof_or_token(): void
