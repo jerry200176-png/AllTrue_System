@@ -37,6 +37,41 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         $this->assertSame('receipt_reissue', DB::table('invoice_corrections')->where('id', $id)->value('kind'));
     }
 
+    public function test_release_migration_expands_an_existing_populated_base_table_idempotently(): void
+    {
+        $this->endOuterTestingTransactions();
+        try {
+            DB::statement('ALTER TABLE invoice_corrections DROP kind, DROP campus_id, DROP old_charge,
+                DROP new_charge, DROP original_invoice_total, DROP request_hash, DROP state_hash,
+                MODIFY original_invoice_id BIGINT UNSIGNED NOT NULL,
+                MODIFY replacement_invoice_id BIGINT UNSIGNED NOT NULL,
+                MODIFY amount INT UNSIGNED NOT NULL');
+            Schema::table('invoice_corrections', fn ($table) => $table->dropUnique('uq_invoice_corrections_course_key'));
+            $id = DB::table('invoice_corrections')->insertGetId([
+                'original_invoice_id' => 901, 'replacement_invoice_id' => 902, 'student_class_id' => 1,
+                'amount' => 7600, 'reason' => 'Synthetic legacy history', 'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+            ]);
+            $migration = require database_path('migrations/2026_10_19_090000_extend_invoice_corrections_for_agreed_fee.php');
+            $migration->up();
+            $migration->up();
+            $this->assertTrue(Schema::hasColumns('invoice_corrections', ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash']));
+            $this->assertSame('receipt_reissue', DB::table('invoice_corrections')->where('id', $id)->value('kind'));
+            $this->assertSame(1, DB::table('invoice_corrections')->count());
+            $indexColumns = collect(DB::select('SHOW INDEX FROM invoice_corrections'))
+                ->where('Key_name', 'uq_invoice_corrections_course_key')->sortBy('Seq_in_index')->pluck('Column_name')->values()->all();
+            $this->assertSame(['student_class_id', 'idempotency_key'], $indexColumns);
+            try {
+                $migration->down();
+                $this->fail('A populated permanent history table must not be destructively rolled back.');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Retain permanent invoice correction history', $e->getMessage());
+            }
+            $this->assertSame(1, DB::table('invoice_corrections')->count());
+        } finally {
+            $this->rebuildIsolatedSchema();
+        }
+    }
+
     public function test_extension_metadata_keeps_nullable_links_and_course_key_uniqueness(): void
     {
         $columns = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->keyBy('Field');

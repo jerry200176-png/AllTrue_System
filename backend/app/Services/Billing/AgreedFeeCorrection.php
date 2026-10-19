@@ -33,6 +33,10 @@ final class AgreedFeeCorrection
             $campusId = (int) ($student->CampusID ?? 0);
             if (!$student || $campusId <= 0 || !in_array($actor['role'], ['director', 'super_admin'], true)
                 || ($actor['role'] !== 'super_admin' && !in_array($campusId, $actor['campus_ids'], true))) abort(403);
+            if (!in_array($courseId, array_map('intval', (array) config('billing.agreed_fee_correction_course_ids', [])), true)
+                || !in_array($campusId, array_map('intval', (array) config('billing.agreed_fee_correction_campus_ids', [])), true)) {
+                $this->refuse('此課程不在本次限定更正範圍。', 'course_out_of_scope', 404);
+            }
             $kind = $input['scope'] === 'unbilled' ? 'agreed_fee_unbilled' : self::KIND;
             $request = ['kind' => $kind, 'scope' => $input['scope'], 'course_id' => $courseId,
                 'original_invoice_id' => isset($input['original_invoice_id']) ? (int) $input['original_invoice_id'] : null, 'new_charge' => (int) $input['new_charge'],

@@ -114,6 +114,8 @@ class AgreedFeeIsolatedHttpTest extends TestCase
         $this->assertFalse(str_contains($seed->getOutput(), $this->token));
         foreach (['fixture.env', 'courses.json'] as $file) $this->assertSame(0600, fileperms($this->artifacts.'/'.$file) & 0777);
         $allow = json_decode(file_get_contents($this->artifacts.'/courses.json'), true, 512, JSON_THROW_ON_ERROR);
+        $this->childEnv['AGREED_FEE_CORRECTION_CAMPUS_IDS'] = '1';
+        $this->childEnv['AGREED_FEE_CORRECTION_COURSE_IDS'] = implode(',', array_map('intval', $allow['course_ids']));
         $this->assertCount(6, $allow['course_ids']);
         foreach (['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'] as $key) {
             $this->proxyEnv[$key] = getenv($key);
