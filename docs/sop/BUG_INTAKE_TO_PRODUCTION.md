@@ -117,19 +117,24 @@ Acceptance and retirement checklist:
    instance) from `source_config_id` (reusable configuration) and
    `source_config_version_id`/spec revision (published version); unequal IDs of
    different types alone do not prove a scope mismatch. Resolve their mapping
-   through supported metadata before reading the key. Require
-   `observations_current: true` and this secret binding's individual state
-   `ready`, without printing values. A runtime-variable entry is not proof of
-   a secret binding. Unresolved scope, missing/stale/non-ready binding or proxy
-   placeholder is `CREDENTIAL_SETUP_REQUIRED`; diagnose the published
-   configuration/session binding without extracting secrets or improvising a
-   fallback. A new conversation alone does not prove a new configuration.
+   through supported metadata and the preserved handoff marker before key use.
+   Claim readiness only with `observations_current: true` and the individual
+   binding state `ready`; a variable name or presence alone is insufficient.
+   Unknown telemetry does not prove absence. Once the authorized scope is
+   established, a bounded, captured OpenSSL/archive diagnostic may use the
+   configured variable normally without exposing its value. Record telemetry
+   separately from actual diagnostic PASS/FAIL; missing variable is `MISSING`,
+   artifact-access failure is a separate download error, and successful decrypt
+   does not invent a `ready` observation. Unresolved scope stops key use. A
+   missing binding or unusable proxy placeholder requires supported configuration
+   repair, never secret extraction or an improvised fallback. A new conversation
+   alone does not prove a new configuration.
 3. Download an authorized encrypted artifact through a permitted connector or CLI.
    Compare its ciphertext hash with the trusted run evidence and `.sha256` file.
    Do not expose signed download URLs. The checksum checks integrity; it does not
    authenticate AES-CBC ciphertext from an untrusted source.
 4. In a private directory (`umask 077`), disable shell tracing and use the existing
-   OpenSSL AES-256-CBC/PBKDF2 format with 600000 iterations. With a verified real
+   OpenSSL AES-256-CBC/PBKDF2 format with 600000 iterations. Within the established approved scope, with the configured
    direct environment-variable secret, use `-pass env:DUMP_ARTIFACT_KEY`.
    Never put key bytes in argv. Keep the original local mode-600 key unchanged.
    Decrypt to a private temporary archive first; on failure remove it and stop.
