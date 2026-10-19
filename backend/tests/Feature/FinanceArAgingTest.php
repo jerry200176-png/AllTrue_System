@@ -89,6 +89,45 @@ class FinanceArAgingTest extends TestCase
         $this->assertEquals(1200, $r->json('students.0.current'));
     }
 
+    public function test_course_list_exposes_canonical_verdict_without_changing_ar_or_ledger(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $student = $this->student($campus, 'Verdict controls');
+        $stopped = $this->course($student, ['Stop' => 1]);
+        $this->invoice($stopped, 3000, 0, 40);
+        $partial = $this->course($student);
+        $this->invoice($partial, 2000, 800, 10);
+        $unbilled = $this->course($student, ['Charge' => 9999]);
+        $waived = $this->course($student, ['Stop' => 1]);
+        $this->invoice($waived, 500, 0, 20);
+        DB::table('StudentClass')->where('ID', $waived->ID)->update(['closed_reason' => 'waived']);
+        $tutoring = $this->course($student, ['ClassType' => ' TUTORING ']);
+        $this->invoice($tutoring, 500, 0, 20);
+        $voided = $this->course($student);
+        $invoice = $this->invoice($voided, 700, 0, 20);
+        $invoice->update(['Status' => 'void']);
+        $other = $this->course($this->student(CampusFactory::new()->create(), 'Other campus'));
+        $this->invoice($other, 9000, 0, 20);
+        $before = [Invoice::count(), Payment::count(), DB::table('Payment')->sum('Amount')];
+
+        $listed = collect($this->getJson('/api/v1/student-classes?campus_id=' . $campus->id . '&per_page=1000', $this->bearer($token))
+            ->assertOk()->json('data'))->keyBy('ID');
+        $this->assertCount(6, $listed);
+        $this->assertFalse($listed->has($other->ID));
+        $this->assertSame(['status' => 'unpaid', 'source' => 'invoice', 'outstanding' => 3000, 'ar_candidate' => true], $listed[$stopped->ID]['billing_verdict']);
+        $this->assertSame(['status' => 'partial', 'source' => 'invoice', 'outstanding' => 1200, 'ar_candidate' => true], $listed[$partial->ID]['billing_verdict']);
+        foreach ([$unbilled, $voided] as $course) {
+            $this->assertSame('unbilled', $listed[$course->ID]['billing_verdict']['status']);
+            $this->assertSame('none', $listed[$course->ID]['billing_verdict']['source']);
+            $this->assertFalse($listed[$course->ID]['billing_verdict']['ar_candidate']);
+        }
+        $this->assertSame('free', $listed[$tutoring->ID]['billing_verdict']['status']);
+        $this->assertSame('waived', $listed[$waived->ID]['closed_reason']);
+        $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token))
+            ->assertOk()->assertJsonPath('totals.grand_total', 4200);
+        $this->assertSame($before, [Invoice::count(), Payment::count(), DB::table('Payment')->sum('Amount')]);
+    }
+
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
