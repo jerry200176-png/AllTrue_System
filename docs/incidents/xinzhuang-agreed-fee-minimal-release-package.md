@@ -1,7 +1,7 @@
 # Xinzhuang agreed-fee correction: minimal release package
 
 **Risk:** R3 / T3 — billing schema, bounded API activation, and later financial repair.
-**State (2026-10-19T20:15Z):** additive schema + default-off API merged via #4283 (`506729c7`); dump path #4293/#4296 (`5e4c48c0`); allowlist config surface #4300 (`8e6228a3`) on main. **Not** production-activated: tip dumps report public `completeness=correction_schema_missing` / `snapshot_complete=false` for courses 4064/3753/3693; Deploy to Production still SKIPPED. Feature flag remains default-off. No financial write authorized. Acceptance still **0/3**. Public status: `operations/closeout/xinzhuang-fee-closeout.status.md`.
+**State (2026-10-19T20:35Z):** additive schema + default-off API merged via #4283 (`506729c7`); dump path #4293/#4296 (`5e4c48c0`); allowlist config surface #4300 (`8e6228a3`) on main. **Not** production-activated: tip dumps report public `completeness=correction_schema_missing` / `snapshot_complete=false` for courses 4064/3753/3693; Deploy to Production still SKIPPED (release-train window `10:17Z` already served by `39241462999`; next auto ≈ `04:17Z` or Founder manual train). Feature flag remains default-off. No financial write authorized. Acceptance still **0/3**. Public status: `operations/closeout/xinzhuang-fee-closeout.status.md`.
 
 ## Production evidence and reconciliation
 
