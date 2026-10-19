@@ -249,12 +249,19 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertSame('pending', $f['pending']->fresh()->status);
             file_put_contents($authorization, $authorized);
             $this->assertTrue($pop->run($r['id'], 'execute', $approval['token'], str_repeat('c', 40), 'pop-runner')['ok']);
+            $this->travel(61)->minutes();
+            $approval = $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id);
+            $this->assertSame('recovery', DB::table('pop_approval_events')->where('operation_id', $r['id'])->latest('id')->value('phase'));
+            $this->assertTrue($pop->run($r['id'], 'verify', $approval['token'], str_repeat('c', 40), 'pop-runner')['ok']);
+            $this->assertTrue($pop->run($r['id'], 'rollback', $approval['token'], str_repeat('c', 40), 'pop-runner')['ok']);
+            $this->assertSame('pending', $f['pending']->fresh()->status);
             $method = new \ReflectionMethod($pop, 'approvalRoles'); $entry = $catalog->operation(ReturnReport::OPERATION);
             foreach (['strategy_class', 'parameter_keys', 'blast_radius', 'risk', 'founder_approval_required', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required', 'approval_policy', 'execution_authority', 'approver_roles'] as $key) {
                 $bad = $entry; $bad[$key] = false;
                 $this->refuse(fn () => $method->invoke($pop, $bad), 'approval');
             }
         } finally {
+            $this->travelBack();
             @unlink($authorization); unlink($dir.'/catalog.yaml'); unlink($dir.'/policies/default.yaml'); rmdir($dir.'/policies'); rmdir($dir);
         }
     }

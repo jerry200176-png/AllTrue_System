@@ -160,12 +160,19 @@ final class PopOperationService
             throw new RuntimeException('POP approver role is not authorized for this operation.');
         }
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
-        if ($this->isReviewedFinancialCase($entry)) {
-            $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key, (string) $request->actor,
-                $approvalReference, $approver, $approverId);
-        }
         if (!$byStandingPolicy) $this->assertCampusScope($parameters, $approverRole, $approverCampusIds); // the requester's scope was checked at draft
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
+        $reviewedCaseContinuation = false;
+        if ($this->isReviewedFinancialCase($entry)) {
+            $recovery = $this->financialRecoveryPhase($request);
+            $reviewedCaseContinuation = in_array($recovery, ['recovery', 'rollback'], true);
+            if ($reviewedCaseContinuation) {
+                $this->assertPriorReviewedFinancialCaseApproval($request, $parameters, $entry, $approvalReference, $approver, $approverId);
+            } else {
+                $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key, (string) $request->actor,
+                    $approvalReference, $approver, $approverId, $ttlMinutes);
+            }
+        }
         if ($this->isReviewedMonthly($entry)) {
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
@@ -182,14 +189,15 @@ final class PopOperationService
         if (!$dryRun || (string) $dryRun->result !== 'succeeded') {
             throw new RuntimeException('POP approval requires a successful dry-run.');
         }
-        if ($this->isReviewedFinancialCase($entry) && !(bool) ($this->safePlan($entry, $parameters, (string) $request->id)['ok'] ?? false)) {
+        if ($this->isReviewedFinancialCase($entry) && !$reviewedCaseContinuation
+            && !(bool) ($this->safePlan($entry, $parameters, (string) $request->id)['ok'] ?? false)) {
             throw new RuntimeException('POP approval requires a current preview; refresh the case evidence and create a new draft.');
         }
         if ((int) $request->catalog_version !== $this->catalog->version()) {
             throw new RuntimeException('POP request catalog version is stale; create a new draft.');
         }
 
-        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles, $byStandingPolicy): array {
+        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles, $byStandingPolicy, $reviewedCaseContinuation): array {
             $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if (!$locked || ($byStandingPolicy && (string) $locked->status !== 'awaiting_approval')) {
                 throw new RuntimeException('POP request not found; fail closed.');
@@ -200,9 +208,13 @@ final class PopOperationService
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
             if ($this->isReviewedFinancialCase($entry)) {
-                $this->reviewedFinancialCaseTuple($entry, $lockedParameters, (string) $locked->idempotency_key,
-                    (string) $locked->actor, $approvalReference, $approver, $approverId);
-                if (!(bool) ($this->safePlan($entry, $lockedParameters, (string) $locked->id)['ok'] ?? false)) {
+                if ($reviewedCaseContinuation) {
+                    $this->assertPriorReviewedFinancialCaseApproval($locked, $lockedParameters, $entry, $approvalReference, $approver, $approverId);
+                } else {
+                    $this->reviewedFinancialCaseTuple($entry, $lockedParameters, (string) $locked->idempotency_key,
+                        (string) $locked->actor, $approvalReference, $approver, $approverId, $ttlMinutes);
+                }
+                if (!$reviewedCaseContinuation && !(bool) ($this->safePlan($entry, $lockedParameters, (string) $locked->id)['ok'] ?? false)) {
                     throw new RuntimeException('POP approval requires a current preview; refresh the case evidence and create a new draft.');
                 }
             }
@@ -366,11 +378,15 @@ final class PopOperationService
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         $this->assertRequestIntegrity($request, $entry, $parameters, $context, false);
         if ($this->isReviewedFinancialCase($entry)) {
-            $events = $this->approvals($request)->get();
-            foreach ($events as $event) {
-                $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key,
-                    (string) $request->actor, (string) $event->approval_reference, (string) $event->approver,
-                    $event->approver_id === null ? null : (int) $event->approver_id);
+            $hasExecuted = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+            if ($hasExecuted && in_array($phase, ['verify', 'rollback'], true)) {
+                $this->assertPriorReviewedFinancialCaseApproval($request, $parameters, $entry);
+            } else {
+                foreach ($this->approvals($request)->get() as $event) {
+                    $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key,
+                        (string) $request->actor, (string) $event->approval_reference, (string) $event->approver,
+                        $event->approver_id === null ? null : (int) $event->approver_id);
+                }
             }
         }
         if ((string) $entry['lifecycle'] !== 'active') {
@@ -890,7 +906,7 @@ final class PopOperationService
      * @param array<string,mixed> $entry @param array<string,mixed> $parameters
      */
     private function reviewedFinancialCaseTuple(array $entry, array $parameters, string $key, string $requester,
-        ?string $reference, ?string $approver, ?int $approverId): array
+        ?string $reference, ?string $approver, ?int $approverId, ?int $ttlMinutes = null): array
     {
         $configuredPath = config('pop.reviewed_financial_cases_path');
         $path = $this->financialCaseAuthorizationPath
@@ -921,7 +937,8 @@ final class PopOperationService
             || !is_string($case['approval_reference'])
             || $case['approval_reference'] !== 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16)
             || !$expiry || $expiry->utc()->format('Y-m-d\\TH:i:s\\Z') !== $case['valid_until']
-            || $expiry->timestamp <= now()->timestamp) {
+            || $expiry->timestamp <= now()->timestamp
+            || ($reference !== null && $ttlMinutes !== null && now()->addMinutes($ttlMinutes)->timestamp > $expiry->timestamp)) {
             throw new RuntimeException('Reviewed financial request does not match the exact Founder authorization.');
         }
         if ($reference !== null && ($reference !== $case['approval_reference'] || $approverId === null
@@ -929,6 +946,28 @@ final class PopOperationService
             throw new RuntimeException('Reviewed financial approval does not match the authorized case and operation.');
         }
         return $case;
+    }
+
+    /** A completed, exact authorization remains sufficient for verify/rollback after its issuance window closes. */
+    private function assertPriorReviewedFinancialCaseApproval(object $request, array $parameters, array $entry,
+        ?string $approvalReference = null, ?string $approver = null, ?int $approverId = null): void
+    {
+        if ((int) $request->catalog_version !== $this->catalog->version()) {
+            throw new RuntimeException('POP request catalog version is stale; fail closed.');
+        }
+        $parametersHash = hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        $reference = 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16);
+        $event = DB::table('pop_approval_events')->where('operation_id', $request->id)->where('event_type', 'approved')
+            ->where('approver_role', 'super_admin')->where('approval_reference', $reference)
+            ->where('parameters_hash', $parametersHash)->whereNotNull('approver_id')->first();
+        if (!$event || (string) $event->approver !== 'user:' . (int) $event->approver_id) {
+            throw new RuntimeException('POP continuation lacks its original exact reviewed financial approval.');
+        }
+        if ($approvalReference !== null && ($approvalReference !== $reference || $approverId === null
+            || $approver !== 'user:' . $approverId || (int) $event->approver_id !== $approverId
+            || (string) $event->approver !== $approver)) {
+            throw new RuntimeException('POP continuation approval must use the original exact case approver and reference.');
+        }
     }
 
     /** Eligibility is policy, never approval: an authenticated DB event is still required. */
