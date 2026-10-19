@@ -2572,8 +2572,17 @@ jobs:
               status.pop('reason')
               status.pop('completeness')
           if case == 'xinzhuang_fee_cases':
+              # Keep reason private (may join failure tokens). Publish only the fixed
+              # fee-case-ledger completeness enum so Track A can diagnose
+              # snapshot_complete=false without decrypting the artifact body.
               status.pop('reason')
-              status.pop('completeness')
+              fee_completeness = {
+                  'not_started', 'correction_schema_missing', 'ambiguous_obligations',
+                  'complete', 'unlinked_obligations', 'monthly_amount_unverified',
+                  'payment_links_inconsistent', 'incomplete',
+              }
+              if status.get('completeness') not in fee_completeness:
+                  status['completeness'] = 'withheld'
           print('case status:', json.dumps(status, sort_keys=True))
           PY
           tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/production-case.full.tar.gz.enc
