@@ -1,10 +1,10 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-19T20:15Z  
+Last updated: 2026-10-19T20:35Z  
 Acceptance: **0/3** (courses 4064 / 3753 / 3693)  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
-## Tip evidence (dumps on `5e4c48c0`; main tip now `8e6228a3`)
+## Tip evidence (dumps on `5e4c48c0`; main tip now `04c0f37e`)
 
 Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 
@@ -17,7 +17,7 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 ## Hard blockers (Founder / vault)
 
 1. **Cloud decrypt custody** — bind `DUMP_ARTIFACT_KEY` (and optionally `ALLTRUE_TRIAGE_TOKEN`) on the AllTrue Cloud environment via Personal vault. Do not paste values into chat/PR/issues.
-2. **Tip production activation** — #4283 additive `invoice_corrections` extension (`506729c7`, migration `2026_10_19_090000_extend_invoice_corrections_for_agreed_fee.php`) is on `main`, but live dumps still report `correction_schema_missing`. Approve `production-activation` / `ACTIVATE_PRODUCTION:<target_sha>` through the normal deploy path. Keep `billing.agreed_fee_correction_enabled` **default-off** until case-specific POP packs exist.
+2. **Tip production activation** — #4283 additive `invoice_corrections` extension (`506729c7`, migration `2026_10_19_090000_extend_invoice_corrections_for_agreed_fee.php`) is on `main`, but live dumps still report `correction_schema_missing`. Deploy run `39319720013` (`8e6228a3`) Start release train stood down: run `39241462999` already served the `2026-10-19T10:17Z` window (`TRAIN_WINDOWS_UTC=04:17 10:17`). Next automatic train ≈ `2026-10-20T04:17Z`, or Founder manual `deploy.yml` `phase=release-train` from `main` after tip CI green, then approve `production-activation`. Keep `billing.agreed_fee_correction_enabled` **default-off** until case-specific POP packs exist.
 3. **Allowlist config surface** — after tip is live, use Founder-gated `agreed-fee-allowlist-activation.yml` (`set_allowlist` / `clear_allowlist`) with repo secrets; does **not** enable the API flag.
 4. **Per-case POP** — after decrypt + live schema, authorize 4064/3693 alignment separately; 3753 needs original reversal-row proof + owner disposition (do not force-align).
 5. **Affected-path verification** — required after each correction before counting N/3.
