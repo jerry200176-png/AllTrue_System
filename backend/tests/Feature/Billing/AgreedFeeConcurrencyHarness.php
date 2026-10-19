@@ -68,21 +68,25 @@ abstract class AgreedFeeConcurrencyHarness extends TestCase
         ]);
         return $worker + ['connection_file' => $connectionFile];
     }
-    protected function awaitBlocked(array $worker): void
+    protected function awaitBlocked(array $worker, string $table = 'StudentClass'): void
     {
         $this->await($worker['connection_file']);
         $id = (int) file_get_contents($worker['connection_file']);
         $this->assertGreaterThan(0, $id);
         $deadline = microtime(true) + 3;
         do {
-            // INNODB_TRX is supported by both hosted MySQL8 and local MariaDB.
-            $row = DB::selectOne('SELECT trx_state FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = ?', [$id]);
-            if (($row->trx_state ?? null) === 'LOCK WAIT') return;
-            // InnoDB metadata snapshots are cached; leave time for a fresh sample.
-            usleep(200000);
+            // Without PROCESS, MySQL/MariaDB still expose this account's own threads.
+            // The winner holds this fixture's row; require its contender's exact
+            // locking read to be pending on the server, not merely a PHP marker.
+            $row = DB::selectOne('SELECT COMMAND, TIME, INFO FROM information_schema.PROCESSLIST WHERE ID = ?', [$id]);
+            $sql = strtolower((string) ($row->INFO ?? ''));
+            if (($row->COMMAND ?? null) === 'Execute' || ($row->COMMAND ?? null) === 'Query') {
+                if ((int) $row->TIME >= 1 && str_contains($sql, 'from `'.strtolower($table).'`')
+                    && str_contains($sql, 'for update')) return;
+            }
+            usleep(20000);
         } while (microtime(true) < $deadline);
-        $state = DB::selectOne('SELECT STATE FROM information_schema.PROCESSLIST WHERE ID = ?', [$id]);
-        $this->fail('contender must actually wait on an InnoDB lock before releasing the winner; last_trx='.json_encode($row).'; state='.json_encode($state));
+        $this->fail('contender must reach the held-row locking query before releasing the winner');
     }
     protected function await(string $file): void
     {

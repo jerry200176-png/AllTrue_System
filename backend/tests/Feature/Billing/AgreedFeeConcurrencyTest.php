@@ -18,7 +18,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
         $pause = $this->pause('from `studentclass` where `studentclass`.`id` =');
         $one = $this->spawn($f, 'fee', $first, null, $pause); $this->await($pause['ready']);
         $two = $this->spawn($f, 'fee', $second);
-        $this->awaitBlocked($two);
+        $this->awaitBlocked($two, 'Student');
         touch($pause['release']);
         $a = $this->finish($one); $b = $this->finish($two);
         $this->assertSame(200, $a['status'], json_encode($a)); $this->assertSame($sameKey ? 200 : 409, $b['status'], json_encode($b));
@@ -119,7 +119,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
             $first = $issueWins ? $this->spawn($f, 'issue', $issueBody, null, $pause) : $this->spawn($f, 'fee', $input, null, $pause);
             $this->await($pause['ready']);
             $second = $issueWins ? $this->spawn($f, 'fee', $input) : $this->spawn($f, 'issue', $issueBody);
-            $this->awaitBlocked($second);
+            $this->awaitBlocked($second, 'Student');
             touch($pause['release']);
             $this->assertSame($issueWins ? 201 : 200, $this->finish($first)['status']);
             $this->assertSame($issueWins ? 409 : 201, $this->finish($second)['status']);
