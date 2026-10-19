@@ -210,6 +210,70 @@ class Contract4131StaleTeacherCase(unittest.TestCase):
 
     CASE = "contract_4131_stale_teacher"
 
+    def execute_case(self, head="a" * 40, ancestor=0):
+        rows = []
+        for ident, status, day, teacher, kind in [
+            (1, "scheduled", "01", 7, "regular"), (2, "scheduled", "01", 9, "regular"),
+            (3, "leave", "01", 9, "regular"), (4, "rescheduled", "01", 9, "regular"),
+            (5, "scheduled", "02", 9, "regular"), (6, "scheduled", "03", 9, "regular"),
+            (7, "scheduled", "01", 9, "extra"),
+        ]:
+            rows.append(dict(id=ident, status=status, schedule_date="2026-12-" + day,
+                             student_course_id=4131, teacher_id=teacher, type=kind,
+                             start_time="13:00", end_time="15:00", original_schedule_id=None))
+        service = WF.parents[2] / "backend/app/Services/StaleScheduleExceptionFilter.php"
+        # Run the rendered production branch and the actual canonical filter. Only
+        # database rows and git identity are fixtures; no production access occurs.
+        setup = r'''<?php
+namespace Illuminate\Support\Facades {
+class DB {
+    public static function raw($s) { return $s; }
+    public static function table($s) { return new class {
+        public function whereIn($a, $b) { return $this; }
+        public function select(...$a) { return $this; }
+        public function get() { return $GLOBALS['sessions']; }
+    }; }
+}}
+namespace ProbeFixture {
+function shell_exec($s) { return HEAD; }
+function exec($s, &$output, &$exit) { $exit = ANCESTOR; return ''; }
+function app($s) {
+    if ($s !== 'db') return new \App\Services\StaleScheduleExceptionFilter();
+    $GLOBALS['db_touched']++;
+    return new class {
+        public function connection() { return $this; }
+        public function selectOne(...$a) { return (object) [
+            'class_id'=>4131, 'campus_id'=>16, 'teacher_id'=>7,
+            'schedule_mode'=>'count', 'class_type'=>'one_on_one',
+            'session_count'=>8, 'remaining_sessions'=>8, 'stop'=>0]; }
+        public function select(...$a) { return $GLOBALS['rows']; }
+    };
+}
+'''
+        setup += "const HEAD = " + json.dumps(head) + "; const ANCESTOR = " + str(ancestor) + ";\n"
+        setup += "require " + json.dumps(str(service)) + ";\n"
+        setup += "$GLOBALS['db_touched']=0; $GLOBALS['rows']=json_decode(" + json.dumps(json.dumps(rows)) + ");\n"
+        setup += "$GLOBALS['sessions']=[(object)['StudentClassID'=>4131,'ymd'=>'2026-12-02','StartTime'=>'13:00','Status'=>'cancelled'],(object)['StudentClassID'=>4131,'ymd'=>'2026-12-03','StartTime'=>'15:00','Status'=>'scheduled']];\n$out=[];\ntry {\n"
+        body = self.block().split("{", 1)[1]
+        source = setup + body + "\n} catch (\\Throwable $e) { $out=['error'=>$e->getMessage()]; }\n$out['db_touched']=$GLOBALS['db_touched']; echo json_encode($out);\n}\n"
+        result = subprocess.run(["php"], input=source, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_production_prerequisite_refuses_before_database_reads(self):
+        for head, ancestor, error in [("", 0, "production_identity_unavailable"),
+                                      ("a" * 40, 1, "required_fix_not_deployed")]:
+            out = self.execute_case(head, ancestor)
+            self.assertEqual(out, dict(error=error, db_touched=0))
+
+    def test_classification_excludes_inactive_and_moved_occurrences(self):
+        out = self.execute_case()
+        self.assertNotIn("error", out)
+        self.assertEqual([row["schedule_id"] for row in out["schedule_rows"]], [1, 2, 7])
+        self.assertEqual(out["stale_skip_teacher_ids"], [9])
+        self.assertEqual(out["counts"]["stale_skip_rows"], 1)
+        self.assertEqual(out["counts"]["keep_rows"], 2)
+
     def block(self):
         r = render(self.CASE)
         self.assertEqual(r.returncode, 0, r.stderr)

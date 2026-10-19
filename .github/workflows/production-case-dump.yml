@@ -2252,6 +2252,11 @@ jobs:
             // schedules.teacher_id rows vs contract TeacherID. Mirrors ScheduleGuardService
             // scheduleRowOccupiesQueriedTeacher keep/skip rules. IDs/enums/dates only; no names/phones/money.
             // Dot/Founder dispatch only after backend SHA ≥ eb39beb5f; Cursor must not self-dispatch.
+            $prodHead = trim((string) shell_exec('git rev-parse HEAD'));
+            if (!preg_match('/^[0-9a-f]{{40}}$/', $prodHead)) {{ throw new \\RuntimeException('production_identity_unavailable'); }}
+            exec('git merge-base --is-ancestor eb39beb5f08c008c85a3a2e3b2da6f31dbc205c8 '.escapeshellarg($prodHead), $unused, $ancestorExit);
+            if ($ancestorExit !== 0) {{ throw new \\RuntimeException('required_fix_not_deployed'); }}
+            $out['prod_head'] = $prodHead;
             $courseId = 4131;
             $requiredCampusId = 16;
             $cap = 200;
@@ -2267,11 +2272,17 @@ jobs:
             if ((int) $course->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('contract_4131: outside campus 16'); }}
             $contractTeacherId = (int) ($course->teacher_id ?? 0);
             $rows = $conn->select(
-              'SELECT id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
+              'SELECT id, student_course_id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
               .'FROM schedules WHERE student_course_id = ? ORDER BY schedule_date, start_time, id LIMIT '.($cap + 1),
               [$courseId]
             );
             if (count($rows) > $cap) {{ throw new \\LengthException('input_row_budget_exceeded'); }}
+            $rowsByDate = [];
+            foreach ($rows as $row) {{
+              if ((string) $row->status === 'scheduled') {{ $rowsByDate[(string) $row->schedule_date][] = $row; }}
+            }}
+            $eligibleByDate = app(\\App\\Services\\StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate);
+            $rows = $eligibleByDate === [] ? [] : array_merge(...array_values($eligibleByDate));
             $occupies = static function (object $row, int $queriedTeacherId, int $contractTeacherId): bool {{
               if ($contractTeacherId === $queriedTeacherId) {{ return true; }}
               $type = strtolower(trim((string) ($row->type ?? '')));
@@ -2328,6 +2339,7 @@ jobs:
               'course_row_present' => true,
               'campus_bound' => true,
               'read_only' => true,
+              'eligibility' => 'scheduled_then_canonical_stale_filter',
               'h1_rule' => 'skip normal leftover schedules.teacher_id when contract TeacherID already moved; keep extra|makeup|original_schedule_id',
               'pass_hint' => 'after eb39: occupancy on stale_skip_teacher_ids must ignore stale_skip_vs_contract=true rows',
             ];
