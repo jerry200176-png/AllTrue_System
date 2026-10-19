@@ -61,10 +61,28 @@ abstract class AgreedFeeConcurrencyHarness extends TestCase
     }
     protected function spawn(array $f, string $op, array $input, ?int $id = null, ?array $pause = null): array
     {
-        return $this->raceSpawn(base_path('tests/Support/agreed-fee-worker.php'), [
+        $connectionFile = $this->file();
+        $worker = $this->raceSpawn(base_path('tests/Support/agreed-fee-worker.php'), [
             'actor' => $this->actor($f), 'course_id' => $f['course']->ID,
-            'op' => $op, 'input' => $input, 'id' => $id, 'pause' => $pause,
+            'op' => $op, 'input' => $input, 'id' => $id, 'pause' => $pause, 'connection_file' => $connectionFile,
         ]);
+        return $worker + ['connection_file' => $connectionFile];
+    }
+    protected function awaitBlocked(array $worker): void
+    {
+        $this->await($worker['connection_file']);
+        $id = (int) file_get_contents($worker['connection_file']);
+        $this->assertGreaterThan(0, $id);
+        $deadline = microtime(true) + 3;
+        do {
+            // INNODB_TRX is supported by both hosted MySQL8 and local MariaDB.
+            $row = DB::selectOne('SELECT trx_state FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = ?', [$id]);
+            if (($row->trx_state ?? null) === 'LOCK WAIT') return;
+            // InnoDB metadata snapshots are cached; leave time for a fresh sample.
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+        $state = DB::selectOne('SELECT STATE FROM information_schema.PROCESSLIST WHERE ID = ?', [$id]);
+        $this->fail('contender must actually wait on an InnoDB lock before releasing the winner; last_trx='.json_encode($row).'; state='.json_encode($state));
     }
     protected function await(string $file): void
     {

@@ -14,6 +14,7 @@ Illuminate\Support\Facades\DB::purge();
 Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
 alltrue_install_sql_pause(is_array($data['pause'] ?? null) ? $data['pause'] : null, 'synthetic fee barrier timed out');
 try {
+    file_put_contents($data['connection_file'], (string) Illuminate\Support\Facades\DB::selectOne('SELECT CONNECTION_ID() AS id')->id);
     if (!empty($data['started'])) touch($data['started']);
     if ($data['op'] === 'fee') {
         $body = app(App\Services\Billing\AgreedFeeCorrection::class)->run($data['course_id'], $data['input'], $data['actor'], true);

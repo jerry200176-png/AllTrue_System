@@ -18,6 +18,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
         $pause = $this->pause('from `studentclass` where `studentclass`.`id` =');
         $one = $this->spawn($f, 'fee', $first, null, $pause); $this->await($pause['ready']);
         $two = $this->spawn($f, 'fee', $second);
+        $this->awaitBlocked($two);
         touch($pause['release']);
         $a = $this->finish($one); $b = $this->finish($two);
         $this->assertSame(200, $a['status'], json_encode($a)); $this->assertSame($sameKey ? 200 : 409, $b['status'], json_encode($b));
@@ -37,6 +38,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
             $first = $paymentWins ? $this->spawn($f, 'payment', ['Amount' => 500], $f['invoice']->id, $pause) : $this->spawn($f, 'fee', $input, null, $pause);
             $this->await($pause['ready']);
             $second = $paymentWins ? $this->spawn($f, 'fee', $input) : $this->spawn($f, 'payment', ['Amount' => 500], $f['invoice']->id);
+            $this->awaitBlocked($second);
             touch($pause['release']);
             $a = $this->finish($first); $b = $this->finish($second);
             $this->assertSame(200, $a['status'], json_encode($a)); $this->assertSame($paymentWins ? 409 : 422, $b['status'], json_encode($b));
@@ -50,7 +52,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
         $f = $this->fixture(); $input = $this->preview($f); $report = $this->reportFor($f);
         $pause = $this->pause('from `studentclass` where `studentclass`.`id` =');
         $confirm = $this->spawn($f, 'confirm', [], $report->id, $pause); $this->await($pause['ready']);
-        $fee = $this->spawn($f, 'fee', $input); touch($pause['release']);
+        $fee = $this->spawn($f, 'fee', $input); $this->awaitBlocked($fee); touch($pause['release']);
         $this->assertSame(200, $this->finish($confirm)['status']); $this->assertSame(409, $this->finish($fee)['status']);
         $this->assertSame('confirmed', $report->fresh()->status); $this->assertSame(1, Payment::count());
         $this->assertSame(0, DB::table('invoice_corrections')->count());
@@ -65,7 +67,8 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
         $winner = $this->spawn($f, 'void', ['void_reason' => 'Winning synthetic reversal'], $report->id);
         $this->assertSame(200, $this->finish($winner)['status']);
         $input = $this->preview($f); $fee = $this->spawn($f, 'fee', $input); $this->assertSame(200, $this->finish($fee)['status']);
-        touch($pause['release']); $this->assertSame(422, $this->finish($stale)['status']);
+        touch($pause['release']); $rejected = $this->finish($stale); $this->assertSame(422, $rejected['status']);
+        $this->assertSame('此收款已處理過，請重新整理', $rejected['body']['message'] ?? null);
         $this->assertSame(1, Payment::where('Method', 'void')->count()); $this->assertSame(2, Payment::count());
         $this->assertSame('void', $f['invoice']->fresh()->Status); $this->assertSame('voided', $report->fresh()->status);
         $this->assertSame(500, (int) $f['course']->fresh()->Charge);
@@ -80,6 +83,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
             $first = $voidWins ? $this->spawn($f, $operation, ['reason' => 'Synthetic invoice void'], $f['invoice']->id, $pause) : $this->spawn($f, 'fee', $input, null, $pause);
             $this->await($pause['ready']);
             $second = $voidWins ? $this->spawn($f, 'fee', $input) : $this->spawn($f, $operation, ['reason' => 'Synthetic invoice void'], $f['invoice']->id);
+            $this->awaitBlocked($second);
             touch($pause['release']);
             $this->assertSame(200, $this->finish($first)['status']); $this->assertSame($voidWins ? 409 : 422, $this->finish($second)['status']);
             $this->assertSame('void', $f['invoice']->fresh()->Status); $this->assertSame($voidWins ? 8000 : 500, (int) $f['course']->fresh()->Charge);
@@ -96,6 +100,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
             $first = $recordWins ? $this->spawn($f, 'record', $recordBody, null, $pause) : $this->spawn($f, 'fee', $input, null, $pause);
             $this->await($pause['ready']);
             $second = $recordWins ? $this->spawn($f, 'fee', $input) : $this->spawn($f, 'record', $recordBody);
+            $this->awaitBlocked($second);
             touch($pause['release']);
             $this->assertSame(200, $this->finish($first)['status']); $this->assertSame($recordWins ? 409 : 422, $this->finish($second)['status']);
             $this->assertSame($recordWins ? 1 : 0, PaymentReport::where('StudentClassID', $f['course']->ID)->count());
@@ -114,6 +119,7 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
             $first = $issueWins ? $this->spawn($f, 'issue', $issueBody, null, $pause) : $this->spawn($f, 'fee', $input, null, $pause);
             $this->await($pause['ready']);
             $second = $issueWins ? $this->spawn($f, 'fee', $input) : $this->spawn($f, 'issue', $issueBody);
+            $this->awaitBlocked($second);
             touch($pause['release']);
             $this->assertSame($issueWins ? 201 : 200, $this->finish($first)['status']);
             $this->assertSame($issueWins ? 409 : 201, $this->finish($second)['status']);

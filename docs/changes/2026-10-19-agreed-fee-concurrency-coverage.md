@@ -4,3 +4,5 @@
 
 - Preserve the existing separate-process/PDO race matrix for fee replay, real receipt/report/void writers and invoice issuance, using the shipped isolated-database guard and race-worker lifecycle.
 - No production code, schema migration, feature flag, dependencies or workflow changes. Ephemeral test schema remains owned by the existing test helper; the general production fee flag stays false.
+
+- Verify each contender is in an actual InnoDB lock wait before releasing its winning peer, and require the authoritative stale-report rejection message. Missing contender SQL and removed status-recheck mutations both fail the strengthened assertions.
