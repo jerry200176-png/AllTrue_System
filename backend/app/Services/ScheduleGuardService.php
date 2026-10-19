@@ -213,6 +213,9 @@ class ScheduleGuardService
      */
     public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false): array
     {
+        if ($lock && $course->exists) {
+            $course = \App\Models\StudentClass::query()->whereKey($course->getKey())->lockForUpdate()->firstOrFail();
+        }
         return $this->validateScheduleOccurrence([
             'teacher_id' => (int) $course->getAttribute('TeacherID'),
             'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
@@ -1367,18 +1370,25 @@ class ScheduleGuardService
         $scheduledRows = app(StaleScheduleExceptionFilter::class)
             ->rejectStale($scheduledRows, $date, $lock);
 
-        $classSessions = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+        // Bound current locks from the campus access path, regardless of optimizer
+        // cardinality. A teacher-first join can lock another campus's course.
+        $classSessionsQuery = $lock
+            ? DB::table(DB::raw('Student as st FORCE INDEX (idx_student_campus_name)'))
+                ->join(DB::raw('StudentClass as sc FORCE INDEX (idx_sc_student_id)'), 'sc.StudentID', '=', 'st.id')
+                ->join(DB::raw('ClassSession as cs FORCE INDEX (cs_scid_sessiondate_idx)'), 'cs.StudentClassID', '=', 'sc.ID')
+            : DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID');
+        $classSessions = $classSessionsQuery
             ->where('sc.TeacherID', $teacherId)
             ->where('sc.Stop', 0)
             ->where('st.CampusID', $branchId)
-            ->whereDate('cs.SessionDate', $date)
+            ->when($lock, fn ($q) => $q->where('cs.SessionDate', $date), fn ($q) => $q->whereDate('cs.SessionDate', $date))
             // Leave-type sessions free up the slot, matching the frontend capacity
             // badge (LEAVE_STATUSES) and LearningRecordController's skip set. (#557)
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->select([
-                'cs.StudentClassID',
+                $lock ? DB::raw('STRAIGHT_JOIN cs.StudentClassID') : 'cs.StudentClassID',
                 'cs.StartTime',
                 'cs.EndTime',
                 'sc.StudentID',

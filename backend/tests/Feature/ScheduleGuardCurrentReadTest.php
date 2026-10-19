@@ -181,4 +181,141 @@ class ScheduleGuardCurrentReadTest extends TestCase
         }
     }
 
+    private function currentReadFixture(int $campusId, int $teacherId, array $changes = []): StudentClass
+    {
+        $student = Student::factory()->create(['CampusID' => $campusId]);
+        $this->ownedStudentIds[] = $student->id;
+        $course = StudentClass::create(array_replace([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one', 'by1' => 1, 'Period' => 4, 'Stop' => 0,
+            'StartDate' => '2026-12-01', 'TotalHours' => 16, 'SessionCount' => 8,
+            'SessionDuration' => 120, 'RemainingSessions' => 8, 'UsedSessions' => 0,
+            'Charge' => 1600, 'Pay' => 0, 'Paid' => 0, 'Rate' => 200, 'MDate' => now(), 'ScheduleMode' => 'count',
+        ], $changes));
+        $this->ownedCourseIds[] = $course->ID;
+        return $course;
+    }
+
+    public function test_current_class_session_scan_does_not_lock_another_campus_course_or_session(): void
+    {
+        $original = DB::getDefaultConnection();
+        config(['database.connections.occupancy_scope' => config('database.connections.' . $original)]);
+        $reader = DB::connection('occupancy_scope');
+        $timeout = (int) DB::selectOne('SELECT @@innodb_lock_wait_timeout AS value')->value;
+        $courses = [];
+        foreach ([1, 2] as $unused) {
+            $campus = Campus::factory()->create();
+            $this->ownedCampusIds[] = $campus->id;
+            $course = $this->currentReadFixture($campus->id, 78171);
+            $id = DB::table('ClassSession')->insertGetId(['StudentClassID' => $course->ID,
+                'SessionDate' => '2026-12-29', 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
+            $courses[] = [$course, $campus->id, $id];
+        }
+        // A sparse teacher over a populated campus makes the teacher-first join
+        // a real optimizer choice, rather than relying on a two-row toy plan.
+        for ($i = 0; $i < 20; $i++) $this->currentReadFixture($courses[0][1], 79000 + $i);
+        try {
+            $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $reader->beginTransaction();
+            DB::setDefaultConnection('occupancy_scope');
+            $entries = app(ScheduleGuardService::class)->buildTeacherDateOccupancyEntries(78171, $courses[0][1], '2026-12-29', null, null, null, null, null, true);
+            $this->assertCount(1, $entries);
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+            $this->assertSame(1, DB::table('StudentClass')->where('ID', $courses[1][0]->ID)->update(['Period' => 5]));
+            $this->assertSame(1, DB::table('ClassSession')->where('id', $courses[1][2])->update(['EndTime' => '16:00']));
+        } finally {
+            while ($reader->transactionLevel() > 0) $reader->rollBack();
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = ' . $timeout);
+            DB::purge('occupancy_scope');
+        }
+    }
+
+    public function test_current_makeup_scan_does_not_lock_another_teachers_schedule(): void
+    {
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => true]);
+        $original = DB::getDefaultConnection();
+        config(['database.connections.occupancy_scope' => config('database.connections.' . $original)]);
+        $reader = DB::connection('occupancy_scope');
+        $timeout = (int) DB::selectOne('SELECT @@innodb_lock_wait_timeout AS value')->value;
+        $campus = Campus::factory()->create();
+        $this->ownedCampusIds[] = $campus->id;
+        $schedules = [];
+        foreach ([78171, 78172] as $teacherId) {
+            $course = $this->currentReadFixture($campus->id, $teacherId + 10);
+            $sessionId = DB::table('ClassSession')->insertGetId(['StudentClassID' => $course->ID,
+                'SessionDate' => '2026-12-29', 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
+            DB::table('LearningRecord')->insert(['StudentClassID' => $course->ID, 'ClassSessionID' => $sessionId,
+                'TeacherID' => $teacherId, 'Status' => 'pending', 'Content' => '', 'SessionDate' => '2026-12-29',
+                'StartTime' => '13:00', 'EndTime' => '15:00']);
+            $schedules[] = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID, 'student_id' => $course->StudentID,
+                'teacher_id' => $teacherId + 10, 'branch_id' => $campus->id, 'schedule_date' => '2026-12-29',
+                'day_of_week' => 2, 'subject' => 'synthetic', 'start_time' => '13:00', 'end_time' => '15:00',
+                'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'extra', 'deduction' => 1]);
+        }
+        $optimizer = (string) $reader->selectOne('SELECT @@optimizer_switch AS value')->value;
+        try {
+            // Correlated EXISTS is also a supported plan. Lock scope must not
+            // depend on the optimizer choosing a semijoin/materialized rewrite.
+            $reader->statement("SET SESSION optimizer_switch = 'semijoin=off,materialization=off'");
+            $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $reader->beginTransaction();
+            DB::setDefaultConnection('occupancy_scope');
+            $rows = \App\Services\SubstituteScheduleService::makeupOccurrencesTaughtBy(78171, '2026-12-29', [], null, $campus->id, true);
+            $this->assertCount(1, $rows);
+            $this->assertSame($schedules[0], (int) $rows[0]->id);
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+            $this->assertSame(1, DB::table('schedules')->where('id', $schedules[1])->update(['end_time' => '16:00']));
+        } finally {
+            while ($reader->transactionLevel() > 0) $reader->rollBack();
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = ' . $timeout);
+            $reader->statement('SET SESSION optimizer_switch = ?', [$optimizer]);
+            DB::purge('occupancy_scope');
+        }
+    }
+
+    public function test_current_course_guard_refreshes_proposed_teacher_type_and_room(): void
+    {
+        $original = DB::getDefaultConnection();
+        config(['database.connections.occupancy_current' => config('database.connections.' . $original)]);
+        $reader = DB::connection('occupancy_current');
+        $campus = Campus::factory()->create();
+        $this->ownedCampusIds[] = $campus->id;
+        try {
+            foreach (['teacher', 'class_type', 'room'] as $kind) {
+                $room = $kind === 'room' ? DB::table('rooms')->insertGetId(['campus_id' => $campus->id, 'name' => 'synthetic fresh room', 'capacity' => 1]) : null;
+                if ($room) $this->ownedRoomIds[] = $room;
+                $teacher = 78200 + count($this->ownedCourseIds);
+                $proposed = $this->currentReadFixture($campus->id, $teacher, ['ClassType' => 'one_on_three']);
+                $other = $this->currentReadFixture($campus->id, $kind === 'teacher' ? $teacher + 100 : $teacher,
+                    ['ClassType' => 'one_on_three', 'room_id' => $room]);
+                DB::table('ClassSession')->insert(['StudentClassID' => $other->ID, 'SessionDate' => '2026-12-29',
+                    'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
+                $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+                $reader->beginTransaction();
+                DB::setDefaultConnection('occupancy_current');
+                $stale = StudentClass::findOrFail($proposed->ID);
+                $guard = app(ScheduleGuardService::class);
+                $this->assertSame([], $guard->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00'));
+                DB::setDefaultConnection($original);
+                $changes = match ($kind) { 'teacher' => ['TeacherID' => $teacher + 100, 'ClassType' => 'one_on_one'],
+                    'class_type' => ['ClassType' => 'one_on_one'], 'room' => ['room_id' => $room] };
+                DB::table('StudentClass')->where('ID', $proposed->ID)->update($changes);
+                DB::setDefaultConnection('occupancy_current');
+                $this->assertSame([], $guard->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00'), 'unlocked model remains stale');
+                $conflicts = $guard->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00', true);
+                $this->assertSame($room ? 'room_capacity' : 'teacher_capacity', $conflicts[0]['type'] ?? null, $kind . ': proposed metadata must be current');
+                $reader->rollBack();
+                DB::setDefaultConnection($original);
+            }
+        } finally {
+            while ($reader->transactionLevel() > 0) $reader->rollBack();
+            DB::setDefaultConnection($original);
+            DB::purge('occupancy_current');
+        }
+    }
+
 }

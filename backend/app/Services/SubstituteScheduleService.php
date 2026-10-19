@@ -291,18 +291,29 @@ class SubstituteScheduleService
         if ($teacherId <= 0 || !self::anyCampusOn()) {
             return [];
         }
-        $q = DB::table('schedules as m')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
-            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->whereDate('m.schedule_date', $ymd)
-            ->where('m.status', 'scheduled')->where('m.type', 'extra')
-            ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId)) // own-teacher rows are already counted
-            ->whereRaw(self::campusOnSql('st.CampusID'))
-            ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
-                ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
-                ->whereColumn('cs.StudentClassID', 'm.student_course_id')
-                ->whereDate('cs.SessionDate', $ymd)
-                ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId)->when($lock, fn ($q) => $q->lockForUpdate()));
+        // Current reads start from the target teacher's provenance, not every
+        // other teacher's extra schedule in the branch. Preserve the canonical
+        // ClassSession date and teacherForOccurrence verification below.
+        $q = $lock
+            ? DB::table(DB::raw('LearningRecord as current_lr FORCE INDEX (idx_lr_teacher_class_session)'))
+                ->join('ClassSession as current_cs', 'current_cs.id', '=', 'current_lr.ClassSessionID')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'current_cs.StudentClassID')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->join(DB::raw('schedules as m FORCE INDEX (idx_sched_course_date_time_status)'), 'm.student_course_id', '=', 'sc.ID')
+                ->where('current_lr.TeacherID', $teacherId)->whereNull('current_lr.VoidedAt')
+                ->where('current_cs.SessionDate', $ymd)->where('m.schedule_date', $ymd)->distinct()
+            : DB::table('schedules as m')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->whereDate('m.schedule_date', $ymd)
+                ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
+                    ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
+                    ->whereColumn('cs.StudentClassID', 'm.student_course_id')
+                    ->whereDate('cs.SessionDate', $ymd)
+                    ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId));
+        $q->where('m.status', 'scheduled')->where('m.type', 'extra')
+            ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId))
+            ->whereRaw(self::campusOnSql('st.CampusID'));
         if ($excludeScheduleIds) {
             $q->whereNotIn('m.id', $excludeScheduleIds);
         }
@@ -312,7 +323,7 @@ class SubstituteScheduleService
         if ($branchId) {
             $q->where('m.branch_id', $branchId);
         }
-        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get(['m.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
+        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
             DB::raw('COALESCE(m.student_id, sc.StudentID) as student_id'), DB::raw("COALESCE(sc.ClassType, 'one_on_one') as class_type")]);
 
         return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, $lock) === $teacherId)->values()->all();

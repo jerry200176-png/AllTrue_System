@@ -89,6 +89,8 @@ last_reviewed: 2026-09-05
 
 ### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
 
+- **2026-10-19 current-read 補充**：鎖定查詢不能依賴小型 fixture 的幸運 join plan；以有其他校區／老師資料及合法 correlated-EXISTS plan 的獨立 PDO 寫入驗證鎖範圍。existing proposed course 的老師／班型／教室也須在 caller 當前交易內重讀；不可沿用 model 原 connection，否則可能跨連線等自己的鎖。
+
 **2026-10-18 current-read 補充**：apply 不能沿用 RR 舊快照的老師占用；canonical ScheduleGuard 的 current mode 必須貫穿 schedules、ClassSession、stale filter、course metadata 與代課 LearningRecord/occurrence provenance。只鎖最外層查詢不能保證子查詢也讀最新。以獨立 PDO 先證明一般查詢仍舊，再確認 current guard 讀到已提交預約；preview 預設不鎖，不改 global isolation，仍守校區與 self exclusion。
 
 - **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。

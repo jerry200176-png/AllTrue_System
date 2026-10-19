@@ -12,10 +12,16 @@ return new class extends Migration
         Schema::table('schedules', function (Blueprint $table) {
             $table->index(['branch_id', 'teacher_id', 'schedule_date'], 'idx_schedules_teacher_day');
         });
+        Schema::table('LearningRecord', function (Blueprint $table) {
+            $table->index(['TeacherID', 'ClassSessionID'], 'idx_lr_teacher_class_session');
+        });
     }
 
     public function down(): void
     {
+        Schema::table('LearningRecord', function (Blueprint $table) {
+            $table->dropIndex('idx_lr_teacher_class_session');
+        });
         Schema::table('schedules', function (Blueprint $table) {
             $table->dropIndex('idx_schedules_teacher_day');
         });
