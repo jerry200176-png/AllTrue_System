@@ -230,6 +230,13 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
             : ($hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations'));
         if ($monthlyUnverified && $out['completeness'] === 'complete') $out['completeness'] = 'monthly_amount_unverified';
         if ($linkIssues !== [] && $out['completeness'] === 'complete') $out['completeness'] = 'payment_links_inconsistent';
+        // Live UnpaidInvoiceChargeAlignmentStrategy preview (read-only). state_hash matches POP expected_state_hash.
+        // correction_schema_missing does not block this path; only strategy eligible()/preview() matters.
+        try {
+            $out['alignment_preview'] = alltrue_fee_alignment_preview($course, $invoices, $campusId, $courseId);
+        } catch (\Throwable) {
+            $out['alignment_preview'] = ['eligible' => false, 'error' => 'preview_failed'];
+        }
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
         $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));
@@ -240,4 +247,43 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         if ($conn->transactionLevel() > 0) $conn->rollBack();
     }
     return $out;
+}
+
+/**
+ * @param  \Illuminate\Support\Collection<int, object>  $invoices
+ * @return array{eligible: bool, state_hash?: string, old_total?: int, new_total?: int, error?: string}
+ */
+function alltrue_fee_alignment_preview(object $course, $invoices, int $campusId, int $courseId): array
+{
+    if ($invoices->count() !== 1) {
+        return ['eligible' => false, 'error' => 'invoice_scope'];
+    }
+    $inv = $invoices->first();
+    $params = [
+        'student_id' => (int) $course->StudentID,
+        'course_id' => $courseId,
+        'campus_id' => $campusId,
+        'invoice_id' => (int) $inv->id,
+        'expected_invoice_total' => (int) $inv->TotalAmount,
+        'expected_charge' => (int) $course->Charge,
+        // Preview-only reference; not part of state_hash. Must match strategy decision_reference grammar.
+        'decision_reference' => 'xinzhuang-align-'.$courseId.'-livehash',
+    ];
+    try {
+        $preview = app(\App\Operations\Strategies\UnpaidInvoiceChargeAlignmentStrategy::class)->preview($params);
+
+        return [
+            'eligible' => true,
+            'state_hash' => (string) $preview['state_hash'],
+            'old_total' => (int) $preview['old_total'],
+            'new_total' => (int) $preview['new_total'],
+            'invoice_id' => (int) $inv->id,
+            'student_id' => (int) $course->StudentID,
+        ];
+    } catch (\Throwable $e) {
+        $msg = $e->getMessage();
+        $code = preg_match('/invoice_alignment:([a-z0-9_]+)/', $msg, $m) === 1 ? $m[1] : 'preview_failed';
+
+        return ['eligible' => false, 'error' => $code];
+    }
 }
