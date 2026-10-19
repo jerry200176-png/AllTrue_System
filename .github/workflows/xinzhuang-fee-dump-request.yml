@@ -1,8 +1,10 @@
+# governance-capability: non-production
 name: Xinzhuang fee dump request
 
 # Cloud agents often lack workflow_dispatch. Mirror bug-detail-dump: push a request
 # file on main → dispatch Production Case Dump for allowlisted course IDs only.
 # Child workflow still uses production-ssh + DUMP_ARTIFACT_KEY fail-closed.
+# Not inventory-listed: dispatcher has no SSH/artisan markers; child production-case-dump.yml stays classified.
 on:
   push:
     branches: [main]
