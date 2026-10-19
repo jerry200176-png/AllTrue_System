@@ -830,7 +830,7 @@ class PaymentReportController extends Controller
             }
             // Confirmation locks report → course; course lock already serializes new reports.
             if ($pending = PaymentReport::query()->where('StudentClassID', $course->getKey())->where('status', 'pending')->first()) {
-                return response()->json(['message' => '此課程已有「等你確認」的繳費回報，請先確認收款或退回後再登錄。',
+                return response()->json(['message' => '此課程已有「已回報付款，待你核對入帳」的繳費回報，請先確認收款或退回後再登錄。',
                     'code' => 'pending_report_exists', 'report_id' => $pending->id], 422);
             }
 
@@ -853,7 +853,7 @@ class PaymentReportController extends Controller
             Log::info('PaymentReport director-record correction reissue', ['report_id' => $report->getKey(), 'invoice_id' => $invoice->id,
                 'replaces_invoice_id' => $replaced->id, 'user_id' => $userId]);
 
-            return response()->json(['message' => '已開更正帳單並送出，等你確認', 'report_id' => $report->getKey(), 'payment_id' => null,
+            return response()->json(['message' => '已開更正帳單並送出，待你核對入帳', 'report_id' => $report->getKey(), 'payment_id' => null,
                 'invoice_id' => (int) $invoice->id, 'status' => 'pending', 'correction_id' => $correctionId]);
         });
     }
