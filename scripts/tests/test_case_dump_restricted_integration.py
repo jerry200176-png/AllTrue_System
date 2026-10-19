@@ -17,7 +17,7 @@ class RestrictedCaseIntegration(unittest.TestCase):
     def shell(self, script, root, env):
         return subprocess.run(['bash'], input=script, cwd=root, env=env, capture_output=True, text=True)
 
-    def exercise(self, *, key=KEY, restricted_id='876543210', ssh_exit=0, bad_case=False, malformed=False, campus=11, read_only=True, subject='數學', teachers='', case=CASE):
+    def exercise(self, *, key=KEY, restricted_id='876543210', ssh_exit=0, bad_case=False, malformed=False, campus=11, read_only=True, subject='數學', teachers='', case=CASE, completeness=SENTINEL):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             runner = root / 'runner'
@@ -37,7 +37,7 @@ class RestrictedCaseIntegration(unittest.TestCase):
             payload = {'ok': True, 'case': SENTINEL if bad_case else case,
                        'read_only_transaction': read_only, 'campus_bound': campus,
                        'snapshot_complete': False, 'contract': {'class_id': 'target'},
-                       'reason': SENTINEL, 'completeness': SENTINEL,
+                       'reason': SENTINEL, 'completeness': completeness,
                        'diagnostic': SENTINEL, 'synthetic_id': restricted_id}
             (runner / 'fixture').write_text('{broken ' + SENTINEL if malformed else json.dumps(payload) + '\n')
             env = {'PATH': str(bindir) + ':' + os.environ['PATH'], 'RUNNER_TEMP': str(runner),
@@ -74,10 +74,10 @@ class RestrictedCaseIntegration(unittest.TestCase):
             self.assertNotIn(SENTINEL, public)
             if restricted_id:
                 self.assertNotIn(restricted_id, public)
-            return probe.returncode, enc.returncode, files, recovered, (runner / 'ssh-called').exists()
+            return probe.returncode, enc.returncode, files, recovered, (runner / 'ssh-called').exists(), enc.stdout
 
     def test_restricted_probe_encryption_round_trip_and_cleanup(self):
-        code, enc, files, recovered, called = self.exercise()
+        code, enc, files, recovered, called, _ = self.exercise()
         self.assertEqual((code, enc, called), (0, 0, True))
         self.assertEqual(files, ['production-case.full.tar.gz.enc', 'production-case.full.tar.gz.enc.sha256'])
         self.assertIn(SENTINEL, recovered)
@@ -85,13 +85,13 @@ class RestrictedCaseIntegration(unittest.TestCase):
     def test_missing_or_short_encryption_key_never_reaches_ssh_or_upload(self):
         for key in ('', 'short'):
             with self.subTest(key=key):
-                code, _, files, _, called = self.exercise(key=key)
+                code, _, files, _, called, _ = self.exercise(key=key)
                 self.assertNotEqual(code, 0)
                 self.assertFalse(called)
                 self.assertEqual(files, [])
 
     def test_missing_restricted_id_never_reaches_ssh(self):
-        code, _, files, _, called = self.exercise(restricted_id='')
+        code, _, files, _, called, _ = self.exercise(restricted_id='')
         self.assertNotEqual(code, 0)
         self.assertFalse(called)
         self.assertEqual(files, [])
@@ -99,7 +99,7 @@ class RestrictedCaseIntegration(unittest.TestCase):
     def test_ssh_failure_and_malformed_json_keep_diagnostics_encrypted(self):
         for args in ({'ssh_exit': 23}, {'malformed': True}):
             with self.subTest(args=args):
-                code, enc, files, recovered, called = self.exercise(**args)
+                code, enc, files, recovered, called, _ = self.exercise(**args)
                 self.assertNotEqual(code, 0)
                 self.assertEqual(enc, 0)
                 self.assertTrue(called)
@@ -109,18 +109,18 @@ class RestrictedCaseIntegration(unittest.TestCase):
     def test_restricted_case_refuses_public_subject_and_teacher_overrides(self):
         for args in ({'subject': SENTINEL}, {'teachers': '123'}):
             with self.subTest(args=args):
-                code, _, _, _, called = self.exercise(**args)
+                code, _, _, _, called, _ = self.exercise(**args)
                 self.assertNotEqual(code, 0)
                 self.assertFalse(called)
 
     def test_wrong_campus_or_missing_read_only_evidence_fails(self):
         for args in ({'campus': 12}, {'read_only': False}):
             with self.subTest(args=args):
-                code, _, _, _, _ = self.exercise(**args)
+                code, _, _, _, _, _ = self.exercise(**args)
                 self.assertNotEqual(code, 0)
 
     def test_payload_case_cannot_be_printed_to_public_log(self):
-        code, _, _, _, _ = self.exercise(bad_case=True)
+        code, _, _, _, _, _ = self.exercise(bad_case=True)
         self.assertNotEqual(code, 0)
 
 
@@ -130,16 +130,27 @@ class XinzhuangFeeTransport(unittest.TestCase):
     shell = RestrictedCaseIntegration.shell
     # Reuse the same real encryption/SSH-stub boundary without inheriting old-case test cases.
     def test_fee_case_uses_encrypted_transport_and_cleanup(self):
-        code, enc, files, recovered, called = self.exercise(case='xinzhuang_fee_cases', restricted_id='4064')
+        code, enc, files, recovered, called, public = self.exercise(case='xinzhuang_fee_cases', restricted_id='4064')
         self.assertEqual((code, enc, called), (0, 0, True))
         self.assertEqual(len(files), 2)
         self.assertIn(SENTINEL, recovered)
+        # Unknown completeness token stays private; public log shows withheld.
+        self.assertIn('"completeness": "withheld"', public)
+
+    def test_fee_case_publishes_allowlisted_completeness_token(self):
+        code, enc, files, recovered, called, public = self.exercise(
+            case='xinzhuang_fee_cases', restricted_id='4064', completeness='correction_schema_missing')
+        self.assertEqual((code, enc, called), (0, 0, True))
+        self.assertEqual(len(files), 2)
+        self.assertIn(SENTINEL, recovered)
+        self.assertIn('"completeness": "correction_schema_missing"', public)
+        self.assertNotIn(SENTINEL, public)
 
     def test_fee_case_scope_and_payload_guards(self):
         for override in ({'restricted_id': '999999'}, {'campus': 9}, {'read_only': False}, {'bad_case': True}, {'subject': SENTINEL}, {'teachers': '123'}):
             args = dict(case='xinzhuang_fee_cases', restricted_id='4064')
             args.update(override)
-            code, _, _, _, _ = self.exercise(**args)
+            code, _, _, _, _, _ = self.exercise(**args)
             self.assertNotEqual(code, 0)
 
 
