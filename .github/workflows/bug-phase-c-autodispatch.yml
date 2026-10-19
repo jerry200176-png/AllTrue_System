@@ -3,9 +3,9 @@ name: Bug Phase-C auto-dispatch (newly allowlisted IDs)
 # RETIRED (ADR-POP-015 / ADR-POP-008, 2026-10-19): runner→SSH→tinker engineering resolves
 # are no longer auto-dispatched. Adding a new allowlist ID fails closed so merges cannot
 # silently re-enable the legacy write path. Wording-only allowlist edits (no new IDs) pass.
-# Engineering Phase-C must use Pi-local `inapp-report-resolve-after-deploy` + `pop:execute-approved`
-# once that operation is catalogued and standing policy is enabled. Public wording-only
-# corrections use `bug-followup-comment.yml` (no status resolve via SSH allowlist).
+# Currently runnable replacement: `bug-followup-comment.yml` (wording-only; no status change).
+# ADR-POP-015 names Pi-local `inapp-report-resolve-after-deploy` + `pop:execute-approved`,
+# but that operation is not in operations/catalog.yaml yet — do not treat the name as executable.
 on:
   push:
     branches: [main]
@@ -15,8 +15,11 @@ on:
 permissions:
   contents: read
 
+# Per-SHA group: with a shared group GitHub keeps only one pending run, so a
+# wording-only push can drop an earlier pending ID-add refuse. Unique groups
+# preserve every push's before/after baseline (#4289 Codex P2).
 concurrency:
-  group: bug-phase-c-autodispatch
+  group: bug-phase-c-autodispatch-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -52,7 +55,7 @@ jobs:
           )"
           echo "newly allowlisted: ${ids:-none}"
           if [ -n "$ids" ]; then
-            echo "::error::Legacy SSH Phase-C autodispatch is retired (ADR-POP-015). Refusing new allowlist IDs: $ids. Do not resolve in-app reports via bug-phase-c-allowlist.yml; use Pi-local inapp-report-resolve-after-deploy / pop:execute-approved, or bug-followup-comment.yml for wording-only."
+            echo "::error::Legacy SSH Phase-C autodispatch is retired (ADR-POP-015). Refusing new allowlist IDs: $ids. Do not resolve via bug-phase-c-allowlist.yml. Currently runnable: bug-followup-comment.yml (wording-only). inapp-report-resolve-after-deploy is ADR-named but not catalogued yet."
             exit 1
           fi
           echo "OK: no new allowlist IDs; wording-only allowlist edits do not dispatch SSH resolve."

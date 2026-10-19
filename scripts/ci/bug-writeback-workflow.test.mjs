@@ -203,8 +203,23 @@ assert.ok(phaseASource.includes('$svc::normalizeDispositionOptions(['),
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
 assert.ok(phaseCSource.includes('legacy_ssh_phase_c_retired:ADR-POP-015'),
   'Phase-C SSH tinker write path must stay retired (ADR-POP-015)');
+{
+  // Refuse must appear before any BugReportService write in the remote script.
+  const remote = phaseCSource.split("<<'REMOTE'")[1] || '';
+  const throwAt = remote.indexOf('legacy_ssh_phase_c_retired:ADR-POP-015');
+  const commentAt = remote.indexOf('::addComment');
+  const statusAt = remote.indexOf('::changeStatus');
+  assert.ok(throwAt >= 0, 'remote script must throw the retirement guard');
+  assert.ok(commentAt < 0 || throwAt < commentAt, 'retirement throw must precede addComment');
+  assert.ok(statusAt < 0 || throwAt < statusAt, 'retirement throw must precede changeStatus');
+}
 assert.match(fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8'),
   /Refuse newly allowlisted IDs/, 'Phase-C autodispatch must refuse new allowlist IDs');
+assert.match(
+  fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8'),
+  /bug-phase-c-autodispatch-\$\{\{ github\.sha \}\}/,
+  'autodispatch concurrency must be per-SHA so pending ID-add refuses are not dropped',
+);
 assert.match(phaseCSource, /workflow_dispatch:\s+inputs:\s+bug_id:\s+description:[^\n]+\s+required: true/,
   'Phase-C manual dispatch must require one target ID');
 assert.match(phaseCSource, /re\.fullmatch\(r"bug_id:\[ \\t\]\*\(\[1-9\]\[0-9\]\*\)/,
@@ -212,11 +227,11 @@ assert.match(phaseCSource, /re\.fullmatch\(r"bug_id:\[ \\t\]\*\(\[1-9\]\[0-9\]\*
 assert.match(phaseCSource, /if len\(target_lines\) != 1:/,
   'Phase-C request-file push must reject absent or ambiguous target IDs');
 assert.match(phaseCSource, /TARGET_BUG_ID: \$\{\{ steps\.target\.outputs\.bug_id \}\}/,
-  'Phase-C must pass the validated target into the write step');
+  'Phase-C must pass the validated target into the retired remote step');
 assert.match(phaseCSource, /TARGET_BUG_ID='\$TARGET_BUG_ID' bash/,
-  'Phase-C must pass only the numeric target to the remote write step');
+  'Phase-C must pass only the numeric target to the remote step');
 assert.match(phaseCSource, /!isset\(\$items\[\$targetBugId\]\)/,
-  'Phase-C must reject targets absent from the allowlist before writes');
+  'Phase-C must reject targets absent from the allowlist before the remote step');
 assert.match(phaseCSource, /git merge-base --is-ancestor/,
   'Phase-C must prove the allowlisted revision is an ancestor of production');
 assert.match(phaseCSource, /\$items = \[\$targetBugId => \$target\];[\s\S]*?foreach \(\$items as \$bugId => \$cfg\)/,

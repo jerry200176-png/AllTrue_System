@@ -4,8 +4,8 @@ name: Bug Phase-C allowlist resolve (Pi)
 # WRITE PATH RETIRED 2026-10-19 (ADR-POP-015 / ADR-POP-008): the remote step throws
 # legacy_ssh_phase_c_retired before any BugReportService write. Keep allowlist map +
 # request-file parser for control-plane contract tests and audit. Do not remove the throw.
-# Engineering Phase-C: Pi-local inapp-report-resolve-after-deploy + pop:execute-approved.
-# Wording-only: bug-followup-comment.yml. Autodispatch fails closed on new allowlist IDs.
+# Currently runnable: bug-followup-comment.yml (wording-only). ADR-named
+# inapp-report-resolve-after-deploy is not catalogued yet. Autodispatch fails closed on new IDs.
 on:
   workflow_dispatch:
     inputs:
