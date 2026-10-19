@@ -1126,6 +1126,36 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("types: [completed]", self.workflow)
         self.assertIn("branches: [main]", self.workflow)
 
+    def test_calendar_course_acceptance_listens_for_deploy_run_identities(self):
+        """#4207: couple acceptance workflow_run names to deploy.yml identities.
+
+        deploy.yml keeps workflow name "Deploy to Pi" and sets run-name to
+        "Release train" for phase=release-train. Successful Release train runs
+        (e.g. 38905001544, 39241462999) did not start calendar-course-acceptance
+        while merge "Deploy to Pi" runs did. Docs say workflow_run.workflows
+        matches the workflow file name; observed API run.name follows run-name.
+        Listing both identities (and locking them here) prevents a silent
+        rename disconnect. Does not change acceptance assertions or gates.
+        """
+        acceptance = (WORKFLOW.parent / "calendar-course-acceptance.yml").read_text(
+            encoding="utf-8"
+        )
+        name_line = re.search(r"^name:\s*(.+)$", self.workflow, re.M)
+        self.assertIsNotNone(name_line)
+        self.assertEqual(name_line.group(1).strip().strip("'\""), "Deploy to Pi")
+        self.assertIn(
+            "run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}",
+            self.workflow,
+        )
+        wr_start = acceptance.index("\n  workflow_run:")
+        wr_block = acceptance[wr_start : acceptance.index("\npermissions:", wr_start)]
+        for identity in ("Deploy to Pi", "Release train"):
+            self.assertRegex(
+                wr_block,
+                rf"(?m)^(?:\s+-\s+{re.escape(identity)}\s*$|\s+workflows:.*['\"]{re.escape(identity)}['\"])",
+                msg=f"calendar-course-acceptance workflow_run must list {identity!r}",
+            )
+
     def test_manual_activation_is_existing_workflow_dispatch_and_environment_gate(self):
         self.assertIn("repository_dispatch:", self.workflow)
         self.assertIn("autonomous-production-deploy", self.workflow)
