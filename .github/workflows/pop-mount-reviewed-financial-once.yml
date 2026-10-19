@@ -57,6 +57,10 @@ jobs:
           assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
           print(f"mount_ok label={os.environ.get('CASE_LABEL')} tuples=1 valid_until={c['valid_until']}")
           PY
+          ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            'mkdir -p /home/admin/backend/storage/app/private/pop'
           scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$SSH_DIR/reviewed-financial-cases.json" \
