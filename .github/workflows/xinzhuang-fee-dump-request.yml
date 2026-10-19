@@ -1,0 +1,88 @@
+# governance-capability: non-production
+name: Xinzhuang fee dump request
+
+# Cloud agents often lack workflow_dispatch. Mirror bug-detail-dump: push a request
+# file on main → dispatch Production Case Dump for allowlisted course IDs only.
+# Child workflow still uses production-ssh + DUMP_ARTIFACT_KEY fail-closed.
+# Not inventory-listed: dispatcher has no SSH/artisan markers; child production-case-dump.yml stays classified.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/xinzhuang-fee-dump.request.md'
+      - '.github/workflows/xinzhuang-fee-dump-request.yml'
+  workflow_dispatch:
+    inputs:
+      student_class_ids:
+        description: 'Comma-separated StudentClass IDs (allowlisted: 4064,3753,3693)'
+        required: true
+        type: string
+
+concurrency:
+  group: xinzhuang-fee-dump-request
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout request
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            operations/closeout/xinzhuang-fee-dump.request.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Parse allowlisted course IDs
+        id: cfg
+        env:
+          DISPATCH_IDS: ${{ inputs.student_class_ids || '' }}
+        run: |
+          set -euo pipefail
+          IDS=$(python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          allowed = {'4064', '3753', '3693'}
+          raw = (os.environ.get('DISPATCH_IDS') or '').strip()
+          if not raw:
+              text = Path('operations/closeout/xinzhuang-fee-dump.request.md').read_text(encoding='utf-8')
+              m = re.search(r'(?m)^student_class_ids:\s*([0-9,\s]+)\s*$', text)
+              if not m:
+                  raise SystemExit('student_class_ids missing (request file or workflow_dispatch input)')
+              raw = m.group(1)
+          ids = [p.strip() for p in raw.split(',') if p.strip()]
+          if not ids:
+              raise SystemExit('student_class_ids empty')
+          bad = [i for i in ids if i not in allowed]
+          if bad:
+              raise SystemExit(f'student_class_ids not allowlisted: {bad}; allowed={sorted(allowed)}')
+          if len(ids) != len(set(ids)):
+              raise SystemExit('duplicate student_class_ids')
+          print(','.join(ids))
+          PY
+          )
+          echo "ids=$IDS" >> "$GITHUB_OUTPUT"
+          echo "Parsed allowlisted ids: $IDS"
+
+      - name: Dispatch production-case-dump per course
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDS: ${{ steps.cfg.outputs.ids }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -r -a ARR <<< "$IDS"
+          for id in "${ARR[@]}"; do
+            echo "Dispatching xinzhuang_fee_cases student_class_id=$id"
+            gh workflow run production-case-dump.yml \
+              --repo "${{ github.repository }}" \
+              --ref main \
+              -f case_key=xinzhuang_fee_cases \
+              -f student_class_id="$id"
+          done
+          echo "Dispatched ${#ARR[@]} production-case-dump run(s). Watch Actions; production-ssh env may require Founder approval."
