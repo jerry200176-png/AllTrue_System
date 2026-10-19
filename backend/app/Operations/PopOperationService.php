@@ -930,20 +930,23 @@ final class PopOperationService
         catch (Throwable) { throw new RuntimeException('Reviewed financial Founder authorization expiry is malformed.'); }
         $parametersHash = hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
         $requesterHash = hash('sha256', $requester);
-        if (($case['operation_id'] ?? null) !== ($entry['id'] ?? null)
-            || !hash_equals($case['parameters_sha256'], $parametersHash)
-            || !hash_equals($case['idempotency_sha256'], hash('sha256', $key))
-            || !hash_equals($case['requester_sha256'], $requesterHash)
-            || !is_string($case['approval_reference'])
-            || $case['approval_reference'] !== 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16)
-            || !$expiry || $expiry->utc()->format('Y-m-d\\TH:i:s\\Z') !== $case['valid_until']
-            || $expiry->timestamp <= now()->timestamp
-            || ($reference !== null && $ttlMinutes !== null && now()->addMinutes($ttlMinutes)->timestamp > $expiry->timestamp)) {
-            throw new RuntimeException('Reviewed financial request does not match the exact Founder authorization.');
+        if (($case['operation_id'] ?? null) !== ($entry['id'] ?? null)) throw new RuntimeException('Reviewed financial authorization operation mismatch.');
+        if (!hash_equals($case['parameters_sha256'], $parametersHash)) throw new RuntimeException('Reviewed financial authorization parameters mismatch.');
+        if (!hash_equals($case['idempotency_sha256'], hash('sha256', $key))) throw new RuntimeException('Reviewed financial authorization key mismatch.');
+        if (!hash_equals($case['requester_sha256'], $requesterHash)) throw new RuntimeException('Reviewed financial authorization requester mismatch.');
+        if (!is_string($case['approval_reference'])
+            || $case['approval_reference'] !== 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16)) {
+            throw new RuntimeException('Reviewed financial authorization reference mismatch.');
+        }
+        if (!$expiry || $expiry->utc()->format('Y-m-d\\TH:i:s\\Z') !== $case['valid_until'] || $expiry->timestamp <= now()->timestamp) {
+            throw new RuntimeException('Reviewed financial authorization expiry is invalid or expired.');
+        }
+        if ($reference !== null && $ttlMinutes !== null && now()->addMinutes($ttlMinutes)->timestamp > $expiry->timestamp) {
+            throw new RuntimeException('Reviewed financial approval TTL exceeds the exact authorization expiry.');
         }
         if ($reference !== null && ($reference !== $case['approval_reference'] || $approverId === null
             || $approver !== 'user:' . $approverId || !hash_equals($case['approver_sha256'], hash('sha256', $approver)))) {
-            throw new RuntimeException('Reviewed financial approval does not match the authorized case and operation.');
+            throw new RuntimeException('Reviewed financial approval does not match the exact authorized case and operation.');
         }
         return $case;
     }

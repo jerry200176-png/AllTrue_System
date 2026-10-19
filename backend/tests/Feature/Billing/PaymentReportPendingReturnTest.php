@@ -244,7 +244,7 @@ class PaymentReportPendingReturnTest extends TestCase
                 $this->refuse(fn () => $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id), 'current preview');
                 $this->assertSame(0, DB::table('pop_approval_events')->where('operation_id', $r['id'])->count());
             } finally { DB::rollBack(); }
-            $this->refuse(fn () => $pop->approve($r['id'], 'founder-go-synthetic-case', $actor, 'super_admin', str_repeat('c', 40), $f['user']->id), 'exact');
+            $this->refuse(fn () => $pop->approve($r['id'], 'founder-go-synthetic-case', $actor, 'super_admin', str_repeat('c', 40), $f['user']->id), 'exact authorized case');
             $this->refuse(fn () => $pop->approve($r['id'], $reference, 'user:999999', 'super_admin', str_repeat('c', 40), 999999), 'exact');
             $approval = $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id);
             $this->assertTrue($approval['ready']); $this->assertSame(['super_admin'], $approval['required_roles']);
@@ -294,13 +294,15 @@ class PaymentReportPendingReturnTest extends TestCase
 
     public function test_initial_authenticated_http_preview_is_read_only_and_requires_new_confirmed_draft(): void
     {
-        [$f, $p] = $this->candidate(); $this->refuse(fn () => app(\App\Operations\PopOperationService::class)->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'api_client:synthetic', 'pop_machine', [1], 1), 'human'); $p['expected_state_hash'] = ''; $headers = ['Authorization' => 'Bearer '.$f['token']];
+        [$f, $p] = $this->candidate(); $this->refuse(fn () => app(\App\Operations\PopOperationService::class)->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'api_client:synthetic', 'pop_machine', [1], 1), 'human'); $p['expected_state_hash'] = null; $headers = ['Authorization' => 'Bearer '.$f['token']];
         $dir = sys_get_temp_dir().'/pending-http-auth-'.Str::uuid(); mkdir($dir, 0700); $authorization = $dir.'/case.json';
         config(['pop.reviewed_financial_cases_path' => $authorization]); $actor = 'user:'.$f['user']->id;
         $draft = function ($parameters) use ($headers, $authorization, $actor) {
             $key = (string) Str::uuid(); $this->writeFinancialAuthorization($authorization, $parameters, $key, $actor);
-            return $this->postJson('/api/v1/pop/operations/'.ReturnReport::OPERATION.'/draft',
-                ['parameters' => $parameters, 'idempotency_key' => $key], $headers)->assertCreated()->json('data.id');
+            $response = $this->postJson('/api/v1/pop/operations/'.ReturnReport::OPERATION.'/draft',
+                ['parameters' => $parameters, 'idempotency_key' => $key], $headers);
+            $this->assertSame(201, $response->status(), $response->getContent());
+            return $response->json('data.id');
         };
         $id = $draft($p); $preview = $this->postJson('/api/v1/pop/operations/requests/'.$id.'/dry-run', [], $headers)->assertStatus(422)->json('data.plan');
         $this->assertFalse($preview['ok']); $this->assertSame('preview_confirmation_required', $preview['errors'][0]);
