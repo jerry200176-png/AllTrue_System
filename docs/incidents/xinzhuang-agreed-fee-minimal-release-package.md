@@ -1,0 +1,28 @@
+# Xinzhuang agreed-fee correction: minimal release package
+
+**Risk:** R3 / T3 — billing schema, bounded API activation, and later financial repair.
+**State:** implementation candidate only; no merge, deployment, schema write, feature activation, or financial write is authorized by this package.
+
+## Production evidence and reconciliation
+
+The deployed backend source contains `2026_10_15_120000_create_invoice_corrections_table.php`. That migration creates `invoice_corrections` only when the table is absent and returns immediately when it already exists. The post-deployment read-only checks confirmed that the table exists, `security_audit_events` exists, and the agreed-fee extension columns do not. The production migration ledger was not inspected through SSH and remains unverified; no migration was run during this investigation.
+
+`AgreedFeeCorrection::available()` requires these seven fields on `invoice_corrections`: `kind`, `campus_id`, `old_charge`, `new_charge`, `original_invoice_total`, `request_hash`, and `state_hash`. The controller also returns 404 while `billing.agreed_fee_correction_enabled` is false. The proposed migration adds those fields, makes the existing invoice links and amount nullable for the already-supported unbilled correction kind, and adds the existing service's `(student_class_id, idempotency_key)` uniqueness requirement. It preserves old rows with `kind='receipt_reissue'` and null extension metadata.
+
+## Scope and release gates
+
+The existing API and behavior from #4259 are reused. No UI from the stale #4251 draft is included. The proposed campus/course allowlist fails closed when empty. Production allowlist values must be supplied only through a protected deployment configuration path and must name the three cases in the private handoff; values and case evidence must not be committed to this repository or printed in workflow logs. The existing deploy workflow currently has no agreed-fee allowlist configuration surface, so a release operator must identify the supported protected configuration path before requesting production activation. The feature remains default-off until that activation is separately authorized.
+
+For course 003753, the private parallel history review found that the excess reversal and pending report can be planned as a signed-net-zero sequence, but the exported evidence omitted the original reversal row. The original server-side row proof and owner disposition are still mandatory before any restatement or fee correction. The other two cases likewise require fresh post-release previews before case-specific financial authorization.
+
+## Migration compatibility and rollback
+
+- **Phase:** Expand only; nullable metadata plus a safe default; old code ignores the additional columns.
+- **Reversibility:** `down()` restores the old table shape only when the permanent history table is empty. With any history row, it refuses and retains the schema.
+- **Production rollback:** disable/rollback application code through the standard deployment workflow and keep the additive schema. Do not run `migrate:rollback` against permanent correction history.
+- **Feature rollback:** leave or restore the literal flag to false and clear the bounded allowlist through the approved runtime configuration path.
+- **Financial rollback:** not included. Each later POP operation has its own immutable manifest, preconditions, authorization, and verifier.
+
+## Required verification before release
+
+Run exact-head CI, migration dry-run against MariaDB 10.11, independent review, and direct post-release read-only previews for the three allowlisted courses. Verify migration fields, feature flag, allowlist, campus checks, and the absence of payment/report/receipt side effects. Keep acceptance at 0/3 until each correction is executed through the in-app SOP and verified against authoritative records.

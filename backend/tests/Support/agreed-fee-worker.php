@@ -10,6 +10,14 @@ try {
     exit(90);
 }
 config(['billing.agreed_fee_correction_enabled' => true]);
+// Parent PHPUnit process config does not cross into this PDO/process. Install the
+// same campus/course allowlists the harness fixture used, or fee ops 404 as out-of-scope.
+$campusIds = array_values(array_map('intval', (array) ($data['allowlist_campus_ids'] ?? [])));
+$courseIds = array_values(array_map('intval', (array) ($data['allowlist_course_ids'] ?? [])));
+config([
+    'billing.agreed_fee_correction_campus_ids' => $campusIds,
+    'billing.agreed_fee_correction_course_ids' => $courseIds,
+]);
 Illuminate\Support\Facades\DB::purge();
 Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 5');
 alltrue_install_sql_pause(is_array($data['pause'] ?? null) ? $data['pause'] : null, 'synthetic fee barrier timed out');
