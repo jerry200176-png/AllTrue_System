@@ -1,10 +1,10 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-19T19:50Z  
+Last updated: 2026-10-19T20:15Z  
 Acceptance: **0/3** (courses 4064 / 3753 / 3693)  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
-## Tip evidence (main `5e4c48c0`)
+## Tip evidence (dumps on `5e4c48c0`; main tip now `8e6228a3`)
 
 Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 
@@ -30,6 +30,7 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 - #4293 request-file dump dispatcher  
 - #4296 serialize dumps (recovered cancelled 3753)  
 - #4297 public closeout status + queue dump refresh
+- #4300 Founder-gated `agreed-fee-allowlist-activation.yml` on main (`8e6228a3`); secrets + tip activation still required before `set_allowlist`
 
 ## Related
 
