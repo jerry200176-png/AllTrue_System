@@ -1130,6 +1130,7 @@ jobs:
     if: ${{ always() && (github.event_name == 'schedule' || ((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.release_train != 'true' && needs.release-state.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation')) }}
     permissions:
       actions: write # dispatch deploy.yml phase=release-train; no other write
+      contents: read # compare tip vs window-serving train head_sha (supplemental kick)
     concurrency:
       group: alltrue-release-train-kick
       cancel-in-progress: false
@@ -1173,14 +1174,23 @@ jobs:
           fi
           # One train per window: a train since the window that asked for approval or deployed
           # used it. A train that stood down or found nothing to deploy does not count.
+          # Supplemental exception: if main tip is ahead of every used train head_sha (tip
+          # advanced after an earlier window deploy), allow another dispatch. Founder
+          # production-activation still gates every train. Compare via API (no checkout).
+          TIP="$(gh api "/repos/${REPO}/commits/main" --jq '.sha')"
           TRAINS="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_dispatch&created=%3E%3D${SINCE}&per_page=100" \
             --jq '.workflow_runs[] | select(.display_title == "Release train") | .id')"
           for run in $TRAINS; do
             USED="$(gh api "/repos/${REPO}/actions/runs/${run}/jobs?per_page=100" \
               --jq '[.jobs[] | select((.name == "Founder production approval (same run)" or .name == "Deploy to Production") and .conclusion != "skipped")] | length')"
             if [[ "$USED" -ge 1 ]]; then
-              echo "::notice::Release train: run ${run} already served the ${SINCE} window; the next window takes later merges."
-              exit 0
+              head="$(gh api "/repos/${REPO}/actions/runs/${run}" --jq '.head_sha')"
+              CMP="$(gh api "/repos/${REPO}/compare/${head}...${TIP}" --jq '.status')"
+              if [[ "$CMP" == "identical" || "$CMP" == "behind" ]]; then
+                echo "::notice::Release train: run ${run} already served the ${SINCE} window; the next window takes later merges."
+                exit 0
+              fi
+              echo "::notice::Release train: run ${run} served ${SINCE} at ${head:0:8}, but tip ${TIP:0:8} is ${CMP}; checking supplemental dispatch."
             fi
           done
           gh api -X POST "/repos/${REPO}/actions/workflows/deploy.yml/dispatches" \

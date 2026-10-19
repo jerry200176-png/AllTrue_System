@@ -1074,15 +1074,21 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("PENDING=$((PENDING + n))", job)
         self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
         # One train per window: a train since the window that reached approval or deploy used it.
+        # Tip-ahead supplemental: compare served head...tip; stand down only if identical/behind.
         self.assertIn("created=%3E%3D${SINCE}", job)
         self.assertIn('select(.display_title == "Release train")', job)
         self.assertIn('(.name == "Founder production approval (same run)" or .name == "Deploy to Production") and .conclusion != "skipped"', job)
+        self.assertIn('commits/main', job)
+        self.assertIn("/compare/${head}...${TIP}", job)
+        self.assertIn('"identical" || "$CMP" == "behind"', job)
+        self.assertIn("supplemental dispatch", job)
         self.assertLess(job.index('if [[ "$USED" -ge 1 ]]'), dispatch)
         for name in ("Founder production approval (same run)", "Deploy to Production"):
             self.assertIn(f"    name: {name}\n", self.workflow)
         self.assertIn("group: alltrue-release-train-kick", job)
         # Least privilege; it never approves, reviews, or touches environments.
         self.assertIn("permissions:\n      actions: write", job)
+        self.assertIn("contents: read", job)
         for forbidden in ("environment", "pending_deployments", "contents: write", "secrets."):
             self.assertNotIn(forbidden, job)
 
