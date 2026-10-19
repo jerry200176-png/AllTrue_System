@@ -98,6 +98,10 @@ actor digests, the exact `founder-go-{operation_id}-{parameter_hash_prefix}`
 reference, and `valid_until`. The application checks that tuple at draft,
 approval, and execution; approval also recomputes the strategy preview against
 live evidence, and execution repeats the authorization and strategy guards.
+The approval TTL must fit inside `valid_until`. Once a successful execute exists,
+the recorded exact approval remains sufficient to renew verify/rollback access
+after expiry; those proof-bound continuation phases do not depend on a still-live
+eligibility tuple.
 Any catalog version change invalidates old requests and previews. The database
 super_admin approval, deployed SHA, Pi-local executor, atomic proof, verification
 and rollback guards remain mandatory. A release approval or merge is not a
