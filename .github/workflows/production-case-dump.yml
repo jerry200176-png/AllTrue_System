@@ -2261,89 +2261,103 @@ jobs:
             $requiredCampusId = 16;
             $cap = 200;
             $conn = app('db')->connection();
-            $course = $conn->selectOne(
-              'SELECT sc.ID AS class_id, sc.StudentID AS student_id, s.CampusID AS campus_id, sc.TeacherID AS teacher_id, '
-              .'sc.ScheduleMode AS schedule_mode, sc.ClassType AS class_type, sc.SessionCount AS session_count, '
-              .'sc.RemainingSessions AS remaining_sessions, sc.Stop AS stop '
-              .'FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID WHERE sc.ID = ?',
-              [$courseId]
-            );
-            if ($course === null) {{ throw new \\RuntimeException('contract_4131: student_class not found'); }}
-            if ((int) $course->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('contract_4131: outside campus 16'); }}
-            $contractTeacherId = (int) ($course->teacher_id ?? 0);
-            $rows = $conn->select(
-              'SELECT id, student_course_id, branch_id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
-              .'FROM schedules WHERE student_course_id = ? ORDER BY schedule_date, start_time, id LIMIT '.($cap + 1),
-              [$courseId]
-            );
-            if (count($rows) > $cap) {{ throw new \\LengthException('input_row_budget_exceeded'); }}
-            $rowsByDate = [];
-            foreach ($rows as $row) {{
-              if ((int) $row->branch_id !== $requiredCampusId) {{ throw new \\RuntimeException('schedule_campus_mismatch'); }}
-              if ((string) $row->status === 'scheduled') {{ $rowsByDate[(string) $row->schedule_date][] = $row; }}
-            }}
-            $eligibleByDate = app(\\App\\Services\\StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate);
-            $rows = $eligibleByDate === [] ? [] : array_merge(...array_values($eligibleByDate));
-            $occupies = static function (object $row, int $queriedTeacherId, int $contractTeacherId): bool {{
-              if ($contractTeacherId === $queriedTeacherId) {{ return true; }}
-              $type = strtolower(trim((string) ($row->type ?? '')));
-              if ($type === 'extra' || $type === 'makeup') {{ return true; }}
-              if ((int) ($row->original_schedule_id ?? 0) > 0) {{ return true; }}
-              return false;
-            }};
-            $classified = [];
-            $staleSkipTeacherIds = [];
-            foreach ($rows as $r) {{
-              $tid = $r->teacher_id === null ? null : (int) $r->teacher_id;
-              $keep = $tid === null ? false : $occupies($r, $tid, $contractTeacherId);
-              $staleSkip = $tid !== null && $contractTeacherId > 0 && $tid !== $contractTeacherId && !$keep;
-              if ($staleSkip) {{ $staleSkipTeacherIds[$tid] = true; }}
-              $classified[] = [
-                'schedule_id' => (int) $r->id,
-                'teacher_id' => $tid,
-                'schedule_date' => (string) $r->schedule_date,
-                'start_time' => substr((string) $r->start_time, 0, 5),
-                'end_time' => substr((string) $r->end_time, 0, 5),
-                'status' => (string) ($r->status ?? ''),
-                'type' => $r->type === null || $r->type === '' ? null : (string) $r->type,
-                'original_schedule_id' => $r->original_schedule_id === null ? null : (int) $r->original_schedule_id,
-                'occupies_row_teacher' => $keep,
-                'stale_skip_vs_contract' => $staleSkip,
+            if ($conn->transactionLevel() !== 0) {{ throw new \\RuntimeException('existing_transaction'); }}
+            $conn->useWriteConnectionWhenReading();
+            $conn->select('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ', [], false);
+            $conn->select('SET TRANSACTION READ ONLY', [], false);
+            $conn->beginTransaction();
+            try {{
+              $course = $conn->selectOne(
+                'SELECT sc.ID AS class_id, sc.StudentID AS student_id, s.CampusID AS campus_id, sc.TeacherID AS teacher_id, '
+                .'sc.ScheduleMode AS schedule_mode, sc.ClassType AS class_type, sc.SessionCount AS session_count, '
+                .'sc.RemainingSessions AS remaining_sessions, sc.Stop AS stop '
+                .'FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID WHERE sc.ID = ?',
+                [$courseId]
+              );
+              if ($course === null) {{ throw new \\RuntimeException('contract_4131: student_class not found'); }}
+              if ((int) $course->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('contract_4131: outside campus 16'); }}
+              $contractTeacherId = (int) ($course->teacher_id ?? 0);
+              $rows = $conn->select(
+                'SELECT id, student_course_id, branch_id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
+                .'FROM schedules WHERE student_course_id = ? ORDER BY schedule_date, start_time, id LIMIT '.($cap + 1),
+                [$courseId]
+              );
+              if (count($rows) > $cap) {{ throw new \\LengthException('input_row_budget_exceeded'); }}
+              $rowsByDate = [];
+              foreach ($rows as $row) {{
+                if ((int) $row->branch_id !== $requiredCampusId) {{ throw new \\RuntimeException('schedule_campus_mismatch'); }}
+                if ((string) $row->status !== 'scheduled') {{ continue; }}
+                $ymd = (string) $row->schedule_date;
+                $parsed = \\DateTimeImmutable::createFromFormat('!Y-m-d', $ymd);
+                if (!$parsed || $parsed->format('Y-m-d') !== $ymd) {{ throw new \\RuntimeException('invalid_schedule_date'); }}
+                $rowsByDate[$ymd][] = $row;
+              }}
+              $eligibleByDate = app(\\App\\Services\\StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate);
+              $rows = $eligibleByDate === [] ? [] : array_merge(...array_values($eligibleByDate));
+              $occupies = static function (object $row, int $queriedTeacherId, int $contractTeacherId): bool {{
+                if ($contractTeacherId === $queriedTeacherId) {{ return true; }}
+                $type = strtolower(trim((string) ($row->type ?? '')));
+                if ($type === 'extra' || $type === 'makeup') {{ return true; }}
+                if ((int) ($row->original_schedule_id ?? 0) > 0) {{ return true; }}
+                return false;
+              }};
+              $classified = [];
+              $staleSkipTeacherIds = [];
+              foreach ($rows as $r) {{
+                $tid = $r->teacher_id === null ? null : (int) $r->teacher_id;
+                $keep = $tid === null ? false : $occupies($r, $tid, $contractTeacherId);
+                $staleSkip = $tid !== null && $contractTeacherId > 0 && $tid !== $contractTeacherId && !$keep;
+                if ($staleSkip) {{ $staleSkipTeacherIds[$tid] = true; }}
+                $classified[] = [
+                  'schedule_id' => (int) $r->id,
+                  'teacher_id' => $tid,
+                  'schedule_date' => (string) $r->schedule_date,
+                  'start_time' => substr((string) $r->start_time, 0, 5),
+                  'end_time' => substr((string) $r->end_time, 0, 5),
+                  'status' => (string) ($r->status ?? ''),
+                  'type' => $r->type === null || $r->type === '' ? null : (string) $r->type,
+                  'original_schedule_id' => $r->original_schedule_id === null ? null : (int) $r->original_schedule_id,
+                  'occupies_row_teacher' => $keep,
+                  'stale_skip_vs_contract' => $staleSkip,
+                ];
+              }}
+              $out['scope_lock'] = [
+                'course_id' => $courseId,
+                'campus_id' => $requiredCampusId,
+                'production_mutation' => false,
+                'fix_sha_hint' => 'eb39beb5f',
+                'inapp_ids' => [401, 402],
               ];
+              $out['contract'] = [
+                'class_id' => (int) $course->class_id,
+                'campus_id' => (int) $course->campus_id,
+                'teacher_id' => $contractTeacherId,
+                'schedule_mode' => (string) ($course->schedule_mode ?? ''),
+                'class_type' => (string) ($course->class_type ?? ''),
+                'session_count' => $course->session_count === null ? null : (int) $course->session_count,
+                'remaining_sessions' => $course->remaining_sessions === null ? null : (int) $course->remaining_sessions,
+                'stop' => (int) ($course->stop ?? 0),
+              ];
+              $out['schedule_rows'] = $classified;
+              $out['counts'] = [
+                'schedule_rows' => count($classified),
+                'stale_skip_rows' => count(array_filter($classified, fn ($r) => $r['stale_skip_vs_contract'])),
+                'keep_rows' => count(array_filter($classified, fn ($r) => $r['occupies_row_teacher'])),
+                'distinct_stale_skip_teacher_ids' => count($staleSkipTeacherIds),
+              ];
+              $out['stale_skip_teacher_ids'] = array_map('intval', array_keys($staleSkipTeacherIds));
+              $out['verification'] = [
+                'course_row_present' => true,
+                'campus_bound' => true,
+                'read_only' => true,
+                'snapshot_consistent' => true,
+                'eligibility' => 'scheduled_then_canonical_stale_filter',
+                'h1_rule' => 'skip normal leftover schedules.teacher_id when contract TeacherID already moved; keep extra|makeup|original_schedule_id',
+                'pass_hint' => 'after eb39: occupancy on stale_skip_teacher_ids must ignore stale_skip_vs_contract=true rows',
+              ];
+            }} finally {{
+              if ($conn->transactionLevel() > 0) {{ $conn->rollBack(); }}
             }}
-            $out['scope_lock'] = [
-              'course_id' => $courseId,
-              'campus_id' => $requiredCampusId,
-              'production_mutation' => false,
-              'fix_sha_hint' => 'eb39beb5f',
-              'inapp_ids' => [401, 402],
-            ];
-            $out['contract'] = [
-              'class_id' => (int) $course->class_id,
-              'campus_id' => (int) $course->campus_id,
-              'teacher_id' => $contractTeacherId,
-              'schedule_mode' => (string) ($course->schedule_mode ?? ''),
-              'class_type' => (string) ($course->class_type ?? ''),
-              'session_count' => $course->session_count === null ? null : (int) $course->session_count,
-              'remaining_sessions' => $course->remaining_sessions === null ? null : (int) $course->remaining_sessions,
-              'stop' => (int) ($course->stop ?? 0),
-            ];
-            $out['schedule_rows'] = $classified;
-            $out['counts'] = [
-              'schedule_rows' => count($classified),
-              'stale_skip_rows' => count(array_filter($classified, fn ($r) => $r['stale_skip_vs_contract'])),
-              'keep_rows' => count(array_filter($classified, fn ($r) => $r['occupies_row_teacher'])),
-              'distinct_stale_skip_teacher_ids' => count($staleSkipTeacherIds),
-            ];
-            $out['stale_skip_teacher_ids'] = array_map('intval', array_keys($staleSkipTeacherIds));
-            $out['verification'] = [
-              'course_row_present' => true,
-              'campus_bound' => true,
-              'read_only' => true,
-              'eligibility' => 'scheduled_then_canonical_stale_filter',
-              'h1_rule' => 'skip normal leftover schedules.teacher_id when contract TeacherID already moved; keep extra|makeup|original_schedule_id',
-              'pass_hint' => 'after eb39: occupancy on stale_skip_teacher_ids must ignore stale_skip_vs_contract=true rows',
-            ];
           }} elseif ($case === 'class_sessions_explain_319') {{
             // in-app #319 (#3069): EXPLAIN + timed paginate() of the /class-sessions index query for the real
             // Teacher Home request shapes. Read-only; plans, timings and row estimates only (no row data).

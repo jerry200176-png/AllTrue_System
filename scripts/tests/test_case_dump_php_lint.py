@@ -210,7 +210,7 @@ class Contract4131StaleTeacherCase(unittest.TestCase):
 
     CASE = "contract_4131_stale_teacher"
 
-    def execute_case(self, head="a" * 40, ancestor=0, foreign_row=False):
+    def execute_case(self, head="a" * 40, ancestor=0, foreign_row=False, invalid_date=False, transaction_diagnostics=False):
         rows = []
         for ident, status, day, teacher, kind in [
             (1, "scheduled", "01", 7, "regular"), (2, "scheduled", "01", 9, "regular"),
@@ -223,6 +223,8 @@ class Contract4131StaleTeacherCase(unittest.TestCase):
                              start_time="13:00", end_time="15:00", original_schedule_id=None))
         if foreign_row:
             rows.append({**rows[0], "id": 8, "branch_id": 99})
+        if invalid_date is not False:
+            rows.append({**rows[0], "id": 8, "schedule_date": invalid_date})
         service = WF.parents[2] / "backend/app/Services/StaleScheduleExceptionFilter.php"
         # Run the rendered production branch and the actual canonical filter. Only
         # database rows and git identity are fixtures; no production access occurs.
@@ -233,7 +235,7 @@ class DB {
     public static function table($s) { return new class {
         public function whereIn($a, $b) { return $this; }
         public function select(...$a) { return $this; }
-        public function get() { return $GLOBALS['sessions']; }
+        public function get() { $GLOBALS['read_tx_flags'][]=$GLOBALS['tx_open']; return $GLOBALS['sessions']; }
     }; }
 }}
 namespace ProbeFixture {
@@ -244,20 +246,33 @@ function app($s) {
     $GLOBALS['db_touched']++;
     return new class {
         public function connection() { return $this; }
-        public function selectOne(...$a) { return (object) [
+        public function transactionLevel() { return $GLOBALS['tx_open'] ? 1 : 0; }
+        public function useWriteConnectionWhenReading() { return $this; }
+        public function beginTransaction() {
+            if ($GLOBALS['tx_settings'] !== ['SET TRANSACTION ISOLATION LEVEL REPEATABLE READ', 'SET TRANSACTION READ ONLY']) throw new \RuntimeException('snapshot_configuration_invalid');
+            $GLOBALS['tx_open']=true;
+        }
+        public function rollBack() { $GLOBALS['tx_open']=false; }
+        public function selectOne(...$a) { $GLOBALS['read_tx_flags'][]=$GLOBALS['tx_open']; return (object) [
             'class_id'=>4131, 'campus_id'=>16, 'teacher_id'=>7,
             'schedule_mode'=>'count', 'class_type'=>'one_on_one',
             'session_count'=>8, 'remaining_sessions'=>8, 'stop'=>0]; }
-        public function select(...$a) { return $GLOBALS['rows']; }
+        public function select(...$a) {
+            if (str_starts_with($a[0], 'SET ')) { $GLOBALS['tx_settings'][]=$a[0]; return []; }
+            $GLOBALS['read_tx_flags'][]=$GLOBALS['tx_open']; return $GLOBALS['rows'];
+        }
     };
 }
 '''
         setup += "const HEAD = " + json.dumps(head) + "; const ANCESTOR = " + str(ancestor) + ";\n"
         setup += "require " + json.dumps(str(service)) + ";\n"
-        setup += "$GLOBALS['db_touched']=0; $GLOBALS['rows']=json_decode(" + json.dumps(json.dumps(rows)) + ");\n"
+        setup += "$GLOBALS['tx_open']=false; $GLOBALS['tx_settings']=[]; $GLOBALS['read_tx_flags']=[]; $GLOBALS['db_touched']=0; $GLOBALS['rows']=json_decode(" + json.dumps(json.dumps(rows)) + ");\n"
         setup += "$GLOBALS['sessions']=[(object)['StudentClassID'=>4131,'ymd'=>'2026-12-02','StartTime'=>'13:00','Status'=>'cancelled'],(object)['StudentClassID'=>4131,'ymd'=>'2026-12-03','StartTime'=>'15:00','Status'=>'scheduled']];\n$out=[];\ntry {\n"
         body = self.block().split("{", 1)[1]
-        source = setup + body + "\n} catch (\\Throwable $e) { $out=['error'=>$e->getMessage()]; }\n$out['db_touched']=$GLOBALS['db_touched']; echo json_encode($out);\n}\n"
+        finish = "\n} catch (\\Throwable $e) { $out=['error'=>$e->getMessage()]; }\n$out['db_touched']=$GLOBALS['db_touched'];\n"
+        if transaction_diagnostics:
+            finish += "$out['read_tx_flags']=$GLOBALS['read_tx_flags']; $out['tx_open']=$GLOBALS['tx_open'];\n"
+        source = setup + body + finish + "echo json_encode($out);\n}\n"
         result = subprocess.run(["php"], input=source, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
@@ -266,6 +281,19 @@ function app($s) {
         out = self.execute_case(foreign_row=True)
         self.assertEqual(out.get("error"), "schedule_campus_mismatch")
         self.assertNotIn("schedule_rows", out)
+
+    def test_missing_and_invalid_schedule_dates_refuse_evidence(self):
+        for value in (None, "", "0000-00-00", "2026-02-30"):
+            out = self.execute_case(invalid_date=value)
+            self.assertEqual(out.get("error"), "invalid_schedule_date")
+            self.assertNotIn("schedule_rows", out)
+
+    def test_all_data_reads_share_a_closed_snapshot(self):
+        for extra in ({}, {"foreign_row": True}, {"invalid_date": None}):
+            out = self.execute_case(transaction_diagnostics=True, **extra)
+            self.assertGreaterEqual(len(out["read_tx_flags"]), 2)
+            self.assertTrue(all(out["read_tx_flags"]))
+            self.assertFalse(out["tx_open"])
 
     def test_production_prerequisite_refuses_before_database_reads(self):
         for head, ancestor, error in [("", 0, "production_identity_unavailable"),
