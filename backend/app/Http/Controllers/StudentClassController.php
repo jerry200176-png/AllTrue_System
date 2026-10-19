@@ -575,6 +575,16 @@ class StudentClassController extends Controller
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
             $resolved = $courseStatuses[(int) $class->ID]['status'] ?? 'review_required';
+            if (in_array($role, ['director', 'super_admin'], true)) {
+                // Read projection of the existing batch verdict, never Charge-Pay.
+                // Keep review/unbilled distinct so consumers cannot invent AR.
+                $verdict = $courseStatuses[(int) $class->ID] ?? [];
+                $class->setAttribute('billing_verdict', [
+                    'status' => $verdict['status'] ?? 'review_required',
+                    'source' => $verdict['source'] ?? null,
+                    'outstanding' => $verdict['outstanding'] ?? null,
+                ]);
+            }
             $class->setAttribute('payment_status', match (true) {
                 // Waived (確認不收) stays `paid` here; the client labels it from closed_reason.
                 ContractMoneyState::isWaived($class) => 'paid',

@@ -82,8 +82,11 @@ class ContractMoneyCallersAgreeTest extends TestCase
             $answers['alerts_listing'] = "owes {$v->outstanding} but is not in the alert list (Paid={$c['paidFlag']})";
         }
         // 2. Course list.
-        $list = collect($this->withHeaders($headers)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $course->StudentID)->assertOk()->json());
+        $list = collect($this->withHeaders($headers)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $course->StudentID)->assertOk()->json('data'));
         $listRow = $list->first(fn ($r) => (int) ($r['ID'] ?? $r['id'] ?? 0) === $id);
+        $this->assertNotNull($listRow, 'seed ' . $seed . ': course list must exercise the seeded contract');
+        $this->assertSame(['status' => $v->status, 'source' => $v->source, 'outstanding' => $v->outstanding],
+            $listRow['billing_verdict'] ?? null, 'seed ' . $seed . ': canonical list verdict');
         if ($listRow && $class) {
             $listClass = match ($listRow['payment_status'] ?? '') {
                 'paid', 'free' => 'settled',
