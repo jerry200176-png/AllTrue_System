@@ -1,6 +1,6 @@
 # Current occupancy reads for atomic scheduling apply
 
-Scope: existing #4270 foundation for #4215/#4210; current main fe25f28b integrated. R3/T3, no production activation or flags. Prior revisions and RED evidence remain in Git history and review threads; this revision supersedes their proposed access paths.
+Scope: existing #4270 foundation for #4215/#4210; current main 78bf533e integrated. R3/T3, no production activation or flags. Prior revisions and RED evidence remain in Git history and review threads; this revision supersedes their proposed access paths.
 
 1. Preserve optional server-owned current mode and every unlocked default/guard. Canonical ClassSession date remains authoritative when LearningRecord dates drift; no alternate PDO, stale RR candidate read, global isolation change or engine-specific locking syntax.
 2. Current schedules/stale/ordinary-session lookups retain exact DATE equality and forced bounded indexes. Makeup discovery uses four CURRENT covering shared reads: campus Student IDs → StudentClass IDs → canonical-date session IDs → matching LR IDs. Only that matched graph enters the final exclusive join, forced from LR primary keys. Own uncommitted writes remain visible.
