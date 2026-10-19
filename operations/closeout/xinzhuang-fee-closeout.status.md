@@ -1,6 +1,6 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-19T19:25Z  
+Last updated: 2026-10-19T19:50Z  
 Acceptance: **0/3** (courses 4064 / 3753 / 3693)  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
@@ -18,8 +18,9 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 
 1. **Cloud decrypt custody** — bind `DUMP_ARTIFACT_KEY` (and optionally `ALLTRUE_TRIAGE_TOKEN`) on the AllTrue Cloud environment via Personal vault. Do not paste values into chat/PR/issues.
 2. **Tip production activation** — #4283 additive `invoice_corrections` extension (`506729c7`, migration `2026_10_19_090000_extend_invoice_corrections_for_agreed_fee.php`) is on `main`, but live dumps still report `correction_schema_missing`. Approve `production-activation` / `ACTIVATE_PRODUCTION:<target_sha>` through the normal deploy path. Keep `billing.agreed_fee_correction_enabled` **default-off** until case-specific POP packs exist.
-3. **Per-case POP** — after decrypt + live schema, authorize 4064/3693 alignment separately; 3753 needs original reversal-row proof + owner disposition (do not force-align).
-4. **Affected-path verification** — required after each correction before counting N/3.
+3. **Allowlist config surface** — after tip is live, use Founder-gated `agreed-fee-allowlist-activation.yml` (`set_allowlist` / `clear_allowlist`) with repo secrets; does **not** enable the API flag.
+4. **Per-case POP** — after decrypt + live schema, authorize 4064/3693 alignment separately; 3753 needs original reversal-row proof + owner disposition (do not force-align).
+5. **Affected-path verification** — required after each correction before counting N/3.
 
 ## Merged enablers
 
@@ -27,7 +28,8 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 - #4283 agreed-fee schema extension (default-off API)  
 - #4292 land-queue UNSTABLE when required green  
 - #4293 request-file dump dispatcher  
-- #4296 serialize dumps (recovered cancelled 3753)
+- #4296 serialize dumps (recovered cancelled 3753)  
+- #4297 public closeout status + queue dump refresh
 
 ## Related
 
@@ -38,4 +40,4 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 
 ## Next sequence
 
-tip activation + migration → fresh dumps if needed → decrypt → private hash packs → Founder POP → corrections → affected-path verify → N/3.
+tip activation + migration → (optional) set_allowlist via activation workflow → fresh dumps if needed → decrypt → private hash packs → Founder POP → separate flag activation → corrections → clear_allowlist / flag off → affected-path verify → N/3.

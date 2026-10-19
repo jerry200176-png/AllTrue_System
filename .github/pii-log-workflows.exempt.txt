@@ -2,6 +2,7 @@
 # Every workflow using production SSH must be listed here or in pii-log-workflows.txt.
 1387-db-password-rotation.yml  # credential rotation, prints fingerprints only
 actual-duration-activation.yml  # flag activation, no row data
+agreed-fee-allowlist-activation.yml  # allowlist env keys only; logs counts/fingerprint, never ID lists or row PII
 backup-restore-test.yml  # restore drill, counts only
 ci.yml  # test data only
 credential-fingerprint-audit.yml  # fingerprints only
