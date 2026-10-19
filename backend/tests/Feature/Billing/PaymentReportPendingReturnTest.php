@@ -232,6 +232,12 @@ class PaymentReportPendingReturnTest extends TestCase
             $reference = $this->writeFinancialAuthorization($authorization, $p, $key, $actor);
             $r = $pop->createDraft(ReturnReport::OPERATION, $p, $key, $actor, 'super_admin', [], $f['user']->id);
             $this->assertTrue($pop->runDryRun($r['id'], $actor, $f['user']->id, 'super_admin', [])['ok']);
+            $authorized = file_get_contents($authorization);
+            $short = json_decode($authorized, true); $short['eligible_cases'][0]['valid_until'] = now()->addMinutes(5)->utc()->format('Y-m-d\\TH:i:s\\Z');
+            file_put_contents($authorization, json_encode($short, JSON_THROW_ON_ERROR));
+            $this->refuse(fn () => $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id, [], 15), 'exact');
+            $this->assertSame(0, DB::table('pop_approval_events')->where('operation_id', $r['id'])->count());
+            file_put_contents($authorization, $authorized);
             DB::beginTransaction();
             try {
                 $f['pending']->update(['reported_amount' => 8800]);
@@ -242,7 +248,6 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->refuse(fn () => $pop->approve($r['id'], $reference, 'user:999999', 'super_admin', str_repeat('c', 40), 999999), 'exact');
             $approval = $pop->approve($r['id'], $reference, $actor, 'super_admin', str_repeat('c', 40), $f['user']->id);
             $this->assertTrue($approval['ready']); $this->assertSame(['super_admin'], $approval['required_roles']);
-            $authorized = file_get_contents($authorization);
             $changed = json_decode($authorized, true); $changed['eligible_cases'][0]['approver_sha256'] = hash('sha256', 'user:999999');
             file_put_contents($authorization, json_encode($changed, JSON_THROW_ON_ERROR));
             $this->refuse(fn () => $pop->run($r['id'], 'execute', $approval['token'], str_repeat('c', 40), 'pop-runner'), 'exact');
