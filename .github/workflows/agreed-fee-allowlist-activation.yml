@@ -1,0 +1,597 @@
+# governance-capability: legacy-case-specific-mutation
+name: Agreed-Fee Allowlist Activation (Founder-gated)
+
+# Protected configuration surface for billing.agreed_fee_correction_* allowlists.
+# Config already reads AGREED_FEE_CORRECTION_CAMPUS_IDS / AGREED_FEE_CORRECTION_COURSE_IDS
+# from env (backend/config/billing.php). This workflow is the only approved path that
+# writes those two lines on the Pi. It NEVER flips billing.agreed_fee_correction_enabled
+# (literal false in code until a separate Founder-authorized code activation).
+#
+# Values travel only as GitHub Actions secrets → base64 on SSH stdin. Logs emit counts,
+# fingerprints, and flag state — never the ID lists. Empty allowlist = fail-closed API
+# even if the flag were later enabled.
+#
+# Gate: workflow_dispatch + exact confirmation phrases + production-activation on guard
+# + expected_head_sha match for mutating actions. production-ssh holds the SSH secrets
+# and main-only branch policy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "inventory | set_allowlist | clear_allowlist | verify"
+        required: true
+        type: choice
+        options:
+          - inventory
+          - set_allowlist
+          - clear_allowlist
+          - verify
+      confirm:
+        description: 'set_allowlist: type "SET AGREED FEE ALLOWLIST". clear_allowlist: type "CLEAR AGREED FEE ALLOWLIST". Ignored for inventory/verify.'
+        required: false
+      expected_head_sha:
+        description: "set_allowlist / clear_allowlist only: full 40-char SHA that production HEAD must already equal."
+        required: false
+
+concurrency:
+  group: agreed-fee-allowlist-activation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate action + confirmation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: production-activation
+    steps:
+      - name: Require the exact phrase for mutating actions, and required inputs
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            set_allowlist)
+              if [ "$CONFIRM" != "SET AGREED FEE ALLOWLIST" ]; then
+                echo "::error::confirm must be exactly 'SET AGREED FEE ALLOWLIST'. Aborting, nothing touched."
+                exit 1
+              fi
+              if ! printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+                echo "::error::expected_head_sha must be the exact 40-char hex SHA. Aborting, nothing touched."
+                exit 1
+              fi
+              ;;
+            clear_allowlist)
+              if [ "$CONFIRM" != "CLEAR AGREED FEE ALLOWLIST" ]; then
+                echo "::error::confirm must be exactly 'CLEAR AGREED FEE ALLOWLIST'. Aborting, nothing touched."
+                exit 1
+              fi
+              if ! printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+                echo "::error::expected_head_sha must be the exact 40-char hex SHA. Aborting, nothing touched."
+                exit 1
+              fi
+              ;;
+            inventory|verify)
+              echo "Read-only action ($ACTION) -- no confirmation phrase required."
+              ;;
+            *)
+              echo "::error::Unknown action: $ACTION"
+              exit 1
+              ;;
+          esac
+          echo "✅ guard passed for action=$ACTION"
+
+  inventory:
+    name: Read-only allowlist inventory (no ID values)
+    needs: guard
+    if: github.event.inputs.action == 'inventory'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Inventory HEAD, flag, key presence, schema (IDs never printed)
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/inventory-output.txt
+          set -euo pipefail
+          cd /home/admin
+          echo "production-head=$(git rev-parse HEAD)"
+          cd backend
+          FLAG="$(php artisan tinker --execute="echo config('billing.agreed_fee_correction_enabled') === true ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "flag-enabled=$FLAG"
+          CAMPUS_LINES="$(grep -c '^AGREED_FEE_CORRECTION_CAMPUS_IDS=' .env || true)"
+          COURSE_LINES="$(grep -c '^AGREED_FEE_CORRECTION_COURSE_IDS=' .env || true)"
+          echo "env-campus-key-lines=$CAMPUS_LINES"
+          echo "env-course-key-lines=$COURSE_LINES"
+          EFFECTIVE="$(php artisan tinker --execute="\$c=array_map('intval',(array)config('billing.agreed_fee_correction_campus_ids',[])); \$o=array_map('intval',(array)config('billing.agreed_fee_correction_course_ids',[])); sort(\$c); sort(\$o); echo 'campus_count='.count(\$c).PHP_EOL.'course_count='.count(\$o).PHP_EOL.'allowlist_fingerprint='.hash('sha256', implode(',',\$c).'|'.implode(',',\$o));" 2>/dev/null | tail -3)"
+          echo "$EFFECTIVE"
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          echo "schema-extension-columns:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='invoice_corrections' AND COLUMN_NAME IN ('kind','campus_id','old_charge','new_charge','original_invoice_total','request_hash','state_hash') ORDER BY COLUMN_NAME;" 2>/dev/null
+          HEALTH="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          echo "READ_ONLY=true"
+          ENDSSH
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=inventory"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- output ----"
+            grep -vE 'DB_PASS|password' /tmp/inventory-output.txt 2>/dev/null || true
+          } > /tmp/inventory-audit.txt
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agreed-fee-allowlist-inventory-${{ github.run_id }}
+          path: /tmp/inventory-audit.txt
+          retention-days: 90
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  set_allowlist:
+    name: Set allowlist from repo secrets (flag stays off)
+    needs: guard
+    if: github.event.inputs.action == 'set_allowlist'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Validate secret shape without printing values
+        env:
+          AGREED_FEE_CORRECTION_CAMPUS_IDS: ${{ secrets.AGREED_FEE_CORRECTION_CAMPUS_IDS }}
+          AGREED_FEE_CORRECTION_COURSE_IDS: ${{ secrets.AGREED_FEE_CORRECTION_COURSE_IDS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AGREED_FEE_CORRECTION_CAMPUS_IDS:-}" ] || [ -z "${AGREED_FEE_CORRECTION_COURSE_IDS:-}" ]; then
+            echo "::error::Repo secrets AGREED_FEE_CORRECTION_CAMPUS_IDS and AGREED_FEE_CORRECTION_COURSE_IDS must both be set. Nothing touched."
+            exit 1
+          fi
+          # Comma-separated positive integers only; no spaces.
+          printf '%s' "$AGREED_FEE_CORRECTION_CAMPUS_IDS" | grep -Eq '^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9})*$' \
+            || { echo "::error::AGREED_FEE_CORRECTION_CAMPUS_IDS shape invalid (expected comma-separated positive ints). Nothing touched."; exit 1; }
+          printf '%s' "$AGREED_FEE_CORRECTION_COURSE_IDS" | grep -Eq '^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9})*$' \
+            || { echo "::error::AGREED_FEE_CORRECTION_COURSE_IDS shape invalid (expected comma-separated positive ints). Nothing touched."; exit 1; }
+          CAMPUS_N=$(printf '%s' "$AGREED_FEE_CORRECTION_CAMPUS_IDS" | awk -F, '{print NF}')
+          COURSE_N=$(printf '%s' "$AGREED_FEE_CORRECTION_COURSE_IDS" | awk -F, '{print NF}')
+          echo "secret-campus-count=$CAMPUS_N"
+          echo "secret-course-count=$COURSE_N"
+          if [ "$CAMPUS_N" -lt 1 ] || [ "$COURSE_N" -lt 1 ]; then
+            echo "::error::Allowlist secrets must be non-empty. Nothing touched."
+            exit 1
+          fi
+      - name: Write allowlist env keys, rebuild cache, verify (IDs never logged)
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          AGREED_FEE_CORRECTION_CAMPUS_IDS: ${{ secrets.AGREED_FEE_CORRECTION_CAMPUS_IDS }}
+          AGREED_FEE_CORRECTION_COURSE_IDS: ${{ secrets.AGREED_FEE_CORRECTION_COURSE_IDS }}
+        run: |
+          set -uo pipefail
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env EXPECTED_HEAD_SHA AGREED_FEE_CORRECTION_CAMPUS_IDS AGREED_FEE_CORRECTION_COURSE_IDS
+            cat << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin
+
+          echo "=== [1/7] Confirm production HEAD matches the approved SHA ==="
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if [ "$ACTUAL_HEAD" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ production HEAD ($ACTUAL_HEAD) != expected_head_sha -- refusing to touch .env"
+            echo "set-result=REFUSED-WRONG-HEAD"
+            exit 1
+          fi
+          echo "✅ production HEAD == expected ($ACTUAL_HEAD)"
+
+          cd /home/admin/backend
+
+          echo "=== [2/7] Refuse if feature flag is somehow already true in effective config ==="
+          FLAG_BEFORE="$(php artisan tinker --execute="echo config('billing.agreed_fee_correction_enabled') === true ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "flag-enabled-before=$FLAG_BEFORE"
+          if [ "$FLAG_BEFORE" = "true" ]; then
+            echo "❌ agreed_fee_correction_enabled is already true — this workflow never enables it; refusing allowlist mutation while flag is live"
+            echo "set-result=REFUSED-FLAG-ALREADY-ON"
+            exit 1
+          fi
+
+          echo "=== [3/7] Backup .env (timestamp + checksum) ==="
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/agreed-fee-allowlist"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_set_${STAMP}.bak"
+          cp .env "$BACKUP_FILE"
+          chmod 600 "$BACKUP_FILE"
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          echo "backup-checksum=$(sha256sum "$BACKUP_FILE" | cut -d' ' -f1)"
+
+          upsert_env_key() {
+            local key="$1" value="$2"
+            local count
+            count="$(grep -c "^${key}=" .env || true)"
+            if [ "$count" -gt 1 ]; then
+              echo "❌ found $count existing ${key} lines -- .env dirty; refusing"
+              return 1
+            fi
+            if [ "$count" -eq 1 ]; then
+              # sed replacement uses a delimiter unlikely in integer CSV; never echo value.
+              sed -i "s|^${key}=.*|${key}=${value}|" .env
+            else
+              [ -n "$(tail -c1 .env)" ] && echo >> .env
+              printf '%s=%s\n' "$key" "$value" >> .env
+            fi
+            count="$(grep -c "^${key}=" .env || true)"
+            [ "$count" -eq 1 ]
+          }
+
+          rollback() {
+            echo "=== ROLLBACK: restoring $BACKUP_FILE ==="
+            cp "$BACKUP_FILE" .env
+            rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+            php artisan optimize
+            php artisan opcache:reset 2>/dev/null || true
+            HEALTH_AFTER_ROLLBACK="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+            echo "rollback-performed=true"
+            echo "post-rollback-health=$HEALTH_AFTER_ROLLBACK"
+          }
+
+          echo "=== [4/7] Idempotent upsert of the two allowlist keys (values never logged) ==="
+          if ! upsert_env_key AGREED_FEE_CORRECTION_CAMPUS_IDS "$AGREED_FEE_CORRECTION_CAMPUS_IDS"; then
+            echo "set-result=REFUSED-DIRTY-ENV-CAMPUS"
+            exit 1
+          fi
+          if ! upsert_env_key AGREED_FEE_CORRECTION_COURSE_IDS "$AGREED_FEE_CORRECTION_COURSE_IDS"; then
+            rollback
+            echo "set-result=REFUSED-DIRTY-ENV-COURSE-ROLLED-BACK"
+            exit 1
+          fi
+          echo "✅ allowlist keys present exactly once each"
+
+          echo "=== [5/7] Rebuild cache the repo-approved way (optimize only; no clear variants) ==="
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null && echo "✅ OPcache reset" || echo "⚠️ OPcache reset failed (non-fatal)"
+
+          echo "=== [6/7] Verify effective config: counts + fingerprint; flag must stay false ==="
+          EFFECTIVE="$(php artisan tinker --execute="\$c=array_map('intval',(array)config('billing.agreed_fee_correction_campus_ids',[])); \$o=array_map('intval',(array)config('billing.agreed_fee_correction_course_ids',[])); sort(\$c); sort(\$o); echo 'campus_count='.count(\$c).PHP_EOL.'course_count='.count(\$o).PHP_EOL.'flag_enabled='.(config('billing.agreed_fee_correction_enabled')===true?'true':'false').PHP_EOL.'allowlist_fingerprint='.hash('sha256', implode(',',\$c).'|'.implode(',',\$o));" 2>/dev/null | tail -4)"
+          echo "$EFFECTIVE"
+          CAMPUS_COUNT="$(printf '%s\n' "$EFFECTIVE" | sed -n 's/^campus_count=//p' | head -1)"
+          COURSE_COUNT="$(printf '%s\n' "$EFFECTIVE" | sed -n 's/^course_count=//p' | head -1)"
+          FLAG_AFTER="$(printf '%s\n' "$EFFECTIVE" | sed -n 's/^flag_enabled=//p' | head -1)"
+          EXPECTED_CAMPUS_N=$(printf '%s' "$AGREED_FEE_CORRECTION_CAMPUS_IDS" | awk -F, '{print NF}')
+          EXPECTED_COURSE_N=$(printf '%s' "$AGREED_FEE_CORRECTION_COURSE_IDS" | awk -F, '{print NF}')
+          if [ "$FLAG_AFTER" != "false" ]; then
+            echo "❌ flag became non-false after allowlist write — rolling back"
+            rollback
+            echo "set-result=FAILED-FLAG-DRIFT-ROLLED-BACK"
+            exit 1
+          fi
+          if [ "$CAMPUS_COUNT" != "$EXPECTED_CAMPUS_N" ] || [ "$COURSE_COUNT" != "$EXPECTED_COURSE_N" ]; then
+            echo "❌ effective counts did not match secret cardinality — rolling back"
+            rollback
+            echo "set-result=FAILED-COUNT-MISMATCH-ROLLED-BACK"
+            exit 1
+          fi
+          if [ "${CAMPUS_COUNT:-0}" -lt 1 ] || [ "${COURSE_COUNT:-0}" -lt 1 ]; then
+            echo "❌ effective allowlist empty after set — rolling back"
+            rollback
+            echo "set-result=FAILED-EMPTY-EFFECTIVE-ROLLED-BACK"
+            exit 1
+          fi
+
+          echo "=== [7/7] Health check ==="
+          HEALTH="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            echo "❌ health check failed after allowlist set"
+            rollback
+            echo "set-result=FAILED-HEALTH-ROLLED-BACK"
+            exit 1
+          fi
+
+          echo "set-result=SUCCESS"
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/set-result.txt
+          RESULT=${PIPESTATUS[0]}
+          if ! grep -q '^set-result=SUCCESS$' /tmp/set-result.txt; then
+            echo "::error::set_allowlist did not report SUCCESS — see log (IDs are never printed)."
+            exit 1
+          fi
+          exit "$RESULT"
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=set_allowlist"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- redacted result log ----"
+            grep -vE 'DB_PASS|password|AGREED_FEE_CORRECTION_' /tmp/set-result.txt 2>/dev/null || true
+          } > /tmp/set-audit.txt
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agreed-fee-allowlist-set-${{ github.run_id }}
+          path: /tmp/set-audit.txt
+          retention-days: 90
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  clear_allowlist:
+    name: Clear allowlist env keys (flag untouched)
+    needs: guard
+    if: github.event.inputs.action == 'clear_allowlist'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Clear allowlist keys and verify empty effective config
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        run: |
+          set -uo pipefail
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env EXPECTED_HEAD_SHA
+            cat << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if [ "$ACTUAL_HEAD" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ production HEAD ($ACTUAL_HEAD) != expected_head_sha -- refusing"
+            echo "clear-result=REFUSED-WRONG-HEAD"
+            exit 1
+          fi
+          echo "✅ production HEAD == expected ($ACTUAL_HEAD)"
+
+          cd /home/admin/backend
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/agreed-fee-allowlist"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_clear_${STAMP}.bak"
+          cp .env "$BACKUP_FILE"
+          chmod 600 "$BACKUP_FILE"
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          echo "backup-checksum=$(sha256sum "$BACKUP_FILE" | cut -d' ' -f1)"
+
+          upsert_empty() {
+            local key="$1"
+            local count
+            count="$(grep -c "^${key}=" .env || true)"
+            if [ "$count" -gt 1 ]; then
+              echo "❌ dirty .env for $key ($count lines)"
+              return 1
+            fi
+            if [ "$count" -eq 1 ]; then
+              sed -i "s|^${key}=.*|${key}=|" .env
+            else
+              [ -n "$(tail -c1 .env)" ] && echo >> .env
+              printf '%s=\n' "$key" >> .env
+            fi
+          }
+
+          rollback() {
+            cp "$BACKUP_FILE" .env
+            rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+            php artisan optimize
+            php artisan opcache:reset 2>/dev/null || true
+            echo "rollback-performed=true"
+          }
+
+          if ! upsert_empty AGREED_FEE_CORRECTION_CAMPUS_IDS || ! upsert_empty AGREED_FEE_CORRECTION_COURSE_IDS; then
+            echo "clear-result=REFUSED-DIRTY-ENV"
+            exit 1
+          fi
+
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null || true
+
+          EFFECTIVE="$(php artisan tinker --execute="\$c=array_map('intval',(array)config('billing.agreed_fee_correction_campus_ids',[])); \$o=array_map('intval',(array)config('billing.agreed_fee_correction_course_ids',[])); echo 'campus_count='.count(\$c).PHP_EOL.'course_count='.count(\$o).PHP_EOL.'flag_enabled='.(config('billing.agreed_fee_correction_enabled')===true?'true':'false');" 2>/dev/null | tail -3)"
+          echo "$EFFECTIVE"
+          CAMPUS_COUNT="$(printf '%s\n' "$EFFECTIVE" | sed -n 's/^campus_count=//p' | head -1)"
+          COURSE_COUNT="$(printf '%s\n' "$EFFECTIVE" | sed -n 's/^course_count=//p' | head -1)"
+          FLAG_AFTER="$(printf '%s\n' "$EFFECTIVE" | sed -n 's/^flag_enabled=//p' | head -1)"
+          if [ "$CAMPUS_COUNT" != "0" ] || [ "$COURSE_COUNT" != "0" ]; then
+            rollback
+            echo "clear-result=FAILED-NOT-EMPTY-ROLLED-BACK"
+            exit 1
+          fi
+          if [ "$FLAG_AFTER" = "true" ]; then
+            echo "⚠️ flag is true after clear (unexpected; this workflow never sets it)"
+          fi
+          HEALTH="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            rollback
+            echo "clear-result=FAILED-HEALTH-ROLLED-BACK"
+            exit 1
+          fi
+          echo "clear-result=SUCCESS"
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/clear-result.txt
+          RESULT=${PIPESTATUS[0]}
+          if ! grep -q '^clear-result=SUCCESS$' /tmp/clear-result.txt; then
+            echo "::error::clear_allowlist did not report SUCCESS."
+            exit 1
+          fi
+          exit "$RESULT"
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=clear_allowlist"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- redacted result log ----"
+            grep -vE 'DB_PASS|password|AGREED_FEE_CORRECTION_' /tmp/clear-result.txt 2>/dev/null || true
+          } > /tmp/clear-audit.txt
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agreed-fee-allowlist-clear-${{ github.run_id }}
+          path: /tmp/clear-audit.txt
+          retention-days: 90
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  verify:
+    name: Verify current allowlist state (read-only)
+    needs: guard
+    if: github.event.inputs.action == 'verify'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Read HEAD, flag, counts, fingerprint, schema (no ID lists)
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/verify-output.txt
+          set -euo pipefail
+          cd /home/admin
+          echo "production-head=$(git rev-parse HEAD)"
+          cd backend
+          EFFECTIVE="$(php artisan tinker --execute="\$c=array_map('intval',(array)config('billing.agreed_fee_correction_campus_ids',[])); \$o=array_map('intval',(array)config('billing.agreed_fee_correction_course_ids',[])); sort(\$c); sort(\$o); echo 'campus_count='.count(\$c).PHP_EOL.'course_count='.count(\$o).PHP_EOL.'flag_enabled='.(config('billing.agreed_fee_correction_enabled')===true?'true':'false').PHP_EOL.'allowlist_fingerprint='.hash('sha256', implode(',',\$c).'|'.implode(',',\$o));" 2>/dev/null | tail -4)"
+          echo "$EFFECTIVE"
+          echo "env-campus-key-lines=$(grep -c '^AGREED_FEE_CORRECTION_CAMPUS_IDS=' .env || true)"
+          echo "env-course-key-lines=$(grep -c '^AGREED_FEE_CORRECTION_COURSE_IDS=' .env || true)"
+          HEALTH="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          echo "schema-extension-column-count:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='invoice_corrections' AND COLUMN_NAME IN ('kind','campus_id','old_charge','new_charge','original_invoice_total','request_hash','state_hash');" 2>/dev/null
+          echo "READ_ONLY=true"
+          ENDSSH
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=verify"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- output ----"
+            grep -vE 'DB_PASS|password' /tmp/verify-output.txt 2>/dev/null || true
+          } > /tmp/verify-audit.txt
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agreed-fee-allowlist-verify-${{ github.run_id }}
+          path: /tmp/verify-audit.txt
+          retention-days: 90
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
