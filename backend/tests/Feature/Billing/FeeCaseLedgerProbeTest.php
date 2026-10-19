@@ -380,4 +380,39 @@ class FeeCaseLedgerProbeTest extends TestCase
         $this->assertFalse($withoutTable['correction_table_present']);
         $this->assertSame(0, DB::transactionLevel());
     }
+
+    public function test_alignment_preview_emits_live_state_hash_when_strategy_eligible(): void
+    {
+        $f = $this->scopedFixture();
+        // Match UnpaidInvoiceChargeAlignmentStrategy eligible shape: unpaid, net-zero payments, no items/amendments.
+        InvoiceItem::where('InvoiceID', $f['invoice']->id)->delete();
+        Payment::where('InvoiceID', $f['invoice']->id)->delete();
+        \App\Models\PaymentReport::where('StudentClassID', $f['course']->ID)->delete();
+        $f['course']->update([
+            'Charge' => 500, 'Paid' => 0, 'Pay' => 0, 'PayDate' => null, 'Stop' => 0,
+            'ScheduleMode' => 'count', 'ClassType' => 'regular', 'PackageID' => null, 'closed_reason' => null,
+        ]);
+        $f['invoice']->update([
+            'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid',
+            'zero_amount_reason' => null, 'ScheduleModeAtIssue' => 'count',
+        ]);
+        $r = $this->probe($f);
+        $this->assertArrayHasKey('alignment_preview', $r);
+        $this->assertTrue($r['alignment_preview']['eligible'] ?? false, json_encode($r['alignment_preview'] ?? null));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) ($r['alignment_preview']['state_hash'] ?? ''));
+        $this->assertSame([8000, 500], [
+            (int) $r['alignment_preview']['old_total'],
+            (int) $r['alignment_preview']['new_total'],
+        ]);
+        $live = app(\App\Operations\Strategies\UnpaidInvoiceChargeAlignmentStrategy::class)->preview([
+            'student_id' => (int) $f['student']->id,
+            'course_id' => (int) $f['course']->ID,
+            'campus_id' => (int) $f['student']->CampusID,
+            'invoice_id' => (int) $f['invoice']->id,
+            'expected_invoice_total' => 8000,
+            'expected_charge' => 500,
+            'decision_reference' => 'xinzhuang-align-'.$f['course']->ID.'-livehash',
+        ]);
+        $this->assertSame($live['state_hash'], $r['alignment_preview']['state_hash']);
+    }
 }

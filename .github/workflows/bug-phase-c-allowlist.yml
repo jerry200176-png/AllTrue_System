@@ -1,8 +1,11 @@
+
 name: Bug Phase-C allowlist resolve (Pi)
 
-# Idempotent Phase C for bugs whose code fix is already on production.
-# Trigger via request file (cloud agents cannot workflow_dispatch).
-# Allowlist only — never invent new bug IDs here without Evidence Contract.
+# WRITE PATH RETIRED 2026-10-19 (ADR-POP-015 / ADR-POP-008): the remote step throws
+# legacy_ssh_phase_c_retired before any BugReportService write. Keep allowlist map +
+# request-file parser for control-plane contract tests and audit. Do not remove the throw.
+# Engineering Phase-C: Pi-local inapp-report-resolve-after-deploy + pop:execute-approved.
+# Wording-only: bug-followup-comment.yml. Autodispatch fails closed on new allowlist IDs.
 on:
   workflow_dispatch:
     inputs:
@@ -107,6 +110,9 @@ jobs:
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
           $actor = $admin ? (int)$admin : 1;
           $svc = \App\Services\BugReportService::class;
+          // 2026-10-19: refuse all runner→SSH→tinker engineering resolves (ADR-POP-015 / ADR-POP-008).
+          // Autodispatch of new allowlist IDs is also retired. Do not remove this guard to "just resolve".
+          throw new \RuntimeException("legacy_ssh_phase_c_retired:ADR-POP-015");
           // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
           $items = [
             242 => [
