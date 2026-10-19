@@ -214,7 +214,11 @@ class ScheduleGuardService
     public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false): array
     {
         if ($lock && $course->exists) {
-            $course = \App\Models\StudentClass::query()->whereKey($course->getKey())->lockForUpdate()->firstOrFail();
+            $currentCourse = \App\Models\StudentClass::query()->whereKey($course->getKey())->lockForUpdate()->first();
+            if (!$currentCourse instanceof \App\Models\StudentClass) {
+                throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())->setModel(\App\Models\StudentClass::class, [$course->getKey()]);
+            }
+            $course = $currentCourse;
         }
         return $this->validateScheduleOccurrence([
             'teacher_id' => (int) $course->getAttribute('TeacherID'),

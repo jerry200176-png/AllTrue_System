@@ -318,4 +318,28 @@ class ScheduleGuardCurrentReadTest extends TestCase
         }
     }
 
+    public function test_current_course_guard_refuses_a_concurrently_deleted_proposed_course(): void
+    {
+        $original = DB::getDefaultConnection();
+        config(['database.connections.occupancy_current' => config('database.connections.' . $original)]);
+        $reader = DB::connection('occupancy_current');
+        $campus = Campus::factory()->create();
+        $this->ownedCampusIds[] = $campus->id;
+        $course = $this->currentReadFixture($campus->id, 78300);
+        try {
+            $reader->beginTransaction();
+            DB::setDefaultConnection('occupancy_current');
+            $stale = StudentClass::findOrFail($course->ID);
+            DB::setDefaultConnection($original);
+            DB::table('StudentClass')->where('ID', $course->ID)->delete();
+            DB::setDefaultConnection('occupancy_current');
+            $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+            app(ScheduleGuardService::class)->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00', true);
+        } finally {
+            while ($reader->transactionLevel() > 0) $reader->rollBack();
+            DB::setDefaultConnection($original);
+            DB::purge('occupancy_current');
+        }
+    }
+
 }
