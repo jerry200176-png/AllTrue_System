@@ -319,8 +319,8 @@ class SubstituteScheduleService
         $q = $lock
             ? DB::table(DB::raw('LearningRecord as current_lr FORCE INDEX (PRIMARY)'))->whereIn('current_lr.id', $lrIds)
                 ->join(DB::raw('ClassSession as current_cs FORCE INDEX (PRIMARY)'), 'current_cs.id', '=', 'current_lr.ClassSessionID')
-                ->join('StudentClass as sc', 'sc.ID', '=', 'current_cs.StudentClassID')
-                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->join(DB::raw('StudentClass as sc FORCE INDEX (PRIMARY)'), 'sc.ID', '=', 'current_cs.StudentClassID')
+                ->join(DB::raw('Student as st FORCE INDEX (PRIMARY)'), 'st.id', '=', 'sc.StudentID')
                 ->join(DB::raw('schedules as m FORCE INDEX (idx_sched_course_date_time_status)'), 'm.student_course_id', '=', 'sc.ID')
                 ->where('st.CampusID', $branchId)->where('current_cs.SessionDate', $ymd)
                 ->where('current_lr.TeacherID', $teacherId)->whereNull('current_lr.VoidedAt')
