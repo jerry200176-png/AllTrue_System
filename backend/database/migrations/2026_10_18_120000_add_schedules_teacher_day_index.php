@@ -12,6 +12,9 @@ return new class extends Migration
         Schema::table('schedules', function (Blueprint $table) {
             $table->index(['branch_id', 'teacher_id', 'schedule_date'], 'idx_schedules_teacher_day');
         });
+        Schema::table('StudentClass', function (Blueprint $table) {
+            $table->index(['StudentID', 'TeacherID'], 'idx_sc_student_teacher');
+        });
         Schema::table('LearningRecord', function (Blueprint $table) {
             $table->index(['ClassSessionID', 'TeacherID'], 'idx_lr_class_session_teacher');
         });
@@ -19,6 +22,9 @@ return new class extends Migration
 
     public function down(): void
     {
+        Schema::table('StudentClass', function (Blueprint $table) {
+            $table->dropIndex('idx_sc_student_teacher');
+        });
         Schema::table('LearningRecord', function (Blueprint $table) {
             $table->dropIndex('idx_lr_class_session_teacher');
         });

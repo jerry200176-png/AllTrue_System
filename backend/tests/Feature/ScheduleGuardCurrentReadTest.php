@@ -196,20 +196,22 @@ class ScheduleGuardCurrentReadTest extends TestCase
         return $course;
     }
 
-    public function test_current_class_session_scan_does_not_lock_another_campus_course_or_session(): void
+    /** @dataProvider unrelatedCourseScopes */
+    public function test_current_class_session_scan_does_not_lock_unrelated_course_or_session(bool $sameCampus, bool $sameStudent): void
     {
         $original = DB::getDefaultConnection();
         config(['database.connections.occupancy_scope' => config('database.connections.' . $original)]);
         $reader = DB::connection('occupancy_scope');
         $timeout = (int) DB::selectOne('SELECT @@innodb_lock_wait_timeout AS value')->value;
         $courses = [];
-        foreach ([1, 2] as $unused) {
-            $campus = Campus::factory()->create();
-            $this->ownedCampusIds[] = $campus->id;
-            $course = $this->currentReadFixture($campus->id, 78171);
+        foreach ([0, 1] as $i) {
+            $campusId = $sameCampus && $i ? $courses[0][1] : Campus::factory()->create()->id;
+            $this->ownedCampusIds[] = $campusId;
+            $course = $this->currentReadFixture($campusId, $sameCampus && $i ? 78172 : 78171,
+                $sameStudent && $i ? ['StudentID' => $courses[0][0]->StudentID] : []);
             $id = DB::table('ClassSession')->insertGetId(['StudentClassID' => $course->ID,
                 'SessionDate' => '2026-12-29', 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
-            $courses[] = [$course, $campus->id, $id];
+            $courses[] = [$course, $campusId, $id];
         }
         // A sparse teacher over a populated campus makes the teacher-first join
         // a real optimizer choice, rather than relying on a two-row toy plan.
@@ -231,6 +233,8 @@ class ScheduleGuardCurrentReadTest extends TestCase
             DB::purge('occupancy_scope');
         }
     }
+
+    public static function unrelatedCourseScopes(): array { return [[false, false], [true, false], [true, true]]; }
 
     public function test_current_makeup_scan_does_not_lock_another_teachers_schedule(): void
     {

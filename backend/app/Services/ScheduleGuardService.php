@@ -1375,10 +1375,11 @@ class ScheduleGuardService
             ->rejectStale($scheduledRows, $date, $lock);
 
         // Bound current locks from the campus access path, regardless of optimizer
-        // cardinality. A teacher-first join can lock another campus's course.
+        // cardinality. Constrain the course index by BOTH student and teacher;
+        // student-only scans lock other teachers' courses in the same campus.
         $classSessionsQuery = $lock
             ? DB::table(DB::raw('Student as st FORCE INDEX (idx_student_campus_name)'))
-                ->join(DB::raw('StudentClass as sc FORCE INDEX (idx_sc_student_id)'), 'sc.StudentID', '=', 'st.id')
+                ->join(DB::raw('StudentClass as sc FORCE INDEX (idx_sc_student_teacher)'), 'sc.StudentID', '=', 'st.id')
                 ->join(DB::raw('ClassSession as cs FORCE INDEX (cs_scid_sessiondate_idx)'), 'cs.StudentClassID', '=', 'sc.ID')
             : DB::table('ClassSession as cs')
                 ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
