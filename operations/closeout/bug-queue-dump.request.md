@@ -45,3 +45,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-10-17T12:20:10Z — retrigger CI after R0/T0 PR declaration (same dump purpose)
 
 # kickoff 2026-10-19T11:12:00Z — paired fresh queue for Phase-C closeout of in-app #394 (fixes #4121/#4128 already on production)
+
+# kickoff 2026-10-19T19:25:00Z — fee closeout sole-writer: refresh open in-app queue (ID/counts only) for remaining reports while #394 HOLD and fee Track A wait vault/tip activation
