@@ -3,6 +3,15 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-19（一）（既有 dump 金鑰的限定雲端保管遷移）
+
+使用者在本次交接明確批准：只將 **同一把既有 `DUMP_ARTIFACT_KEY`** 由自己的 Personal vault，以 **direct environment-variable** 類型綁定至 **AllTrue_System 專用受控雲端環境**，用於既有授權範圍的唯讀 artifact 解密。這是下方 2026-10-14（三）第 2 條低風險 token 限制的**具名例外**，不放寬其他正式密碼、token 或專案的限制；`ALLTRUE_TRIAGE_TOKEN` 的唯讀路徑及 proxy 注入條件仍不變。
+
+- 直接變數的金鑰 bytes 會對該受控環境中的程序可讀；這是本次接受的保管邊界，**不是**不可讀的網路代理 secret。不得印出、列舉環境、放入 argv、log、chat、GitHub 或交給不受信任的 PR 程序。
+- 實際 destination identity、`observations_current` 與該 secret binding 的 `ready` 狀態須核對；未知／舊環境不得當成功。遵循 [Cloud decryption custody](../sop/BUG_INTAKE_TO_PRODUCTION.md#cloud-decryption-custody) 的完整性、私密目錄、安全 tar、scope／schema／freshness 及全新 session 驗收。
+- 本機原始金鑰維持 mode 600，直到成功驗證及保有受控 recovery copy 才能退役；不輪替 producer 金鑰，不從 GitHub 匯出 secret。驗收只公開 PASS／FAIL，私有案件與 artifact 參照不公開。
+- 同時批准在 #4277 修正這項窄範圍 custody 及所有仍生效的衝突指示，通過 exact-head CI、獨立審查與既有正常 queue 後合併；不再重問相同遷移方向。這不授權部署、schema、啟用功能、正式財務寫入、POP approval 或 in-app resolved／reporter-verify。
+
 ## 2026-10-15（四）（對話中逐條確認；本節只記 Founder 實際確認的內容）
 
 > **Founder 尚未逐行核對本節，本節目前不得作為任何新授權的依據。**

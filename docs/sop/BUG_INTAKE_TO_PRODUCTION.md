@@ -64,7 +64,9 @@ file-based command is the legacy local option, not a prerequisite for cloud work
 ```bash
 gh run download <run-id> -R jerry200176-png/AllTrue_System -n bug-detail-dump -D dump
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass file:$HOME/.alltrue-dump-key \
-  -in dump/bug-detail.full.tar.gz.enc | tar xz -C dump   # bug-queue-dump.full.tar.gz.enc for the queue
+  -in dump/bug-detail.full.tar.gz.enc -out dump/private.tar.gz
+# Apply the complete archive validation below before extracting expected files.
+# Use bug-queue-dump.full.tar.gz.enc for the queue.
 ```
 
 `production-case-dump.yml` works the same way: its log shows only (it writes no step summary) the case key, exit status,
@@ -83,14 +85,20 @@ location of the agent. The local workstation may retire after the acceptance
 checks below. This procedure is a migration specification, not evidence that a
 cloud binding exists or that decryption has already succeeded.
 
-For a migration that must preserve existing artifacts, migrate the **same key**
-through the cloud environment's supported secret configuration workflow as
-`DUMP_ARTIFACT_KEY`. The authorized key custodian enters it directly into that
-secret setting; never send it through chat, GitHub, a command argument, logs or an
-ordinary environment variable setting. GitHub Actions secrets cannot be read back
-through the API: do not add a workflow to print or export the repository secret.
-Do not rotate or replace the producer's key as a shortcut: existing artifacts
-remain encrypted with the old key.
+The Founder approved only the existing `DUMP_ARTIFACT_KEY` custody migration
+for the controlled AllTrue_System cloud environment; see the narrow
+[2026-10-19 decision](../governance/FOUNDER_STANDING_DECISIONS.md).
+This named exception does not authorize other cloud credentials, repositories,
+record scopes, production writes or deployments.
+
+Preserve the **same key** through the supported Personal vault binding, scoped
+only to AllTrue_System and using the **direct environment-variable** secret type.
+The custodian enters it into the vault, never chat, GitHub, argv, logs or an
+ordinary non-secret environment setting. This deliberately makes the bytes
+available to processes in that approved environment; do not claim it is an
+agent-unreadable credential. A network-secret proxy placeholder cannot decrypt
+OpenSSL data. Do not dump the environment, inspect/print key bytes, pass them to
+untrusted PR code, export GitHub Actions secrets or rotate the producer key.
 
 Before enabling access, confirm the recipient environment's access controls,
 workspace visibility, log retention and deletion behavior are appropriate for the
@@ -104,25 +112,36 @@ Acceptance and retirement checklist:
 
 1. Record the approved destination and read-only data scope in a private handoff.
    The product's existing financial write, deploy and identity controls still apply.
-2. Configure the existing key as an environment secret. Check current
-   `environment_status` readiness without printing values. A missing, stale or
-   non-ready binding is `CREDENTIAL_SETUP_REQUIRED`, not "wait for local agent".
-   A proxy placeholder that cannot supply bytes to OpenSSL is not a usable binding;
-   request supported secret-file injection instead of trying to extract it.
+2. Establish the task's approved AllTrue_System scope from current status and
+   private handoff metadata. Distinguish `environment_id` (managed runtime
+   instance) from `source_config_id` (reusable configuration) and
+   `source_config_version_id`/spec revision (published version); unequal IDs of
+   different types alone do not prove a scope mismatch. Resolve their mapping
+   through supported metadata before reading the key. Require
+   `observations_current: true` and this secret binding's individual state
+   `ready`, without printing values. A runtime-variable entry is not proof of
+   a secret binding. Unresolved scope, missing/stale/non-ready binding or proxy
+   placeholder is `CREDENTIAL_SETUP_REQUIRED`; diagnose the published
+   configuration/session binding without extracting secrets or improvising a
+   fallback. A new conversation alone does not prove a new configuration.
 3. Download an authorized encrypted artifact through a permitted connector or CLI.
    Compare its ciphertext hash with the trusted run evidence and `.sha256` file.
    Do not expose signed download URLs. The checksum checks integrity; it does not
    authenticate AES-CBC ciphertext from an untrusted source.
 4. In a private directory (`umask 077`), disable shell tracing and use the existing
    OpenSSL AES-256-CBC/PBKDF2 format with 600000 iterations. With a verified real
-   environment secret, use `-pass env:DUMP_ARTIFACT_KEY`; with supported secret-file
-   injection, use `-pass file:<bound-secret-path>`. Never put key bytes in argv.
+   direct environment-variable secret, use `-pass env:DUMP_ARTIFACT_KEY`.
+   Never put key bytes in argv. Keep the original local mode-600 key unchanged.
    Decrypt to a private temporary archive first; on failure remove it and stop.
-   Inspect and extract only expected regular files under the private directory;
-   reject absolute paths, traversal and links. Never auto-execute archive content.
+   Inspect the complete archive before extraction: allow only expected regular
+   files and safe relative directories; reject duplicate paths, absolute paths,
+   traversal, links and special files, and bound member counts and total expanded
+   bytes. Extract only validated expected files into the private directory, never
+   by blindly piping to tar. Never auto-execute archive content.
 5. Validate the expected JSON schema, subject IDs, scope, completeness and
    freshness before use. Successful decryption or a green dump workflow does not
-   make a PARTIAL snapshot complete. Return sanitized findings only.
+   make a PARTIAL snapshot complete. Report only PASS/FAIL for custody acceptance;
+   financial payloads, private evidence and artifact references stay private.
 6. Prove a fresh cloud session can repeat the read-only download/decryption without
    the local workstation. Keep only non-sensitive acceptance status publicly;
    specific production artifact references and findings stay in the private handoff
