@@ -79,7 +79,7 @@ jobs:
             echo "Dispatching xinzhuang_fee_cases student_class_id=$id"
             gh workflow run production-case-dump.yml \
               --repo "${{ github.repository }}" \
-              --ref "${{ github.sha }}" \
+              --ref main \
               -f case_key=xinzhuang_fee_cases \
               -f student_class_id="$id"
           done
