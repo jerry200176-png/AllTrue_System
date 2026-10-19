@@ -5,3 +5,4 @@
 - Fail closed before database reads unless production HEAD is a valid SHA containing the prerequisite fix; include the verified source SHA in the encrypted evidence.
 - Retain only scheduled rows that pass the canonical StaleScheduleExceptionFilter before H1 classification; leave/rescheduled, inactive and moved occurrences do not enter candidate counts. This remains classifier evidence, not proof of complete product acceptance.
 - Runtime fixture regressions execute the rendered PHP branch and actual canonical filter: original source RED2/2, corrected complete probe suite18tests GREEN. No production dispatch or in-app status change performed.
+- Refuse the complete probe if any fixed-course schedule row disagrees with the required campus; inconsistent rows never enter campus-bound classifier evidence. Synthetic foreign-campus regression RED1 then complete19tests GREEN.

@@ -2272,13 +2272,14 @@ jobs:
             if ((int) $course->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('contract_4131: outside campus 16'); }}
             $contractTeacherId = (int) ($course->teacher_id ?? 0);
             $rows = $conn->select(
-              'SELECT id, student_course_id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
+              'SELECT id, student_course_id, branch_id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
               .'FROM schedules WHERE student_course_id = ? ORDER BY schedule_date, start_time, id LIMIT '.($cap + 1),
               [$courseId]
             );
             if (count($rows) > $cap) {{ throw new \\LengthException('input_row_budget_exceeded'); }}
             $rowsByDate = [];
             foreach ($rows as $row) {{
+              if ((int) $row->branch_id !== $requiredCampusId) {{ throw new \\RuntimeException('schedule_campus_mismatch'); }}
               if ((string) $row->status === 'scheduled') {{ $rowsByDate[(string) $row->schedule_date][] = $row; }}
             }}
             $eligibleByDate = app(\\App\\Services\\StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate);

@@ -210,7 +210,7 @@ class Contract4131StaleTeacherCase(unittest.TestCase):
 
     CASE = "contract_4131_stale_teacher"
 
-    def execute_case(self, head="a" * 40, ancestor=0):
+    def execute_case(self, head="a" * 40, ancestor=0, foreign_row=False):
         rows = []
         for ident, status, day, teacher, kind in [
             (1, "scheduled", "01", 7, "regular"), (2, "scheduled", "01", 9, "regular"),
@@ -219,8 +219,10 @@ class Contract4131StaleTeacherCase(unittest.TestCase):
             (7, "scheduled", "01", 9, "extra"),
         ]:
             rows.append(dict(id=ident, status=status, schedule_date="2026-12-" + day,
-                             student_course_id=4131, teacher_id=teacher, type=kind,
+                             student_course_id=4131, branch_id=16, teacher_id=teacher, type=kind,
                              start_time="13:00", end_time="15:00", original_schedule_id=None))
+        if foreign_row:
+            rows.append({**rows[0], "id": 8, "branch_id": 99})
         service = WF.parents[2] / "backend/app/Services/StaleScheduleExceptionFilter.php"
         # Run the rendered production branch and the actual canonical filter. Only
         # database rows and git identity are fixtures; no production access occurs.
@@ -259,6 +261,11 @@ function app($s) {
         result = subprocess.run(["php"], input=source, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
+
+    def test_foreign_campus_schedule_refuses_evidence(self):
+        out = self.execute_case(foreign_row=True)
+        self.assertEqual(out.get("error"), "schedule_campus_mismatch")
+        self.assertNotIn("schedule_rows", out)
 
     def test_production_prerequisite_refuses_before_database_reads(self):
         for head, ancestor, error in [("", 0, "production_identity_unavailable"),
