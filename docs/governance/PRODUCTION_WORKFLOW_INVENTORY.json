@@ -25,7 +25,7 @@
       "retired_at": "2026-10-19",
       "reason": "Runner→SSH→tinker engineering Phase-C resolves retired (ADR-POP-015 / ADR-POP-008). Autodispatch of new allowlist IDs fails closed.",
       "evidence": ["PR #4289 merge 20f51a19966be14438cca98fd85ae42c4a9104ac", "Remote step throws legacy_ssh_phase_c_retired before BugReportService writes", "bug-phase-c-autodispatch.yml refuses newly allowlisted IDs"],
-      "replacement": "Pi-local inapp-report-resolve-after-deploy + pop:execute-approved; wording-only corrections via bug-followup-comment.yml",
+      "replacement": "Currently runnable: bug-followup-comment.yml (preview→Founder approve→write; comment-only, does not change status). ADR-POP-015 names inapp-report-resolve-after-deploy for status→resolved, but that operation is NOT in operations/catalog.yaml or founder-standing-inapp-lifecycle yet (only inapp-report-reporter-timeout is). Do not treat the ADR name as an executable path until it is catalogued and standing-approved.",
       "production_authority_removed": true
     },
     "lu-yue-1513-unpaid-rollback.yml": {"retired_at": "2026-10-06", "reason": "One-off SC1513 / Invoice 1070 unpaid rollback (#1939) was retired as a closed case by Founder decision.", "evidence": ["Diagnose run 32439596805; manifest docs/incidents/lu-yue-1513-unpaid-rollback-manifest.md; CHANGELOG 2026-08-21.", "No execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None; git history keeps the workflow", "production_authority_removed": true},
@@ -159,7 +159,7 @@
     "bug-phase-c-allowlist.yml": {
       "classification": "archive-deprecated",
       "production_mutation": "marker-only",
-      "evidence": "Write authority retired 2026-10-19 (ADR-POP-015 / #4289): remote tinker throws legacy_ssh_phase_c_retired before BugReportService::addComment/changeStatus. Allowlist map + request-file parser retained for control-plane contract tests only. Markers remain because the refuse path still SSHs to throw. Replacement: Pi-local inapp-report-resolve-after-deploy + pop:execute-approved; wording-only via bug-followup-comment.yml."
+      "evidence": "Write authority retired 2026-10-19 (ADR-POP-015 / #4289): remote tinker throws legacy_ssh_phase_c_retired before BugReportService::addComment/changeStatus. Allowlist map + request-file parser retained for control-plane contract tests only. Markers remain because the refuse path still SSHs to throw. Currently runnable replacement: bug-followup-comment.yml only. ADR-named inapp-report-resolve-after-deploy is not catalogued yet."
     },
     "bug-queue-dump.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Tinker queue query and artifact export reviewed; no writes."},
     "bug-reporter-timeout.yml": {
