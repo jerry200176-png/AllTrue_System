@@ -912,6 +912,7 @@
       @close="entryOpen = false"
       @confirmed="onEntryConfirmed"
       @pending="onPendingReportConflict"
+      @conflict="loadAlerts"
     />
 
     <ReceiptModal

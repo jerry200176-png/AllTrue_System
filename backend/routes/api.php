@@ -559,6 +559,9 @@ Route::prefix('v1')->group(function () {
 
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        // Agreed-fee correction (S1): default-off; controller 404 when flag false; service 503 without extension schema.
+        Route::post('student-classes/{studentClass}/agreed-fee-correction/preview', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/agreed-fee-correction/apply', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'apply']);
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::post('student-classes/{studentClass}/contract-amendment/preview', [ContractAmendmentController::class, 'preview']);
         Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);
@@ -828,6 +831,7 @@ Route::prefix('v1')->group(function () {
         Route::post('pop/operations/{operationId}/draft', [PopOperationController::class, 'storeDraft'])->where('operationId', '[a-z0-9-]+');
         Route::post('pop/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'dryRun'])->whereUuid('requestId');
         Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');
+        Route::get('pop/operations/requests/{requestId}/status', [PopOperationController::class, 'status'])->whereUuid('requestId');
     });
 
     // Machine control-plane entrypoints only. A POP machine can submit and

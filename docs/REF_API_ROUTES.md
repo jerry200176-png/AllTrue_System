@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 520 api/* routes · generated 2026-10-17
+> Source: `php artisan route:list --json` · 523 api/* routes · generated 2026-10-18
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -625,7 +625,7 @@
 | POST | `api/v1/pending-swipes/{pendingSwipe}/assign-student` | `PendingSwipeController@assignStudent` | role+campus |
 | POST | `api/v1/pending-swipes/{pendingSwipe}/match` | `PendingSwipeController@match` | role+campus |
 
-## /api/v1/pop (5)
+## /api/v1/pop (6)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -633,6 +633,7 @@
 | POST | `api/v1/pop/machine/operations/{operationId}/draft` | `PopOperationController@storeMachineDraft` | role |
 | POST | `api/v1/pop/operations/requests/{requestId}/approvals` | `PopOperationController@approve` | role+campus |
 | POST | `api/v1/pop/operations/requests/{requestId}/dry-run` | `PopOperationController@dryRun` | role+campus |
+| GET | `api/v1/pop/operations/requests/{requestId}/status` | `PopOperationController@status` | role+campus |
 | POST | `api/v1/pop/operations/{operationId}/draft` | `PopOperationController@storeDraft` | role+campus |
 
 ## /api/v1/profiles (6)
@@ -736,7 +737,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
-## /api/v1/student-classes (38)
+## /api/v1/student-classes (40)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -752,6 +753,8 @@
 | DELETE | `api/v1/student-classes/{studentClass}` | `StudentClassController@destroy` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session` | `StudentClassController@addSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session/check` | `StudentClassController@checkAddSession` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/agreed-fee-correction/apply` | `AgreedFeeCorrectionController@apply` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/agreed-fee-correction/preview` | `AgreedFeeCorrectionController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |

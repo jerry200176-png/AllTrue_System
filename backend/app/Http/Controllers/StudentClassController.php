@@ -3356,7 +3356,7 @@ class StudentClassController extends Controller
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
             ->notVoided()
             ->with(['items', 'payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id', 'receipt_url'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
@@ -3364,6 +3364,7 @@ class StudentClassController extends Controller
             ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
+        $restatedPaymentIds = \App\Services\Billing\PaymentReversalRestatement::recordedDispositionIds($payments);
         $paymentIds = $payments->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $reportIds = $payments->pluck('payment_report_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $reports = empty($paymentIds) && empty($reportIds)
@@ -3383,7 +3384,7 @@ class StudentClassController extends Controller
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $studentClass, $canSeeAccountLast5, $canViewReceipt) {
+            'invoices' => $invoices->map(function ($inv) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $studentClass, $canSeeAccountLast5, $canViewReceipt) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
@@ -3435,10 +3436,10 @@ class StudentClassController extends Controller
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
                     'paid_at'        => $paidAt,
                     'payment_count'  => $effectivePayments->count(),
-                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
+                    'payments'       => $inv->payments->map(function ($payment) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
                         $report = $reportsByPaymentId->get((int) $payment->id)
                             ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
-                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void' || isset($restatedPaymentIds[(int) $payment->id]);
 
                         return [
                             'id'                => (int) $payment->id,

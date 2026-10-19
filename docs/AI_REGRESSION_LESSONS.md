@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F7／POP 回滾重試（#4271）**：原子撤回與失敗紀錄都正確，仍可能因快取失敗 receipt 永久失去回復路徑。回歸必須在 fault injection 後實際重試，驗證有效核准、失敗紀錄保留、成功冪等重播與序列化。拒絕測試的 `$this->fail()` 必須在 RuntimeException catch 外：PHPUnit 的 AssertionFailedError 也繼承 RuntimeException，否則 helper 會捕獲自己的失敗而假通過。見 [invoice alignment plan](plans/2026-10-18-unpaid-invoice-alignment.md)。
+
 ### R157. MariaDB 上不可直接重放 MySQL 8 形狀的 SHOW GRANTS（staged DB principal rotation Phase 1，run 38724893175／#4160，2026-10-15）
 
 - **現象**：`deploy.yml` 的 `phase1-create` 以 `SHOW GRANTS contains authentication material; refusing unsafe replay` fail closed。正式機是 MariaDB，它會在 `GRANT USAGE` 行後面附上舊帳號的 `IDENTIFIED BY PASSWORD '*…'`／`IDENTIFIED VIA <plugin> USING '…'`；轉換器卻假設 MySQL 8 的形狀（GRANT 行不帶認證子句）。另外，轉換器在檢查 GRANT 之前就先印出 `CREATE USER`，所以拒絕時那一行仍可能送進 `mysql`，再被 cleanup trap 靜默 DROP，log 無法證明最後狀態。
@@ -681,6 +683,11 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R28. 已繳課程不可再次核帳建立新付款
 
+**2026-10-18 關聯不一致診斷**：strict probe 因付款關聯中止時，不可推定帳務根因。既有個案的明確 inspection mode 可保留已驗證歸屬資料與固定異常代碼，但不可追查／輸出外部引用資料；ownership、查詢錯誤、row budget 仍清空 payload。任何 link issue 必為 incomplete，不可當改帳或實收證據。
+
+**2026-10-18 唯讀個案查核校區補充**：不得從舊 probe 名稱或前端 fallback 推定現行分校 ID。先核對 production `/branches`，再以 Campus.id + name 及 Student.CampusID 三者綁定；新莊為11，舊 campus9 probe 查空不是「個案不存在」。編號只識別候選，帳單／回報／Payment 必須在同一 server READ ONLY snapshot 校驗 ownership、row budget 與未歸屬帳單；缺漏不推導可改帳。公開只留技術證據，加密全文留既有持鑰本機。Enum 必須核對 schema/controller（date/count、regular/tutoring），不可猜 monthly；report.payment_id 與 Payment.payment_report_id 要雙向核對同張帳單，NULL 歸屬明細不能算完整。 真正 READ ONLY 測試不能套在外層寫入交易；用具名、不同學生／課程的情境共用一次 schema generation，破壞 schema 的案例另開一代，避免每項 migrate:fresh 擠爆既有 CI15分鐘預算。保留全部斷言與 server 拒寫證據，不延長或略過關卡。
+
+
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
 - 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
 - **Founder Q2（2026-10-11，#3797／#3864）取代舊規則**：帳單＋Payment 紀錄才是真相，`Paid=1` 旁邊還欠的帳單**可以**收款；但只能收**目標帳單**依 Payment 紀錄（`InvoiceAmountReconciliationService`）算出的未收額（鎖住帳單後在 `directorRecord`／batch／`confirm` 都重算，超過回 422「這張帳單只欠 NT$X…」），不可用整門課的總未收額，也不可用儲存的 `PaidAmount`；`confirm` 寫回的 `PaidAmount`／`Status` 一律從 Payment 紀錄重算。Payment 紀錄已收足的帳單（即使 Status 過期仍是 unpaid）一律拒收；課程已收齊（resolver `paid`）且沒有未結帳單時仍回 422。
@@ -695,6 +702,11 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：對帳視窗若列出可處理的 Invoice，就必須同頁提供正確操作；一般作廢只看 `can_direct_void`，沖銷作廢只看 `can_exception_void`，不可用 anomaly 標籤自行推導按鈕。
 - **強制規則**：未收款錯帳不可因使用者按到沖銷作廢而卡住；後端若判斷淨收款與 `PaidAmount` 都是 0，必須安全降級為一般作廢。
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
+- **單課作廢要加入費用更正的課程鎖，並重查歸屬（#4247／#4262）**：從 DB 讀取當前 header/item 課程，鎖單課後再鎖帳單；以 fresh invoice/item locking reads 比對歸屬，漂移回409且不寫款項。多課合併帳單雖不符合新 fee API 資格，既有 count correction 仍可用 header 找到它，作廢至少要鎖 header owner；不可新增會與轉移相反的多課鎖集；直接收款保留既有 sorted course locks。測試以 PROCESSLIST 觀測真實等待查詢及 post-query marker 未出現，不能只憑 beforeExecuting 訊號宣稱已阻塞。
+
+- **Preview／冪等 hash 必須用同一份已驗證正規值（#4259）**：原因先確認是字串才 trim，拒絕 array/object 等型別；接受 integer 與 numeric-string 的單據 ID 要先轉成相同整數再簽章／比對，避免同一請求回409或產生無意義 audit reason。
+
+- **隔離 HTTP 驗證（#4253）**：沿用已合併的 before-provider DB guard，僅用 loopback synthetic schema；token/allowlist 改放每輪0700目錄與0600檔案，重用目錄前 fail closed。使用真實入站 API/MySQL，出站 Laravel transports fake 並 assert nothing sent/pushed；不 mock 成功回應。fixture seed 與 API 串成同一測試保留斷言，避免重建 schema 擠爆 CI；測試 helper 用 runSeed 等名稱，勿覆寫 Laravel TestCase 既有 seed()。
 
 ---
 
@@ -1070,6 +1082,12 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **`backend/public/storage` symlink 會卡住 `git reset --hard` / `git merge`**（WSL/Windows 掛載：`Function not implemented` / `File exists`）→ 改用 `git reset --mixed` 移 HEAD（不寫工作樹）再清殘留；勿對 protected 路徑設 `assume-unchanged`（R58 + pre-commit hook 會擋）。
 - **merge-train 稅（拓撲部分已 superseded）**：strict required checks 仍會讓其他 PR 在 main 前進後變 `BEHIND` 並重跑 CI；不可用 `gh pr merge --admin` 繞過。2026-07-14 起所有 jobs 已改用 GitHub-hosted runner，可平行執行，不再受單一 WSL2 runner 序列化；現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 - **同名測試 DB 的隔離取決於 runner 儲存邊界（#732 已 superseded）**：`backend/phpunit.xml` 仍以 `force="true"` 設定 `DB_DATABASE=AllTrue_test`，但每個 GitHub-hosted PHPUnit job 都有獨立 MySQL service container，因此同名 schema 不會跨 run 互相清表。若未來改回共享 self-hosted MySQL，必須先提供 run-scoped schema 或等價隔離，不能只改 runner label。
+- **測試開關須還原原始環境三個管道（#4262）**：ClassSession 唯一索引測試的 `putenv`／`$_ENV`／`$_SERVER` 只在該案例啟用；teardown 還原原值，重複 enable 只捕捉一次。否則中途 remigrate 會把測試索引帶進後續舊 fixture，讓相同時段的 leave/leave_adjusted 以1062失敗；不得刪索引斷言或只重跑 CI。
+- **測試 DDL 也要先驗證 resolved connection（#4256）**：沿用 synthetic schema／loopback allowlist，拒絕 URL、socket、read/write 與 PDO init-command 等替代目標；`migrate:fresh` 前驗證、DDL 前拒絕 open transaction。MySQL DDL 會 implicit commit，不可在 `RefreshDatabase` 外層交易中臨時補欄位。
+- **隔離啟動要拒絕設定快取重導（#4253）**：只查 `bootstrap/cache/config.php` 會漏掉 `APP_CONFIG_CACHE`。在 Laravel 啟動前拒絕替代快取；用 provider canary 證明錯誤設定未進入服務註冊，再用既有 ephemeral DB wrapper 驗證同程序 Migrator 與重放。
+- **測試 extension 不可污染下一個 RefreshDatabase，也不應每例重建全庫**：一般案例在 Laravel rollback callback 之後撤回 test-only DDL，核對 base 欄位與唯一索引才重用 generation；中途 DDL／部分 schema／committed lifecycle／cleanup 失敗保持 generation 無效，交回完整重建。改善效能必須保留實際 teardown 的 row/schema 隔離回歸及原 CI 門檻。
+- **Laravel 8 Schema 要直接 mock connection 的 builder（#4256）**：其 facade accessor 回傳物件，不是一般 binding 名稱。`Schema::swap()` 會出現 illegal offset，`Schema::shouldReceive()` 也可能先觸發未設定的 `getSchemaBuilder()`；這些初始化失敗不算有效 RED。先查該版本開源實作，再讓 connection 的 `getSchemaBuilder()` 回傳 builder mock，直接在 builder 設期待，並核對失敗 stack 確實進入受測路徑。
+- **更新 PR 證據內文時保留機器欄位（#4257）**：`Risk-Class`、`Autonomy-Tier`、`Release-Impact` 不可被自由文字摘要取代；可用既有 `check_pr_declaration.py` 先驗證。僅內文修正造成的失敗重跑原 Presubmit job，避免留下同名成功／失敗 check；程式碼未變不必重跑完整 PHPUnit。
 
 ---
 
