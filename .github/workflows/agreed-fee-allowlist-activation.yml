@@ -357,12 +357,14 @@ jobs:
           exit "$RESULT"
       - name: Compose audit artifact (redacted)
         if: always()
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
         run: |
           {
             echo "action=set_allowlist"
             echo "workflow_run_id=${{ github.run_id }}"
             echo "triggered_by=${GITHUB_ACTOR}"
-            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "expected_head_sha=${EXPECTED_HEAD_SHA}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- redacted result log ----"
             grep -vE 'DB_PASS|password|AGREED_FEE_CORRECTION_' /tmp/set-result.txt 2>/dev/null || true
@@ -503,12 +505,14 @@ jobs:
           exit "$RESULT"
       - name: Compose audit artifact (redacted)
         if: always()
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
         run: |
           {
             echo "action=clear_allowlist"
             echo "workflow_run_id=${{ github.run_id }}"
             echo "triggered_by=${GITHUB_ACTOR}"
-            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "expected_head_sha=${EXPECTED_HEAD_SHA}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- redacted result log ----"
             grep -vE 'DB_PASS|password|AGREED_FEE_CORRECTION_' /tmp/clear-result.txt 2>/dev/null || true
