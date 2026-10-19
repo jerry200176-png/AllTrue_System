@@ -231,7 +231,8 @@ jobs:
     # GitHub rulesets do not treat a path-skipped required job as satisfied.
     # Keep the real suite and its existing threshold; never synthesize a pass.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Full coverage already takes >13m; retain room for runner/setup variance.
+    timeout-minutes: 25
     # Non-sensitive password for the ephemeral CI-only MySQL service.
     env:
       DB_PASSWORD: ci-ephemeral
