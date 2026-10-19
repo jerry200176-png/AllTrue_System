@@ -89,6 +89,10 @@ last_reviewed: 2026-09-05
 
 ### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
 
+- **2026-10-19 current-read 補充**：鎖定查詢不能依賴小型 fixture 的幸運 join plan；以有其他校區／老師資料及合法 correlated-EXISTS plan 的獨立 PDO 寫入驗證鎖範圍。existing proposed course 的老師／班型／教室也須在 caller 當前交易內重讀；不可沿用 model 原 connection，否則可能跨連線等自己的鎖。
+
+**2026-10-18 current-read 補充**：apply 不能沿用 RR 舊快照的老師占用；canonical ScheduleGuard 的 current mode 必須貫穿 schedules、ClassSession、stale filter、course metadata 與代課 LearningRecord/occurrence provenance。只鎖最外層查詢不能保證子查詢也讀最新。以獨立 PDO 先證明一般查詢仍舊，再確認 current guard 讀到已提交預約；preview 預設不鎖，不改 global isolation，仍守校區與 self exclusion。
+
 - **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。
 - **根因**：自行挑時段的規劃器只比對自己合約的 `date|start`，沒看學生其他合約；向前生成與 ensure-horizon 雖有跨合約檢查，卻只比「同開始時間」，部分重疊仍會在 `upsertSlot()` 拋出 `student_slot_conflict`。
 - **強制規則**：系統自選時段時，不可只比自己合約的 `date|start`。轉移補尾：與目標合約（續約）存活堂次「時間重疊」就跳過（不看資料庫回傳哪一筆衝突，結果才穩定），與無關課程衝突仍整筆回滾。向前生成／horizon：保留 R20 同開始時間檢查（較嚴，含同方案包），再加問寫入守門 `ClassSessionMaterializationService::findStudentSlotConflict()`，部分重疊也跳過；兩者任一說忙就跳過。主任自己指定的時段衝突仍要回報。
