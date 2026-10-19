@@ -28,7 +28,7 @@ jobs:
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
-      - name: Install reviewed-financial-cases.json (readable by php-fpm, single tuple)
+      - name: Install reviewed-financial-cases.json (FPM worker-readable, single tuple)
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           MOUNT_B64: ${{ secrets.POP_MOUNT_REVIEWED_FINANCIAL_B64 }}
@@ -65,23 +65,48 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$SSH_DIR/reviewed-financial-cases.json" \
             "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
+          # Serving FPM worker identity + mode 640; fail closed (never world-readable).
+          # retained from #4306: 'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json'
           ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$PI_SSH_USER@$PI_SSH_HOST" bash -s <<'REMOTE'
-          # retained from #4306: 'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json; python3 -c "import json;d=json.load(open(\"/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json\")); assert d.get(\"version\")==1 and len(d.get(\"eligible_cases\") or [])==1; print(\"pi_mount_verified\", d[\"eligible_cases\"][0][\"valid_until\"])"'
           set -euo pipefail
           f=/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json
-          chmod 640 "$f"
-          if id -u www-data >/dev/null 2>&1; then
-            chown www-data:www-data "$f"
-          elif id -u nginx >/dev/null 2>&1; then
-            chown nginx:nginx "$f"
+          # Live pool worker (not master / not socket): prefer "php-fpm: pool" args, else 2nd php-fpm PID
+          worker_pid="$(ps -eo pid=,args= | awk '/php-fpm: pool / && !/awk/{print $1; exit}')"
+          if [ -z "${worker_pid:-}" ]; then
+            worker_pid="$(ps -C php-fpm -o pid= 2>/dev/null | awk 'NR==2{print $1; exit}')"
           fi
-          # If php runs as admin, keep admin ownership with mode 600
-          if [ "$(stat -c '%U' "$f")" = "admin" ]; then
+          if [ -z "${worker_pid:-}" ]; then
+            worker_pid="$(pgrep -f 'php-fpm' | awk 'NR==2{print; exit}')"
+          fi
+          test -n "${worker_pid:-}"
+          test -r "/proc/${worker_pid}/status"
+          uid="$(awk '/^Uid:/{print $2}' "/proc/${worker_pid}/status")"
+          gid="$(awk '/^Gid:/{print $2}' "/proc/${worker_pid}/status")"
+          user="$(getent passwd "$uid" | cut -d: -f1)"
+          test -n "${user:-}"
+          # Ownership for serving worker only; never chmod o+r / 644
+          sudo -n chown "${uid}:${gid}" "$f"
+          chmod 640 "$f"
+          # If the worker is admin, tighten to 600
+          if [ "$user" = "admin" ]; then
             chmod 600 "$f"
           fi
-          stat -c '%U:%G %a %n' "$f"
+          mode="$(stat -c '%a' "$f")"
+          # Refuse other-read/write/execute (e.g. 644)
+          if [ "$((mode % 10))" -ge 4 ]; then
+            echo "refusing world-accessible mode ${mode} on ${f}" >&2
+            exit 1
+          fi
+          stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$f"
+          if command -v namei >/dev/null 2>&1; then
+            namei -l "$f" >/tmp/pop-mount-namei.out
+          fi
+          # Approximate FPM readability (no payload print)
+          sudo -n runuser -u "$user" -- test -r "$f"
+          sudo -n runuser -u "$user" -- test -x "$(dirname "$f")"
+          # Schema/tuple sentinel only (valid_until; no amounts/hashes)
           python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); assert d.get("version")==1 and len(d.get("eligible_cases") or [])==1; print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
           REMOTE
           rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"
