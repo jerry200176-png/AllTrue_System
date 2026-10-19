@@ -201,6 +201,10 @@ assert.ok(phaseASource.includes('$svc::normalizeDispositionOptions(['),
   'Phase-A must validate disposition against the deployed service even on an idempotent rerun');
 
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
+assert.ok(phaseCSource.includes('legacy_ssh_phase_c_retired:ADR-POP-015'),
+  'Phase-C SSH tinker write path must stay retired (ADR-POP-015)');
+assert.match(fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8'),
+  /Refuse newly allowlisted IDs/, 'Phase-C autodispatch must refuse new allowlist IDs');
 assert.match(phaseCSource, /workflow_dispatch:\s+inputs:\s+bug_id:\s+description:[^\n]+\s+required: true/,
   'Phase-C manual dispatch must require one target ID');
 assert.match(phaseCSource, /re\.fullmatch\(r"bug_id:\[ \\t\]\*\(\[1-9\]\[0-9\]\*\)/,
