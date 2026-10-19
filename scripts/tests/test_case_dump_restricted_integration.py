@@ -39,6 +39,14 @@ class RestrictedCaseIntegration(unittest.TestCase):
                        'snapshot_complete': False, 'contract': {'class_id': 'target'},
                        'reason': SENTINEL, 'completeness': completeness,
                        'diagnostic': SENTINEL, 'synthetic_id': restricted_id}
+            if case == 'xinzhuang_fee_cases':
+                # Alignment bind targets 4064/3693 require eligible + 64-char state_hash (#4289).
+                payload['alignment_preview'] = {
+                    'eligible': True,
+                    'state_hash': 'a' * 64,
+                    'old_total': 1,
+                    'new_total': 2,
+                }
             (runner / 'fixture').write_text('{broken ' + SENTINEL if malformed else json.dumps(payload) + '\n')
             env = {'PATH': str(bindir) + ':' + os.environ['PATH'], 'RUNNER_TEMP': str(runner),
                    'CASE_KEY': case, 'DUMP_ARTIFACT_KEY': key, 'CASE_INPUT_STUDENT_CLASS_ID': restricted_id,
@@ -152,6 +160,47 @@ class XinzhuangFeeTransport(unittest.TestCase):
             args.update(override)
             code, _, _, _, _, _ = self.exercise(**args)
             self.assertNotEqual(code, 0)
+
+    def test_alignment_bind_target_requires_live_hash(self):
+        """4064/3693 must not soft-pass without a bindable alignment state_hash."""
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            runner = root / 'runner'
+            runner.mkdir()
+            bindir = root / 'bin'
+            bindir.mkdir()
+            ssh = bindir / 'ssh'
+            ssh.write_text('#!/bin/sh\ncat "$RUNNER_TEMP/fixture"\nexit 0\n')
+            ssh.chmod(0o700)
+            support = root / 'scripts/lib'
+            support.mkdir(parents=True)
+            (support / 'fee-case-ledger.php').write_bytes(
+                (Path(__file__).parents[2] / 'scripts/lib/fee-case-ledger.php').read_bytes())
+            payload = {
+                'ok': True, 'case': 'xinzhuang_fee_cases',
+                'read_only_transaction': True, 'campus_bound': 11,
+                'snapshot_complete': False,
+                'alignment_preview': {'eligible': False, 'error': 'preview_failed'},
+            }
+            (runner / 'fixture').write_text(json.dumps(payload) + '\n')
+            env = {
+                'PATH': str(bindir) + ':' + os.environ['PATH'],
+                'RUNNER_TEMP': str(runner),
+                'CASE_KEY': 'xinzhuang_fee_cases',
+                'DUMP_ARTIFACT_KEY': KEY,
+                'CASE_INPUT_STUDENT_CLASS_ID': '4064',
+                'TARGET_STUDENT_ID': '',
+                'TARGET_STUDENT_CLASS_ID': '4064',
+                'EXPECTED_TEACHER_IDS': '',
+                'TARGET_SUBJECT_NAME': '數學',
+                'PI_SSH_USER': 'synthetic',
+                'PI_SSH_HOST': 'invalid.test',
+            }
+            checked = self.shell(case_steps()[0]['run'], d, env)
+            generated_probe = root / 'probe.php'
+            script = case_step('Run bounded')['run'].replace('/tmp/production_case_probe.php', str(generated_probe))
+            probe = self.shell(script, d, env) if checked.returncode == 0 else checked
+            self.assertNotEqual(probe.returncode, 0, probe.stderr + probe.stdout)
 
 
 if __name__ == '__main__':

@@ -231,11 +231,11 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
         if ($monthlyUnverified && $out['completeness'] === 'complete') $out['completeness'] = 'monthly_amount_unverified';
         if ($linkIssues !== [] && $out['completeness'] === 'complete') $out['completeness'] = 'payment_links_inconsistent';
         // Live UnpaidInvoiceChargeAlignmentStrategy preview (read-only). state_hash matches POP expected_state_hash.
-        // correction_schema_missing does not block this path; only strategy eligible()/preview() matters.
-        try {
-            $out['alignment_preview'] = alltrue_fee_alignment_preview($course, $invoices, $campusId, $courseId);
-        } catch (\Throwable) {
-            $out['alignment_preview'] = ['eligible' => false, 'error' => 'preview_failed'];
+        // Domain ineligibility stays as eligible=false + strategy error code. Unexpected failures must not
+        // soft-pass the probe (bindable hash required for alignment targets — #4289 Codex P1).
+        $out['alignment_preview'] = alltrue_fee_alignment_preview($course, $invoices, $campusId, $courseId);
+        if (($out['alignment_preview']['error'] ?? null) === 'preview_failed') {
+            throw new \RuntimeException('alignment_preview_unavailable');
         }
     } catch (\Throwable $e) {
         // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
