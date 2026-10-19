@@ -1,0 +1,72 @@
+name: POP mount reviewed-financial once
+# One-shot: install exact Founder tuple to Pi private path. Does not deploy product code.
+on:
+  workflow_dispatch:
+    inputs:
+      case_label:
+        description: Non-secret label for logs (e.g. course-4064)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+jobs:
+  mount:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-activation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Install reviewed-financial-cases.json (0600, single tuple)
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          MOUNT_B64: ${{ secrets.POP_MOUNT_REVIEWED_FINANCIAL_B64 }}
+          CASE_LABEL: ${{ inputs.case_label }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "${PI_SSH_KEY:-}"
+          test -n "${MOUNT_B64:-}"
+          SSH_DIR="$RUNNER_TEMP/pop-mount-ssh"
+          install -d -m 700 "$SSH_DIR"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
+          chmod 600 "$SSH_DIR/deploy_key"
+          printf '%s' "$MOUNT_B64" | base64 -d > "$SSH_DIR/reviewed-financial-cases.json"
+          chmod 600 "$SSH_DIR/reviewed-financial-cases.json"
+          python3 - "$SSH_DIR/reviewed-financial-cases.json" <<'PY'
+          import json, sys, os
+          d = json.load(open(sys.argv[1]))
+          assert d.get("version") == 1
+          cases = d.get("eligible_cases") or []
+          assert len(cases) == 1, f"expected exactly 1 tuple, got {len(cases)}"
+          c = cases[0]
+          for k in ("operation_id", "parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"):
+              assert k in c and c[k], k
+          assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
+          print(f"mount_ok label={os.environ.get('CASE_LABEL')} tuples=1 valid_until={c['valid_until']}")
+          PY
+          ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            'mkdir -p /home/admin/backend/storage/app/private/pop'
+          scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$SSH_DIR/reviewed-financial-cases.json" \
+            "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
+          ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json; python3 -c "import json;d=json.load(open(\"/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json\")); assert d.get(\"version\")==1 and len(d.get(\"eligible_cases\") or [])==1; print(\"pi_mount_verified\", d[\"eligible_cases\"][0][\"valid_until\"])"'
+          rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"
