@@ -7,7 +7,7 @@
 | 階段 | Workflow（做什麼） | 觸發 | Cloud session（無 SSH；dispatch 能力與操作授權分開，見表下說明） |
 |------|--------------------|------|------------------------------------------------|
 | 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
-| 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文要本機下載並解密 |
+| 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文由已授權且具解密 secret 的受控環境下載與解密（見 Cloud decryption custody） |
 | 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
 | 即時唯讀（金鑰） | 無 workflow：`GET /api/v1/triage/bug-reports…`，帶 `ALLTRUE_TRIAGE_TOKEN`（見下方「Reading reports with `ALLTRUE_TRIAGE_TOKEN`」） | 直接 HTTPS | 可以：已設定金鑰且網路允許正式站 host 時，讀全文、留言、附件；不能寫 |
 | Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only**；preview → Founder approve → write | 在既有授權範圍且當前連線可 dispatch 時，可提交待審請求；準備 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
@@ -56,9 +56,10 @@ The log carries IDs and counts; the plaintext artifacts add non-text metadata
 workflows fail closed without it. Artifact download depends on the current connection
 and network policy; a session without the existing authorized decryption key cannot
 read the full text. A past cloud download 403 is not a universal capability rule,
-and an egress block must not be bypassed. Keep the existing key custody: the local
-agent holding the key downloads and decrypts it (key in an ignored `chmod 600` file,
-never committed); dispatch capability grants no key transfer or new data access:
+and an egress block must not be bypassed. Decryption follows the approved
+custody and migration checks below; a local workstation is not a required runtime.
+Dispatch capability alone grants no key transfer or new data access. The following
+file-based command is the legacy local option, not a prerequisite for cloud work:
 
 ```bash
 gh run download <run-id> -R jerry200176-png/AllTrue_System -n bug-detail-dump -D dump
@@ -71,8 +72,72 @@ completeness flag/reason tokens, byte lengths and the encrypted file's sha256. T
 `production-case-<case_key>` holds only `production-case.full.tar.gz.enc` plus its `.sha256`; check the hash
 (`sha256sum -c`) and decrypt it with the same command.
 
-Decrypted files stay local; never paste them into issues, PRs or comments. Do not
-shortcut any of this with SSH, guessed IDs or stale artifacts.
+Decrypted files stay inside the authorized private execution environment; never
+paste them into issues, PRs or comments. Do not shortcut any of this with SSH,
+guessed IDs or stale artifacts.
+
+### Cloud decryption custody
+
+The custody boundary is an authorized environment and task scope, not the physical
+location of the agent. The local workstation may retire after the acceptance
+checks below. This procedure is a migration specification, not evidence that a
+cloud binding exists or that decryption has already succeeded.
+
+For a migration that must preserve existing artifacts, migrate the **same key**
+through the cloud environment's supported secret configuration workflow as
+`DUMP_ARTIFACT_KEY`. The authorized key custodian enters it directly into that
+secret setting; never send it through chat, GitHub, a command argument, logs or an
+ordinary environment variable setting. GitHub Actions secrets cannot be read back
+through the API: do not add a workflow to print or export the repository secret.
+Do not rotate or replace the producer's key as a shortcut: existing artifacts
+remain encrypted with the old key.
+
+Before enabling access, confirm the recipient environment's access controls,
+workspace visibility, log retention and deletion behavior are appropriate for the
+authorized report/case data. Restrict the binding to that environment and task;
+the shared key can decrypt more than the current case. Do not bind it to unrelated
+projects or untrusted PR jobs. Use supported encrypted secret injection, preserve
+TLS and the configured network policy, and use a real secret binding rather than
+committing a key file or copying an environment directory.
+
+Acceptance and retirement checklist:
+
+1. Record the approved destination and read-only data scope in a private handoff.
+   The product's existing financial write, deploy and identity controls still apply.
+2. Configure the existing key as an environment secret. Check current
+   `environment_status` readiness without printing values. A missing, stale or
+   non-ready binding is `CREDENTIAL_SETUP_REQUIRED`, not "wait for local agent".
+   A proxy placeholder that cannot supply bytes to OpenSSL is not a usable binding;
+   request supported secret-file injection instead of trying to extract it.
+3. Download an authorized encrypted artifact through a permitted connector or CLI.
+   Compare its ciphertext hash with the trusted run evidence and `.sha256` file.
+   Do not expose signed download URLs. The checksum checks integrity; it does not
+   authenticate AES-CBC ciphertext from an untrusted source.
+4. In a private directory (`umask 077`), disable shell tracing and use the existing
+   OpenSSL AES-256-CBC/PBKDF2 format with 600000 iterations. With a verified real
+   environment secret, use `-pass env:DUMP_ARTIFACT_KEY`; with supported secret-file
+   injection, use `-pass file:<bound-secret-path>`. Never put key bytes in argv.
+   Decrypt to a private temporary archive first; on failure remove it and stop.
+   Inspect and extract only expected regular files under the private directory;
+   reject absolute paths, traversal and links. Never auto-execute archive content.
+5. Validate the expected JSON schema, subject IDs, scope, completeness and
+   freshness before use. Successful decryption or a green dump workflow does not
+   make a PARTIAL snapshot complete. Return sanitized findings only.
+6. Prove a fresh cloud session can repeat the read-only download/decryption without
+   the local workstation. Keep only non-sensitive acceptance status publicly;
+   specific production artifact references and findings stay in the private handoff
+   unless explicitly authorized for disclosure. Remove temporary plaintext after
+   use and retain the key only in the approved secret store with a controlled
+   recovery copy. Only then retire the local copy/agent.
+
+Recovery: if readiness or decryption fails, stop this read path, remove partial
+plaintext and correct the binding through supported configuration. Do not delete
+the last recoverable key, rotate the producer, fetch secrets through a workflow,
+or fall back to production SSH. Reverting these documentation changes does not
+revoke an installed secret; revoke the cloud binding separately if access must be
+rolled back. Live in-app reads may alternatively use the already scoped
+`ALLTRUE_TRIAGE_TOKEN` path below when separately provisioned and authorized; that
+token cannot decrypt old financial case artifacts.
 
 ## Reading reports with `ALLTRUE_TRIAGE_TOKEN` (cloud sessions, read-only)
 
