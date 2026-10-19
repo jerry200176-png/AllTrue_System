@@ -2524,6 +2524,20 @@ jobs:
           if os.environ.get('CASE_KEY') == 'xinzhuang_fee_cases':
               if obj.get('case') != 'xinzhuang_fee_cases' or obj.get('read_only_transaction') is not True or obj.get('campus_bound') != 11 or 'snapshot_complete' not in obj:
                   raise SystemExit('fee probe did not finish inside its read-only campus-11 transaction')
+              # #4289: do not green-wash a missing/soft-failed live alignment hash.
+              import re as _re
+              ap = obj.get('alignment_preview')
+              if not isinstance(ap, dict):
+                  raise SystemExit('fee probe missing alignment_preview')
+              if ap.get('error') == 'preview_failed':
+                  raise SystemExit('fee probe alignment_preview unavailable')
+              cid = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
+              hash_ok = bool(_re.fullmatch(r'[a-f0-9]{64}', str(ap.get('state_hash') or '')))
+              if ap.get('eligible') is True and not hash_ok:
+                  raise SystemExit('fee probe eligible alignment_preview missing 64-char state_hash')
+              # POP bind targets (4064/3693) require an eligible bindable hash; 3753 may be link-incomplete.
+              if cid in {'4064', '3693'} and (ap.get('eligible') is not True or not hash_ok):
+                  raise SystemExit('fee probe alignment target requires bindable state_hash')
           print('parsed read-only production case')
           PY
 

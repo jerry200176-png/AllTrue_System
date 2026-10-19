@@ -15,8 +15,11 @@ on:
 permissions:
   contents: read
 
+# Per-SHA group: with a shared group GitHub keeps only one pending run, so a
+# wording-only push can drop an earlier pending ID-add refuse. Unique groups
+# preserve every push's before/after baseline (#4289 Codex P2).
 concurrency:
-  group: bug-phase-c-autodispatch
+  group: bug-phase-c-autodispatch-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

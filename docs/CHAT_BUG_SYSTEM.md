@@ -163,7 +163,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）；cloud 可走 `bug-phase-c-allowlist.yml` allowlist PR（merge 後 autodispatch） |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／SOP 對照表）；工程回寫用 Pi-local resolve／POP；僅改用詞走 `bug-followup-comment.yml` |
 | C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 SOP 對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |

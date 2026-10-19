@@ -21,6 +21,13 @@
     "scp"
   ],
   "retired_workflows": {
+    "bug-phase-c-allowlist.yml": {
+      "retired_at": "2026-10-19",
+      "reason": "Runner→SSH→tinker engineering Phase-C resolves retired (ADR-POP-015 / ADR-POP-008). Autodispatch of new allowlist IDs fails closed.",
+      "evidence": ["PR #4289 merge 20f51a19966be14438cca98fd85ae42c4a9104ac", "Remote step throws legacy_ssh_phase_c_retired before BugReportService writes", "bug-phase-c-autodispatch.yml refuses newly allowlisted IDs"],
+      "replacement": "Pi-local inapp-report-resolve-after-deploy + pop:execute-approved; wording-only corrections via bug-followup-comment.yml",
+      "production_authority_removed": true
+    },
     "lu-yue-1513-unpaid-rollback.yml": {"retired_at": "2026-10-06", "reason": "One-off SC1513 / Invoice 1070 unpaid rollback (#1939) was retired as a closed case by Founder decision.", "evidence": ["Diagnose run 32439596805; manifest docs/incidents/lu-yue-1513-unpaid-rollback-manifest.md; CHANGELOG 2026-08-21.", "No execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None; git history keeps the workflow", "production_authority_removed": true},
     "ops-reconcile-transferred-session-ledger.yml": {"retired_at": "2026-10-06", "reason": "One-off transferred-session ledger reconcile workflow (#2108) was retired by Founder decision.", "evidence": ["Introduced in PR #2108; no execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None. The generic command repair:transferred-session-ledger and its #2833 guard test stay in code; any future use needs a new Founder-approved controlled operation.", "production_authority_removed": true},
     "ops-unattended-session-29212.yml": {"retired_at": "2026-10-06", "reason": "One-off ghost attendance session 29212 repair (#2152, issue #2151 closed) was retired by Founder decision.", "evidence": ["Introduced in PR #2152; issue #2151 closed; no execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None; git history keeps the command/test", "production_authority_removed": true},
@@ -150,16 +157,9 @@
       "future_state": "Retain as explicit lifecycle writeback unless Founder approves a replacement"
     },
     "bug-phase-c-allowlist.yml": {
-      "classification": "in-app-lifecycle-writeback",
-      "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch plus narrowly scoped push fallback",
-      "production_command_or_path": "BugReportService::changeStatus(resolved/triage) and addComment",
-      "authorization": "Exact allowlist, production revision check, and apply confirmation/issue label path",
-      "concurrency": "bug-phase-c-allowlist; cancel-in-progress=false",
-      "rollback": "Manual reopen/correction; no automatic rollback",
-      "canonical": true,
-      "required": "Current Phase-C bug lifecycle exception",
-      "future_state": "Retain until a Founder-approved controlled lifecycle path replaces the exception"
+      "classification": "archive-deprecated",
+      "production_mutation": "marker-only",
+      "evidence": "Write authority retired 2026-10-19 (ADR-POP-015 / #4289): remote tinker throws legacy_ssh_phase_c_retired before BugReportService::addComment/changeStatus. Allowlist map + request-file parser retained for control-plane contract tests only. Markers remain because the refuse path still SSHs to throw. Replacement: Pi-local inapp-report-resolve-after-deploy + pop:execute-approved; wording-only via bug-followup-comment.yml."
     },
     "bug-queue-dump.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Tinker queue query and artifact export reviewed; no writes."},
     "bug-reporter-timeout.yml": {
