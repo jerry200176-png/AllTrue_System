@@ -13,14 +13,14 @@ return new class extends Migration
             $table->index(['branch_id', 'teacher_id', 'schedule_date'], 'idx_schedules_teacher_day');
         });
         Schema::table('LearningRecord', function (Blueprint $table) {
-            $table->index(['TeacherID', 'ClassSessionID'], 'idx_lr_teacher_class_session');
+            $table->index(['ClassSessionID', 'TeacherID'], 'idx_lr_class_session_teacher');
         });
     }
 
     public function down(): void
     {
         Schema::table('LearningRecord', function (Blueprint $table) {
-            $table->dropIndex('idx_lr_teacher_class_session');
+            $table->dropIndex('idx_lr_class_session_teacher');
         });
         Schema::table('schedules', function (Blueprint $table) {
             $table->dropIndex('idx_schedules_teacher_day');

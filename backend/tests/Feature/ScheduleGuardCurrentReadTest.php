@@ -342,4 +342,71 @@ class ScheduleGuardCurrentReadTest extends TestCase
         }
     }
 
+    /** @dataProvider provenanceReaders */
+    public function test_current_provenance_locks_do_not_block_another_day_of_the_same_course(string $kind): void
+    {
+        $original = DB::getDefaultConnection();
+        config(['database.connections.occupancy_scope' => config('database.connections.' . $original),
+            'feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => true]);
+        $reader = DB::connection('occupancy_scope');
+        $timeout = (int) DB::selectOne('SELECT @@innodb_lock_wait_timeout AS value')->value;
+        $campus = Campus::factory()->create();
+        $this->ownedCampusIds[] = $campus->id;
+        $optimizer = (string) $reader->selectOne('SELECT @@optimizer_switch AS value')->value;
+        try {
+            $reader->statement("SET SESSION optimizer_switch = 'index_condition_pushdown=off'");
+            {
+                $course = $this->currentReadFixture($campus->id, 78400);
+                $sessions = $records = $schedules = [];
+                foreach (['2026-12-29', '2026-12-30'] as $date) {
+                    $sessions[] = $session = DB::table('ClassSession')->insertGetId(['StudentClassID' => $course->ID,
+                        'SessionDate' => $date, 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
+                    $records[] = DB::table('LearningRecord')->insertGetId(['StudentClassID' => $course->ID,
+                        'ClassSessionID' => $session, 'TeacherID' => 78401, 'Status' => 'pending', 'Content' => '',
+                        'SessionDate' => $kind === 'makeup' ? '2025-01-01' : $date, 'StartTime' => '13:00', 'EndTime' => '15:00']);
+                    $schedules[] = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID,
+                        'student_id' => $course->StudentID, 'teacher_id' => 78400, 'branch_id' => $campus->id,
+                        'schedule_date' => $date, 'day_of_week' => 2, 'subject' => 'synthetic', 'start_time' => '13:00',
+                        'end_time' => '15:00', 'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled',
+                        'type' => $kind === 'makeup' ? 'extra' : 'regular', 'deduction' => 1,
+                        'original_schedule_date' => $kind === 'occurrence' ? $date : null,
+                        'original_start_time' => $kind === 'occurrence' ? '13:00' : null]);
+                }
+                $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+                $reader->beginTransaction();
+                DB::setDefaultConnection('occupancy_scope');
+                if ($kind === 'stale') {
+                    $rows = app(\App\Services\StaleScheduleExceptionFilter::class)->rejectStale([(object) [
+                        'student_course_id' => $course->ID, 'start_time' => '13:00']], '2026-12-29', true);
+                    $this->assertCount(1, $rows);
+                } elseif ($kind === 'occurrence') {
+                    $this->assertNotNull(\App\Services\SubstituteScheduleService::occurrence($course->ID, '2026-12-29', '13:00', true));
+                } else {
+                    $this->assertCount(1, \App\Services\SubstituteScheduleService::makeupOccurrencesTaughtBy(78401, '2026-12-29', [], null, $campus->id, true));
+                }
+                DB::setDefaultConnection($original);
+                DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+                $updated = match ($kind) {
+                    'stale' => DB::table('ClassSession')->where('id', $sessions[1])->update(['EndTime' => '16:00']),
+                    'occurrence' => DB::table('schedules')->where('id', $schedules[1])->update(['end_time' => '16:00']),
+                    'makeup' => DB::table('LearningRecord')->where('id', $records[1])->update(['Content' => 'unrelated day']),
+                };
+                $this->assertSame(1, $updated, $kind . ': unrelated date remains writable');
+                $reader->rollBack();
+                DB::setDefaultConnection($original);
+            }
+        } finally {
+            while ($reader->transactionLevel() > 0) $reader->rollBack();
+            DB::setDefaultConnection($original);
+            DB::statement('SET SESSION innodb_lock_wait_timeout = ' . $timeout);
+            $reader->statement('SET SESSION optimizer_switch = ?', [$optimizer]);
+            DB::purge('occupancy_scope');
+        }
+    }
+
+    public static function provenanceReaders(): array
+    {
+        return ['stale' => ['stale'], 'occurrence' => ['occurrence'], 'makeup' => ['makeup']];
+    }
+
 }

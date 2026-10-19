@@ -241,7 +241,10 @@ class SubstituteScheduleService
         $contract = (int) $course->TeacherID;
         $start = self::normalizeTime($startTime);
         $at = function () use ($courseId, $d, $start, $lock) {
-            $q = DB::table('schedules')->where('student_course_id', $courseId)->whereDate('schedule_date', $d)->when($lock, fn ($q) => $q->lockForUpdate());
+            $q = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
+                ->where('student_course_id', $courseId)
+                ->when($lock, fn ($q) => $q->where('schedule_date', $d), fn ($q) => $q->whereDate('schedule_date', $d))
+                ->when($lock, fn ($q) => $q->lockForUpdate());
 
             return $start !== null ? $q->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start]) : $q;
         };
@@ -264,9 +267,14 @@ class SubstituteScheduleService
         $makeup = $at()->where('status', 'scheduled')->where('type', 'extra')->orderByDesc('id')->first(['teacher_id']);
         if ($makeup) {
             $rowTeacher = (int) $makeup->teacher_id ?: $contract;
-            $lr = DB::table('LearningRecord as lr')->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
-                ->where('cs.StudentClassID', $courseId)->whereDate('cs.SessionDate', $d)->whereNull('lr.VoidedAt')
-                ->where('lr.TeacherID', '>', 0);
+            $lr = $lock
+                ? DB::table(DB::raw('ClassSession as cs FORCE INDEX (cs_scid_sessiondate_idx)'))
+                    ->join(DB::raw('LearningRecord as lr FORCE INDEX (idx_lr_class_session_teacher)'), 'lr.ClassSessionID', '=', 'cs.id')
+                    ->selectRaw('STRAIGHT_JOIN lr.TeacherID')
+                : DB::table('LearningRecord as lr')->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID');
+            $lr->where('cs.StudentClassID', $courseId)
+                ->when($lock, fn ($q) => $q->where('cs.SessionDate', $d), fn ($q) => $q->whereDate('cs.SessionDate', $d))
+                ->whereNull('lr.VoidedAt')->where('lr.TeacherID', '>', 0);
             if ($start !== null) {
                 $lr->whereRaw('SUBSTRING(cs.StartTime, 1, 5) = ?', [$start]);
             }
@@ -291,17 +299,21 @@ class SubstituteScheduleService
         if ($teacherId <= 0 || !self::anyCampusOn()) {
             return [];
         }
-        // Current reads start from the target teacher's provenance, not every
-        // other teacher's extra schedule in the branch. Preserve the canonical
-        // ClassSession date and teacherForOccurrence verification below.
+        // Bound locks by campus and canonical ClassSession date BEFORE touching
+        // LearningRecord. Its denormalized date can drift; a teacher-first scan
+        // would lock that teacher's entire historical record range.
+        if ($lock && (!$branchId || $branchId <= 0)) {
+            throw new \InvalidArgumentException('Current makeup occupancy requires a campus');
+        }
         $q = $lock
-            ? DB::table(DB::raw('LearningRecord as current_lr FORCE INDEX (idx_lr_teacher_class_session)'))
-                ->join('ClassSession as current_cs', 'current_cs.id', '=', 'current_lr.ClassSessionID')
-                ->join('StudentClass as sc', 'sc.ID', '=', 'current_cs.StudentClassID')
-                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ? DB::table(DB::raw('Student as st FORCE INDEX (idx_student_campus_name)'))
+                ->join(DB::raw('StudentClass as sc FORCE INDEX (idx_sc_student_id)'), 'sc.StudentID', '=', 'st.id')
+                ->join(DB::raw('ClassSession as current_cs FORCE INDEX (cs_scid_sessiondate_idx)'), 'current_cs.StudentClassID', '=', 'sc.ID')
+                ->join(DB::raw('LearningRecord as current_lr FORCE INDEX (idx_lr_class_session_teacher)'), 'current_lr.ClassSessionID', '=', 'current_cs.id')
                 ->join(DB::raw('schedules as m FORCE INDEX (idx_sched_course_date_time_status)'), 'm.student_course_id', '=', 'sc.ID')
+                ->where('st.CampusID', $branchId)->where('current_cs.SessionDate', $ymd)
                 ->where('current_lr.TeacherID', $teacherId)->whereNull('current_lr.VoidedAt')
-                ->where('current_cs.SessionDate', $ymd)->where('m.schedule_date', $ymd)->distinct()
+                ->where('m.schedule_date', $ymd)->distinct()
             : DB::table('schedules as m')
                 ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
                 ->join('Student as st', 'st.id', '=', 'sc.StudentID')
@@ -339,9 +351,9 @@ class SubstituteScheduleService
         } catch (\Throwable) {
             return null;
         }
-        $query = DB::table('schedules')
+        $query = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
             ->where('student_course_id', $studentClassId)
-            ->whereDate('schedule_date', $d)
+            ->when($lock, fn ($q) => $q->where('schedule_date', $d), fn ($q) => $q->whereDate('schedule_date', $d))
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id');
 

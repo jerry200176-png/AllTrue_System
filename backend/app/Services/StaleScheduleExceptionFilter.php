@@ -61,9 +61,9 @@ class StaleScheduleExceptionFilter
         $keyState = [];
         $activeStarts = [];
         if ($courseIds !== []) {
-            $sessions = DB::table('ClassSession')
+            $sessions = DB::table($lock ? DB::raw('ClassSession FORCE INDEX (cs_scid_sessiondate_idx)') : 'ClassSession')
                 ->whereIn('StudentClassID', array_keys($courseIds))
-                ->whereIn(DB::raw('DATE(SessionDate)'), array_keys($rowsByYmd))
+                ->whereIn($lock ? 'SessionDate' : DB::raw('DATE(SessionDate)'), array_keys($rowsByYmd))
                 ->select('StudentClassID', 'StartTime', 'Status', DB::raw('DATE(SessionDate) as ymd'))
                 ->when($lock, fn ($q) => $q->lockForUpdate())->get();
             foreach ($sessions as $session) {
