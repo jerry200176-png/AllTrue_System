@@ -1,12 +1,11 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-20T02:24Z  
-
+Last updated: 2026-10-20T02:29Z  
 Financial case count: **0/3** verified execution/readback (courses 4064 / 3753 / 3693) — independent of in-app reply/`resolved`/reporter acceptance  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
-**Coordination:** [`lane-coordination.status.md`](./lane-coordination.status.md) · [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) (**registration PENDING**)  
-**Owners:** Da’an = **#4312** + **Lane N** narrow primary billing only (not expanded to Lane B). Lane B implementation = **existing owner — to be verified**. Local Cursor = relay only. Secondary Cloud = Goal A–E docs hygiene only.
+**Factual checkpoint (not new authority):** [`lane-coordination.status.md`](./lane-coordination.status.md) · [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) (**registration PENDING** — not a merge gate)  
+**Owners (observed):** Da’an = **#4312** + **Lane N** narrow primary billing only (not expanded to Lane B). Lane B implementation = **existing owner — to be verified**. Local Cursor = relay only. Secondary Cloud = Goal A–E docs hygiene only. Main billing must not wait on this docs PR.
 
 ## Tip / live (read-only)
 
@@ -55,11 +54,17 @@ Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be 
 
 ### Lane B (separate — owner verify; Founder gates unchanged)
 
-1. Confirm **existing** implementation owner (not reassigned by this coordination)
+1. Confirm **existing** implementation owner (not reassigned by this note)
 2. Cloud decrypt custody when needed — bind `DUMP_ARTIFACT_KEY` via Personal vault; never paste into chat/PR
 3. Tip `production-activation` for `#4283` only after verified owner + Founder — **not** implied by Lane N
 4. Allowlist (`#4300`) + flag stay Founder-gated / default-off until case POP
 5. Tip Deploy Merge/activation may fail if `pop-mount` lacks `queue: max` (Deploy run `39346856677`) — tip Deploy hygiene only; **not** a #4312 PR required-check blocker; #4320 draft conversion **unverified** / PR later CLOSED; do not queue #4312 from secondary lane
+
+## Historical safety holds (retained)
+
+- Waiting release train `39333337571` **HOLD / DO NOT APPROVE**
+- In-app **#394**: HOLD further public reply until comment **999** body is privately verified
+- No financial WRITE_GO from docs hygiene PRs
 
 ## Merged enablers (historical)
 
@@ -72,6 +77,14 @@ Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be 
 - #4298 contract_4131 Track B dump (`39327056654`)  
 - #4300 Founder-gated allowlist activation surface — **Lane B**  
 - #4308 acceptance listens for Deploy to Pi + Release train  
+
+## Related
+
+- Decision issue: #4261  
+- Plan: `docs/plans/2026-10-19-xinzhuang-minimal-release.md`  
+- Closeout product decisions: `docs/plans/2026-10-20-inapp-closeout-product-decisions.md`  
+- Release package: `docs/incidents/xinzhuang-agreed-fee-minimal-release-package.md`  
+- In-app #394: HOLD further public reply until comment 999 body is privately verified  
 
 ## Next sequence
 
