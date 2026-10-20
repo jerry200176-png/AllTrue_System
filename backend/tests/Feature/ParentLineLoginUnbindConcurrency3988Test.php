@@ -68,7 +68,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
         DB::table('guardians')->whereIn('id', $guardianIds)->delete();
         DB::table('Student')->where('name', 'race-3988-concurrent')->delete();
         DB::table('security_audit_events')->where('event_type', 'parent.auth')
-            ->where('created_at', '>=', now()->subMinutes(10))->delete();
+            ->where('occurred_at', '>=', now()->subMinutes(10))->delete();
         DB::disconnect(self::RACE);
         parent::tearDown();
     }
@@ -126,7 +126,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
         $race = DB::connection(self::RACE);
         $race->beginTransaction();
         $race->table('student_line_bindings')->where('student_id', $student->id)
-            ->where('line_user_id', self::LINE_ID)->lockForUpdate()->get(['id']);
+            ->where('line_user_id', self::LINE_ID)->lockForUpdate()->get();
         $race->table('ParentSession')->where('StudentID', $student->id)
             ->where('line_user_id', self::LINE_ID)->update(['ExpiresAt' => now()]);
         $race->table('student_line_bindings')->where('student_id', $student->id)
@@ -155,7 +155,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
             $race->beginTransaction();
             try {
                 $race->table('student_line_bindings')->where('student_id', $student->id)
-                    ->where('line_user_id', self::LINE_ID)->lockForUpdate()->get(['id']);
+                    ->where('line_user_id', self::LINE_ID)->lockForUpdate()->get();
                 $blocked = false;
             } catch (QueryException $e) {
                 $blocked = self::isLockWait($e);
@@ -186,7 +186,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
         $blocked = false;
         try {
             $race->table('student_line_bindings')->where('line_user_id', self::LINE_ID)
-                ->sharedLock()->get(['id']);
+                ->sharedLock()->get();
         } catch (QueryException $e) {
             $blocked = self::isLockWait($e);
         }
@@ -226,7 +226,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
 
         $race = DB::connection(self::RACE);
         $race->beginTransaction();
-        $race->table('student_guardians')->where('id', $link->id)->lockForUpdate()->get(['id']);
+        $race->table('student_guardians')->where('id', $link->id)->lockForUpdate()->get();
         $race->table('student_guardians')->where('id', $link->id)
             ->update(['status' => StudentGuardian::STATUS_REVOKED, 'revoked_at' => now()]);
 
@@ -252,7 +252,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
         $blocked = false;
         try {
             $race->table('student_guardians')->where('guardian_id', $link->guardian_id)
-                ->sharedLock()->get(['id']);
+                ->sharedLock()->get();
         } catch (QueryException $e) {
             $blocked = self::isLockWait($e);
         }

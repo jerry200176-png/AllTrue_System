@@ -331,11 +331,13 @@ final class BindingService
             // the same rows while it creates its session, so the two serialize
             // at any isolation level: either this waits and then expires the
             // committed session, or login waits and then finds no binding.
+            // Whole rows on purpose: an index-only locking read locks just that
+            // index entry, and login reads through a different index.
             DB::table('student_line_bindings')
                 ->where('student_id', $studentId)
                 ->where('line_user_id', $lineUserId)
                 ->lockForUpdate()
-                ->get(['id']);
+                ->get();
 
             // Telemetry only: revoke() expires these too, so count them first.
             $result['parent_sessions_invalidated'] = ParentSession::query()

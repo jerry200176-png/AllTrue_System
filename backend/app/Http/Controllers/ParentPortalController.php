@@ -367,7 +367,8 @@ class ParentPortalController extends Controller
         // so an in-flight revoke makes this wait and then see access gone, and
         // a revoke that starts now waits and then expires this session.
         // Read outside the transaction so no REPEATABLE READ snapshot is taken
-        // before the locks below are granted.
+        // before the locks below are granted. The locks select whole rows so
+        // they land on the clustered rows the revoke paths lock too.
         $guardianId = GuardianSyncService::dualWriteEnabled()
             ? Guardian::query()->where('line_user_id', $lineUserId)->value('id')
             : null;
@@ -375,12 +376,12 @@ class ParentPortalController extends Controller
             DB::table('student_line_bindings')
                 ->where('line_user_id', $lineUserId)
                 ->sharedLock()
-                ->get(['id']);
+                ->get();
             if ($guardianId !== null) {
                 DB::table('student_guardians')
                     ->where('guardian_id', (int) $guardianId)
                     ->sharedLock()
-                    ->get(['id']);
+                    ->get();
             }
             $access = app(ParentGuardianAccessService::class);
             $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);

@@ -338,9 +338,9 @@ final class GuardianSyncService
                     ->where('student_id', (int) $link->student_id)
                     ->where('line_user_id', $lineUserId)
                     ->lockForUpdate()
-                    ->get(['id']);
+                    ->get();
             }
-            StudentGuardian::query()->whereKey((int) $link->getKey())->lockForUpdate()->first(['id']);
+            StudentGuardian::query()->whereKey((int) $link->getKey())->lockForUpdate()->first();
 
             $wasPrimary = (bool) $link->is_primary;
             $studentId = (int) $link->student_id;
