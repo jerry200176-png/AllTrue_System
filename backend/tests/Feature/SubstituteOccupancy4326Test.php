@@ -93,6 +93,38 @@ class SubstituteOccupancy4326Test extends TestCase
         $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courses[0]->ID, 'StartTime' => '17:00', 'EndTime' => '19:00']);
     }
 
+    /** @dataProvider effectiveTeacherModes */
+    public function test_current_course_validation_preserves_the_sources_effective_teacher(bool $v2): void
+    {
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $v2]);
+        $campus = Campus::factory()->create();
+        $student = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-E']);
+        $course = $this->course($student, 78171);
+        $source = ['date' => '2026-12-22', 'start_time' => '17:00'];
+        $id = DB::table('schedules')->insertGetId(['student_id' => $student->id, 'student_course_id' => $course->ID,
+            'teacher_id' => 78172, 'branch_id' => $campus->id, 'schedule_date' => $source['date'],
+            'day_of_week' => 2, 'subject' => 'synthetic', 'start_time' => '17:00', 'end_time' => '19:00',
+            'duration_hours' => 2, 'class_type' => 'one_on_two', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0,
+            'original_schedule_date' => $v2 ? $source['date'] : null, 'original_start_time' => $v2 ? '17:00' : null]);
+        DB::table('schedules')->where('id', $id)->update(['original_schedule_id' => $id]);
+        $other = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-F']);
+        DB::table('schedules')->insert(['student_id' => $other->id, 'teacher_id' => 78172,
+            'branch_id' => $campus->id, 'schedule_date' => '2026-12-29', 'day_of_week' => 2, 'subject' => 'synthetic',
+            'start_time' => '17:00', 'end_time' => '19:00', 'duration_hours' => 2,
+            'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'extra', 'deduction' => 0]);
+        $effective = clone $course;
+        $effective->TeacherID = 78172;
+        $guard = app(ScheduleGuardService::class);
+        $this->assertSame('teacher_capacity', $guard->validateCourseOccurrence($effective, $campus->id, '2026-12-29', '17:00', '19:00')[0]['type']);
+        // Current metadata must be reloaded without losing who teaches the source
+        // occurrence being moved. A plain cloned TeacherID is overwritten today.
+        $conflicts = $guard->validateCourseOccurrence($effective, $campus->id, '2026-12-29', '17:00', '19:00', true, $source);
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+        $this->assertSame(1, $conflicts[0]['current_students']);
+    }
+
+    public static function effectiveTeacherModes(): array { return [[false], [true]]; }
+
     private function course(Student $student, int $teacherId): StudentClass
     {
         return StudentClass::create([

@@ -524,6 +524,64 @@ class LeaveSuccessorShiftTest extends TestCase
         return ['old leave overflow' => [true, true], 'renewal overflow' => [false, true], 'old leave fits' => [true, false], 'renewal fits' => [false, false]];
     }
 
+    /** @dataProvider lateTeacherOccupancySources */
+    public function test_apply_sees_another_students_teacher_booking_after_its_snapshot(string $source): void
+    {
+        $original = DB::getDefaultConnection();
+        $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
+        $this->student(self::STUDENT + 1);
+        $other = $this->course(self::STUDENT + 1, '2026-12-01', '2026-12-30');
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
+        $this->assertSame('mysql', DB::connection()->getDriverName());
+        $this->assertSame(1, DB::transactionLevel());
+        DB::commit();
+        config(['database.connections.shift_teacher_current' => config('database.connections.' . $original)]);
+        $apply = DB::connection('shift_teacher_current');
+        $table = $source === 'session' ? 'ClassSession' : 'schedules';
+        $column = $source === 'session' ? 'StudentClassID' : 'student_course_id';
+        try {
+            $apply->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $apply->beginTransaction();
+            $this->assertSame(0, $apply->table($table)->where($column, $other)->count());
+            if ($source === 'session') {
+                $this->lesson($other, '2026-12-29');
+            } else {
+                DB::table('schedules')->insert(['student_course_id' => $other, 'student_id' => self::STUDENT + 1,
+                    'teacher_id' => self::TEACHER, 'branch_id' => 1, 'schedule_date' => '2026-12-29', 'day_of_week' => 2,
+                    'start_time' => '19:00:00', 'end_time' => '21:00:00', 'status' => 'scheduled', 'type' => 'extra']);
+            }
+            $this->assertSame(0, $apply->table($table)->where($column, $other)->count(), 'prove the independent commit remains invisible to the snapshot');
+            $before = $this->undoSnapshot();
+            DB::setDefaultConnection('shift_teacher_current');
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
+                ->assertStatus(422)->assertJsonPath('plan.blockers.0.type', 'teacher');
+            DB::setDefaultConnection($original);
+            $this->assertSame($before, $this->undoSnapshot(), 'refusal must not write any shift, attendance or ledger rows');
+        } finally {
+            DB::setDefaultConnection($original);
+            while ($apply->transactionLevel() > 0) $apply->rollBack();
+            DB::purge('shift_teacher_current');
+            DB::transaction(function () use ($userId, $other) {
+                $courses = [$this->old, $this->renewal, $other];
+                $ids = DB::table('ClassSession')->whereIn('StudentClassID', $courses)->pluck('id');
+                DB::table('schedule_audit_logs')->whereIn('session_id', $ids)->delete();
+                DB::table('schedules')->whereIn('student_course_id', $courses)->delete();
+                DB::table('StudentSingIn')->whereIn('StudentClassID', $courses)->delete();
+                SessionDeductionLedger::query()->whereIn('student_class_id', $courses)->delete();
+                DB::table('ClassSession')->whereIn('StudentClassID', $courses)->delete();
+                DB::table('StudentClass')->whereIn('ID', $courses)->delete();
+                DB::table('auth_tokens')->where('user_id', $userId)->delete();
+                DB::table('UserCampus')->where('UserID', $userId)->delete();
+                DB::table('User')->where('id', $userId)->delete();
+                DB::table('Student')->whereIn('id', [self::STUDENT, self::STUDENT + 1])->delete();
+            });
+            DB::beginTransaction();
+        }
+    }
+
+    public static function lateTeacherOccupancySources(): array { return [['session'], ['schedule']]; }
+
     private function undoSnapshot(): string
     {
         return (string) json_encode(array_map(fn ($table) => DB::table($table)->get()->all(), [

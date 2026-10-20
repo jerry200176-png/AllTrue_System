@@ -209,9 +209,10 @@ class ScheduleGuardService
      * supplies teacher, class type, room, and the self-exclusions (same course and
      * same student never conflict with themselves).
      *
+     * @param  array{date: string, start_time: string}|null  $sourceOccurrence Server-owned source of a moved lesson.
      * @return array<int, array<string, mixed>>
      */
-    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false): array
+    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false, ?array $sourceOccurrence = null): array
     {
         if ($lock && $course->exists) {
             // Protect proposed metadata keys; defer clustered X until after shared occupancy.
@@ -226,8 +227,16 @@ class ScheduleGuardService
             }
             $course = $currentCourse;
         }
+        $teacherId = (int) $course->getAttribute('TeacherID');
+        if ($sourceOccurrence !== null) {
+            // Resolve after the current metadata read: reloading a cloned course
+            // must not replace its source occurrence's substitute with the contract teacher.
+            $teacherId = SubstituteScheduleService::teacherForOccurrence(
+                (int) $course->getKey(), $sourceOccurrence['date'], $teacherId, $sourceOccurrence['start_time'], $lock
+            );
+        }
         $conflicts = $this->validateScheduleOccurrence([
-            'teacher_id' => (int) $course->getAttribute('TeacherID'),
+            'teacher_id' => $teacherId,
             'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
             'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
             'branch_id' => $branchId,
