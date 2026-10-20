@@ -159,7 +159,7 @@ later read-only acceptance must reconcile them and obtain reporter verification.
   successor safeguards and student-current-read path, and main's bounded stale
   reader while using #4327's source-aware/current teacher validation.
 - Artifact SHA256:
-  2dc69b6b1e0831ca481054d70ec3f6e6b0f9823bc5168e5af70cc3eae90a551a.
+  880238d2250bdbbbe2f16e8db7ed71fb24803ed93266c556fe445bf72bf72909.
   `git apply --check` and byte comparisons verify the resulting three files
   match the tested compatibility worktree. All other regular backend files
   match the raw combined tree. A docblock-only addition followed the 158/1053 run.

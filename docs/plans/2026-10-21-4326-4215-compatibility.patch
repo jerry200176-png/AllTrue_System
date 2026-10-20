@@ -75,7 +75,7 @@
 +            'other student teacher booking committed after snapshot' => ['late_teacher_booking'],
          ];
      }
- 
+
 @@ -389,8 +386,10 @@
          $this->assertSame('mysql', DB::connection()->getDriverName());
          $this->assertSame(1, DB::transactionLevel());
