@@ -177,10 +177,33 @@ describe('useCalendarReschedule', () => {
       endTime: '20:00',
       classType: 'one_on_one',
       courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
-      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', status }],
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', start_time: '18:00', status }],
     });
 
     expect(result.blocked).toBe(false);
+  });
+
+  it.each(['18:00', undefined])('keeps an active occurrence when a voided exception has start %s', (voidedStart) => {
+    const result = buildReschedulePreview({
+      currentCourseId: 99, studentId: 10, teacherId: 5,
+      targetDate: '2026-09-01', startTime: '20:00', endTime: '22:00', classType: 'one_on_one',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '20:00', end_time: '22:00', class_type: 'one_on_one' }],
+      sessionDatesByCourseId: { 20: [{ session_date: '2026-09-01', start_time: '20:00', status: 'scheduled' }] },
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', start_time: voidedStart, status: 'voided' }],
+    });
+    expect(result.blocked).toBe(true);
+  });
+
+  it.each([['18:00', false], ['20:00', true]])('checks session status for the %s occurrence', (start, blocked) => {
+    const result = buildReschedulePreview({
+      teacherId: 5, targetDate: '2026-09-01', startTime: start, endTime: start === '18:00' ? '20:00' : '22:00',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: start, end_time: start === '18:00' ? '20:00' : '22:00' }],
+      sessionDatesByCourseId: { 20: [
+        { session_date: '2026-09-01', start_time: '18:00', status: 'voided' },
+        { session_date: '2026-09-01', start_time: '20:00', status: 'scheduled' },
+      ] },
+    });
+    expect(result.blocked).toBe(blocked);
   });
 
   it('lets a leave exception override a stale scheduled session projection', () => {

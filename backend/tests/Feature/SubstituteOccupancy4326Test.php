@@ -93,6 +93,58 @@ class SubstituteOccupancy4326Test extends TestCase
         $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courses[0]->ID, 'StartTime' => '17:00', 'EndTime' => '19:00']);
     }
 
+    /** @dataProvider legacyQueryScopes */
+    public function test_legacy_teacher_resolution_has_bounded_queries(bool $otherCampusesEnabled): void
+    {
+        $campus = Campus::factory()->create();
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $otherCampusesEnabled,
+            'feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_' . $campus->id => false]);
+        for ($i = 0; $i < 8; $i++) {
+            $student = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-Q' . $i]);
+            $course = $this->course($student, 78171);
+            DB::table('ClassSession')->insert(['StudentClassID' => $course->ID, 'SessionDate' => '2026-12-29',
+                'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'scheduled']);
+        }
+        $reads = 0;
+        DB::listen(function ($query) use (&$reads) {
+            if (str_contains(strtolower($query->sql), 'from `schedules`')) $reads++;
+        });
+        $guard = app(ScheduleGuardService::class);
+        $this->assertCount(8, $guard->buildTeacherDateOccupancyEntries(78171, $campus->id, '2026-12-29'));
+        $this->assertLessThanOrEqual(3, $reads, 'legacy date occupancy must batch substitute reads');
+        $reads = 0;
+        $guard->validateRecurringCourse(['teacher_id' => 78171, 'branch_id' => $campus->id,
+            'class_type' => 'one_on_two', 'start_date' => '2026-12-29',
+            'slots' => [['day_of_week' => 2, 'start_time' => '17:00', 'end_time' => '19:00']]]);
+        $this->assertLessThanOrEqual(3, $reads, 'legacy recurring occupancy must batch substitute reads');
+    }
+
+    public static function legacyQueryScopes(): array { return [[false], [true]]; }
+
+    public function test_substitution_frees_teacher_but_not_the_occupied_room(): void
+    {
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => false]);
+        $campus = Campus::factory()->create();
+        $room = DB::table('rooms')->insertGetId(['name' => 'R-Q', 'campus_id' => $campus->id, 'capacity' => 2]);
+        $student = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-R']);
+        $course = $this->course($student, 78171);
+        DB::table('StudentClass')->where('ID', $course->ID)->update(['room_id' => $room]);
+        DB::table('ClassSession')->insert(['StudentClassID' => $course->ID, 'SessionDate' => '2026-12-29',
+            'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'scheduled']);
+        $id = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID, 'student_id' => $student->id,
+            'teacher_id' => 78172, 'branch_id' => $campus->id, 'schedule_date' => '2026-12-29', 'day_of_week' => 2,
+            'start_time' => '17:00', 'end_time' => '19:00', 'status' => 'scheduled', 'type' => 'normal']);
+        DB::table('schedules')->where('id', $id)->update(['original_schedule_id' => $id]);
+        $guard = app(ScheduleGuardService::class);
+        $payload = ['teacher_id' => 78171, 'branch_id' => $campus->id, 'schedule_date' => '2026-12-29',
+            'start_time' => '17:00', 'end_time' => '19:00', 'class_type' => 'one_on_two', 'room_id' => $room];
+        $this->assertSame([], $guard->validateScheduleOccurrence(array_replace($payload, ['room_id' => null])));
+        $this->assertSame('room_capacity', $guard->validateScheduleOccurrence($payload)[0]['type'] ?? null);
+        $conflicts = $guard->validateRecurringCourse($payload + ['start_date' => '2026-12-29', 'end_date' => '2026-12-29',
+            'slots' => [['day_of_week' => 2, 'start_time' => '17:00', 'end_time' => '19:00']]]);
+        $this->assertSame('room_capacity', $conflicts[0]['type'] ?? null);
+    }
+
     private function course(Student $student, int $teacherId): StudentClass
     {
         return StudentClass::create([
