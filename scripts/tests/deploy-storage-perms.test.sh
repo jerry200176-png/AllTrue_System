@@ -7,9 +7,13 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEPLOY="$ROOT/.github/workflows/deploy.yml"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-if grep -qE 'chmod -R 775 storage' "$DEPLOY"; then
-  fail "deploy.yml still runs a recursive chmod 775 over storage/app/private"
-fi
+# #4137 moves the remote deploy block into scripts/production-deploy/; check both.
+for src in "$DEPLOY" "$ROOT/scripts/production-deploy/pi-remote-deploy.sh"; do
+  [ -f "$src" ] || continue
+  if grep -qE 'chmod -R [0-7]+ [^#]*storage' "$src"; then
+    fail "$src still runs a recursive chmod over storage (would widen storage/app/private)"
+  fi
+done
 
 grep -qF 'bash /home/admin/scripts/deploy-storage-perms.sh || abort_deploy' "$DEPLOY" \
   || fail "deploy.yml [2b/7] must call scripts/deploy-storage-perms.sh and abort the deploy on failure"
