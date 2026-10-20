@@ -1,6 +1,7 @@
 # Lane coordination — public-safe checkpoint (DRAFT)
 
-Last updated: 2026-10-20T02:25Z  
+Last updated: 2026-10-20T02:24Z  
+
 Shared GitHub ownership issue: [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070)  
 No secrets, student PII, financial amounts, encrypted dump payloads, or case tuples in this file.
 
@@ -27,7 +28,7 @@ Proposed registration text is retained in [#4321](https://github.com/jerry200176
 | Live `deployment.json` backend | `ad9e36904283` | DtP `39241462999`; deployed_at `2026-10-19T11:02:17Z` |
 | Waiting release train | `39333337571` | **HOLD / DO NOT APPROVE** from this message |
 | This message | Coordination only | **Not** financial write GO; **not** production-activation |
-| #4312 queue | **Do not touch** | Dot holds a separate explicit authorization gate and will coordinate |
+| #4312 queue | Label applied `2026-10-20T02:21:58Z` (parent-verified; Jerry exact approval) | Checkpoint only — secondary lane still has **no** queue or branch action on #4312 |
 
 ## Two separate billing lanes (do not collapse)
 
@@ -59,7 +60,8 @@ Record each row separately. **Do not** require an in-app reporter response as a 
 | **Financial execution / readback** | Runtime/state · authorized tuple · POP · real staff session · affected-path readback for that case | Case/POP / billing evidence — independent of in-app lifecycle |
 | **In-app public reply** | Reporter-facing comment posted | `EVIDENCE_CONTRACT` / CHAT_BUG §3.6–§3.7 |
 | **In-app `resolved`** | Engineering closeout + required production evidence fields | `EVIDENCE_CONTRACT` — ≠ reporter acceptance |
-| **Reporter acceptance** | Reporter-verify succeeded (or documented timeout path) | Product-loop learning/closure — **not** a gate for financial N/3 count |
+| **Reporter acceptance** | Reporter-verify succeeded **only** | Affirmative acceptance — **not** a gate for financial N/3 count (`EVIDENCE_CONTRACT`) |
+| **Timeout closure** | Operational closure without affirmative reporter acceptance | Separate outcome under `EVIDENCE_CONTRACT` — never counts as reporter acceptance |
 
 Pointers (no new gates): [`EVIDENCE_CONTRACT.md`](../../docs/governance/EVIDENCE_CONTRACT.md) · [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](../../docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) · [`BUG_INTAKE_TO_PRODUCTION.md`](../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md) · [`RISK_BASED_MERGE_POLICY.md`](../../docs/governance/RISK_BASED_MERGE_POLICY.md)
 
@@ -97,7 +99,7 @@ Pointers (no new gates): [`EVIDENCE_CONTRACT.md`](../../docs/governance/EVIDENCE
 ## Decision / source links
 
 - Ownership issue: [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) — registration **PENDING**
-- #4312: https://github.com/jerry200176-png/AllTrue_System/pull/4312 — queue: Dot gate only
+- #4312: https://github.com/jerry200176-png/AllTrue_System/pull/4312 — queue label at `02:21:58Z` (parent-verified); secondary still no queue/branch action
 - #4320: https://github.com/jerry200176-png/AllTrue_System/pull/4320 — CLOSED; draft conversion unverified
 - #4321 (this DRAFT): https://github.com/jerry200176-png/AllTrue_System/pull/4321
 - Goal A–E public status: [`goal-ae-owner-unblock.status.md`](./goal-ae-owner-unblock.status.md)

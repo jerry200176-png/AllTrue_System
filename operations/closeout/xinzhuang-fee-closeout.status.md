@@ -1,6 +1,7 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-20T02:25Z  
+Last updated: 2026-10-20T02:24Z  
+
 Financial case count: **0/3** verified execution/readback (courses 4064 / 3753 / 3693) — independent of in-app reply/`resolved`/reporter acceptance  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
@@ -16,7 +17,7 @@ No secrets, state hashes, financial payloads, or student PII in this file.
 | #4283 schema squash | `506729c78ab4` | tip-only for **Lane B**; **not** a hard gate for **Lane N** |
 | #4300 allowlist surface | `8e6228a35fad` | on main; Founder-gated; Lane B only |
 
-**Do not treat aggregate `deploy.yml` success as live.** Waiting release train `39333337571` remains **HOLD / DO NOT APPROVE** from coordination messages (not financial WRITE_GO). Do **not** queue #4312 from this lane (Dot authorization gate).
+**Do not treat aggregate `deploy.yml` success as live.** Waiting release train `39333337571` remains **HOLD / DO NOT APPROVE** from coordination messages (not financial WRITE_GO). #4312 queue label applied `2026-10-20T02:21:58Z` (parent-verified; Jerry exact approval) — checkpoint only; secondary lane still takes **no** queue or branch action.
 
 ## Two lanes (do not collapse)
 

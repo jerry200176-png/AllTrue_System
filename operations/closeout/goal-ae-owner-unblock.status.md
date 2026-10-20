@@ -1,6 +1,7 @@
 # Goal A–E owner unblock — public-safe status
 
-Last updated: 2026-10-20T02:25Z  
+Last updated: 2026-10-20T02:24Z  
+
 No secrets, financial amounts, student PII, or encrypted dump payloads in this file.
 
 **Ownership checkpoint:** see [`lane-coordination.status.md`](./lane-coordination.status.md) (DRAFT until merged) + [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) (**registration PENDING** — 403; no alternate retry).  
@@ -24,7 +25,7 @@ Da’an = sole **#4312** + **Lane N** narrow primary billing (scope not expanded
 - Require in-app reporter response as a new prerequisite to count a verified financial case
 - Imply financial case success closes an in-app report
 - Treat #4320 as a mandatory predecessor of #4312; treat draft conversion of #4320 as verified (API `isDraft=false` at ~02:18Z; later CLOSED)
-- Queue or touch #4312 (Dot separate authorization gate)
+- Queue or touch #4312 from secondary lane (parent-verified queue label at `2026-10-20T02:21:58Z` after Jerry exact approval — checkpoint only; grants secondary **no** queue/branch action)
 - Treat aggregate `deploy.yml` success as live when **Deploy to Production** is skipped
 - Claim Goal Done without A/B/D/E product evidence
 - Claim Slack/Teams or Cloud→Da’an direct notify (not verified)
