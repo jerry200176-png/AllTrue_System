@@ -1,5 +1,6 @@
 name: POP mount reviewed-financial once
 # One-shot: install exact Founder tuple to Pi private path. Does not deploy product code.
+# Mount never SCP-overwrites the live authorization file before validation.
 on:
   workflow_dispatch:
     inputs:
@@ -7,6 +8,12 @@ on:
         description: Non-secret label for logs (e.g. course-4064)
         required: true
         type: string
+      mode:
+        description: mount (default) or probe-identity (no mount write)
+        required: false
+        type: choice
+        options: [mount, probe-identity]
+        default: mount
 permissions:
   contents: read
 concurrency:
@@ -22,30 +29,42 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            .github/workflows/pop-mount-reviewed-financial-once.yml
+            scripts/check-pop-mount-remote-guards.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - name: Guard pop-mount remote (no 644 / require app-serving bind / atomic stage)
+        run: python3 scripts/check-pop-mount-remote-guards.py
       - uses: ./.github/actions/production-ssh-trust
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
-      - name: Install reviewed-financial-cases.json (readable by php-fpm, single tuple)
+      - name: Install or probe reviewed-financial mount (app-serving FPM only)
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           MOUNT_B64: ${{ secrets.POP_MOUNT_REVIEWED_FINANCIAL_B64 }}
           CASE_LABEL: ${{ inputs.case_label }}
+          MODE: ${{ inputs.mode || 'mount' }}
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
         run: |
           set -euo pipefail
           test -n "${PI_SSH_KEY:-}"
-          test -n "${MOUNT_B64:-}"
           SSH_DIR="$RUNNER_TEMP/pop-mount-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
           chmod 600 "$SSH_DIR/deploy_key"
-          printf '%s' "$MOUNT_B64" | base64 -d > "$SSH_DIR/reviewed-financial-cases.json"
-          chmod 600 "$SSH_DIR/reviewed-financial-cases.json"
-          python3 - "$SSH_DIR/reviewed-financial-cases.json" <<'PY'
+
+          POP_DIR=/home/admin/backend/storage/app/private/pop
+          LIVE="$POP_DIR/reviewed-financial-cases.json"
+          # Same-directory staging only (same filesystem → rename is atomic).
+          STAGE="$POP_DIR/reviewed-financial-cases.json.staging"
+
+          if [ "$MODE" = "mount" ]; then
+            test -n "${MOUNT_B64:-}"
+            printf '%s' "$MOUNT_B64" | base64 -d > "$SSH_DIR/reviewed-financial-cases.json"
+            chmod 600 "$SSH_DIR/reviewed-financial-cases.json"
+            python3 - "$SSH_DIR/reviewed-financial-cases.json" <<'PY'
           import json, sys, os
           d = json.load(open(sys.argv[1]))
           assert d.get("version") == 1
@@ -57,31 +76,256 @@ jobs:
           assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
           print(f"mount_ok label={os.environ.get('CASE_LABEL')} tuples=1 valid_until={c['valid_until']}")
           PY
+            ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$PI_SSH_USER@$PI_SSH_HOST" \
+              "mkdir -p $(printf %q "$POP_DIR")"
+            # NEVER scp onto LIVE. Stage beside LIVE on the same filesystem.
+            scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$SSH_DIR/reviewed-financial-cases.json" \
+              "$PI_SSH_USER@$PI_SSH_HOST:$STAGE"
+          fi
+
+          # App-serving FPM: vhost → listen → pool → worker /proc Uid.
+          # Validate stage (identity, content, restricted access) then atomic replace LIVE.
+          # retained from #4306: 'chmod 600 …/reviewed-financial-cases.json'
           ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" \
-            'mkdir -p /home/admin/backend/storage/app/private/pop'
-          scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$SSH_DIR/reviewed-financial-cases.json" \
-            "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
-          ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" bash -s <<'REMOTE'
-          # retained from #4306: 'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json; python3 -c "import json;d=json.load(open(\"/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json\")); assert d.get(\"version\")==1 and len(d.get(\"eligible_cases\") or [])==1; print(\"pi_mount_verified\", d[\"eligible_cases\"][0][\"valid_until\"])"'
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE=$(printf %q "$MODE") bash -s" <<'REMOTE'
           set -euo pipefail
-          f=/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json
-          chmod 640 "$f"
-          if id -u www-data >/dev/null 2>&1; then
-            chown www-data:www-data "$f"
-          elif id -u nginx >/dev/null 2>&1; then
-            chown nginx:nginx "$f"
+          POP_DIR=/home/admin/backend/storage/app/private/pop
+          LIVE="$POP_DIR/reviewed-financial-cases.json"
+          STAGE="$POP_DIR/reviewed-financial-cases.json.staging"
+          PREV="$POP_DIR/reviewed-financial-cases.json.prev"
+          APP_ROOT=/home/admin/backend
+          APP_PUBLIC=/home/admin/backend/public
+          SITE_HINT='daan.lifenet.com.tw'
+
+          awk_listen='/^[[:space:]]*listen[[:space:]]*=/{gsub(/;.*/,""); sub(/^[^=]*=/,""); gsub(/[[:space:]"]/,""); print; exit}'
+          awk_user='/^[[:space:]]*user[[:space:]]*=/{gsub(/;.*/,""); sub(/^[^=]*=/,""); gsub(/[[:space:]"]/,""); print; exit}'
+          awk_pool='/^\[[^][]+\]/{name=$0; gsub(/[\[\][:space:]]/,"",name); if (name!="" && name!="global") {print name; exit}}'
+
+          extract_listen() {
+            conf="$1"
+            if grep -qE 'proxy:unix:' "$conf" 2>/dev/null; then
+              grep -oE 'proxy:unix:[^|\"[:space:]]+' "$conf" | head -1 | sed 's/^proxy:unix://'
+            elif grep -qE 'unix:/[^|\"[:space:]]+\.sock' "$conf" 2>/dev/null; then
+              grep -oE 'unix:/[^|\"[:space:]]+\.sock' "$conf" | head -1 | sed 's/^unix://'
+            elif grep -qE 'fastcgi_pass[[:space:]]+[^;]+' "$conf" 2>/dev/null; then
+              raw="$(grep -oE 'fastcgi_pass[[:space:]]+[^;]+' "$conf" | head -1 | awk '{print $2}')"
+              echo "${raw#unix:}"
+            fi
+          }
+
+          resolve_fpm() {
+            listen_target=""
+            for prefer in hint path; do
+              for conf in /etc/apache2/sites-enabled/* /etc/apache2/conf-enabled/* \
+                          /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*; do
+                [ -r "$conf" ] || continue
+                if [ "$prefer" = "hint" ]; then
+                  grep -qF "$SITE_HINT" "$conf" 2>/dev/null || continue
+                else
+                  grep -qE "$APP_PUBLIC|$APP_ROOT" "$conf" 2>/dev/null || continue
+                fi
+                listen_target="$(extract_listen "$conf" || true)"
+                [ -n "${listen_target:-}" ] && break
+              done
+              [ -n "${listen_target:-}" ] && break
+            done
+            test -n "${listen_target:-}"
+
+            pool_user=""
+            pool_name=""
+            for conf in /etc/php/*/fpm/pool.d/*.conf /etc/php-fpm.d/*.conf; do
+              [ -f "$conf" ] || continue
+              plisten="$(awk "$awk_listen" "$conf" 2>/dev/null || true)"
+              [ -n "${plisten:-}" ] || continue
+              case "$plisten" in
+                "$listen_target"|"/${listen_target#/}"|"unix:$listen_target") ;;
+                *) continue ;;
+              esac
+              u="$(awk "$awk_user" "$conf" 2>/dev/null || true)"
+              n="$(awk "$awk_pool" "$conf" 2>/dev/null || true)"
+              [ -n "${n:-}" ] || n="$(basename "$conf" .conf)"
+              if [ -n "${u:-}" ] && [ "$u" != "root" ]; then
+                pool_user="$u"
+                pool_name="$n"
+                break
+              fi
+            done
+            test -n "${pool_user:-}"
+            test -n "${pool_name:-}"
+
+            worker_pid=""
+            while read -r pid args; do
+              case "$args" in
+                *"php-fpm: pool ${pool_name}"*|*"php-fpm: pool ${pool_name} "*)
+                  uid="$(awk '/^Uid:/{print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+                  uname="$(getent passwd "${uid:-}" | cut -d: -f1 || true)"
+                  if [ "$uname" = "$pool_user" ]; then
+                    worker_pid="$pid"
+                    break
+                  fi
+                  ;;
+              esac
+            done < <(ps -eo pid=,args=)
+            test -n "${worker_pid:-}"
+            test -r "/proc/${worker_pid}/status"
+            uid="$(awk '/^Uid:/{print $2}' "/proc/${worker_pid}/status")"
+            gid="$(awk '/^Gid:/{print $2}' "/proc/${worker_pid}/status")"
+            user="$(getent passwd "$uid" | cut -d: -f1)"
+            test -n "${user:-}"
+            test "$user" = "$pool_user"
+            echo "fpm_serving pool=${pool_name} user=${pool_user} listen=${listen_target} worker_pid=${worker_pid}"
+          }
+
+          validate_mount_file() {
+            # Explicit fail-closed checks (do not rely on set -e for control flow).
+            target="$1"
+            if [ ! -f "$target" ]; then
+              echo "validate_mount_file: missing file ${target}" >&2
+              return 1
+            fi
+            if ! sudo -n chown "${uid}:${gid}" "$target"; then
+              echo "validate_mount_file: chown ${uid}:${gid} failed on ${target}" >&2
+              return 1
+            fi
+            mode_target=640
+            if [ "$user" = "admin" ]; then mode_target=600; fi
+            if ! sudo -n chmod "$mode_target" "$target"; then
+              echo "validate_mount_file: chmod ${mode_target} failed on ${target}" >&2
+              return 1
+            fi
+            if ! mode="$(stat -c '%a' "$target")"; then
+              echo "validate_mount_file: stat mode failed on ${target}" >&2
+              return 1
+            fi
+            if [ "$((mode % 10))" -ge 4 ]; then
+              echo "refusing world-accessible mode ${mode} on ${target}" >&2
+              return 1
+            fi
+            if ! stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$target"; then
+              echo "validate_mount_file: identity stat failed on ${target}" >&2
+              return 1
+            fi
+            if command -v namei >/dev/null 2>&1; then
+              if ! namei -l "$target" >/tmp/pop-mount-namei.out; then
+                echo "validate_mount_file: namei failed on ${target}" >&2
+                return 1
+              fi
+            fi
+            if ! sudo -n runuser -u "$user" -- test -r "$target"; then
+              echo "validate_mount_file: runuser cannot read ${target} as ${user}" >&2
+              return 1
+            fi
+            d="$(dirname "$target")"
+            while [ "$d" != "/" ]; do
+              if ! sudo -n runuser -u "$user" -- test -x "$d"; then
+                echo "validate_mount_file: runuser cannot traverse ${d} as ${user}" >&2
+                return 1
+              fi
+              d="$(dirname "$d")"
+            done
+            if ! python3 - "$target" <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          d = json.load(open(path))
+          assert d.get("version") == 1
+          cases = d.get("eligible_cases") or []
+          assert len(cases) == 1, len(cases)
+          c = cases[0]
+          for k in ("operation_id", "parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"):
+              assert k in c and c[k], k
+          assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
+          print("content_ok", c["valid_until"])
+          PY
+            then
+              echo "validate_mount_file: content validation failed on ${target}" >&2
+              return 1
+            fi
+            return 0
+          }
+
+          cleanup_stage_preserve_live() {
+            # Failure path: discard STAGE; restore LIVE from PREV only if LIVE missing.
+            rm -f "$STAGE" || true
+            if [ ! -f "$LIVE" ] && [ -f "$PREV" ]; then
+              if ! mv -f "$PREV" "$LIVE"; then
+                echo "cleanup: failed to restore LIVE from PREV" >&2
+                return 1
+              fi
+              echo "restored_live_from_prev"
+            fi
+            echo "stage_discarded live_preserved=$( [ -f "$LIVE" ] && echo yes || echo no )"
+            return 0
+          }
+
+          resolve_fpm
+
+          if [ "${MODE:-mount}" = "probe-identity" ]; then
+            echo "probe_identity_ok"
+            exit 0
           fi
-          # If php runs as admin, keep admin ownership with mode 600
-          if [ "$(stat -c '%U' "$f")" = "admin" ]; then
-            chmod 600 "$f"
+
+          # Mount path: STAGE must exist; LIVE must not be the SCP target.
+          if [ ! -f "$STAGE" ]; then
+            echo "missing staging file $STAGE (refusing to touch LIVE)" >&2
+            exit 1
           fi
-          stat -c '%U:%G %a %n' "$f"
-          python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); assert d.get("version")==1 and len(d.get("eligible_cases") or [])==1; print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
+
+          # Same filesystem check (required for atomic rename).
+          live_fs="$(df -P "$POP_DIR" | awk 'NR==2{print $1}')"
+          stage_fs="$(df -P "$STAGE" | awk 'NR==2{print $1}')"
+          if [ "$live_fs" != "$stage_fs" ]; then
+            echo "stage and LIVE are on different filesystems; refusing non-atomic replace" >&2
+            exit 1
+          fi
+
+          trap 'cleanup_stage_preserve_live' ERR
+
+          if ! validate_mount_file "$STAGE"; then
+            echo "stage validation failed; LIVE unchanged" >&2
+            cleanup_stage_preserve_live
+            exit 1
+          fi
+
+          # Keep LIVE in place, backup to PREV, then ONE atomic STAGE→LIVE replace.
+          rm -f "$PREV"
+          if [ -f "$LIVE" ]; then
+            if ! cp -a "$LIVE" "$PREV"; then
+              echo "backup LIVE→PREV failed; LIVE unchanged" >&2
+              cleanup_stage_preserve_live
+              exit 1
+            fi
+            if ! cmp -s "$LIVE" "$PREV"; then
+              echo "backup PREV does not match LIVE; refusing replace" >&2
+              rm -f "$PREV"
+              cleanup_stage_preserve_live
+              exit 1
+            fi
+          fi
+          if ! mv -f "$STAGE" "$LIVE"; then
+            echo "atomic STAGE→LIVE replace failed" >&2
+            cleanup_stage_preserve_live
+            exit 1
+          fi
+          # Drop prev only after successful swap + re-validate LIVE.
+          if ! validate_mount_file "$LIVE"; then
+            echo "post-swap LIVE validation failed; restoring PREV" >&2
+            if [ -f "$PREV" ]; then
+              if ! mv -f "$PREV" "$LIVE"; then
+                echo "restore PREV→LIVE failed" >&2
+                exit 1
+              fi
+            else
+              rm -f "$LIVE"
+            fi
+            exit 1
+          fi
+          rm -f "$PREV"
+          trap - ERR
+          python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
           REMOTE
           rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"
