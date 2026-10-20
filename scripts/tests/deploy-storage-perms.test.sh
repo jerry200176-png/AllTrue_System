@@ -99,8 +99,15 @@ rm -f "$P"; mv "$WORK/private-real" "$P"; chmod 640 "$P/pop/reviewed-financial-c
 mv "$P/pop" "$WORK/pop-real"; ln -s "$WORK/pop-real" "$P/pop"
 set +e; bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?; set -e
 [ "$rc" = 3 ] || fail "symlinked private subdirectory must exit 3 (got $rc)"
-grep -q 'symlinked directory' "$WORK/out" || fail "missing ::error:: for symlinked private subdirectory"
+grep -q 'contains a symlink' "$WORK/out" || fail "missing ::error:: for symlinked private subdirectory"
 rm -f "$P/pop"; mv "$WORK/pop-real" "$P/pop"
+
+# Any other symlink is refused without classifying its target (classifying can
+# fail silently when the target path is not searchable): dangling link here.
+ln -s "$WORK/does-not-exist/dir" "$P/unclassifiable"
+set +e; bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?; set -e
+[ "$rc" = 3 ] || fail "unclassifiable private symlink must exit 3 (got $rc)"
+rm -f "$P/unclassifiable"
 
 # World-writable private directories are tightened.
 mkdir -p "$P/drop"; chmod 777 "$P/drop"

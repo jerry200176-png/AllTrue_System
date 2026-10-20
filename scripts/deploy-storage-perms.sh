@@ -4,8 +4,8 @@
 # reviewed financial manifest) whose writers set restrictive modes.
 # Runs from the backend directory (default: /home/admin/backend). Idempotent.
 # Exit 3: a private file is still world-accessible, a private directory is
-# world-writable, the subtree cannot be fully scanned or contains a symlinked
-# directory (or is one), or the key is not 600.
+# world-writable, the subtree cannot be fully scanned, contains (or is) a
+# symlink, or the key is not 600.
 set -uo pipefail
 cd "${1:-/home/admin/backend}" || exit 1
 P=storage/app/private
@@ -19,9 +19,16 @@ status=0
 if [ -L "$P" ]; then
   echo "::error::$P is a symlink; refusing to report it as hardened"
   status=3
-elif [ -d "$P" ] && [ -n "$(find "$P" -type l -xtype d -print -quit 2>/dev/null)" ]; then
-  echo "::error::$P contains a symlinked directory; refusing to report it as hardened"
-  status=3
+elif [ -d "$P" ]; then
+  # Any symlink, without inspecting its target (that needs search permission
+  # on the target path and can fail silently). The scan itself must succeed.
+  if ! link="$(find "$P" -type l -print -quit 2>/dev/null)"; then
+    echo "::error::$P could not be fully scanned for symlinks"
+    status=3
+  elif [ -n "$link" ]; then
+    echo "::error::$P contains a symlink; refusing to report it as hardened"
+    status=3
+  fi
 fi
 if [ "$status" = 0 ] && [ -d "$P" ]; then
   # Undo world access left by the old recursive chmod. Files lose all world
