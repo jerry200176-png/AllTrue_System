@@ -143,3 +143,25 @@ later read-only acceptance must reconcile them and obtain reporter verification.
   as an application fix or silently omitted from verification evidence.
 - Exact-head remote CI and independent review are pending the updated commit;
   draft-skipped checks remain insufficient evidence.
+
+### Reproducible integration artifact (validation only)
+
+- Code input #4327: 4ed03770b0287d8a75bc18afd34aaccc7a4bb502;
+  #4215: 03bdfa964f69f13bb396fa2990269a316942b09c.
+- In an isolated worktree whose HEAD is the #4327 input, run
+  `git merge-tree --write-tree HEAD 03bdfa964f69f13bb396fa2990269a316942b09c`.
+  Exit 1 reports expected content conflicts; raw tree is
+  d2cf9bf340c9dda3d124f3f0f356867cd71715fc. No branch is merged by this command.
+- Materialize that tree only in a disposable validation worktree, then apply
+  [the compatibility patch](2026-10-21-4326-4215-compatibility.patch).
+  It is a resolution artifact for this raw combined tree, NOT a patch to apply
+  directly to either PR branch. It retains #4215's generic/private errors,
+  successor safeguards and student-current-read path, and main's bounded stale
+  reader while using #4327's source-aware/current teacher validation.
+- Artifact SHA256:
+  2dc69b6b1e0831ca481054d70ec3f6e6b0f9823bc5168e5af70cc3eae90a551a.
+  `git apply --check` and byte comparisons verify the resulting three files
+  match the tested compatibility worktree. All other regular backend files
+  match the raw combined tree. A docblock-only addition followed the 158/1053 run.
+- Recheck both live heads before any later integration; these pinned results
+  do not authorize merge/deployment or clear unrelated #4215 review findings.
