@@ -7,6 +7,12 @@ on:
         description: Non-secret label for logs (e.g. course-4064)
         required: true
         type: string
+      mode:
+        description: mount (default) or probe-identity (no mount write)
+        required: false
+        type: choice
+        options: [mount, probe-identity]
+        default: mount
 permissions:
   contents: read
 concurrency:
@@ -22,30 +28,37 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            .github/workflows/pop-mount-reviewed-financial-once.yml
+            scripts/check-pop-mount-remote-guards.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - name: Guard pop-mount remote (no 644 / require app-serving bind)
+        run: python3 scripts/check-pop-mount-remote-guards.py
       - uses: ./.github/actions/production-ssh-trust
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
-      - name: Install reviewed-financial-cases.json (FPM worker-readable, single tuple)
+      - name: Install or probe reviewed-financial mount (app-serving FPM only)
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           MOUNT_B64: ${{ secrets.POP_MOUNT_REVIEWED_FINANCIAL_B64 }}
           CASE_LABEL: ${{ inputs.case_label }}
+          MODE: ${{ inputs.mode || 'mount' }}
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
         run: |
           set -euo pipefail
           test -n "${PI_SSH_KEY:-}"
-          test -n "${MOUNT_B64:-}"
           SSH_DIR="$RUNNER_TEMP/pop-mount-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
           chmod 600 "$SSH_DIR/deploy_key"
-          printf '%s' "$MOUNT_B64" | base64 -d > "$SSH_DIR/reviewed-financial-cases.json"
-          chmod 600 "$SSH_DIR/reviewed-financial-cases.json"
-          python3 - "$SSH_DIR/reviewed-financial-cases.json" <<'PY'
+
+          if [ "$MODE" = "mount" ]; then
+            test -n "${MOUNT_B64:-}"
+            printf '%s' "$MOUNT_B64" | base64 -d > "$SSH_DIR/reviewed-financial-cases.json"
+            chmod 600 "$SSH_DIR/reviewed-financial-cases.json"
+            python3 - "$SSH_DIR/reviewed-financial-cases.json" <<'PY'
           import json, sys, os
           d = json.load(open(sys.argv[1]))
           assert d.get("version") == 1
@@ -57,40 +70,92 @@ jobs:
           assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
           print(f"mount_ok label={os.environ.get('CASE_LABEL')} tuples=1 valid_until={c['valid_until']}")
           PY
-          ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" \
-            'mkdir -p /home/admin/backend/storage/app/private/pop'
-          scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$SSH_DIR/reviewed-financial-cases.json" \
-            "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
-          # Serving FPM pool worker identity + privileged mode; fail closed (never world-readable).
+            ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$PI_SSH_USER@$PI_SSH_HOST" \
+              'mkdir -p /home/admin/backend/storage/app/private/pop'
+            scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$SSH_DIR/reviewed-financial-cases.json" \
+              "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
+          fi
+
+          # App-serving FPM: vhost(docroot|/ServerName) → listen → pool user → live worker /proc Uid.
           # retained from #4306: 'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json'
           ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" bash -s <<'REMOTE'
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE=$(printf %q "$MODE") bash -s" <<'REMOTE'
           set -euo pipefail
           f=/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json
-          test -f "$f"
+          APP_ROOT=/home/admin/backend
+          APP_PUBLIC=/home/admin/backend/public
+          SITE_HINT='daan.lifenet.com.tw'
 
-          # Pool user from live FPM pool config (first non-root user=; fail if unresolved).
+          awk_listen='/^[[:space:]]*listen[[:space:]]*=/{gsub(/;.*/,""); sub(/^[^=]*=/,""); gsub(/[[:space:]"]/,""); print; exit}'
+          awk_user='/^[[:space:]]*user[[:space:]]*=/{gsub(/;.*/,""); sub(/^[^=]*=/,""); gsub(/[[:space:]"]/,""); print; exit}'
+          awk_pool='/^\[[^][]+\]/{name=$0; gsub(/[\[\][:space:]]/,"",name); if (name!="" && name!="global") {print name; exit}}'
+
+          extract_listen() {
+            conf="$1"
+            if grep -qE 'proxy:unix:' "$conf" 2>/dev/null; then
+              grep -oE 'proxy:unix:[^|\"[:space:]]+' "$conf" | head -1 | sed 's/^proxy:unix://'
+            elif grep -qE 'unix:/[^|\"[:space:]]+\.sock' "$conf" 2>/dev/null; then
+              grep -oE 'unix:/[^|\"[:space:]]+\.sock' "$conf" | head -1 | sed 's/^unix://'
+            elif grep -qE 'fastcgi_pass[[:space:]]+[^;]+' "$conf" 2>/dev/null; then
+              raw="$(grep -oE 'fastcgi_pass[[:space:]]+[^;]+' "$conf" | head -1 | awk '{print $2}')"
+              echo "${raw#unix:}"
+            fi
+          }
+
+          # 1) Listen target from the site that serves this app (never "first pool").
+          # Prefer ServerName/hint match, then docroot match.
+          listen_target=""
+          for prefer in hint path; do
+            for conf in /etc/apache2/sites-enabled/* /etc/apache2/conf-enabled/* \
+                        /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*; do
+              [ -r "$conf" ] || continue
+              if [ "$prefer" = "hint" ]; then
+                grep -qF "$SITE_HINT" "$conf" 2>/dev/null || continue
+              else
+                grep -qE "$APP_PUBLIC|$APP_ROOT" "$conf" 2>/dev/null || continue
+              fi
+              listen_target="$(extract_listen "$conf" || true)"
+              [ -n "${listen_target:-}" ] && break
+            done
+            [ -n "${listen_target:-}" ] && break
+          done
+          test -n "${listen_target:-}"
+
+          # 2) Pool whose listen matches that upstream; pool name from [section], not basename.
+          pool_conf=""
           pool_user=""
+          pool_name=""
           for conf in /etc/php/*/fpm/pool.d/*.conf /etc/php-fpm.d/*.conf; do
             [ -f "$conf" ] || continue
-            u="$(awk '/^[[:space:]]*user[[:space:]]*=/{gsub(/;.*/,""); sub(/^[^=]*=/,""); gsub(/[[:space:]]/,""); print; exit}' "$conf" 2>/dev/null || true)"
+            plisten="$(awk "$awk_listen" "$conf" 2>/dev/null || true)"
+            [ -n "${plisten:-}" ] || continue
+            case "$plisten" in
+              "$listen_target"|"/${listen_target#/}"|"unix:$listen_target") ;;
+              *) continue ;;
+            esac
+            u="$(awk "$awk_user" "$conf" 2>/dev/null || true)"
+            n="$(awk "$awk_pool" "$conf" 2>/dev/null || true)"
+            [ -n "${n:-}" ] || n="$(basename "$conf" .conf)"
             if [ -n "${u:-}" ] && [ "$u" != "root" ]; then
+              pool_conf="$conf"
               pool_user="$u"
+              pool_name="$n"
               break
             fi
           done
           test -n "${pool_user:-}"
+          test -n "${pool_name:-}"
 
-          # Live worker whose /proc Uid maps to pool_user (php-fpm: pool … only; not master).
+          # 3) Live worker for that pool name + user (php-fpm: pool <name>; not master).
           worker_pid=""
           while read -r pid args; do
             case "$args" in
-              *"php-fpm: pool "*)
+              *"php-fpm: pool ${pool_name}"*|*"php-fpm: pool ${pool_name} "*)
                 uid="$(awk '/^Uid:/{print $2}' "/proc/$pid/status" 2>/dev/null || true)"
                 uname="$(getent passwd "${uid:-}" | cut -d: -f1 || true)"
                 if [ "$uname" = "$pool_user" ]; then
@@ -108,6 +173,14 @@ jobs:
           test -n "${user:-}"
           test "$user" = "$pool_user"
 
+          echo "fpm_serving pool=${pool_name} user=${pool_user} listen=${listen_target} worker_pid=${worker_pid}"
+
+          if [ "${MODE:-mount}" = "probe-identity" ]; then
+            echo "probe_identity_ok"
+            exit 0
+          fi
+
+          test -f "$f"
           sudo -n chown "${uid}:${gid}" "$f"
           mode_target=640
           if [ "$user" = "admin" ]; then mode_target=600; fi
