@@ -32,6 +32,8 @@ jobs:
             .github/actions/production-ssh-trust
             .github/workflows/pop-mount-reviewed-financial-once.yml
             scripts/check-pop-mount-remote-guards.py
+            .github/workflows/deploy.yml
+            scripts/production-deploy/pi-remote-deploy.sh
             .github/scripts/pop-mount-policy-readonly.sh
             .github/scripts/pop-mount-policy-probe.sh
           sparse-checkout-cone-mode: false
@@ -42,6 +44,9 @@ jobs:
         run: |
           case "$MODE" in mount|probe-identity|probe-policy) ;; *) exit 64 ;; esac
           python3 scripts/check-pop-mount-remote-guards.py
+          # A mount before deploy stops re-widening storage/app/private would be
+          # re-exposed by the next deploy (#4332); refuse until main carries it.
+          if [ "$MODE" = mount ]; then python3 scripts/check-pop-mount-remote-guards.py --require-deploy-safe; fi
       - uses: ./.github/actions/production-ssh-trust
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
@@ -232,10 +237,31 @@ jobs:
             case "$(awk -F: '$1=="other"{print $3}' <<<"$acl")" in *"$want"*) return 0 ;; *) return 1 ;; esac
           }
 
+          # Expected getfacl -cpn lines for a file the worker reads via a named
+          # entry; anything else (extra principals, wider mask) is refused.
+          acl_exact() {
+            got="$(getfacl -cpn -- "$1" 2>/dev/null | sed '/^$/d' | sort)" || return 1
+            [ "$got" = "$(printf '%s\n' "$2" | sed '/^$/d' | sort)" ]
+          }
+
+          # Directory traverse grants are recorded so a later failure can put
+          # the original ACLs back (setfacl --restore).
+          restore_dir_acls() {
+            [ -n "${DIR_ACL_BACKUP:-}" ] && [ -s "$DIR_ACL_BACKUP" ] || return 0
+            if ! setfacl --restore="$DIR_ACL_BACKUP"; then
+              echo "validate_mount_file: directory ACL restore failed" >&2
+              return 1
+            fi
+            : >"$DIR_ACL_BACKUP"
+            echo "directory_acls_restored"
+          }
+
           validate_mount_file() {
             # Explicit fail-closed checks (do not rely on set -e for control flow).
             # No sudo: the deploy account owns the file and grants the serving
             # worker read with a named ACL (production sudo needs a password).
+            # Non-mutating checks run first; directory grants are rolled back
+            # if anything after them fails.
             target="$1"
             if [ ! -f "$target" ]; then
               echo "validate_mount_file: missing file ${target}" >&2
@@ -245,47 +271,6 @@ jobs:
               echo "validate_mount_file: setfacl/getfacl missing (acl package); refusing" >&2
               return 1
             fi
-            if [ "$(stat -c '%u' "$target")" = "$uid" ]; then
-              if ! chmod 600 "$target"; then
-                echo "validate_mount_file: chmod 600 failed on ${target}" >&2
-                return 1
-              fi
-            elif ! setfacl -m "u::rw-,g::---,o::---,u:${uid}:r--" "$target"; then
-              echo "validate_mount_file: setfacl failed on ${target}" >&2
-              return 1
-            fi
-            if ! mode="$(stat -c '%a' "$target")"; then
-              echo "validate_mount_file: stat mode failed on ${target}" >&2
-              return 1
-            fi
-            if [ "$((mode % 10))" -ne 0 ]; then
-              echo "refusing world-accessible mode ${mode} on ${target}" >&2
-              return 1
-            fi
-            if ! stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$target"; then
-              echo "validate_mount_file: identity stat failed on ${target}" >&2
-              return 1
-            fi
-            # Only the two directories this workflow manages get a traverse
-            # entry; every other ancestor must already be traversable.
-            for d in "$POP_DIR" "$(dirname "$POP_DIR")"; do
-              if ! fpm_can x "$d" && ! setfacl -m "u:${uid}:--x" "$d"; then
-                echo "validate_mount_file: setfacl traverse failed on ${d}" >&2
-                return 1
-              fi
-            done
-            if ! fpm_can r "$target"; then
-              echo "validate_mount_file: fpm cannot read ${target} as ${user}" >&2
-              return 1
-            fi
-            d="$(dirname "$target")"
-            while [ "$d" != "/" ]; do
-              if ! fpm_can x "$d"; then
-                echo "validate_mount_file: fpm cannot traverse ${d} as ${user}" >&2
-                return 1
-              fi
-              d="$(dirname "$d")"
-            done
             if ! python3 - "$target" <<'PY'
           import json, sys
           path = sys.argv[1]
@@ -303,12 +288,64 @@ jobs:
               echo "validate_mount_file: content validation failed on ${target}" >&2
               return 1
             fi
+            managed_parent="$(dirname "$POP_DIR")"
+            d="$(dirname "$managed_parent")"
+            while [ "$d" != "/" ]; do
+              if ! fpm_can x "$d"; then
+                echo "validate_mount_file: fpm cannot traverse ${d} as ${user}" >&2
+                return 1
+              fi
+              d="$(dirname "$d")"
+            done
+            # --set replaces the whole ACL, dropping stale or inherited entries.
+            if [ "$(stat -c '%u' "$target")" = "$uid" ]; then
+              if ! setfacl -b "$target" || ! chmod 600 "$target"; then
+                echo "validate_mount_file: setfacl failed on ${target}" >&2
+                return 1
+              fi
+              want_acl="$(printf 'user::rw-\ngroup::---\nother::---')"
+            elif ! setfacl --set "u::rw-,g::---,o::---,u:${uid}:r--,m::r--" "$target"; then
+              echo "validate_mount_file: setfacl failed on ${target}" >&2
+              return 1
+            else
+              want_acl="$(printf 'user::rw-\nuser:%s:r--\ngroup::---\nmask::r--\nother::---' "$uid")"
+            fi
+            if ! acl_exact "$target" "$want_acl"; then
+              echo "refusing world-accessible or extra ACL entries on ${target}" >&2
+              return 1
+            fi
+            if ! stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$target"; then
+              echo "validate_mount_file: identity stat failed on ${target}" >&2
+              return 1
+            fi
+            # Only the two directories this workflow manages get a traverse
+            # entry; every other ancestor was checked above without changes.
+            for d in "$managed_parent" "$POP_DIR"; do
+              fpm_can x "$d" && continue
+              if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! setfacl -m "u:${uid}:--x" "$d"; then
+                echo "validate_mount_file: setfacl traverse failed on ${d}" >&2
+                restore_dir_acls
+                return 1
+              fi
+            done
+            if ! fpm_can x "$managed_parent" || ! fpm_can x "$POP_DIR"; then
+              echo "validate_mount_file: fpm cannot traverse ${POP_DIR} as ${user}" >&2
+              restore_dir_acls
+              return 1
+            fi
+            if ! fpm_can r "$target"; then
+              echo "validate_mount_file: fpm cannot read ${target} as ${user}" >&2
+              restore_dir_acls
+              return 1
+            fi
             return 0
           }
 
           cleanup_stage_preserve_live() {
-            # Failure path: discard STAGE; restore LIVE from PREV only if LIVE missing.
+            # Failure path: discard STAGE; restore LIVE from PREV only if LIVE
+            # missing; put back any directory ACLs this run changed.
             rm -f "$STAGE" || true
+            restore_dir_acls || true
             if [ ! -f "$LIVE" ] && [ -f "$PREV" ]; then
               if ! mv -f "$PREV" "$LIVE"; then
                 echo "cleanup: failed to restore LIVE from PREV" >&2
@@ -341,6 +378,7 @@ jobs:
             exit 1
           fi
 
+          DIR_ACL_BACKUP="$(mktemp)"
           trap 'cleanup_stage_preserve_live' ERR
 
           if ! validate_mount_file "$STAGE"; then
@@ -372,6 +410,7 @@ jobs:
           # Drop prev only after successful swap + re-validate LIVE.
           if ! validate_mount_file "$LIVE"; then
             echo "post-swap LIVE validation failed; restoring PREV" >&2
+            restore_dir_acls || true
             if [ -f "$PREV" ]; then
               if ! mv -f "$PREV" "$LIVE"; then
                 echo "restore PREV→LIVE failed" >&2
@@ -382,7 +421,7 @@ jobs:
             fi
             exit 1
           fi
-          rm -f "$PREV"
+          rm -f "$PREV" "$DIR_ACL_BACKUP"
           trap - ERR
           python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
           REMOTE

@@ -1,34 +1,54 @@
 #!/usr/bin/env bash
-# Local simulation: cp backup while LIVE stays; one STAGE→LIVE; explicit-fail validate.
-# Runs the workflow's own validate_mount_file with real ACLs; stub setfacl
-# injects setfacl/read/traversal failures.
+# Local simulation of the reviewed-financial mount: cp backup while LIVE stays,
+# one STAGE→LIVE, explicit fail-closed validation. Runs the workflow's own
+# fpm_can / acl_exact / restore_dir_acls / validate_mount_file /
+# cleanup_stage_preserve_live on real ACLs; a setfacl stub injects failures.
+#
+# Limits: the worker's access is decided statically from getfacl (fpm_can).
+# The kernel cross-check below only runs as root; it cannot model LSMs
+# (AppArmor/SELinux), mount options or capabilities on the production host.
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+chmod 755 "$TMP"
 
-POP_DIR="$TMP/pop"
+# Layout mirrors production: <ancestor>/private/pop, where only private and
+# pop are managed by the workflow.
+ANCESTOR="$TMP/backend"
+POP_DIR="$ANCESTOR/private/pop"
 LIVE="$POP_DIR/reviewed-financial-cases.json"
 STAGE="$POP_DIR/reviewed-financial-cases.json.staging"
 PREV="$POP_DIR/reviewed-financial-cases.json.prev"
 mkdir -p "$POP_DIR"
+chmod 755 "$ANCESTOR"
+DIR_ACL_BACKUP="$TMP/dir-acl.backup"
+: >"$DIR_ACL_BACKUP"
 
 # Serving-worker identity for the simulation: an unprivileged account that
 # owns nothing here, so access must come from the named ACL.
 user=nobody; uid="$(id -u nobody)"; gid="$(id -g nobody)"; fpm_gids="$(id -G nobody)"
-command -v setfacl >/dev/null 2>&1 || { echo "SKIP: setfacl unavailable (install acl)"; exit 1; }
+command -v setfacl >/dev/null 2>&1 || { echo "ERROR: setfacl unavailable (install acl)"; exit 1; }
+# A second principal that must never end up on the file ACL.
+OTHER_UID="$(id -u daemon 2>/dev/null || echo 1)"
 
 # Stub setfacl to inject failures; otherwise call the real one.
 SETFACL_FAIL_MODE="${SETFACL_FAIL_MODE:-}"
 setfacl() {
   local last="${!#}"
   case "${SETFACL_FAIL_MODE}" in
-    file) if [ -f "$last" ]; then echo "stub setfacl: file fail" >&2; return 1; fi ;;
+    file) if [ -f "$last" ]; then echo "stub setfacl: file fail (EPERM, non-owner)" >&2; return 1; fi ;;
     file_noop) if [ -f "$last" ]; then echo "stub setfacl: file_noop" >&2; return 0; fi ;;
     dir_noop) if [ -d "$last" ]; then echo "stub setfacl: dir_noop" >&2; return 0; fi ;;
   esac
   command setfacl "$@"
 }
+
+WF="$ROOT/.github/workflows/pop-mount-reviewed-financial-once.yml"
+eval "$(awk '/^          # fpm_can <r\|x> PATH/{on=1} on{print} on && /^          }$/{n++; if(n==5) exit}' "$WF" | sed 's/^          //')"
+for fn in fpm_can acl_exact restore_dir_acls validate_mount_file cleanup_stage_preserve_live; do
+  declare -F "$fn" >/dev/null || { echo "ERROR could not extract $fn from workflow" >&2; exit 1; }
+done
 
 good_json() {
   cat >"$1" <<'JSON'
@@ -36,144 +56,191 @@ good_json() {
 JSON
 }
 bad_json() { echo '{"version":1,"eligible_cases":[]}' >"$1"; }
+acl_of() { getfacl -cpn -- "$1" 2>/dev/null | sed '/^$/d' | sort; }
+
+reset_dirs() {
+  # Managed dirs start without traverse for the worker; each case decides more.
+  command setfacl -b "$ANCESTOR/private" "$POP_DIR"
+  chmod 700 "$ANCESTOR/private" "$POP_DIR"
+  chmod 755 "$ANCESTOR"
+  : >"$DIR_ACL_BACKUP"
+}
 
 seed_prior_live() {
+  reset_dirs
+  rm -f "$STAGE" "$PREV"
   good_json "$LIVE"
   chmod 600 "$LIVE"
   PRIOR_HASH="$(sha256sum "$LIVE" | awk '{print $1}')"
   PRIOR_MODE="$(stat -c '%a' "$LIVE")"
   PRIOR_OWNER="$(stat -c '%u:%g' "$LIVE")"
-  export PRIOR_HASH PRIOR_MODE PRIOR_OWNER
+  PRIOR_ACL="$(acl_of "$LIVE")"
+  PRIOR_DIR_ACL="$(acl_of "$ANCESTOR/private"; acl_of "$POP_DIR")"
 }
 
 assert_prior_preserved() {
-  local label="$1"
+  local label="$1" hash mode owner
   test -f "$LIVE" || { echo "ERROR $label: LIVE missing"; exit 1; }
-  local hash mode owner
   hash="$(sha256sum "$LIVE" | awk '{print $1}')"
   mode="$(stat -c '%a' "$LIVE")"
   owner="$(stat -c '%u:%g' "$LIVE")"
-  if [ "$hash" != "$PRIOR_HASH" ] || [ "$mode" != "$PRIOR_MODE" ] || [ "$owner" != "$PRIOR_OWNER" ]; then
-    echo "ERROR $label: prior LIVE not preserved" >&2
-    echo "  want hash=$PRIOR_HASH mode=$PRIOR_MODE owner=$PRIOR_OWNER" >&2
-    echo "  got  hash=$hash mode=$mode owner=$owner" >&2
+  if [ "$hash" != "$PRIOR_HASH" ] || [ "$mode" != "$PRIOR_MODE" ] || [ "$owner" != "$PRIOR_OWNER" ] \
+     || [ "$(acl_of "$LIVE")" != "$PRIOR_ACL" ]; then
+    echo "ERROR $label: prior LIVE not preserved (contents/mode/owner/ACL)" >&2
     exit 1
   fi
-  echo "PASS $label preserves contents+owner+mode"
+  echo "PASS $label preserves LIVE contents+owner+mode+ACL"
 }
 
-# The exact fpm_can + validate_mount_file from the workflow (no hand copy).
-WF="$ROOT/.github/workflows/pop-mount-reviewed-financial-once.yml"
-eval "$(awk '/^          # fpm_can <r\|x> PATH/{on=1} on{print} on && /^          }$/{n++; if(n==2) exit}' "$WF" | sed 's/^          //')"
-declare -F fpm_can >/dev/null && declare -F validate_mount_file >/dev/null \
-  || { echo "ERROR could not extract validate_mount_file from workflow" >&2; exit 1; }
-
-cleanup_stage_preserve_live() {
-  rm -f "$STAGE" || true
-  if [ ! -f "$LIVE" ] && [ -f "$PREV" ]; then
-    mv -f "$PREV" "$LIVE"
-    echo "restored_live_from_prev"
+assert_dirs_restored() {
+  local label="$1"
+  if [ "$(acl_of "$ANCESTOR/private"; acl_of "$POP_DIR")" != "$PRIOR_DIR_ACL" ]; then
+    echo "ERROR $label: managed directory ACLs not restored" >&2
+    exit 1
   fi
+  echo "PASS $label restores managed directory ACLs"
 }
 
-# 1) Happy: backup with LIVE still present, one STAGE→LIVE
+expect_fail() {   # expect_fail <label> <stderr marker>
+  local label="$1" marker="$2"
+  if validate_mount_file "$STAGE" >/dev/null 2>"$TMP/validation.err"; then
+    echo "ERROR $label: validation should fail"; exit 1
+  fi
+  grep -q -- "$marker" "$TMP/validation.err" || { echo "ERROR $label: missing marker '$marker'" >&2; cat "$TMP/validation.err" >&2; exit 1; }
+  cleanup_stage_preserve_live >/dev/null
+}
+
+# 1) Happy path: exact ACL on the file, traverse added on managed dirs only.
 seed_prior_live
 good_json "$STAGE"
-chmod 640 "$STAGE"
-if ! validate_mount_file "$STAGE"; then echo "ERROR stage validate"; exit 1; fi
-rm -f "$PREV"
-cp -a "$LIVE" "$PREV"
-cmp -s "$LIVE" "$PREV"
-# LIVE still present before single replace
-test -f "$LIVE"
+chmod 644 "$STAGE"   # sloppy upload mode must be replaced
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR stage validate"; cat "$TMP/validation.err" 2>/dev/null; exit 1; }
+want="$(printf 'group::---\nmask::r--\nother::---\nuser::rw-\nuser:%s:r--' "$uid" | sort)"
+[ "$(acl_of "$STAGE")" = "$want" ] || { echo "ERROR happy: unexpected ACL"; acl_of "$STAGE"; exit 1; }
+cp -a "$LIVE" "$PREV"; cmp -s "$LIVE" "$PREV"; test -f "$LIVE"
 mv -f "$STAGE" "$LIVE"
-if ! validate_mount_file "$LIVE"; then echo "ERROR live validate"; exit 1; fi
+validate_mount_file "$LIVE" >/dev/null 2>&1 || { echo "ERROR live validate"; exit 1; }
 rm -f "$PREV"
 test ! -f "$STAGE"
-echo "PASS happy-path cp-backup then one STAGE→LIVE"
+[ "$(stat -c '%a' "$ANCESTOR")" = 755 ] || { echo "ERROR happy: unmanaged ancestor changed"; exit 1; }
+echo "PASS happy-path exact ACL, cp-backup then one STAGE→LIVE"
 
-# 2) Bad stage: LIVE untouched
+# 2) Extra principals / inherited default ACL / wide mask are replaced by --set.
 seed_prior_live
-bad_json "$STAGE"
-if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR bad should fail"; exit 1; fi
-rm -f "$STAGE"
-assert_prior_preserved "failing-stage"
+command setfacl -m "d:u:${OTHER_UID}:rwx" "$POP_DIR"   # default ACL would be inherited
+good_json "$STAGE"
+command setfacl -m "u:${OTHER_UID}:r--,m::rwx" "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR extra-entries: --set should normalise"; exit 1; }
+if acl_of "$STAGE" | grep -q "user:${OTHER_UID}:"; then echo "ERROR extra principal survived"; exit 1; fi
+acl_of "$STAGE" | grep -qx 'mask::r--' || { echo "ERROR mask not narrowed"; exit 1; }
+cleanup_stage_preserve_live >/dev/null
+echo "PASS extra-principal and wide-mask entries replaced"
 
-# 3) setfacl failure leaves LIVE
+# 3) If the ACL cannot be replaced, leftover entries are refused, LIVE kept.
+seed_prior_live
+good_json "$STAGE"
+command setfacl -m "u:${uid}:r--,u:${OTHER_UID}:r--,m::rwx" "$STAGE"; chmod o-rwx "$STAGE"
+SETFACL_FAIL_MODE=file_noop
+expect_fail "extra-entries-kept" "extra ACL entries"
+SETFACL_FAIL_MODE=
+assert_prior_preserved "extra-entries-kept"
+assert_dirs_restored "extra-entries-kept"
+
+# 4) setfacl EPERM (non-owner of the file) fails closed.
 seed_prior_live
 good_json "$STAGE"
 SETFACL_FAIL_MODE=file
-if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR setfacl should fail"; exit 1; fi
-grep -q 'validate_mount_file: setfacl failed' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
+expect_fail "setfacl-fail" "validate_mount_file: setfacl failed"
 SETFACL_FAIL_MODE=
-rm -f "$STAGE"
 assert_prior_preserved "setfacl-fail"
 
-# 4) Missing acl tools fail closed
+# 5) Missing acl tools fail closed before any change.
 seed_prior_live
 good_json "$STAGE"
 if (unset -f setfacl; PATH=/nonexistent validate_mount_file "$STAGE") 2>"$TMP/validation.err"; then echo "ERROR missing acl should fail"; exit 1; fi
 grep -q 'setfacl/getfacl missing' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
-rm -f "$STAGE"
+cleanup_stage_preserve_live >/dev/null
 assert_prior_preserved "acl-tools-missing"
+assert_dirs_restored "acl-tools-missing"
 
-# 5) Worker cannot read (ACL not applied) leaves LIVE
+# 6) Bad content is rejected before any permission change.
+seed_prior_live
+bad_json "$STAGE"
+expect_fail "bad-content" "content validation failed"
+assert_prior_preserved "bad-content"
+assert_dirs_restored "bad-content"
+
+# 7) Untraversable unmanaged ancestor: refused without touching managed dirs.
 seed_prior_live
 good_json "$STAGE"
-chmod 600 "$STAGE"
-SETFACL_FAIL_MODE=file_noop
-if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR read denial should fail"; exit 1; fi
-grep -q 'validate_mount_file: fpm cannot read' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
-SETFACL_FAIL_MODE=
-rm -f "$STAGE"
-assert_prior_preserved "fpm-read-denied"
+chmod 700 "$ANCESTOR"
+expect_fail "ancestor-untraversable" "fpm cannot traverse ${ANCESTOR}"
+chmod 755 "$ANCESTOR"
+assert_prior_preserved "ancestor-untraversable"
+assert_dirs_restored "ancestor-untraversable"
 
-# Parent traversal denial must also reject STAGE without replacing LIVE.
+# 8) Managed dir grant not effective: refused and directory ACLs rolled back.
 seed_prior_live
 good_json "$STAGE"
-setfacl -b "$POP_DIR" "$TMP"; chmod 700 "$POP_DIR" "$TMP"
 SETFACL_FAIL_MODE=dir_noop
-if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR traversal should fail"; exit 1; fi
-grep -q 'validate_mount_file: fpm cannot traverse' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
+expect_fail "managed-dir-traverse" "fpm cannot traverse ${POP_DIR}"
 SETFACL_FAIL_MODE=
-rm -f "$STAGE"
-assert_prior_preserved "fpm-traverse-denied"
+assert_prior_preserved "managed-dir-traverse"
+assert_dirs_restored "managed-dir-traverse"
 
-# fpm_can must agree with the kernel (needs root to switch identity).
+# 9) Read denied after dir grants (file ACL ineffective): dirs rolled back.
+seed_prior_live
+good_json "$STAGE"; chmod 600 "$STAGE"
+SETFACL_FAIL_MODE=file_noop
+expect_fail "fpm-read-denied" "ACL entries\|fpm cannot read"
+SETFACL_FAIL_MODE=
+assert_prior_preserved "fpm-read-denied"
+assert_dirs_restored "fpm-read-denied"
+
+# 9b) Real directory grants applied, then the read check fails: grants rolled back.
+seed_prior_live
+good_json "$STAGE"
+eval "orig_$(declare -f fpm_can)"
+fpm_can() { [ "$1" = r ] && return 1; orig_fpm_can "$@"; }
+expect_fail "rollback-after-grant" "fpm cannot read"
+eval "$(declare -f orig_fpm_can | sed '1s/orig_fpm_can/fpm_can/')"
+assert_prior_preserved "rollback-after-grant"
+assert_dirs_restored "rollback-after-grant"
+
+# 10) fpm_can must agree with the kernel (needs root to switch identity).
 if [ "$(id -u)" = 0 ] && command -v runuser >/dev/null 2>&1; then
+  seed_prior_live
   good_json "$STAGE"
-  validate_mount_file "$STAGE" >/dev/null || { echo "ERROR kernel cross-check setup"; exit 1; }
+  validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR kernel cross-check setup"; exit 1; }
   runuser -u nobody -- test -r "$STAGE" || { echo "ERROR kernel denies read that fpm_can allowed"; exit 1; }
-  setfacl -x "u:${uid}" "$STAGE"
+  command setfacl -x "u:${uid}" "$STAGE"
   if runuser -u nobody -- test -r "$STAGE" || fpm_can r "$STAGE"; then echo "ERROR read allowed without ACL"; exit 1; fi
-  rm -f "$STAGE"
+  cleanup_stage_preserve_live >/dev/null
   echo "PASS fpm_can matches kernel access for ${user}"
 fi
 
-# 6) Interrupt after STAGE→LIVE but before validate: restore from PREV (LIVE was replaced)
+# 11) Post-swap failure restores PREV and the managed directory ACLs.
 seed_prior_live
 good_json "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR swap setup"; exit 1; }
 cp -a "$LIVE" "$PREV"
 mv -f "$STAGE" "$LIVE"
-# simulate bad post-swap content
-bad_json "$LIVE"
-if validate_mount_file "$LIVE" 2>/dev/null; then echo "ERROR post-swap should fail"; exit 1; fi
-# restore
+bad_json "$LIVE"   # simulate a corrupted swap
+if validate_mount_file "$LIVE" >/dev/null 2>&1; then echo "ERROR post-swap should fail"; exit 1; fi
+restore_dir_acls >/dev/null
 mv -f "$PREV" "$LIVE"
 assert_prior_preserved "post-swap-interrupt-restore"
+assert_dirs_restored "post-swap-interrupt-restore"
 
-# 7) Interrupt with LIVE missing (legacy path) still restores PREV
+# 12) Interrupt with LIVE missing still restores PREV.
 seed_prior_live
 cp -a "$LIVE" "$PREV"
 rm -f "$LIVE"
-cleanup_stage_preserve_live
+cleanup_stage_preserve_live >/dev/null
 assert_prior_preserved "live-missing-restores-prev"
 
-# 8) Guards
+# 13) Guards
 cd "$ROOT"
-# temporarily allow set +e for guard scripts
-set +e
 python3 scripts/check-pop-mount-remote-guards.py || exit 1
 python3 scripts/check-pop-mount-remote-guards.py --self-test || exit 1
-set -e
 echo "pop-mount-atomic-stage test: OK"
