@@ -11,8 +11,8 @@ if grep -qE 'chmod -R 775 storage' "$DEPLOY"; then
   fail "deploy.yml still runs a recursive chmod 775 over storage/app/private"
 fi
 
-grep -qF 'bash /home/admin/scripts/deploy-storage-perms.sh' "$DEPLOY" \
-  || fail "deploy.yml [2b/7] no longer calls scripts/deploy-storage-perms.sh"
+grep -qF 'bash /home/admin/scripts/deploy-storage-perms.sh || abort_deploy' "$DEPLOY" \
+  || fail "deploy.yml [2b/7] must call scripts/deploy-storage-perms.sh and abort the deploy on failure"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -52,4 +52,23 @@ for pass in 1 2; do   # second pass proves idempotence
       || fail "ACL mask widened (pass $pass)"
   fi
 done
+# A private file the deploy user cannot fix (simulated EPERM via a chmod shim)
+# must fail the step with exit 3 instead of being reported as hardened.
+SHIM="$WORK/shim"; mkdir -p "$SHIM"
+cat >"$SHIM/chmod" <<'SH'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in *foreign*) echo "chmod: Operation not permitted" >&2; exit 1;; esac; done
+exec /bin/chmod "$@"
+SH
+/bin/chmod +x "$SHIM/chmod"
+printf 'x' > "$P/foreign.json"; chmod 644 "$P/foreign.json"
+set +e
+PATH="$SHIM:$PATH" bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1
+rc=$?
+set -e
+[ "$rc" = 3 ] || fail "unfixable world-readable private file must exit 3 (got $rc)"
+grep -q 'world-accessible' "$WORK/out" || fail "missing ::error:: for unfixable private file"
+rm -f "$P/foreign.json"
+bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >/dev/null || fail "clean tree must exit 0"
+
 echo "deploy storage perms: ok (acl_checked=$ACL)"
