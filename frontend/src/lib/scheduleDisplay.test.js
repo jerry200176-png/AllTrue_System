@@ -119,4 +119,18 @@ assert.equal(
   '調課沒有完成，請確認新日期與時間後再試。',
 );
 
+
+assert.equal(formatRescheduleConflictStudents([
+  { student_id: 432601, student_name: 'S-B', subject_name: 'Math' },
+  { student_id: 432601, student_name: 'S-B', subject_name: 'Math' },
+]), '此時段已有：S-B（Math）');
+
+assert.equal(formatRescheduleConflictStudents([
+  { student_id: 432601, student_name: 'S-B', subject_name: 'Math' },
+  { student_id: 432602, student_name: 'S-B', subject_name: 'Math' },
+]), '此時段已有：S-B（Math）、S-B（Math）');
+assert.equal(formatRescheduleConflictStudents([
+  { student_id: 432601, student_name: 'S-B', subject_name: 'Math' },
+  { student_id: 432601, student_name: 'S-B', subject_name: 'English' },
+]), '此時段已有：S-B（Math）、S-B（English）');
 console.log('scheduleDisplay.test.js: all assertions passed');

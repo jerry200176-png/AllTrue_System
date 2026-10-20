@@ -196,7 +196,14 @@ class ScheduleGuardService
             $conflicts[] = $teacherConflict;
         }
 
-        $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps, $lock);
+        $roomOverlaps = $overlaps;
+        if ($roomId) {
+            $roomEntries = $this->buildTeacherDateOccupancyEntries($teacherId, $branchId, $date,
+                $excludeScheduleId, $excludeStudentId, $excludeCourseId, $startTime, $endTime, $lock, true);
+            $roomOverlaps = array_values(array_filter($roomEntries, fn ($entry) =>
+                $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time'])));
+        }
+        $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $roomOverlaps, $lock);
         if ($roomConflict) {
             $conflicts[] = $roomConflict;
         }
@@ -209,9 +216,10 @@ class ScheduleGuardService
      * supplies teacher, class type, room, and the self-exclusions (same course and
      * same student never conflict with themselves).
      *
+     * @param  array{date: string, start_time: string}|null  $sourceOccurrence Server-owned source of a moved lesson.
      * @return array<int, array<string, mixed>>
      */
-    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false): array
+    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false, ?array $sourceOccurrence = null): array
     {
         if ($lock && $course->exists) {
             // Protect proposed metadata keys; defer clustered X until after shared occupancy.
@@ -226,8 +234,16 @@ class ScheduleGuardService
             }
             $course = $currentCourse;
         }
+        $teacherId = (int) $course->getAttribute('TeacherID');
+        if ($sourceOccurrence !== null) {
+            // Resolve after the current metadata read: reloading a cloned course
+            // must not replace its source occurrence's substitute with the contract teacher.
+            $teacherId = SubstituteScheduleService::teacherForOccurrence(
+                (int) $course->getKey(), $sourceOccurrence['date'], $teacherId, $sourceOccurrence['start_time'], $lock
+            );
+        }
         $conflicts = $this->validateScheduleOccurrence([
-            'teacher_id' => (int) $course->getAttribute('TeacherID'),
+            'teacher_id' => $teacherId,
             'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
             'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
             'branch_id' => $branchId,
@@ -644,6 +660,7 @@ class ScheduleGuardService
         $scheduleRows = $scheduleRowsQuery->select(['id', 'student_id', 'schedule_date', 'status', 'start_time', 'end_time', 'class_type', 'student_course_id', 'original_schedule_id', 'type'])->get();
 
         $leaveOrRescheduled = [];
+        $leaveCourses = [];
         $scheduledByDate = [];
         foreach ($scheduleRows as $row) {
             $status = (string) ($row->status ?? '');
@@ -651,6 +668,7 @@ class ScheduleGuardService
             $d = $row->schedule_date ? Carbon::parse((string) $row->schedule_date)->toDateString() : '';
             if ($d && $courseId > 0 && ($status === 'leave' || $status === 'rescheduled')) {
                 $leaveOrRescheduled[$courseId . '|' . $d] = true;
+                if ($status === 'leave') $leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $d, (string) $row->start_time)] = true;
             } elseif ($d && $status === 'scheduled') {
                 $scheduledByDate[$d][] = $row;
             }
@@ -670,12 +688,15 @@ class ScheduleGuardService
             static fn ($r) => (int) ($r->student_course_id ?? 0),
             $filteredScheduledRows
         ));
+        $scheduleTeachers = $this->scheduleTeachers($filteredScheduledRows, $recurringCourseMeta, $teacherId);
         $filteredScheduledRows = array_values(array_filter(
             $filteredScheduledRows,
             fn ($row) => $this->scheduleRowOccupiesQueriedTeacher(
                 $row,
                 $teacherId,
-                $recurringCourseMeta[(int) ($row->student_course_id ?? 0)] ?? null
+                $recurringCourseMeta[(int) ($row->student_course_id ?? 0)] ?? null,
+                $scheduleTeachers[SubstituteScheduleService::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, (string) $row->start_time)] ?? $teacherId,
+                true
             )
         ));
 
@@ -690,6 +711,10 @@ class ScheduleGuardService
         }
         $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
 
+        $sessionTeachers = SubstituteScheduleService::teachersForOccurrences(array_map(fn ($row) => [
+            'course_id' => (int) $row->StudentClassID, 'date' => substr((string) $row->SessionDate, 0, 10),
+            'start_time' => (string) $row->StartTime, 'contract_teacher_id' => $teacherId,
+        ], $classSessions->all()));
         $overlaps = [];
         $seenKeys = [];
         // Own rows the edit moves to a new slot (same plan as ContractSessionSchedule::syncFutureScheduledSessionTimes()) never block it;
@@ -755,11 +780,10 @@ class ScheduleGuardService
             }
 
             $courseId = (int) ($row->StudentClassID ?? 0);
-            if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])) {
-                continue;
-            }
-            // TD-076 flag on: another teacher teaches this occurrence, so the contract teacher is free.
-            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $sessionDate, (string) ($row->StartTime ?? ''))) {
+            $occupiesTeacher = ($sessionTeachers[SubstituteScheduleService::occurrenceKey($courseId, $sessionDate, (string) $row->StartTime)] ?? $teacherId) === $teacherId;
+            // A substitution's rescheduled anchor frees the teacher, not the live session's room.
+            if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])
+                && (isset($leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $sessionDate, (string) $row->StartTime)]) || $occupiesTeacher)) {
                 continue;
             }
 
@@ -805,6 +829,7 @@ class ScheduleGuardService
             $seenKeys[$key] = true;
 
             $overlaps[] = [
+                'teacher_occupancy' => $occupiesTeacher,
                 'source' => 'class_session',
                 'source_id' => $courseId,
                 'student_id' => (int) ($row->StudentID ?? 0),
@@ -864,6 +889,7 @@ class ScheduleGuardService
             $seenKeys[$key] = true;
 
             $overlaps[] = [
+                'teacher_occupancy' => ($scheduleTeachers[SubstituteScheduleService::occurrenceKey($courseId, $scheduleDate, (string) $row->start_time)] ?? $teacherId) === $teacherId,
                 'source' => 'schedule',
                 'source_id' => (int) ($row->id ?? 0),
                 'student_id' => (int) ($row->student_id ?? 0),
@@ -925,6 +951,7 @@ class ScheduleGuardService
      */
     private function buildTeacherCapacityConflict(string $newClassType, array $slot, array $overlaps): ?array
     {
+        $overlaps = array_values(array_filter($overlaps, fn ($entry) => $entry['teacher_occupancy'] ?? true));
         $existingCount = $this->countDistinctStudents($overlaps);
         $newCapacity = $this->capacityForClassType($newClassType);
 
@@ -1339,7 +1366,8 @@ class ScheduleGuardService
         ?int $excludeCourseId = null,
         ?string $targetStartTime = null,
         ?string $targetEndTime = null,
-        bool $lock = false
+        bool $lock = false,
+        bool $includeSubstitutedForRoom = false
     ): array {
         $scheduleRowsQuery = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_schedules_teacher_day)') : 'schedules')
             ->where('branch_id', $branchId)
@@ -1366,12 +1394,14 @@ class ScheduleGuardService
         $scheduleRows = $scheduleRowsQuery->when($lock, fn ($q) => $q->lockForUpdate())->get();
 
         $leaveOrRescheduled = [];
+        $leaveCourses = [];
         $scheduledRows = [];
         foreach ($scheduleRows as $row) {
             $status = (string) ($row->status ?? '');
             $courseId = (int) ($row->student_course_id ?? 0);
             if (($status === 'leave' || $status === 'rescheduled') && $courseId > 0) {
                 $leaveOrRescheduled[$courseId] = true;
+                if ($status === 'leave') $leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->start_time)] = true;
                 continue;
             }
             if ($status === 'scheduled') {
@@ -1412,15 +1442,21 @@ class ScheduleGuardService
             ])
             ->when($lock, fn ($q) => $q->lockForUpdate())->get();
 
+        $sessionTeachers = SubstituteScheduleService::teachersForOccurrences(array_map(fn ($row) => [
+            'course_id' => (int) $row->StudentClassID, 'date' => $date,
+            'start_time' => (string) $row->StartTime, 'contract_teacher_id' => $teacherId,
+        ], $classSessions->all()), $lock);
         $entries = [];
         $existingKeys = [];
         $classSessionCourseIds = [];
         foreach ($classSessions as $row) {
             $courseId = (int) ($row->StudentClassID ?? 0);
-            if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
+            $occupiesTeacher = ($sessionTeachers[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->StartTime)] ?? $teacherId) === $teacherId;
+            if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])
+                && (!$includeSubstitutedForRoom || isset($leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->StartTime)]) || $occupiesTeacher)) {
                 continue;
             }
-            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''), $lock)) {
+            if (!$includeSubstitutedForRoom && $courseId > 0 && !$occupiesTeacher) {
                 continue;
             }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
@@ -1458,6 +1494,7 @@ class ScheduleGuardService
             return (int) ($row->student_course_id ?? 0);
         }, $scheduledRows), $lock);
 
+        $scheduleTeachers = $this->scheduleTeachers($scheduledRows, $courseMeta, $teacherId, $date, $lock);
         foreach ($scheduledRows as $row) {
             $start = $this->normalizeTime($row->start_time ?? null);
             $end = $this->normalizeTime($row->end_time ?? null);
@@ -1483,7 +1520,7 @@ class ScheduleGuardService
                 continue;
             }
             $meta = $courseId > 0 ? ($courseMeta[$courseId] ?? null) : null;
-            if (!$this->scheduleRowOccupiesQueriedTeacher($row, $teacherId, $meta)) {
+            if (!$this->scheduleRowOccupiesQueriedTeacher($row, $teacherId, $meta, $scheduleTeachers[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->start_time)] ?? $teacherId, $includeSubstitutedForRoom)) {
                 continue;
             }
             $classType = (string) ($row->class_type ?: ($meta->ClassType ?? 'one_on_one'));
@@ -1561,22 +1598,34 @@ class ScheduleGuardService
      * Keep: contract TeacherID match; type=extra|makeup; original_schedule_id set (substitute /
      * reschedule destination). Skip: normal leftover after contract teacher moved away.
      */
-    private function scheduleRowOccupiesQueriedTeacher(object $row, int $queriedTeacherId, ?object $courseMeta): bool
+    private function scheduleRowOccupiesQueriedTeacher(object $row, int $queriedTeacherId, ?object $courseMeta, int $effectiveTeacherId, bool $includeSubstitutedForRoom = false): bool
     {
         if ($courseMeta === null) {
             return true;
         }
-        if ((int) ($courseMeta->TeacherID ?? 0) === $queriedTeacherId) {
-            return true;
-        }
+        $contractTeacherId = (int) ($courseMeta->TeacherID ?? 0);
         $type = strtolower(trim((string) ($row->type ?? '')));
-        if ($type === 'extra' || $type === 'makeup') {
-            return true;
-        }
-        if ((int) ($row->original_schedule_id ?? 0) > 0) {
-            return true;
+        $isExtra = $type === 'extra' || $type === 'makeup';
+        // Preserve #4245: a normal leftover of a contract-teacher edit is not
+        // evidence of a substitute. Legal extras and linked destinations are.
+        if ($contractTeacherId !== $queriedTeacherId && !$isExtra && (int) ($row->original_schedule_id ?? 0) <= 0) {
+            return false;
         }
 
-        return false;
+        return $includeSubstitutedForRoom || $effectiveTeacherId === $queriedTeacherId;
+    }
+
+    /** @param array<int, object> $rows @param array<int, object> $meta @return array<string, int> */
+    private function scheduleTeachers(array $rows, array $meta, int $teacherId, ?string $date = null, bool $lock = false): array
+    {
+        $occurrences = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row->student_course_id ?? 0);
+            if ($id <= 0 || !isset($meta[$id])) continue;
+            $extra = in_array(strtolower((string) ($row->type ?? '')), ['extra', 'makeup'], true);
+            $occurrences[] = ['course_id' => $id, 'date' => $date ?? substr((string) $row->schedule_date, 0, 10),
+                'start_time' => (string) $row->start_time, 'contract_teacher_id' => $extra ? $teacherId : (int) $meta[$id]->TeacherID];
+        }
+        return SubstituteScheduleService::teachersForOccurrences($occurrences, $lock);
     }
 }
