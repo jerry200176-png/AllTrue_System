@@ -146,13 +146,13 @@ later read-only acceptance must reconcile them and obtain reporter verification.
 
 ### Reproducible integration artifact (validation only)
 
-- Code input #4327: 9ae4fee829577ee56552c8e0ff0f164c6c40e5ab;
+- Code input #4327: 8f70a43074cb309dfe45d6d2a9b188213fda24bd;
   #4215: 03bdfa964f69f13bb396fa2990269a316942b09c.
 - In an isolated worktree, run `git merge-tree --write-tree
-  9ae4fee829577ee56552c8e0ff0f164c6c40e5ab
+  8f70a43074cb309dfe45d6d2a9b188213fda24bd
   03bdfa964f69f13bb396fa2990269a316942b09c` as one command.
   Exit 1 reports expected conflicts; raw tree is
-  9ea20a681603cfb44965e7894cb854ab2237ac8d. No branch is merged.
+  370c19a16d930c584778ae041590eee8f71f5929. No branch is merged.
 - Materialize that tree only in a disposable validation worktree, then apply
   [the compatibility patch](2026-10-21-4326-4215-compatibility.patch).
   It applies ONLY to this raw combined tree, not either PR branch. It retains
@@ -160,13 +160,13 @@ later read-only acceptance must reconcile them and obtain reporter verification.
   path, and main's bounded stale reader. Teacher validation uses the actual
   written destination; date-bound substitute assignments are not moved.
 - Artifact SHA256:
-  54f541768f529cef4bed60c727c634488f635dab07a7107afe417773b28bbfb7.
+  b93d71bdc7976fc55719d86844cbe04c89540bf4d03a83344cca9f083ea29be4.
   `git apply --check`, actual apply and byte comparisons reproduce all three
   corrected files. Other backend files match this raw tree. The artifact
   includes the independent 9-case apply matrix and corrected destination/privacy
   fixture. #4215's anchored-occurrence refusal supersedes main's successful
   anchored-shift scenario in this combined fixture. Latest combined selection:
-  171 tests / 1166 assertions PASS.
+  171 tests / 1170 assertions PASS.
 - Recheck live heads before any later integration. These pinned results do not
   authorize merging #4215 or clearing its unrelated review findings.
 
@@ -261,3 +261,14 @@ changes and retained-schema/limited automatic rollback risk. This does not
 authorize the three financial repairs, flag/allowlist activation, credentials,
 permissions or reuse of the held historical release train. Canonical environment
 reviewers remain required. Approval receipt: [PR comment](https://github.com/jerry200176-png/AllTrue_System/pull/4327#issuecomment-6296660356).
+
+### Final occurrence-scoped room release and review receipt
+
+`8f70a4307` addresses the final review finding: leave releases use the canonical
+course/date/start key in both date and recurring room projections. RED proved a
+20:00 leave erased the still-live substituted 17:00 room; GREEN retains that
+reservation and still frees the matching 17:00 leave. Main affected suite:
+140 tests / 890 assertions PASS; compatibility: 171 / 1170 PASS; PHPStan PASS.
+The artifact above is regenerated for this exact input and verified against all
+regular backend files. Exact-head independent Codex review of `8f70a4307` reports
+completed with no findings. Full hosted CI remains independently required.
