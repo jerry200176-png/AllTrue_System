@@ -9,7 +9,9 @@ set -uo pipefail
 cd "${1:-/home/admin/backend}" || exit 1
 P=storage/app/private
 
-find storage bootstrap/cache -path "$P" -prune -o -exec chmod 775 {} + 2>/dev/null
+# Only real files and directories: chmod follows a symlink named on its command
+# line (unlike chmod -R during traversal), which could widen the link target.
+find storage bootstrap/cache -path "$P" -prune -o \( -type f -o -type d \) -exec chmod 775 {} + 2>/dev/null
 status=0
 if [ -d "$P" ]; then
   # Undo world access left by the old recursive chmod. Files lose all world
@@ -17,7 +19,10 @@ if [ -d "$P" ]; then
   # directories lose world-write so nobody else can replace a manifest.
   find "$P" -type f -perm /o=rwx -exec chmod o-rwx {} + 2>/dev/null
   find "$P" -type d -perm /o=w -exec chmod o-w {} + 2>/dev/null
-  if [ -f "$P/pop-machine.key" ] && ! chmod 600 "$P/pop-machine.key" 2>/dev/null; then
+  if [ -L "$P/pop-machine.key" ]; then
+    echo "::error::$P/pop-machine.key is a symlink; refusing to follow it"
+    status=3
+  elif [ -f "$P/pop-machine.key" ] && ! chmod 600 "$P/pop-machine.key" 2>/dev/null; then
     echo "::error::$P/pop-machine.key could not be set to 600"
     status=3
   fi

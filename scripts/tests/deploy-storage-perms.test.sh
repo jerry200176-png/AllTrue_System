@@ -74,6 +74,20 @@ set -e
 grep -q 'world-accessible' "$WORK/out" || fail "missing ::error:: for unfixable private file"
 rm -f "$P/foreign.json"
 
+# Symlinks are never followed: a link under storage must not widen its target.
+OUTSIDE="$WORK/outside-target"; printf 'x' >"$OUTSIDE"; chmod 600 "$OUTSIDE"
+ln -s "$OUTSIDE" "$APP/storage/logs/link-out"
+bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >/dev/null || fail "symlink tree must exit 0"
+[ "$(stat -c '%a' "$OUTSIDE")" = 600 ] || fail "symlink target widened to $(stat -c '%a' "$OUTSIDE")"
+rm -f "$APP/storage/logs/link-out"
+
+# A symlinked machine key is refused rather than followed.
+mv "$P/pop-machine.key" "$WORK/real.key"; ln -s "$WORK/real.key" "$P/pop-machine.key"; chmod 644 "$WORK/real.key"
+set +e; bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?; set -e
+[ "$rc" = 3 ] || fail "symlinked key must exit 3 (got $rc)"
+[ "$(stat -c '%a' "$WORK/real.key")" = 644 ] || fail "symlinked key target was modified"
+rm -f "$P/pop-machine.key"; mv "$WORK/real.key" "$P/pop-machine.key"; chmod 600 "$P/pop-machine.key"
+
 # World-writable private directories are tightened.
 mkdir -p "$P/drop"; chmod 777 "$P/drop"
 bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >/dev/null || fail "o+w dir must be fixable"
