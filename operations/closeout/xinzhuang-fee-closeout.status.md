@@ -1,11 +1,11 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-20T02:20Z  
-Acceptance: **0/3** (courses 4064 / 3753 / 3693) — counting requires per-case evidence; see lanes below  
+Last updated: 2026-10-20T02:25Z  
+Financial case count: **0/3** verified execution/readback (courses 4064 / 3753 / 3693) — independent of in-app reply/`resolved`/reporter acceptance  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
-**Coordination:** [`lane-coordination.status.md`](./lane-coordination.status.md) · [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070)  
-**Owner:** Da’an = primary billing / #4312 implementation+queue. Local Cursor = relay only. Secondary Cloud = Goal A–E docs hygiene only.
+**Coordination:** [`lane-coordination.status.md`](./lane-coordination.status.md) · [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) (**registration PENDING**)  
+**Owners:** Da’an = **#4312** + **Lane N** narrow primary billing only (not expanded to Lane B). Lane B implementation = **existing owner — to be verified**. Local Cursor = relay only. Secondary Cloud = Goal A–E docs hygiene only.
 
 ## Tip / live (read-only)
 
@@ -16,16 +16,20 @@ No secrets, state hashes, financial payloads, or student PII in this file.
 | #4283 schema squash | `506729c78ab4` | tip-only for **Lane B**; **not** a hard gate for **Lane N** |
 | #4300 allowlist surface | `8e6228a35fad` | on main; Founder-gated; Lane B only |
 
-**Do not treat aggregate `deploy.yml` success as live.** Waiting release train `39333337571` remains **HOLD / DO NOT APPROVE** from coordination messages (not financial WRITE_GO).
+**Do not treat aggregate `deploy.yml` success as live.** Waiting release train `39333337571` remains **HOLD / DO NOT APPROVE** from coordination messages (not financial WRITE_GO). Do **not** queue #4312 from this lane (Dot authorization gate).
 
 ## Two lanes (do not collapse)
 
-| Lane | What | Live on `ad9e369`? | Requires `#4283` tip activation? |
-|------|------|--------------------|----------------------------------|
-| **N** Narrow unpaid-invoice alignment | Primary review: operation already on live pin | Claimed **yes** (code path) | **No** |
-| **B** Broad agreed-fee schema / allowlist / flag | `#4283` + `#4300` + flag | Schema **no** (tip ahead) | **Yes** (separate Founder/owner decision) |
+| Lane | What | Live on `ad9e369`? | Requires `#4283` tip activation? | Impl owner |
+|------|------|--------------------|----------------------------------|------------|
+| **N** Narrow unpaid-invoice alignment | Primary review: operation already on live pin | Claimed **yes** (code path) | **No** | **Da’an** (narrow only) |
+| **B** Broad agreed-fee schema / allowlist / flag | `#4283` + `#4300` + flag | Schema **no** (tip ahead) | **Yes** (Founder gates unchanged) | **Existing — to be verified** (not newly Da’an) |
 
-Lane N still needs: runtime/state · authorized tuple · POP · real staff session · fresh acceptance / reporter response before counting N/3.  
+### Evidence independence
+
+- **Financial N/3:** runtime/state · authorized tuple · POP · real staff session · affected-path readback. Reporter response is **not** a new prerequisite for counting a verified financial case.
+- **In-app** public reply / `resolved` / reporter acceptance: record separately under existing policy; financial success does **not** imply in-app closeout.
+
 Lane B must **not** be treated as a prerequisite for Lane N.
 
 ## Tip evidence (dumps on `5e4c48c0`; serial after #4296)
@@ -38,22 +42,23 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 | 3753 | 39309623293 | `ok=true`, `snapshot_complete=false`, `completeness=correction_schema_missing` |
 | 3693 | 39309674831 | `ok=true`, `snapshot_complete=false`, `completeness=correction_schema_missing` |
 
-Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be used alone to block Lane N acceptance on the narrow live path.
+Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be used alone to block Lane N financial verification on the narrow live path.
 
 ## Blockers (by lane)
 
-### Lane N (Da’an primary)
+### Lane N (Da’an — narrow financial)
 
-1. Authorized tuple + POP + real staff session + fresh acceptance for each applicable course
+1. Authorized tuple + POP + real staff session + affected-path readback for each applicable course
 2. 3753: original reversal-row proof + owner disposition (do not force-align)
-3. Affected-path verification before counting each of N/3
+3. Count N/3 only from financial evidence states — **not** from in-app reporter acceptance
 
-### Lane B (separate; Founder / vault)
+### Lane B (separate — owner verify; Founder gates unchanged)
 
-1. Cloud decrypt custody when needed — bind `DUMP_ARTIFACT_KEY` via Personal vault; never paste into chat/PR
-2. Tip `production-activation` for `#4283` only after owner coordination — **not** implied by Lane N
-3. Allowlist (`#4300`) + flag stay Founder-gated / default-off until case POP
-4. Tip Deploy Merge/activation contract may fail on tip if `pop-mount` lacks `queue: max` (Deploy run `39346856677`) — **tip Deploy hygiene**, not a #4312 PR required-check blocker; Da’an owns whether to absorb into #4312 (#4320 is **not** a mandatory predecessor)
+1. Confirm **existing** implementation owner (not reassigned by this coordination)
+2. Cloud decrypt custody when needed — bind `DUMP_ARTIFACT_KEY` via Personal vault; never paste into chat/PR
+3. Tip `production-activation` for `#4283` only after verified owner + Founder — **not** implied by Lane N
+4. Allowlist (`#4300`) + flag stay Founder-gated / default-off until case POP
+5. Tip Deploy Merge/activation may fail if `pop-mount` lacks `queue: max` (Deploy run `39346856677`) — tip Deploy hygiene only; **not** a #4312 PR required-check blocker; #4320 draft conversion **unverified** / PR later CLOSED; do not queue #4312 from secondary lane
 
 ## Merged enablers (historical)
 
@@ -69,6 +74,6 @@ Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be 
 
 ## Next sequence
 
-1. **Lane N first** (Da’an): accept on live pin with POP + staff session evidence  
-2. **Lane B only if intentionally activated** (Founder/owner): tip activation → allowlist/flag → schema-dependent corrections  
-3. Never hard-gate Lane N on Lane B  
+1. **Lane N financial** execution/readback on live pin (Da’an)  
+2. **Lane B** only if intentionally activated (verified owner + Founder gates)  
+3. Never hard-gate Lane N on Lane B; never collapse financial vs in-app evidence  
