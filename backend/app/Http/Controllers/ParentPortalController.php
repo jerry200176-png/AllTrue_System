@@ -375,6 +375,21 @@ class ParentPortalController extends Controller
             StudentContactPhone::normalizedDigits($firstStudent),
             $lineUserId
         );
+        // #3988: an unbind that committed between the lookup above and the
+        // insert could not expire this session (it did not exist yet). Re-read
+        // access now that the session row exists and expire it if it is gone.
+        $stillLinked = app(ParentGuardianAccessService::class)
+            ->studentsForLineUser($lineUserId, $preferredCampusId)
+            ->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id);
+        if (!$stillLinked) {
+            ParentSession::query()
+                ->where('TokenHash', hash('sha256', $result['token']))
+                ->update(['ExpiresAt' => now()]);
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'binding_revoked_during_login']);
+            return response()->json(['message' => 'Invalid LINE authentication'], 401);
+        }
         SecurityAuditEvent::append('parent.auth', 'success', [
             'campus_id' => (int) ($firstStudent->CampusID ?? 0),
             'subject_type' => 'student',
