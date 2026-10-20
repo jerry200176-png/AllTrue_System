@@ -1,8 +1,6 @@
----
-silent_ship: true
----
-
-# ci: POP mount grants the serving worker read with an owner ACL, not sudo
+## 2026-10-21 — ci(pop): POP mount grants the serving worker read with an owner ACL, not sudo (#4333)
+<!-- release-notes: silent_ship=silent-2026-10-21-pop-mount-owner-acl -->
+<!-- silent-reason: ops workflow change; no product UI change -->
 
 Production `sudo -n chown` requires a password (run 39427575892), so the
 reviewed-financial mount always failed closed. `validate_mount_file` now runs
