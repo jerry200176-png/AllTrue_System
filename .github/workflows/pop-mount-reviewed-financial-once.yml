@@ -325,28 +325,35 @@ jobs:
             # Only the two directories this workflow manages get a traverse
             # entry; every other ancestor was checked above without changes.
             for d in "$managed_parent" "$POP_DIR"; do
-              # Write+execute on a managed dir would let the worker replace the
-              # manifest; drop group/other write (owner-only operation) and
-              # refuse if the worker can still write (e.g. it owns the dir).
-              if fpm_can w "$d"; then
-                if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! chmod go-w "$d" || fpm_can w "$d"; then
-                  echo "validate_mount_file: worker can write ${d}; refusing" >&2
+              # Write+execute on a managed dir lets that principal replace the
+              # manifest, so only the owner may write. Refuse other named
+              # entries (their rights hang on the mask), then drop group/other
+              # write (owner-only operation) and refuse if any remains or the
+              # worker can still write (e.g. it owns the dir).
+              if getfacl -cpn -- "$d" 2>/dev/null | grep -E '^(user|group):[^:]+:' | grep -qv "^user:${uid}:"; then
+                echo "validate_mount_file: unexpected named ACL entries on ${d}; refusing" >&2
+                restore_dir_acls
+                return 1
+              fi
+              if [ $(( 8#$(stat -c '%a' "$d") & 8#022 )) -ne 0 ] || fpm_can w "$d"; then
+                if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! chmod go-w "$d" \
+                  || [ $(( 8#$(stat -c '%a' "$d") & 8#022 )) -ne 0 ] || fpm_can w "$d"; then
+                  echo "validate_mount_file: worker can write ${d}, or a non-owner can; refusing" >&2
                   restore_dir_acls
                   return 1
                 fi
               fi
               fpm_can x "$d" && continue
-              # A recalculated mask could activate masked rights of other named
-              # entries (e.g. write on pop); refuse those dirs and set the mask
-              # explicitly to group:: plus execute only.
-              if getfacl -cpn -- "$d" 2>/dev/null | grep -E '^(user|group):[^:]+:' | grep -qv "^user:${uid}:"; then
-                echo "validate_mount_file: unexpected named ACL entries on ${d}; refusing to change its mask" >&2
+              # Set the mask explicitly (no recalculation) to the owning
+              # group's read bit plus execute, never write.
+              grp="$(getfacl -cpn -- "$d" 2>/dev/null | awk -F: '$1=="group" && $2==""{print $3}')"
+              if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! setfacl -m "u:${uid}:--x,m::${grp:0:1}-x" "$d"; then
+                echo "validate_mount_file: setfacl traverse failed on ${d}" >&2
                 restore_dir_acls
                 return 1
               fi
-              grp="$(getfacl -cpn -- "$d" 2>/dev/null | awk -F: '$1=="group" && $2==""{print $3}')"
-              if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! setfacl -m "u:${uid}:--x,m::${grp:0:2}x" "$d"; then
-                echo "validate_mount_file: setfacl traverse failed on ${d}" >&2
+              if [ $(( 8#$(stat -c '%a' "$d") & 8#022 )) -ne 0 ]; then
+                echo "validate_mount_file: ${d} became group/other writable; refusing" >&2
                 restore_dir_acls
                 return 1
               fi
@@ -491,9 +498,11 @@ jobs:
             MOUNT_PHASE=restored
             exit 1
           fi
-          rm -f "$PREV" "$DIR_ACL_BACKUP"
+          # Commit first: once done, an interruption must keep the validated
+          # LIVE; only then drop the rollback copy.
           MOUNT_PHASE=done
           trap - EXIT HUP INT TERM ERR
+          rm -f "$PREV" "$DIR_ACL_BACKUP"
           python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
           REMOTE
           rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"

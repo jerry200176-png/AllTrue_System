@@ -235,6 +235,25 @@ fpm_can w "$POP_DIR" && { echo "ERROR worker can still write pop"; exit 1; }
 cleanup_stage_preserve_live >/dev/null
 echo "PASS writable managed dir narrowed"
 
+# 9d4) Worker already traverses, but the owning group can write: narrowed anyway.
+seed_prior_live
+chmod 775 "$POP_DIR"   # other r-x lets the worker traverse; group rwx
+good_json "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR group-write setup"; exit 1; }
+[ $(( 8#$(stat -c '%a' "$POP_DIR") & 8#022 )) = 0 ] || { echo "ERROR pop kept group write"; exit 1; }
+cleanup_stage_preserve_live >/dev/null
+echo "PASS group-writable managed dir narrowed even when worker traverses"
+
+# 9d5) Worker already traverses, another named principal has rwx: refused.
+seed_prior_live
+chmod 755 "$POP_DIR"
+command setfacl -m "u:${OTHER_UID}:rwx" "$POP_DIR"
+PRIOR_DIR_ACL="$(acl_of "$ANCESTOR/private"; acl_of "$POP_DIR")"
+good_json "$STAGE"
+expect_fail "named-writer-with-traverse" "unexpected named ACL entries"
+assert_dirs_restored "named-writer-with-traverse"
+command setfacl -b "$POP_DIR"
+
 # 9d3) A managed dir the worker itself owns (cannot be narrowed) is refused.
 if [ "$(id -u)" = 0 ]; then
   seed_prior_live
