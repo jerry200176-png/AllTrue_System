@@ -121,7 +121,8 @@ class SubstituteOccupancy4326Test extends TestCase
 
     public static function legacyQueryScopes(): array { return [[false], [true]]; }
 
-    public function test_substitution_frees_teacher_but_not_the_occupied_room(): void
+    /** @dataProvider roomAnchorStates */
+    public function test_substitution_frees_teacher_but_not_the_occupied_room(string $anchorStatus): void
     {
         config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => false]);
         $campus = Campus::factory()->create();
@@ -132,9 +133,11 @@ class SubstituteOccupancy4326Test extends TestCase
         DB::table('ClassSession')->insert(['StudentClassID' => $course->ID, 'SessionDate' => '2026-12-29',
             'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'scheduled']);
         $id = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID, 'student_id' => $student->id,
-            'teacher_id' => 78172, 'branch_id' => $campus->id, 'schedule_date' => '2026-12-29', 'day_of_week' => 2,
-            'start_time' => '17:00', 'end_time' => '19:00', 'status' => 'scheduled', 'type' => 'normal']);
-        DB::table('schedules')->where('id', $id)->update(['original_schedule_id' => $id]);
+            'teacher_id' => 78171, 'branch_id' => $campus->id, 'schedule_date' => '2026-12-29', 'day_of_week' => 2,
+            'start_time' => '17:00', 'end_time' => '19:00', 'status' => $anchorStatus, 'type' => 'normal']);
+        $row = (array) DB::table('schedules')->where('id', $id)->first();
+        unset($row['id']);
+        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => 78172, 'status' => 'scheduled', 'original_schedule_id' => $id]));
         $guard = app(ScheduleGuardService::class);
         $payload = ['teacher_id' => 78171, 'branch_id' => $campus->id, 'schedule_date' => '2026-12-29',
             'start_time' => '17:00', 'end_time' => '19:00', 'class_type' => 'one_on_two', 'room_id' => $room];
@@ -143,7 +146,14 @@ class SubstituteOccupancy4326Test extends TestCase
         $conflicts = $guard->validateRecurringCourse($payload + ['start_date' => '2026-12-29', 'end_date' => '2026-12-29',
             'slots' => [['day_of_week' => 2, 'start_time' => '17:00', 'end_time' => '19:00']]]);
         $this->assertSame('room_capacity', $conflicts[0]['type'] ?? null);
+        // A real leave still releases the room, even if a stale linked assignment remains.
+        DB::table('schedules')->where('id', $id)->update(['status' => 'leave']);
+        $this->assertSame([], $guard->validateScheduleOccurrence($payload));
+        $this->assertSame([], $guard->validateRecurringCourse($payload + ['start_date' => '2026-12-29', 'end_date' => '2026-12-29',
+            'slots' => [['day_of_week' => 2, 'start_time' => '17:00', 'end_time' => '19:00']]]));
     }
+
+    public static function roomAnchorStates(): array { return [['scheduled'], ['rescheduled']]; }
 
     private function course(Student $student, int $teacherId): StudentClass
     {
