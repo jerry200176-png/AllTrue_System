@@ -46,7 +46,11 @@ jobs:
           python3 scripts/check-pop-mount-remote-guards.py
           # A mount before deploy stops re-widening storage/app/private would be
           # re-exposed by the next deploy (#4332); refuse until main carries it.
-          if [ "$MODE" = mount ]; then python3 scripts/check-pop-mount-remote-guards.py --require-deploy-safe; fi
+          if [ "$MODE" = mount ]; then
+            # The deploy-safety check reads this checkout, so it must be main.
+            [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::mode=mount only runs from refs/heads/main"; exit 1; }
+            python3 scripts/check-pop-mount-remote-guards.py --require-deploy-safe
+          fi
       - uses: ./.github/actions/production-ssh-trust
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
@@ -322,7 +326,16 @@ jobs:
             # entry; every other ancestor was checked above without changes.
             for d in "$managed_parent" "$POP_DIR"; do
               fpm_can x "$d" && continue
-              if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! setfacl -m "u:${uid}:--x" "$d"; then
+              # A recalculated mask could activate masked rights of other named
+              # entries (e.g. write on pop); refuse those dirs and set the mask
+              # explicitly to group:: plus execute only.
+              if getfacl -cpn -- "$d" 2>/dev/null | grep -E '^(user|group):[^:]+:' | grep -qv "^user:${uid}:"; then
+                echo "validate_mount_file: unexpected named ACL entries on ${d}; refusing to change its mask" >&2
+                restore_dir_acls
+                return 1
+              fi
+              grp="$(getfacl -cpn -- "$d" 2>/dev/null | awk -F: '$1=="group" && $2==""{print $3}')"
+              if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! setfacl -m "u:${uid}:--x,m::${grp:0:2}x" "$d"; then
                 echo "validate_mount_file: setfacl traverse failed on ${d}" >&2
                 restore_dir_acls
                 return 1
@@ -339,6 +352,20 @@ jobs:
               return 1
             fi
             return 0
+          }
+
+          # Interrupted runs (cancel, timeout, SIGHUP/TERM) must not leave a
+          # half-applied mount: restore PREV if the swap happened, then the
+          # usual stage/directory cleanup. SIGKILL cannot be trapped.
+          abort_mount() {
+            [ "${MOUNT_PHASE:-}" = done ] && return 0
+            trap - EXIT HUP INT TERM ERR
+            if [ "${MOUNT_PHASE:-}" = swapped ]; then
+              if [ -f "$PREV" ]; then mv -f "$PREV" "$LIVE" && echo "aborted_after_swap restored_prev"; else rm -f "$LIVE"; fi
+            fi
+            cleanup_stage_preserve_live || true
+            echo "mount_aborted phase=${MOUNT_PHASE:-unknown}" >&2
+            exit 1
           }
 
           cleanup_stage_preserve_live() {
@@ -402,6 +429,8 @@ jobs:
           fi
 
           DIR_ACL_BACKUP="$(mktemp)"
+          MOUNT_PHASE=staged
+          trap 'abort_mount' EXIT HUP INT TERM
           trap 'cleanup_stage_preserve_live' ERR
 
           if ! validate_mount_file "$STAGE"; then
@@ -430,6 +459,7 @@ jobs:
             cleanup_stage_preserve_live
             exit 1
           fi
+          MOUNT_PHASE=swapped
           # Drop prev only after successful swap + re-validate LIVE.
           if ! validate_mount_file "$LIVE"; then
             echo "post-swap LIVE validation failed; restoring PREV" >&2
@@ -442,10 +472,12 @@ jobs:
             else
               rm -f "$LIVE"
             fi
+            MOUNT_PHASE=restored
             exit 1
           fi
           rm -f "$PREV" "$DIR_ACL_BACKUP"
-          trap - ERR
+          MOUNT_PHASE=done
+          trap - EXIT HUP INT TERM ERR
           python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
           REMOTE
           rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"

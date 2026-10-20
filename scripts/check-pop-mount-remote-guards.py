@@ -101,6 +101,12 @@ def check_text(text: str, *, label: str = str(PATH)) -> list[str]:
         errors.append("FAIL A2d: file ACL must be verified exactly (no extra entries or wider mask)")
     if "setfacl --restore" not in blob or "restore_dir_acls" not in blob:
         errors.append("FAIL A6i: directory ACL grants must be restored on failure")
+    if not re.search(r"trap 'abort_mount' EXIT HUP INT TERM", blob) or "MOUNT_PHASE=swapped" not in blob:
+        errors.append("FAIL A6j: interrupted mounts must be rolled back via phase-aware EXIT/signal traps")
+    if not re.search(r'setfacl -m "u:\$\{uid\}:--x,m::', blob):
+        errors.append("FAIL A2e: directory traverse grant must set the mask explicitly (no recalculation)")
+    if '[ "$GITHUB_REF" = refs/heads/main ]' not in text:
+        errors.append("FAIL A7: mode=mount must be pinned to refs/heads/main")
 
     # scp destination must be $STAGE (or literal …json.staging), never bare LIVE path.
     if not (

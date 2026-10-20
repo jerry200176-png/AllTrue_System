@@ -45,8 +45,8 @@ setfacl() {
 }
 
 WF="$ROOT/.github/workflows/pop-mount-reviewed-financial-once.yml"
-eval "$(awk '/^          # fpm_can <r\|x> PATH/{on=1} on{print} on && /^          }$/{n++; if(n==5) exit}' "$WF" | sed 's/^          //')"
-for fn in fpm_can acl_exact restore_dir_acls validate_mount_file cleanup_stage_preserve_live; do
+eval "$(awk '/^          # fpm_can <r\|x> PATH/{on=1} on{print} on && /^          }$/{n++; if(n==6) exit}' "$WF" | sed 's/^          //')"
+for fn in fpm_can acl_exact restore_dir_acls validate_mount_file abort_mount cleanup_stage_preserve_live; do
   declare -F "$fn" >/dev/null || { echo "ERROR could not extract $fn from workflow" >&2; exit 1; }
 done
 
@@ -206,6 +206,60 @@ expect_fail "rollback-after-grant" "fpm cannot read"
 eval "$(declare -f orig_fpm_can | sed '1s/orig_fpm_can/fpm_can/')"
 assert_prior_preserved "rollback-after-grant"
 assert_dirs_restored "rollback-after-grant"
+
+# 9c) Grant keeps the directory mask to group:: plus execute only.
+seed_prior_live
+good_json "$STAGE"
+chmod 750 "$POP_DIR"   # group r-x
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR mask setup"; exit 1; }
+acl_of "$POP_DIR" | grep -qx 'mask::r-x' || { echo "ERROR dir mask not group::+x"; acl_of "$POP_DIR"; exit 1; }
+cleanup_stage_preserve_live >/dev/null
+echo "PASS directory grant sets mask to group:: plus x"
+
+# 9d) A masked named entry on a managed dir is never activated: refuse, keep ACL.
+seed_prior_live
+command setfacl -m "u:${OTHER_UID}:rwx,m::---" "$POP_DIR"
+PRIOR_DIR_ACL="$(acl_of "$ANCESTOR/private"; acl_of "$POP_DIR")"
+good_json "$STAGE"
+expect_fail "masked-named-entry" "unexpected named ACL entries"
+assert_dirs_restored "masked-named-entry"
+command setfacl -b "$POP_DIR"
+
+# 9e) Interrupted after the swap: abort_mount restores PREV, dirs and stage.
+seed_prior_live
+good_json "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR abort setup"; exit 1; }
+cp -a "$LIVE" "$PREV"; mv -f "$STAGE" "$LIVE"
+( MOUNT_PHASE=swapped; abort_mount ) >/dev/null 2>&1 && { echo "ERROR abort must exit non-zero"; exit 1; }
+test ! -f "$STAGE" && test ! -f "$PREV" || { echo "ERROR abort left stage/prev"; exit 1; }
+assert_prior_preserved "abort-after-swap"
+assert_dirs_restored "abort-after-swap"
+
+# 9f) Interrupted before the swap: stage and dir grants removed, LIVE kept.
+seed_prior_live
+good_json "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR abort2 setup"; exit 1; }
+( MOUNT_PHASE=staged; abort_mount ) >/dev/null 2>&1
+test ! -f "$STAGE" || { echo "ERROR abort left stage"; exit 1; }
+assert_prior_preserved "abort-before-swap"
+assert_dirs_restored "abort-before-swap"
+
+# 9f2) A real SIGTERM after the swap runs the same rollback through the trap.
+seed_prior_live
+good_json "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR sigterm setup"; exit 1; }
+cp -a "$LIVE" "$PREV"; mv -f "$STAGE" "$LIVE"
+( MOUNT_PHASE=swapped; trap 'abort_mount' EXIT HUP INT TERM; sleep 30 & wait ) >/dev/null 2>&1 &
+victim=$!
+sleep 0.5; kill -TERM "$victim"; wait "$victim" 2>/dev/null
+test ! -f "$PREV" || { echo "ERROR sigterm left PREV"; exit 1; }
+assert_prior_preserved "sigterm-after-swap"
+assert_dirs_restored "sigterm-after-swap"
+
+# 9g) A completed mount is never undone by the exit trap.
+seed_prior_live
+( MOUNT_PHASE=done; abort_mount; echo still-here ) | grep -q still-here || { echo "ERROR done phase aborted"; exit 1; }
+echo "PASS done phase leaves the mount alone"
 
 # 10) fpm_can must agree with the kernel (needs root to switch identity).
 if [ "$(id -u)" = 0 ] && command -v runuser >/dev/null 2>&1; then
