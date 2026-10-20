@@ -182,28 +182,53 @@ jobs:
           }
 
           validate_mount_file() {
+            # Explicit fail-closed checks (do not rely on set -e for control flow).
             target="$1"
-            test -f "$target"
-            sudo -n chown "${uid}:${gid}" "$target"
+            if [ ! -f "$target" ]; then
+              echo "validate_mount_file: missing file ${target}" >&2
+              return 1
+            fi
+            if ! sudo -n chown "${uid}:${gid}" "$target"; then
+              echo "validate_mount_file: chown ${uid}:${gid} failed on ${target}" >&2
+              return 1
+            fi
             mode_target=640
             if [ "$user" = "admin" ]; then mode_target=600; fi
-            sudo -n chmod "$mode_target" "$target"
-            mode="$(stat -c '%a' "$target")"
+            if ! sudo -n chmod "$mode_target" "$target"; then
+              echo "validate_mount_file: chmod ${mode_target} failed on ${target}" >&2
+              return 1
+            fi
+            if ! mode="$(stat -c '%a' "$target")"; then
+              echo "validate_mount_file: stat mode failed on ${target}" >&2
+              return 1
+            fi
             if [ "$((mode % 10))" -ge 4 ]; then
               echo "refusing world-accessible mode ${mode} on ${target}" >&2
               return 1
             fi
-            stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$target"
-            if command -v namei >/dev/null 2>&1; then
-              namei -l "$target" >/tmp/pop-mount-namei.out
+            if ! stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$target"; then
+              echo "validate_mount_file: identity stat failed on ${target}" >&2
+              return 1
             fi
-            sudo -n runuser -u "$user" -- test -r "$target"
+            if command -v namei >/dev/null 2>&1; then
+              if ! namei -l "$target" >/tmp/pop-mount-namei.out; then
+                echo "validate_mount_file: namei failed on ${target}" >&2
+                return 1
+              fi
+            fi
+            if ! sudo -n runuser -u "$user" -- test -r "$target"; then
+              echo "validate_mount_file: runuser cannot read ${target} as ${user}" >&2
+              return 1
+            fi
             d="$(dirname "$target")"
             while [ "$d" != "/" ]; do
-              sudo -n runuser -u "$user" -- test -x "$d"
+              if ! sudo -n runuser -u "$user" -- test -x "$d"; then
+                echo "validate_mount_file: runuser cannot traverse ${d} as ${user}" >&2
+                return 1
+              fi
               d="$(dirname "$d")"
             done
-            python3 - "$target" <<'PY'
+            if ! python3 - "$target" <<'PY'
           import json, sys
           path = sys.argv[1]
           d = json.load(open(path))
@@ -216,17 +241,25 @@ jobs:
           assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
           print("content_ok", c["valid_until"])
           PY
+            then
+              echo "validate_mount_file: content validation failed on ${target}" >&2
+              return 1
+            fi
+            return 0
           }
 
           cleanup_stage_preserve_live() {
-            # Failure path: never leave a half-applied LIVE; keep prior LIVE bytes.
+            # Failure path: discard STAGE; restore LIVE from PREV only if LIVE missing.
             rm -f "$STAGE" || true
-            if [ -f "$PREV" ] && [ ! -f "$LIVE" ]; then
-              # Interrupted after moving LIVE→PREV but before STAGE→LIVE: restore.
-              mv -f "$PREV" "$LIVE"
+            if [ ! -f "$LIVE" ] && [ -f "$PREV" ]; then
+              if ! mv -f "$PREV" "$LIVE"; then
+                echo "cleanup: failed to restore LIVE from PREV" >&2
+                return 1
+              fi
               echo "restored_live_from_prev"
             fi
             echo "stage_discarded live_preserved=$( [ -f "$LIVE" ] && echo yes || echo no )"
+            return 0
           }
 
           resolve_fpm
@@ -245,7 +278,10 @@ jobs:
           # Same filesystem check (required for atomic rename).
           live_fs="$(df -P "$POP_DIR" | awk 'NR==2{print $1}')"
           stage_fs="$(df -P "$STAGE" | awk 'NR==2{print $1}')"
-          test "$live_fs" = "$stage_fs"
+          if [ "$live_fs" != "$stage_fs" ]; then
+            echo "stage and LIVE are on different filesystems; refusing non-atomic replace" >&2
+            exit 1
+          fi
 
           trap 'cleanup_stage_preserve_live' ERR
 
@@ -255,18 +291,34 @@ jobs:
             exit 1
           fi
 
-          # Preserve prior valid LIVE (if any), then atomic replace from STAGE.
+          # Keep LIVE in place, backup to PREV, then ONE atomic STAGE→LIVE replace.
           rm -f "$PREV"
           if [ -f "$LIVE" ]; then
-            # Same-dir rename preserves prior bytes out of the live path.
-            mv -f "$LIVE" "$PREV"
+            if ! cp -a "$LIVE" "$PREV"; then
+              echo "backup LIVE→PREV failed; LIVE unchanged" >&2
+              cleanup_stage_preserve_live
+              exit 1
+            fi
+            if ! cmp -s "$LIVE" "$PREV"; then
+              echo "backup PREV does not match LIVE; refusing replace" >&2
+              rm -f "$PREV"
+              cleanup_stage_preserve_live
+              exit 1
+            fi
           fi
-          mv -f "$STAGE" "$LIVE"
+          if ! mv -f "$STAGE" "$LIVE"; then
+            echo "atomic STAGE→LIVE replace failed" >&2
+            cleanup_stage_preserve_live
+            exit 1
+          fi
           # Drop prev only after successful swap + re-validate LIVE.
           if ! validate_mount_file "$LIVE"; then
             echo "post-swap LIVE validation failed; restoring PREV" >&2
             if [ -f "$PREV" ]; then
-              mv -f "$PREV" "$LIVE"
+              if ! mv -f "$PREV" "$LIVE"; then
+                echo "restore PREV→LIVE failed" >&2
+                exit 1
+              fi
             else
               rm -f "$LIVE"
             fi

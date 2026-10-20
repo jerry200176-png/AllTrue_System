@@ -18,3 +18,5 @@ before an atomic `mv` replaces LIVE, with `.prev` restore on failure
 (including guard `--self-test`) from `ci.yml`.
 
 Authorized app `createDraft` remains the remount acceptance step for #4310.
+
+Backup keeps LIVE in place (`cp -a` to `.prev`) then a single `STAGE→LIVE` `mv`; validate_mount_file fails closed with explicit returns for chown/chmod/runuser.

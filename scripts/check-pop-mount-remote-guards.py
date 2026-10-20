@@ -82,6 +82,13 @@ def check_text(text: str, *, label: str = str(PATH)) -> list[str]:
 
     if "PREV" not in blob or "restored_live_from_prev" not in blob:
         errors.append("FAIL A6d: remote lacks prior-LIVE preserve/restore on failure")
+    if "cp -a \"$LIVE\" \"$PREV\"" not in blob and 'cp -a "$LIVE" "$PREV"' not in blob:
+        errors.append("FAIL A6f: must backup LIVE with cp -a to PREV while LIVE stays")
+    # Ban LIVE→PREV mv as the backup method (would remove LIVE before replace).
+    if re.search(r'mv\s+-f\s+"\$LIVE"\s+"\$PREV"', blob):
+        errors.append("FAIL A6g: must not mv LIVE→PREV before STAGE→LIVE (use cp backup)")
+    if "validate_mount_file: chown" not in blob or "validate_mount_file: chmod" not in blob or "validate_mount_file: runuser cannot read" not in blob:
+        errors.append("FAIL A6h: validate_mount_file must explicitly fail-message chown/chmod/runuser")
 
     # scp destination must be $STAGE (or literal …json.staging), never bare LIVE path.
     if not (
