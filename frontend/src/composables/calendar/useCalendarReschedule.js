@@ -6,8 +6,7 @@ import {
 } from '../../lib/calendarFormat.js';
 import {
   formatRescheduleSuccessMessage,
-  formatRescheduleConflictStudents,
-  humanizeRescheduleFailure,
+  formatRescheduleFailure,
 } from '../../lib/scheduleDisplay.js';
 import { commitReschedule } from '../../lib/rescheduleApi.js';
 import { buildReschedulePreview } from '../../lib/reschedulePreview.js';
@@ -146,10 +145,7 @@ export function useCalendarReschedule({
         newEnd,
       }));
     } catch (error) {
-      let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
-      const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
-      if (conflictLine) message = `${message} ${conflictLine}`;
-      rescheduleError.value = message;
+      rescheduleError.value = formatRescheduleFailure(error);
     } finally {
       rescheduleSubmitting.value = false;
     }

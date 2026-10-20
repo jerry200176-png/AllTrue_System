@@ -329,6 +329,46 @@ class ScheduleGuardCurrentReadTest extends TestCase
         }
     }
 
+    /** @dataProvider sourceOccurrenceModes */
+    public function test_current_source_occurrence_sees_a_substitute_committed_after_snapshot(bool $v2): void
+    {
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $v2]);
+        $original = $this->originalConnection;
+        $campus = Campus::factory()->create();
+        $this->ownedCampusIds[] = $campus->id;
+        $course = $this->currentReadFixture($campus->id, 78600);
+        $other = $this->currentReadFixture($campus->id, 78601);
+        DB::table('ClassSession')->insert(['StudentClassID' => $other->ID, 'SessionDate' => '2026-12-29',
+            'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
+        $source = ['date' => '2026-12-22', 'start_time' => '13:00'];
+        $scheduleId = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID,
+            'student_id' => $course->StudentID, 'teacher_id' => 78600, 'branch_id' => $campus->id,
+            'schedule_date' => $source['date'], 'day_of_week' => 2, 'subject' => 'synthetic',
+            'start_time' => '13:00', 'end_time' => '15:00', 'duration_hours' => 2,
+            'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal',
+            'original_schedule_date' => $v2 ? $source['date'] : null, 'original_start_time' => $v2 ? '13:00' : null]);
+        DB::table('schedules')->where('id', $scheduleId)->update(['original_schedule_id' => $scheduleId]);
+        $reader = DB::connection('occupancy_current');
+        $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        $reader->beginTransaction();
+        DB::setDefaultConnection('occupancy_current');
+        $stale = StudentClass::findOrFail($course->ID);
+        $guard = app(ScheduleGuardService::class);
+        $this->assertSame([], $guard->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00', false, $source));
+        DB::setDefaultConnection($original);
+        $this->assertSame(1, DB::table('schedules')->where('id', $scheduleId)->update(['teacher_id' => 78601]));
+        DB::setDefaultConnection('occupancy_current');
+        $this->assertSame([], $guard->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00', false, $source), 'unlocked preview demonstrably retains its old source teacher');
+        $conflicts = $guard->validateCourseOccurrence($stale, $campus->id, '2026-12-29', '13:00', '15:00', true, $source);
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null, 'current source resolution must survive current contract metadata reload');
+        $this->assertSame(1, $conflicts[0]['current_students']);
+        $this->assertSame(78600, (int) DB::table('StudentClass')->where('ID', $course->ID)->value('TeacherID'));
+        $reader->rollBack();
+        DB::setDefaultConnection($original);
+    }
+
+    public static function sourceOccurrenceModes(): array { return ['legacy' => [false], 'v2' => [true]]; }
+
     public function test_current_course_guard_refuses_a_concurrently_deleted_proposed_course(): void
     {
         $original = $this->originalConnection;
