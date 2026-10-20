@@ -88,6 +88,20 @@ set +e; bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; r
 [ "$(stat -c '%a' "$WORK/real.key")" = 644 ] || fail "symlinked key target was modified"
 rm -f "$P/pop-machine.key"; mv "$WORK/real.key" "$P/pop-machine.key"; chmod 600 "$P/pop-machine.key"
 
+# A symlinked private root or private subdirectory is refused: find would not
+# descend into it, so its files would never be checked.
+mv "$P" "$WORK/private-real"; ln -s "$WORK/private-real" "$P"
+chmod 644 "$WORK/private-real/pop/reviewed-financial-cases.json"
+set +e; bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?; set -e
+[ "$rc" = 3 ] || fail "symlinked private root must exit 3 (got $rc)"
+grep -q 'is a symlink' "$WORK/out" || fail "missing ::error:: for symlinked private root"
+rm -f "$P"; mv "$WORK/private-real" "$P"; chmod 640 "$P/pop/reviewed-financial-cases.json"
+mv "$P/pop" "$WORK/pop-real"; ln -s "$WORK/pop-real" "$P/pop"
+set +e; bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?; set -e
+[ "$rc" = 3 ] || fail "symlinked private subdirectory must exit 3 (got $rc)"
+grep -q 'symlinked directory' "$WORK/out" || fail "missing ::error:: for symlinked private subdirectory"
+rm -f "$P/pop"; mv "$WORK/pop-real" "$P/pop"
+
 # World-writable private directories are tightened.
 mkdir -p "$P/drop"; chmod 777 "$P/drop"
 bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >/dev/null || fail "o+w dir must be fixable"

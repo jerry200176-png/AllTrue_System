@@ -4,7 +4,8 @@
 # reviewed financial manifest) whose writers set restrictive modes.
 # Runs from the backend directory (default: /home/admin/backend). Idempotent.
 # Exit 3: a private file is still world-accessible, a private directory is
-# world-writable, the subtree cannot be fully scanned, or the key is not 600.
+# world-writable, the subtree cannot be fully scanned or contains a symlinked
+# directory (or is one), or the key is not 600.
 set -uo pipefail
 cd "${1:-/home/admin/backend}" || exit 1
 P=storage/app/private
@@ -13,7 +14,16 @@ P=storage/app/private
 # line (unlike chmod -R during traversal), which could widen the link target.
 find storage bootstrap/cache -path "$P" -prune -o \( -type f -o -type d \) -exec chmod 775 {} + 2>/dev/null
 status=0
-if [ -d "$P" ]; then
+# find does not follow symlinks, so a linked private root or subdirectory would
+# be skipped by the checks below and reported as hardened. Refuse it instead.
+if [ -L "$P" ]; then
+  echo "::error::$P is a symlink; refusing to report it as hardened"
+  status=3
+elif [ -d "$P" ] && [ -n "$(find "$P" -type l -xtype d -print -quit 2>/dev/null)" ]; then
+  echo "::error::$P contains a symlinked directory; refusing to report it as hardened"
+  status=3
+fi
+if [ "$status" = 0 ] && [ -d "$P" ]; then
   # Undo world access left by the old recursive chmod. Files lose all world
   # bits (group bits double as a named-user ACL mask, so they are left alone);
   # directories lose world-write so nobody else can replace a manifest.
