@@ -105,6 +105,8 @@ def check_text(text: str, *, label: str = str(PATH)) -> list[str]:
         errors.append("FAIL A6j: interrupted mounts must be rolled back via phase-aware EXIT/signal traps")
     if not re.search(r'setfacl -m "u:\$\{uid\}:--x,m::', blob):
         errors.append("FAIL A2e: directory traverse grant must set the mask explicitly (no recalculation)")
+    if 'fpm_can w "$d"' not in blob or "worker can write" not in blob:
+        errors.append("FAIL A2f: managed directories must not stay writable by the worker")
     if '[ "$GITHUB_REF" = refs/heads/main ]' not in text:
         errors.append("FAIL A7: mode=mount must be pinned to refs/heads/main")
 

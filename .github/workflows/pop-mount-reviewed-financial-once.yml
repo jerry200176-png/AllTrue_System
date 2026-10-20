@@ -325,6 +325,16 @@ jobs:
             # Only the two directories this workflow manages get a traverse
             # entry; every other ancestor was checked above without changes.
             for d in "$managed_parent" "$POP_DIR"; do
+              # Write+execute on a managed dir would let the worker replace the
+              # manifest; drop group/other write (owner-only operation) and
+              # refuse if the worker can still write (e.g. it owns the dir).
+              if fpm_can w "$d"; then
+                if ! getfacl -p -- "$d" >>"$DIR_ACL_BACKUP" || ! chmod go-w "$d" || fpm_can w "$d"; then
+                  echo "validate_mount_file: worker can write ${d}; refusing" >&2
+                  restore_dir_acls
+                  return 1
+                fi
+              fi
               fpm_can x "$d" && continue
               # A recalculated mask could activate masked rights of other named
               # entries (e.g. write on pop); refuse those dirs and set the mask
@@ -341,6 +351,11 @@ jobs:
                 return 1
               fi
             done
+            if fpm_can w "$managed_parent" || fpm_can w "$POP_DIR"; then
+              echo "validate_mount_file: worker can write ${POP_DIR}; refusing" >&2
+              restore_dir_acls
+              return 1
+            fi
             if ! fpm_can x "$managed_parent" || ! fpm_can x "$POP_DIR"; then
               echo "validate_mount_file: fpm cannot traverse ${POP_DIR} as ${user}" >&2
               restore_dir_acls
@@ -397,7 +412,8 @@ jobs:
               owner_ok=no; [ "$(stat -c '%u' "$p")" = "$(id -u)" ] && owner_ok=yes
               extra="$(getfacl -cpn -- "$p" 2>/dev/null | grep -cE '^(user|group):[^:]+:' || true)"
               mask="$(getfacl -cpn -- "$p" 2>/dev/null | awk -F: '$1=="mask"{print $3}')"
-              echo "path=${p} uid=$(stat -c '%u' "$p") gid=$(stat -c '%g' "$p") mode=$(stat -c '%a' "$p") deploy_owns=${owner_ok} named_entries=${extra} mask=${mask:-none}"
+              fpm_can w "$p" && wr=yes || wr=no
+              echo "path=${p} uid=$(stat -c '%u' "$p") gid=$(stat -c '%g' "$p") mode=$(stat -c '%a' "$p") deploy_owns=${owner_ok} named_entries=${extra} mask=${mask:-none} worker_can_write=${wr}"
             done
             d="$(dirname "$managed_parent")"
             while [ "$d" != "/" ]; do

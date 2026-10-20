@@ -225,6 +225,27 @@ expect_fail "masked-named-entry" "unexpected named ACL entries"
 assert_dirs_restored "masked-named-entry"
 command setfacl -b "$POP_DIR"
 
+# 9d2) Worker write on a managed dir is removed (owner chmod go-w), never kept.
+seed_prior_live
+chmod 777 "$POP_DIR"
+good_json "$STAGE"
+validate_mount_file "$STAGE" >/dev/null 2>&1 || { echo "ERROR writable-dir setup"; exit 1; }
+fpm_can w "$POP_DIR" && { echo "ERROR worker can still write pop"; exit 1; }
+[ "$(( $(stat -c '%a' "$POP_DIR") % 10 & 2 ))" = 0 ] || { echo "ERROR pop kept other-write"; exit 1; }
+cleanup_stage_preserve_live >/dev/null
+echo "PASS writable managed dir narrowed"
+
+# 9d3) A managed dir the worker itself owns (cannot be narrowed) is refused.
+if [ "$(id -u)" = 0 ]; then
+  seed_prior_live
+  chown nobody "$POP_DIR"; chmod 700 "$POP_DIR"
+  PRIOR_DIR_ACL="$(acl_of "$ANCESTOR/private"; acl_of "$POP_DIR")"
+  good_json "$STAGE"
+  expect_fail "worker-owned-dir" "worker can write"
+  chown root "$POP_DIR"
+  echo "PASS worker-owned managed dir refused"
+fi
+
 # 9e) Interrupted after the swap: abort_mount restores PREV, dirs and stage.
 seed_prior_live
 good_json "$STAGE"
