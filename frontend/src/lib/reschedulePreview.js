@@ -14,7 +14,7 @@ const CLASS_LABEL = {
   trial: '試聽',
 };
 
-const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
+const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused']);
 
 function hm(value) {
   const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);

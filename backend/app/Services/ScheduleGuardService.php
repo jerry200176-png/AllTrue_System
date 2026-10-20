@@ -675,7 +675,8 @@ class ScheduleGuardService
             fn ($row) => $this->scheduleRowOccupiesQueriedTeacher(
                 $row,
                 $teacherId,
-                $recurringCourseMeta[(int) ($row->student_course_id ?? 0)] ?? null
+                $recurringCourseMeta[(int) ($row->student_course_id ?? 0)] ?? null,
+                substr((string) $row->schedule_date, 0, 10)
             )
         ));
 
@@ -758,8 +759,8 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])) {
                 continue;
             }
-            // TD-076 flag on: another teacher teaches this occurrence, so the contract teacher is free.
-            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $sessionDate, (string) ($row->StartTime ?? ''))) {
+            // The effective teacher owns this occurrence in both legacy and v2 modes.
+            if ($courseId > 0 && SubstituteScheduleService::teacherForOccurrence($courseId, $sessionDate, $teacherId, (string) ($row->StartTime ?? '')) !== $teacherId) {
                 continue;
             }
 
@@ -1420,7 +1421,7 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
                 continue;
             }
-            if ($courseId > 0 && SubstituteScheduleService::isSubstitutedAway($courseId, $date, (string) ($row->StartTime ?? ''), $lock)) {
+            if ($courseId > 0 && SubstituteScheduleService::teacherForOccurrence($courseId, $date, $teacherId, (string) ($row->StartTime ?? ''), $lock) !== $teacherId) {
                 continue;
             }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
@@ -1483,7 +1484,7 @@ class ScheduleGuardService
                 continue;
             }
             $meta = $courseId > 0 ? ($courseMeta[$courseId] ?? null) : null;
-            if (!$this->scheduleRowOccupiesQueriedTeacher($row, $teacherId, $meta)) {
+            if (!$this->scheduleRowOccupiesQueriedTeacher($row, $teacherId, $meta, $date, $lock)) {
                 continue;
             }
             $classType = (string) ($row->class_type ?: ($meta->ClassType ?? 'one_on_one'));
@@ -1561,22 +1562,28 @@ class ScheduleGuardService
      * Keep: contract TeacherID match; type=extra|makeup; original_schedule_id set (substitute /
      * reschedule destination). Skip: normal leftover after contract teacher moved away.
      */
-    private function scheduleRowOccupiesQueriedTeacher(object $row, int $queriedTeacherId, ?object $courseMeta): bool
+    private function scheduleRowOccupiesQueriedTeacher(object $row, int $queriedTeacherId, ?object $courseMeta, string $date, bool $lock = false): bool
     {
         if ($courseMeta === null) {
             return true;
         }
-        if ((int) ($courseMeta->TeacherID ?? 0) === $queriedTeacherId) {
-            return true;
-        }
+        $contractTeacherId = (int) ($courseMeta->TeacherID ?? 0);
         $type = strtolower(trim((string) ($row->type ?? '')));
-        if ($type === 'extra' || $type === 'makeup') {
-            return true;
-        }
-        if ((int) ($row->original_schedule_id ?? 0) > 0) {
-            return true;
+        $isExtra = $type === 'extra' || $type === 'makeup';
+        // Preserve #4245: a normal leftover of a contract-teacher edit is not
+        // evidence of a substitute. Legal extras and linked destinations are.
+        if ($contractTeacherId !== $queriedTeacherId && !$isExtra && (int) ($row->original_schedule_id ?? 0) <= 0) {
+            return false;
         }
 
-        return false;
+        // Match session occupancy in both legacy and v2 modes. An extra owns
+        // its row teacher in legacy mode; v2 may resolve its LearningRecord.
+        return SubstituteScheduleService::teacherForOccurrence(
+            (int) $row->student_course_id,
+            $date,
+            $isExtra ? $queriedTeacherId : $contractTeacherId,
+            (string) $row->start_time,
+            $lock
+        ) === $queriedTeacherId;
     }
 }
