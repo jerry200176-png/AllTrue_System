@@ -9,3 +9,7 @@ It requires a separate explicit approval, expires at the fixed diagnostic cutoff
 and uses one time-bounded SSH attempt with no fallback.
 
 silent_ship: internal diagnostic preparation; no runtime activation or case acceptance claimed.
+
+The policy probe resolves the live app-serving FPM identity and refuses a changed
+principal before listing any policy. The existing workflow inventory records
+the separate read scope, approval boundary and encrypted evidence dependency.

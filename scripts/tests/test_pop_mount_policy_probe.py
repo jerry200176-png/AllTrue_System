@@ -49,7 +49,7 @@ class PolicyProbeTest(unittest.TestCase):
         result, root, env = self.run_probe()
         self.assertEqual(result.returncode, 0, result.stderr)
         call = json.loads((root/"call.json").read_text())
-        self.assertEqual(call["sha256"], "bb615a3a5643c153f08a6413e7004731250873800acbaee75abda97663b6505d")
+        self.assertEqual(call["sha256"], "8e01fbb44d7a983d15271fa6a1d823d6d9b3642dce3dfd2f1dffb6e0901ea97a")
         for flag in ["BatchMode=yes", "StrictHostKeyChecking=yes", "ConnectionAttempts=1",
                      "IdentitiesOnly=yes", "ClearAllForwardings=yes", "ForwardAgent=no"]:
             self.assertIn(flag, call["args"])
@@ -95,7 +95,45 @@ class PolicyProbeTest(unittest.TestCase):
         self.assertIn("if: inputs.mode != 'probe-policy'", mount)
         self.assertIn("environment: production-activation", workflow)
         self.assertEqual(hashlib.sha256(REMOTE.read_bytes()).hexdigest(),
-                         "bb615a3a5643c153f08a6413e7004731250873800acbaee75abda97663b6505d")
+                         "8e01fbb44d7a983d15271fa6a1d823d6d9b3642dce3dfd2f1dffb6e0901ea97a")
+
+    def remote_with_identity(self, identity):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            bindir = root/"bin"
+            bindir.mkdir()
+            for name, body in {"id": "echo admin", "getent": ":", "readlink": ":",
+                               "stat": ":", "getfacl": ":", "namei": ":",
+                               "sudo": "echo LIST_QUERY_REACHED"}.items():
+                f = bindir/name
+                f.write_text("#!/bin/sh\n"+body+"\n")
+                f.chmod(0o700)
+            source = REMOTE.read_text()
+            source = "\n".join('paths=("$FIXTURE_ROOT")' if l.startswith("paths=(") else
+                               'base="$FIXTURE_ROOT/base"' if l.startswith("base=") else l
+                               for l in source.splitlines())
+            # Stub only the resolution result; exercise the actual fail-closed gate.
+            resolver = "return 1" if identity is None else (
+                "pool_name="+identity[0]+"; user="+identity[1]+"; uid="+identity[2]+"; gid="+identity[3]+"; return 0")
+            source = source.replace("if ! resolve_fpm; then", "resolve_fpm() { "+resolver+"; }\nif ! resolve_fpm; then")
+            env = os.environ.copy()
+            env.update(PATH=str(bindir)+":"+env["PATH"], FIXTURE_ROOT=str(root))
+            return subprocess.run(["bash"], input=source+"\n", env=env,
+                                  capture_output=True, text=True, timeout=5)
+
+    def test_unresolved_or_changed_serving_fpm_stops_before_policy(self):
+        for identity in [None, ("other", "www-data", "33", "33"), ("www", "www-data", "82", "33")]:
+            with self.subTest(identity=identity):
+                result = self.remote_with_identity(identity)
+                self.assertEqual(result.returncode, 73)
+                self.assertIn("POLICY_UNKNOWN", result.stderr)
+                self.assertNotIn("LIST_QUERY_REACHED", result.stdout+result.stderr)
+
+    def test_fixed_resolved_serving_identity_allows_only_list_queries(self):
+        result = self.remote_with_identity(("www", "www-data", "33", "33"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LIST_QUERY_REACHED", result.stdout)
+        self.assertIn("diagnostic_complete;", result.stdout)
 
     def test_remote_symlink_stops_before_metadata_or_policy(self):
         with tempfile.TemporaryDirectory() as td:

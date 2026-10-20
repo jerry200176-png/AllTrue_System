@@ -3,7 +3,7 @@
 set -euo pipefail
 umask 077
 readonly PROBE_NOT_AFTER_UTC=2026-10-21T00:00:00Z
-readonly SCRIPT_SHA256=bb615a3a5643c153f08a6413e7004731250873800acbaee75abda97663b6505d
+readonly SCRIPT_SHA256=8e01fbb44d7a983d15271fa6a1d823d6d9b3642dce3dfd2f1dffb6e0901ea97a
 readonly SCRIPT=.github/scripts/pop-mount-policy-readonly.sh
 [[ "${MODE:-}" == probe-policy ]]
 [[ "${PI_SSH_HOST:-}" == pi.lifenet.com.tw && "${PI_SSH_USER:-}" == admin ]]
