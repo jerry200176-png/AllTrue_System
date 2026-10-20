@@ -165,3 +165,16 @@ later read-only acceptance must reconcile them and obtain reporter verification.
   match the raw combined tree. A docblock-only addition followed the 158/1053 run.
 - Recheck both live heads before any later integration; these pinned results
   do not authorize merge/deployment or clear unrelated #4215 review findings.
+
+### Independent evidence follow-up
+
+- Independent handoff: [verification report](https://github.com/jerry200176-png/AllTrue_System/pull/4327#issuecomment-6295966812).
+  Integrated its two source-RR tests, replacing the weaker clone-only pair.
+  Updated main source/successor/current-read selection: 61 tests / 488 assertions.
+- The independent 9-case apply matrix was applied ONLY in the isolated #4215
+  rehearsal and passed 9 / 79. It includes substitute-away/in and v2 makeup LR.
+  Patches and logs remain in the named local review-evidence worktree; the
+  committed resolution artifact above retains its original pinned test scope.
+- Hosted Presubmit flagged intentional replacement of #4245/#4162 lines. The
+  documented intentional-revert label and exact rationale acknowledge this
+  tested behavior correction; no checker or safeguard was weakened.
