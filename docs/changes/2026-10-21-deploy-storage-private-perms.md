@@ -1,8 +1,6 @@
----
-silent_ship: true
----
-
-# ci(deploy): stop the storage chmod from widening storage/app/private
+## 2026-10-21 — ci(deploy): stop the storage chmod from widening storage/app/private (#4332)
+<!-- release-notes: silent_ship=silent-2026-10-21-deploy-storage-private-perms -->
+<!-- silent-reason: deploy control-plane permission hardening; no product UI change -->
 
 Deploy step [2b/7] ran `chmod -R 775 storage bootstrap/cache`, which on every
 deploy made `storage/app/private/pop-machine.key` and the reviewed-financial
