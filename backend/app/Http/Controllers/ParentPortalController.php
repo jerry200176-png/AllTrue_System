@@ -366,50 +366,69 @@ class ParentPortalController extends Controller
         // (BindingService::revokeGuardianAccess(), GuardianSyncService::revoke()),
         // so an in-flight revoke makes this wait and then see access gone, and
         // a revoke that starts now waits and then expires this session.
-        // Read outside the transaction so no REPEATABLE READ snapshot is taken
-        // before the locks below are granted. The locks select whole rows so
-        // they land on the clustered rows the revoke paths lock too.
-        $guardianId = GuardianSyncService::dualWriteEnabled()
-            ? Guardian::query()->where('line_user_id', $lineUserId)->value('id')
+        // The guardian id is read outside the transaction so no REPEATABLE READ
+        // snapshot is taken before the locks are granted; a guardian created
+        // after that read is caught by the locked re-check and the attempt is
+        // retried with the new lock target. The locks select whole rows so they
+        // land on the clustered rows the revoke paths lock too.
+        $guardianIdFor = fn (bool $lock) => GuardianSyncService::dualWriteEnabled()
+            ? ($lock
+                ? Guardian::query()->where('line_user_id', $lineUserId)->sharedLock()->first()?->getKey()
+                : Guardian::query()->where('line_user_id', $lineUserId)->value('id'))
             : null;
-        $login = DB::transaction(function () use ($lineUserId, $preferredCampusId, $guardianId) {
-            DB::table('student_line_bindings')
-                ->where('line_user_id', $lineUserId)
-                ->sharedLock()
-                ->get();
-            if ($guardianId !== null) {
-                DB::table('student_guardians')
-                    ->where('guardian_id', (int) $guardianId)
+        $login = ['retry' => true];
+        for ($attempt = 0; ($login['retry'] ?? false) && $attempt < 3; $attempt++) {
+            $guardianId = $guardianIdFor(false);
+            // Lock order: guardian row (as GuardianSyncService upserts do),
+            // then binding, then link. Deadlocks are retried by the transaction.
+            $login = DB::transaction(function () use ($lineUserId, $preferredCampusId, $guardianId, $guardianIdFor) {
+                if ((int) ($guardianIdFor(true) ?? 0) !== (int) ($guardianId ?? 0)) {
+                    return ['retry' => true];
+                }
+                DB::table('student_line_bindings')
+                    ->where('line_user_id', $lineUserId)
                     ->sharedLock()
                     ->get();
-            }
-            $access = app(ParentGuardianAccessService::class);
-            $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
-            if ($students->isEmpty()) {
-                return null;
-            }
+                if ($guardianId !== null) {
+                    DB::table('student_guardians')
+                        ->where('guardian_id', (int) $guardianId)
+                        ->sharedLock()
+                        ->get();
+                }
+                $access = app(ParentGuardianAccessService::class);
+                $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
+                if ($students->isEmpty()) {
+                    return null;
+                }
 
-            // Create session for the first student (frontend can switch later)
-            $firstStudent = $students->first();
-            $result = $this->createSession(
-                $firstStudent,
-                null,
-                StudentContactPhone::normalizedDigits($firstStudent),
-                $lineUserId
-            );
-            // Defence in depth: re-read after the insert and expire the session
-            // if access is gone. The response is built from this fresh set.
-            $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
-            if (!$students->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id)) {
-                ParentSession::query()
-                    ->where('TokenHash', hash('sha256', $result['token']))
-                    ->update(['ExpiresAt' => now()]);
+                // Create session for the first student (frontend can switch later)
+                $firstStudent = $students->first();
+                $result = $this->createSession(
+                    $firstStudent,
+                    null,
+                    StudentContactPhone::normalizedDigits($firstStudent),
+                    $lineUserId
+                );
+                // Defence in depth: re-read after the insert and expire the session
+                // if access is gone. The response is built from this fresh set.
+                $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
+                if (!$students->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id)) {
+                    ParentSession::query()
+                        ->where('TokenHash', hash('sha256', $result['token']))
+                        ->update(['ExpiresAt' => now()]);
 
-                return ['revoked' => true];
-            }
+                    return ['revoked' => true];
+                }
 
-            return ['revoked' => false, 'first' => $firstStudent, 'students' => $students, 'result' => $result];
-        });
+                return ['revoked' => false, 'first' => $firstStudent, 'students' => $students, 'result' => $result];
+            }, 3);
+        }
+        if ($login['retry'] ?? false) {
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'access_changed_during_login']);
+            return response()->json(['message' => 'LINE authentication unavailable'], 503);
+        }
         if ($login === null) {
             SecurityAuditEvent::append('parent.auth', 'failure', [
                 'campus_id' => (int) ($data['campus_id'] ?? 0),
