@@ -114,7 +114,6 @@ jobs:
 
           # App-serving FPM: vhost → listen → pool → worker /proc Uid.
           # Validate stage (identity, content, restricted access) then atomic replace LIVE.
-          # retained from #4306: 'chmod 600 …/reviewed-financial-cases.json'
           ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$PI_SSH_USER@$PI_SSH_HOST" "MODE=$(printf %q "$MODE") bash -s" <<'REMOTE'
@@ -203,31 +202,63 @@ jobs:
             user="$(getent passwd "$uid" | cut -d: -f1)"
             test -n "${user:-}"
             test "$user" = "$pool_user"
+            fpm_gids="$gid $(awk '/^Groups:/{$1=""; print}' "/proc/${worker_pid}/status")"
             echo "fpm_serving pool=${pool_name} user=${pool_user} listen=${listen_target} worker_pid=${worker_pid}"
+          }
+
+          # fpm_can <r|x> PATH: POSIX ACL access decision for the serving worker
+          # (uid + /proc groups), computed from getfacl without root or sudo.
+          fpm_can() {
+            want="$1"; p="$2"
+            acl="$(getfacl -cpn -- "$p" 2>/dev/null)" || return 1
+            owner="$(stat -c '%u' -- "$p")" || return 1
+            ogid="$(stat -c '%g' -- "$p")" || return 1
+            mask="$(awk -F: '$1=="mask"{print $3}' <<<"$acl")"
+            has() { case "$1" in *"$want"*) ;; *) return 1 ;; esac; if [ -n "$mask" ]; then case "$mask" in *"$want"*) ;; *) return 1 ;; esac; fi; }
+            if [ "$owner" = "$uid" ]; then
+              case "$(awk -F: '$1=="user" && $2==""{print $3}' <<<"$acl")" in *"$want"*) return 0 ;; *) return 1 ;; esac
+            fi
+            named="$(awk -F: -v u="$uid" '$1=="user" && $2==u{print $3}' <<<"$acl")"
+            if [ -n "$named" ]; then has "$named"; return; fi
+            matched=0
+            for g in $fpm_gids; do
+              perms="$(awk -F: -v g="$g" -v og="$ogid" '$1=="group" && ($2==g || ($2=="" && g==og)){print $3}' <<<"$acl")"
+              for perm in $perms; do
+                matched=1
+                if has "$perm"; then return 0; fi
+              done
+            done
+            if [ "$matched" = 1 ]; then return 1; fi
+            case "$(awk -F: '$1=="other"{print $3}' <<<"$acl")" in *"$want"*) return 0 ;; *) return 1 ;; esac
           }
 
           validate_mount_file() {
             # Explicit fail-closed checks (do not rely on set -e for control flow).
+            # No sudo: the deploy account owns the file and grants the serving
+            # worker read with a named ACL (production sudo needs a password).
             target="$1"
             if [ ! -f "$target" ]; then
               echo "validate_mount_file: missing file ${target}" >&2
               return 1
             fi
-            if ! sudo -n chown "${uid}:${gid}" "$target"; then
-              echo "validate_mount_file: chown ${uid}:${gid} failed on ${target}" >&2
+            if ! command -v setfacl >/dev/null 2>&1 || ! command -v getfacl >/dev/null 2>&1; then
+              echo "validate_mount_file: setfacl/getfacl missing (acl package); refusing" >&2
               return 1
             fi
-            mode_target=640
-            if [ "$user" = "admin" ]; then mode_target=600; fi
-            if ! sudo -n chmod "$mode_target" "$target"; then
-              echo "validate_mount_file: chmod ${mode_target} failed on ${target}" >&2
+            if [ "$(stat -c '%u' "$target")" = "$uid" ]; then
+              if ! chmod 600 "$target"; then
+                echo "validate_mount_file: chmod 600 failed on ${target}" >&2
+                return 1
+              fi
+            elif ! setfacl -m "u::rw-,g::---,o::---,u:${uid}:r--" "$target"; then
+              echo "validate_mount_file: setfacl failed on ${target}" >&2
               return 1
             fi
             if ! mode="$(stat -c '%a' "$target")"; then
               echo "validate_mount_file: stat mode failed on ${target}" >&2
               return 1
             fi
-            if [ "$((mode % 10))" -ge 4 ]; then
+            if [ "$((mode % 10))" -ne 0 ]; then
               echo "refusing world-accessible mode ${mode} on ${target}" >&2
               return 1
             fi
@@ -235,20 +266,22 @@ jobs:
               echo "validate_mount_file: identity stat failed on ${target}" >&2
               return 1
             fi
-            if command -v namei >/dev/null 2>&1; then
-              if ! namei -l "$target" >/tmp/pop-mount-namei.out; then
-                echo "validate_mount_file: namei failed on ${target}" >&2
+            # Only the two directories this workflow manages get a traverse
+            # entry; every other ancestor must already be traversable.
+            for d in "$POP_DIR" "$(dirname "$POP_DIR")"; do
+              if ! fpm_can x "$d" && ! setfacl -m "u:${uid}:--x" "$d"; then
+                echo "validate_mount_file: setfacl traverse failed on ${d}" >&2
                 return 1
               fi
-            fi
-            if ! sudo -n runuser -u "$user" -- test -r "$target"; then
-              echo "validate_mount_file: runuser cannot read ${target} as ${user}" >&2
+            done
+            if ! fpm_can r "$target"; then
+              echo "validate_mount_file: fpm cannot read ${target} as ${user}" >&2
               return 1
             fi
             d="$(dirname "$target")"
             while [ "$d" != "/" ]; do
-              if ! sudo -n runuser -u "$user" -- test -x "$d"; then
-                echo "validate_mount_file: runuser cannot traverse ${d} as ${user}" >&2
+              if ! fpm_can x "$d"; then
+                echo "validate_mount_file: fpm cannot traverse ${d} as ${user}" >&2
                 return 1
               fi
               d="$(dirname "$d")"

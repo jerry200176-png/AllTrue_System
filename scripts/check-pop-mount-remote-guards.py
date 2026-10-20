@@ -87,8 +87,16 @@ def check_text(text: str, *, label: str = str(PATH)) -> list[str]:
     # Ban LIVE→PREV mv as the backup method (would remove LIVE before replace).
     if re.search(r'mv\s+-f\s+"\$LIVE"\s+"\$PREV"', blob):
         errors.append("FAIL A6g: must not mv LIVE→PREV before STAGE→LIVE (use cp backup)")
-    if "validate_mount_file: chown" not in blob or "validate_mount_file: chmod" not in blob or "validate_mount_file: runuser cannot read" not in blob:
-        errors.append("FAIL A6h: validate_mount_file must explicitly fail-message chown/chmod/runuser")
+    for msg in ("validate_mount_file: setfacl failed", "validate_mount_file: fpm cannot read",
+                "validate_mount_file: fpm cannot traverse", "setfacl/getfacl missing"):
+        if msg not in blob:
+            errors.append(f"FAIL A6h: validate_mount_file must explicitly fail-message {msg!r}")
+    # Production sudo needs a password (run 39427575892); access is granted by the
+    # file owner's named ACL, so the remote must not depend on sudo at all.
+    if re.search(r"\bsudo\b", re.sub(r"#.*", "", blob)):
+        errors.append("FAIL A2b: remote must not call sudo (owner ACL instead)")
+    if not re.search(r'setfacl -m "u::rw-,g::---,o::---,u:\$\{uid\}:r--"', blob):
+        errors.append("FAIL A2c: file ACL must grant only the bound worker uid read")
 
     # scp destination must be $STAGE (or literal …json.staging), never bare LIVE path.
     if not (
@@ -123,6 +131,11 @@ REMOTE
     if not any("A6" in e for e in bad_errs):
         print("self-test FAIL: expected A6 on scp-to-live fixture", file=sys.stderr)
         print("\n".join(bad_errs), file=sys.stderr)
+        return 1
+
+    bad_sudo = good.replace('elif ! setfacl -m', 'elif ! sudo -n setfacl -m', 1)
+    if bad_sudo == good or not any("A2b" in e for e in check_text(bad_sudo, label="fixture-sudo")):
+        print("self-test FAIL: expected A2b on sudo fixture", file=sys.stderr)
         return 1
 
     bad644 = """

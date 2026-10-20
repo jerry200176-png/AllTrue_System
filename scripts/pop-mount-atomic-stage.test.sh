@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Local simulation: cp backup while LIVE stays; one STAGE→LIVE; explicit-fail validate.
-# Also exercises chown/chmod/runuser failure paths via stub sudo.
+# Runs the workflow's own validate_mount_file with real ACLs; stub setfacl
+# injects setfacl/read/traversal failures.
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -12,37 +13,22 @@ STAGE="$POP_DIR/reviewed-financial-cases.json.staging"
 PREV="$POP_DIR/reviewed-financial-cases.json.prev"
 mkdir -p "$POP_DIR"
 
-# Stub sudo that can fail selected ops (no real root needed).
-SUDO_FAIL_MODE="${SUDO_FAIL_MODE:-}"
-sudo() {
-  # ignore -n
-  shift
-  case "${SUDO_FAIL_MODE}" in
-    chown) if [ "$1" = "chown" ]; then echo "stub sudo: chown fail" >&2; return 1; fi ;;
-    chmod) if [ "$1" = "chmod" ]; then echo "stub sudo: chmod fail" >&2; return 1; fi ;;
-    runuser_read|runuser_traverse)
-      if [ "$1" = "runuser" ]; then
-        # After shifting -n: runuser -u USER -- test {-r|-x} PATH.
-        if [ "$4" = "--" ] && [ "$5" = "test" ]; then
-          case "${SUDO_FAIL_MODE}:$6" in
-            runuser_read:-r|runuser_traverse:-x)
-              echo "stub sudo: ${SUDO_FAIL_MODE} fail" >&2; return 1 ;;
-          esac
-        fi
-      fi
-      ;;
-  esac
-  # chmod must apply its mode so later probes do not stop at the mode guard.
-  case "$1" in
-    chmod) command "$@" ;;
-    chown) return 0 ;;
-    runuser) return 0 ;;
-    *) command sudo "$@" ;;
-  esac
-}
-export -f sudo
+# Serving-worker identity for the simulation: an unprivileged account that
+# owns nothing here, so access must come from the named ACL.
+user=nobody; uid="$(id -u nobody)"; gid="$(id -g nobody)"; fpm_gids="$(id -G nobody)"
+command -v setfacl >/dev/null 2>&1 || { echo "SKIP: setfacl unavailable (install acl)"; exit 1; }
 
-uid=1000; gid=1000; user=admin
+# Stub setfacl to inject failures; otherwise call the real one.
+SETFACL_FAIL_MODE="${SETFACL_FAIL_MODE:-}"
+setfacl() {
+  local last="${!#}"
+  case "${SETFACL_FAIL_MODE}" in
+    file) if [ -f "$last" ]; then echo "stub setfacl: file fail" >&2; return 1; fi ;;
+    file_noop) if [ -f "$last" ]; then echo "stub setfacl: file_noop" >&2; return 0; fi ;;
+    dir_noop) if [ -d "$last" ]; then echo "stub setfacl: dir_noop" >&2; return 0; fi ;;
+  esac
+  command setfacl "$@"
+}
 
 good_json() {
   cat >"$1" <<'JSON'
@@ -76,60 +62,11 @@ assert_prior_preserved() {
   echo "PASS $label preserves contents+owner+mode"
 }
 
-# Mirror workflow validate_mount_file — explicit returns, no set -e reliance.
-validate_mount_file() {
-  target="$1"
-  if [ ! -f "$target" ]; then
-    echo "validate_mount_file: missing file ${target}" >&2
-    return 1
-  fi
-  if ! sudo -n chown "${uid}:${gid}" "$target"; then
-    echo "validate_mount_file: chown failed on ${target}" >&2
-    return 1
-  fi
-  mode_target=640
-  if [ "$user" = "admin" ]; then mode_target=600; fi
-  if ! sudo -n chmod "$mode_target" "$target"; then
-    echo "validate_mount_file: chmod failed on ${target}" >&2
-    return 1
-  fi
-  if ! mode="$(stat -c '%a' "$target")"; then
-    echo "validate_mount_file: stat failed" >&2
-    return 1
-  fi
-  if [ "$((mode % 10))" -ge 4 ]; then
-    echo "refusing world-accessible mode ${mode}" >&2
-    return 1
-  fi
-  if ! sudo -n runuser -u "$user" -- test -r "$target"; then
-    echo "validate_mount_file: runuser cannot read ${target}" >&2
-    return 1
-  fi
-  d="$(dirname "$target")"
-  while [ "$d" != "/" ]; do
-    if ! sudo -n runuser -u "$user" -- test -x "$d"; then
-      echo "validate_mount_file: runuser cannot traverse ${d}" >&2
-      return 1
-    fi
-    d="$(dirname "$d")"
-  done
-  if ! python3 - "$target" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-assert d.get("version") == 1
-cases = d.get("eligible_cases") or []
-assert len(cases) == 1
-c = cases[0]
-for k in ("operation_id", "parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"):
-    assert k in c and c[k], k
-assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
-PY
-  then
-    echo "validate_mount_file: content failed" >&2
-    return 1
-  fi
-  return 0
-}
+# The exact fpm_can + validate_mount_file from the workflow (no hand copy).
+WF="$ROOT/.github/workflows/pop-mount-reviewed-financial-once.yml"
+eval "$(awk '/^          # fpm_can <r\|x> PATH/{on=1} on{print} on && /^          }$/{n++; if(n==2) exit}' "$WF" | sed 's/^          //')"
+declare -F fpm_can >/dev/null && declare -F validate_mount_file >/dev/null \
+  || { echo "ERROR could not extract validate_mount_file from workflow" >&2; exit 1; }
 
 cleanup_stage_preserve_live() {
   rm -f "$STAGE" || true
@@ -162,43 +99,56 @@ if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR bad should fail"; 
 rm -f "$STAGE"
 assert_prior_preserved "failing-stage"
 
-# 3) chown failure leaves LIVE
+# 3) setfacl failure leaves LIVE
 seed_prior_live
 good_json "$STAGE"
-SUDO_FAIL_MODE=chown
-if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR chown should fail"; exit 1; fi
-SUDO_FAIL_MODE=
+SETFACL_FAIL_MODE=file
+if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR setfacl should fail"; exit 1; fi
+grep -q 'validate_mount_file: setfacl failed' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
+SETFACL_FAIL_MODE=
 rm -f "$STAGE"
-assert_prior_preserved "chown-fail"
+assert_prior_preserved "setfacl-fail"
 
-# 4) chmod failure leaves LIVE
+# 4) Missing acl tools fail closed
 seed_prior_live
 good_json "$STAGE"
-SUDO_FAIL_MODE=chmod
-if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR chmod should fail"; exit 1; fi
-SUDO_FAIL_MODE=
+if (unset -f setfacl; PATH=/nonexistent validate_mount_file "$STAGE") 2>"$TMP/validation.err"; then echo "ERROR missing acl should fail"; exit 1; fi
+grep -q 'setfacl/getfacl missing' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
 rm -f "$STAGE"
-assert_prior_preserved "chmod-fail"
+assert_prior_preserved "acl-tools-missing"
 
-# 5) runuser read failure leaves LIVE
+# 5) Worker cannot read (ACL not applied) leaves LIVE
 seed_prior_live
 good_json "$STAGE"
-SUDO_FAIL_MODE=runuser_read
-if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR runuser should fail"; exit 1; fi
-grep -Fxq 'stub sudo: runuser_read fail' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
-SUDO_FAIL_MODE=
+chmod 600 "$STAGE"
+SETFACL_FAIL_MODE=file_noop
+if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR read denial should fail"; exit 1; fi
+grep -q 'validate_mount_file: fpm cannot read' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
+SETFACL_FAIL_MODE=
 rm -f "$STAGE"
-assert_prior_preserved "runuser-read-fail"
+assert_prior_preserved "fpm-read-denied"
 
 # Parent traversal denial must also reject STAGE without replacing LIVE.
 seed_prior_live
 good_json "$STAGE"
-SUDO_FAIL_MODE=runuser_traverse
+setfacl -b "$POP_DIR" "$TMP"; chmod 700 "$POP_DIR" "$TMP"
+SETFACL_FAIL_MODE=dir_noop
 if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR traversal should fail"; exit 1; fi
-grep -Fxq 'stub sudo: runuser_traverse fail' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
-SUDO_FAIL_MODE=
+grep -q 'validate_mount_file: fpm cannot traverse' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
+SETFACL_FAIL_MODE=
 rm -f "$STAGE"
-assert_prior_preserved "runuser-traverse-fail"
+assert_prior_preserved "fpm-traverse-denied"
+
+# fpm_can must agree with the kernel (needs root to switch identity).
+if [ "$(id -u)" = 0 ] && command -v runuser >/dev/null 2>&1; then
+  good_json "$STAGE"
+  validate_mount_file "$STAGE" >/dev/null || { echo "ERROR kernel cross-check setup"; exit 1; }
+  runuser -u nobody -- test -r "$STAGE" || { echo "ERROR kernel denies read that fpm_can allowed"; exit 1; }
+  setfacl -x "u:${uid}" "$STAGE"
+  if runuser -u nobody -- test -r "$STAGE" || fpm_can r "$STAGE"; then echo "ERROR read allowed without ACL"; exit 1; fi
+  rm -f "$STAGE"
+  echo "PASS fpm_can matches kernel access for ${user}"
+fi
 
 # 6) Interrupt after STAGE→LIVE but before validate: restore from PREV (LIVE was replaced)
 seed_prior_live
