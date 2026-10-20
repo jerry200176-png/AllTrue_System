@@ -5,6 +5,7 @@ namespace App\Services\ParentBinding;
 use App\Models\Guardian;
 use App\Models\Student;
 use App\Models\StudentGuardian;
+use App\Models\StudentLineBinding;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -327,6 +328,20 @@ final class GuardianSyncService
         }
 
         DB::transaction(function () use ($link) {
+            // #3988: binding row, then link row, the order LINE login and
+            // BindingService::revokeGuardianAccess() use, so login cannot
+            // create a session for this link while the revoke is in flight.
+            $link->loadMissing('guardian');
+            $lineUserId = trim((string) ($link->guardian?->line_user_id ?? ''));
+            if ($lineUserId !== '') {
+                StudentLineBinding::query()
+                    ->where('student_id', (int) $link->student_id)
+                    ->where('line_user_id', $lineUserId)
+                    ->lockForUpdate()
+                    ->get(['id']);
+            }
+            StudentGuardian::query()->whereKey((int) $link->getKey())->lockForUpdate()->first(['id']);
+
             $wasPrimary = (bool) $link->is_primary;
             $studentId = (int) $link->student_id;
             $link->loadMissing('guardian');

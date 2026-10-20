@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\Guardian;
 use App\Models\ParentSession;
 use App\Models\Student;
+use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
 use App\Services\ParentBinding\BindingService;
+use App\Services\ParentBinding\GuardianSyncService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +25,9 @@ use Tests\TestCase;
  * 2. A login in progress blocks the unbind's binding lock; once the login
  *    commits, the real BindingService unbind expires its session.
  * 3. BindingService::revokeGuardianAccess() takes that binding lock.
+ * 4. With multi-guardian dual-read, a guardian link that has no binding row:
+ *    an in-flight GuardianSyncService::revoke() blocks the login, and
+ *    revoke() takes the link lock login waits on.
  */
 class ParentLineLoginUnbindConcurrency3988Test extends TestCase
 {
@@ -57,6 +63,9 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
         DB::statement('SET SESSION innodb_lock_wait_timeout = 50');
         DB::table('ParentSession')->where('line_user_id', self::LINE_ID)->delete();
         DB::table('student_line_bindings')->where('line_user_id', self::LINE_ID)->delete();
+        $guardianIds = DB::table('guardians')->where('line_user_id', self::LINE_ID)->pluck('id');
+        DB::table('student_guardians')->whereIn('guardian_id', $guardianIds)->delete();
+        DB::table('guardians')->whereIn('id', $guardianIds)->delete();
         DB::table('Student')->where('name', 'race-3988-concurrent')->delete();
         DB::table('security_audit_events')->where('event_type', 'parent.auth')
             ->where('created_at', '>=', now()->subMinutes(10))->delete();
@@ -184,5 +193,71 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
         DB::rollBack();
 
         $this->assertTrue($blocked, 'a login lock must wait for the unbind');
+    }
+
+    /** Staff-created guardian link with no student_line_bindings row. */
+    private function guardianLinkedStudent(): array
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $student = Student::create([
+            'name' => 'race-3988-concurrent', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $guardian = Guardian::create([
+            'display_name' => 'race-3988-guardian', 'phone' => '0900003988',
+            'phone_normalized' => Guardian::normalizePhone('0900003988'), 'line_user_id' => self::LINE_ID,
+        ]);
+        $link = StudentGuardian::create([
+            'student_id' => $student->id, 'guardian_id' => $guardian->id, 'campus_id' => 1,
+            'role' => StudentGuardian::ROLE_GUARDIAN, 'is_primary' => true,
+            'status' => StudentGuardian::STATUS_ACTIVE, 'notify_learning_feedback' => true,
+            'notify_tuition' => true, 'source' => StudentGuardian::SOURCE_STAFF,
+        ]);
+        Http::fake(['https://api.line.me/v2/profile' => Http::response(['userId' => self::LINE_ID], 200)]);
+
+        return [$student, $link];
+    }
+
+    /** @dataProvider isolationLevels */
+    public function test_in_flight_guardian_revoke_blocks_the_login(string $level): void
+    {
+        $this->useIsolation($level);
+        [$student, $link] = $this->guardianLinkedStudent();
+
+        $race = DB::connection(self::RACE);
+        $race->beginTransaction();
+        $race->table('student_guardians')->where('id', $link->id)->lockForUpdate()->get(['id']);
+        $race->table('student_guardians')->where('id', $link->id)
+            ->update(['status' => StudentGuardian::STATUS_REVOKED, 'revoked_at' => now()]);
+
+        DB::statement('SET SESSION innodb_lock_wait_timeout = 1');
+        $res = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token']);
+
+        $this->assertNotSame(200, $res->status(), 'login must wait for the in-flight guardian revoke');
+        $race->commit();
+        $this->assertSame(0, $this->activeSessions($student));
+    }
+
+    /** @dataProvider isolationLevels */
+    public function test_guardian_revoke_locks_the_link(string $level): void
+    {
+        $this->useIsolation($level);
+        [, $link] = $this->guardianLinkedStudent();
+
+        DB::beginTransaction();
+        app(GuardianSyncService::class)->revoke($link);
+
+        $race = DB::connection(self::RACE);
+        $race->statement('SET SESSION innodb_lock_wait_timeout = 1');
+        $blocked = false;
+        try {
+            $race->table('student_guardians')->where('guardian_id', $link->guardian_id)
+                ->sharedLock()->get(['id']);
+        } catch (QueryException $e) {
+            $blocked = self::isLockWait($e);
+        }
+        DB::rollBack();
+
+        $this->assertTrue($blocked, 'a login lock must wait for the guardian revoke');
     }
 }

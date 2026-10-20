@@ -8,12 +8,14 @@ use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
 use App\Services\ParentBinding\ParentBindingObservability;
 use App\Services\ParentBinding\ParentGuardianAccessService;
+use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\ParentBinding\ParentBindingCodes;
 use App\Models\ParentCrossCampusAccess;
 use App\Models\StudentIdentityMember;
 use App\Support\StudentContactPhone;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\Guardian;
 use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
@@ -358,16 +360,28 @@ class ParentPortalController extends Controller
         }
 
         $preferredCampusId = !empty($data['campus_id']) ? (int) $data['campus_id'] : null;
-        // #3988: look up access and create the session while holding a shared
-        // lock on this LINE subject's bindings. Every unbind path locks its
-        // binding row first (BindingService::revokeGuardianAccess()), so an
-        // in-flight unbind makes this wait and then see the binding gone, and
-        // an unbind that starts now waits and then expires this session.
-        $login = DB::transaction(function () use ($lineUserId, $preferredCampusId) {
+        // #3988: look up access and create the session while holding shared
+        // locks on this LINE subject's bindings and guardian links. Every
+        // revoke path locks the same rows first, binding before link
+        // (BindingService::revokeGuardianAccess(), GuardianSyncService::revoke()),
+        // so an in-flight revoke makes this wait and then see access gone, and
+        // a revoke that starts now waits and then expires this session.
+        // Read outside the transaction so no REPEATABLE READ snapshot is taken
+        // before the locks below are granted.
+        $guardianId = GuardianSyncService::dualWriteEnabled()
+            ? Guardian::query()->where('line_user_id', $lineUserId)->value('id')
+            : null;
+        $login = DB::transaction(function () use ($lineUserId, $preferredCampusId, $guardianId) {
             DB::table('student_line_bindings')
                 ->where('line_user_id', $lineUserId)
                 ->sharedLock()
                 ->get(['id']);
+            if ($guardianId !== null) {
+                DB::table('student_guardians')
+                    ->where('guardian_id', (int) $guardianId)
+                    ->sharedLock()
+                    ->get(['id']);
+            }
             $access = app(ParentGuardianAccessService::class);
             $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
             if ($students->isEmpty()) {
