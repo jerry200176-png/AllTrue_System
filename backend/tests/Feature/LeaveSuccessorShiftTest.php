@@ -90,6 +90,37 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame($after, $this->fingerprint(), 'a repeated apply writes nothing');
     }
 
+    public function test_shift_checks_the_teacher_resolved_at_the_written_destination(): void
+    {
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => false]);
+        $assignment = DB::table('schedules')->insertGetId([
+            'student_id' => self::STUDENT, 'student_course_id' => $this->renewal,
+            'teacher_id' => self::TEACHER, 'branch_id' => 1, 'schedule_date' => '2026-12-22',
+            'day_of_week' => 2, 'subject' => 'synthetic', 'start_time' => '19:00', 'end_time' => '21:00',
+            'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0,
+        ]);
+        $row = (array) DB::table('schedules')->where('id', $assignment)->first();
+        unset($row['id']);
+        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => self::TEACHER + 1, 'original_schedule_id' => $assignment]));
+        $this->student(88412);
+        $other = $this->course(88412, '2026-12-29', '2026-12-29');
+        $occupied = $this->lesson($other, '2026-12-29');
+        $leaveId = $this->sessions['2026-11-17'];
+        $before = $this->undoSnapshot();
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertStatus(422);
+        $this->assertSame($before, $this->undoSnapshot(), 'destination conflict must leave all authoritative records unchanged');
+
+        DB::table('ClassSession')->where('id', $occupied)->delete();
+        DB::table('StudentClass')->where('ID', $other)->update(['Stop' => 1]);
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        $this->assertDatabaseHas('ClassSession', ['id' => $this->sessions['2026-12-22'], 'SessionDate' => '2026-12-29']);
+        $this->assertDatabaseHas('schedules', ['original_schedule_id' => $assignment, 'schedule_date' => '2026-12-22', 'teacher_id' => self::TEACHER + 1]);
+        $this->assertSame(self::TEACHER, app(\App\Services\SubstituteScheduleService::class)
+            ->teacherForOccurrence($this->renewal, '2026-12-29', self::TEACHER, '19:00'));
+    }
+
     /** @dataProvider ineligibleRenewalLessons */
     public function test_taught_deducted_or_evaluated_renewal_lesson_blocks_everything(string $kind): void
     {

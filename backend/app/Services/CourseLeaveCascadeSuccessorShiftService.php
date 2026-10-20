@@ -287,7 +287,7 @@ class CourseLeaveCascadeSuccessorShiftService
         $branchId = (int) (DB::table('Student')->where('id', (int) $old->StudentID)->value('CampusID') ?? 0);
         foreach ($moves as $move) {
             $course = $move['role'] === 'old_tail' ? $old : $successor;
-            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock, $move['from']));
+            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock));
         }
 
         $oldDates = $oldSessions->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')
@@ -387,14 +387,14 @@ class CourseLeaveCascadeSuccessorShiftService
      *
      * @param  array{date: string, start: string, end: string}  $to
      * @param  list<int>  $movingIds
-     * @param  array{date: string, start: string, end: string}|null  $from
      * @return list<array<string, mixed>>
      */
-    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock, ?array $from): array
+    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock): array
     {
         $out = [];
         $at = ['course_id' => (int) $course->ID, 'session_id' => $sessionId, 'date' => $to['date'], 'start' => $to['start']];
-        $source = $from ?? $to;
+        // apply() keeps date-bound schedule assignments in place; validate the written destination.
+        $source = $to;
         foreach ($this->guard->validateCourseOccurrence(
             $course, $branchId, $to['date'], $to['start'], $to['end'], $lock,
             ['date' => $source['date'], 'start_time' => $source['start']]
