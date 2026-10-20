@@ -1,6 +1,6 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-20T01:02Z  
+Last updated: 2026-10-20T02:15Z  
 Acceptance: **0/3** (courses 4064 / 3753 / 3693)  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
@@ -8,12 +8,12 @@ No secrets, state hashes, financial payloads, or student PII in this file.
 
 | Ref | SHA (12) | Note |
 |-----|----------|------|
-| `origin/main` tip | `ac9657830af3` | includes #4317 closeout product-decision plan + #4314 status refresh + #4308 acceptance trigger + #4283 lineage |
+| `origin/main` tip | `e6208fc8d7aa` | includes #4319 Goal A–E owner-unblock status + #4317/#4318 lineage + #4283 |
 | Live `deployment.json` backend | `ad9e36904283` | deployed_at `2026-10-19T11:02:17Z` (DtP `39241462999`) |
 | #4283 schema squash | `506729c78ab4` | ancestor of tip; **not** ancestor of live (GATE=FAIL_NOT_LIVE) |
 | #4300 allowlist surface | `8e6228a35fad` | on main; `set_allowlist` still Founder-gated after tip live |
 
-**Do not treat aggregate `deploy.yml` success as live.** Recent runs completed with **Deploy to Production skipped** (or failed before DtP). Waiting release train `39333337571` (head `d587a927e38d`) is **DO NOT APPROVE** while local Cursor case-execution pin holds live `ad9e369`. Fallback auto window ≈ `2026-10-20T04:17Z` still requires Founder `production-activation` for tip ≥ `506729c` before counting schema live.
+**Do not treat aggregate `deploy.yml` success as live.** Recent tip Deploy runs failed at **Merge/activation contract** before DtP (missing `queue: max` on `pop-mount-reviewed-financial-once.yml` after #4306/#4311 — fixed in companion PR). Waiting release train `39333337571` (head `d587a927e38d`) is **DO NOT APPROVE** while local Cursor case-execution pin holds live `ad9e369`. Fallback auto window ≈ `2026-10-20T04:17Z` still requires Founder `production-activation` for tip ≥ `506729c` before counting schema live.
 
 ## Tip evidence (dumps on `5e4c48c0`; serial after #4296)
 
@@ -28,7 +28,7 @@ Serial fee dumps after #4296 (`xinzhuang-fee-dump-request` run `39309549854`):
 ## Hard blockers (Founder / vault)
 
 1. **Cloud decrypt custody** — bind `DUMP_ARTIFACT_KEY` (and optionally `ALLTRUE_TRIAGE_TOKEN`) on the AllTrue Cloud environment via Personal vault. Do not paste values into chat/PR/issues.
-2. **Tip production activation** — #4283 additive `invoice_corrections` extension (`506729c7`, migration `2026_10_19_090000_extend_invoice_corrections_for_agreed_fee.php`) is on tip `ac9657830`, but live dumps still report `correction_schema_missing` and live backend remains `ad9e369` (behind `506729c`). Approve `production-activation` only after coordinating with the local Cursor case-execution owner (pin `ad9e369` / courses 4064+3693). Keep `billing.agreed_fee_correction_enabled` **default-off** until case-specific POP packs exist.
+2. **Tip production activation** — #4283 additive `invoice_corrections` extension (`506729c7`, migration `2026_10_19_090000_extend_invoice_corrections_for_agreed_fee.php`) is on tip `e6208fc8`, but live dumps still report `correction_schema_missing` and live backend remains `ad9e369` (behind `506729c`). Approve `production-activation` only after coordinating with the local Cursor case-execution owner (pin `ad9e369` / courses 4064+3693). Keep `billing.agreed_fee_correction_enabled` **default-off** until case-specific POP packs exist.
 3. **Allowlist config surface** — after tip is live, use Founder-gated `agreed-fee-allowlist-activation.yml` (`set_allowlist` / `clear_allowlist`) with repo secrets; does **not** enable the API flag (#4300 on main).
 4. **Per-case POP** — after decrypt + live schema, authorize 4064/3693 alignment separately; 3753 needs original reversal-row proof + owner disposition (do not force-align). Cloud agents do not write cases while the local pin holds.
 5. **Affected-path verification** — required after each correction before counting N/3.
