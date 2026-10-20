@@ -32,8 +32,8 @@ jobs:
             .github/actions/production-ssh-trust
             .github/workflows/pop-mount-reviewed-financial-once.yml
             scripts/check-pop-mount-remote-guards.py
-            scripts/pop-mount-policy-readonly.sh
-            scripts/pop-mount-policy-probe.sh
+            .github/scripts/pop-mount-policy-readonly.sh
+            .github/scripts/pop-mount-policy-probe.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Guard pop-mount remote (no 644 / require app-serving bind / atomic stage)
@@ -54,7 +54,7 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
-        run: bash scripts/pop-mount-policy-probe.sh
+        run: bash .github/scripts/pop-mount-policy-probe.sh
       - name: Upload encrypted mount-policy evidence
         if: always() && inputs.mode == 'probe-policy'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

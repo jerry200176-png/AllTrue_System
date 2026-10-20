@@ -10,8 +10,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/pop-mount-policy-probe.sh"
-REMOTE = ROOT / "scripts/pop-mount-policy-readonly.sh"
+SCRIPT = ROOT / ".github/scripts/pop-mount-policy-probe.sh"
+REMOTE = ROOT / ".github/scripts/pop-mount-policy-readonly.sh"
 SENTINEL = "PRIVATE_POLICY_SENTINEL_DO_NOT_LOG"
 
 
