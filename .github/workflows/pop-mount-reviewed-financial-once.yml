@@ -9,10 +9,10 @@ on:
         required: true
         type: string
       mode:
-        description: mount (default) or probe-identity (no mount write)
+        description: mount (default), probe-identity, or separately approved probe-policy (read-only)
         required: false
         type: choice
-        options: [mount, probe-identity]
+        options: [mount, probe-identity, probe-policy]
         default: mount
 permissions:
   contents: read
@@ -32,15 +32,39 @@ jobs:
             .github/actions/production-ssh-trust
             .github/workflows/pop-mount-reviewed-financial-once.yml
             scripts/check-pop-mount-remote-guards.py
+            scripts/pop-mount-policy-readonly.sh
+            scripts/pop-mount-policy-probe.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Guard pop-mount remote (no 644 / require app-serving bind / atomic stage)
-        run: python3 scripts/check-pop-mount-remote-guards.py
+        env:
+          MODE: ${{ inputs.mode || 'mount' }}
+        run: |
+          case "$MODE" in mount|probe-identity|probe-policy) ;; *) exit 64 ;; esac
+          python3 scripts/check-pop-mount-remote-guards.py
       - uses: ./.github/actions/production-ssh-trust
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Read effective mount policy (separate approval, no mount)
+        if: inputs.mode == 'probe-policy'
+        env:
+          MODE: ${{ inputs.mode }}
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: bash scripts/pop-mount-policy-probe.sh
+      - name: Upload encrypted mount-policy evidence
+        if: always() && inputs.mode == 'probe-policy'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pop-mount-policy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pop-mount-policy-artifact/*.enc*
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Install or probe reviewed-financial mount (app-serving FPM only)
+        if: inputs.mode != 'probe-policy'
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           MOUNT_B64: ${{ secrets.POP_MOUNT_REVIEWED_FINANCIAL_B64 }}
