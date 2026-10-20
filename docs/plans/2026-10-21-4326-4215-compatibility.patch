@@ -1,12 +1,12 @@
 diff --git a/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php b/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php
-index 8a072dbcd..19ac75e33 100644
+index 28cb70b4c..19ac75e33 100644
 --- a/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php
 +++ b/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php
 @@ -308,11 +308,7 @@ class CourseLeaveCascadeSuccessorShiftService
                  }
              }
              $course = $move['role'] === 'old_tail' ? $old : $successor;
--<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-<<<<<<< 9ae4fee829577ee56552c8e0ff0f164c6c40e5ab
 -            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock));
 -=======
              $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock, $move['from']));
@@ -21,7 +21,7 @@ index 8a072dbcd..19ac75e33 100644
 +     * @param  array{date: string, start: string, end: string}|null  $from
       * @return list<array<string, mixed>>
       */
--<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-<<<<<<< 9ae4fee829577ee56552c8e0ff0f164c6c40e5ab
 -    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock): array
 +    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock, ?array $from): array
      {
@@ -54,14 +54,14 @@ index 8a072dbcd..19ac75e33 100644
              $out[] = ['type' => $room ? 'classroom' : 'teacher'] + $at + ['message' => $room ? '教室在此時段已有課程衝突，請核對課表' : '授課老師在此時段已有課程衝突，請核對課表'];
          }
 diff --git a/backend/app/Services/StaleScheduleExceptionFilter.php b/backend/app/Services/StaleScheduleExceptionFilter.php
-index d1f08934b..031d503a6 100644
+index acfc651eb..031d503a6 100644
 --- a/backend/app/Services/StaleScheduleExceptionFilter.php
 +++ b/backend/app/Services/StaleScheduleExceptionFilter.php
 @@ -65,12 +65,7 @@ class StaleScheduleExceptionFilter
                  ->whereIn('StudentClassID', array_keys($courseIds))
                  ->whereIn($lock ? 'SessionDate' : DB::raw('DATE(SessionDate)'), array_keys($rowsByYmd))
                  ->select('StudentClassID', 'StartTime', 'Status', DB::raw('DATE(SessionDate) as ymd'))
--<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-<<<<<<< 9ae4fee829577ee56552c8e0ff0f164c6c40e5ab
                  ->when($lock, fn ($q) => $q->lockForUpdate())->get();
 -=======
 -                ->when($lock, fn ($q) => $q->lockForUpdate())
@@ -71,14 +71,14 @@ index d1f08934b..031d503a6 100644
                  $courseId = (int) $session->StudentClassID;
                  $hhmm = $this->hhmm($session->StartTime);
 diff --git a/backend/tests/Feature/LeaveSuccessorShiftTest.php b/backend/tests/Feature/LeaveSuccessorShiftTest.php
-index d1f7f71b2..802c14b49 100644
+index 990e5f0aa..802c14b49 100644
 --- a/backend/tests/Feature/LeaveSuccessorShiftTest.php
 +++ b/backend/tests/Feature/LeaveSuccessorShiftTest.php
 @@ -94,37 +94,6 @@ class LeaveSuccessorShiftTest extends TestCase
          $this->assertSame($after, $this->fingerprint(), 'a repeated apply writes nothing');
      }
 
--<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-<<<<<<< 9ae4fee829577ee56552c8e0ff0f164c6c40e5ab
 -    public function test_shift_checks_the_teacher_resolved_at_the_written_destination(): void
 -    {
 -        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => false]);

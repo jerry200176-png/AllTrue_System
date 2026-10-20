@@ -160,7 +160,7 @@ later read-only acceptance must reconcile them and obtain reporter verification.
   path, and main's bounded stale reader. Teacher validation uses the actual
   written destination; date-bound substitute assignments are not moved.
 - Artifact SHA256:
-  8d5d710492f135c18d838c82c42399fae8ce45093bb5a7296805ad1485195c2f.
+  54f541768f529cef4bed60c727c634488f635dab07a7107afe417773b28bbfb7.
   `git apply --check`, actual apply and byte comparisons reproduce all three
   corrected files. Other backend files match this raw tree. The artifact
   includes the independent 9-case apply matrix and corrected destination/privacy
