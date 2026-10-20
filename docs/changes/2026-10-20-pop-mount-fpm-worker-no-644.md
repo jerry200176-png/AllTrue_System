@@ -11,4 +11,8 @@ chowns the mount file, sets mode with `sudo -n chmod` (640/600), refuses
 world-readable modes, and proves readability via `namei` / `runuser` without
 printing financial payload. `mode=probe-identity` reports the binding without
 writing. Guard script + `--self-test` ban first-pool and `chmod 644/777`.
+Mount SCP targets `reviewed-financial-cases.json.staging` on the same
+filesystem only; identity/content/mode/`runuser` checks run on the stage
+before an atomic `mv` replaces LIVE, with `.prev` restore on failure.
+
 Authorized app `createDraft` remains the remount acceptance step for #4310.

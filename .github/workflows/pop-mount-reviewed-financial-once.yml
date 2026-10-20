@@ -1,5 +1,6 @@
 name: POP mount reviewed-financial once
 # One-shot: install exact Founder tuple to Pi private path. Does not deploy product code.
+# Mount never SCP-overwrites the live authorization file before validation.
 on:
   workflow_dispatch:
     inputs:
@@ -32,7 +33,7 @@ jobs:
             scripts/check-pop-mount-remote-guards.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Guard pop-mount remote (no 644 / require app-serving bind)
+      - name: Guard pop-mount remote (no 644 / require app-serving bind / atomic stage)
         run: python3 scripts/check-pop-mount-remote-guards.py
       - uses: ./.github/actions/production-ssh-trust
         with:
@@ -54,6 +55,11 @@ jobs:
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
           chmod 600 "$SSH_DIR/deploy_key"
 
+          POP_DIR=/home/admin/backend/storage/app/private/pop
+          LIVE="$POP_DIR/reviewed-financial-cases.json"
+          # Same-directory staging only (same filesystem → rename is atomic).
+          STAGE="$POP_DIR/reviewed-financial-cases.json.staging"
+
           if [ "$MODE" = "mount" ]; then
             test -n "${MOUNT_B64:-}"
             printf '%s' "$MOUNT_B64" | base64 -d > "$SSH_DIR/reviewed-financial-cases.json"
@@ -73,20 +79,25 @@ jobs:
             ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
               "$PI_SSH_USER@$PI_SSH_HOST" \
-              'mkdir -p /home/admin/backend/storage/app/private/pop'
+              "mkdir -p $(printf %q "$POP_DIR")"
+            # NEVER scp onto LIVE. Stage beside LIVE on the same filesystem.
             scp -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
               "$SSH_DIR/reviewed-financial-cases.json" \
-              "$PI_SSH_USER@$PI_SSH_HOST:/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json"
+              "$PI_SSH_USER@$PI_SSH_HOST:$STAGE"
           fi
 
-          # App-serving FPM: vhost(docroot|/ServerName) → listen → pool user → live worker /proc Uid.
-          # retained from #4306: 'chmod 600 /home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json'
+          # App-serving FPM: vhost → listen → pool → worker /proc Uid.
+          # Validate stage (identity, content, restricted access) then atomic replace LIVE.
+          # retained from #4306: 'chmod 600 …/reviewed-financial-cases.json'
           ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$PI_SSH_USER@$PI_SSH_HOST" "MODE=$(printf %q "$MODE") bash -s" <<'REMOTE'
           set -euo pipefail
-          f=/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json
+          POP_DIR=/home/admin/backend/storage/app/private/pop
+          LIVE="$POP_DIR/reviewed-financial-cases.json"
+          STAGE="$POP_DIR/reviewed-financial-cases.json.staging"
+          PREV="$POP_DIR/reviewed-financial-cases.json.prev"
           APP_ROOT=/home/admin/backend
           APP_PUBLIC=/home/admin/backend/public
           SITE_HINT='daan.lifenet.com.tw'
@@ -107,100 +118,162 @@ jobs:
             fi
           }
 
-          # 1) Listen target from the site that serves this app (never "first pool").
-          # Prefer ServerName/hint match, then docroot match.
-          listen_target=""
-          for prefer in hint path; do
-            for conf in /etc/apache2/sites-enabled/* /etc/apache2/conf-enabled/* \
-                        /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*; do
-              [ -r "$conf" ] || continue
-              if [ "$prefer" = "hint" ]; then
-                grep -qF "$SITE_HINT" "$conf" 2>/dev/null || continue
-              else
-                grep -qE "$APP_PUBLIC|$APP_ROOT" "$conf" 2>/dev/null || continue
-              fi
-              listen_target="$(extract_listen "$conf" || true)"
+          resolve_fpm() {
+            listen_target=""
+            for prefer in hint path; do
+              for conf in /etc/apache2/sites-enabled/* /etc/apache2/conf-enabled/* \
+                          /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*; do
+                [ -r "$conf" ] || continue
+                if [ "$prefer" = "hint" ]; then
+                  grep -qF "$SITE_HINT" "$conf" 2>/dev/null || continue
+                else
+                  grep -qE "$APP_PUBLIC|$APP_ROOT" "$conf" 2>/dev/null || continue
+                fi
+                listen_target="$(extract_listen "$conf" || true)"
+                [ -n "${listen_target:-}" ] && break
+              done
               [ -n "${listen_target:-}" ] && break
             done
-            [ -n "${listen_target:-}" ] && break
-          done
-          test -n "${listen_target:-}"
+            test -n "${listen_target:-}"
 
-          # 2) Pool whose listen matches that upstream; pool name from [section], not basename.
-          pool_conf=""
-          pool_user=""
-          pool_name=""
-          for conf in /etc/php/*/fpm/pool.d/*.conf /etc/php-fpm.d/*.conf; do
-            [ -f "$conf" ] || continue
-            plisten="$(awk "$awk_listen" "$conf" 2>/dev/null || true)"
-            [ -n "${plisten:-}" ] || continue
-            case "$plisten" in
-              "$listen_target"|"/${listen_target#/}"|"unix:$listen_target") ;;
-              *) continue ;;
-            esac
-            u="$(awk "$awk_user" "$conf" 2>/dev/null || true)"
-            n="$(awk "$awk_pool" "$conf" 2>/dev/null || true)"
-            [ -n "${n:-}" ] || n="$(basename "$conf" .conf)"
-            if [ -n "${u:-}" ] && [ "$u" != "root" ]; then
-              pool_conf="$conf"
-              pool_user="$u"
-              pool_name="$n"
-              break
+            pool_user=""
+            pool_name=""
+            for conf in /etc/php/*/fpm/pool.d/*.conf /etc/php-fpm.d/*.conf; do
+              [ -f "$conf" ] || continue
+              plisten="$(awk "$awk_listen" "$conf" 2>/dev/null || true)"
+              [ -n "${plisten:-}" ] || continue
+              case "$plisten" in
+                "$listen_target"|"/${listen_target#/}"|"unix:$listen_target") ;;
+                *) continue ;;
+              esac
+              u="$(awk "$awk_user" "$conf" 2>/dev/null || true)"
+              n="$(awk "$awk_pool" "$conf" 2>/dev/null || true)"
+              [ -n "${n:-}" ] || n="$(basename "$conf" .conf)"
+              if [ -n "${u:-}" ] && [ "$u" != "root" ]; then
+                pool_user="$u"
+                pool_name="$n"
+                break
+              fi
+            done
+            test -n "${pool_user:-}"
+            test -n "${pool_name:-}"
+
+            worker_pid=""
+            while read -r pid args; do
+              case "$args" in
+                *"php-fpm: pool ${pool_name}"*|*"php-fpm: pool ${pool_name} "*)
+                  uid="$(awk '/^Uid:/{print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+                  uname="$(getent passwd "${uid:-}" | cut -d: -f1 || true)"
+                  if [ "$uname" = "$pool_user" ]; then
+                    worker_pid="$pid"
+                    break
+                  fi
+                  ;;
+              esac
+            done < <(ps -eo pid=,args=)
+            test -n "${worker_pid:-}"
+            test -r "/proc/${worker_pid}/status"
+            uid="$(awk '/^Uid:/{print $2}' "/proc/${worker_pid}/status")"
+            gid="$(awk '/^Gid:/{print $2}' "/proc/${worker_pid}/status")"
+            user="$(getent passwd "$uid" | cut -d: -f1)"
+            test -n "${user:-}"
+            test "$user" = "$pool_user"
+            echo "fpm_serving pool=${pool_name} user=${pool_user} listen=${listen_target} worker_pid=${worker_pid}"
+          }
+
+          validate_mount_file() {
+            target="$1"
+            test -f "$target"
+            sudo -n chown "${uid}:${gid}" "$target"
+            mode_target=640
+            if [ "$user" = "admin" ]; then mode_target=600; fi
+            sudo -n chmod "$mode_target" "$target"
+            mode="$(stat -c '%a' "$target")"
+            if [ "$((mode % 10))" -ge 4 ]; then
+              echo "refusing world-accessible mode ${mode} on ${target}" >&2
+              return 1
             fi
-          done
-          test -n "${pool_user:-}"
-          test -n "${pool_name:-}"
+            stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$target"
+            if command -v namei >/dev/null 2>&1; then
+              namei -l "$target" >/tmp/pop-mount-namei.out
+            fi
+            sudo -n runuser -u "$user" -- test -r "$target"
+            d="$(dirname "$target")"
+            while [ "$d" != "/" ]; do
+              sudo -n runuser -u "$user" -- test -x "$d"
+              d="$(dirname "$d")"
+            done
+            python3 - "$target" <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          d = json.load(open(path))
+          assert d.get("version") == 1
+          cases = d.get("eligible_cases") or []
+          assert len(cases) == 1, len(cases)
+          c = cases[0]
+          for k in ("operation_id", "parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"):
+              assert k in c and c[k], k
+          assert c["operation_id"] == "reviewed-unpaid-invoice-charge-alignment"
+          print("content_ok", c["valid_until"])
+          PY
+          }
 
-          # 3) Live worker for that pool name + user (php-fpm: pool <name>; not master).
-          worker_pid=""
-          while read -r pid args; do
-            case "$args" in
-              *"php-fpm: pool ${pool_name}"*|*"php-fpm: pool ${pool_name} "*)
-                uid="$(awk '/^Uid:/{print $2}' "/proc/$pid/status" 2>/dev/null || true)"
-                uname="$(getent passwd "${uid:-}" | cut -d: -f1 || true)"
-                if [ "$uname" = "$pool_user" ]; then
-                  worker_pid="$pid"
-                  break
-                fi
-                ;;
-            esac
-          done < <(ps -eo pid=,args=)
-          test -n "${worker_pid:-}"
-          test -r "/proc/${worker_pid}/status"
-          uid="$(awk '/^Uid:/{print $2}' "/proc/${worker_pid}/status")"
-          gid="$(awk '/^Gid:/{print $2}' "/proc/${worker_pid}/status")"
-          user="$(getent passwd "$uid" | cut -d: -f1)"
-          test -n "${user:-}"
-          test "$user" = "$pool_user"
+          cleanup_stage_preserve_live() {
+            # Failure path: never leave a half-applied LIVE; keep prior LIVE bytes.
+            rm -f "$STAGE" || true
+            if [ -f "$PREV" ] && [ ! -f "$LIVE" ]; then
+              # Interrupted after moving LIVE→PREV but before STAGE→LIVE: restore.
+              mv -f "$PREV" "$LIVE"
+              echo "restored_live_from_prev"
+            fi
+            echo "stage_discarded live_preserved=$( [ -f "$LIVE" ] && echo yes || echo no )"
+          }
 
-          echo "fpm_serving pool=${pool_name} user=${pool_user} listen=${listen_target} worker_pid=${worker_pid}"
+          resolve_fpm
 
           if [ "${MODE:-mount}" = "probe-identity" ]; then
             echo "probe_identity_ok"
             exit 0
           fi
 
-          test -f "$f"
-          sudo -n chown "${uid}:${gid}" "$f"
-          mode_target=640
-          if [ "$user" = "admin" ]; then mode_target=600; fi
-          sudo -n chmod "$mode_target" "$f"
-
-          mode="$(stat -c '%a' "$f")"
-          if [ "$((mode % 10))" -ge 4 ]; then
-            echo "refusing world-accessible mode ${mode} on ${f}" >&2
+          # Mount path: STAGE must exist; LIVE must not be the SCP target.
+          if [ ! -f "$STAGE" ]; then
+            echo "missing staging file $STAGE (refusing to touch LIVE)" >&2
             exit 1
           fi
-          stat -c 'fpm_identity uid=%u gid=%g mode=%a path=%n' "$f"
-          if command -v namei >/dev/null 2>&1; then
-            namei -l "$f" >/tmp/pop-mount-namei.out
+
+          # Same filesystem check (required for atomic rename).
+          live_fs="$(df -P "$POP_DIR" | awk 'NR==2{print $1}')"
+          stage_fs="$(df -P "$STAGE" | awk 'NR==2{print $1}')"
+          test "$live_fs" = "$stage_fs"
+
+          trap 'cleanup_stage_preserve_live' ERR
+
+          if ! validate_mount_file "$STAGE"; then
+            echo "stage validation failed; LIVE unchanged" >&2
+            cleanup_stage_preserve_live
+            exit 1
           fi
-          sudo -n runuser -u "$user" -- test -r "$f"
-          d="$(dirname "$f")"
-          while [ "$d" != "/" ]; do
-            sudo -n runuser -u "$user" -- test -x "$d"
-            d="$(dirname "$d")"
-          done
-          python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); assert d.get("version")==1 and len(d.get("eligible_cases") or [])==1; print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
+
+          # Preserve prior valid LIVE (if any), then atomic replace from STAGE.
+          rm -f "$PREV"
+          if [ -f "$LIVE" ]; then
+            # Same-dir rename preserves prior bytes out of the live path.
+            mv -f "$LIVE" "$PREV"
+          fi
+          mv -f "$STAGE" "$LIVE"
+          # Drop prev only after successful swap + re-validate LIVE.
+          if ! validate_mount_file "$LIVE"; then
+            echo "post-swap LIVE validation failed; restoring PREV" >&2
+            if [ -f "$PREV" ]; then
+              mv -f "$PREV" "$LIVE"
+            else
+              rm -f "$LIVE"
+            fi
+            exit 1
+          fi
+          rm -f "$PREV"
+          trap - ERR
+          python3 -c 'import json;d=json.load(open("/home/admin/backend/storage/app/private/pop/reviewed-financial-cases.json")); print("pi_mount_verified", d["eligible_cases"][0]["valid_until"])'
           REMOTE
           rm -f "$SSH_DIR/deploy_key" "$SSH_DIR/reviewed-financial-cases.json"
