@@ -146,6 +146,12 @@ class SubstituteOccupancy4326Test extends TestCase
         $conflicts = $guard->validateRecurringCourse($payload + ['start_date' => '2026-12-29', 'end_date' => '2026-12-29',
             'slots' => [['day_of_week' => 2, 'start_time' => '17:00', 'end_time' => '19:00']]]);
         $this->assertSame('room_capacity', $conflicts[0]['type'] ?? null);
+        // A leave for another occurrence on the same date must not release this room.
+        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => 78171, 'status' => 'leave',
+            'start_time' => '20:00', 'end_time' => '22:00']));
+        $this->assertSame('room_capacity', $guard->validateScheduleOccurrence($payload)[0]['type'] ?? null);
+        $this->assertSame('room_capacity', $guard->validateRecurringCourse($payload + ['start_date' => '2026-12-29', 'end_date' => '2026-12-29',
+            'slots' => [['day_of_week' => 2, 'start_time' => '17:00', 'end_time' => '19:00']]])[0]['type'] ?? null);
         // A real leave still releases the room, even if a stale linked assignment remains.
         DB::table('schedules')->where('id', $id)->update(['status' => 'leave']);
         $this->assertSame([], $guard->validateScheduleOccurrence($payload));

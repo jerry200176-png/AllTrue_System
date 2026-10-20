@@ -668,7 +668,7 @@ class ScheduleGuardService
             $d = $row->schedule_date ? Carbon::parse((string) $row->schedule_date)->toDateString() : '';
             if ($d && $courseId > 0 && ($status === 'leave' || $status === 'rescheduled')) {
                 $leaveOrRescheduled[$courseId . '|' . $d] = true;
-                if ($status === 'leave') $leaveCourses[$courseId . '|' . $d] = true;
+                if ($status === 'leave') $leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $d, (string) $row->start_time)] = true;
             } elseif ($d && $status === 'scheduled') {
                 $scheduledByDate[$d][] = $row;
             }
@@ -783,7 +783,7 @@ class ScheduleGuardService
             $occupiesTeacher = ($sessionTeachers[SubstituteScheduleService::occurrenceKey($courseId, $sessionDate, (string) $row->StartTime)] ?? $teacherId) === $teacherId;
             // A substitution's rescheduled anchor frees the teacher, not the live session's room.
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])
-                && (isset($leaveCourses[$courseId . '|' . $sessionDate]) || $occupiesTeacher)) {
+                && (isset($leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $sessionDate, (string) $row->StartTime)]) || $occupiesTeacher)) {
                 continue;
             }
 
@@ -1401,7 +1401,7 @@ class ScheduleGuardService
             $courseId = (int) ($row->student_course_id ?? 0);
             if (($status === 'leave' || $status === 'rescheduled') && $courseId > 0) {
                 $leaveOrRescheduled[$courseId] = true;
-                if ($status === 'leave') $leaveCourses[$courseId] = true;
+                if ($status === 'leave') $leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->start_time)] = true;
                 continue;
             }
             if ($status === 'scheduled') {
@@ -1453,7 +1453,7 @@ class ScheduleGuardService
             $courseId = (int) ($row->StudentClassID ?? 0);
             $occupiesTeacher = ($sessionTeachers[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->StartTime)] ?? $teacherId) === $teacherId;
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])
-                && (!$includeSubstitutedForRoom || isset($leaveCourses[$courseId]) || $occupiesTeacher)) {
+                && (!$includeSubstitutedForRoom || isset($leaveCourses[SubstituteScheduleService::occurrenceKey($courseId, $date, (string) $row->StartTime)]) || $occupiesTeacher)) {
                 continue;
             }
             if (!$includeSubstitutedForRoom && $courseId > 0 && !$occupiesTeacher) {
