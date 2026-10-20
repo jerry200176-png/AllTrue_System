@@ -120,8 +120,7 @@ class ParentLineLoginUnbindConcurrency3988Test extends TestCase
 
     public function test_in_flight_unbind_blocks_the_session_insert_under_repeatable_read(): void
     {
-        $level = (string) DB::selectOne('SELECT @@transaction_isolation AS l')->l;
-        $this->assertSame('REPEATABLE-READ', $level, 'the #3988 fix relies on InnoDB next-key locks');
+        $this->assertSame('REPEATABLE-READ', alltrue_race_isolation_level(), 'the #3988 fix relies on InnoDB next-key locks');
 
         $student = $this->boundStudent();
         $this->unbindOnRaceConnection((int) $student->id, false);
