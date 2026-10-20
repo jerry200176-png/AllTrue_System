@@ -146,13 +146,13 @@ later read-only acceptance must reconcile them and obtain reporter verification.
 
 ### Reproducible integration artifact (validation only)
 
-- Code input #4327: e1bc51695a0b34114dd51289442e55b1a00a5609;
+- Code input #4327: 9ae4fee829577ee56552c8e0ff0f164c6c40e5ab;
   #4215: 03bdfa964f69f13bb396fa2990269a316942b09c.
 - In an isolated worktree, run `git merge-tree --write-tree
-  e1bc51695a0b34114dd51289442e55b1a00a5609
+  9ae4fee829577ee56552c8e0ff0f164c6c40e5ab
   03bdfa964f69f13bb396fa2990269a316942b09c` as one command.
   Exit 1 reports expected conflicts; raw tree is
-  ec1011b480dc3e36050d458626abae74565c7576. No branch is merged.
+  9ea20a681603cfb44965e7894cb854ab2237ac8d. No branch is merged.
 - Materialize that tree only in a disposable validation worktree, then apply
   [the compatibility patch](2026-10-21-4326-4215-compatibility.patch).
   It applies ONLY to this raw combined tree, not either PR branch. It retains
@@ -166,7 +166,7 @@ later read-only acceptance must reconcile them and obtain reporter verification.
   includes the independent 9-case apply matrix and corrected destination/privacy
   fixture. #4215's anchored-occurrence refusal supersedes main's successful
   anchored-shift scenario in this combined fixture. Latest combined selection:
-  170 tests / 1159 assertions PASS.
+  171 tests / 1166 assertions PASS.
 - Recheck live heads before any later integration. These pinned results do not
   authorize merging #4215 or clearing its unrelated review findings.
 
@@ -243,3 +243,21 @@ branch is untouched. The updated pinned patch above reproduces the corrected reh
 the destination-teacher service and fixture changes.
 Production case acceptance remains open; final CI/review/deployment receipts
 belong to the linked PRs and issue, not an inferred green status.
+
+### Real legacy anchor room regression and approved release scope
+
+Review found the actual ClassSessionController substitution writer leaves a
+contract-teacher rescheduled anchor plus the linked substitute scheduled row.
+RED reproduced the lost room reservation; `9ae4fee82` retains the substituted
+live session room in date/recurring checks while explicit leave still frees it.
+Main: 140 / 882 PASS; final strengthened room pair 2 / 10; PHPStan PASS. Latest
+combined rehearsal: 171 / 1166 PASS, including no-end-date query bounds. The
+updated input/tree above plus the committed patch reproduce every regular
+backend file byte-for-byte; no undocumented backend overlay is required.
+
+Founder separately approved including the existing #4283 invoice_corrections
+migration in this normal deployment, after disclosure of its nullable-column
+changes and retained-schema/limited automatic rollback risk. This does not
+authorize the three financial repairs, flag/allowlist activation, credentials,
+permissions or reuse of the held historical release train. Canonical environment
+reviewers remain required. Approval receipt: [PR comment](https://github.com/jerry200176-png/AllTrue_System/pull/4327#issuecomment-6296660356).
