@@ -239,6 +239,19 @@ rm -f "$LIVE"
 cleanup_stage_preserve_live >/dev/null
 assert_prior_preserved "live-missing-restores-prev"
 
+# 12b) probe-identity readiness report is read-only and reports blockers.
+eval "$(awk '/^          acl_readiness\(\) \{/{on=1} on{print} on && /^          }$/{exit}' "$WF" | sed 's/^          //')"
+declare -F acl_readiness >/dev/null || { echo "ERROR could not extract acl_readiness" >&2; exit 1; }
+seed_prior_live
+chmod 700 "$ANCESTOR"
+acl_readiness >"$TMP/ready.out" 2>&1
+chmod 755 "$ANCESTOR"
+grep -q "tool_setfacl=present" "$TMP/ready.out" && grep -q "ancestor_traverse ${ANCESTOR} DENIED" "$TMP/ready.out" \
+  && grep -q "deploy_owns=yes" "$TMP/ready.out" || { echo "ERROR readiness report incomplete"; cat "$TMP/ready.out"; exit 1; }
+if grep -q 'reviewed-unpaid' "$TMP/ready.out"; then echo "ERROR readiness printed file contents"; exit 1; fi
+assert_prior_preserved "acl-readiness-read-only"
+assert_dirs_restored "acl-readiness-read-only"
+
 # 13) Guards
 cd "$ROOT"
 python3 scripts/check-pop-mount-remote-guards.py || exit 1

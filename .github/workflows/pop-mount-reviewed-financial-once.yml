@@ -359,7 +359,30 @@ jobs:
 
           resolve_fpm
 
+          # Read-only ACL readiness: metadata only, never file contents, no changes.
+          acl_readiness() {
+            echo "deploy_uid=$(id -u) worker_uid=${uid} worker_gids=${fpm_gids}"
+            for t in getfacl setfacl; do echo "tool_${t}=$(command -v "$t" >/dev/null 2>&1 && echo present || echo MISSING)"; done
+            echo "fs_options=$(findmnt -no FSTYPE,OPTIONS -T "$POP_DIR" 2>/dev/null || echo unknown)"
+            managed_parent="$(dirname "$POP_DIR")"
+            for p in "$managed_parent" "$POP_DIR" "$LIVE"; do
+              [ -e "$p" ] || { echo "path_missing ${p}"; continue; }
+              owner_ok=no; [ "$(stat -c '%u' "$p")" = "$(id -u)" ] && owner_ok=yes
+              extra="$(getfacl -cpn -- "$p" 2>/dev/null | grep -cE '^(user|group):[^:]+:' || true)"
+              mask="$(getfacl -cpn -- "$p" 2>/dev/null | awk -F: '$1=="mask"{print $3}')"
+              echo "path=${p} uid=$(stat -c '%u' "$p") gid=$(stat -c '%g' "$p") mode=$(stat -c '%a' "$p") deploy_owns=${owner_ok} named_entries=${extra} mask=${mask:-none}"
+            done
+            d="$(dirname "$managed_parent")"
+            while [ "$d" != "/" ]; do
+              fpm_can x "$d" && t=ok || t=DENIED
+              echo "ancestor_traverse ${d} ${t}"
+              d="$(dirname "$d")"
+            done
+            [ -e "$LIVE" ] && { fpm_can r "$LIVE" && echo "live_readable_by_worker=yes" || echo "live_readable_by_worker=no"; }
+          }
+
           if [ "${MODE:-mount}" = "probe-identity" ]; then
+            acl_readiness || true
             echo "probe_identity_ok"
             exit 0
           fi
