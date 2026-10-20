@@ -378,10 +378,11 @@ class ParentPortalController extends Controller
         // #3988: an unbind that committed between the lookup above and the
         // insert could not expire this session (it did not exist yet). Re-read
         // access now that the session row exists and expire it if it is gone.
-        $stillLinked = app(ParentGuardianAccessService::class)
-            ->studentsForLineUser($lineUserId, $preferredCampusId)
-            ->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id);
-        if (!$stillLinked) {
+        // The response below is built from this fresh set, so a student
+        // unbound in the meantime is never listed either.
+        $students = app(ParentGuardianAccessService::class)
+            ->studentsForLineUser($lineUserId, $preferredCampusId);
+        if (!$students->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id)) {
             ParentSession::query()
                 ->where('TokenHash', hash('sha256', $result['token']))
                 ->update(['ExpiresAt' => now()]);

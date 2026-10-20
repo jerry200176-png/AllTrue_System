@@ -97,6 +97,34 @@ class ParentLineLoginUnbindRace3988Test extends TestCase
         ]);
     }
 
+    public function test_student_unbound_during_login_is_not_listed_in_the_response(): void
+    {
+        $this->boundStudent();
+        $second = Student::create([
+            'name' => 'race-student-2', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $secondBinding = StudentLineBinding::create([
+            'student_id' => $second->id, 'line_user_id' => self::LINE_ID,
+            'verified_at' => now(), 'verification_method' => 'contact_phone',
+        ]);
+        $unbound = false;
+        ParentSession::creating(function () use (&$unbound, $secondBinding) {
+            if ($unbound) {
+                return;
+            }
+            $unbound = true;
+            $this->assertTrue(app(BindingService::class)->deleteBinding((int) $secondBinding->id));
+        });
+
+        $res = $this->postJson('/api/v1/parent/login-line', ['access_token' => 'valid-token']);
+
+        $this->assertTrue($unbound);
+        $res->assertOk();
+        $ids = collect($res->json('students'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $second->id, $ids);
+    }
+
     public function test_login_without_a_concurrent_unbind_still_issues_one_active_session(): void
     {
         [$student] = $this->boundStudent();
