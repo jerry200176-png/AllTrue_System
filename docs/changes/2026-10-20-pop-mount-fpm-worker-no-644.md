@@ -13,6 +13,8 @@ printing financial payload. `mode=probe-identity` reports the binding without
 writing. Guard script + `--self-test` ban first-pool and `chmod 644/777`.
 Mount SCP targets `reviewed-financial-cases.json.staging` on the same
 filesystem only; identity/content/mode/`runuser` checks run on the stage
-before an atomic `mv` replaces LIVE, with `.prev` restore on failure.
+before an atomic `mv` replaces LIVE, with `.prev` restore on failure
+(contents, owner, and mode). PR CI runs `scripts/pop-mount-atomic-stage.test.sh`
+(including guard `--self-test`) from `ci.yml`.
 
 Authorized app `createDraft` remains the remount acceptance step for #4310.

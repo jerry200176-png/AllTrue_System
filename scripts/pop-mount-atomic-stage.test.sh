@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Local simulation of stage→validate→atomic replace and failure restore (no Pi, no secrets).
+# Failure paths must preserve prior LIVE contents, owner, and mode.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -18,6 +19,33 @@ JSON
 }
 bad_json() {
   echo '{"version":1,"eligible_cases":[]}' >"$1"
+}
+
+# Distinctive prior LIVE metadata (contents + mode; owner = current uid/gid).
+seed_prior_live() {
+  good_json "$LIVE"
+  chmod 600 "$LIVE"
+  # Touch mtime/identity without needing root chown; record actual owner.
+  PRIOR_HASH="$(sha256sum "$LIVE" | awk '{print $1}')"
+  PRIOR_MODE="$(stat -c '%a' "$LIVE")"
+  PRIOR_OWNER="$(stat -c '%u:%g' "$LIVE")"
+  export PRIOR_HASH PRIOR_MODE PRIOR_OWNER
+}
+
+assert_prior_preserved() {
+  local label="$1"
+  test -f "$LIVE" || { echo "ERROR $label: LIVE missing"; exit 1; }
+  local hash mode owner
+  hash="$(sha256sum "$LIVE" | awk '{print $1}')"
+  mode="$(stat -c '%a' "$LIVE")"
+  owner="$(stat -c '%u:%g' "$LIVE")"
+  if [ "$hash" != "$PRIOR_HASH" ] || [ "$mode" != "$PRIOR_MODE" ] || [ "$owner" != "$PRIOR_OWNER" ]; then
+    echo "ERROR $label: prior LIVE not preserved" >&2
+    echo "  want hash=$PRIOR_HASH mode=$PRIOR_MODE owner=$PRIOR_OWNER" >&2
+    echo "  got  hash=$hash mode=$mode owner=$owner" >&2
+    exit 1
+  fi
+  echo "PASS $label preserves contents+owner+mode"
 }
 
 validate_content() {
@@ -41,15 +69,15 @@ atomic_swap() {
 }
 
 restore_on_fail() {
+  # Match workflow: restore PREV over LIVE; drop STAGE.
   if [ -f "$PREV" ]; then mv -f "$PREV" "$LIVE"; else rm -f "$LIVE"; fi
   rm -f "$STAGE"
 }
 
-# 1) Happy path: prior LIVE preserved until swap; STAGE becomes LIVE
-good_json "$LIVE"
-echo prior >"$LIVE.marker"
-cp "$LIVE" "$LIVE.prior_copy"
+# 1) Happy path
+seed_prior_live
 good_json "$STAGE"
+chmod 640 "$STAGE"
 validate_content "$STAGE"
 atomic_swap
 validate_content "$LIVE"
@@ -58,41 +86,40 @@ test ! -f "$STAGE"
 test -f "$LIVE"
 echo "PASS happy-path atomic replace"
 
-# 2) Bad STAGE content: LIVE unchanged
-good_json "$LIVE"
-PRIOR_HASH="$(sha256sum "$LIVE" | awk '{print $1}')"
+# 2) Bad STAGE: LIVE untouched (contents+owner+mode)
+seed_prior_live
 bad_json "$STAGE"
+chmod 640 "$STAGE"
 if validate_content "$STAGE" 2>/dev/null; then echo "ERROR bad stage should fail validate"; exit 1; fi
 rm -f "$STAGE"
-test "$(sha256sum "$LIVE" | awk '{print $1}')" = "$PRIOR_HASH"
-echo "PASS failing-stage keeps LIVE"
+assert_prior_preserved "failing-stage"
 
-# 3) Interrupted after LIVE→PREV (simulate crash before STAGE→LIVE): restore PREV
-good_json "$LIVE"
+# 3) Interrupted after LIVE→PREV: restore PREV with same attrs
+seed_prior_live
 good_json "$STAGE"
+chmod 640 "$STAGE"
 mv -f "$LIVE" "$PREV"
-# crash: STAGE still present, LIVE missing
 test ! -f "$LIVE"
 test -f "$PREV"
-# recovery (matches workflow cleanup_stage_preserve_live)
+# PREV must still carry prior mode/owner/hash
+test "$(sha256sum "$PREV" | awk '{print $1}')" = "$PRIOR_HASH"
+test "$(stat -c '%a' "$PREV")" = "$PRIOR_MODE"
+test "$(stat -c '%u:%g' "$PREV")" = "$PRIOR_OWNER"
 rm -f "$STAGE" || true
 if [ -f "$PREV" ] && [ ! -f "$LIVE" ]; then mv -f "$PREV" "$LIVE"; fi
-test -f "$LIVE"
-validate_content "$LIVE"
-echo "PASS interrupted LIVE→PREV restores prior"
+assert_prior_preserved "interrupted-LIVE-to-PREV"
 
-# 4) Post-swap content fail restores PREV
-good_json "$LIVE"
-PRIOR_HASH="$(sha256sum "$LIVE" | awk '{print $1}')"
+# 4) Post-swap validation fail restores PREV attrs
+seed_prior_live
 bad_json "$STAGE"
-# force swap of bad content then detect
+chmod 777 "$STAGE" 2>/dev/null || chmod 666 "$STAGE"
 atomic_swap
 if validate_content "$LIVE" 2>/dev/null; then echo "ERROR expected post-swap fail"; exit 1; fi
+# LIVE is now bad/wrong mode; restore must bring prior back
 restore_on_fail
-test "$(sha256sum "$LIVE" | awk '{print $1}')" = "$PRIOR_HASH"
-echo "PASS post-swap failure restores PREV"
+assert_prior_preserved "post-swap-failure"
 
-# 5) Guard rejects scp-to-live regression
+# 5) Guard + --self-test (must stay enforced by PR CI via this script)
 cd "$ROOT"
 python3 scripts/check-pop-mount-remote-guards.py
 python3 scripts/check-pop-mount-remote-guards.py --self-test

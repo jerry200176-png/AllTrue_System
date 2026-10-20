@@ -131,6 +131,10 @@ jobs:
       - name: Test production SSH host trust contract
         run: bash scripts/tests/production-ssh-trust.test.sh
 
+      # #4312: atomic POP mount stage + guard --self-test (fail paths keep LIVE contents/owner/mode)
+      - name: Test POP mount atomic stage and remote guards
+        run: bash scripts/pop-mount-atomic-stage.test.sh
+
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
 
