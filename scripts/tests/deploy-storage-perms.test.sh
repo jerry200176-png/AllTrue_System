@@ -73,6 +73,41 @@ set -e
 [ "$rc" = 3 ] || fail "unfixable world-readable private file must exit 3 (got $rc)"
 grep -q 'world-accessible' "$WORK/out" || fail "missing ::error:: for unfixable private file"
 rm -f "$P/foreign.json"
+
+# World-writable private directories are tightened.
+mkdir -p "$P/drop"; chmod 777 "$P/drop"
+bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >/dev/null || fail "o+w dir must be fixable"
+[ "$(stat -c '%a' "$P/drop")" = 775 ] || fail "private dir kept world-write ($(stat -c '%a' "$P/drop"))"
+
+# A world-writable directory the deploy user cannot fix fails the step.
+mkdir -p "$P/foreign-dir"; chmod 777 "$P/foreign-dir"
+set +e
+PATH="$SHIM:$PATH" bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?
+set -e
+[ "$rc" = 3 ] || fail "unfixable world-writable private dir must exit 3 (got $rc)"
+chmod 755 "$P/foreign-dir"
+
+# A scan that cannot finish (unreadable subdirectory) fails instead of passing.
+mkdir -p "$P/sealed"; printf 'x' >"$P/sealed/m.json"
+if [ "$(id -u)" = 0 ]; then
+  # root reads everything; simulate the scan failure with a find shim.
+  cat >"$SHIM/find" <<'SH'
+#!/usr/bin/env bash
+for a in "$@"; do [ "$a" = -quit ] && { echo "find: Permission denied" >&2; exit 1; }; done
+exec /usr/bin/find "$@"
+SH
+  /bin/chmod +x "$SHIM/find"
+else
+  chmod 311 "$P/sealed"
+fi
+set +e
+PATH="$SHIM:$PATH" bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >"$WORK/out" 2>&1; rc=$?
+set -e
+chmod 755 "$P/sealed"; rm -f "$SHIM/find"
+[ "$rc" = 3 ] || fail "incomplete private scan must exit 3 (got $rc)"
+grep -q 'could not be fully scanned' "$WORK/out" || fail "missing ::error:: for incomplete scan"
+rm -rf "$P/sealed" "$P/drop" "$P/foreign-dir"
+
 bash "$ROOT/scripts/deploy-storage-perms.sh" "$APP" >/dev/null || fail "clean tree must exit 0"
 
 echo "deploy storage perms: ok (acl_checked=$ACL)"
