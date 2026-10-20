@@ -20,11 +20,14 @@ sudo() {
   case "${SUDO_FAIL_MODE}" in
     chown) if [ "$1" = "chown" ]; then echo "stub sudo: chown fail" >&2; return 1; fi ;;
     chmod) if [ "$1" = "chmod" ]; then echo "stub sudo: chmod fail" >&2; return 1; fi ;;
-    runuser_read)
+    runuser_read|runuser_traverse)
       if [ "$1" = "runuser" ]; then
-        # fail only test -r
-        if [ "${*: -2:1}" = "test" ] && [ "${*: -1}" = "-r" ] || { [ "$3" = "--" ] && [ "$4" = "test" ] && [ "$5" = "-r" ]; }; then
-          echo "stub sudo: runuser read fail" >&2; return 1
+        # After shifting -n: runuser -u USER -- test {-r|-x} PATH.
+        if [ "$4" = "--" ] && [ "$5" = "test" ]; then
+          case "${SUDO_FAIL_MODE}:$6" in
+            runuser_read:-r|runuser_traverse:-x)
+              echo "stub sudo: ${SUDO_FAIL_MODE} fail" >&2; return 1 ;;
+          esac
         fi
       fi
       ;;
@@ -184,6 +187,15 @@ if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR runuser should fai
 SUDO_FAIL_MODE=
 rm -f "$STAGE"
 assert_prior_preserved "runuser-read-fail"
+
+# Parent traversal denial must also reject STAGE without replacing LIVE.
+seed_prior_live
+good_json "$STAGE"
+SUDO_FAIL_MODE=runuser_traverse
+if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR traversal should fail"; exit 1; fi
+SUDO_FAIL_MODE=
+rm -f "$STAGE"
+assert_prior_preserved "runuser-traverse-fail"
 
 # 6) Interrupt after STAGE→LIVE but before validate: restore from PREV (LIVE was replaced)
 seed_prior_live
