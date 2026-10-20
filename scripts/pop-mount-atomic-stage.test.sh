@@ -32,9 +32,10 @@ sudo() {
       fi
       ;;
   esac
-  # emulate successful chown/chmod/runuser for other cases
+  # chmod must apply its mode so later probes do not stop at the mode guard.
   case "$1" in
-    chown|chmod) return 0 ;;
+    chmod) command "$@" ;;
+    chown) return 0 ;;
     runuser) return 0 ;;
     *) command sudo "$@" ;;
   esac
@@ -183,7 +184,8 @@ assert_prior_preserved "chmod-fail"
 seed_prior_live
 good_json "$STAGE"
 SUDO_FAIL_MODE=runuser_read
-if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR runuser should fail"; exit 1; fi
+if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR runuser should fail"; exit 1; fi
+grep -Fxq 'stub sudo: runuser_read fail' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
 SUDO_FAIL_MODE=
 rm -f "$STAGE"
 assert_prior_preserved "runuser-read-fail"
@@ -192,7 +194,8 @@ assert_prior_preserved "runuser-read-fail"
 seed_prior_live
 good_json "$STAGE"
 SUDO_FAIL_MODE=runuser_traverse
-if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR traversal should fail"; exit 1; fi
+if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR traversal should fail"; exit 1; fi
+grep -Fxq 'stub sudo: runuser_traverse fail' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
 SUDO_FAIL_MODE=
 rm -f "$STAGE"
 assert_prior_preserved "runuser-traverse-fail"
