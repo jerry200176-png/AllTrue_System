@@ -94,8 +94,10 @@ read by the app-serving PHP-FPM worker through one named ACL entry, exactly
 itself owns the file). `pop-mount-reviewed-financial-once.yml` sets and
 verifies this, adds only `u:<worker uid>:--x` on `storage/app/private` and its
 `pop` directory, and is the only supported way to install the file; do not
-`chmod`/`chgrp` it by hand (a group change widens the ACL mask). Deploy never
-widens `storage/app/private` (`scripts/deploy-storage-perms.sh`). Remove the
+`chmod`/`chgrp` it by hand (a group change widens the ACL mask). Until the
+deploy stops running a recursive `chmod` over `storage` (companion change
+#4332), a deploy would widen this file, so the mount workflow refuses to run
+(`check-pop-mount-remote-guards.py --require-deploy-safe`). Remove the
 tuple after its short UTC expiry and audit closeout.
 Never commit the file or put private case payloads, identifiers, tokens or
 keys in GitHub.
