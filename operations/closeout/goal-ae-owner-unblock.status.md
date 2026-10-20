@@ -1,10 +1,10 @@
 # Goal A–E owner unblock — public-safe status
 
-Last updated: 2026-10-20T02:29Z  
+Last updated: 2026-10-20T02:50Z  
 No secrets, financial amounts, student PII, or encrypted dump payloads in this file.
 
 **Factual checkpoint (not new authority):** [`lane-coordination.status.md`](./lane-coordination.status.md) + [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) (**registration PENDING** — 403; no alternate retry; **not** a merge gate).  
-Observed: Da’an = sole **#4312** + **Lane N** narrow primary billing (scope not expanded to Lane B). Lane B implementation owner = **existing / to be verified**. Local Cursor = relay only. This file = secondary Goal A–E lane hygiene. Main billing must not wait on this docs PR.
+Observed: Da’an = sole **#4312** + **Lane N** narrow primary billing (scope not expanded to Lane B). **#4312 MERGED** `177954283c` @ `02:40:24Z`. Lane B implementation owner = **existing / to be verified**. Local Cursor = relay only. This file = secondary Goal A–E lane hygiene. Main billing must not wait on this docs PR. **#4321** exact-head CI green / BEHIND / auto-merge off / `queue` label blocked (agent 403) — serial land only.
 
 ## Track verdict (current)
 
@@ -24,7 +24,7 @@ Observed: Da’an = sole **#4312** + **Lane N** narrow primary billing (scope no
 - Require in-app reporter response as a new prerequisite to count a verified financial case
 - Imply financial case success closes an in-app report
 - Treat #4320 as a mandatory predecessor of #4312; treat draft conversion of #4320 as verified (API `isDraft=false` at ~02:18Z; later CLOSED)
-- Queue or touch #4312 from secondary lane (parent-verified queue label at `2026-10-20T02:21:58Z` — checkpoint only)
+- Queue or touch #4312 from secondary lane (#4312 already **MERGED**; post-merge tip deploy not owned here)
 - Treat a WRITE_GO stamp as re-enabling retired SSH Phase-C or inventing resolve-after-deploy
 - Post further public reply on in-app **#394** until comment **999** body is privately verified (**HOLD**)
 - Treat aggregate `deploy.yml` success as live when **Deploy to Production** is skipped
@@ -52,7 +52,10 @@ Observed: Da’an = sole **#4312** + **Lane N** narrow primary billing (scope no
 - #4317 closeout product-decision packet
 - #4298 contract_4131 dump request-file + dump `39327056654`
 - #4300 agreed-fee allowlist activation surface
+- #4312 pop-mount bind squash `177954283c` (Da’an-owned; secondary observe-only)
 
 ## Next sequence
 
-Prefer Lane N **financial** execution/readback on live pin (Da’an). Lane B remains separate (owner verify + Founder gates). In-app D/E use current comment-only capability only — independent of financial N/3.
+1. Permitted actor: add `queue` on **#4321** (agent cannot) → land-queue update-branch + squash  
+2. Prefer Lane N **financial** execution/readback on live pin (Da’an). Lane B remains separate (owner verify + Founder gates).  
+3. In-app D/E use current comment-only capability only — independent of financial N/3. Dot PASS on dump `39327056654` still required for Track B acceptance.

@@ -1,6 +1,6 @@
 # Lane coordination — public-safe factual checkpoint
 
-Last updated: 2026-10-20T02:29Z  
+Last updated: 2026-10-20T02:50Z  
 Shared GitHub ownership issue: [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070)  
 No secrets, student PII, financial amounts, encrypted dump payloads, or case tuples in this file.
 
@@ -10,7 +10,7 @@ No secrets, student PII, financial amounts, encrypted dump payloads, or case tup
 
 | Lane | Owner (observed) | Role | Must not (from coordination) |
 |------|------------------|------|------------------------------|
-| **#4312** + **Lane N** narrow primary billing (impl + queue) | **Da’an** | Sole implementation + queue for that scope | Other agents edit `chore/pop-mount-chmod644` or queue #4312; **scope must not expand** into Lane B by this note |
+| **#4312** + **Lane N** narrow primary billing (impl + queue) | **Da’an** | Sole implementation + queue for that scope (**#4312 MERGED** `177954283c` @ `2026-10-20T02:40:24Z`) | Other agents edit post-merge tip deploy ownership; **scope must not expand** into Lane B by this note |
 | **Lane B** broad `#4283` schema / allowlist / flag **implementation** | **Existing owner — to be verified** (separate scope; **not** newly assigned to Da’an here) | Tip code ownership TBD by prior record / coordinator | Treat this file as reassignment; change Founder protected activation / allowlist / flag gates |
 | Primary Cloud reviewer/coordinator | Cloud task `bc-01a1549a-4b74-7985-95f8-2ac405420cfb` | Review / coordinate | Mutate Da’an-owned branches; invent financial WRITE_GO |
 | Local Cursor | **Released — relay only** | Relay evidence / status | Case execution; claim sole case-writer |
@@ -24,10 +24,12 @@ Proposed registration text is retained in [#4321](https://github.com/jerry200176
 
 | Item | Value | Note |
 |------|-------|------|
-| Live `deployment.json` backend | `ad9e36904283` | DtP `39241462999`; deployed_at `2026-10-19T11:02:17Z` |
+| Live `deployment.json` backend | `ad9e36904283` | DtP `39241462999`; deployed_at `2026-10-19T11:02:17Z` (pin unchanged after #4312 merge) |
+| `origin/main` tip | `177954283c` | Includes #4312 squash; main CI / Deploy-to-Pi for this tip observed separately |
 | Waiting release train | `39333337571` | **HOLD / DO NOT APPROVE** from coordination messages |
 | This file | Factual checkpoint only | **Not** financial write GO; **not** production-activation |
-| #4312 queue | Label applied `2026-10-20T02:21:58Z` (parent-verified; Jerry exact approval) | Checkpoint only — secondary lane still has **no** queue or branch action on #4312 |
+| #4312 | **MERGED** `177954283c` @ `02:40:24Z` (was queued `02:21:58Z`) | Secondary lane took **no** queue/branch action; post-merge tip deploy remains Da’an / primary |
+| #4321 land | Exact-head CI **green** (`08325bb`); `BEHIND`; auto-merge **off**; `queue` label **403** for this agent | Serial land-queue only — no independent auto-merge / direct merge |
 
 ## Two separate billing lanes (do not collapse)
 
@@ -114,9 +116,9 @@ See [`BUG_INTAKE_TO_PRODUCTION.md`](../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md):
 ## Decision / source links
 
 - Ownership issue: [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) — registration **PENDING** (not a merge gate)
-- #4312: https://github.com/jerry200176-png/AllTrue_System/pull/4312 — queue label at `02:21:58Z` (parent-verified); secondary still no queue/branch action
+- #4312: https://github.com/jerry200176-png/AllTrue_System/pull/4312 — **MERGED** `177954283c` @ `02:40:24Z` (queued earlier `02:21:58Z`); secondary took no queue/branch action
 - #4320: https://github.com/jerry200176-png/AllTrue_System/pull/4320 — CLOSED; draft conversion unverified
-- #4321: https://github.com/jerry200176-png/AllTrue_System/pull/4321
+- #4321: https://github.com/jerry200176-png/AllTrue_System/pull/4321 — T0 land-ready; needs permitted actor `queue` label (agent 403)
 - Goal A–E public status: [`goal-ae-owner-unblock.status.md`](./goal-ae-owner-unblock.status.md)
 - Xinzhuang fee status: [`xinzhuang-fee-closeout.status.md`](./xinzhuang-fee-closeout.status.md)
 - Product decisions packet: [`docs/plans/2026-10-20-inapp-closeout-product-decisions.md`](../../docs/plans/2026-10-20-inapp-closeout-product-decisions.md)

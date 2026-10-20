@@ -1,22 +1,22 @@
 # Xinzhuang fee closeout — public-safe status
 
-Last updated: 2026-10-20T02:29Z  
+Last updated: 2026-10-20T02:50Z  
 Financial case count: **0/3** verified execution/readback (courses 4064 / 3753 / 3693) — independent of in-app reply/`resolved`/reporter acceptance  
 No secrets, state hashes, financial payloads, or student PII in this file.
 
 **Factual checkpoint (not new authority):** [`lane-coordination.status.md`](./lane-coordination.status.md) · [#4070](https://github.com/jerry200176-png/AllTrue_System/issues/4070) (**registration PENDING** — not a merge gate)  
-**Owners (observed):** Da’an = **#4312** + **Lane N** narrow primary billing only (not expanded to Lane B). Lane B implementation = **existing owner — to be verified**. Local Cursor = relay only. Secondary Cloud = Goal A–E docs hygiene only. Main billing must not wait on this docs PR.
+**Owners (observed):** Da’an = **#4312** + **Lane N** narrow primary billing only (not expanded to Lane B). **#4312 MERGED** `177954283c` @ `02:40:24Z`. Lane B implementation = **existing owner — to be verified**. Local Cursor = relay only. Secondary Cloud = Goal A–E docs hygiene only. Main billing must not wait on this docs PR.
 
 ## Tip / live (read-only)
 
 | Ref | SHA (12) | Note |
 |-----|----------|------|
-| `origin/main` tip | `e6208fc8d7aa` | includes #4319 Goal A–E owner-unblock + #4317/#4318 lineage |
-| Live `deployment.json` backend | `ad9e36904283` | deployed_at `2026-10-19T11:02:17Z` (DtP `39241462999`) |
+| `origin/main` tip | `177954283c` | includes #4312 pop-mount bind + #4319/#4317/#4318 lineage |
+| Live `deployment.json` backend | `ad9e36904283` | deployed_at `2026-10-19T11:02:17Z` (DtP `39241462999`); pin **unchanged** after #4312 merge |
 | #4283 schema squash | `506729c78ab4` | tip-only for **Lane B**; **not** a hard gate for **Lane N** |
 | #4300 allowlist surface | `8e6228a35fad` | on main; Founder-gated; Lane B only |
 
-**Do not treat aggregate `deploy.yml` success as live.** Waiting release train `39333337571` remains **HOLD / DO NOT APPROVE** from coordination messages (not financial WRITE_GO). #4312 queue label applied `2026-10-20T02:21:58Z` (parent-verified; Jerry exact approval) — checkpoint only; secondary lane still takes **no** queue or branch action.
+**Do not treat aggregate `deploy.yml` success as live.** Waiting release train `39333337571` remains **HOLD / DO NOT APPROVE** from coordination messages (not financial WRITE_GO). #4312 was queued `02:21:58Z` then **MERGED** `02:40:24Z` — secondary lane took **no** queue/branch action; post-merge tip Deploy remains out of scope here.
 
 ## Two lanes (do not collapse)
 
@@ -58,7 +58,7 @@ Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be 
 2. Cloud decrypt custody when needed — bind `DUMP_ARTIFACT_KEY` via Personal vault; never paste into chat/PR
 3. Tip `production-activation` for `#4283` only after verified owner + Founder — **not** implied by Lane N
 4. Allowlist (`#4300`) + flag stay Founder-gated / default-off until case POP
-5. Tip Deploy Merge/activation may fail if `pop-mount` lacks `queue: max` (Deploy run `39346856677`) — tip Deploy hygiene only; **not** a #4312 PR required-check blocker; #4320 draft conversion **unverified** / PR later CLOSED; do not queue #4312 from secondary lane
+5. Tip Deploy Merge/activation hygiene historically failed when `pop-mount` lacked `queue: max` (Deploy run `39346856677`); #4312 merge binds mount to serving FPM — post-merge tip Deploy ownership stays Da’an / primary; #4320 CLOSED (not a #4312 predecessor); secondary lane does not queue tip Deploy
 
 ## Historical safety holds (retained)
 
@@ -77,6 +77,7 @@ Note: `correction_schema_missing` is a **Lane B** schema signal. It must not be 
 - #4298 contract_4131 Track B dump (`39327056654`)  
 - #4300 Founder-gated allowlist activation surface — **Lane B**  
 - #4308 acceptance listens for Deploy to Pi + Release train  
+- #4312 pop-mount bind squash `177954283c` (observe-only from secondary lane)  
 
 ## Related
 

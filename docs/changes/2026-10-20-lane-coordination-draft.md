@@ -10,3 +10,4 @@ Dot/Jerry coordination (2026-10-20): record verified ownership observations and 
 
 - Add `operations/closeout/lane-coordination.status.md` (factual checkpoint/reference; #4070 registration PENDING — not a merge gate)
 - Update Goal A–E / Xinzhuang status for Lane N vs Lane B, independent evidence states, #394 HOLD, Related links
+- Refresh after #4312 MERGED (`177954283c`): tip/live pin note; #4321 land posture (CI green / BEHIND / auto-merge off / queue label 403)
