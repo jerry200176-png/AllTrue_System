@@ -21,8 +21,8 @@ use Tests\TestCase;
  * "creating" event, i.e. after the lookup and right before the insert. This
  * runs sequentially on the test connection (RefreshDatabase), so it models an
  * unbind that finished before the insert, which is exactly what the login's
- * post-insert re-read guards. A truly concurrent, still-uncommitted unbind is
- * not modelled here; it relies on InnoDB locking on parent_sessions.
+ * post-insert re-read guards. A truly concurrent unbind is covered by
+ * ParentLineLoginUnbindConcurrency3988Test (binding-row lock).
  */
 class ParentLineLoginUnbindRace3988Test extends TestCase
 {

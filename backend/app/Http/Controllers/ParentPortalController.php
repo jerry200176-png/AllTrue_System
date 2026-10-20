@@ -358,39 +358,56 @@ class ParentPortalController extends Controller
         }
 
         $preferredCampusId = !empty($data['campus_id']) ? (int) $data['campus_id'] : null;
-        $students = app(ParentGuardianAccessService::class)
-            ->studentsForLineUser($lineUserId, $preferredCampusId);
-        if ($students->isEmpty()) {
+        // #3988: look up access and create the session while holding a shared
+        // lock on this LINE subject's bindings. Every unbind path locks its
+        // binding row first (BindingService::revokeGuardianAccess()), so an
+        // in-flight unbind makes this wait and then see the binding gone, and
+        // an unbind that starts now waits and then expires this session.
+        $login = DB::transaction(function () use ($lineUserId, $preferredCampusId) {
+            DB::table('student_line_bindings')
+                ->where('line_user_id', $lineUserId)
+                ->sharedLock()
+                ->get(['id']);
+            $access = app(ParentGuardianAccessService::class);
+            $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
+            if ($students->isEmpty()) {
+                return null;
+            }
+
+            // Create session for the first student (frontend can switch later)
+            $firstStudent = $students->first();
+            $result = $this->createSession(
+                $firstStudent,
+                null,
+                StudentContactPhone::normalizedDigits($firstStudent),
+                $lineUserId
+            );
+            // Defence in depth: re-read after the insert and expire the session
+            // if access is gone. The response is built from this fresh set.
+            $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
+            if (!$students->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id)) {
+                ParentSession::query()
+                    ->where('TokenHash', hash('sha256', $result['token']))
+                    ->update(['ExpiresAt' => now()]);
+
+                return ['revoked' => true];
+            }
+
+            return ['revoked' => false, 'first' => $firstStudent, 'students' => $students, 'result' => $result];
+        });
+        if ($login === null) {
             SecurityAuditEvent::append('parent.auth', 'failure', [
                 'campus_id' => (int) ($data['campus_id'] ?? 0),
             ], ['method' => 'line', 'reason_code' => 'binding_not_found']);
             return response()->json(['message' => '尚未綁定學生帳號（此入口僅供家長/學生）。請透過 LINE 官方帳號輸入「綁定 學生姓名 手機號碼」完成綁定'], 404);
         }
-
-        // Create session for the first student (frontend can switch later)
-        $firstStudent = $students->first();
-        $result = $this->createSession(
-            $firstStudent,
-            null,
-            StudentContactPhone::normalizedDigits($firstStudent),
-            $lineUserId
-        );
-        // #3988: an unbind that committed between the lookup above and the
-        // insert could not expire this session (it did not exist yet). Re-read
-        // access now that the session row exists and expire it if it is gone.
-        // The response below is built from this fresh set, so a student
-        // unbound in the meantime is never listed either.
-        $students = app(ParentGuardianAccessService::class)
-            ->studentsForLineUser($lineUserId, $preferredCampusId);
-        if (!$students->contains(fn ($s) => (int) $s->id === (int) $firstStudent->id)) {
-            ParentSession::query()
-                ->where('TokenHash', hash('sha256', $result['token']))
-                ->update(['ExpiresAt' => now()]);
+        if ($login['revoked']) {
             SecurityAuditEvent::append('parent.auth', 'failure', [
                 'campus_id' => (int) ($data['campus_id'] ?? 0),
             ], ['method' => 'line', 'reason_code' => 'binding_revoked_during_login']);
             return response()->json(['message' => 'Invalid LINE authentication'], 401);
         }
+        ['first' => $firstStudent, 'students' => $students, 'result' => $result] = $login;
         SecurityAuditEvent::append('parent.auth', 'success', [
             'campus_id' => (int) ($firstStudent->CampusID ?? 0),
             'subject_type' => 'student',
