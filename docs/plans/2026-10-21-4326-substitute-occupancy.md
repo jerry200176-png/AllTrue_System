@@ -146,25 +146,29 @@ later read-only acceptance must reconcile them and obtain reporter verification.
 
 ### Reproducible integration artifact (validation only)
 
-- Code input #4327: 4ed03770b0287d8a75bc18afd34aaccc7a4bb502;
+- Code input #4327: e1bc51695a0b34114dd51289442e55b1a00a5609;
   #4215: 03bdfa964f69f13bb396fa2990269a316942b09c.
-- In an isolated worktree whose HEAD is the #4327 input, run
-  `git merge-tree --write-tree HEAD 03bdfa964f69f13bb396fa2990269a316942b09c`.
-  Exit 1 reports expected content conflicts; raw tree is
-  d2cf9bf340c9dda3d124f3f0f356867cd71715fc. No branch is merged by this command.
+- In an isolated worktree, run `git merge-tree --write-tree
+  e1bc51695a0b34114dd51289442e55b1a00a5609
+  03bdfa964f69f13bb396fa2990269a316942b09c` as one command.
+  Exit 1 reports expected conflicts; raw tree is
+  ec1011b480dc3e36050d458626abae74565c7576. No branch is merged.
 - Materialize that tree only in a disposable validation worktree, then apply
   [the compatibility patch](2026-10-21-4326-4215-compatibility.patch).
-  It is a resolution artifact for this raw combined tree, NOT a patch to apply
-  directly to either PR branch. It retains #4215's generic/private errors,
-  successor safeguards and student-current-read path, and main's bounded stale
-  reader while using #4327's source-aware/current teacher validation.
+  It applies ONLY to this raw combined tree, not either PR branch. It retains
+  #4215's private errors, anchored-occurrence safeguards and student-current-read
+  path, and main's bounded stale reader. Teacher validation uses the actual
+  written destination; date-bound substitute assignments are not moved.
 - Artifact SHA256:
-  880238d2250bdbbbe2f16e8db7ed71fb24803ed93266c556fe445bf72bf72909.
-  `git apply --check` and byte comparisons verify the resulting three files
-  match the tested compatibility worktree. All other regular backend files
-  match the raw combined tree. A docblock-only addition followed the 158/1053 run.
-- Recheck both live heads before any later integration; these pinned results
-  do not authorize merge/deployment or clear unrelated #4215 review findings.
+  8d5d710492f135c18d838c82c42399fae8ce45093bb5a7296805ad1485195c2f.
+  `git apply --check`, actual apply and byte comparisons reproduce all three
+  corrected files. Other backend files match this raw tree. The artifact
+  includes the independent 9-case apply matrix and corrected destination/privacy
+  fixture. #4215's anchored-occurrence refusal supersedes main's successful
+  anchored-shift scenario in this combined fixture. Latest combined selection:
+  170 tests / 1159 assertions PASS.
+- Recheck live heads before any later integration. These pinned results do not
+  authorize merging #4215 or clearing its unrelated review findings.
 
 ### Independent evidence follow-up
 
@@ -174,7 +178,7 @@ later read-only acceptance must reconcile them and obtain reporter verification.
 - The independent 9-case apply matrix was applied ONLY in the isolated #4215
   rehearsal and passed 9 / 79. It includes substitute-away/in and v2 makeup LR.
   Patches and logs remain in the named local review-evidence worktree; the
-  committed resolution artifact above retains its original pinned test scope.
+  updated committed artifact above now includes these cases.
 - Hosted Presubmit flagged intentional replacement of #4245/#4162 lines. The
   documented intentional-revert label and exact rationale acknowledge this
   tested behavior correction; no checker or safeguard was weakened.
@@ -235,7 +239,7 @@ destination occurrences. Its privacy test fixture must place the conflicting
 substitute-teacher lesson at the actual substituted destination (12-08), and
 assert the incoming session (12-01), rather than assume the 12-08 substitute moves
 to 12-15. This adaptation is confined to the isolated rehearsal; #4215's published
-branch is untouched. The pinned patch above reproduces the earlier rehearsal;
-apply the destination-teacher overlay described here for the latest validation.
+branch is untouched. The updated pinned patch above reproduces the corrected rehearsal, including
+the destination-teacher service and fixture changes.
 Production case acceptance remains open; final CI/review/deployment receipts
 belong to the linked PRs and issue, not an inferred green status.

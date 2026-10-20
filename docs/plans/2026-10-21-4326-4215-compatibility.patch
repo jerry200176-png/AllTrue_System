@@ -1,20 +1,47 @@
+diff --git a/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php b/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php
+index 8a072dbcd..19ac75e33 100644
 --- a/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php
 +++ b/backend/app/Services/CourseLeaveCascadeSuccessorShiftService.php
-@@ -465,22 +465,14 @@
+@@ -308,11 +308,7 @@ class CourseLeaveCascadeSuccessorShiftService
+                 }
+             }
+             $course = $move['role'] === 'old_tail' ? $old : $successor;
+-<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-            $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock));
+-=======
+             $blockers = array_merge($blockers, $this->conflicts($course, $branchId, $move['to'], $movingIds, $move['session_id'], $lock, $move['from']));
+->>>>>>> 03bdfa964f69f13bb396fa2990269a316942b09c
+         }
+
+         $oldDates = $oldSessions->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')
+@@ -462,33 +458,22 @@ class CourseLeaveCascadeSuccessorShiftService
+      *
+      * @param  array{date: string, start: string, end: string}  $to
+      * @param  list<int>  $movingIds
++     * @param  array{date: string, start: string, end: string}|null  $from
+      * @return list<array<string, mixed>>
+      */
+-<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock): array
++    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock, ?array $from): array
      {
          $out = [];
          $at = ['course_id' => (int) $course->ID, 'session_id' => $sessionId, 'date' => $to['date'], 'start' => $to['start']];
--<<<<<<< HEAD
 +        if ($this->hasOccurrenceAnchor((int) $course->ID, $to['date'], $to['start'], $lock)) {
 +            $out[] = ['type' => 'ineligible'] + $at + ['message' => '目的時段已有單堂排課紀錄，請先核對'];
 +        }
-         $source = $from ?? $to;
+         // apply() keeps date-bound schedule assignments in place; validate the written destination.
+         $source = $to;
          foreach ($this->guard->validateCourseOccurrence(
              $course, $branchId, $to['date'], $to['start'], $to['end'], $lock,
              ['date' => $source['date'], 'start_time' => $source['start']]
          ) as $c) {
 -            $out[] = ['type' => str_contains((string) ($c['type'] ?? ''), 'room') ? 'classroom' : 'teacher'] + $at + ['message' => (string) ($c['message'] ?? '時段衝突')];
 -=======
+-    private function conflicts(StudentClass $course, int $branchId, array $to, array $movingIds, ?int $sessionId, bool $lock, ?array $from): array
+-    {
+-        $out = [];
+-        $at = ['course_id' => (int) $course->ID, 'session_id' => $sessionId, 'date' => $to['date'], 'start' => $to['start']];
 -        if ($this->hasOccurrenceAnchor((int) $course->ID, $to['date'], $to['start'], $lock)) {
 -            $out[] = ['type' => 'ineligible'] + $at + ['message' => '目的時段已有單堂排課紀錄，請先核對'];
 ->>>>>>> 03bdfa964f69f13bb396fa2990269a316942b09c
@@ -26,13 +53,15 @@
              $room = str_contains((string) ($c['type'] ?? ''), 'room');
              $out[] = ['type' => $room ? 'classroom' : 'teacher'] + $at + ['message' => $room ? '教室在此時段已有課程衝突，請核對課表' : '授課老師在此時段已有課程衝突，請核對課表'];
          }
+diff --git a/backend/app/Services/StaleScheduleExceptionFilter.php b/backend/app/Services/StaleScheduleExceptionFilter.php
+index d1f08934b..031d503a6 100644
 --- a/backend/app/Services/StaleScheduleExceptionFilter.php
 +++ b/backend/app/Services/StaleScheduleExceptionFilter.php
-@@ -65,12 +65,7 @@
+@@ -65,12 +65,7 @@ class StaleScheduleExceptionFilter
                  ->whereIn('StudentClassID', array_keys($courseIds))
                  ->whereIn($lock ? 'SessionDate' : DB::raw('DATE(SessionDate)'), array_keys($rowsByYmd))
                  ->select('StudentClassID', 'StartTime', 'Status', DB::raw('DATE(SessionDate) as ymd'))
--<<<<<<< HEAD
+-<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
                  ->when($lock, fn ($q) => $q->lockForUpdate())->get();
 -=======
 -                ->when($lock, fn ($q) => $q->lockForUpdate())
@@ -41,9 +70,49 @@
              foreach ($sessions as $session) {
                  $courseId = (int) $session->StudentClassID;
                  $hhmm = $this->hhmm($session->StartTime);
+diff --git a/backend/tests/Feature/LeaveSuccessorShiftTest.php b/backend/tests/Feature/LeaveSuccessorShiftTest.php
+index d1f7f71b2..802c14b49 100644
 --- a/backend/tests/Feature/LeaveSuccessorShiftTest.php
 +++ b/backend/tests/Feature/LeaveSuccessorShiftTest.php
-@@ -282,18 +282,14 @@
+@@ -94,37 +94,6 @@ class LeaveSuccessorShiftTest extends TestCase
+         $this->assertSame($after, $this->fingerprint(), 'a repeated apply writes nothing');
+     }
+
+-<<<<<<< e1bc51695a0b34114dd51289442e55b1a00a5609
+-    public function test_shift_checks_the_teacher_resolved_at_the_written_destination(): void
+-    {
+-        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => false]);
+-        $assignment = DB::table('schedules')->insertGetId([
+-            'student_id' => self::STUDENT, 'student_course_id' => $this->renewal,
+-            'teacher_id' => self::TEACHER, 'branch_id' => 1, 'schedule_date' => '2026-12-22',
+-            'day_of_week' => 2, 'subject' => 'synthetic', 'start_time' => '19:00', 'end_time' => '21:00',
+-            'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0,
+-        ]);
+-        $row = (array) DB::table('schedules')->where('id', $assignment)->first();
+-        unset($row['id']);
+-        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => self::TEACHER + 1, 'original_schedule_id' => $assignment]));
+-        $this->student(88412);
+-        $other = $this->course(88412, '2026-12-29', '2026-12-29');
+-        $occupied = $this->lesson($other, '2026-12-29');
+-        $leaveId = $this->sessions['2026-11-17'];
+-        $before = $this->undoSnapshot();
+-        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+-        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertStatus(422);
+-        $this->assertSame($before, $this->undoSnapshot(), 'destination conflict must leave all authoritative records unchanged');
+-
+-        DB::table('ClassSession')->where('id', $occupied)->delete();
+-        DB::table('StudentClass')->where('ID', $other)->update(['Stop' => 1]);
+-        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
+-        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+-        $this->assertDatabaseHas('ClassSession', ['id' => $this->sessions['2026-12-22'], 'SessionDate' => '2026-12-29']);
+-        $this->assertDatabaseHas('schedules', ['original_schedule_id' => $assignment, 'schedule_date' => '2026-12-22', 'teacher_id' => self::TEACHER + 1]);
+-        $this->assertSame(self::TEACHER, app(\App\Services\SubstituteScheduleService::class)
+-            ->teacherForOccurrence($this->renewal, '2026-12-29', self::TEACHER, '19:00'));
+-=======
+     /** #4210 remaining initial-delivery protections. @dataProvider initialProtectionCases */
+     public function test_initial_delivery_refusals_preserve_all_evidence(string $kind): void
+     {
+@@ -313,18 +282,15 @@ class LeaveSuccessorShiftTest extends TestCase
              'teacher_id' => self::TEACHER + 1, 'branch_id' => 1, 'schedule_date' => '2026-12-08', 'day_of_week' => 2,
              'start_time' => '19:00:00', 'end_time' => '21:00:00', 'status' => 'scheduled', 'type' => 'normal']);
          DB::table('schedules')->where('id', $id)->update(['original_schedule_id' => $id]);
@@ -56,19 +125,109 @@
 -        $this->app->instance(\App\Services\ScheduleGuardService::class, $guard);
 +        $this->student(self::STUDENT + 1);
 +        $other = $this->course(self::STUDENT + 1, '2026-12-01', '2026-12-30', ['TeacherID' => self::TEACHER + 1]);
-+        $this->lesson($other, '2026-12-15');
++        // Date-bound substitution is at the written destination, not carried from the moved source.
++        $this->lesson($other, '2026-12-08');
          $before = $this->undoSnapshot();
          $plan = $this->shift('preview', ['class_session_id' => $this->sessions['2026-11-17']])->assertOk()->assertJsonPath('eligible', false);
 -        $this->assertContains(self::TEACHER + 1, $teachers);
 -        $this->assertStringNotContainsString('ForeignPersonSynthetic', $plan->getContent());
 -        $this->assertStringNotContainsString('ForeignCampusSynthetic', $plan->getContent());
 +        $blockers = collect($plan->json('blockers'))->where('type', 'teacher');
-+        $this->assertContains($this->sessions['2026-12-08'], $blockers->pluck('session_id')->all());
++        $this->assertContains($this->sessions['2026-12-01'], $blockers->pluck('session_id')->all(), $plan->getContent());
 +        $this->assertStringNotContainsString('S' . (self::STUDENT + 1), $plan->getContent());
          $this->shift('apply', ['class_session_id' => $this->sessions['2026-11-17'], 'preview_token' => $plan->json('preview_token')])->assertStatus(422);
          $this->assertSame($before, $this->undoSnapshot());
      }
-@@ -379,6 +375,7 @@
+@@ -405,11 +371,96 @@ class LeaveSuccessorShiftTest extends TestCase
+         return ['ledger' => ['ledger'], 'live attendance' => ['live'], 'voided history' => ['voided_leave'], 'occurrence anchor' => ['anchor']];
+     }
+
++    public static function committedTeacherShapes(): array
++    {
++        return [
++            'legacy session' => [false, 'session'], 'v2 session' => [true, 'session'],
++            'legacy schedule only' => [false, 'schedule'], 'v2 schedule only' => [true, 'schedule'],
++            'legacy substituted in' => [false, 'substitute_in'], 'v2 substituted in' => [true, 'substitute_in'],
++            'legacy substituted away' => [false, 'substitute_away'], 'v2 substituted away' => [true, 'substitute_away'],
++            'v2 makeup LearningRecord' => [true, 'makeup_in'],
++        ];
++    }
++
++    /** Apply must use current effective-teacher evidence after a proven stale RR snapshot. @dataProvider committedTeacherShapes */
++    public function test_apply_sees_committed_effective_teacher_occupancy(bool $v2, string $shape): void
++    {
++        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $v2]);
++        $original = DB::getDefaultConnection();
++        $this->assertSame(1, DB::transactionLevel());
++        $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
++        $otherStudent = self::STUDENT + 1;
++        $this->student($otherStudent);
++        $contractTeacher = in_array($shape, ['substitute_in', 'makeup_in'], true) ? self::TEACHER + 1 : self::TEACHER;
++        $candidate = $this->course($otherStudent, '2026-12-01', '2026-12-30', ['SubjectID' => 2, 'TeacherID' => $contractTeacher]);
++        $sessionId = $shape === 'schedule' ? null : $this->lesson($candidate, '2026-12-30');
++        DB::commit();
++        config(['database.connections.shift_teacher_current' => config('database.connections.'.$original)]);
++        $apply = DB::connection('shift_teacher_current');
++        $leaveId = $this->sessions['2026-11-17'];
++        $observed = fn () => $apply->table($shape === 'schedule' ? 'schedules' : 'ClassSession')
++            ->where($shape === 'schedule' ? 'student_course_id' : 'StudentClassID', $candidate)
++            ->where($shape === 'schedule' ? 'schedule_date' : 'SessionDate', '2026-12-29')->count();
++        try {
++            $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
++            $apply->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
++            $apply->beginTransaction();
++            $this->assertSame(0, $observed());
++            if ($sessionId) DB::table('ClassSession')->where('id', $sessionId)->update(['SessionDate' => '2026-12-29']);
++            if ($shape !== 'session') {
++                $rowTeacher = $shape === 'substitute_away' ? self::TEACHER + 1 : ($shape === 'makeup_in' ? $contractTeacher : self::TEACHER);
++                $scheduleId = DB::table('schedules')->insertGetId(['student_course_id' => $candidate, 'student_id' => $otherStudent,
++                    'teacher_id' => $rowTeacher, 'branch_id' => 1, 'schedule_date' => '2026-12-29', 'day_of_week' => 2,
++                    'start_time' => '19:00:00', 'end_time' => '21:00:00', 'status' => 'scheduled',
++                    'type' => $shape === 'makeup_in' ? 'extra' : 'normal', 'class_type' => 'one_on_one']);
++                if (str_starts_with($shape, 'substitute_')) DB::table('schedules')->where('id', $scheduleId)->update([
++                    'original_schedule_id' => $scheduleId, 'original_schedule_date' => '2026-12-29', 'original_start_time' => '19:00:00']);
++                if ($shape === 'makeup_in') DB::table('LearningRecord')->insert(['StudentClassID' => $candidate,
++                    'ClassSessionID' => $sessionId, 'TeacherID' => self::TEACHER, 'Status' => 'pending', 'Content' => '',
++                    'SessionDate' => '2026-12-29', 'StartTime' => '19:00:00', 'EndTime' => '21:00:00']);
++            }
++            $before = $this->undoSnapshot();
++            $this->assertSame(0, $observed(), 'prove independent commit is invisible to the existing snapshot');
++            DB::setDefaultConnection('shift_teacher_current');
++            $response = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')]);
++            if ($shape === 'substitute_away') {
++                $response->assertOk()->assertJsonPath('applied', true);
++                $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
++            } else {
++                $response->assertStatus(422)->assertJsonPath('plan.blockers.0.type', 'teacher')
++                    ->assertJsonPath('plan.blockers.0.date', '2026-12-29');
++                DB::setDefaultConnection($original);
++                $this->assertSame($before, $this->undoSnapshot(), 'refusal preserves every authoritative row, audit and notification');
++            }
++        } finally {
++            while ($apply->transactionLevel() > 0) $apply->rollBack();
++            DB::setDefaultConnection($original);
++            DB::purge('shift_teacher_current');
++            DB::transaction(function () use ($candidate, $otherStudent, $userId) {
++                $courses = [$this->old, $this->renewal, $candidate];
++                $ids = DB::table('ClassSession')->whereIn('StudentClassID', $courses)->pluck('id');
++                DB::table('schedule_audit_logs')->whereIn('session_id', $ids)->delete();
++                DB::table('LearningRecord')->whereIn('StudentClassID', $courses)->delete();
++                DB::table('schedules')->whereIn('student_course_id', $courses)->delete();
++                DB::table('StudentSingIn')->whereIn('StudentClassID', $courses)->delete();
++                SessionDeductionLedger::query()->whereIn('student_class_id', $courses)->delete();
++                DB::table('ClassSession')->whereIn('StudentClassID', $courses)->delete();
++                DB::table('StudentClass')->whereIn('ID', $courses)->delete();
++                DB::table('auth_tokens')->where('user_id', $userId)->delete();
++                DB::table('UserCampus')->where('UserID', $userId)->delete();
++                DB::table('User')->where('id', $userId)->delete();
++                DB::table('Student')->whereIn('id', [self::STUDENT, $otherStudent])->delete();
++            });
++            DB::beginTransaction();
++        }
++    }
++
+     public static function staleApplyEvidence(): array
+     {
          return self::lateOldLeaveEvidence() + [
              'renewal changed to date mode' => ['renewal_mode'], 'another successor moved earlier' => ['earlier_candidate'],
              'booking committed after snapshot' => ['late_booking'],
@@ -76,7 +235,7 @@
          ];
      }
 
-@@ -389,8 +386,10 @@
+@@ -420,8 +471,10 @@ class LeaveSuccessorShiftTest extends TestCase
          $this->assertSame('mysql', DB::connection()->getDriverName());
          $this->assertSame(1, DB::transactionLevel());
          $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
@@ -89,7 +248,7 @@
          if ($candidate) $this->lesson($candidate, '2026-12-30');
          DB::commit();
          config(['database.connections.shift_stale_apply' => config('database.connections.' . $original)]);
-@@ -402,7 +401,7 @@
+@@ -433,7 +486,7 @@ class LeaveSuccessorShiftTest extends TestCase
          $observed = fn () => match ($kind) {
              'renewal_mode' => $apply->table('StudentClass')->where('ID', $this->renewal)->where('ScheduleMode', 'date')->count(),
              'earlier_candidate' => $apply->table('ClassSession')->where('StudentClassID', $candidate)->whereDate('SessionDate', '2026-11-30')->count(),
@@ -98,7 +257,7 @@
              default => $apply->table($table)->where($column, $lookup)->count(),
          };
          try {
-@@ -413,7 +412,7 @@
+@@ -444,7 +497,7 @@ class LeaveSuccessorShiftTest extends TestCase
              if ($kind === 'renewal_mode') {
                  DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => 'date']);
              } elseif ($candidate) {
@@ -107,7 +266,7 @@
              } else {
                  $this->seedOldLeaveEvidence($leaveId, $kind);
              } // Committed on the independent original connection.
-@@ -425,7 +424,7 @@
+@@ -456,7 +509,7 @@ class LeaveSuccessorShiftTest extends TestCase
              if ($kind === 'renewal_mode') {
                  $response->assertJsonPath('message', '續約課程已變動，請重新預覽');
              } elseif ($candidate) {
@@ -116,7 +275,7 @@
              } else {
                  $response->assertJsonPath('plan.blockers.0.course_id', $this->old)->assertJsonPath('plan.blockers.0.session_id', $leaveId);
              }
-@@ -437,7 +436,7 @@
+@@ -468,7 +521,7 @@ class LeaveSuccessorShiftTest extends TestCase
                  $apply->rollBack();
              }
              DB::purge('shift_stale_apply');
@@ -125,7 +284,7 @@
                  $courseIds = array_filter([$this->old, $this->renewal, $candidate]);
                  $ids = DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id');
                  DB::table('schedule_audit_logs')->whereIn('session_id', $ids)->delete();
-@@ -449,7 +448,7 @@
+@@ -480,7 +533,7 @@ class LeaveSuccessorShiftTest extends TestCase
                  DB::table('auth_tokens')->where('user_id', $userId)->delete();
                  DB::table('UserCampus')->where('UserID', $userId)->delete();
                  DB::table('User')->where('id', $userId)->delete();
@@ -134,3 +293,11 @@
              });
              DB::beginTransaction(); // Balance RefreshDatabase teardown, without remigrating or changing indexes.
          }
+@@ -545,7 +598,6 @@ class LeaveSuccessorShiftTest extends TestCase
+                 'SignInDT' => '2026-11-17 19:00:00', 'SignOutDT' => '2026-11-17 21:00:00', 'MDT' => now(),
+                 'VoidedAt' => $kind === 'live' ? null : '2026-10-31 18:00:00', 'VoidReason' => $kind === 'live' ? null : 'historical correction']);
+         }
+->>>>>>> 03bdfa964f69f13bb396fa2990269a316942b09c
+     }
+
+     /** @dataProvider ineligibleRenewalLessons */
