@@ -210,3 +210,32 @@ later read-only acceptance must reconcile them and obtain reporter verification.
 - Runtime PR remains #4327. This docs-only evidence PR does not authorize merge,
   deployment or production acceptance. Final exact-head CI/review receipts are
   recorded on #4327 rather than causing repeated evidence-only runtime heads.
+
+### Release authorization and destination-teacher correction (2026-10-21)
+
+Founder explicitly instructed this session to finish and ship #4326, then handle
+Xinzhuang billing and PR closeout. This supersedes the earlier task-specific
+no-merge/no-deploy restriction for this code repair; canonical CI/review/queue,
+deploy environment gates and financial mutation boundaries remain in force.
+
+Independent review of `defb5e12b` found successor validation wrongly carried a
+source substitute into a destination whose date-bound assignment is not moved by
+`apply()`. Corrected at `e1bc51695`: resolve the actual written destination with
+current reads. No schedule-assignment write or new undo semantics is introduced.
+RED apply returned 200 for a full contract-teacher destination; GREEN rejects
+with the authoritative snapshot unchanged, then applies after freeing the slot
+and verifies its canonical teacher and unchanged date-bound assignment. Main
+selection: 65 tests / 510 assertions PASS; changed service PHPStan PASS. General
+source-aware guard tests remain: callers that really preserve a source assignment
+still need that API. Previous source-teacher successor guidance above is
+superseded by this correction.
+
+The separate #4215 rehearsal retains its existing refusal of anchored source or
+destination occurrences. Its privacy test fixture must place the conflicting
+substitute-teacher lesson at the actual substituted destination (12-08), and
+assert the incoming session (12-01), rather than assume the 12-08 substitute moves
+to 12-15. This adaptation is confined to the isolated rehearsal; #4215's published
+branch is untouched. The pinned patch above reproduces the earlier rehearsal;
+apply the destination-teacher overlay described here for the latest validation.
+Production case acceptance remains open; final CI/review/deployment receipts
+belong to the linked PRs and issue, not an inferred green status.
