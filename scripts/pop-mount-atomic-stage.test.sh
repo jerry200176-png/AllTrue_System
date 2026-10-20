@@ -20,18 +20,22 @@ sudo() {
   case "${SUDO_FAIL_MODE}" in
     chown) if [ "$1" = "chown" ]; then echo "stub sudo: chown fail" >&2; return 1; fi ;;
     chmod) if [ "$1" = "chmod" ]; then echo "stub sudo: chmod fail" >&2; return 1; fi ;;
-    runuser_read)
+    runuser_read|runuser_traverse)
       if [ "$1" = "runuser" ]; then
-        # fail only test -r
-        if [ "${*: -2:1}" = "test" ] && [ "${*: -1}" = "-r" ] || { [ "$3" = "--" ] && [ "$4" = "test" ] && [ "$5" = "-r" ]; }; then
-          echo "stub sudo: runuser read fail" >&2; return 1
+        # After shifting -n: runuser -u USER -- test {-r|-x} PATH.
+        if [ "$4" = "--" ] && [ "$5" = "test" ]; then
+          case "${SUDO_FAIL_MODE}:$6" in
+            runuser_read:-r|runuser_traverse:-x)
+              echo "stub sudo: ${SUDO_FAIL_MODE} fail" >&2; return 1 ;;
+          esac
         fi
       fi
       ;;
   esac
-  # emulate successful chown/chmod/runuser for other cases
+  # chmod must apply its mode so later probes do not stop at the mode guard.
   case "$1" in
-    chown|chmod) return 0 ;;
+    chmod) command "$@" ;;
+    chown) return 0 ;;
     runuser) return 0 ;;
     *) command sudo "$@" ;;
   esac
@@ -180,10 +184,21 @@ assert_prior_preserved "chmod-fail"
 seed_prior_live
 good_json "$STAGE"
 SUDO_FAIL_MODE=runuser_read
-if validate_mount_file "$STAGE" 2>/dev/null; then echo "ERROR runuser should fail"; exit 1; fi
+if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR runuser should fail"; exit 1; fi
+grep -Fxq 'stub sudo: runuser_read fail' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
 SUDO_FAIL_MODE=
 rm -f "$STAGE"
 assert_prior_preserved "runuser-read-fail"
+
+# Parent traversal denial must also reject STAGE without replacing LIVE.
+seed_prior_live
+good_json "$STAGE"
+SUDO_FAIL_MODE=runuser_traverse
+if validate_mount_file "$STAGE" 2>"$TMP/validation.err"; then echo "ERROR traversal should fail"; exit 1; fi
+grep -Fxq 'stub sudo: runuser_traverse fail' "$TMP/validation.err" || { cat "$TMP/validation.err" >&2; exit 1; }
+SUDO_FAIL_MODE=
+rm -f "$STAGE"
+assert_prior_preserved "runuser-traverse-fail"
 
 # 6) Interrupt after STAGE→LIVE but before validate: restore from PREV (LIVE was replaced)
 seed_prior_live
