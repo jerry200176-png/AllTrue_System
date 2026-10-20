@@ -13,6 +13,7 @@ first (`BindingService::revokeGuardianAccess()`), and
 two serialize at any isolation level: an in-flight unbind makes login wait and
 then find no binding; a login in progress makes the unbind wait and then
 expire the session. Login still re-reads access after the insert (401, audit
-`binding_revoked_during_login`). Two-connection tests cover REPEATABLE READ and
+`binding_revoked_during_login`); a binding that appears after the lock read is
+re-locked before the session is issued. Two-connection tests cover REPEATABLE READ and
 READ COMMITTED. Not covered: guardian links without a binding row under the
 multi-guardian dual-read flag (#4335).

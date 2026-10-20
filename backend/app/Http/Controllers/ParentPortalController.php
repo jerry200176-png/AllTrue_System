@@ -367,13 +367,31 @@ class ParentPortalController extends Controller
         // locks too (an id-only read would lock a different index entry).
         // Not covered: guardian links without a binding row under the
         // multi-guardian dual-read flag (#4335).
+        // Under READ COMMITTED an empty or partial lock read takes no gap lock,
+        // so a binding committed right after it could authorize this login
+        // unlocked: re-lock after reading access and recompute until the
+        // locked set is stable.
         $login = DB::transaction(function () use ($lineUserId, $preferredCampusId) {
-            DB::table('student_line_bindings')
+            $lockBindings = fn () => DB::table('student_line_bindings')
                 ->where('line_user_id', $lineUserId)
+                ->orderBy('id')
                 ->sharedLock()
-                ->get();
+                ->get()
+                ->pluck('id')
+                ->all();
             $access = app(ParentGuardianAccessService::class);
-            $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
+            $locked = $lockBindings();
+            for ($attempt = 0; ; $attempt++) {
+                $students = $access->studentsForLineUser($lineUserId, $preferredCampusId);
+                $relocked = $lockBindings();
+                if ($relocked === $locked) {
+                    break;
+                }
+                if ($attempt >= 2) {
+                    return ['retry' => true];
+                }
+                $locked = $relocked;
+            }
             if ($students->isEmpty()) {
                 return null;
             }
@@ -399,6 +417,12 @@ class ParentPortalController extends Controller
 
             return ['revoked' => false, 'first' => $firstStudent, 'students' => $students, 'result' => $result];
         });
+        if ($login['retry'] ?? false) {
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'binding_changed_during_login']);
+            return response()->json(['message' => 'LINE authentication unavailable'], 503);
+        }
         if ($login === null) {
             SecurityAuditEvent::append('parent.auth', 'failure', [
                 'campus_id' => (int) ($data['campus_id'] ?? 0),
