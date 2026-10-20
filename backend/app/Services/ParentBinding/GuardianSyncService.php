@@ -332,7 +332,7 @@ final class GuardianSyncService
             // BindingService::revokeGuardianAccess() use, so login cannot
             // create a session for this link while the revoke is in flight.
             $link->loadMissing('guardian');
-            $lineUserId = trim((string) ($link->guardian?->line_user_id ?? ''));
+            $lineUserId = trim((string) ($link->guardian->line_user_id ?? ''));
             if ($lineUserId !== '') {
                 StudentLineBinding::query()
                     ->where('student_id', (int) $link->student_id)
