@@ -198,7 +198,8 @@ const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === 
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
-  return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
+  if (!p?.date) return '還沒繳費';
+  return p.amount == null ? `繳費日 ${dateOnly(p.date)}` : `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
 });
 const monthLineText = (key) => {
   const m = props.monthLines?.[key];
