@@ -230,10 +230,12 @@ for (const [name, c, unified, cm, sl] of closedCases) {
 assert.equal(M.closedReason(null), null);
 assert.deepEqual(['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial', 'x', null].map(M.isClosedReason),
   [true, true, true, true, true, true, false, false]);
-const hist = (reason) => ({ closed_reason: reason });
-assert.deepEqual(['settled', 'completed', 'waived', 'settled_pending', 'contract_amended', 'converted_trial', null].map((r) => M.isHistoryCourse(hist(r))),
-  [true, true, true, false, false, false, false], 'CourseManagement set');
-assert.deepEqual(['settled', 'completed', 'waived', 'settled_pending', 'contract_amended', 'converted_trial', null].map((r) => M.isHistoryCourse(hist(r), { includePending: true })),
-  [true, true, true, true, false, false, false], 'StudentsList set adds settled_pending');
+// in-app #427: history is the server's verdict (history_reason / is_active_course); the client only reads it.
+assert.equal(M.courseHistoryReason({ history_reason: 'completed' }), 'completed');
+assert.equal(M.courseHistoryReason({ closed_reason: 'settled' }), null, 'no server flag, no client re-derivation');
+assert.equal(M.isActiveCourse({ is_active_course: true }), true);
+assert.equal(M.isActiveCourse({ is_active_course: false, history_reason: null }), false);
+assert.deepEqual(['settled_pending', 'completed', 'converted_trial', null].map((r) => M.isCourseManagementHistory({ history_reason: r })),
+  [false, true, true, false], 'CourseManagement keeps 待對帳結案 in its working list');
 
 console.log('courseMoneyState passed');

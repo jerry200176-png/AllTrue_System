@@ -572,16 +572,12 @@ class EnrollmentService
             $existingActive = StudentClass::where('StudentID', $studentId)
                 ->where('Stop', 0)
                 ->get();
-            // in-app #427: a Stop=0 course the 學生管理 list already shows as finished or closed (one rule with the
-            // pre-check, EnrollmentActiveCourseRule) is not a duplicate. Rows the projection cannot see stay counted.
-            $projected = EnrollmentActiveCourseRule::projectedRows($request, $studentId);
-            if ($projected !== null) {
-                $existingActive = $existingActive->reject(function ($sc) use ($projected) {
-                    $row = $projected->get((int) $sc->ID);
-
-                    return $row !== null && !EnrollmentActiveCourseRule::isActive($row);
-                })->values();
-            }
+            // in-app #427: a Stop=0 course that is already finished or closed under the one 進行中 verdict
+            // (StudentClassActivity, also used by the list and the pre-check prompt) is not a duplicate.
+            $verdicts = app(StudentClassActivity::class)->evaluate($existingActive);
+            $existingActive = $existingActive
+                ->filter(fn ($sc) => $verdicts[(int) $sc->ID]['is_active_course'] ?? true)
+                ->values();
 
             if ($existingActive->isNotEmpty()) {
                 // #805 防再犯：新課程的整體日期範圍（用於偵測「續報新期起始早於舊期結束」的重疊）。

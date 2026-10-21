@@ -21,7 +21,7 @@ class StudentActiveCoursesParityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_prompt_lists_only_running_courses_with_the_corrected_remaining(): void
+    public function test_prompt_and_list_share_one_verdict(): void
     {
         $home = Campus::factory()->create();
         $other = Campus::factory()->create();
@@ -42,55 +42,40 @@ class StudentActiveCoursesParityTest extends TestCase
         $converted = $this->course($student, ['closed_reason' => 'converted_trial', 'RemainingSessions' => 1, 'SessionCount' => 1]);
         $settledPending = $this->course($student, ['closed_reason' => 'settled_pending', 'Charge' => 8000]);
 
-        // Stopped course.
+        // Stopped (paused) course: not 進行中, but stays in the list's active section.
         $stopped = $this->course($student, ['Stop' => 1, 'Charge' => 8000]);
 
-        // Course held in another campus's room: not on this campus's student page.
+        // Course held in another campus's room: the expanded student view and the create guard see it, so the prompt does too.
         $otherRoom = Room::create(['name' => '他校教室', 'campus_id' => $other->id, 'capacity' => 4, 'is_active' => true]);
         $otherCampus = $this->course($student, ['room_id' => $otherRoom->id, 'Charge' => 8000]);
 
-        $res = $this->withHeaders([
+        $headers = [
             'Authorization' => 'Bearer '.$this->directorToken([(int) $home->id, (int) $other->id]),
             'Accept' => 'application/json',
-        ])->getJson("/api/v1/students/{$student->id}/active-courses?branch_id={$home->id}");
+        ];
+        $prompt = collect($this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->json('courses'))->keyBy('id');
+        $this->assertEqualsCanonicalizing([(int) $open->ID, (int) $otherCampus->ID], $prompt->keys()->map(fn ($id) => (int) $id)->all());
+        $this->assertSame(7, $prompt[$open->ID]['remaining_sessions']);
 
-        // branch_id narrows the prompt to one campus, like the campus course list.
-        $res->assertOk();
-        $courses = collect($res->json('courses'))->keyBy('id');
-        $this->assertSame([(int) $open->ID], $courses->keys()->map(fn ($id) => (int) $id)->all());
-        $this->assertSame(7, $courses[$open->ID]['remaining_sessions']);
-        foreach ([$finished, $converted, $settledPending, $stopped, $otherCampus] as $hidden) {
-            $this->assertFalse($courses->has($hidden->ID), "course {$hidden->ID} must not be offered as 進行中");
+        // The list (what 學生管理 and 課程管理 render) carries the same verdict and number.
+        $list = collect($this->withHeaders($headers)
+            ->getJson("/api/v1/student-classes?student_id={$student->id}&per_page=200")->assertOk()->json('data'))
+            ->keyBy(fn ($row) => (int) ($row['ID'] ?? $row['id']));
+        $this->assertSame(7, (int) $list[$open->ID]['remaining_sessions']);
+        $expected = [
+            $open->ID => [true, null],
+            $otherCampus->ID => [true, null],
+            $finished->ID => [false, 'completed'],
+            $converted->ID => [false, 'converted_trial'],
+            $settledPending->ID => [false, 'settled_pending'],
+            $stopped->ID => [false, null],
+        ];
+        foreach ($expected as $id => [$active, $reason]) {
+            $this->assertSame($active, $list[$id]['is_active_course'], "is_active_course of {$id}");
+            $this->assertSame($reason, $list[$id]['history_reason'], "history_reason of {$id}");
+            $this->assertSame($active, $prompt->has($id), "prompt membership of {$id}");
         }
-
-        // The student page's own list (same campus) agrees on the running course and its number.
-        $page = $this->withHeaders([
-            'Authorization' => 'Bearer '.$this->directorToken([(int) $home->id, (int) $other->id]),
-            'Accept' => 'application/json',
-        ])->getJson("/api/v1/student-classes?branch_id={$home->id}&student_id={$student->id}&per_page=200");
-        $pageOpen = collect($page->json('data'))->first(fn ($row) => (int) ($row['ID'] ?? $row['id']) === (int) $open->ID);
-        $this->assertSame(7, (int) $pageOpen['remaining_sessions']);
-    }
-
-    public function test_without_branch_the_prompt_covers_every_visible_campus(): void
-    {
-        $home = Campus::factory()->create();
-        $other = Campus::factory()->create();
-        $student = Student::create([
-            'name' => '跨校測試生', 'CampusID' => $home->id, 'ClassID' => 1, 'enable' => 1,
-            'MDT' => now(), 'Notify_Token' => '',
-        ]);
-        $local = $this->course($student, ['Charge' => 8000]);
-        $otherRoom = Room::create(['name' => '他校教室', 'campus_id' => $other->id, 'capacity' => 4, 'is_active' => true]);
-        $elsewhere = $this->course($student, ['room_id' => $otherRoom->id, 'Charge' => 8000]);
-
-        // Same scope as the expanded student view (student_id only) and the create-time guard.
-        $ids = collect($this->withHeaders([
-            'Authorization' => 'Bearer '.$this->directorToken([(int) $home->id, (int) $other->id]),
-            'Accept' => 'application/json',
-        ])->getJson("/api/v1/students/{$student->id}/active-courses")->assertOk()->json('courses'))
-            ->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
-        $this->assertSame([(int) $local->ID, (int) $elsewhere->ID], $ids);
     }
 
     public function test_create_guard_does_not_block_on_a_finished_course(): void

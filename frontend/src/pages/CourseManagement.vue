@@ -1445,7 +1445,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -4083,8 +4083,8 @@ const toggleStudentGroup = (groupKey) => {
 const groupHasPausedCourse = (group) =>
   (group?.courses || []).some((c) => c.status === 'inactive' && !effectiveClosedReason(c));
 
-const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
-const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
+const activeCourses = (group) => (group?.courses || []).filter(c => !isCourseManagementHistory(c));
+const historyCourses = (group) => (group?.courses || []).filter(c => isCourseManagementHistory(c));
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
 // "進行中" rows fighting over the same teacher slot. Paused rows remain in
@@ -4153,7 +4153,7 @@ function clearCourseFilters() {
 
 const courseLensMetrics = computed(() => {
   const visibleCourses = courses.value;
-  const activeCount = visibleCourses.filter((course) => !isHistoryCourse(course) && course.status !== 'inactive').length;
+  const activeCount = visibleCourses.filter(isActiveCourse).length;
   const attentionCount = visibleCourses.filter((course) => {
     const remaining = displayRemainingSessions(course);
     return isSessionMode(course)

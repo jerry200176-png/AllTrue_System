@@ -183,7 +183,7 @@
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? WAIVED_LABEL : effectiveClosedReason(course) === 'settled_pending' ? ENDED_PENDING_LABEL : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ courseHistoryReason(course) === 'waived' ? WAIVED_LABEL : courseHistoryReason(course) === 'settled_pending' ? ENDED_PENDING_LABEL : (courseHistoryReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -1006,7 +1006,7 @@ import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
-  closedReason as effectiveClosedReason, courseProgress, isHiddenHistoricalCourse, isStudentPageHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
   modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -1389,11 +1389,13 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-const isHistoryCourseByReason = isStudentPageHistoryCourse;
-// in-app #427: with 顯示歷史課程 off this is isStudentPageActiveCourse, the verdict the server's 進行中 prompt is pinned to.
-const getActiveStudentCourses = (id) => {
-  return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
-};
+// in-app #427: history is the server's verdict (StudentClassActivity), the same one behind the 「已有進行中課程」 prompt.
+const isHistoryCourseByReason = (course) => courseHistoryReason(course) !== null;
+// Display tier only: history rows without a recorded closure (used up and settled), 待對帳結案 and 確認不收 are
+// hidden until 顯示已結業; other closed rows stay visible as labelled 歷史 chips (#3731).
+const isHistoricalCourse = (course) => isHistoryCourseByReason(course)
+  && (!course?.closed_reason || ['settled_pending', 'waived'].includes(courseHistoryReason(course)));
+const getActiveStudentCourses = (id) => getStudentAllCourses(id).filter((c) => !isHistoryCourseByReason(c));
 /** Active, billable monthly courses: what the one-dialog 月結續報 offers. */
 const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
   isMonthlyPaymentType(c)
@@ -1405,10 +1407,10 @@ const openBatchRenew = (student) => { batchRenewStudent.value = student; };
 const getHistoryStudentCourses = (id) => {
   // History is a detail disclosure inside an expanded student, so it must remain
   // available even when the top-level list is showing active courses only.
-  return getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c));
+  return getStudentAllCourses(id).filter(isHistoryCourseByReason);
 };
 const getStudentHistoryCourseCount = (id) => (
-  getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c)).length
+  getStudentAllCourses(id).filter(isHistoryCourseByReason).length
 );
 const selectedCourseIdByStudent = ref(new Map());
 const hasCourseSchedule = (course) => (
@@ -1619,7 +1621,7 @@ const expandedCourseDateKeys = ref(new Set());
 const getStudentCourses = (id) => {
   const all = getStudentAllCourses(id);
   if (showHistoricalCourses.value) return all;
-  return all.filter((course) => !isHiddenHistoricalCourse(course));
+  return all.filter((course) => !isHistoricalCourse(course));
 };
 const getStudentCourseCount = (id) => getStudentCourses(id).length;
 const studentStatusLabel = (s) => ({ active: '在學中', graduated: '已畢業', paused: '暫停中', transferred: '已轉校' }[s] || s);
@@ -2076,6 +2078,8 @@ const loadStudentCourses = async (studentId) => {
           package_renewal_message: c.package_renewal_message ?? null,
           status: c.status ?? null,
           closed_reason: c.closed_reason ?? null,
+          history_reason: c.history_reason ?? null,
+          is_active_course: c.is_active_course ?? null,
           paid_at: c.paid_at ?? null,
           last_paid_at: c.last_paid_at ?? null,
           Charge: c.Charge ?? c.charge ?? 0,
@@ -2165,6 +2169,8 @@ const loadAllStudentCourses = async () => {
             package_renewal_message: c.package_renewal_message ?? null,
             status: c.status ?? null,
             closed_reason: c.closed_reason ?? null,
+            history_reason: c.history_reason ?? null,
+            is_active_course: c.is_active_course ?? null,
             paid_at: c.paid_at ?? null,
             last_paid_at: c.last_paid_at ?? null,
             data_source: 'laravel'
@@ -2807,7 +2813,7 @@ const openAddCourse = async (student) => {
     try {
       const token = await getAccessToken();
       if (token) {
-        // in-app #427: every campus you can see, like the expanded student view and the create-time guard.
+        // in-app #427: the server's 進行中 verdict, every campus (same as the create-time guard).
         const res = await authedFetch(`/api/v1/students/${sid}/active-courses`, {
           headers: { 'Accept': 'application/json' },
         }, token);

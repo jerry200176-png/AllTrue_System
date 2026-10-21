@@ -148,44 +148,21 @@ export const closedPaymentState = (course) => {
   return settled ? 'settled' : 'pending';
 };
 
-/** History list membership. includePending: StudentsList also files 待對帳結案 rows under history; CourseManagement keeps them in the active list. */
-export const isHistoryCourse = (course, { includePending = false } = {}) => {
-  const reason = closedReason(course);
-  return reason === 'settled' || reason === 'completed' || reason === 'waived' || (includePending && reason === 'settled_pending');
+// ── 進行中 / history (server-owned, in-app #427) ─────────────
+// The student-classes list computes these once (backend StudentClassActivity); the same verdict drives the
+// 「已有進行中課程」 prompt and the create-time duplicate guard. Pages read the flags, never re-derive them.
+
+/** Why the row is history ('completed' | 'settled' | 'settled_pending' | 'waived' | 'converted_trial' | …), or null. */
+export const courseHistoryReason = (course) => course?.history_reason || null;
+
+/** 進行中: running and not history (paused courses are not 進行中 but stay in the active section). */
+export const isActiveCourse = (course) => course?.is_active_course === true;
+
+/** 課程管理 keeps 待對帳結案 rows in its working list (that is where they are reconciled); everything else follows the server. */
+export const isCourseManagementHistory = (course) => {
+  const reason = courseHistoryReason(course);
+  return reason !== null && reason !== 'settled_pending';
 };
-
-/**
- * StudentsList hides these rows unless 顯示歷史課程 is on: 待對帳結案 / 確認不收, a monthly course that
- * is stopped, or an own-count course that is used up and settled. Package members stay until stopped
- * (FR-001: their own remaining can read 0 while the shared pool still has sessions).
- */
-export const isHiddenHistoricalCourse = (course) => {
-  if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
-  if (isMonthlyPaymentType(course)) return String(course?.status || '').toLowerCase() === 'inactive';
-  if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') return false;
-  const remaining = ownRemainingSessions(course);
-  if (remaining == null) return false;
-  return remaining <= 0 && isCourseSettled(course);
-};
-
-/**
- * StudentsList history membership: the shared closed-reason verdict (待對帳結案 included), plus a running row
- * that carries any closure (legacy Stop=0 + converted_trial / contract_amended / usage_settled), which the
- * server's 進行中 rule never counts (in-app #427).
- */
-export const isStudentPageHistoryCourse = (course) => (
-  isHistoryCourse(course, { includePending: true })
-  || (String(course?.status || '').toLowerCase() !== 'inactive' && Boolean(course?.closed_reason))
-);
-
-/**
- * StudentsList course workspace membership (not history by either rule). The server's duplicate-course
- * prompt (EnrollmentActiveCourseRule, in-app #427) agrees with this for every running (status active) row;
- * backend/tests/Fixtures/active_course_parity.json pins both sides.
- */
-export const isStudentPageActiveCourse = (course) => (
-  !isHiddenHistoricalCourse(course) && !isStudentPageHistoryCourse(course)
-);
 
 // ── payment-status labels (display only; the server owns the status itself) ──
 export const TUITION_STATUS_CONFIG = {
