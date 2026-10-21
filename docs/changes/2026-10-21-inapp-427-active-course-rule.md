@@ -8,3 +8,5 @@
 - 前端課程列表的歷史判斷移入 `courseMoneyState.isHiddenHistoricalCourse`／`isStudentPageActiveCourse`；前後端共用 `backend/tests/Fixtures/active_course_parity.json` 驗證一致。僅影響顯示與提示，不改任何收費或扣堂規則。
 
 - Review 修正：建課重複檢查的初始候選列包含 `Stop IS NULL` 的舊資料，與既有課程投影的未停課定義一致。此為查詢相容修正；不修改 schema。現行測試 migration 將 Stop 定為 NOT NULL，NULL 舊資料端到端 fixture 尚未覆蓋。
+
+- 老師的課程列表仍只顯示其可見課程；若既有建課守門還會計入其他不可見的候選課程，提前給不含課程識別／科目／老師／堂數的泛化提醒。繼續填寫不代表強制建立，原送出守門與學生校區權限不變。新增隱私／跨校拒絕 backend regression 與前端取消／繼續測試；本機 16 frontend tests 與 lint 通過，backend 待 CI。

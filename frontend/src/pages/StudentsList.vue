@@ -2814,6 +2814,9 @@ const openAddCourse = async (student) => {
         if (res.ok) {
           const json = await res.json();
           const active = json?.courses || [];
+          if (json?.has_restricted_active_courses === true && !confirm(
+            '此學生另有不在你目前課程檢視範圍內的進行中課程。請先向主任確認是否重複；送出時仍會檢查，這不是強制建立。要繼續填寫嗎？'
+          )) return;
           if (active.length > 0) {
             duplicateConflicts.value = normalizeActiveCourseConflicts(active);
             interceptPendingStudent.value = student;

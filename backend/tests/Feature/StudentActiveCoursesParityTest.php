@@ -134,6 +134,33 @@ class StudentActiveCoursesParityTest extends TestCase
         $second->assertCreated();
     }
 
+    public function test_teacher_receives_a_generic_warning_without_hidden_course_details(): void
+    {
+        $campus = Campus::factory()->create();
+        $student = Student::create([
+            'name' => '範圍測試生', 'CampusID' => $campus->id, 'ClassID' => 1, 'enable' => 1,
+            'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $teacher = User::create([
+            'LoginName' => 'scope-teacher-'.uniqid().'@example.com', 'Name' => '測試老師',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => '0922000000',
+        ]);
+        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $teacher->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        $hidden = $this->course($student, ['TeacherID' => $teacher->id + 1000, 'Charge' => 8000]);
+        $headers = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'];
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->assertExactJson(['courses' => [], 'has_restricted_active_courses' => true]);
+        $hidden->update(['Stop' => 1]);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->assertExactJson(['courses' => [], 'has_restricted_active_courses' => false]);
+
+        $outside = Campus::factory()->create();
+        $student->update(['CampusID' => $outside->id]);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")->assertForbidden();
+    }
+
     private function course(Student $student, array $overrides = []): StudentClass
     {
         return StudentClass::create(array_merge([
