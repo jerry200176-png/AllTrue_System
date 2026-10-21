@@ -24,12 +24,26 @@ describe('transferPrefillFromBlockedEdit', () => {
     expect(transferPrefillFromBlockedEdit(blocked(['subject']), form)).toEqual({ start_date: '2026-10-07', subject: 'math' });
     expect(transferPrefillFromBlockedEdit(blocked(['teacher', 'slots']), form)).toEqual({
       start_date: '2026-10-07', teacher_id: 7, weekday: 5, time: '15:00', duration_minutes: 90,
+      slots: [{ weekday: 5, time: '15:00', duration_minutes: 90 }],
     });
   });
 
   it('falls back to days_of_week + start_time when there are no per-day slots', () => {
     const p = transferPrefillFromBlockedEdit(blocked(['slots']), { ...form, day_time_slots: [] });
-    expect(p).toEqual({ start_date: '2026-10-07', weekday: 3, time: '16:00', duration_minutes: 120 });
+    expect(p).toEqual({ start_date: '2026-10-07', weekday: 3, time: '16:00', duration_minutes: 120,
+      slots: [{ weekday: 3, time: '16:00', duration_minutes: 120 }] });
+  });
+
+  it('carries every edited weekly slot, not just the first', () => {
+    const multi = { ...form, day_time_slots: [{ day: 1, start_time: '15:00', duration_hours: 1 }, { day: 4, start_time: '18:30', duration_hours: 2 }] };
+    expect(transferPrefillFromBlockedEdit(blocked(['slots']), multi).slots).toEqual([
+      { weekday: 1, time: '15:00', duration_minutes: 60 }, { weekday: 4, time: '18:30', duration_minutes: 120 },
+    ]);
+  });
+
+  it('labels locked billing edits that 轉課 will not carry', () => {
+    const err = blocked(['teacher'], { transfer_hint: { start_date: '2026-10-07', changes: ['teacher'], not_carried: ['SessionCount'] } });
+    expect(transferPrefillFromBlockedEdit(err, form).not_carried).toEqual(['購買堂數']);
   });
 
   it('returns null without the use_transfer suggestion (monthly / settled courses keep today\'s message)', () => {
@@ -56,6 +70,22 @@ describe('CourseTransferModal prefill', () => {
     expect(wrapper.find('#ct-weekday').element.value).toBe('5');
     expect(wrapper.find('#ct-time').element.value).toBe('15:00');
     expect(wrapper.find('[data-testid="transfer-prefill-note"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('submits every carried slot and warns about non-carried billing edits', async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn(async (url, init) => { calls.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ source_correction: {}, new_course: {} }) }; });
+    const prefill = { start_date: '2026-10-07', not_carried: ['購買堂數'],
+      slots: [{ weekday: 1, time: '15:00', duration_minutes: 60 }, { weekday: 4, time: '18:30', duration_minutes: 120 }],
+      weekday: 1, time: '15:00', duration_minutes: 60 };
+    const wrapper = mount(CourseTransferModal, { props: { ...props, prefill } });
+    await wrapper.setProps({ show: true });
+    expect(wrapper.find('[data-testid="transfer-multi-slots"]').text()).toContain('週四 18:30');
+    expect(wrapper.find('[data-testid="transfer-not-carried"]').text()).toContain('購買堂數');
+    await wrapper.findAll('.actions button')[1].trigger('click');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls[0].slots).toHaveLength(2);
     wrapper.unmount();
   });
 

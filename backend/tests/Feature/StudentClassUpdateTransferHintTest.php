@@ -45,7 +45,7 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->session($course, '2026-10-14', 'scheduled');
         $this->session($course, '2026-10-07', 'scheduled');
 
-        $this->put($course, ['subject' => 'Math'])
+        $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'subject_change_requires_transfer')
             ->assertJsonPath('suggested_actions', ['split_contract', 'use_transfer'])
@@ -58,15 +58,17 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_locked_contract_with_teacher_and_slot_change_offers_transfer(): void
     {
         $course = $this->course();
+        $this->session($course, '2026-09-23', 'attended');
         $this->session($course, '2026-10-07', 'scheduled');
         $this->ledger($course);
         $teacher = $this->user('T', 0);
 
-        $this->put($course, ['sessions_purchased' => 12, 'teacher_id' => $teacher, 'days_of_week' => [5], 'start_time' => '15:00'])
+        $this->putCourse($course, ['sessions_purchased' => 12, 'teacher_id' => $teacher, 'days_of_week' => [5], 'start_time' => '15:00'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'billing_contract_locked')
             ->assertJsonPath('suggested_actions', ['use_transfer'])
-            ->assertJsonPath('transfer_hint.changes', ['teacher', 'slots']);
+            ->assertJsonPath('transfer_hint.changes', ['teacher', 'slots'])
+            ->assertJsonPath('transfer_hint.not_carried', ['SessionCount']);
 
         $this->assertSame(8, (int) $course->fresh()->SessionCount);
     }
@@ -74,10 +76,11 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_locked_contract_without_subject_teacher_or_slot_change_has_no_transfer_hint(): void
     {
         $course = $this->course();
+        $this->session($course, '2026-09-23', 'attended');
         $this->session($course, '2026-10-07', 'scheduled');
         $this->ledger($course);
 
-        $this->put($course, ['sessions_purchased' => 12, 'days_of_week' => [3], 'start_time' => '16:00'])
+        $this->putCourse($course, ['sessions_purchased' => 12, 'days_of_week' => [3], 'start_time' => '16:00'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'billing_contract_locked')
             ->assertJsonMissingPath('transfer_hint');
@@ -89,7 +92,7 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->session($course, '2026-09-23', 'attended');
         $this->session($course, '2026-10-07', 'scheduled');
 
-        $this->put($course, ['subject' => 'Math'])
+        $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'subject_change_requires_transfer')
             ->assertJsonPath('suggested_actions', ['split_contract'])
@@ -101,12 +104,25 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $course = $this->course();
         $this->session($course, '2026-09-23', 'attended');
 
-        $this->put($course, ['subject' => 'Math'])
+        $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
             ->assertJsonMissingPath('transfer_hint');
     }
 
-    private function put(StudentClass $course, array $payload)
+    public function test_course_the_transfer_endpoint_would_reject_gets_no_hint(): void
+    {
+        // A past lesson left unmarked: no observed usage, so split-contract would fail.
+        $course = $this->course();
+        $this->session($course, '2026-09-23', 'scheduled');
+        $this->session($course, '2026-10-07', 'scheduled');
+
+        $this->putCourse($course, ['subject' => 'Math'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'subject_change_requires_transfer')
+            ->assertJsonMissingPath('transfer_hint');
+    }
+
+    private function putCourse(StudentClass $course, array $payload)
     {
         return $this->withToken($this->token)->putJson("/api/v1/student-classes/{$course->ID}", $payload);
     }

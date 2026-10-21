@@ -4,6 +4,7 @@
       <h3 id="course-transfer-title" class="modal-title">轉課（改科目／老師／時段）</h3>
       <p class="modal-desc">轉課日之前的堂次留在舊合約；轉課日起的堂次（含紀錄）與剩餘堂數、已繳金額轉到新合約。</p>
       <p v-if="prefill" class="prefill-note" data-testid="transfer-prefill-note">已帶入你在課程設定改的內容，轉課日預設為下一堂未點名的課。請確認後先「試算」。</p>
+      <p v-if="prefill?.not_carried?.length" class="prefill-note" data-testid="transfer-not-carried">轉課不會套用你改的{{ prefill.not_carried.join('、') }}：新合約沿用剩餘堂數；轉課後如需加堂請用「續課」。</p>
 
       <label class="form-label" for="ct-subject">新科目</label>
       <select id="ct-subject" v-model="form.subject" class="form-input" :disabled="busy">
@@ -20,7 +21,10 @@
       <label class="form-label" for="ct-start">轉課日（此日起轉到新合約）</label>
       <input id="ct-start" v-model="form.start_date" type="date" class="form-input" :disabled="busy" />
 
-      <div class="slot-row">
+      <div v-if="multiSlots" class="prefill-note" data-testid="transfer-multi-slots">
+        新每週時段（共 {{ multiSlots.length }} 個，沿用課程設定）：{{ multiSlots.map((x) => `週${DAYS[x.weekday - 1]} ${x.time}（${x.duration_minutes} 分）`).join('、') }}
+      </div>
+      <div v-else class="slot-row">
         <div>
           <label class="form-label" for="ct-weekday">新上課星期（不填＝沿用）</label>
           <select id="ct-weekday" v-model="form.weekday" class="form-input" :disabled="busy">
@@ -75,11 +79,14 @@ const form = reactive({ subject: '', teacher_id: '', start_date: '', weekday: ''
 const preview = ref(null);
 const error = ref('');
 const busy = ref(false);
-const canSubmit = computed(() => !!form.start_date && (form.subject || form.teacher_id || form.weekday));
+// A multi-slot edit is carried whole; 轉課 replaces the weekly schedule with this list.
+const multiSlots = computed(() => (props.prefill?.slots?.length > 1 ? props.prefill.slots : null));
+const canSubmit = computed(() => !!form.start_date && (form.subject || form.teacher_id || form.weekday || multiSlots.value));
 
 watch(() => props.show, (v) => {
   if (v) {
-    Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' }, props.prefill || {});
+    const { subject = '', teacher_id = '', start_date = '', weekday = '', time = '16:00', duration_minutes = 120 } = props.prefill || {};
+    Object.assign(form, { subject, teacher_id, start_date, weekday, time, duration_minutes, reason: '' });
     preview.value = null;
     error.value = '';
   }
@@ -92,7 +99,9 @@ const body = () => ({
   reason: form.reason || '轉課',
   ...(form.subject ? { subject: form.subject } : {}),
   ...(form.teacher_id ? { teacher_id: Number(form.teacher_id) } : {}),
-  ...(form.weekday ? { slots: [{ weekday: Number(form.weekday), time: form.time, duration_minutes: Number(form.duration_minutes) }] } : {}),
+  ...(multiSlots.value
+    ? { slots: multiSlots.value.map((x) => ({ weekday: Number(x.weekday), time: x.time, duration_minutes: Number(x.duration_minutes) })) }
+    : form.weekday ? { slots: [{ weekday: Number(form.weekday), time: form.time, duration_minutes: Number(form.duration_minutes) }] } : {}),
 });
 
 async function run(previewOnly) {

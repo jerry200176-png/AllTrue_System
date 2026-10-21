@@ -830,7 +830,7 @@
       <template #settings>
         <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
         <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
-        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p><div v-if="editSaveError?.transferPrefill" class="transfer-handoff" data-testid="transfer-handoff"><p class="alert-detail">要從某一天起改科目、老師或上課時段，又不動已上過的課，請改用「轉課」：{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }}（下一堂未點名的課）起的堂次轉到新合約，之前的上課與扣堂紀錄維持不變。</p><button type="button" class="small primary" data-testid="open-course-transfer-prefilled" @click="openTransferFromBlockedEdit">改用轉課（{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }} 起生效）</button></div></AtInlineAlert>
+        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p><div v-if="editSaveError?.transferPrefill" class="transfer-handoff" data-testid="transfer-handoff"><p class="alert-detail">要從某一天起改科目、老師或上課時段，又不動已上過的課，請改用「轉課」：{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }}（下一堂未點名的課）起的堂次轉到新合約，之前的上課與扣堂紀錄維持不變。</p><p v-if="editSaveError.transferPrefill.not_carried" class="alert-detail" data-testid="transfer-handoff-not-carried">注意：轉課不會套用你改的{{ editSaveError.transferPrefill.not_carried.join('、') }}，新合約沿用剩餘堂數。</p><button type="button" class="small primary" data-testid="open-course-transfer-prefilled" @click="openTransferFromBlockedEdit">改用轉課（{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }} 起生效）</button></div></AtInlineAlert>
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
           <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
@@ -872,7 +872,7 @@
           <p>{{ editSaveError.message }}</p>
           <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
           <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
-          <div v-if="editSaveError?.transferPrefill" class="transfer-handoff" data-testid="transfer-handoff"><p class="alert-detail">要從某一天起改科目、老師或上課時段，又不動已上過的課，請改用「轉課」：{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }}（下一堂未點名的課）起的堂次轉到新合約，之前的上課與扣堂紀錄維持不變。</p><button type="button" class="small primary" data-testid="open-course-transfer-prefilled" @click="openTransferFromBlockedEdit">改用轉課（{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }} 起生效）</button></div>
+          <div v-if="editSaveError?.transferPrefill" class="transfer-handoff" data-testid="transfer-handoff"><p class="alert-detail">要從某一天起改科目、老師或上課時段，又不動已上過的課，請改用「轉課」：{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }}（下一堂未點名的課）起的堂次轉到新合約，之前的上課與扣堂紀錄維持不變。</p><p v-if="editSaveError.transferPrefill.not_carried" class="alert-detail" data-testid="transfer-handoff-not-carried">注意：轉課不會套用你改的{{ editSaveError.transferPrefill.not_carried.join('、') }}，新合約沿用剩餘堂數。</p><button type="button" class="small primary" data-testid="open-course-transfer-prefilled" @click="openTransferFromBlockedEdit">改用轉課（{{ formatTransferStartDate(editSaveError.transferPrefill.start_date) }} 起生效）</button></div>
           <button v-if="editSaveError.code === 'subject_change_requires_transfer' && !editSaveError.transferPrefill" type="button" class="small primary" data-testid="open-course-transfer" @click="courseTransferPrefill = null; showCourseTransfer = true">改用轉課</button>
         </AtInlineAlert>
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
@@ -1105,7 +1105,7 @@
       :subjects="subjectOptions"
       :teachers="editTeacherOptions"
       :prefill="courseTransferPrefill"
-      @close="showCourseTransfer = false"
+      @close="showCourseTransfer = false; courseTransferPrefill = null"
       @done="onCourseTransferDone"
     />
     <TransferSessionsModal
@@ -5476,7 +5476,7 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   isDetailsOpen: (c) => expandedDates.value.has(c.id),
   isSessionEditOpen: () => showSessionEditModal.value,
   requestDelete: (c) => { confirmDeleteTarget.value = c; },
-  openCourseTransfer: (c) => { editCourse(c, { openModal: false }); courseTransferPrefill.value = null; showCourseTransfer.value = true; },
+  openCourseTransfer: (c) => { editCourse(c, { openModal: false }); showCourseTransfer.value = true; },
   openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
   editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,

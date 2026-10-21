@@ -6422,18 +6422,26 @@ class StudentClassController extends Controller
      * slots on a count-mode course can be done by 轉課 instead (past lessons stay on the
      * old contract). Adds `use_transfer` + the cutover date to the existing 422 so the
      * client can offer it in one click. Read-only hint: the block itself is unchanged.
+     * Locked billing fields (SessionCount etc.) are NOT carried by 轉課: listed in
+     * `not_carried` so the UI states it instead of silently dropping them.
      *
      * @param  array<string, mixed>  $mapped
      * @param  array<int, mixed>  $providedSlots
      */
     private function withTransferHint(\Illuminate\Http\JsonResponse $blocked, StudentClass $c, array $mapped, array $providedSlots): \Illuminate\Http\JsonResponse
     {
-        if ($blocked->getStatusCode() !== 422
-            || (string) ($c->getAttribute('ScheduleMode') ?? 'count') !== 'count'
-            || strtolower((string) ($c->getAttribute('rate_unit') ?? 'session')) !== 'session'
-            || $c->isPartOfPackage() || ContractMoneyState::isWaived($c)
-            || (string) ($c->getAttribute('closed_reason') ?? '') === 'usage_settled'
-        ) {
+        if ($blocked->getStatusCode() !== 422) {
+            return $blocked;
+        }
+        // Same gate the 轉課 endpoint applies, so the offered path can complete (#4357 review).
+        try {
+            $this->assertTransferEligible($c);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $notEligible) {
+            return $blocked;
+        }
+        $cid = (int) $c->getKey();
+        $used = (int) (SessionDeductionService::batchObservedUsedSessions([$cid])[$cid] ?? 0);
+        if ($used < 1 || (int) ($c->getAttribute('SessionCount') ?? 0) - $used < 1) {
             return $blocked;
         }
         $changes = [];
@@ -6453,7 +6461,7 @@ class StudentClassController extends Controller
             }
         }
         // 轉課 refuses unmarked lessons before the cutover, so start at the first one.
-        $next = ClassSession::query()->where('StudentClassID', (int) $c->getKey())
+        $next = ClassSession::query()->where('StudentClassID', $cid)
             ->where('Status', 'scheduled')->min('SessionDate');
         if ($changes === [] || $next === null) {
             return $blocked;
@@ -6464,6 +6472,8 @@ class StudentClassController extends Controller
         $data['transfer_hint'] = [
             'start_date' => ContractSessionSchedule::normalizeDateString($next),
             'changes' => $changes,
+            // 轉課 never applies a locked billing-contract edit; the client must say so.
+            'not_carried' => array_values((array) ($data['locked_fields'] ?? [])),
         ];
 
         return $blocked->setData($data);
