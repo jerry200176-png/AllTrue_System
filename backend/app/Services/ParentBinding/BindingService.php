@@ -289,8 +289,8 @@ final class BindingService
         }
 
         return DB::transaction(function () use ($binding, $bindingId) {
-            // Revoke before deleting: same lock order as GuardianSyncService::revoke()
-            // (student_guardians -> parent_sessions -> student_line_bindings).
+            // Revoke before deleting. Lock order: student_line_bindings (#3988)
+            // -> student_guardians -> parent_sessions, as in GuardianSyncService::revoke().
             $revoked = $this->revokeGuardianAccess((int) $binding->student_id, (string) $binding->line_user_id);
             if (DB::table('student_line_bindings')->where('id', $bindingId)->delete() === 0) {
                 return false;
@@ -327,6 +327,18 @@ final class BindingService
         }
 
         return DB::transaction(function () use ($studentId, $lineUserId, $result) {
+            // #3988: lock the binding first. LINE login holds a shared lock on
+            // the same rows while it creates its session, so the two serialize
+            // at any isolation level: either this waits and then expires the
+            // committed session, or login waits and then finds no binding.
+            // Whole rows on purpose: an index-only locking read locks just that
+            // index entry, and login reads through a different index.
+            DB::table('student_line_bindings')
+                ->where('student_id', $studentId)
+                ->where('line_user_id', $lineUserId)
+                ->lockForUpdate()
+                ->get();
+
             // Telemetry only: revoke() expires these too, so count them first.
             $result['parent_sessions_invalidated'] = ParentSession::query()
                 ->where('StudentID', $studentId)
