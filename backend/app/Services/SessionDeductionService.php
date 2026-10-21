@@ -102,7 +102,13 @@ class SessionDeductionService
         ];
         $sets = [];
         foreach (self::observedUsageSources($ids) as $source => [$query, $keyExpr]) {
-            $rows = $query->select($columns[$source])->selectRaw("{$keyExpr} as evidence_key")->get();
+            $query->select($columns[$source])->selectRaw("{$keyExpr} as evidence_key");
+            if ($source === 'deducted') {
+                // Several sign-ins can share a session; the latest (MAX id) is authoritative
+                // (BackfillSessionStatus), and the first row per key wins below.
+                $query->orderByDesc('StudentSingIn.id');
+            }
+            $rows = $query->get();
             foreach ($rows as $row) {
                 $classId = (int) $row->getAttribute('StudentClassID');
                 $key = (string) $row->getAttribute('evidence_key');

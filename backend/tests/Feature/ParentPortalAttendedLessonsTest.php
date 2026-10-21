@@ -143,6 +143,16 @@ class ParentPortalAttendedLessonsTest extends TestCase
             $this->assertSame($counts[$id], count($evidence[$id] ?? []), "class {$id}");
         }
         $this->assertSame(2, $counts[$a->ID]);
+
+        // Two sign-ins on one session: the latest (MAX id) decides the note (Codex P2).
+        $c = $this->makeCourse($s, 2, 10);
+        $retaken = $this->makeSession($c, now()->subDays(2)->toDateString(), 'absent', '19:00:00');
+        $this->deductedSignIn($c, $retaken, 'absent');
+        $this->deductedSignIn($c, $retaken, 'present');
+        $this->assertSame(1, SessionDeductionService::batchObservedUsedSessions([$c->ID])[$c->ID]);
+        $rows = SessionDeductionService::batchObservedUsedSessionEvidence([$c->ID])[$c->ID];
+        $this->assertCount(1, $rows);
+        $this->assertSame('present', $rows[0]['status']);
         $this->assertSame(1, $counts[$b->ID]);
     }
 
