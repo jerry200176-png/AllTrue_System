@@ -852,16 +852,24 @@
                   與其他科目共用同一方案（共 {{ c.package_total_sessions ?? 0 }} 堂），剩餘為共用堂數，扣堂一起計算。
                 </p>
                 <!-- in-app #418：這門課自己的上課日期，不必切到「學習」分頁對科目數 -->
-                <details v-if="courseLessonRows(c).length" class="pp-lesson-dates">
-                  <summary>{{ c.is_package ? '本科已上' : '已上' }} {{ courseLessonRows(c).length }} 堂・查看上課日期</summary>
+                <details v-if="lessonViews[c.id]?.total" class="pp-lesson-dates">
+                  <summary>{{ lessonViews[c.id].summary }}</summary>
+                  <p class="pp-lesson-hint">依點名與上課紀錄，與「已上」同一來源</p>
                   <ol class="pp-lesson-list">
-                    <li v-for="row in courseLessonRows(c)" :key="row.key">
+                    <li v-for="row in lessonViews[c.id].rows" :key="row.key">
                       <span class="pp-lesson-no">第 {{ row.number }} 堂</span>
                       <span>{{ row.dateLabel }}</span>
                       <span v-if="row.time" class="pp-lesson-time">{{ row.time }}</span>
                       <span v-if="row.note" class="pp-lesson-note">{{ row.note }}</span>
                     </li>
                   </ol>
+                  <p v-if="lessonViews[c.id].overPurchasedNote" class="pp-lesson-note">{{ lessonViews[c.id].overPurchasedNote }}</p>
+                  <div class="pp-lesson-actions">
+                    <button v-if="lessonViews[c.id].hiddenCount > 0" type="button" class="pp-btn-more" @click="expandLessons(c.id)">
+                      顯示全部（共 {{ lessonViews[c.id].total }} 筆）
+                    </button>
+                    <button type="button" class="pp-link-btn" @click="openAttendanceTimeline">完整出缺勤紀錄</button>
+                  </div>
                 </details>
               </template>
               <!-- 月結制 -->
@@ -1000,7 +1008,7 @@ import { buildParentActionItems, buildParentHomeSummary } from '../lib/parentAct
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
 import { isMonthlyPaymentType, remainingTone } from '../lib/courseMoneyState';
 import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
-import { courseLessonRows } from '../lib/parentCourseLessons';
+import { courseLessonView } from '../lib/parentCourseLessons';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -1068,6 +1076,19 @@ const notificationPrefsSaving = ref(false);
 const notificationPrefsError = ref('');
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
+// in-app #418: one lesson-date view per course card (computed once per render).
+const expandedLessonCourses = ref([]);
+const lessonViews = computed(() => Object.fromEntries(
+  (dashboard.value?.classes || []).map((c) => [c.id, courseLessonView(c, expandedLessonCourses.value.includes(c.id))]),
+));
+function expandLessons(courseId) {
+  if (!expandedLessonCourses.value.includes(courseId)) expandedLessonCourses.value = [...expandedLessonCourses.value, courseId];
+}
+async function openAttendanceTimeline() {
+  activeTab.value = 'learning';
+  await nextTick();
+  document.getElementById('pp-attendance-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 const activeTab = ref('learning');
 const parentTabKeys = ['learning', 'schedule', 'billing'];
 const leaveSessionId = ref(null);
@@ -2857,6 +2878,8 @@ onMounted(async () => {
 .pp-lesson-list li { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; border-top: 1px solid var(--ds-canvas-soft); }
 .pp-lesson-no { min-width: 4.5em; color: var(--ds-ink); }
 .pp-lesson-note { color: var(--ds-warning); }
+.pp-lesson-hint { margin: 0 0 4px; }
+.pp-lesson-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 4px; }
 
 /* PRD-H：月結課程「本月已上 + 月費預估」區塊 */
 .pp-monthly-stats {

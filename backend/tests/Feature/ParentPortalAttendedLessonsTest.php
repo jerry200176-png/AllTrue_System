@@ -8,6 +8,7 @@ use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\SessionDeductionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -124,6 +125,25 @@ class ParentPortalAttendedLessonsTest extends TestCase
 
         $this->assertSame(2, $card['used_sessions']);
         $this->assertSame([$d2, $d1], array_column($card['attended_lessons'], 'date'));
+    }
+
+    public function test_evidence_count_equals_the_counter_by_construction(): void
+    {
+        $s = $this->makeStudent('0911000422');
+        $a = $this->makeCourse($s, 3, 10);
+        $b = $this->makeCourse($s, 4, 10);
+        $this->makeSession($a, now()->subDays(9)->toDateString(), 'completed');
+        $this->deductedSignIn($a, $this->makeSession($a, now()->subDays(4)->toDateString(), 'attended'), 'present');
+        $this->deductedSignIn($b, $this->makeSession($b, now()->subDays(3)->toDateString(), 'absent', '18:00:00'), 'absent');
+
+        $ids = [$a->ID, $b->ID];
+        $counts = SessionDeductionService::batchObservedUsedSessions($ids);
+        $evidence = SessionDeductionService::batchObservedUsedSessionEvidence($ids);
+        foreach ($ids as $id) {
+            $this->assertSame($counts[$id], count($evidence[$id] ?? []), "class {$id}");
+        }
+        $this->assertSame(2, $counts[$a->ID]);
+        $this->assertSame(1, $counts[$b->ID]);
     }
 
     public function test_package_members_show_their_own_dates_under_the_shared_total(): void

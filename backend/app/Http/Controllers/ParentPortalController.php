@@ -2483,116 +2483,34 @@ class ParentPortalController extends Controller
     }
 
     /**
-     * in-app #418: per-course list of the lessons behind 「已上 N 堂」, so a parent
-     * sees the dates under each count-mode card without matching the mixed
-     * 學習 timeline by hand. Read-only. The 已上 count is
-     * SessionDeductionService::batchObservedUsedSessions = max(deducted
-     * sign-ins, completed sessions, approved orphan learning records); this
-     * builds each evidence set with the same filters and distinct keys and
-     * returns the largest one per course (same tie order), so the list length
-     * equals the uncapped count. Callers pass only parent-visible class ids.
+     * in-app #418: per-course list of the lessons behind 「已上」. The rows come from
+     * SessionDeductionService::batchObservedUsedSessionEvidence(), the same evidence
+     * the 已上 counter counts; this method only formats them for display.
+     * Callers pass only parent-visible class ids.
      *
      * @param  array<int>  $studentClassIds
-     * @return array<int, list<array{date:string, time:?string, note:?string}>> newest first
+     * @return array<int, list<array{date:?string, time:?string, note:?string}>> newest first
      */
     private function attendedLessonsByClass(array $studentClassIds): array
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds), fn ($id) => $id > 0)));
-        if ($ids === []) {
-            return [];
-        }
-        $today = Carbon::today()->toDateString();
-        // $sets[source][classId][key] = lesson row; source order = tie-break order of the counter.
-        $sets = ['signin' => [], 'session' => [], 'record' => []];
-        $row = function ($date, ?string $start, ?string $end, ?string $note): ?array {
-            $d = $date ? substr((string) $date, 0, 10) : '';
-            if ($d === '') {
-                return null;
-            }
-            $s = $this->trimToHM($start);
-            $e = $this->trimToHM($end);
-
-            return ['date' => $d, 'time' => $s !== '' ? ($e !== '' ? "$s-$e" : $s) : null, 'note' => $note];
-        };
-
-        $signIns = StudentSignIn::query()
-            ->whereNull('StudentSingIn.VoidedAt')
-            ->leftJoin('ClassSession as sign_in_cs', 'sign_in_cs.id', '=', 'StudentSingIn.ClassSessionID')
-            ->whereIn('StudentSingIn.StudentClassID', $ids)
-            ->where('SessionDeducted', true)
-            ->where(function ($query) use ($today) {
-                $query->whereNull('sign_in_cs.id')
-                    ->orWhere(function ($linked) use ($today) {
-                        $linked->whereDate('sign_in_cs.SessionDate', '<=', $today)
-                            ->whereIn('sign_in_cs.Status', [
-                                'completed', 'attended', 'late', 'cancelled',
-                                'scheduled', 'rescheduled', 'absent',
-                            ]);
-                    });
-            })
-            ->get([
-                'StudentSingIn.id', 'StudentSingIn.StudentClassID', 'StudentSingIn.ClassSessionID',
-                'StudentSingIn.SignInDT', 'StudentSingIn.Status',
-                'sign_in_cs.SessionDate as cs_date', 'sign_in_cs.StartTime as cs_start', 'sign_in_cs.EndTime as cs_end',
-            ]);
-        foreach ($signIns as $signIn) {
-            $note = match (strtolower((string) $signIn->Status)) {
-                'absent' => '缺席（已扣堂）',
-                'leave', 'excused' => '請假（已扣堂）',
-                default => null,
-            };
-            // Same distinct key as the counter: COALESCE(NULLIF(ClassSessionID, 0), id).
-            $key = (int) $signIn->ClassSessionID > 0 ? 's:' . (int) $signIn->ClassSessionID : 'i:' . (int) $signIn->id;
-            $lesson = $signIn->getAttribute('cs_date')
-                ? $row($signIn->getAttribute('cs_date'), $signIn->getAttribute('cs_start'), $signIn->getAttribute('cs_end'), $note)
-                : $row($signIn->SignInDT, substr((string) $signIn->SignInDT, 11, 5) ?: null, null, $note);
-            if ($lesson !== null) {
-                $sets['signin'][(int) $signIn->StudentClassID][$key] ??= $lesson;
-            }
-        }
-
-        ClassSession::query()
-            ->whereIn('StudentClassID', $ids)
-            ->whereIn('Status', ['completed', 'attended', 'late'])
-            ->whereDate('SessionDate', '<=', $today)
-            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime'])
-            ->each(function ($cs) use (&$sets, $row) {
-                $lesson = $row($cs->SessionDate, $cs->StartTime, $cs->EndTime, null);
-                if ($lesson !== null) {
-                    $sets['session'][(int) $cs->StudentClassID]['s:' . $cs->id] = $lesson;
-                }
-            });
-
-        LearningRecord::query()
-            ->whereIn('StudentClassID', $ids)
-            ->where('Status', 'approved')
-            ->where(fn ($q) => $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0))
-            ->whereNotNull('SessionDate')
-            ->get(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime'])
-            ->each(function ($lr) use (&$sets, $row) {
-                // Same distinct key as the counter: date + first five chars of StartTime.
-                $key = substr((string) $lr->SessionDate, 0, 10) . '|' . substr((string) $lr->StartTime, 0, 5);
-                $lesson = $row($lr->SessionDate, $lr->StartTime, $lr->EndTime, null);
-                if ($lesson !== null) {
-                    $sets['record'][(int) $lr->StudentClassID][$key] ??= $lesson;
-                }
-            });
-
         $out = [];
-        foreach ($ids as $id) {
-            $best = [];
-            foreach ($sets as $bySource) {
-                $candidate = $bySource[$id] ?? [];
-                if (count($candidate) > count($best)) {
-                    $best = $candidate;
-                }
-            }
-            if ($best === []) {
-                continue;
-            }
-            $best = array_values($best);
-            usort($best, fn ($a, $b) => strcmp($b['date'] . ($b['time'] ?? ''), $a['date'] . ($a['time'] ?? '')));
-            $out[$id] = $best;
+        foreach (SessionDeductionService::batchObservedUsedSessionEvidence($studentClassIds) as $classId => $rows) {
+            $lessons = array_map(function (array $r): array {
+                $start = $this->trimToHM($r['start']);
+                $end = $this->trimToHM($r['end']);
+                $status = strtolower((string) $r['status']);
+                return [
+                    'date' => $r['date'],
+                    'time' => $start !== '' ? ($end !== '' ? "$start-$end" : $start) : null,
+                    'note' => $r['source'] !== 'deducted' ? null : match ($status) {
+                        'absent' => '缺席（已扣堂）',
+                        'leave', 'excused' => '請假（已扣堂）',
+                        default => null,
+                    },
+                ];
+            }, $rows);
+            usort($lessons, fn ($a, $b) => strcmp(($b['date'] ?? '') . ($b['time'] ?? ''), ($a['date'] ?? '') . ($a['time'] ?? '')));
+            $out[(int) $classId] = $lessons;
         }
 
         return $out;
