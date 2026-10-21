@@ -74,6 +74,17 @@ class FeedbackPushNotifier
         if (!$this->enabled()) {
             return;
         }
+        // in-app #413: a parent follow-up is new work. Reopen the thread's staff notice and show it
+        // unread again, even when the merge window below suppresses the push itself.
+        if (config('perfflags.notification_source_resolve_enabled', false)) {
+            $existingId = DB::table('Notifications')
+                ->where('SourceKey', "lrfb:{$feedback->campus_id}:{$feedback->learning_record_id}:to_staff")
+                ->value('id');
+            if ($existingId) {
+                DB::table('Notifications')->where('id', $existingId)->update(['ResolvedAt' => null]);
+                DB::table('NotificationReads')->where('NotificationID', $existingId)->delete();
+            }
+        }
         if (!$this->passMergeWindow($feedback, 'to_staff')) {
             return;
         }
@@ -84,7 +95,7 @@ class FeedbackPushNotifier
         $body = "{$studentName} 的家長在學習回饋留言，請至學習評量查看並回覆。";
 
         // SourceKey 唯一 → 同一回饋串只會有一筆鈴鐺，重複事件更新同列（天然合併）。
-        $notification = Notification::updateOrCreate(
+        Notification::updateOrCreate(
             ['SourceKey' => "lrfb:{$feedback->campus_id}:{$feedback->learning_record_id}:to_staff"],
             [
                 'CampusID' => (int) $feedback->campus_id,
@@ -102,10 +113,6 @@ class FeedbackPushNotifier
                 'ResolvedAt' => null,
             ]
         );
-        // in-app #413: a new parent message on an existing thread is new work → unread again for staff.
-        if (!$notification->wasRecentlyCreated && config('perfflags.notification_source_resolve_enabled', false)) {
-            DB::table('NotificationReads')->where('NotificationID', $notification->id)->delete();
-        }
 
         $this->recordPush($feedback, 'to_staff');
     }

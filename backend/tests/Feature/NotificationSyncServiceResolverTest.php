@@ -2,17 +2,22 @@
 
 namespace Tests\Feature;
 
+use App\Models\FeedbackPushLog;
 use App\Models\LearningRecordFeedback;
 use App\Models\Notification;
 use App\Models\NotificationRead;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentSignIn;
+use App\Services\FeedbackPushNotifier;
 use App\Services\NotificationSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/** in-app #413: the director inbox re-checks source rows of deduction_failed / lr_feedback and clears handled items. */
+/**
+ * in-app #413: inbox sync re-checks deduction_failed source rows (flag-gated); lr_feedback stays
+ * event-driven in FeedbackPushNotifier, which also reopens the notice on a parent follow-up.
+ */
 class NotificationSyncServiceResolverTest extends TestCase
 {
     use RefreshDatabase;
@@ -37,31 +42,23 @@ class NotificationSyncServiceResolverTest extends TestCase
     private function signIn(array $overrides = []): StudentSignIn
     {
         return StudentSignIn::create(array_merge([
-            'StudentID' => 501, 'StudentClassID' => 601, 'ClassSessionID' => 701, 'SignInDT' => now()->toDateTimeString(),
-            'Status' => 'present', 'CampusID' => 1, 'PersonType' => 'student', 'SessionDeducted' => false, 'MDT' => now(),
+            'StudentID' => 501, 'StudentClassID' => 601, 'ClassSessionID' => $this->sessionSeq++,
+            'SignInDT' => now()->toDateTimeString(), 'Status' => 'present', 'CampusID' => 1,
+            'PersonType' => 'student', 'SessionDeducted' => false, 'MDT' => now(),
         ], $overrides));
     }
 
-    private function ledger(string $event): void
+    private function ledger(StudentSignIn $signIn, string $event): void
     {
         SessionDeductionLedger::create([
-            'student_class_id' => 601, 'class_session_id' => 701, 'event_type' => $event, 'source' => 'manual',
+            'student_class_id' => (int) $signIn->StudentClassID, 'class_session_id' => (int) $signIn->ClassSessionID,
+            'event_type' => $event, 'source' => 'manual',
         ]);
     }
 
-    private function feedback(int $campusId = 1): LearningRecordFeedback
+    private function deductionNotice(StudentSignIn $signIn, int $campusId = 1): Notification
     {
-        return LearningRecordFeedback::create([
-            'learning_record_id' => 801, 'student_id' => 501, 'student_class_id' => 601, 'class_session_id' => null,
-            'teacher_id' => 1, 'campus_id' => $campusId, 'content' => 'parent message',
-        ]);
-    }
-
-    private function reply(LearningRecordFeedback $feedback, string $role, string $at): void
-    {
-        DB::table('learning_record_feedback_replies')->insert([
-            'feedback_id' => $feedback->id, 'author_role' => $role, 'content' => 'x', 'created_at' => $at, 'updated_at' => $at,
-        ]);
+        return $this->notice('deduction_failed', 'StudentSignIn', (int) $signIn->id, $campusId);
     }
 
     private function isOpen(Notification $n): bool
@@ -71,98 +68,69 @@ class NotificationSyncServiceResolverTest extends TestCase
 
     public function test_deduction_failed_stays_open_while_sign_in_is_undeducted(): void
     {
-        $n = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn()->id);
+        $n = $this->deductionNotice($this->signIn());
 
         NotificationSyncService::sync([]);
 
         $this->assertTrue($this->isOpen($n));
     }
 
-    public function test_deduction_failed_resolves_when_sign_in_is_deducted_voided_or_leave(): void
+    public function test_deduction_failed_resolves_with_reason_when_handled(): void
     {
         $deducted = $this->signIn();
-        $voided = $this->signIn(['ClassSessionID' => 702]);
-        $leave = $this->signIn(['ClassSessionID' => 703]);
-        $a = $this->notice('deduction_failed', 'StudentSignIn', (int) $deducted->id);
-        $b = $this->notice('deduction_failed', 'StudentSignIn', (int) $voided->id);
-        $c = $this->notice('deduction_failed', 'StudentSignIn', (int) $leave->id);
+        $voided = $this->signIn();
+        $absent = $this->signIn();
+        $a = $this->deductionNotice($deducted);
+        $b = $this->deductionNotice($voided);
+        $c = $this->deductionNotice($absent);
         $deducted->update(['SessionDeducted' => true]);
         $voided->update(['VoidedAt' => now()]);
-        DB::table('StudentSingIn')->where('id', $leave->id)->update(['Status' => 'leave', 'SignOutDT' => now()]);
+        DB::table('StudentSingIn')->where('id', $absent->id)->update(['Status' => 'absent']);
 
         $result = NotificationSyncService::sync([]);
 
-        $this->assertFalse($this->isOpen($a));
-        $this->assertFalse($this->isOpen($b));
-        $this->assertFalse($this->isOpen($c));
         $this->assertSame(3, $result['source_resolved']);
+        $this->assertSame('deducted', $a->fresh()->Payload[NotificationSyncService::SOURCE_RESOLVED_REASON]);
+        $this->assertSame('sign_in_voided', $b->fresh()->Payload[NotificationSyncService::SOURCE_RESOLVED_REASON]);
+        $this->assertSame('non_deductible_status', $c->fresh()->Payload[NotificationSyncService::SOURCE_RESOLVED_REASON]);
+        $this->assertArrayHasKey(NotificationSyncService::SOURCE_RESOLVED_MARKER, $a->fresh()->Payload);
     }
 
-    public function test_deduction_failed_resolves_on_ledger_deduct_and_reopens_after_reverse(): void
+    public function test_deduction_failed_resolves_on_ledger_deduct_and_reopens_unread_after_reverse(): void
     {
-        $n = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn()->id);
-        $this->ledger('deduct');
+        $signIn = $this->signIn();
+        $n = $this->deductionNotice($signIn);
+        $this->ledger($signIn, 'deduct');
 
         NotificationSyncService::sync([]);
         $this->assertFalse($this->isOpen($n));
+        $this->assertSame('ledger_deducted', $n->fresh()->Payload[NotificationSyncService::SOURCE_RESOLVED_REASON]);
         NotificationRead::create(['NotificationID' => $n->id, 'UserID' => 1, 'ReadAt' => now()]);
 
-        $this->ledger('reverse');
+        $this->ledger($signIn, 'reverse');
         $result = NotificationSyncService::sync([]);
 
         $this->assertTrue($this->isOpen($n));
         $this->assertSame(1, $result['source_reopened']);
+        $this->assertArrayNotHasKey(NotificationSyncService::SOURCE_RESOLVED_REASON, (array) $n->fresh()->Payload);
         $this->assertSame(0, NotificationRead::where('NotificationID', $n->id)->count(), 'reopened item shows unread again');
     }
 
-    public function test_lr_feedback_resolves_on_staff_reply_and_reopens_on_parent_follow_up(): void
+    public function test_rows_resolved_before_the_lookback_are_not_rechecked(): void
     {
-        $fb = $this->feedback();
-        $n = $this->notice('lr_feedback', 'LearningRecordFeedback', (int) $fb->id);
-
-        NotificationSyncService::sync([]);
-        $this->assertTrue($this->isOpen($n), 'unanswered parent feedback stays open');
-
-        $this->reply($fb, 'teacher', now()->subMinutes(10)->toDateTimeString());
-        NotificationSyncService::sync([]);
-        $this->assertFalse($this->isOpen($n));
-
-        $this->reply($fb, 'parent', now()->subMinute()->toDateTimeString());
-        NotificationSyncService::sync([]);
-        $this->assertTrue($this->isOpen($n));
-    }
-
-    public function test_lr_feedback_resolves_when_dismissed_as_no_reply_needed(): void
-    {
-        $fb = $this->feedback();
-        $n = $this->notice('lr_feedback', 'LearningRecordFeedback', (int) $fb->id);
-        DB::table('learning_record_feedbacks')->where('id', $fb->id)->update(['awaiting_dismissed_at' => now()->addSecond()]);
+        $signIn = $this->signIn();
+        $n = $this->deductionNotice($signIn);
+        $n->forceFill(['ResolvedAt' => now()->subDays(30)])->save();
 
         NotificationSyncService::sync([]);
 
         $this->assertFalse($this->isOpen($n));
-    }
-
-    public function test_only_scoped_campus_and_own_types_are_touched(): void
-    {
-        $other = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn(['ClassSessionID' => $this->sessionSeq++, 'SessionDeducted' => true])->id, 2);
-        $manual = $this->notice('system_alert', 'StudentSignIn', (int) $this->signIn(['ClassSessionID' => $this->sessionSeq++, 'SessionDeducted' => true])->id);
-        $substitute = $this->notice('substitute', 'ClassSession', 701);
-
-        NotificationSyncService::sync([1]);
-
-        $this->assertTrue($this->isOpen($other), 'campus 2 not in scope');
-        $this->assertTrue($this->isOpen($manual), 'manual types stay manual');
-        $this->assertTrue($this->isOpen($substitute), 'substitute ResolvedAt means undone, not handled');
-
-        NotificationSyncService::sync([2]);
-        $this->assertFalse($this->isOpen($other));
     }
 
     public function test_flag_off_leaves_every_notice_untouched(): void
     {
         config(['perfflags.notification_source_resolve_enabled' => false]);
-        $n = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn(['SessionDeducted' => true])->id);
+        $n = $this->deductionNotice($this->signIn(['SessionDeducted' => true]));
 
         $result = NotificationSyncService::sync([]);
 
@@ -170,47 +138,63 @@ class NotificationSyncServiceResolverTest extends TestCase
         $this->assertSame(0, $result['source_resolved']);
     }
 
-    public function test_deduction_failed_reversal_long_after_resolve_still_reopens(): void
+    public function test_only_scoped_campus_and_deduction_failed_are_touched(): void
     {
-        $n = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn()->id);
-        $this->ledger('deduct');
-        NotificationSyncService::sync([]);
-        $n->forceFill(['ResolvedAt' => now()->subDays(60)])->save();
+        $other = $this->deductionNotice($this->signIn(['SessionDeducted' => true]), 2);
+        $manual = $this->notice('system_alert', 'StudentSignIn', (int) $this->signIn(['SessionDeducted' => true])->id);
+        $substitute = $this->notice('substitute', 'ClassSession', 701);
+        $feedback = $this->notice('lr_feedback', 'LearningRecordFeedback', 999);
 
-        $this->ledger('reverse');
-        NotificationSyncService::sync([]);
+        NotificationSyncService::sync([1]);
 
-        $this->assertTrue($this->isOpen($n));
+        $this->assertTrue($this->isOpen($other), 'campus 2 not in scope');
+        $this->assertTrue($this->isOpen($manual), 'manual types stay manual');
+        $this->assertTrue($this->isOpen($substitute), 'substitute ResolvedAt means undone, not handled');
+        $this->assertTrue($this->isOpen($feedback), 'lr_feedback is event-driven, not polled');
+
+        NotificationSyncService::sync([2]);
+        $this->assertFalse($this->isOpen($other));
     }
 
-    public function test_parent_follow_up_through_producer_shows_unread_again(): void
+    private function feedbackThreadNotice(): array
     {
         config(['perfflags.feedback_push_enabled' => true]);
-        $fb = $this->feedback();
-        $notifier = app(\App\Services\FeedbackPushNotifier::class);
+        $fb = LearningRecordFeedback::create([
+            'learning_record_id' => 801, 'student_id' => 501, 'student_class_id' => 601, 'class_session_id' => null,
+            'teacher_id' => 1, 'campus_id' => 1, 'content' => 'parent message',
+        ]);
+        $notifier = app(FeedbackPushNotifier::class);
         $notifier->notifyParentSubmitted($fb);
         $n = Notification::where('Type', 'lr_feedback')->firstOrFail();
+        $notifier->resolveStaffNotification($fb);
         NotificationRead::create(['NotificationID' => $n->id, 'UserID' => 1, 'ReadAt' => now()]);
-        \App\Models\FeedbackPushLog::query()->delete();
 
-        $notifier->notifyParentReplied($fb);
+        return [$fb, $notifier, $n];
+    }
+
+    public function test_parent_follow_up_reopens_unread_even_inside_merge_window(): void
+    {
+        [$fb, $notifier, $n] = $this->feedbackThreadNotice();
+        $this->assertFalse($this->isOpen($n), 'staff reply path resolved it');
+
+        $notifier->notifyParentReplied($fb); // within the merge window: no push, still reopens
 
         $this->assertTrue($this->isOpen($n));
         $this->assertSame(0, NotificationRead::where('NotificationID', $n->id)->count());
     }
 
-    public function test_flag_off_producer_keeps_read_receipts(): void
+    public function test_flag_off_producer_keeps_existing_behaviour_inside_merge_window(): void
     {
-        config(['perfflags.feedback_push_enabled' => true, 'perfflags.notification_source_resolve_enabled' => false]);
-        $fb = $this->feedback();
-        $notifier = app(\App\Services\FeedbackPushNotifier::class);
-        $notifier->notifyParentSubmitted($fb);
-        $n = Notification::where('Type', 'lr_feedback')->firstOrFail();
-        NotificationRead::create(['NotificationID' => $n->id, 'UserID' => 1, 'ReadAt' => now()]);
-        \App\Models\FeedbackPushLog::query()->delete();
+        [$fb, $notifier, $n] = $this->feedbackThreadNotice();
+        config(['perfflags.notification_source_resolve_enabled' => false]);
 
         $notifier->notifyParentReplied($fb);
 
+        $this->assertFalse($this->isOpen($n));
         $this->assertSame(1, NotificationRead::where('NotificationID', $n->id)->count());
+
+        FeedbackPushLog::query()->delete();
+        $notifier->notifyParentReplied($fb);
+        $this->assertTrue($this->isOpen($n), 'outside the window the producer reopens as before');
     }
 }

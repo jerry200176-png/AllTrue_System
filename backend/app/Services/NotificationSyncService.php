@@ -10,6 +10,7 @@ use App\Models\PendingSwipe;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
@@ -19,18 +20,19 @@ use Illuminate\Support\Facades\Log;
 class NotificationSyncService
 {
     /**
-     * in-app #413: types written elsewhere (never created here) whose source row tells whether the
-     * director still has work to do. Each resolver returns notification id => still open, only for rows
-     * it could evaluate; it touches only its own Type. `substitute` stays out on purpose: its ResolvedAt
-     * means "substitute undone/restored" (undo endpoint, calendar badge), not "handled".
+     * in-app #413: deduction_failed is written elsewhere (StudentPresenceBackfillService) and never
+     * created here; this re-check resolves/reopens it from its source row. lr_feedback is NOT polled:
+     * FeedbackPushNotifier resolves it on staff reply / 不需回覆 and reopens it on parent follow-up.
+     * `substitute` stays manual: its ResolvedAt means "substitute undone/restored", not "handled".
      */
-    private const SOURCE_RESOLVED_TYPES = ['deduction_failed', 'lr_feedback'];
+    private const DEDUCTION_FAILED_TYPE = 'deduction_failed';
 
-    /**
-     * Resolved lr_feedback rows older than the awaiting window cannot become awaiting again, so they
-     * are not re-checked. deduction_failed has no such bound: a ledger reversal can come any time later.
-     */
-    private const FEEDBACK_REOPEN_LOOKBACK_DAYS = ParentFeedbackAwaitingService::AWAITING_STALE_AFTER_DAYS;
+    /** Resolved rows are re-checked for reopen only this long after resolve (bounded, indexed scan). */
+    private const SOURCE_REOPEN_LOOKBACK_DAYS = 14;
+
+    /** Payload keys on rows this re-check resolved: when, and why (shown as 已自動結案 reason; rollback finds them). */
+    public const SOURCE_RESOLVED_MARKER = 'source_resolved_at';
+    public const SOURCE_RESOLVED_REASON = 'source_resolved_reason';
 
     /**
      * Sync notifications from multiple business sources.
@@ -177,42 +179,47 @@ class NotificationSyncService
         if (!config('perfflags.notification_source_resolve_enabled', false)) {
             return ['resolved' => 0, 'reopened' => 0];
         }
-        $query = Notification::query()
-            ->whereIn('Type', self::SOURCE_RESOLVED_TYPES)
-            ->where(fn ($q) => $q->whereNull('ResolvedAt')
-                ->orWhere('Type', '!=', 'lr_feedback')
-                ->orWhere('ResolvedAt', '>=', now()->subDays(self::FEEDBACK_REOPEN_LOOKBACK_DAYS)));
-        if (!empty($campusIds)) {
-            $query->whereIn('CampusID', $campusIds);
+        // Open rows plus rows resolved inside the lookback — not every row ever written. Uses the
+        // (CampusID, Type) / (ResolvedAt, OccurredAt) indexes.
+        $scoped = function () use ($campusIds) {
+            $q = Notification::query()->where('Type', self::DEDUCTION_FAILED_TYPE);
+            if (!empty($campusIds)) {
+                $q->whereIn('CampusID', $campusIds);
+            }
+
+            return $q;
+        };
+        $rows = $scoped()->whereNull('ResolvedAt')->get()
+            ->concat($scoped()->where('ResolvedAt', '>=', now()->subDays(self::SOURCE_REOPEN_LOOKBACK_DAYS))->get());
+        if ($rows->isEmpty()) {
+            return ['resolved' => 0, 'reopened' => 0];
         }
-        $rows = $query->get();
 
         $resolved = 0;
         $reopened = 0;
-        foreach (self::SOURCE_RESOLVED_TYPES as $type) {
-            $ofType = $rows->where('Type', $type)->values();
-            if ($ofType->isEmpty()) {
+        $handledReason = self::deductionFailedHandledReasons($rows);
+        foreach ($rows as $notification) {
+            if (!array_key_exists((int) $notification->id, $handledReason)) {
                 continue;
             }
-            $stillOpen = $type === 'deduction_failed'
-                ? self::deductionFailedStillOpen($ofType)
-                : self::feedbackStillOpen($ofType);
-            foreach ($ofType as $notification) {
-                if (!array_key_exists((int) $notification->id, $stillOpen)) {
-                    continue;
-                }
-                $open = $stillOpen[(int) $notification->id];
-                if (!$open && $notification->ResolvedAt === null) {
-                    $notification->ResolvedAt = now();
-                    $notification->save();
-                    $resolved++;
-                } elseif ($open && $notification->ResolvedAt !== null) {
-                    // Same as tuition: a resolved -> open transition must show unread again.
-                    $notification->ResolvedAt = null;
-                    $notification->save();
-                    NotificationRead::query()->where('NotificationID', $notification->id)->delete();
-                    $reopened++;
-                }
+            $reason = $handledReason[(int) $notification->id];
+            $payload = (array) ($notification->Payload ?? []);
+            if ($reason !== null && $notification->ResolvedAt === null) {
+                $notification->ResolvedAt = now();
+                $notification->Payload = array_merge($payload, [
+                    self::SOURCE_RESOLVED_MARKER => now()->toIso8601String(),
+                    self::SOURCE_RESOLVED_REASON => $reason,
+                ]);
+                $notification->save();
+                $resolved++;
+            } elseif ($reason === null && $notification->ResolvedAt !== null) {
+                // Same as tuition: a resolved -> open transition must show unread again.
+                unset($payload[self::SOURCE_RESOLVED_MARKER], $payload[self::SOURCE_RESOLVED_REASON]);
+                $notification->ResolvedAt = null;
+                $notification->Payload = $payload;
+                $notification->save();
+                NotificationRead::query()->where('NotificationID', $notification->id)->delete();
+                $reopened++;
             }
         }
 
@@ -220,13 +227,15 @@ class NotificationSyncService
     }
 
     /**
-     * Attendance recorded but not deducted: handled once that sign-in is deducted, voided, deleted or
-     * corrected to leave (never deducts), or the session now has a net deduction in the ledger (e.g. a manual 補扣).
+     * Attendance recorded but not deducted. Handled (reason) once that sign-in is deducted, voided,
+     * deleted or corrected to a non-deductible status (AttendanceStatus::META: leave, absent, trial, …),
+     * or the session has a net deduction in the ledger (e.g. a manual 補扣); null = still open.
+     * Only rows it could evaluate are returned.
      *
      * @param  \Illuminate\Support\Collection<int, Notification>  $notifications
-     * @return array<int, bool>
+     * @return array<int, string|null>
      */
-    private static function deductionFailedStillOpen($notifications): array
+    private static function deductionFailedHandledReasons($notifications): array
     {
         $signInIds = $notifications->where('SourceType', 'StudentSignIn')
             ->pluck('SourceID')->map(fn ($v) => (int) $v)->filter()->unique()->values()->all();
@@ -249,46 +258,24 @@ class NotificationSyncService
                 continue;
             }
             $signIn = $signIns->get($signInId);
-            $handled = $signIn === null
-                || $signIn->VoidedAt !== null
-                || (bool) $signIn->SessionDeducted
-                || strtolower(trim((string) $signIn->Status)) === 'leave'
-                || isset($netDeducted[(int) $signIn->StudentClassID . ':' . (int) $signIn->ClassSessionID]);
-            $out[(int) $notification->id] = !$handled;
+            $out[(int) $notification->id] = match (true) {
+                $signIn === null => 'sign_in_deleted',
+                $signIn->VoidedAt !== null => 'sign_in_voided',
+                (bool) $signIn->SessionDeducted => 'deducted',
+                self::isNonDeductibleStatus((string) $signIn->Status) => 'non_deductible_status',
+                isset($netDeducted[(int) $signIn->StudentClassID . ':' . (int) $signIn->ClassSessionID]) => 'ledger_deducted',
+                default => null,
+            };
         }
 
         return $out;
     }
 
-    /**
-     * Parent feedback: handled once the thread is no longer awaiting a staff reply (staff replied,
-     * "不需回覆" dismissed, or past the awaiting window) — the same rule as the awaiting badge.
-     *
-     * @param  \Illuminate\Support\Collection<int, Notification>  $notifications
-     * @return array<int, bool>
-     */
-    private static function feedbackStillOpen($notifications): array
+    private static function isNonDeductibleStatus(string $status): bool
     {
-        $feedbackIds = $notifications->where('SourceType', 'LearningRecordFeedback')
-            ->pluck('SourceID')->map(fn ($v) => (int) $v)->filter()->unique()->values()->all();
-        $feedbacks = DB::table('learning_record_feedbacks')->whereIn('id', $feedbackIds ?: [0])
-            ->get(['id', 'created_at', 'awaiting_dismissed_at'])->keyBy('id');
-        $replies = DB::table('learning_record_feedback_replies')->whereIn('feedback_id', $feedbackIds ?: [0])
-            ->get(['id', 'feedback_id', 'author_role', 'created_at'])->groupBy('feedback_id');
-        $awaiting = app(ParentFeedbackAwaitingService::class);
+        $code = strtolower(trim($status));
 
-        $out = [];
-        foreach ($notifications as $notification) {
-            $feedbackId = (int) $notification->SourceID;
-            if ($notification->SourceType !== 'LearningRecordFeedback' || $feedbackId <= 0) {
-                continue;
-            }
-            $feedback = $feedbacks->get($feedbackId);
-            $out[(int) $notification->id] = $feedback !== null
-                && $awaiting->isAwaitingStaffReply($feedback, $replies->get($feedbackId, collect()));
-        }
-
-        return $out;
+        return $code !== '' && AttendanceStatus::exists($code) && !AttendanceStatus::isDeductible($code);
     }
 
     /** System-only: retire tuition notices left in a student's former campus after transfer. */
