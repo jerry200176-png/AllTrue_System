@@ -2017,8 +2017,12 @@ jobs:
             $t[] = 'table_' . ($hasTable ? 'yes' : 'no');
             if ($hasTable) {{
               $cols = collect($db->select('SHOW COLUMNS FROM invoice_corrections'))->keyBy('Field');
-              $base = ['original_invoice_id', 'replacement_invoice_id', 'amount', 'student_class_id', 'idempotency_key'];
+              // Every base column AgreedFeeCorrection::run() inserts, plus the auto-increment id insertGetId() needs.
+              $base = ['id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'student_class_id',
+                'reason', 'idempotency_key', 'operator_user_id', 'created_at'];
               $t[] = 'base_' . (collect($base)->every(fn ($c) => $cols->has($c)) ? 'ok' : 'missing');
+              $t[] = 'idauto_' . ($cols->has('id') && str_contains(strtolower((string) $cols->get('id')->Extra), 'auto_increment') ? 'yes' : 'no');
+              $keyCols = $cols->has('student_class_id') && $cols->has('idempotency_key');
               // Columns AgreedFeeCorrection::available() needs; a ledger row for m1019 does not prove they exist.
               $ext = ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'];
               $t[] = 'ext_' . count(array_filter($ext, fn ($c) => $cols->has($c))) . 'of' . count($ext);
@@ -2034,7 +2038,7 @@ jobs:
                 $t[] = 'kindnull_' . (int) $db->table('invoice_corrections')->whereNull('kind')->count();
               }}
               $t[] = 'rows_' . (int) $db->table('invoice_corrections')->count();
-              $t[] = 'dupkeys_' . (int) $db->selectOne('SELECT COUNT(*) AS n FROM (SELECT student_class_id, idempotency_key FROM invoice_corrections WHERE idempotency_key IS NOT NULL GROUP BY student_class_id, idempotency_key HAVING COUNT(*) > 1) d')->n;
+              $t[] = 'dupkeys_' . (!$keyCols ? 'unavailable' : (int) $db->selectOne('SELECT COUNT(*) AS n FROM (SELECT student_class_id, idempotency_key FROM invoice_corrections WHERE idempotency_key IS NOT NULL GROUP BY student_class_id, idempotency_key HAVING COUNT(*) > 1) d')->n);
               // The migration skips creation when the name exists, so check what that index actually is.
               $uq = collect($db->select('SHOW INDEX FROM invoice_corrections'))->where('Key_name', 'uq_invoice_corrections_course_key')->sortBy('Seq_in_index')->values();
               $t[] = 'uq_' . ($uq->isEmpty() ? 'no'
