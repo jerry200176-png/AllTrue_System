@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONST="${CONSTITUTION_FILE:-$ROOT/docs/governance/COMPANY_CONSTITUTION.md}"
 OVERLAY="${OVERLAY_FILE:-}"
+TMP=""
+trap '[[ -z "$TMP" ]] || rm -- "$TMP"' EXIT
 
 fail() { echo "overlay-pin: FAIL: $*" >&2; exit 1; }
 ok() { echo "overlay-pin: OK: $*"; }
@@ -23,16 +25,21 @@ if [[ -z "$OVERLAY" ]]; then
     TMP=$(mktemp)
     if curl -fsSL "https://raw.githubusercontent.com/jerry200176-png/sunrise-cafe/main/docs/governance/OVERLAY.md" -o "$TMP"; then
       OVERLAY="$TMP"
-    elif [[ -f "$ROOT/docs/governance/SUNRISE_OVERLAY_PIN" ]]; then
-      OVERLAY="$ROOT/docs/governance/SUNRISE_OVERLAY_PIN"
     else
-      fail "no OVERLAY_FILE and cannot fetch sunrise OVERLAY.md"
+      fail "cannot fetch sunrise OVERLAY.md; refusing unverified cached SUNRISE_OVERLAY_PIN"
     fi
   fi
 fi
 
 [[ -f "$OVERLAY" ]] || fail "missing overlay $OVERLAY"
-PIN=$(grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" | head -1 | sed 's/^v//')
+# Sunrise #470 replaced its legacy version pin with a vendored rulebook lock.
+# Validate that pin's integrity, without importing rules or authority into AllTrue.
+if grep -Fq 'governance/RULEBOOK.lock' "$OVERLAY"; then
+  python3 "$ROOT/scripts/governance/validate-sunrise-rulebook-pin.py"
+  exit 0
+fi
+# A missing match is an input/contract error, not an unlabelled pipefail exit.
+PIN=$(grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" | head -1 | sed 's/^v//' || true)
 [[ -n "$PIN" ]] || fail "could not parse overlay pin version"
 
 # Strip leading v from constitution if present
