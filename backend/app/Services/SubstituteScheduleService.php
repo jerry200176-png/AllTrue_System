@@ -56,21 +56,44 @@ class SubstituteScheduleService
     }
 
     /**
-     * Effective Teacher for many occurrences (docs/adr/ADR-EFFECTIVE-TEACHER.md): teacherForOccurrence() per distinct
-     * course/date/start, so pay, stats and attribution read the same answer as the calendar and guard.
+     * Effective Teacher for many occurrences (docs/adr/ADR-EFFECTIVE-TEACHER.md): teacherForOccurrence() semantics per distinct
+     * course/date/start (legacy assignments batched), so pay, stats and attribution read the same answer as the calendar and guard.
      * ponytail: one resolve per distinct occurrence; batch the SQL if a month-wide report gets slow.
      *
      * @param  iterable<array{course_id:int, date:string, start_time:?string, contract_teacher_id:int}>  $occurrences
      * @return array<string, int> occurrenceKey() => teacher user id
      */
-    public static function teachersForOccurrences(iterable $occurrences): array
+    public static function teachersForOccurrences(iterable $occurrences, bool $lock = false): array
     {
-        $out = [];
-        foreach ($occurrences as $o) {
-            $key = self::occurrenceKey((int) $o['course_id'], (string) $o['date'], $o['start_time'] ?? null);
-            $out[$key] ??= self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null);
+        $items = [];
+        foreach ($occurrences as $o) $items[self::occurrenceKey((int) $o['course_id'], (string) $o['date'], $o['start_time'] ?? null)] ??= $o;
+        if ($items === []) return [];
+        $ids = array_values(array_unique(array_column($items, 'course_id')));
+        $v2 = [];
+        if (self::anyCampusOn()) {
+            $courses = DB::table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
+                ->whereIn('sc.ID', $ids)->when($lock, fn ($q) => $q->sharedLock())->get(['sc.ID', 's.CampusID']);
+            foreach ($courses as $course) $v2[(int) $course->ID] = OccurrenceAssignmentService::enabledFor((int) $course->CampusID);
         }
-
+        $legacyIds = array_values(array_filter($ids, fn ($id) => !($v2[$id] ?? false)));
+        $latest = [];
+        if ($legacyIds !== []) {
+            $rows = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
+                ->whereIn('student_course_id', $legacyIds)->whereIn('schedule_date', array_unique(array_column($items, 'date')))
+                ->where('status', 'scheduled')->whereNotNull('original_schedule_id')->orderByDesc('id')
+                ->when($lock, fn ($q) => $q->lockForUpdate())->get(['student_course_id', 'schedule_date', 'start_time', 'teacher_id']);
+            foreach ($rows as $row) {
+                $teacher = (int) $row->teacher_id;
+                $latest[self::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, (string) $row->start_time)] ??= $teacher;
+                $latest[self::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, null)] ??= $teacher;
+            }
+        }
+        $out = [];
+        foreach ($items as $key => $o) {
+            $out[$key] = ($v2[(int) $o['course_id']] ?? false)
+                ? self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null, $lock)
+                : (($latest[$key] ?? 0) > 0 ? $latest[$key] : max(0, (int) $o['contract_teacher_id']));
+        }
         return $out;
     }
 

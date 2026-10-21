@@ -18,7 +18,7 @@ it('In-App #345: a settled monthly course with Stop=0 is labelled history, never
   const courses = [
     // Shape of the report: monthly, not stopped, but the server closed it as settled.
     { id: 8001, subject: 'Biology', subject_name: '生物', payment_type: 'monthly', status: 'active',
-      closed_reason: 'settled', payment_status: 'paid' },
+      closed_reason: 'settled', history_reason: 'settled', payment_status: 'paid' },
     { id: 8002, subject: 'Math', subject_name: '數學', payment_type: 'monthly', status: 'active',
       payment_status: 'paid' },
   ];

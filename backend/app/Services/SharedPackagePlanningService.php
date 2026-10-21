@@ -111,7 +111,7 @@ class SharedPackagePlanningService
                 'overage_sessions' => $overage,
                 'renewal_warning' => $overage > 0,
                 'renewal_message' => $overage > 0
-                    ? "未來預排 {$projected} 堂，超過目前剩餘 {$remaining} 堂 {$overage} 堂；仍可排課，請安排續約或加購。"
+                    ? "未來預排 {$projected} 堂，超過目前剩餘 {$remaining} 堂 {$overage} 堂；仍可排課，請安排續課。"
                     : null,
             ];
         }

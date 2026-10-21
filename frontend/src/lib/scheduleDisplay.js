@@ -176,6 +176,7 @@ export function formatRescheduleSuccessMessage(opts = {}) {
 /** Conflict list — never「#student_id」. */
 export function formatRescheduleConflictStudents(details) {
   const list = Array.isArray(details) ? details : [];
+  const seen = new Set();
   const labels = list
     .map((d) => {
       const name = formatDirectorPersonName({
@@ -186,12 +187,29 @@ export function formatRescheduleConflictStudents(details) {
       // #2006：只顯示姓名時，主任分不出是「同一堂」還是這位學生的另一筆課程
       // （常見於續約時舊課程沒關閉，跟新課程同時段並存）。補上科目/期別。
       const courseLabel = [d?.subject_name, d?.course_period].filter(Boolean).join('・');
-      return courseLabel ? `${name}（${courseLabel}）` : name;
+      const label = courseLabel ? `${name}（${courseLabel}）` : name;
+      // Only authoritative student IDs identify duplicate projections. Keep
+      // different course variants and never merge different students by name.
+      const id = d?.student_id;
+      if (id != null && Number(id) > 0) {
+        const key = `${id}|${label}`;
+        if (seen.has(key)) return '';
+        seen.add(key);
+      }
+      return label;
     })
     .filter(Boolean);
   if (labels.length) return `此時段已有：${labels.join('、')}`;
   if (list.length) return '目標時段已有其他學生，請換一個時段再試。';
   return '';
+}
+
+/** Server summaries are complete; append details only for legacy responses. */
+export function formatRescheduleFailure(error) {
+  const message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
+  if (message.includes('此時段已有：')) return message;
+  const details = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
+  return details ? `${message} ${details}` : message;
 }
 
 /** Soften engineer failure crumbs shared by calendar / CM / session-edit. */

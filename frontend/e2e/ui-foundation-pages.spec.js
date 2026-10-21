@@ -476,6 +476,9 @@ async function installApiMocks(page, mode, pageName = '', authProfile = null, on
               room_name: '303教室',
               status: 'inactive',
               closed_reason: 'completed',
+              // Server verdict (StudentClassActivity, in-app #427); the page reads it instead of re-deriving.
+              history_reason: 'completed',
+              is_active_course: false,
             },
           ],
         }),
@@ -826,7 +829,8 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '收合日期' })).toBeVisible();
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '收合日期' })).toBeVisible();
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"] .student-course-card__next-step')).toContainText('先處理課程續報');
-      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '續報加購' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"] button.student-course-card__primary')).toHaveText(/續課/);
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"] button.student-course-card__primary')).toBeVisible();
 
       const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');

@@ -5,8 +5,7 @@ import { askConfirm } from '../useConfirmDialog';
 import { commitReschedule } from '../../lib/rescheduleApi';
 import {
   formatRescheduleSuccessMessage,
-  formatRescheduleConflictStudents,
-  humanizeRescheduleFailure,
+  formatRescheduleFailure,
 } from '../../lib/scheduleDisplay';
 import { isEffectiveSession } from '../../lib/sessionOccurrenceFilter';
 
@@ -146,10 +145,7 @@ export function useRescheduleAndMakeup({
       trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal-atomic' });
       await loadCourses();
     } catch (error) {
-      let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
-      const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
-      if (conflictLine) message = `${message} ${conflictLine}`;
-      rescheduleError.value = message;
+      rescheduleError.value = formatRescheduleFailure(error);
     } finally {
       rescheduleSubmitting.value = false;
     }

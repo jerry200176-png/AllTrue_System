@@ -65,6 +65,17 @@ describe('useRescheduleAndMakeup atomic write safety (R71)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('renders the authoritative conflict message exactly once', async () => {
+    const message = '老師此時段本分校已有 2 位學生，已達一對二上限（2 位）。此時段已有：S-B。';
+    commitReschedule.mockRejectedValue(Object.assign(new Error(message), {
+      conflicts: [{ overlap_details: [{ student_id: 20, student_name: 'S-B' }] }],
+    }));
+    const flow = useRescheduleAndMakeup(makeDeps({ supabase: { auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'tok' } } })) }, from: vi.fn() } }));
+    seedForm(flow.rescheduleForm);
+    await flow.submitReschedule();
+    expect(flow.rescheduleError.value).toBe(message);
+  });
+
   it('fails closed without an authenticated session and performs no writes', async () => {
     const deps = makeDeps();
     const flow = useRescheduleAndMakeup(deps);

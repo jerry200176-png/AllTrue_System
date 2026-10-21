@@ -88,7 +88,9 @@
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
                 @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
                 @confirmed="openReceipt"
                 @changed="onPanelChanged"
@@ -290,7 +292,7 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" :return-focus-to="modalEl" @close="receiptOpen = false" />
     </div>
   </Transition>
@@ -610,6 +612,11 @@ const payLineFor = (course) => {
   const paid = lastInvoicePayment(ids);
   if (paid) return paid;
   if (isWaivedContract(course)) return { waived: true };
+  // in-app #428: a trial that carries its payment date has no invoice by design; the server derives this
+  // (StudentClass::isTrialFeeRecordedByDate, same rule as legacy_paid_flag_only), so it is not 需核對 legacy data.
+  // #4339 review: show that recorded date and the trial fee, never 還沒繳費 beside 已收清.
+  // A package-created trial member carries Charge=0 (the fee lives on the package): show the date only, never NT$ 0.
+  if (course.trial_fee_recorded_by_date === true && course.paid_at) return { date: course.paid_at, amount: Number(course.charge) > 0 ? Number(course.charge) : null };
   return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
@@ -728,12 +735,14 @@ async function submitIssue() {
 // PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
 const entryOpen = ref(false);
 const entryRow = ref(null);
-function openEntry(course) {
+const entryMode = ref('record');
+function openEntry(course, mode = 'record') {
+  entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
   entryRow.value = {
     id: course.id,
-    charge: course.charge,
+    charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,
