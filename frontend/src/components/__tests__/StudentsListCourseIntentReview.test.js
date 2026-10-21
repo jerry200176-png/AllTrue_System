@@ -18,6 +18,8 @@ describe('StudentsList actual intent options (#4358 review)', () => {
       { ...base, id: 7004, PackageID: 9, package_remaining_sessions: 4 },
       { ...base, id: 7005, sessions_used: 0, remaining_sessions: 8 },
       { ...base, id: 7006, rate_unit: 'hour' },
+      { ...base, id: 7007, latest_payment_report_id: 81 },
+      { ...base, id: 7008, payment_status: 'pending_report' },
     ];
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);

@@ -26,10 +26,12 @@ export function courseIntentEligibility(course) {
   const trial = course?.class_type === 'trial';
   const tutoring = course?.class_type === 'tutoring';
   const progress = courseProgress(course);
+  const pendingPaymentReport = course?.latest_payment_report_id != null
+    || course?.payment_status === 'pending_report';
   return {
     // Exhausted paid courses still need renewal; history-list membership is not eligibility.
     renewable: !closed && !trial && !(tutoring && packaged) && (monthly || session || tutoring),
-    transferable: !closed && !trial && !tutoring && session && !packaged
+    transferable: !closed && !trial && !tutoring && session && !packaged && !pendingPaymentReport
       && String(course?.rate_unit || 'session').toLowerCase() === 'session'
       && progress != null && progress.used > 0 && progress.remaining > 0,
     showRemainingSessions: !monthly && !packaged,
