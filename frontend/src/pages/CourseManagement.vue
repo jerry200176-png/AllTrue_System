@@ -613,7 +613,7 @@
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" title="在這裡打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 在這裡看帳務</button>
                         <button
-                          v-if="effectiveClosedReason(hc) === 'completed'"
+                          v-if="courseHistoryReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
                           role="menuitem"
                           title="從這期已完課課程建立下一期；既有課程與帳務紀錄不會變更"
@@ -1445,7 +1445,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';

@@ -36,6 +36,7 @@ describe('server-owned 進行中 verdict (in-app #427)', () => {
   it('課程管理 groups by the same verdict', () => {
     expect(courseManagement).toContain('filter(c => !isCourseManagementHistory(c))');
     expect(courseManagement).toContain('visibleCourses.filter(isActiveCourse)');
+    expect(courseManagement).toContain(`v-if="courseHistoryReason(hc) === 'completed'"`);
     expect(courseManagement).not.toMatch(/\bisHistoryCourse\(/);
   });
 });
