@@ -519,7 +519,8 @@ class StudentClassController extends Controller
 
             // 堂數制 Remaining = 購買堂數 − 實際已上；月結與部分時數（#613 A1，分鐘為權威）不覆寫。
             $storedRemainingMinutes = $class->RemainingMinutes;
-            $healedUsage = StudentClassActivity::selfHealedUsage($class, $observedUsedSessions);
+            $hasPartialLedger = (bool) ($usageDiagnostic['has_partial'] ?? false);
+            $healedUsage = StudentClassActivity::selfHealedUsage($class, $observedUsedSessions, $hasPartialLedger);
             if ($healedUsage !== null) {
                 $class->UsedSessions = $healedUsage['used'];
                 $class->RemainingSessions = $healedUsage['remaining'];
@@ -651,7 +652,7 @@ class StudentClassController extends Controller
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
             // in-app #427: the one 進行中／歷史 verdict; 學生管理, 課程管理 and the duplicate prompt all read it.
-            $historyReason = StudentClassActivity::historyReason($class, (int) ($class->RemainingSessions ?? 0), $resolved);
+            $historyReason = StudentClassActivity::historyReason($class, (int) ($class->RemainingSessions ?? 0), $resolved, $hasPartialLedger);
             $class->setAttribute('history_reason', $historyReason);
             $class->setAttribute('is_active_course', StudentClassActivity::isActive($class, $historyReason));
             $class->trial_converted_to_id = $class->trial_converted_to_id

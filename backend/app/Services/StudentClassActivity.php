@@ -30,15 +30,13 @@ final class StudentClassActivity
      *
      * @return array{used: int, remaining: int}|null
      */
-    public static function selfHealedUsage(StudentClass $course, int $observedUsed): ?array
+    public static function selfHealedUsage(StudentClass $course, int $observedUsed, bool $hasPartialLedger = false): ?array
     {
         $purchased = (int) ($course->SessionCount ?? 0);
         if (($course->ScheduleMode ?? 'count') !== 'count' || $purchased <= 0) {
             return null;
         }
-        $perSessionMin = max(1, (int) ($course->SessionDuration ?: 60));
-        $remainingMinutes = $course->RemainingMinutes;
-        if ($remainingMinutes !== null && ((int) $remainingMinutes % $perSessionMin !== 0)) {
+        if (self::minutesAreAuthoritative($course, $hasPartialLedger)) {
             return null;
         }
         $used = min($purchased, $observedUsed);
@@ -50,7 +48,7 @@ final class StudentClassActivity
      * Why the course is history, or null when it belongs in the course list's active section.
      * A stopped course without a closure stays there as paused unless it is clearly finished.
      */
-    public static function historyReason(StudentClass $course, int $ownRemaining, ?string $settlement): ?string
+    public static function historyReason(StudentClass $course, int $ownRemaining, ?string $settlement, bool $hasPartialLedger = false): ?string
     {
         $reason = (string) ($course->closed_reason ?? '');
         $running = empty($course->Stop);
@@ -68,16 +66,28 @@ final class StudentClassActivity
         if ($running && (int) ($course->PackageID ?? 0) > 0) {
             return null; // FR-001: a package member draws on the shared pool.
         }
-        // A partial-minutes balance (#613 A1: not a whole number of lessons, so selfHealedUsage left it
-        // authoritative) is entitlement left even when it rounds to 0 lessons. Whole-lesson minutes are
-        // derived counters that the self-heal already corrected.
-        $minutes = (int) ($course->RemainingMinutes ?? 0);
-        if ($minutes > 0 && $minutes % max(1, (int) ($course->SessionDuration ?: 60)) !== 0) {
+        // An authoritative minutes balance (#613 A1) is entitlement left even when it rounds to 0 lessons.
+        // Whole-lesson minutes without a partial ledger are derived counters the self-heal already corrected.
+        if ((int) ($course->RemainingMinutes ?? 0) > 0 && self::minutesAreAuthoritative($course, $hasPartialLedger)) {
             return null;
         }
         $settled = in_array($settlement, self::SETTLED, true);
 
         return $settled && $ownRemaining <= 0 ? 'completed' : null;
+    }
+
+    /**
+     * Minutes outrank lesson counts after a partial deduction (#613 A1): when the ledger recorded one
+     * (even if the balance sums to whole lessons), or when the balance is not a whole number of lessons.
+     */
+    private static function minutesAreAuthoritative(StudentClass $course, bool $hasPartialLedger): bool
+    {
+        $remainingMinutes = $course->RemainingMinutes;
+        if ($remainingMinutes === null) {
+            return false;
+        }
+
+        return $hasPartialLedger || ((int) $remainingMinutes % max(1, (int) ($course->SessionDuration ?: 60)) !== 0);
     }
 
     /** 進行中 = running and not history (what the duplicate prompt and guard count). */
@@ -107,9 +117,10 @@ final class StudentClassActivity
         $out = [];
         foreach ($courses as $course) {
             $id = (int) $course->ID;
-            $healed = self::selfHealedUsage($course, (int) ($diagnostics[$id]['observed_used'] ?? 0));
+            $partial = (bool) ($diagnostics[$id]['has_partial'] ?? false);
+            $healed = self::selfHealedUsage($course, (int) ($diagnostics[$id]['observed_used'] ?? 0), $partial);
             $own = $healed['remaining'] ?? (int) ($course->RemainingSessions ?? 0);
-            $reason = self::historyReason($course, $own, $statuses[$id]['status'] ?? null);
+            $reason = self::historyReason($course, $own, $statuses[$id]['status'] ?? null, $partial);
             $pkg = $packages->get((int) ($course->PackageID ?? 0));
             $out[$id] = [
                 'history_reason' => $reason,

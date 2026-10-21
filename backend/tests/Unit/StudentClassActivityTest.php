@@ -55,5 +55,11 @@ class StudentClassActivityTest extends TestCase
         $partial = (new StudentClass())->forceFill(['ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingMinutes' => 90]);
         $this->assertNull(StudentClassActivity::selfHealedUsage($partial, 1), 'minutes stay authoritative (#613 A1)');
         $this->assertNull(StudentClassActivity::selfHealedUsage((new StudentClass())->forceFill(['ScheduleMode' => 'date', 'SessionCount' => 4]), 1));
+
+        // Two 30-minute deductions on a 2×60 contract: 60 minutes left (a whole lesson) but the ledger is partial.
+        $exact = (new StudentClass())->forceFill(['ScheduleMode' => 'count', 'SessionCount' => 2, 'SessionDuration' => 60, 'RemainingMinutes' => 60, 'Stop' => 0]);
+        $this->assertNull(StudentClassActivity::selfHealedUsage($exact, 2, true), 'a partial ledger keeps minutes authoritative');
+        $this->assertNull(StudentClassActivity::historyReason($exact, 0, 'paid', true), 'one hour left is still 進行中');
+        $this->assertSame('completed', StudentClassActivity::historyReason($exact, 0, 'paid', false), 'without a partial ledger 60 minutes is a derived counter');
     }
 }
