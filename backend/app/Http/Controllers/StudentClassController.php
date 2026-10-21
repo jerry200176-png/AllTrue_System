@@ -6435,18 +6435,9 @@ class StudentClassController extends Controller
         if ($blocked->getStatusCode() !== 422) {
             return $blocked;
         }
-        // Same gate the 轉課 endpoint applies, so the offered path can complete (#4357 review).
-        try {
-            $this->assertTransferEligible($c);
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException $notEligible) {
-            return $blocked;
-        }
         $cid = (int) $c->getKey();
-        $used = (int) (SessionDeductionService::batchObservedUsedSessions([$cid])[$cid] ?? 0);
-        if ($used < 1 || (int) ($c->getAttribute('SessionCount') ?? 0) - $used < 1) {
-            return $blocked;
-        }
         $changes = [];
+        $slotsAfter = [];
         if (array_key_exists('SubjectID', $mapped) && (int) $mapped['SubjectID'] !== (int) $c->getAttribute('SubjectID')) {
             $changes[] = 'subject';
         }
@@ -6457,22 +6448,38 @@ class StudentClassController extends Controller
             $candidate = clone $c;
             $candidate->fill($mapped);
             $before = $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), $c);
-            $after = $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $providedSlots), $candidate);
-            if (!$this->sameRecurringSlots($before, $after)) {
+            $slotsAfter = array_map(fn ($x) => $x + ['duration_minutes' => (int) ($candidate->getAttribute('SessionDuration') ?: 120)],
+                ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $providedSlots));
+            if (!$this->sameRecurringSlots($before, $this->recurringSlotsFor($slotsAfter, $candidate))) {
                 $changes[] = 'slots';
             }
         }
         // 轉課 refuses unmarked lessons before the cutover, so start at the first one.
         $next = ClassSession::query()->where('StudentClassID', $cid)
             ->where('Status', 'scheduled')->min('SessionDate');
-        if ($changes === [] || $next === null) {
+        if ($changes === [] || $next === null || count($slotsAfter) > 6) {
             return $blocked;
         }
-        // An unmarked row before any marked lesson would make 轉課 move that history: withhold.
-        // Fail closed: every status but scheduled/cancelled counts as history.
-        if (ClassSession::query()->where('StudentClassID', $cid)->whereDate('SessionDate', '>=', $next)
-            ->whereRaw("COALESCE(Status, '') NOT IN ('scheduled', 'cancelled')")->exists()) {
+        // An unmarked row before any lesson with history (marked status, sign-in, approved
+        // record, ledger row) would make 轉課 move that history: withhold. Fail closed.
+        $moving = ClassSession::query()->where('StudentClassID', $cid)->whereDate('SessionDate', '>=', $next)
+            ->whereRaw("COALESCE(Status, '') != 'cancelled'")->get(['id', 'Status']);
+        $locked = ContractSessionSchedule::lockedClassSessionIds($cid);
+        if ($moving->contains(fn ($x) => (string) $x->Status !== 'scheduled' || isset($locked[(int) $x->id]))
+            || SessionDeductionLedger::query()->whereIn('class_session_id', $moving->pluck('id')->all())->exists()) {
             return $blocked;
+        }
+        // Dry-run the 轉課 preview itself (rolled back) so the offered path is one that completes.
+        DB::beginTransaction();
+        try {
+            $this->applyTransfer($c, ['start_date' => $next, 'reason' => 'preview',
+                'subject_id' => in_array('subject', $changes, true) ? (int) $mapped['SubjectID'] : null,
+                'teacher_id' => in_array('teacher', $changes, true) ? (int) $mapped['TeacherID'] : null,
+                'slots' => in_array('slots', $changes, true) ? $slotsAfter : null], true);
+        } catch (\Throwable $notTransferable) {
+            return $blocked;
+        } finally {
+            DB::rollBack();
         }
         $data = (array) $blocked->getData(true);
         // One next step per refusal: the client's editability next-step map reads

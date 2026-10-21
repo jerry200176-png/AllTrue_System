@@ -15,9 +15,8 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * in-app #409: when 課程設定 blocks a subject / teacher / slot change on a count-mode
- * course partway through, the 422 names 轉課 as its one next step (next_step) with the cutover date. The block
- * itself (and the course) stays unchanged.
+ * in-app #409: a refused 課程設定 subject / teacher / slot change on a count-mode course names
+ * 轉課 as its one next step (next_step) with the cutover date; the refusal itself is unchanged.
  */
 class StudentClassUpdateTransferHintTest extends TestCase
 {
@@ -86,51 +85,27 @@ class StudentClassUpdateTransferHintTest extends TestCase
             ->assertJsonPath('code', 'billing_contract_locked'), 'transfer_hint');
     }
 
-    public function test_monthly_course_keeps_todays_message(): void
+    /** Courses 轉課 would refuse, or where it would move history, keep today's refusal. */
+    public function test_ineligible_courses_get_no_transfer_next_step(): void
     {
-        $course = $this->course(['ScheduleMode' => 'date', 'EndDate' => '2026-12-31']);
-        $this->makeSession($course, '2026-09-23', 'attended');
-        $this->makeSession($course, '2026-10-07', 'scheduled');
-
-        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'subject_change_requires_transfer')
-            ->assertJsonPath('suggested_actions', ['split_contract']), 'next_step', 'transfer_hint');
-    }
-
-    public function test_no_remaining_unmarked_lesson_means_no_transfer_hint(): void
-    {
-        $course = $this->course();
-        $this->makeSession($course, '2026-09-23', 'attended');
-
-        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
-            ->assertStatus(422), 'transfer_hint');
-    }
-
-    public function test_course_the_transfer_endpoint_would_reject_gets_no_hint(): void
-    {
-        // A past lesson left unmarked: no observed usage, so split-contract would fail.
-        $course = $this->course();
-        $this->makeSession($course, '2026-09-23', 'scheduled');
-        $this->makeSession($course, '2026-10-07', 'scheduled');
-
-        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'subject_change_requires_transfer'), 'transfer_hint');
-    }
-
-    public function test_stale_unmarked_lesson_before_taught_lessons_withholds_the_hint(): void
-    {
-        // 9/16 never marked, 9/23 marked: a 9/16 cutover would move the marked lesson.
-        $course = $this->course();
-        $this->makeSession($course, '2026-09-09', 'attended');
-        $this->makeSession($course, '2026-09-16', 'scheduled');
-        $this->makeSession($course, '2026-09-23', 'leave_adjusted');
-        $this->makeSession($course, '2026-10-07', 'scheduled');
-
-        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'subject_change_requires_transfer'), 'next_step', 'transfer_hint');
+        $cases = [
+            'monthly' => [['ScheduleMode' => 'date', 'EndDate' => '2026-12-31'], ['2026-09-23' => 'attended', '2026-10-07' => 'scheduled']],
+            'no unmarked lesson' => [[], ['2026-09-23' => 'attended']],
+            'no usage yet' => [[], ['2026-09-23' => 'scheduled', '2026-10-07' => 'scheduled']],
+            'stale row before history' => [[], ['2026-09-09' => 'attended', '2026-09-16' => 'scheduled', '2026-09-23' => 'leave_adjusted', '2026-10-07' => 'scheduled']],
+            'paid but not the simple case' => [['Paid' => 1], ['2026-09-23' => 'attended', '2026-10-07' => 'scheduled']],
+        ];
+        foreach ($cases as $name => [$overrides, $sessions]) {
+            $course = $this->course($overrides);
+            foreach ($sessions as $date => $status) {
+                $this->makeSession($course, $date, $status);
+            }
+            $res = $this->putCourse($course, ['subject' => 'Math'])->assertStatus(422)
+                ->assertJsonPath('code', 'subject_change_requires_transfer')
+                ->assertJsonPath('suggested_actions', ['split_contract']);
+            $this->assertArrayNotHasKey('next_step', (array) $res->json(), $name);
+            $this->assertArrayNotHasKey('transfer_hint', (array) $res->json(), $name);
+        }
     }
 
     /** Laravel 8 TestResponse has no assertJsonMissingPath(). */
