@@ -77,9 +77,9 @@ class FeedbackPushNotifier
         // in-app #413: a parent follow-up is new work. Reopen the thread's staff notice and show it
         // unread again, even when the merge window below suppresses the push itself.
         if (config('perfflags.notification_source_resolve_enabled', false)) {
-            $existingId = DB::table('Notifications')
-                ->where('SourceKey', "lrfb:{$feedback->campus_id}:{$feedback->learning_record_id}:to_staff")
-                ->value('id');
+            $staffKey = 'lrfb:' . (int) $feedback->getAttribute('campus_id') . ':'
+                . (int) $feedback->getAttribute('learning_record_id') . ':to_staff';
+            $existingId = DB::table('Notifications')->where('SourceKey', $staffKey)->value('id');
             if ($existingId) {
                 DB::table('Notifications')->where('id', $existingId)->update(['ResolvedAt' => null]);
                 DB::table('NotificationReads')->where('NotificationID', $existingId)->delete();
