@@ -3,6 +3,8 @@
   "rows": [
     { "case": "open count course", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 8, "payment_status": "unpaid", "expected_active": true, "expected_remaining": 8 },
     { "case": "finished: remaining corrected to 0 and paid", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "payment_status": "paid", "expected_active": false },
+    { "case": "paid fractional minutes round to zero lessons", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "remaining_minutes": 30, "payment_status": "paid", "expected_active": true, "expected_remaining": 0 },
+    { "case": "finished with explicit zero minutes", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "remaining_minutes": 0, "payment_status": "paid", "expected_active": false },
     { "case": "finished free trial", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "payment_status": "free", "expected_active": false },
     { "case": "used up but still owed", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "payment_status": "unpaid", "expected_active": true, "expected_remaining": 0 },
     { "case": "closed: settled_pending", "status": "active", "closed_reason": "settled_pending", "payment_type": "session", "PackageID": null, "remaining_sessions": 2, "payment_status": "unpaid", "expected_active": false },

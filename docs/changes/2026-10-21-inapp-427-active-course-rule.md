@@ -10,3 +10,5 @@
 - Review 修正：建課重複檢查的初始候選列包含 `Stop IS NULL` 的舊資料，與既有課程投影的未停課定義一致。此為查詢相容修正；不修改 schema。現行測試 migration 將 Stop 定為 NOT NULL，NULL 舊資料端到端 fixture 尚未覆蓋。
 
 - 老師的課程列表仍只顯示其可見課程；預檢僅回傳其範圍為 teacher_courses，提前提醒無法排除其他老師的課程重複。不揭露隱藏課程是否存在，也不回傳識別／科目／老師／堂數。繼續填寫不代表強制建立，原送出守門與學生校區權限不變。新增隱藏課程存在／停課時完全相同回應、跨校拒絕 backend regression 與現有確認視窗的取消／繼續測試。
+
+- Review 修正：權威 remaining_minutes > 0 的有效課程即使堂數四捨五入為 0 仍屬進行中；前後端 parity fixture、實際學生列表 normalization 與建課 duplicate guard regression 覆蓋此情況。23 frontend tests、既有 courseMoneyState suite 與 lint 通過；backend 待 CI。

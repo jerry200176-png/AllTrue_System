@@ -163,6 +163,7 @@ export const isHiddenHistoricalCourse = (course) => {
   if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
   if (isMonthlyPaymentType(course)) return String(course?.status || '').toLowerCase() === 'inactive';
   if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') return false;
+  if (Number(course?.remaining_minutes ?? course?.RemainingMinutes ?? 0) > 0) return false;
   const remaining = ownRemainingSessions(course);
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);

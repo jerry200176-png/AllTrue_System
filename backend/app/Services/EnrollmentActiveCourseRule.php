@@ -38,6 +38,11 @@ final class EnrollmentActiveCourseRule
         if (($row['payment_type'] ?? '') === 'monthly' || self::isPackageMember($row)) {
             return true;
         }
+        // Fractional-minute entitlement can round to zero displayed lessons; it is not exhausted.
+        $remainingMinutes = $row['remaining_minutes'] ?? $row['RemainingMinutes'] ?? null;
+        if (is_numeric($remainingMinutes) && (float) $remainingMinutes > 0) {
+            return true;
+        }
         $remaining = $row['remaining_sessions'] ?? null;
         if (!is_numeric($remaining)) {
             return true;

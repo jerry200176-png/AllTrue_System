@@ -122,9 +122,17 @@ class StudentActiveCoursesParityTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload(8, '16:00'))
             ->assertStatus(409)->assertJsonPath('code', 'duplicate_active_course');
 
+        // A paid 30-minute remainder rounds to zero sessions but must still block a duplicate.
+        \App\Models\Invoice::where('StudentClassID', $courseId)->update(['Status' => 'void']);
+        StudentClass::where('ID', $courseId)->update(['Paid' => 1, 'RemainingMinutes' => 30, 'RemainingSessions' => 0]);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->assertJsonPath('courses.0.id', $courseId);
+        $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload(8, '16:00'))
+            ->assertStatus(409)->assertJsonPath('code', 'duplicate_active_course');
+
         // Finished: the one lesson was taken and it is paid (legacy flag, no open bill), Stop never set.
         \App\Models\Invoice::where('StudentClassID', $courseId)->update(['Status' => 'void']);
-        StudentClass::where('ID', $courseId)->update(['Charge' => 500, 'Paid' => 1, 'SessionCount' => 1, 'RemainingSessions' => 1, 'Stop' => 0]);
+        StudentClass::where('ID', $courseId)->update(['Charge' => 500, 'Paid' => 1, 'SessionCount' => 1, 'RemainingSessions' => 1, 'RemainingMinutes' => 0, 'Stop' => 0]);
         $this->attended(StudentClass::findOrFail($courseId));
         $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
             ->assertOk()->assertJsonCount(0, 'courses');
