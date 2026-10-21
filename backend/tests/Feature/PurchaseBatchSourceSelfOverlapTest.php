@@ -140,6 +140,27 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_a_separate_later_batch_is_not_flagged_as_a_duplicate(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        $source = $this->createSourceCourse($student->id);
+        $this->seedSourceFutureSessions($source, 2);
+        // Same student, subject and size, but it starts weeks after any date this request could shift to.
+        $this->createSourceCourse($student->id, [
+            'StartDate' => $this->weeksAfterBase(6), 'SessionCount' => 3, 'Paid' => 0, 'UsedSessions' => 0,
+        ]);
+
+        $res = $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+                'mode' => 'purchase_batch',
+                'sessions' => 3,
+                'start_date' => $this->base->toDateString(),
+            ])
+            ->assertOk();
+        $this->assertNotContains('possible_duplicate_batch', array_column($res->json('blockers') ?? [], 'code'));
+    }
+
     public function test_renewal_preview_shows_the_same_shifted_batch_dates(): void
     {
         $token = $this->createDirectorToken();

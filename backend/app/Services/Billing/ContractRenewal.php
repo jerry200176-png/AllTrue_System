@@ -81,34 +81,32 @@ final class ContractRenewal
     }
 
     /**
-     * A batch is stored with its shifted start (in-app #422), and the shift depends on which source lessons are
-     * still in the future. So a retry must not depend on today's anchor: any open batch of the same size that starts
-     * between the requested date and a week after the source's last lesson on or after it (attended or not) is the
-     * same purchase. Exact matches on the requested and planned start are kept for batches created before #422.
+     * A batch is stored with its shifted start (in-app #422): the first slot day after the source's last live lesson
+     * at purchase time. That lesson stays on record (attended or not) after it passes, so a retry only needs to match
+     * the exact starts this request could have been shifted to: the requested and planned start, and the next slot
+     * day after each source lesson on or after the requested date. A separate batch on any other date is not matched.
      */
     private function findDuplicateShiftedBatch(StudentClass $studentClass, string $planStart, string $startDate, int $sessions): ?StudentClass
     {
-        $exact = $this->findDuplicatePurchaseBatch($studentClass, $planStart, $sessions)
-            ?? ($planStart !== $startDate ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions) : null);
-        if ($exact !== null) {
-            return $exact;
-        }
-        $lastLesson = ContractSessionSchedule::normalizeDateString(ClassSession::query()
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
+        $starts = [$startDate => true, $planStart => true];
+        $lessonDates = ClassSession::query()
             ->where('StudentClassID', (int) $studentClass->ID)
             ->whereDate('SessionDate', '>=', $startDate)
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
-            ->max('SessionDate'));
-        if ($lastLesson === null) {
-            return null;
+            ->pluck('SessionDate');
+        foreach ($lessonDates as $date) {
+            $ymd = ContractSessionSchedule::normalizeDateString($date);
+            if ($ymd !== null) {
+                $starts[self::nextSlotDayAfter($ymd, $slots)] = true;
+            }
         }
-        $upper = max($planStart, Carbon::parse($lastLesson)->addDays(7)->toDateString());
 
         return StudentClass::query()->where('ID', '<>', $studentClass->ID)
             ->where('StudentID', $studentClass->StudentID)
             ->where('SubjectID', $studentClass->SubjectID)
             ->where('ScheduleMode', 'count')
-            ->whereDate('StartDate', '>=', $startDate)
-            ->whereDate('StartDate', '<=', $upper)
+            ->whereIn(DB::raw('DATE(StartDate)'), array_keys($starts))
             ->where('SessionCount', $sessions)
             ->where(function ($q) {
                 $q->whereNull('Stop')->orWhere('Stop', 0);
@@ -568,14 +566,24 @@ final class ContractRenewal
             return $unchanged;
         }
 
-        // buildSessionsForCount() always books its start date, so begin on a configured slot weekday.
+        return ['start' => self::nextSlotDayAfter($liveUntil, $slots), 'source_live_until' => $liveUntil];
+    }
+
+    /**
+     * buildSessionsForCount() always books its start date, so a shifted batch begins on the first configured
+     * slot weekday after $date.
+     *
+     * @param  array<int, array<string, mixed>>  $slots
+     */
+    private static function nextSlotDayAfter(string $date, array $slots): string
+    {
         $weekdays = array_filter(array_map(fn ($slot) => (int) ($slot['weekday'] ?? 0), $slots), fn ($wd) => $wd >= 1 && $wd <= 7);
-        $next = Carbon::parse($liveUntil)->addDay();
+        $next = Carbon::parse($date)->addDay();
         for ($i = 0; $weekdays !== [] && $i < 7 && !in_array($next->dayOfWeekIso, $weekdays, true); $i++) {
             $next->addDay();
         }
 
-        return ['start' => $next->toDateString(), 'source_live_until' => $liveUntil];
+        return $next->toDateString();
     }
 
     // Course lifecycle helpers shared with StudentClassController (togglePause, store, split, trial conversion).
