@@ -33,6 +33,11 @@ describe('帳務面板 · 有繳費日期的試聽課不顯示需核對 (in-app 
     expect(regular.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
   });
 
+  it('a package-created trial member (Charge 0, fee on the package) shows the date only, never NT$ 0', async () => {
+    const w = await mountLedger([course(1, '數學', { charge: 0, package_id: 7, trial_fee_recorded_by_date: true })]);
+    expect(w.find('[data-testid="contract-card-1"] [data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/20');
+  });
+
   it('a trial the server did not exempt (e.g. paid without a date) stays 需核對', async () => {
     const w = await mountLedger([course(1, '數學', { paid_at: null, trial_fee_recorded_by_date: false })]);
     expect(w.find('[data-testid="contract-card-1"] [data-testid="contract-legacy-unverified"]').exists()).toBe(true);
