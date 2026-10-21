@@ -19,6 +19,7 @@
 #     GitHub requests for this session's repositories, whatever the environment
 #     holds, which is one more reason no install script may run.
 #   - Never runs artisan, phpunit, migrations, deploy, SSH, or touches .env.
+#     It may start the container's own MariaDB and create the local test DB.
 #   - Idempotent: each install is skipped when its lockfile hash matches the
 #     stamp left by the last successful install.
 #   - A missing tool or a failed install logs and moves on; the session must
@@ -72,39 +73,57 @@ composer_clean() {
     COMPOSER_NO_INTERACTION=1 COMPOSER_ALLOW_SUPERUSER=1 composer "$@"
 }
 
-# The cloud proxy answers 403 for api.github.com zipball downloads. Composer
-# falls back to a git clone for packages that list a source, but a dist-only
-# package (phpstan/phpstan) has no fallback and fails the whole install. For
-# each such package, fetch the commit over git (public repo, clean env, no
-# credential helper) and place the zip in composer's files cache under the key
-# composer looks up (sha1 of the dist URL).
+# The cloud proxy answers 403 for api.github.com zipball downloads (every
+# package in composer.lock uses one). Composer then falls back to one
+# `git clone` per package (slow: ~8 min cold) and a dist-only package
+# (phpstan/phpstan) has no fallback, which fails the whole install. So, when a
+# direct download is refused, fetch each locked commit over git (public repos,
+# clean env, no credential helper), `git archive` it (honours export-ignore,
+# like GitHub's zipball) and place the zip in composer's files cache under the
+# key composer looks up (<name>/sha1(dist url).zip). Composer then installs
+# every package from cache with --prefer-dist, the same layout CI gets.
+seed_one() { # name url repo ref
+  local name="$1" url="$2" repo="$3" ref="$4"
+  local dest="$COMPOSER_CACHE/files/$name/$(printf %s "$url" | sha1sum | cut -d' ' -f1).zip"
+  local tmp; tmp="$(mktemp -d)"
+  if clean git -C "$tmp" init -q \
+     && clean_proxied git -C "$tmp" -c credential.helper= fetch -q --depth 1 "https://github.com/$repo.git" "$ref" \
+     && mkdir -p "$(dirname "$dest")" \
+     && clean git -C "$tmp" archive --format=zip --prefix="${repo/\//-}-${ref:0:7}/" -o "$dest.part" FETCH_HEAD \
+     && mv "$dest.part" "$dest"; then
+    :
+  else
+    rm -f "$dest.part"; log "could not seed $name; composer will try its own fallback"
+  fi
+  rm -rf "$tmp"
+}
+
 seed_github_dists() { # $1=composer.lock
   command -v git >/dev/null 2>&1 || return 0
-  local cache="$COMPOSER_CACHE/files"
-  python3 -I - "$1" <<'PY' | while read -r name url repo ref; do
-import json, re, sys
+  local todo
+  todo="$(python3 -I - "$1" "$COMPOSER_CACHE/files" <<'PY'
+import hashlib, json, os, re, sys
 lock = json.load(open(sys.argv[1]))
 for p in lock.get("packages", []) + lock.get("packages-dev", []):
-    d = p.get("dist") or {}
-    m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/zipball/([0-9a-f]{40})$", d.get("url", ""))
-    if m and not p.get("source"):
-        print(p["name"], d["url"], m.group(1), m.group(2))
+    url = (p.get("dist") or {}).get("url", "")
+    m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/zipball/([0-9a-f]{40})$", url)
+    if not m:
+        continue
+    dest = os.path.join(sys.argv[2], p["name"], hashlib.sha1(url.encode()).hexdigest() + ".zip")
+    if not os.path.isfile(dest) or os.path.getsize(dest) == 0:
+        print(p["name"], url, m.group(1), m.group(2))
 PY
-    local dest="$cache/$name/$(printf %s "$url" | sha1sum | cut -d' ' -f1).zip"
-    [ -s "$dest" ] && continue
-    clean_proxied curl -sfI -o /dev/null "$url" && continue   # direct download works
-    log "seeding composer cache for $name from git"
-    local tmp; tmp="$(mktemp -d)"
-    if clean_proxied git -C "$tmp" init -q \
-       && clean_proxied git -C "$tmp" -c credential.helper= fetch -q --depth 1 "https://github.com/$repo.git" "$ref" \
-       && mkdir -p "$cache/$name" \
-       && clean git -C "$tmp" archive --format=zip --prefix="${repo/\//-}-${ref:0:7}/" -o "$dest" FETCH_HEAD; then
-      :
-    else
-      rm -f "$dest"; log "could not seed $name; composer may fail"
-    fi
-    rm -rf "$tmp"
-  done
+)" || return 0
+  [ -n "$todo" ] || return 0
+  # One probe: if the proxy allows zipballs in this session, let composer download.
+  clean_proxied curl -sfI -o /dev/null "$(echo "$todo" | head -n1 | cut -d' ' -f2)" && return 0
+  log "seeding composer cache from git for $(echo "$todo" | wc -l) packages"
+  local name url repo ref
+  while read -r name url repo ref; do
+    while [ "$(jobs -rp | wc -l)" -ge 8 ]; do wait -n; done
+    seed_one "$name" "$url" "$repo" "$ref" &
+  done <<<"$todo"
+  wait
 }
 
 # Backend: composer install (no scripts, no plugins, no artisan).
@@ -143,6 +162,27 @@ if [ -f "$FRONTEND/package-lock.json" ]; then
     else
       log "frontend install failed; continuing"
     fi
+  fi
+fi
+
+# Test database: CI runs PHPUnit against MySQL 8 (backend/phpunit.xml forces
+# DB_CONNECTION=mysql, 127.0.0.1:3306, AllTrue_test, admin / ci-ephemeral; the
+# password is CI-only and already committed there). When the container ships
+# MariaDB, start it and create that throwaway local database and user so
+# `php artisan test` works here. Local container only; never a remote DB.
+if command -v mariadbd >/dev/null 2>&1 && command -v mysql >/dev/null 2>&1; then
+  if ! mysqladmin ping --silent >/dev/null 2>&1; then
+    (service mariadb start || service mysql start) >/dev/null 2>&1 || log "could not start local MariaDB"
+  fi
+  if mysqladmin ping --silent >/dev/null 2>&1; then
+    mysql -u root <<'SQL' || log "could not provision AllTrue_test"
+CREATE DATABASE IF NOT EXISTS AllTrue_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'admin'@'localhost' IDENTIFIED BY 'ci-ephemeral';
+CREATE USER IF NOT EXISTS 'admin'@'127.0.0.1' IDENTIFIED BY 'ci-ephemeral';
+GRANT ALL PRIVILEGES ON AllTrue_test.* TO 'admin'@'localhost';
+GRANT ALL PRIVILEGES ON AllTrue_test.* TO 'admin'@'127.0.0.1';
+SQL
+    log "local test DB ready (MariaDB; CI uses MySQL 8, so CI stays the source of truth)"
   fi
 fi
 
