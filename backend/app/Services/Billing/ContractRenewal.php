@@ -97,10 +97,10 @@ final class ContractRenewal
             ->where('StudentClassID', (int) $studentClass->ID)
             ->whereDate('SessionDate', '>=', $sourceStart !== null && $sourceStart > $startDate ? $sourceStart : $startDate)
             ->when($sourceEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $sourceEnd))
-            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
             ->pluck('SessionDate');
-        // A schedule-only occurrence can also have set the shift; it may have been cancelled since, so keep
-        // every status here (a wider candidate set only blocks a retry, it never shifts a batch).
+        // Lessons and schedule-only occurrences that may have set the shift can be cancelled or voided later,
+        // so every status counts here. A wider candidate set only asks staff to confirm a possible repeat
+        // purchase; it never shifts a batch. (A stable purchase key would need a schema change: #4349.)
         $scheduleDates = DB::table('schedules')
             ->where('student_course_id', (int) $studentClass->ID)
             ->whereDate('schedule_date', '>=', $sourceStart !== null && $sourceStart > $startDate ? $sourceStart : $startDate)
