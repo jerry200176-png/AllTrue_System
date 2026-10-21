@@ -5,7 +5,7 @@
         <span class="premium-modal-icon">＋</span>
         <div>
           <p class="premium-kicker">Renewal Batch</p>
-          <h3 class="modal-title">{{ isTrialMode ? '試聽轉正式課程' : (isPackageMode ? '調整共用方案堂數' : '加購堂數') }}</h3>
+          <h3 class="modal-title">{{ isTrialMode ? '試聽轉正式課程' : (isPackageMode ? '調整共用方案堂數' : '續課') }}</h3>
           <p class="modal-desc">{{ form.student_name }} - {{ subjectLabel }}</p>
         </div>
       </div>
@@ -17,7 +17,7 @@
           :class="['package-op-btn', { active: form.package_op !== 'set' }]"
           :disabled="submitting"
           @click="selectOp('add')"
-        >加購堂數</button>
+        >續課（加堂數）</button>
         <button
           type="button"
           role="tab"
@@ -65,7 +65,7 @@ const props = defineProps({
 defineEmits(['close', 'submit']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const isSetMode = computed(() => props.isPackageMode && props.form?.package_op === 'set');
-const sessionsLabel = computed(() => (props.isTrialMode ? '正式課程堂數' : (isSetMode.value ? '設定後的總堂數' : '加購堂數')));
+const sessionsLabel = computed(() => (props.isTrialMode ? '正式課程堂數' : (isSetMode.value ? '設定後的總堂數' : '續課堂數')));
 const submitLabel = computed(() => (props.isTrialMode ? '確認轉為正式' : (isSetMode.value ? '確認設定' : '確認加購')));
 function selectOp(op) {
   if (!props.form || props.form.package_op === op) return;

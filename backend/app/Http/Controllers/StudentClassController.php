@@ -3213,7 +3213,7 @@ class StudentClassController extends Controller
         // in-app #374: mirror purchaseBatch/renewMonthly so preview never advertises an unconfirmable trial renewal.
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
             return response()->json([
-                'message' => '試聽課程不能直接加購或續約，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接續課，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3313,7 +3313,7 @@ class StudentClassController extends Controller
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') === 'count') {
             return response()->json([
-                'message' => '此課程為堂數制，請使用「加購堂數」功能。',
+                'message' => '此課程為堂數制，請使用「續課」功能。',
                 'errors' => ['mode' => ['堂數制課程不支援月結續約，請使用 purchase-batch 端點。']],
             ], 422);
         }
@@ -3516,7 +3516,7 @@ class StudentClassController extends Controller
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial'
             && $request->attributes->get('trial_conversion') !== true) {
             return response()->json([
-                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接續課，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3524,7 +3524,7 @@ class StudentClassController extends Controller
         // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             return response()->json([
-                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援堂數制「續課」。',
                 'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
             ], 422);
         }

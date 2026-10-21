@@ -153,7 +153,7 @@
             placeholder="8"
             :disabled="!!packageInfo || lockedFields.has('sessions_purchased')"
           />
-          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「加購／設定總堂數」調整（會同步方案所有科目）</span>
+          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「續課／設定總堂數」調整（會同步方案所有科目）</span>
           <span v-else-if="lockedFields.has('sessions_purchased')" class="field-hint field-hint--warning">已有扣堂紀錄，堂數改少請用「合約／堂次調整」；要加堂請用「續課」。</span>
         </div>
 

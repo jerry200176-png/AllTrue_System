@@ -55,7 +55,7 @@
             >
               <span class="usw-type-card-icon material-symbols-outlined">layers</span>
               <h4 class="usw-type-card-title">多科共用方案（進階）</h4>
-              <p class="usw-type-card-sub">多個科目共用同一份堂數池；續報加購會加到方案總堂數，不拆成單科契約</p>
+              <p class="usw-type-card-sub">多個科目共用同一份堂數池；續課會加到方案總堂數，不拆成單科契約</p>
               <span class="usw-type-card-tags">
                 <span class="usw-type-card-tag">堂數制</span>
                 <span class="usw-type-card-tag">月結制</span>

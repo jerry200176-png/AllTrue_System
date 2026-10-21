@@ -223,9 +223,9 @@
                       <span class="material-symbols-outlined btn-icon">autorenew</span>
                       月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）
                     </button>
-                    <button type="button" class="primary small" @click="openAddCourse(student)">
+                    <button type="button" class="primary small" data-testid="student-course-entry" @click="courseIntentStudent = student">
                       <span class="material-symbols-outlined btn-icon">add</span>
-                      新增課程
+                      {{ COURSE_ENTRY_LABEL }}
                     </button>
                   </div>
                 </div>
@@ -235,7 +235,7 @@
                 </div>
 
                 <div v-if="getStudentCourses(student.id).length === 0" class="empty-text">
-                  {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
+                  {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程／續課」→「全新課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
                 </div>
 
                 <template v-else>
@@ -464,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLow(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : RENEW_LESSONS_LABEL }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" title="打開這位學生的帳務" @click="openTuitionLedger(course)">學生帳務</button>
                         <button v-if="isSessionPaymentLow(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -779,6 +779,14 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
+    <CourseIntentChooser
+      :show="!!courseIntentStudent"
+      :student-name="courseIntentStudent?.name || ''"
+      :courses="courseIntentStudent ? courseIntentOptions(courseIntentStudent.id) : []"
+      @close="courseIntentStudent = null"
+      @choose="onCourseIntent"
+    />
+
     <MonthlyBatchRenewModal
       :show="!!batchRenewStudent"
       :student-name="batchRenewStudent?.name || ''"
@@ -800,7 +808,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : RENEW_LESSONS_LABEL }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -821,7 +829,7 @@
           }}
         </p>
         <div v-if="!(isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly')" class="form-group">
-          <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : '加購堂數' }}</label>
+          <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : `${RENEW_LESSONS_LABEL}堂數` }}</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
         <div v-if="!isPackageMember(selectedCourse)" class="form-group">
@@ -1056,6 +1064,8 @@ import {
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
+import CourseIntentChooser from '../components/course-management/CourseIntentChooser.vue';
+import { COURSE_ENTRY_LABEL, RENEW_LESSONS_LABEL, routeCourseIntent } from '../lib/courseIntent.js';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildCourseMgmtOpsNav,
@@ -1087,6 +1097,25 @@ const openTuitionLedger = (course) => {
   ledgerOpen.value = true;
 };
 const goToTuitionBilling = openTuitionLedger;
+
+// in-app #429: 「新增課程／續課」 chooser. Each intent lands in the flow the row buttons already use.
+const courseIntentStudent = ref(null);
+const courseIntentOptions = (studentId) => getStudentAllCourses(studentId)
+  .filter((course) => !isHistoricalCourse(course))
+  .map((course) => ({
+    id: course.id,
+    label: [getStudentCourseSubjectDisplayLabel(course), course.teacher_name].filter(Boolean).join('／'),
+    course,
+  }));
+const onCourseIntent = ({ intent, course }) => {
+  const student = courseIntentStudent.value;
+  courseIntentStudent.value = null;
+  routeCourseIntent(intent, {
+    new: () => openAddCourse(student),
+    renew: () => openAddSessionsForCourse(course),
+    change: () => emit('navigate', { ...buildCourseMgmtOpsNav(course, { intent: 'transfer' }), studentName: student?.name || '' }),
+  });
+};
 
 const goToCourseMgmtOps = (course, studentName = '') => {
   emit('navigate', {
@@ -1470,7 +1499,7 @@ const getCoursePrimaryAction = (course) => {
     return {
       key: 'renew',
       icon: 'add_circle',
-      label: isTutoringCourse(course) ? '延續輔導課' : '續報加購',
+      label: isTutoringCourse(course) ? '延續輔導課' : RENEW_LESSONS_LABEL,
       title: '先處理課程續報',
       description: isPackageMember(course)
         ? '請核對上方共用方案摘要，再處理方案續報。'

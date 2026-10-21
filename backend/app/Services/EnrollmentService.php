@@ -652,7 +652,7 @@ class EnrollmentService
 
                 if (!empty($overlaps)) {
                     return response()->json([
-                        'message' => '該學生已有「同科目、同老師、日期區間重疊」的進行中課程。若為續報，請將新課起始日改到舊課結束之後，或改用「加購堂數」延續原課程；重疊會造成同時段重複排課與點名重複。如確定要建立，請勾選強制建立。',
+                        'message' => '該學生已有「同科目、同老師、日期區間重疊」的進行中課程。若為續報，請將新課起始日改到舊課結束之後，或改用「續課」延續原課程；重疊會造成同時段重複排課與點名重複。如確定要建立，請勾選強制建立。',
                         'code' => 'overlapping_active_course',
                         'conflicts' => $overlaps,
                     ], 409);
@@ -660,7 +660,7 @@ class EnrollmentService
 
                 if (!empty($conflicts)) {
                     return response()->json([
-                        'message' => '該學生已有相同科目的進行中課程，建議使用「加購堂數」延續原課程。如確定要建立新課程，請勾選強制建立。',
+                        'message' => '該學生已有相同科目的進行中課程，建議使用「續課」延續原課程。如確定要建立新課程，請勾選強制建立。',
                         'code' => 'duplicate_active_course',
                         'conflicts' => $conflicts,
                     ], 409);
@@ -1168,7 +1168,7 @@ class EnrollmentService
             })->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
             if ($overlap && $base()->where($overlapping)->exists()) {
                 return response()->json([
-                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
+                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「續課」。',
                     'code' => 'renewal_range_overlap',
                 ], 422);
             }

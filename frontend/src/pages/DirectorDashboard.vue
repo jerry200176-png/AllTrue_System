@@ -1466,7 +1466,7 @@ const copyPaymentMessage = async (student) => {
     const n = Number(student.remaining_lessons ?? 0);
     const name = student.raw_name || String(student.name || '').split(' — ')[0];
     const line = !Number.isFinite(n) || n <= 0
-      ? '課程堂數已用完；若需繼續上課，請協助聯繫加購堂數。'
+      ? '課程堂數已用完；若需繼續上課，請協助聯繫家長續課。'
       : `課程目前僅剩 ${n} 堂，即將用完；如需續課請協助聯繫加購。`;
     const msg = `親愛的家長您好，\n\n${name} 同學：${line}\n\n如有疑問，歡迎聯繫補習班，謝謝！`;
     try { await navigator.clipboard.writeText(msg); alert('續課／加購提醒已複製到剪貼簿！'); }

@@ -31,7 +31,7 @@
         </AtHelpDisclosure>
       </template>
       <template #actions>
-        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
+        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="showCourseIntentChooser = true">{{ COURSE_ENTRY_LABEL }}</AtButton>
         <AtButton class="course-lens-nav-action" shape="rect" variant="ghost" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
         <details class="course-tools-menu">
           <summary class="btn-soft course-tools-menu__summary">
@@ -987,6 +987,13 @@
       </div>
     </div>
 
+    <!-- in-app #429: one entry for new / 續課 / change; 全新課程 goes to 學生管理, the other two point at the row. -->
+    <CourseIntentChooser
+      :show="showCourseIntentChooser"
+      @close="showCourseIntentChooser = false"
+      @choose="onCourseIntent"
+    />
+
     <ContractAdjustmentChoiceModal
       :show="showContractAdjustmentModal"
       :student-name="contractAdjustmentCourse?.student_name || ''"
@@ -1458,6 +1465,8 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
+import CourseIntentChooser from '../components/course-management/CourseIntentChooser.vue';
+import { COURSE_ENTRY_LABEL, RENEW_LESSONS_LABEL, routeCourseIntent } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1610,6 +1619,8 @@ const pendingConvertTrialId = ref(0);
 const pendingManualSessionId = ref(0);
 // in-app #342: calendar 「看全部堂次」 opens this course's 排課與堂次 tab.
 const pendingLessonsCourseId = ref(0);
+// in-app #429: 學生管理「新增課程／續課 → 換科目／老師／時段」opens this course's 轉課.
+const pendingTransferCourseId = ref(0);
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
@@ -2388,6 +2399,12 @@ const {
   notify: (opts) => toastRef.value?.show?.(opts),
 });
 const showContractAdjustmentModal = ref(false);
+const showCourseIntentChooser = ref(false);
+// Header chooser has no course context: only 全新課程 emits here (renew / change show where the row button is).
+function onCourseIntent({ intent }) {
+  showCourseIntentChooser.value = false;
+  routeCourseIntent(intent, { new: () => emit('navigate', 'students') });
+}
 const contractAdjustmentCourse = ref(null);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
@@ -2855,7 +2872,8 @@ async function duplicateCourseForTeacher(course) {
 function purchaseActionLabel(c) {
   if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
-  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? '續報加購' : '加購堂數';
+  // in-app #429: one name for the count-mode extension, low remaining or not (Founder Q8=A).
+  return RENEW_LESSONS_LABEL;
 }
 function purchaseActionIsRenew(c) {
   if (!isSessionMode(c)) return true;
@@ -4261,7 +4279,7 @@ const loadCourses = async (page = 1) => {
   coursesLoading.value = true;
   // Cleared only once this request wins, so a failed/superseded load keeps them (Codex r4289665973).
   const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
-  const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
+  const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, pendingTransferCourseId.value, convertTrialStudentId.value]);
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     let token = sess?.access_token;
@@ -4278,14 +4296,14 @@ const loadCourses = async (page = 1) => {
         page: String(page),
       });
       // A manual-session handoff fetches that student's courses only, so list filters can't hide the target (#382).
-      const pinnedHandoff = Boolean(pendingManualSessionId.value || pendingLessonsCourseId.value);
+      const pinnedHandoff = Boolean(pendingManualSessionId.value || pendingLessonsCourseId.value || pendingTransferCourseId.value);
       if (!pinnedHandoff && filters.value.class_type) params.set('class_type', filters.value.class_type);
       if (!pinnedHandoff && filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
       if (!pinnedHandoff && filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (!pinnedHandoff && filters.value.course_status) params.set('status', filters.value.course_status);
       if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
-      if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
+      if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value || pendingTransferCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
@@ -5390,6 +5408,13 @@ watch(coursesLoading, (loading) => {
   if (course) openCourseManager(course, 'sessions');
 });
 watch(coursesLoading, (loading) => {
+  if (loading || !pendingTransferCourseId.value) return;
+  const course = courses.value.find((c) => c.id === pendingTransferCourseId.value);
+  pendingTransferCourseId.value = 0;
+  convertTrialStudentId.value = null;
+  if (course) openTransferSessionsModal(course);
+});
+watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;
   const course = courses.value.find((c) => c.id === pendingManualSessionId.value);
   pendingManualSessionId.value = 0;
@@ -5426,6 +5451,9 @@ watch(
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'manual-session') {
       pendingManualSessionId.value = Number(props.initialCourseId) || 0;
+      convertTrialStudentId.value = sid ?? null;
+    } else if (props.initialCourseIntent === 'transfer') {
+      pendingTransferCourseId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     }
     loadCourses(1);

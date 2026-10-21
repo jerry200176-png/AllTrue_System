@@ -1,6 +1,7 @@
 <script>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { trapTab } from '../../lib/focusTrap.js';
+import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -44,7 +45,7 @@ export default {
     isSessionMode: { type: Boolean, default: false },
     isMonthlyMode: { type: Boolean, default: false },
     isManualOccurrence: { type: Boolean, default: false },
-    purchaseLabel: { type: String, default: '加購堂數' },
+    purchaseLabel: { type: String, default: RENEW_LESSONS_LABEL },
     paymentNoticeAvailable: { type: Boolean, default: false },
     canPackagePreview: { type: Boolean, default: false },
     formatSessionChipDate: { type: Function, required: true },
