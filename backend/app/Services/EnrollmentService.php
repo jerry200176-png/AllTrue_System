@@ -570,7 +570,7 @@ class EnrollmentService
 
         if ($studentId > 0 && empty($data['force'])) {
             $existingActive = StudentClass::where('StudentID', $studentId)
-                ->where('Stop', 0)
+                ->where(fn ($query) => $query->where('Stop', 0)->orWhereNull('Stop'))
                 ->get();
             // in-app #427: a Stop=0 course the 學生管理 list already shows as finished or closed (one rule with the
             // pre-check, EnrollmentActiveCourseRule) is not a duplicate. Rows the projection cannot see stay counted.

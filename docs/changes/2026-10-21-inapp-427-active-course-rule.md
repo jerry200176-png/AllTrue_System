@@ -6,3 +6,5 @@
 - 送出建課時的重複課程守門（`EnrollmentService::store`）同樣不再把上述已完課／已結案的 Stop=0 課程視為重複；投影看不到的課程仍照舊計入。
 - 學生頁：仍在進行（未停課）但已有結案原因的舊資料列，歸入歷史課程。
 - 前端課程列表的歷史判斷移入 `courseMoneyState.isHiddenHistoricalCourse`／`isStudentPageActiveCourse`；前後端共用 `backend/tests/Fixtures/active_course_parity.json` 驗證一致。僅影響顯示與提示，不改任何收費或扣堂規則。
+
+- Review 修正：建課重複檢查的初始候選列包含 `Stop IS NULL` 的舊資料，與既有課程投影的未停課定義一致。此為查詢相容修正；不修改 schema。現行測試 migration 將 Stop 定為 NOT NULL，NULL 舊資料端到端 fixture 尚未覆蓋。
