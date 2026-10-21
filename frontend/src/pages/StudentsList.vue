@@ -796,6 +796,8 @@
     />
 
     <RenewMonthlyModal
+      ref="monthlyRenewalDialog"
+      data-testid="student-monthly-renewal"
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
       :submitting="renewMonthlySubmitting"
@@ -806,7 +808,7 @@
     />
 
     <!-- Add Sessions Modal -->
-    <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
+    <div v-if="showSessionsModal" ref="sessionRenewalDialog" data-testid="student-session-renewal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
         <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : RENEW_LESSONS_LABEL }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
@@ -1100,6 +1102,8 @@ const goToTuitionBilling = openTuitionLedger;
 
 // in-app #429: 「新增課程／續課」 chooser. Each intent lands in the flow the row buttons already use.
 const courseIntentStudent = ref(null);
+const sessionRenewalDialog = ref(null);
+const monthlyRenewalDialog = ref(null);
 // Trials are not renewed (轉為正式課程) and tutoring packages cannot be extended here, so 續課 hides them.
 // `detail` (time, remaining, end date) tells parallel same-subject/teacher contracts apart.
 const courseIntentOptions = (studentId) => getStudentAllCourses(studentId)
@@ -1119,7 +1123,7 @@ const courseIntentOptions = (studentId) => getStudentAllCourses(studentId)
     };
   })
   .filter((option) => option.renewable || option.transferable);
-const onCourseIntent = ({ intent, course }) => {
+const onCourseIntent = async ({ intent, course }) => {
   const student = courseIntentStudent.value;
   courseIntentStudent.value = null;
   routeCourseIntent(intent, {
@@ -1127,6 +1131,12 @@ const onCourseIntent = ({ intent, course }) => {
     renew: () => openAddSessionsForCourse(course),
     change: () => emit('navigate', { ...buildCourseMgmtOpsNav(course, { intent: 'transfer' }), studentName: student?.name || '' }),
   });
+  if (intent === 'renew') {
+    // AtDialog restores the opener on close; hand focus into the destination after that update.
+    await nextTick();
+    const dialog = sessionRenewalDialog.value || monthlyRenewalDialog.value?.$el;
+    dialog?.querySelector?.('input:not([disabled]), select:not([disabled]), button:not([disabled])')?.focus();
+  }
 };
 
 const goToCourseMgmtOps = (course, studentName = '') => {
