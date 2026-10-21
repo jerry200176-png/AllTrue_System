@@ -1397,6 +1397,25 @@ class ScheduleGuardrailsTest extends TestCase
         $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
     }
 
+    /** Codex #4342: a 1v3 class covering only part of the request does not lift the one-trial rule where it is absent. */
+    public function test_partial_one_on_three_overlap_keeps_one_trial_rule(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-tt-partial@example.com');
+        $regular = $this->createStudent(1, '正式生P')->id;
+        $this->insertGuardSlotRow($regular, $teacherId, 'one_on_three', '2026-04-15');
+        $trial = $this->createStudent(1, '試聽生P')->id;
+        $this->insertGuardSlotRow($trial, $teacherId, 'trial', '2026-04-15', $this->insertTrialCourse($trial, $teacherId, null));
+        DB::table('schedules')->where('student_id', $regular)->update(['end_time' => '16:00', 'duration_hours' => 1]);
+        DB::table('schedules')->where('student_id', $trial)->update(['start_time' => '16:00', 'duration_hours' => 1]);
+
+        $conflicts = app(\App\Services\ScheduleGuardService::class)->validateScheduleOccurrence([
+            'teacher_id' => $teacherId, 'class_type' => 'trial', 'branch_id' => 1, 'schedule_date' => '2026-04-15',
+            'start_time' => '15:30', 'end_time' => '16:30', 'exclude_student_id' => $this->createStudent(1, '新加入生P')->id,
+        ]);
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+        $this->assertSame(1, $conflicts[0]['allowed_students'] ?? null);
+    }
+
     public function test_trial_target_class_type_requires_trial_course_on_create(): void
     {
         $token = $this->createDirectorToken([1], 'director-guard-tt-validate@example.com');

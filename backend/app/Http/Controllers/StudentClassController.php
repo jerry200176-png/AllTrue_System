@@ -1819,8 +1819,13 @@ class StudentClassController extends Controller
             : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null);
         $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
 
+        // in-app #426: a trial's target class type decides its slot rule, so changing it re-checks capacity.
+        $oldTrialTarget = $studentClass->getAttribute('trial_target_class_type');
+        $newTrialTarget = array_key_exists('trial_target_class_type', $mapped) ? $mapped['trial_target_class_type'] : $oldTrialTarget;
+        $trialTargetChanged = $newClassType === 'trial' && $newTrialTarget !== $oldTrialTarget;
+
         if ($newTeacherId > 0 && $studentCampusId > 0) {
-            if ($scheduleFieldsPresent) {
+            if ($scheduleFieldsPresent || $trialTargetChanged) {
                 $candidate = clone $studentClass;
                 $candidate->fill($mapped);
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $scheduleSlotsForRebuild);
@@ -1854,7 +1859,7 @@ class StudentClassController extends Controller
                 $oldRemaining = $studentClass->getAttribute('RemainingSessions');
                 $oldHoldsSeat = (int) ($studentClass->getAttribute('Stop') ?? 0) === 0
                     && ($oldMode === null || $oldMode !== 'count' || $oldRemaining === null || (int) $oldRemaining > 0);
-                $addsNoLoad = $oldHoldsSeat
+                $addsNoLoad = $oldHoldsSeat && !$trialTargetChanged
                     && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
@@ -1866,9 +1871,7 @@ class StudentClassController extends Controller
                 $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
                     'class_type' => $newClassType,
-                    'trial_target_class_type' => array_key_exists('trial_target_class_type', $mapped)
-                        ? $mapped['trial_target_class_type']
-                        : $studentClass->getAttribute('trial_target_class_type'),
+                    'trial_target_class_type' => $newTrialTarget,
                     'room_id' => $newRoomId,
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,

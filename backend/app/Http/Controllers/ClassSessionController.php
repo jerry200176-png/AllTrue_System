@@ -2623,6 +2623,7 @@ class ClassSessionController extends Controller
             $conflicts = $guard->validateScheduleOccurrence([
                 'teacher_id' => $newTeacherId,
                 'class_type' => $classType,
+                'trial_target_class_type' => $studentClass->trial_target_class_type,
                 'room_id' => $roomId,
                 'branch_id' => $campusId,
                 'schedule_date' => $sessionDate,

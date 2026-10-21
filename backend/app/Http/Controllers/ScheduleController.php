@@ -1162,7 +1162,7 @@ class ScheduleController extends Controller
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass')
                 ->where('ID', $courseId)
-                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate'])
+                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
                 ->first();
             if ($courseMeta) {
                 if (empty($merged['class_type'])) {
@@ -1198,6 +1198,7 @@ class ScheduleController extends Controller
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id' => $effectiveTeacherId,
                 'class_type' => $effectiveClassType,
+                'trial_target_class_type' => $courseMeta->trial_target_class_type ?? null,
                 'room_id' => $effectiveRoomId,
                 'branch_id' => $branchId,
                 'schedule_date' => $merged['schedule_date'] ?? null,

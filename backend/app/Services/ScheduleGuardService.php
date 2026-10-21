@@ -980,8 +980,8 @@ class ScheduleGuardService
             // slot trial students take real seats and several may join, as long as the slot
             // total (regular + trial) stays within 3. Other slots, and trials without a
             // target in them, keep the one-trial-per-slot rule below.
-            $incoming = ['class_type' => 'trial', 'trial_target_class_type' => $newTrialTarget];
-            if ($this->isOneOnThreeSlot([...$overlaps, $incoming])) {
+            $incoming = ['class_type' => 'trial', 'trial_target_class_type' => $newTrialTarget] + $slot;
+            if ($this->isOneOnThreeSlot([...$overlaps, $incoming], $slot)) {
                 if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
                     return $this->finalizeCapacityConflict([
                         'type' => 'teacher_capacity',
@@ -1200,20 +1200,25 @@ class ScheduleGuardService
     /**
      * in-app #426: a slot is one-on-three when a booking is a one_on_three course or a
      * trial whose trial_target_class_type is one_on_three, and no booking is one_on_one.
-     * Mirrors frontend slotOccupancy.js isOneOnThreeSlot().
+     * Mirrors frontend slotOccupancy.js isOneOnThreeSlot(). With $span, only a one-on-three booking
+     * covering the whole span counts, so a partial overlap cannot lift the one-trial rule elsewhere.
      *
      * @param  array<int, array<string, mixed>>  $entries
+     * @param  array<string, mixed>|null  $span
      */
-    private function isOneOnThreeSlot(array $entries): bool
+    private function isOneOnThreeSlot(array $entries, ?array $span = null): bool
     {
+        $covers = fn (array $e): bool => $span === null || (isset($e['start_time'], $e['end_time'], $span['start_time'], $span['end_time'])
+            && $this->minutesOfDay((string) $e['start_time']) <= $this->minutesOfDay((string) $span['start_time'])
+            && $this->minutesOfDay((string) $e['end_time']) >= $this->minutesOfDay((string) $span['end_time']));
         $isOneOnThree = false;
         foreach ($entries as $entry) {
             $type = (string) ($entry['class_type'] ?? '');
             if ($type === 'one_on_one') {
                 return false;
             }
-            if ($type === 'one_on_three'
-                || ($type === 'trial' && (string) ($entry['trial_target_class_type'] ?? '') === 'one_on_three')) {
+            if (($type === 'one_on_three'
+                || ($type === 'trial' && (string) ($entry['trial_target_class_type'] ?? '') === 'one_on_three')) && $covers($entry)) {
                 $isOneOnThree = true;
             }
         }

@@ -2079,6 +2079,7 @@ const loadStudentCourses = async (studentId) => {
           branch_name: c.branch_name,
           room_name: c.room_name,
           room_id: c.room_id,
+          trial_target_class_type: c.trial_target_class_type ?? null,
           settlement_day: c.settlement_day,
           monthly_sessions: c.monthly_sessions,
           memo: c.memo ?? c.Memo,
@@ -2165,6 +2166,7 @@ const loadAllStudentCourses = async () => {
             branch_name: c.branch_name,
             room_name: c.room_name,
             room_id: c.room_id,
+            trial_target_class_type: c.trial_target_class_type ?? null,
             settlement_day: c.settlement_day,
             monthly_sessions: c.monthly_sessions,
             memo: c.memo ?? c.Memo,
@@ -3206,6 +3208,7 @@ const submitCourse = async () => {
           force_rebuild_if_mismatch: true,
         } : {}),
         room_id: form.room_id || null,
+        ...trialTargetPayload(form),
         settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
