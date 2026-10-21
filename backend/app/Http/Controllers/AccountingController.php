@@ -536,8 +536,26 @@ class AccountingController extends Controller
                 );
             }
 
+            // A receipt cancelled by a later reversal row (撤銷: Method 'void' / negative Amount, same report) is no
+            // longer money on this invoice. Allocating it anyway showed an already-reversed receipt as 多收.
+            $reversedReceiptIds = [];
+            $receiptRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) > 0 && (string) ($p->Method ?? '') !== 'void'
+                && !isset($restatedPaymentIds[(int) $p->id]))->sortBy('id')->values();
+            $reversalRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void')->sortBy('id');
+            foreach ($reversalRows as $reversal) {
+                $reportId = (int) ($reversal->payment_report_id ?? 0);
+                $amount = abs((int) ($reversal->Amount ?? 0));
+                $reversedReport = $reportId > 0 ? $reportsById->get($reportId) : null;
+                $match = $receiptRows->first(fn ($p) => !isset($reversedReceiptIds[(int) $p->id]) && $reportId > 0
+                    && (int) $p->Amount === $amount
+                    && ((int) ($p->payment_report_id ?? 0) === $reportId || (int) ($reversedReport->payment_id ?? 0) === (int) $p->id));
+                if ($match) {
+                    $reversedReceiptIds[(int) $match->id] = true;
+                }
+            }
+
             $remainingInvoiceAmount = $totalAmount;
-            $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
+            $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reversedReceiptIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
                 $isRestatement = isset($restatedPaymentIds[(int) $payment->id]);
@@ -546,9 +564,10 @@ class AccountingController extends Controller
                 $amount = (int) ($payment->Amount ?? 0);
                 $appliedToInvoice = 0;
                 $unappliedAmount = 0;
-                $applicationStatus = $isVoid ? 'voided' : 'applied';
+                $isReversed = isset($reversedReceiptIds[(int) $payment->id]);
+                $applicationStatus = $isVoid || $isReversed ? 'voided' : 'applied';
 
-                if (!$isVoid && $amount > 0) {
+                if (!$isVoid && !$isReversed && $amount > 0) {
                     $appliedToInvoice = min($amount, max(0, $remainingInvoiceAmount));
                     $remainingInvoiceAmount -= $appliedToInvoice;
                     $unappliedAmount = max(0, $amount - $appliedToInvoice);
