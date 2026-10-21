@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -270,6 +271,28 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
 
         // The refused purchase rolled back: only the two seeded courses exist.
         $this->assertSame(2, StudentClass::query()->where('StudentID', $student->id)->count());
+    }
+
+    public function test_purchase_batch_fails_closed_until_the_request_key_migration_has_run(): void
+    {
+        $token = $this->createDirectorToken();
+        $source = $this->createSourceCourse($this->createStudent()->id);
+        // deploy.yml switches code before migrating: simulate that window (column not there yet).
+        $real = Schema::getFacadeRoot();
+        Schema::swap(\Mockery::mock($real)->shouldReceive('hasColumn')->andReturnUsing(
+            fn ($table, $column) => $column !== 'purchase_request_key' && $real->hasColumn($table, $column)
+        )->getMock());
+        $memo = new \ReflectionProperty(\App\Services\Billing\ContractRenewal::class, 'hasPurchaseRequestKeyColumn');
+        $memo->setValue(null, null);
+        try {
+            $this->withHeaders($this->headers($token))
+                ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 2, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase'])
+                ->assertStatus(503)->assertJsonValidationErrors(['maintenance']);
+            $this->assertSame(1, StudentClass::query()->where('StudentID', $source->StudentID)->count());
+        } finally {
+            Schema::swap($real);
+            $memo->setValue(null, null);
+        }
     }
 
     private function weeksAfterBase(int $weeks): string

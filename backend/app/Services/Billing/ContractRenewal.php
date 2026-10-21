@@ -104,8 +104,8 @@ final class ContractRenewal
 
     private static function hasPurchaseRequestKeyColumn(): bool
     {
-        // Until the additive migration has run, keyed matching and storage are skipped (legacy matching only).
-        return self::$hasPurchaseRequestKeyColumn ??= Schema::hasColumn('StudentClass', 'purchase_request_key');
+        // Memoize only a present column (true or null): deploy.yml switches code before it migrates.
+        return (bool) (self::$hasPurchaseRequestKeyColumn ??= Schema::hasColumn('StudentClass', 'purchase_request_key') ?: null);
     }
 
     /**
@@ -712,6 +712,11 @@ final class ContractRenewal
     public function purchaseBatch(StudentClass $studentClass, int $sessions, string $startDate, string $mode, string $newClassType, ?array $discountInput, int $actorId, string $actorRole): array
     {
         return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType, $discountInput, $actorId, $actorRole) {
+            // Fail closed until the key migration has run: an unkeyed batch could be duplicated by a later retry.
+            if (! self::hasPurchaseRequestKeyColumn()) {
+                return $this->reply(['message' => '系統更新中，請稍後再試續報。', 'errors' => ['maintenance' => ['續報功能正在更新，請稍後再試。']]], 503);
+            }
+
             $studentClass = $this->lockCourse((int) $studentClass->ID);
 
             $planStart = $this->batchStartAfterSource(
@@ -816,9 +821,7 @@ final class ContractRenewal
                 'UsedSessions' => 0,
                 'pricing_snapshot' => $discountSnapshot,
             ];
-            if (self::hasPurchaseRequestKeyColumn()) {
-                $newPayload['purchase_request_key'] = $requestKey;
-            }
+            $newPayload['purchase_request_key'] = $requestKey;
 
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
