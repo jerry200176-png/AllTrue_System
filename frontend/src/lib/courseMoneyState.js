@@ -169,12 +169,22 @@ export const isHiddenHistoricalCourse = (course) => {
 };
 
 /**
+ * StudentsList history membership: the shared closed-reason verdict (待對帳結案 included), plus a running row
+ * that carries any closure (legacy Stop=0 + converted_trial / contract_amended / usage_settled), which the
+ * server's 進行中 rule never counts (in-app #427).
+ */
+export const isStudentPageHistoryCourse = (course) => (
+  isHistoryCourse(course, { includePending: true })
+  || (String(course?.status || '').toLowerCase() !== 'inactive' && Boolean(course?.closed_reason))
+);
+
+/**
  * StudentsList course workspace membership (not history by either rule). The server's duplicate-course
  * prompt (EnrollmentActiveCourseRule, in-app #427) agrees with this for every running (status active) row;
  * backend/tests/Fixtures/active_course_parity.json pins both sides.
  */
 export const isStudentPageActiveCourse = (course) => (
-  !isHiddenHistoricalCourse(course) && !isHistoryCourse(course, { includePending: true })
+  !isHiddenHistoricalCourse(course) && !isStudentPageHistoryCourse(course)
 );
 
 // ── payment-status labels (display only; the server owns the status itself) ──

@@ -23,11 +23,12 @@ describe('學生管理 進行中 course parity (in-app #427)', () => {
     for (const needle of ['closed', 'finished', 'stopped', 'package']) expect(cases).toContain(needle);
   });
 
-  it('keeps the page on the shared verdict and scopes the prompt to the page campus', () => {
+  it('keeps the page on the shared verdicts and asks the prompt for every visible campus', () => {
     expect(source).toContain('!isHiddenHistoricalCourse(course)');
+    expect(source).toContain('const isHistoryCourseByReason = isStudentPageHistoryCourse;');
     expect(source).not.toContain('const isHistoricalCourse');
-    expect(source).toContain('/active-courses${branchQuery}');
-    expect(source).toContain('branch_id=${encodeURIComponent(props.branchId)}');
+    // The expanded student view loads every campus (student_id only), as does the create-time guard.
+    expect(source).toContain('/api/v1/students/${sid}/active-courses`');
   });
 
   it('still hides a used-up settled course but keeps a used-up unpaid one', () => {

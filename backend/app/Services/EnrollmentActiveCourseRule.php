@@ -2,6 +2,10 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\StudentClassController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+
 /**
  * The one definition of 「進行中課程」 for 學生管理 (in-app #427).
  *
@@ -56,6 +60,30 @@ final class EnrollmentActiveCourseRule
         }
 
         return (int) ($row['remaining_sessions'] ?? 0);
+    }
+
+    /**
+     * The student's running rows of the student-classes projection (the same rows and numbers the
+     * 學生管理 list shows), keyed by StudentClass ID, seen with the caller's own auth scope.
+     * Null when the projection cannot be read (callers then keep their previous behaviour).
+     *
+     * @return Collection<int, array<string, mixed>>|null
+     */
+    public static function projectedRows(Request $request, int $studentId, mixed $branchId = null): ?Collection
+    {
+        $query = ['student_id' => $studentId, 'status' => 'active', 'per_page' => 1000];
+        if ($branchId !== null && $branchId !== '') {
+            $query['branch_id'] = $branchId;
+        }
+        $projectionRequest = Request::create('/api/v1/student-classes', 'GET', $query);
+        $projectionRequest->attributes->add($request->attributes->all());
+        $projection = app(StudentClassController::class)->index($projectionRequest);
+        if ($projection->getStatusCode() !== 200) {
+            return null;
+        }
+
+        return collect($projection->getData(true)['data'] ?? [])
+            ->keyBy(fn (array $row) => (int) ($row['ID'] ?? $row['id'] ?? 0));
     }
 
     /** @param array<string, mixed> $row */

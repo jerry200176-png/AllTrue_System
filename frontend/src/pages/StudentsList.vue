@@ -1006,7 +1006,7 @@ import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
-  closedReason as effectiveClosedReason, courseProgress, isHiddenHistoricalCourse, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  closedReason as effectiveClosedReason, courseProgress, isHiddenHistoricalCourse, isStudentPageHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
   modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -1389,7 +1389,7 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-const isHistoryCourseByReason = (course) => isHistoryCourse(course, { includePending: true });
+const isHistoryCourseByReason = isStudentPageHistoryCourse;
 // in-app #427: with 顯示歷史課程 off this is isStudentPageActiveCourse, the verdict the server's 進行中 prompt is pinned to.
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
@@ -2807,9 +2807,8 @@ const openAddCourse = async (student) => {
     try {
       const token = await getAccessToken();
       if (token) {
-        // in-app #427: same campus as this page's course list.
-        const branchQuery = props.branchId ? `?branch_id=${encodeURIComponent(props.branchId)}` : '';
-        const res = await authedFetch(`/api/v1/students/${sid}/active-courses${branchQuery}`, {
+        // in-app #427: every campus you can see, like the expanded student view and the create-time guard.
+        const res = await authedFetch(`/api/v1/students/${sid}/active-courses`, {
           headers: { 'Accept': 'application/json' },
         }, token);
         if (res.ok) {

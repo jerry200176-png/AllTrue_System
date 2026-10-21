@@ -167,7 +167,8 @@ class StudentController extends Controller
      * in-app #427: rows come from the same student-classes projection the student page lists
      * (campus filter, self-healed remaining, shared-pool remaining, server payment_status) and are
      * filtered by the one rule {@see EnrollmentActiveCourseRule}, so the prompt and the page agree.
-     * branch_id defaults to the student's own campus.
+     * Without branch_id it covers every campus the caller can see, like the expanded student view and
+     * the create-time duplicate guard; branch_id narrows it to one campus.
      */
     public function activeCourses(Request $request, Student $student)
     {
@@ -175,20 +176,11 @@ class StudentController extends Controller
             return $deny;
         }
 
-        $projectionRequest = Request::create('/api/v1/student-classes', 'GET', [
-            'student_id' => $student->id,
-            'branch_id' => $request->input('branch_id', $student->CampusID),
-            'status' => 'active',
-            'per_page' => 1000,
-        ]);
-        $projectionRequest->attributes->add($request->attributes->all());
-        $projection = app(StudentClassController::class)->index($projectionRequest);
-        if ($projection->getStatusCode() !== 200) {
-            return $projection;
+        $projected = EnrollmentActiveCourseRule::projectedRows($request, (int) $student->id, $request->input('branch_id'));
+        if ($projected === null) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
-        $rows = collect($projection->getData(true)['data'] ?? [])
-            ->filter(fn (array $row) => EnrollmentActiveCourseRule::isActive($row))
-            ->keyBy(fn (array $row) => (int) ($row['ID'] ?? $row['id'] ?? 0));
+        $rows = $projected->filter(fn (array $row) => EnrollmentActiveCourseRule::isActive($row));
 
         $activeCourses = $rows->isEmpty()
             ? collect()
