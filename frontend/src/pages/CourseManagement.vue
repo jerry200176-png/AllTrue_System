@@ -2199,7 +2199,7 @@ function openCourseTransfer(course, prefill = null) {
 const onCourseTransferDone = async () => {
   showCourseTransfer.value = false;
   courseTransferPrefill.value = null;
-  showEditModal.value = false;
+  closeCourseManager();
   editSaveError.value = null;
   await loadCourses();
   toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
