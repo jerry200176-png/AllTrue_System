@@ -32,6 +32,10 @@ export function transferPrefillFromBlockedEdit(err, form) {
   if (hint.changes.includes('slots')) {
     // Carry every weekly slot: 轉課 replaces the whole weekly schedule with this list.
     const slots = editedSlots(f);
+    // validateSplitRequest currently accepts at most six slots; do not advertise an unusable shortcut.
+    if (slots.length > 6) {
+      return { ...prefill, blocked_reason: '目前轉課最多支援每週 6 個時段；此次 7 個時段的修改尚未儲存，請先聯繫主任處理。' };
+    }
     if (slots.length) {
       prefill.slots = slots;
       Object.assign(prefill, { weekday: slots[0].weekday, time: slots[0].time, duration_minutes: slots[0].duration_minutes });

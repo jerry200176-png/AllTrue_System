@@ -42,6 +42,20 @@ describe('transferPrefillFromBlockedEdit', () => {
     ]);
   });
 
+  it('withholds a seven-slot shortcut the existing endpoint cannot accept', () => {
+    const seven = { ...form, day_time_slots: Array.from({ length: 7 }, (_, i) => ({ day: i + 1, start_time: '15:00', duration_hours: 1 })) };
+    const prefill = transferPrefillFromBlockedEdit(blocked(['slots']), seven);
+    expect(prefill.blocked_reason).toContain('最多支援每週 6 個時段');
+    expect(prefill.slots).toBeUndefined();
+    const wrapper = mount(CourseSaveErrorAlert, { props: {
+      error: { message: '未儲存', nextStep: 'course_transfer', transferPrefill: prefill }, canOpen: () => true,
+    } });
+    expect(wrapper.find('[data-testid="save-error-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-error-transfer-blocked"]').text()).toContain('修改尚未儲存');
+    expect(transferPrefillFromBlockedEdit(blocked(['slots']), { ...seven, day_time_slots: seven.day_time_slots.slice(0, 6) }).slots).toHaveLength(6);
+    wrapper.unmount();
+  });
+
   it('labels locked billing edits that 轉課 will not carry', () => {
     const err = blocked(['teacher'], { transfer_hint: { start_date: '2026-10-07', changes: ['teacher'], not_carried: ['SessionCount'] } });
     expect(transferPrefillFromBlockedEdit(err, form).not_carried).toEqual(['購買堂數']);

@@ -5,8 +5,9 @@
     <p v-if="hint" class="save-error__detail" data-testid="save-error-next-step">{{ hint }}</p>
     <p v-if="error.nextStep === 'course_transfer'" class="save-error__detail" data-testid="save-error-transfer-scope">轉課只帶入科目、老師與時段；你修改的備註、教室、班型、單價與其他帳務設定不會儲存，需另外處理。</p>
     <p v-if="notCarried" class="save-error__detail" data-testid="save-error-not-carried">注意：轉課不會套用你改的{{ notCarried }}，新合約沿用剩餘堂數。</p>
+    <p v-if="error.transferPrefill?.blocked_reason" class="save-error__detail" data-testid="save-error-transfer-blocked">{{ error.transferPrefill.blocked_reason }}</p>
     <button
-      v-if="canOpen(error.nextStep)"
+      v-if="canOpen(error.nextStep) && !error.transferPrefill?.blocked_reason"
       type="button"
       class="small primary"
       data-testid="save-error-action"
