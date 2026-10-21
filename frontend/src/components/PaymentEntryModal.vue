@@ -75,7 +75,7 @@
 
         <div class="pe-workflow-hint" role="note" data-testid="pe-workflow-hint">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span v-if="legacyBackfill" data-testid="pe-legacy-hint">送出即入帳，不需要再確認：會建立已確認的收款紀錄（沒有帳單時一併開帳單），這門課維持已收。</span>
+          <span v-if="legacyBackfill" data-testid="pe-legacy-hint">送出即入帳，不需要再確認：會建立已確認的收款紀錄（沒有帳單時一併開帳單）。收齊時維持已收；少於帳單未收額時，剩下的會列為未繳。</span>
           <span v-else-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
           <span v-else>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
         </div>

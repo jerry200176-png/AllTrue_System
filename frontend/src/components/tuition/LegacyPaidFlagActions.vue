@@ -7,7 +7,7 @@
     </div>
 
     <AtDialog :open="clearOpen" title="改成未繳" size="sm" :title-id="`legacy-clear-title-${courseId}`" @close="clearOpen = false">
-      <p class="legacy__note">只把舊的「已收」標記拿掉，這門課會變成未繳、依合約金額列入收款。不會動任何帳單或收款紀錄。</p>
+      <p class="legacy__note">只把舊的「已收」標記拿掉，這門課會變成未繳：有帳單就依帳單未收額、沒有帳單就依合約金額列入收款。不會動任何帳單或收款紀錄。</p>
       <label class="legacy__label" :for="`legacy-reason-${courseId}`">原因 <span aria-hidden="true">*</span></label>
       <AtTextarea :id="`legacy-reason-${courseId}`" v-model="reason" :rows="2" data-testid="legacy-clear-reason" />
       <p v-if="error" class="legacy__error" role="alert" data-testid="legacy-error">{{ error }}</p>
