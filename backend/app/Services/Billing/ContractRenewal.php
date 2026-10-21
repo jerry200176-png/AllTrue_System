@@ -90,9 +90,13 @@ final class ContractRenewal
     {
         $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
         $starts = [$startDate => true, $planStart => true];
+        // Same contract-period bounds as batchStartAfterSource(): residue outside them never shifts a batch.
+        $sourceStart = ContractSessionSchedule::normalizeDateString($studentClass->getAttribute('StartDate'));
+        $sourceEnd = ContractSessionSchedule::normalizeDateString($studentClass->getAttribute('EndDate'));
         $lessonDates = ClassSession::query()
             ->where('StudentClassID', (int) $studentClass->ID)
-            ->whereDate('SessionDate', '>=', $startDate)
+            ->whereDate('SessionDate', '>=', $sourceStart !== null && $sourceStart > $startDate ? $sourceStart : $startDate)
+            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $sourceEnd))
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
             ->pluck('SessionDate');
         foreach ($lessonDates as $date) {
