@@ -483,7 +483,9 @@ final class ContractRenewal
      * course being extended. The batch now starts on the first configured slot day after the source's last live
      * lesson on or after the requested start, so the two contracts never interleave and every slot type is kept.
      * Any other course that holds a slot in the shifted plan is still rejected by upsertSlot()'s write-time guard.
-     * With no live source lesson the requested start is used unchanged.
+     * With no live source lesson the requested start is used unchanged. Which source lessons count mirrors
+     * ClassSessionMaterializationService::assertStudentSlotAvailable(): only future dates, only inside the
+     * source's StartDate/EndDate, and never a trial or stopped source (a converting trial does not block).
      *
      * @param  array<int, array<string, mixed>>  $slots
      * @return array{start: string, source_live_until: string|null}
@@ -491,9 +493,25 @@ final class ContractRenewal
     private function batchStartAfterSource(StudentClass $source, string $startDate, array $slots): array
     {
         $sourceId = (int) $source->getKey();
+        $unchanged = ['start' => $startDate, 'source_live_until' => null];
+        if (strtolower(trim((string) $source->getAttribute('ClassType'))) === 'trial'
+            || (int) $source->getAttribute('Stop') === 1) {
+            return $unchanged;
+        }
+        // Past dates never block (the write guard skips them), so a backdated batch keeps its requested start.
+        $from = max($startDate, Carbon::today()->toDateString());
+        $sourceStart = ContractSessionSchedule::normalizeDateString($source->getAttribute('StartDate'));
+        if ($sourceStart !== null && $sourceStart > $from) {
+            $from = $sourceStart;
+        }
+        $sourceEnd = ContractSessionSchedule::normalizeDateString($source->getAttribute('EndDate'));
+        if ($sourceEnd !== null && $sourceEnd < $from) {
+            return $unchanged;
+        }
         $lastLesson = ClassSession::query()
             ->where('StudentClassID', $sourceId)
-            ->whereDate('SessionDate', '>=', $startDate)
+            ->whereDate('SessionDate', '>=', $from)
+            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $sourceEnd))
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
             ->max('SessionDate');
         // A schedule can exist before its ClassSession is materialized. Substitute/reschedule anchors
@@ -501,7 +519,8 @@ final class ContractRenewal
         // student-slot guard.
         $scheduleRows = DB::table('schedules')
             ->where('student_course_id', $sourceId)
-            ->whereDate('schedule_date', '>=', $startDate)
+            ->whereDate('schedule_date', '>=', $from)
+            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('schedule_date', '<=', $sourceEnd))
             ->where('status', 'scheduled')
             ->whereNull('original_schedule_id')
             ->get(['schedule_date', 'student_course_id', 'start_time']);
@@ -516,17 +535,17 @@ final class ContractRenewal
         $liveDates = array_filter([ContractSessionSchedule::normalizeDateString($lastLesson), ...$liveScheduleDates]);
         $liveUntil = $liveDates === [] ? null : max($liveDates);
         if ($liveUntil === null) {
-            return ['start' => $startDate, 'source_live_until' => null];
+            return $unchanged;
         }
 
         // buildSessionsForCount() always books its start date, so begin on a configured slot weekday.
         $weekdays = array_filter(array_map(fn ($slot) => (int) ($slot['weekday'] ?? 0), $slots), fn ($wd) => $wd >= 1 && $wd <= 7);
-        $from = Carbon::parse($liveUntil)->addDay();
-        for ($i = 0; $weekdays !== [] && $i < 7 && !in_array($from->dayOfWeekIso, $weekdays, true); $i++) {
-            $from->addDay();
+        $next = Carbon::parse($liveUntil)->addDay();
+        for ($i = 0; $weekdays !== [] && $i < 7 && !in_array($next->dayOfWeekIso, $weekdays, true); $i++) {
+            $next->addDay();
         }
 
-        return ['start' => $from->toDateString(), 'source_live_until' => $liveUntil];
+        return ['start' => $next->toDateString(), 'source_live_until' => $liveUntil];
     }
 
     // Course lifecycle helpers shared with StudentClassController (togglePause, store, split, trial conversion).

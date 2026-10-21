@@ -98,6 +98,25 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             ->assertJsonPath('new_course.last_session_date', $this->weeksAfterBase(4));
     }
 
+    public function test_source_lessons_after_its_end_date_do_not_shift_the_batch(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        // The source contract ends in week 0; its week-1/2 rows are residue the overlap guard ignores.
+        $source = $this->createSourceCourse($student->id, ['EndDate' => $this->weeksAfterBase(0)]);
+        $this->seedSourceFutureSessions($source, 3);
+
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+                'mode' => 'purchase_batch',
+                'sessions' => 2,
+                'start_date' => $this->base->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('schedule.source_live_until', $this->weeksAfterBase(0))
+            ->assertJsonPath('schedule.first_session_date', $this->weeksAfterBase(1));
+    }
+
     public function test_renewal_preview_shows_the_same_shifted_batch_dates(): void
     {
         $token = $this->createDirectorToken();
