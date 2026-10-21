@@ -1,9 +1,13 @@
 name: Branch Hygiene Report (daily dry-run)
+# Also hosts the weekly stale-PR sweep and the hourly land-queue alarm
+# (.github/scripts/repo-hygiene.mjs). Branch deletion stays out of scope (B5).
 
 on:
   schedule:
     # 每週一 08:00 台灣時間 = 週日 00:00 UTC
     - cron: "0 0 * * 0"
+    # Land queue alarm (hourly)
+    - cron: "17 * * * *"
   workflow_dispatch: {}
 
 # ⛔ 只讀報告，沒有任何刪除操作
@@ -12,16 +16,26 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: repo-hygiene-${{ github.event.schedule || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   report:
     name: Branch Hygiene Dry-Run
+    if: ${{ github.event.schedule != '17 * * * *' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # 需要完整 remote branch 資訊
+          persist-credentials: false
 
       - name: Run dry-run
         id: hygiene
@@ -63,3 +77,37 @@ jobs:
         env:
           STEPS_HYGIENE_OUTPUTS_HAS_STALE: ${{ steps.hygiene.outputs.has_stale }}
           STEPS_HYGIENE_OUTPUTS_OUTPUT: ${{ steps.hygiene.outputs.output }}
+
+      - name: Save report for the weekly issue
+        run: printf '%s\n' "${STEPS_HYGIENE_OUTPUTS_OUTPUT}" > "$RUNNER_TEMP/hygiene-report.txt"
+        env:
+          STEPS_HYGIENE_OUTPUTS_OUTPUT: ${{ steps.hygiene.outputs.output }}
+
+      # Weekly: label agent PRs idle 14d `stale`, close agent DRAFTs idle 30d, post one report issue.
+      # Own script instead of actions/stale: stale cannot restrict closing to drafts (it only
+      # exempts them) and cannot tell agent PRs from other authors. Same label/comment model.
+      - name: Stale PR sweep
+        if: ${{ github.event.schedule == '0 0 * * 0' || github.event_name == 'workflow_dispatch' }}
+        run: node .github/scripts/repo-hygiene.mjs stale
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HYGIENE_REPORT_FILE: ${{ runner.temp }}/hygiene-report.txt
+
+  queue-alarm:
+    name: Land queue alarm
+    if: ${{ github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check queue health
+        run: node .github/scripts/repo-hygiene.mjs queue-alarm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
