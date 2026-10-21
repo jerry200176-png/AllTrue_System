@@ -187,6 +187,8 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       const downstream = jobBlock(source, workflows.find((w) => w[0] === workflow)[3]);
       assert.ok(downstream.includes('if: always() && ') && downstream.includes('--argjson a "$APPLIED"'),
         `${workflow} follow-on job must run for, and only for, applied rows`);
+      assert.ok(downstream.includes('failed=0') && downstream.includes('failed=1;') && downstream.trimEnd().endsWith('exit "$failed"'),
+        `${workflow} follow-on job must attempt every applied row and fail only after the loop`);
     }
     assert.ok(!fs.existsSync(marker) && !fs.existsSync('executed'), 'reply metacharacters must never execute');
   } finally {

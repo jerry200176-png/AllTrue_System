@@ -184,11 +184,14 @@ jobs:
           APPLIED: ${{ needs.comment.outputs.applied }}
         run: |
           set -euo pipefail
+          # Each applied row is processed independently; one bad issue never strands the rest (failed=1 at the end).
+          failed=0
           while IFS=$'\t' read -r -u 3 BUG_ID GITHUB_ISSUE_URL PRODUCTION_REVISION; do
             [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
             [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
             [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid production_revision"; exit 1; }
-            state="$(gh issue view "$GITHUB_ISSUE_URL" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
+            state="$(gh issue view "$GITHUB_ISSUE_URL" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')" \
+              || { echo "::error::cannot read the issue for in-app $BUG_ID"; failed=1; continue; }
             # Same guards as Phase-C: never close epics, reviewed frozen work, or an issue that also maps other reports.
             case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip $BUG_ID: $state"; continue ;; esac
             others="$(gh issue view "$GITHUB_ISSUE_URL" --json title,body,comments | BUG_ID="$BUG_ID" python3 -c '
@@ -197,7 +200,8 @@ jobs:
           ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
           for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
               ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
-          print(" ".join(str(i) for i in sorted(ids - {int(os.environ["BUG_ID"])})))')"
+          print(" ".join(str(i) for i in sorted(ids - {int(os.environ["BUG_ID"])})))')" \
+              || { echo "::error::cannot read the issue mappings for in-app $BUG_ID"; failed=1; continue; }
             if [[ -n "$others" ]]; then
               # Shared backlog: leave it open but drop the exemption so the queue-dump reconcile shows it to a human.
               echo "skip: issue also maps in-app $others"
@@ -205,6 +209,9 @@ jobs:
               continue
             fi
             gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
-            gh issue close "$GITHUB_ISSUE_URL" --reason completed
-            gh issue comment "$GITHUB_ISSUE_URL" --body "已上線（production ${PRODUCTION_REVISION:0:9}），已在 in-app 通知原回報者。Closed automatically on ship (F14)."
+            gh issue close "$GITHUB_ISSUE_URL" --reason completed \
+              || { echo "::error::cannot close the issue for in-app $BUG_ID"; failed=1; continue; }
+            gh issue comment "$GITHUB_ISSUE_URL" --body "已上線（production ${PRODUCTION_REVISION:0:9}），已在 in-app 通知原回報者。Closed automatically on ship (F14)." \
+              || { echo "::error::cannot comment on the issue for in-app $BUG_ID"; failed=1; continue; }
           done 3< <(jq -r --argjson a "$APPLIED" '.[] | select(.[0] as $id | $a | index($id)) | @tsv' <<< "$SHIPPED")
+          exit "$failed"

@@ -212,7 +212,11 @@ jobs:
         run: |
           set -euo pipefail
           gh label create in-app:logged --force --color C2E0C6 --description "F12: in-app suggestion closed as logged; this issue is the backlog"
+          # Each applied row is labelled independently; one bad issue never strands the rest (failed=1 at the end).
+          failed=0
           for GITHUB_ISSUE_URL in $(jq -r --argjson a "$APPLIED" '.[] | select(.[0] as $id | $a | index($id)) | .[1]' <<< "$LOGGED_ISSUES"); do
             [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
-            gh issue edit "$GITHUB_ISSUE_URL" --add-label in-app:logged
+            gh issue edit "$GITHUB_ISSUE_URL" --add-label in-app:logged \
+              || { echo "::error::cannot label $GITHUB_ISSUE_URL"; failed=1; }
           done
+          exit "$failed"
