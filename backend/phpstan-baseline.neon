@@ -331,12 +331,6 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Http/Controllers/AlertController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1006,12 +1000,6 @@ parameters:
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$class_type\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$closed_reason\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1031,12 +1019,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/CoursePackageController.php
@@ -2368,12 +2350,6 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/PasswordResetRequestController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'

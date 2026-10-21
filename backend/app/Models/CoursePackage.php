@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property int $student_id
  * @property int $campus_id
+ * @property string|null $class_type
+ * @property bool $paid
  */
 class CoursePackage extends Model
 {
