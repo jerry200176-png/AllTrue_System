@@ -331,12 +331,6 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/AlertController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$settlement_day\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1019,12 +1013,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/CoursePackageController.php
@@ -2350,12 +2338,6 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/PasswordResetRequestController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
