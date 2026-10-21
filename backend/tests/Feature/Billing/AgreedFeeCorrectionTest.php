@@ -58,11 +58,12 @@ class AgreedFeeCorrectionTest extends TestCase
     }
     public static function invoiceIdRepresentations(): array { return [[true], [false]]; }
 
-    public function test_disabled_by_default_and_campus_empty_scope_fail_closed(): void
+    public function test_flag_off_and_campus_empty_scope_fail_closed(): void
     {
         $f = $this->fixture(); $body = $this->feePayload($f['invoice']);
+        // Rollback path: the literal flag set back to false closes the API even for allowlisted courses.
+        config(['billing.agreed_fee_correction_enabled' => false]);
         $this->withToken($f['token'])->postJson($this->path($f).'/preview', $body)->assertNotFound();
-        $this->assertFalse(config('billing.agreed_fee_correction_enabled'));
         $this->assertFalse(AgreedFeeCorrection::available(), 'flag false ⇒ unavailable even if test schema has columns');
         config(['billing.agreed_fee_correction_enabled' => true]);
         $f['student']->update(['CampusID' => 2]);

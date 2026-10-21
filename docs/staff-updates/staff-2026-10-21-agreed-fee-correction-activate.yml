@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-agreed-fee-correction-activate
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 指定課程可更正約定費用
+    summary: 經核准的課程可在帳務中更正約定費用，先預覽再確認，不會收款或開收據。
+    items:
+      - category: new
+        text: 只有經核准名單內的課程會出現「更正約定費用」；預覽會列出原費用、新費用與帳單變化，確認後原未繳帳單作廢並開立新的未繳帳單。
+      - category: new
+        text: 已有收款、待核對回報或多張有效帳單的課程無法更正，請先完成核對。
+    source_refs:
+      - "changelog:2026-10-21:agreed-fee-correction-activate"

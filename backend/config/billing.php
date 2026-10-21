@@ -1,11 +1,12 @@
 <?php
 
 return [
-    // Local / Draft prep only. Never environment-driven; production activation is a separate Founder gate.
-    // Without invoice_corrections extension columns, AgreedFeeCorrection::available() stays false (fail closed).
-    'agreed_fee_correction_enabled' => false,
-    // Empty by default. A separate protected release must supply only its approved campus/course IDs.
-    // These scope values do not activate the API; agreed_fee_correction_enabled remains literal false.
+    // Founder 2026-10-21 (Xinzhuang fee path A): activated in code, never environment-driven. The API still
+    // answers 404 for every course outside the campus/course allowlist below, which stays empty unless set
+    // through agreed-fee-allowlist-activation.yml. Without the invoice_corrections extension columns,
+    // AgreedFeeCorrection::available() stays false (fail closed). Rollback: set this back to false.
+    'agreed_fee_correction_enabled' => true,
+    // Empty by default. Only the Founder-gated allowlist workflow supplies the approved campus/course IDs.
     'agreed_fee_correction_campus_ids' => array_map('intval', array_filter(explode(',', (string) env('AGREED_FEE_CORRECTION_CAMPUS_IDS', '')))),
     'agreed_fee_correction_course_ids' => array_map('intval', array_filter(explode(',', (string) env('AGREED_FEE_CORRECTION_COURSE_IDS', '')))),
     // F7 S5: log (never act on) disagreements between the legacy paid predicate and BillingPayableResolver at outbound sites.
