@@ -37,7 +37,7 @@ class LegacyPaidFlagResolveTest extends TestCase
         $payment = Payment::where('InvoiceID', $invoice->id)->sole();
         $this->assertSame([8800, 'transfer', '2026-10-01'], [(int) $payment->Amount, $payment->Method, substr((string) $payment->PaidAt, 0, 10)]);
         $report = PaymentReport::findOrFail($res->json('report_id'));
-        $this->assertSame(['confirmed', (int) $payment->id, (int) $invoice->id], [$report->status, (int) $report->payment_id, (int) $report->InvoiceID]);
+        $this->assertSame(['confirmed', (int) $payment->id, (int) $invoice->id, true], [$report->status, (int) $report->payment_id, (int) $report->InvoiceID, $report->confirmed_by !== null && $invoice->reconciled_by !== null]);
         $this->assertSame(1, (int) $course->fresh()->Paid, 'the flag stays: the course is paid, now with evidence');
         $this->assertSame(['paid', false], $this->courseRow($token, $course));
     }

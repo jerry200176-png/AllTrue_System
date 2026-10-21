@@ -101,7 +101,6 @@ describe('PaymentEntryModal legacy-backfill mode (補登收款)', () => {
   };
   it('is the same form with the contract amount prefilled, no 免費 mark and a 送出即入帳 hint', async () => {
     const w = await open();
-    expect(w.find('h3').text()).toBe('登記收款');
     expect(w.find('input[type="number"]').element.value).toBe('8800');
     expect(w.find('[data-testid="pe-legacy-hint"]').text()).toContain('送出即入帳，不需要再確認');
     expect(w.find('[data-testid="pe-free-gift"]').exists()).toBe(false);

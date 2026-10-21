@@ -2,7 +2,6 @@
   <div class="legacy" data-testid="legacy-flag-actions">
     <p class="legacy__text" data-testid="legacy-flag-help">{{ LEGACY_FLAG_ACTION_HELP }}</p>
     <div class="legacy__buttons">
-      <!-- 補登收款 opens the one payment form (PaymentEntryModal, legacy-backfill mode); this component never takes money. -->
       <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="emit('backfill')">已收過，補登收款</AtButton>
       <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="legacy-clear-open" @click="openClear">其實沒收，改成未繳</AtButton>
     </div>

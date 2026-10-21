@@ -355,7 +355,7 @@ class PaymentReportController extends Controller
     {
         PaymentReport::findOrFail($id);
 
-        $userId = $request->attributes->get('auth_user_id');
+        $userId = $request->attributes->get('auth_user_id') ?? $request->attributes->get('auth_user')?->id; // bearer auth sets only auth_user
         $confirmationNote = trim((string) $request->input('note', ''));
         // Routing id only — must not run inside the transaction (would start an RR
         // consistent-read snapshot before waiting on the course lock).
