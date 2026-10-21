@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Schema;
 final class ContractRenewal
 {
     /** #2567 (Founder 2026-10-13): renewing settles the prior term, so its fee must be on record first. */
-    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0，也沒有帳單）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單（免費課程請在登記收款勾選「免費／贈送」，登錄 NT$0 帳單），再續約或加購。';
+    public const PRIOR_FEE_MISSING_MESSAGE = '前一期費用尚未登錄（單堂費用與應收金額都是 0，也沒有帳單）。請先在課程編輯填寫「單堂費用」，或在帳務登錄前一期帳單（免費課程請在登記收款勾選「免費／贈送」，登錄 NT$0 帳單），再辦理續課。';
 
     /**
      * Blocker when the source course has no fee on record: no per-session price, no charge and no
@@ -365,7 +365,7 @@ final class ContractRenewal
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             $blockers[] = [
                 'code' => 'monthly_course_purchase_batch',
-                'message' => '月結制課程不可加購堂數，請使用月結續報。',
+                'message' => '月結制課程不使用堂數續課，請使用月結續報。',
             ];
         }
 
@@ -812,7 +812,7 @@ final class ContractRenewal
             // Same guard the controller's purchaseBatch applied when convertTrial used to call it through the request.
             if ((string) ($source->ScheduleMode ?? 'count') !== 'count') {
                 throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
-                    'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                    'message' => '月結制課程請使用「月結續約」功能延長課程，不支援堂數續課。',
                     'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
                 ], 422));
             }
