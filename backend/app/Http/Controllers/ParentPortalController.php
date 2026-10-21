@@ -843,7 +843,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap, $attendedLessons) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
@@ -903,12 +903,16 @@ class ParentPortalController extends Controller
                     'settlement_day'       => $isMonthly ? ((int) ($c->settlement_day ?? 0) ?: null) : null,
                     'monthly_target'       => $isMonthly ? ($monthlyTarget ?: null) : null,
                     'attended_this_month'  => $isMonthly ? $attended : null,
-                    // in-app #418: this course's own lesson dates (package members: own subject only), newest first.
-                    'attended_lessons'     => $isMonthly ? null : ($attendedLessons[(int) $c->ID] ?? []),
                     'monthly_fee_estimate' => $isMonthly ? $monthlyFee : null,
                 ];
             })
             ->values();
+        // in-app #418: this course's own lesson dates (package members: own subject only), newest first.
+        $perCourse = $perCourse->map(fn (array $row) => $row + [
+            'attended_lessons' => (string) ($row['schedule_mode'] ?? 'count') === 'count'
+                ? ($attendedLessons[(int) $row['id']] ?? [])
+                : null,
+        ]);
         $visibleClassIds = $perCourse->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
         // 總剩餘堂數：非共用方案逐課加總；共用方案「每池只算一次」（避免每科重複加總成數倍）。
