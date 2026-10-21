@@ -134,7 +134,7 @@ class StudentActiveCoursesParityTest extends TestCase
         $second->assertCreated();
     }
 
-    public function test_teacher_receives_a_generic_warning_without_hidden_course_details(): void
+    public function test_teacher_precheck_discloses_its_scope_but_not_hidden_course_existence(): void
     {
         $campus = Campus::factory()->create();
         $student = Student::create([
@@ -151,10 +151,11 @@ class StudentActiveCoursesParityTest extends TestCase
         $hidden = $this->course($student, ['TeacherID' => $teacher->id + 1000, 'Charge' => 8000]);
         $headers = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'];
         $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
-            ->assertOk()->assertExactJson(['courses' => [], 'has_restricted_active_courses' => true]);
+            ->assertOk()->assertExactJson(['courses' => [], 'precheck_scope' => 'teacher_courses']);
+        // Even existence is private: stopping the hidden row must not change the response.
         $hidden->update(['Stop' => 1]);
         $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
-            ->assertOk()->assertExactJson(['courses' => [], 'has_restricted_active_courses' => false]);
+            ->assertOk()->assertExactJson(['courses' => [], 'precheck_scope' => 'teacher_courses']);
 
         $outside = Campus::factory()->create();
         $student->update(['CampusID' => $outside->id]);

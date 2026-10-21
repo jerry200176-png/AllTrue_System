@@ -11,7 +11,7 @@ describe('teacher precheck without hidden course disclosure', () => {
   it.each([false, true])('warns before the form and respects continue=%s', async (proceed) => {
     const fetchMock = vi.fn(async (input) => {
       const url = String(input);
-      const body = url.includes('/active-courses') ? { courses: [], has_restricted_active_courses: true }
+      const body = url.includes('/active-courses') ? { courses: [], precheck_scope: 'teacher_courses' }
         : url.includes('/student-classes') ? { data: [{ id: 7001, student_id: 2001, subject: 'Math', status: 'active', payment_type: 'session', payment_status: 'unpaid', sessions_purchased: 8, remaining_sessions: 4 }] }
           : url.includes('/students?') ? { data: [{ id: 2001, name: '合成學生', status: 'active' }], total: 1 }
           : { data: [] };

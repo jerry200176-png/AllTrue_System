@@ -213,15 +213,12 @@ class StudentController extends Controller
             ];
         })->values();
 
-        // Match the create guard's conservative treatment of projection-hidden candidates without
-        // revealing their IDs, teachers, subjects or balances to a teacher.
-        $hasRestrictedActiveCourses = $request->attributes->get('auth_role') === 'teacher'
-            && StudentClass::where('StudentID', $student->id)
-                ->where(fn ($query) => $query->where('Stop', 0)->orWhereNull('Stop'))
-                ->whereNotIn('ID', $projected->keys()->all())
-                ->exists();
-
-        return response()->json(['courses' => $courses, 'has_restricted_active_courses' => $hasRestrictedActiveCourses]);
+        // Scope metadata only: never disclose even the existence of another teacher's hidden course.
+        // The create guard still checks all candidates; a teacher's precheck cannot certify completeness.
+        return response()->json([
+            'courses' => $courses,
+            'precheck_scope' => $request->attributes->get('auth_role') === 'teacher' ? 'teacher_courses' : 'visible_campuses',
+        ]);
     }
 
     public function store(Request $request)
