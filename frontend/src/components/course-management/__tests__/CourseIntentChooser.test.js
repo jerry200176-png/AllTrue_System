@@ -100,12 +100,10 @@ describe('course intent chooser (#4331)', () => {
       .toMatchObject({ renewable, transferable });
   });
 
-  it('without a student (課程查找 header) 續課 shows where the row button is', async () => {
+  it.each(['renew', 'change'])('context-free %s returns guidance to the course list', async (intent) => {
     const w = mountChooser({ props: { show: true } });
-    await w.find('[data-testid="course-intent-renew"]').trigger('click');
-    expect(w.find('[data-testid="course-intent-guide"]').text()).toContain(`「${RENEW_LESSONS_LABEL}」`);
-    await w.find('[data-testid="course-intent-back"]').trigger('click');
-    expect(w.findAll('.choice-card')).toHaveLength(COURSE_INTENTS.length);
+    await w.find(`[data-testid="course-intent-${intent}"]`).trigger('click');
+    expect(w.emitted('browse')).toEqual([[intent]]);
   });
 
   it('rejects unknown or unwired intents (valid routing is exercised by the page tests)', () => {

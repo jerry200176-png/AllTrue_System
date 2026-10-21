@@ -178,7 +178,8 @@
     </section>
 
     <!-- Course Table -->
-    <div class="card table-card" data-guide="course-mgmt-table">
+    <div ref="courseListRegion" class="card table-card" data-guide="course-mgmt-table" tabindex="-1" aria-label="課程列表">
+      <p v-if="courseIntentGuidance" class="hint" data-testid="course-intent-guidance">{{ courseIntentGuidance }}</p>
       <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
@@ -998,6 +999,7 @@
       :show="showCourseIntentChooser"
       @close="showCourseIntentChooser = false"
       @choose="onCourseIntent"
+      @browse="browseCourseList"
     />
 
     <ContractAdjustmentChoiceModal
@@ -2407,6 +2409,14 @@ const {
 });
 const showContractAdjustmentModal = ref(false);
 const showCourseIntentChooser = ref(false);
+const courseListRegion = ref(null);
+const courseIntentGuidance = ref('');
+async function browseCourseList(intent) {
+  courseIntentGuidance.value = intent === 'renew' ? '請在下方課程列按「續課」。' : '請在下方課程列按 ⋯ →「轉課」。';
+  showCourseIntentChooser.value = false;
+  await nextTick();
+  courseListRegion.value?.focus();
+}
 // Header chooser has no course context: only 全新課程 emits here (renew / change show where the row button is).
 function onCourseIntent({ intent }) {
   showCourseIntentChooser.value = false;
@@ -5396,6 +5406,7 @@ watch(
   () => {
     const id = props.initialTeacherId;
     if (id == null || id === '') return;
+    if (props.initialCourseIntent === 'transfer') { emit('clear-initial-teacher'); return; }
     filters.value.teacher_id = String(id);
     const t = (teachers.value || []).find((x) => String(x.id) === String(id));
     if (t) {
@@ -5424,6 +5435,7 @@ watch(coursesLoading, (loading) => {
   pendingTransferCourseId.value = 0;
   convertTrialStudentId.value = null;
   transferHandoffError.value = '';
+  if (document.activeElement === document.body) courseListRegion.value?.focus();
   runRowAction(course, 'transfer');
 });
 watch(coursesLoading, (loading) => {
@@ -5465,6 +5477,8 @@ watch(
       pendingManualSessionId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'transfer') {
+      filters.value.teacher_id = '';
+      filters.value.teacher_name = '';
       pendingTransferCourseId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     }

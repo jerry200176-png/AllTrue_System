@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { supabase } from '../../supabase';
 
 const props = defineProps({
@@ -75,14 +75,21 @@ const busy = ref(false);
 const canSubmit = computed(() => !!form.start_date && (form.subject || form.teacher_id || form.weekday));
 
 const transferPanel = ref(null);
+let transferOpener = null;
+function restoreTransferFocus() {
+  if (transferOpener?.isConnected) transferOpener.focus();
+  transferOpener = null;
+}
+onBeforeUnmount(restoreTransferFocus);
 watch(() => props.show, async (v) => {
   if (v) {
+    transferOpener = document.activeElement;
     Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' });
     preview.value = null;
     error.value = '';
     await nextTick();
     transferPanel.value?.querySelector('input:not([disabled]), select:not([disabled]), button:not([disabled])')?.focus();
-  }
+  } else restoreTransferFocus();
 });
 // Any input change invalidates a previous preview.
 watch(() => [form.subject, form.teacher_id, form.start_date, form.weekday, form.time, form.duration_minutes], () => { preview.value = null; });

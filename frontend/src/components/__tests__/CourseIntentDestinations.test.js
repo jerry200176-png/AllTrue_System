@@ -7,8 +7,9 @@ vi.mock('../../lib/subjectsApi', () => ({ fetchSubjectOptions: async () => [] })
 import UniversalClassScheduler from '../UniversalClassScheduler.vue';
 import CourseTransferModal from '../course-management/CourseTransferModal.vue';
 import CourseManagement from '../../pages/CourseManagement.vue';
-beforeEach(() => { vi.stubGlobal('scrollTo', vi.fn()); });
-afterEach(() => vi.unstubAllGlobals());
+let opener;
+beforeEach(() => { vi.stubGlobal('scrollTo', vi.fn()); opener = document.createElement('button'); document.body.append(opener); opener.focus(); });
+afterEach(() => { opener.remove(); vi.unstubAllGlobals(); });
 
 describe('course intent destination handoffs', () => {
   it('moves focus into the newly mounted course scheduler', async () => {
@@ -16,7 +17,7 @@ describe('course intent destination handoffs', () => {
     try {
       await flushPromises();
       expect(w.find('[role="dialog"]').element.contains(document.activeElement)).toBe(true);
-    } finally { w.unmount(); }
+    } finally { w.unmount(); expect(document.activeElement).toBe(opener); }
   });
 
   it('moves focus into transfer when the destination opens', async () => {
@@ -25,6 +26,8 @@ describe('course intent destination handoffs', () => {
       await w.setProps({ show: true });
       await flushPromises();
       expect(w.find('[role="dialog"]').element.contains(document.activeElement)).toBe(true);
+      await w.setProps({ show: false });
+      expect(document.activeElement).toBe(opener);
     } finally { w.unmount(); }
   });
 
@@ -42,18 +45,24 @@ describe('course intent destination handoffs', () => {
       } else if (url.includes('/class-sessions')) body = { byClass: { 7001: [] } };
       return { ok: true, json: async () => body };
     }));
-    const w = shallowMount(CourseManagement, { props: { branchId: 1, initialStudentId: 2001,
-      initialCourseId: 7001, initialCourseIntent: 'transfer' }, global: { renderStubDefaultSlot: true } });
+    const w = shallowMount(CourseManagement, { attachTo: document.body, props: { branchId: 1, initialStudentId: 2001,
+      initialCourseId: 7001, initialTeacherId: 7, initialCourseIntent: 'transfer' }, global: { renderStubDefaultSlot: true } });
     try {
       await flushPromises();
       expect(w.find('[data-testid="transfer-handoff-retry"]').exists()).toBe(true);
       expect(w.findComponent(CourseTransferModal).props('show')).toBe(false);
+      w.findComponent({ name: 'CourseIntentChooser' }).vm.$emit('browse', 'renew');
+      await flushPromises();
+      expect(document.activeElement).toBe(w.find('[data-guide="course-mgmt-table"]').element);
       present = true;
       await w.find('[data-testid="transfer-handoff-retry"]').trigger('click');
       await flushPromises();
       expect(w.findComponent(CourseTransferModal).props('show')).toBe(true);
       expect(w.find('[data-testid="transfer-handoff-error"]').exists()).toBe(false);
       expect(new URL(classRequests.at(-1), 'http://test.local').searchParams.get('student_id')).toBe('2001');
+      w.findComponent(CourseTransferModal).vm.$emit('done');
+      await flushPromises();
+      expect(new URL(classRequests.at(-1), 'http://test.local').searchParams.has('teacher_id')).toBe(false);
     } finally { w.unmount(); }
   });
 });

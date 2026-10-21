@@ -870,7 +870,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
@@ -1961,7 +1961,10 @@ function calendarCellAriaLabel(cell) {
 }
 
 const schedulerPanel = ref(null);
+let schedulerOpener = null;
+onBeforeUnmount(() => { if (schedulerOpener?.isConnected) schedulerOpener.focus(); });
 onMounted(async () => {
+  schedulerOpener = document.activeElement;
   await nextTick();
   schedulerPanel.value?.querySelector('input:not([disabled]), select:not([disabled]), button:not([disabled])')?.focus();
 });

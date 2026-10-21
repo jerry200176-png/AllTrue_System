@@ -4,48 +4,17 @@
     <div ref="chooserContent" data-testid="course-intent-chooser">
       <p v-if="studentName" class="modal-desc">{{ studentName }}</p>
 
-      <template v-if="!picking">
-        <p class="choice-intro">先選要做哪一件事，系統會帶到對應的流程。</p>
-        <div class="choice-list">
-          <button
-            v-for="intent in COURSE_INTENTS"
-            :key="intent.id"
-            type="button"
-            class="choice-card"
-            :data-testid="`course-intent-${intent.id}`"
-            @click="onIntent(intent.id)"
-          >
-            <span class="material-symbols-outlined choice-card__icon" aria-hidden="true">{{ intent.icon }}</span>
-            <span class="choice-card__copy">
-              <strong>{{ intent.label }}</strong>
-              <small>{{ intent.hint }}</small>
-            </span>
-            <span class="choice-card__arrow" aria-hidden="true">›</span>
-          </button>
-        </div>
-      </template>
-
-      <template v-else>
-        <p class="choice-intro">{{ pickPrompt }}</p>
-        <p v-if="!courses" class="choice-guide" data-testid="course-intent-guide">{{ guideText }}</p>
-        <p v-else-if="!pickable.length" class="choice-guide" data-testid="course-intent-empty">這位學生目前沒有可以這樣處理的課程，請改選「全新課程」。</p>
-        <div v-else class="choice-list">
-          <button
-            v-for="c in pickable"
-            :key="c.id"
-            type="button"
-            class="choice-card"
-            :data-testid="`course-intent-course-${c.id}`"
-            @click="emitChoice(picking, c.course)"
-          >
-            <span class="choice-card__copy">
-              <strong>{{ c.label }}</strong>
-              <small v-if="c.detail">{{ c.detail }}</small>
-            </span>
-            <span class="choice-card__arrow" aria-hidden="true">›</span>
-          </button>
-        </div>
-      </template>
+      <p class="choice-intro">{{ picking ? pickPrompt : '先選要做哪一件事，系統會帶到對應的流程。' }}</p>
+      <p v-if="picking && !pickable.length" class="choice-guide" data-testid="course-intent-empty">這位學生目前沒有可以這樣處理的課程，請改選「全新課程」。</p>
+      <div v-else class="choice-list">
+        <button v-for="item in choices" :key="item.id" type="button" class="choice-card"
+          :data-testid="picking ? `course-intent-course-${item.id}` : `course-intent-${item.id}`"
+          @click="picking ? emitChoice(picking, item.course) : onIntent(item.id)">
+          <span v-if="item.icon" class="material-symbols-outlined choice-card__icon" aria-hidden="true">{{ item.icon }}</span>
+          <span class="choice-card__copy"><strong>{{ item.label }}</strong><small v-if="item.detail || item.hint">{{ item.detail || item.hint }}</small></span>
+          <span class="choice-card__arrow" aria-hidden="true">›</span>
+        </button>
+      </div>
 
       <div class="actions">
         <button v-if="picking" type="button" class="ghost" data-testid="course-intent-back" @click="picking = ''">上一步</button>
@@ -66,7 +35,7 @@ const props = defineProps({
   // Null for the context-free header; each course carries renewal/transfer capabilities and display detail.
   courses: { type: Array, default: null },
 });
-const emit = defineEmits(['close', 'choose']);
+const emit = defineEmits(['close', 'choose', 'browse']);
 
 const chooserContent = ref(null);
 const picking = ref('');
@@ -80,13 +49,12 @@ const optionsFor = (intent) => (props.courses || []).filter((c) => (
   intent === 'renew' ? c.renewable !== false : c.transferable === true
 ));
 const pickable = computed(() => optionsFor(picking.value));
+const choices = computed(() => picking.value ? pickable.value : COURSE_INTENTS);
 
 const pickPrompt = computed(() => (picking.value === 'renew'
   ? `要${RENEW_LESSONS_LABEL}哪一門課？`
   : '要把哪一門課的紀錄轉走？'));
-const guideText = computed(() => (picking.value === 'renew'
-  ? `在下方課程列表找到那門課，按「${RENEW_LESSONS_LABEL}」。`
-  : '在下方課程列表找到那門課，按 ⋯ →「轉課」。'));
+
 
 function emitChoice(intent, course = null) {
   emit('choose', { intent, course });
@@ -94,6 +62,7 @@ function emitChoice(intent, course = null) {
 
 function onIntent(id) {
   if (id === 'new') { emitChoice('new'); return; }
+  if (!props.courses) { emit('browse', id); return; }
   const options = props.courses ? optionsFor(id) : [];
   if (options.length === 1) { emitChoice(id, options[0].course); return; }
   picking.value = id;
