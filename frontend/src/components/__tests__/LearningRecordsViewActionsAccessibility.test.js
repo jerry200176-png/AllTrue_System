@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  resolveLearningRecordViewMode,
+  resolveLearningRecordViewModeOptions,
+} from '../../lib/learningRecordViewPreferences.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/LearningRecordsPage.vue'), 'utf8');
@@ -13,6 +17,17 @@ describe('LearningRecords view and action accessibility', () => {
     expect(source).toContain(":aria-pressed=\"effectiveViewMode === 'card' ? 'true' : 'false'\"");
     expect(source).toContain(":aria-pressed=\"showContentPreview ? 'true' : 'false'\"");
     expect(source).toContain("showContentPreview ? '收合完整評量' : '顯示完整評量'");
+  });
+
+  it('only offers view modes that take effect at the current width (in-app #417)', () => {
+    expect(source).toMatch(/v-if="availableViewModes\.includes\('table'\)"\s+type="button"\s+:class="\['lr-view-btn', \{ active: effectiveViewMode === 'table' \}\]"/);
+    expect(resolveLearningRecordViewModeOptions({ viewportWidth: 390 })).toEqual(['card']);
+    expect(resolveLearningRecordViewModeOptions({ viewportWidth: 1440 })).toEqual(['table', 'card']);
+    for (const viewportWidth of [390, 640, 641, 1440]) {
+      for (const mode of resolveLearningRecordViewModeOptions({ viewportWidth })) {
+        expect(resolveLearningRecordViewMode({ viewportWidth, viewMode: mode })).toBe(mode);
+      }
+    }
   });
 
   it('gives every native LearningRecords button an explicit non-submit type', () => {
