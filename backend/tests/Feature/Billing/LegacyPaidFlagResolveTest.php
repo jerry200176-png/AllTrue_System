@@ -67,8 +67,10 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->backfill($token, $course, ['amount' => 0])->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
         $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
         $this->assertSame([0, 0], [PaymentReport::count(), Payment::count()]);
-        $this->backfill($token, $course, ['amount' => 5000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
-        $this->assertSame([1, 'paid'], [Invoice::count(), (string) $invoice->fresh()->Status]);
+        // A partial payment leaves the bill owing, so the legacy flag is dropped (as 撤銷收款 does).
+        $this->backfill($token, $course, ['amount' => 3000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
+        $this->assertSame([1, 'partial', 0], [Invoice::count(), (string) $invoice->fresh()->Status, (int) $course->fresh()->Paid]);
+        $this->clear($token, $this->legacyCourse(1, ['Charge' => 0]))->assertStatus(422); // 0 元 is out of scope
     }
 
     public function test_both_actions_refuse_a_course_with_a_real_payment(): void

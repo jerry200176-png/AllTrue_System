@@ -809,6 +809,10 @@ class PaymentReportController extends Controller
             if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
+            if (!$this->courseResolvedPaid($course)) { // a partial payment leaves money owed: drop the flag, as void() does
+                $course->refresh()->update(['Paid' => 0, 'PayDate' => null]
+                    + ($course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
+            }
             $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
 
             return response()->json(['status' => 'confirmed'] + (array) $confirmed->getData(true));
@@ -843,10 +847,13 @@ class PaymentReportController extends Controller
             }
             $reopen = $course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
             $course->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null] + $reopen);
+            // What is owed now: an open bill's balance (the resolver's), else the contract amount (as AlertController).
+            $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$courseId])[$courseId] ?? [];
+            $owed = ($status['source'] ?? null) === 'invoice' ? (int) $status['outstanding'] : (int) ($course->Charge ?? 0);
             $this->auditLegacyFlag($course, $actorId === null ? null : (int) $actorId, 'student_class.legacy_paid_flag_cleared', [
                 'reason_code' => 'legacy_paid_flag_cleared',
                 'reason_hash' => hash('sha256', trim((string) $data['reason'])),
-                'outstanding_amount' => (int) ($course->Charge ?? 0),
+                'outstanding_amount' => $owed,
             ]);
 
             return response()->json(['message' => '已改成未繳', 'student_class_id' => $courseId]);
@@ -880,6 +887,9 @@ class PaymentReportController extends Controller
         }
         if ($waived = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能變更繳費狀態')) {
             return $waived;
+        }
+        if ((int) ($course->Charge ?? 0) <= 0 && (float) ($course->Rate ?? 0) <= 0) { // 0 元 courses are out of scope
+            return $refuse('這門課沒有設定收費金額，不需要補登或改未繳；若要收費請先到課程管理設定費用。', 'legacy_flag_zero_fee');
         }
         if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage()) {
             return $refuse('目前只有單一堂數制課程可以在這裡處理舊「已收」標記；月結或共用方案請到學生帳務逐筆核對。', 'legacy_flag_count_only');
