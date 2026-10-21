@@ -1791,6 +1791,7 @@ jobs:
               --single-transaction AllTrue | gzip > "$BACKUP_FILE"; then
               abort_deploy "migration 前 DB backup 失敗"
             fi
+            bash /home/admin/scripts/verify-db-backup.sh "$BACKUP_FILE" || abort_deploy "migration 前 DB backup 驗證失敗（gunzip -t／CREATE TABLE）— 不執行 migration"
             echo "✅ 備份完成：$BACKUP_FILE"
             # R67 + D1（Founder 2026-10-13）：migration 失敗絕不可被吞，且必須立即中止部署。
             # abort_deploy 走既有 rollback_deploy：還原 PREV_COMMIT 原始碼與 Composer 依賴，
