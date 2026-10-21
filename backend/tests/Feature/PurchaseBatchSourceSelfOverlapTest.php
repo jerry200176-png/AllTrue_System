@@ -215,6 +215,34 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             ->assertJsonPath('duplicate_course.id', (int) $legacy->ID);
     }
 
+    public function test_an_exhausted_paid_source_is_settled_before_the_batch_takes_its_future_slots(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        // Paid and used up, yet still holding scheduled rows on the requested slot: purchaseBatch() settles it.
+        $source = $this->createSourceCourse($student->id, ['RemainingSessions' => 0, 'UsedSessions' => 10]);
+        $sourceDates = $this->seedSourceFutureSessions($source, 2);
+
+        $res = $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+                'sessions' => 3,
+                'start_date' => $this->base->toDateString(),
+                'mode' => 'new_purchase',
+            ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('source_closed', true)
+            ->assertJsonPath('source_course.stop', 1)
+            ->assertJsonPath('new_course.first_session_date', $this->weeksAfterBase(0))
+            ->assertJsonPath('new_course.created_sessions', 3);
+        // The settled source no longer holds those slots: its future rows were cancelled, not double-booked.
+        $this->assertSame(0, ClassSession::query()
+            ->where('StudentClassID', $source->ID)
+            ->whereIn('SessionDate', $sourceDates)
+            ->where('Status', 'scheduled')
+            ->count());
+    }
+
     public function test_renewal_preview_shows_the_same_shifted_batch_dates(): void
     {
         $token = $this->createDirectorToken();
