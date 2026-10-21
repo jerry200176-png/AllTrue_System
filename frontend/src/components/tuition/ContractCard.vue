@@ -35,6 +35,11 @@
       </template>
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <AtButton v-else-if="!noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
+      <template v-if="!noObligation && !waived">
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
+        <span v-if="!slipState.ok" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
+      </template>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -121,6 +126,8 @@ const props = defineProps({
   course: { type: Object, required: true },
   // In-app #396: the course the billing panel was opened from.
   focused: { type: Boolean, default: false },
+  // In-app #425: director/super_admin, same gate as 帳務中心 canViewBillingDocs.
+  canViewDocs: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
@@ -139,7 +146,7 @@ const props = defineProps({
   // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -277,6 +284,16 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const noObligation = computed(() => data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
+// In-app #425: 繳費單 needs an open bill on this card; reasons worded as TuitionDocActions (no new money rule).
+const slipState = computed(() => {
+  if (!props.canViewDocs) return { ok: false, reason: '沒有權限' };
+  if (props.sharedFollower) return { ok: false, reason: '共用方案繳費單請至成員課程開立' };
+  if (props.pendingReport) return { ok: false, reason: '已回報，等確認入帳' };
+  if (props.outstanding > 0) return { ok: true };
+  if (legacyUnverified.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
+  if (props.course.paid) return { ok: false, reason: '已繳清，不用繳費單' };
+  return { ok: false, reason: '還沒開帳單' };
+});
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
 // 確認入帳 books money in one click, so ask first; 取消 has the initial focus (no undo: mistakes go through 撤銷收款).

@@ -79,6 +79,7 @@
                 :key="c.id"
                 :course="c"
                 :focused="isOpenedCourse(c)"
+                :can-view-docs="canManageInvoices()"
                 :outstanding="owedFor(c.id)"
                 :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
                 :shared-follower="!packageLead(c)"
@@ -92,6 +93,7 @@
                 @issue="openIssue"
                 @confirmed="openReceipt"
                 @changed="onPanelChanged"
+                @slip="openSlip"
               />
             </div>
           </section>
@@ -237,6 +239,14 @@
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
+                <!-- in-app #425: same 查看收據 as the 帳務中心 收款紀錄 tab, on every confirmed row. -->
+                <button
+                  v-if="r.status === 'confirmed' && canManageInvoices()"
+                  class="ledger-more"
+                  type="button"
+                  :data-testid="`ledger-receipt-view-${r.report_id}`"
+                  @click="openReceipt(r.report_id, '')"
+                >查看收據</button>
                 <button
                   v-if="canShowReceiptCoverage(r)"
                   class="ledger-more ledger-receipt-toggle"
@@ -291,7 +301,8 @@
         </template>
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
-      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" :return-focus-to="modalEl" @close="receiptOpen = false" />
+      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
+      <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" @close="slipOpen = false" />
     </div>
   </Transition>
 </template>
@@ -314,6 +325,7 @@ import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
+import PaymentSlipModal from './PaymentSlipModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
@@ -329,7 +341,11 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean });
+const props = defineProps({
+  show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean,
+  // In-app #398: 'record' opens 登記收款 for the opened course once the ledger has loaded (only if its card offers it).
+  initialAction: { type: String, default: null },
+});
 
 const emit = defineEmits(['close', 'changed', 'step']);
 
@@ -501,6 +517,7 @@ async function loadLedger() {
     payload.value = json;
     autoExpandAttention();
     loadDrafts();
+    runInitialAction();
   } catch (e) {
     if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
@@ -747,11 +764,37 @@ function openEntry(course) {
 // #398/#405: same step as the 待處理 queue — after 確認入帳 the receipt opens here; 稍後再開 keeps it in 收款紀錄.
 const receiptOpen = ref(false);
 const receiptReportId = ref(null);
-function openReceipt(reportId) {
+const receiptLaterLabel = ref('');
+function openReceipt(reportId, laterLabel = '稍後再開') {
   receiptReportId.value = Number(reportId);
+  receiptLaterLabel.value = laterLabel;
   receiptOpen.value = true;
 }
-watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+// In-app #425: 繳費單 on a contract card, same modal and request as the 帳務中心 list (oldest open bill first).
+const slipOpen = ref(false);
+const slipInvoiceId = ref(null);
+const slipStudentClassId = ref(null);
+function openSlip(course) {
+  const inv = oldestOpenInvoice(course.id);
+  slipInvoiceId.value = inv ? Number(inv.id) : null;
+  slipStudentClassId.value = inv ? null : Number(course.id);
+  slipOpen.value = true;
+}
+watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; slipOpen.value = false; });
+
+// In-app #398: 「登記繳費回報」 from 課程查找 lands on the entry form, with the ledger behind it. Armed once per open;
+// a course whose card would not offer 登記這筆 (pending report, waived, tutoring, package member) just shows the ledger.
+let pendingInitialAction = null;
+watch(() => props.show, (open) => { pendingInitialAction = open ? props.initialAction : null; }, { immediate: true });
+function runInitialAction() {
+  const action = pendingInitialAction;
+  pendingInitialAction = null;
+  if (action !== 'record') return;
+  const id = Number(props.studentClassId || 0);
+  if (!id || !allocContracts.value.some((c) => Number(c.id) === id)) return;
+  const course = contractCourses.value.find((c) => Number(c.id) === id);
+  if (course) openEntry(course);
+}
 
 async function onEntryConflict() {
   await loadLedger();

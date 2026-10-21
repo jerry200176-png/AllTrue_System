@@ -1320,6 +1320,7 @@
     <AccountingLedgerModal
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
+      :initial-action="ledgerInitialAction"
       :branch-id="props.branchId"
       @close="ledgerOpen = false"
       @changed="loadCourses(pagination.page)"
@@ -1558,7 +1559,8 @@ const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'nav
 // a report and voiding all happen inside it.
 const openTuitionLedger = (course) => openLedgerForCourse(course);
 const goToTuitionBilling = openTuitionLedger;
-const onPaymentNextAction = openTuitionLedger;
+// In-app #398: 「登記繳費回報」 opens the entry form for that course, with the ledger behind it.
+const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
@@ -5012,6 +5014,7 @@ const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
+const ledgerInitialAction = ref(null);
 const studentGroupTabs = ref({});
 const studentBillingState = ref({});
 const paymentSlipOpen = ref(false);
@@ -5133,9 +5136,10 @@ const studentBillingAnchorCourse = (group) => {
     || null;
 };
 
-const openLedgerForCourse = (course) => {
+const openLedgerForCourse = (course, initialAction = null) => {
   if (!course?.id) return;
   ledgerStudentClassId.value = course.id;
+  ledgerInitialAction.value = initialAction;
   ledgerOpen.value = true;
 };
 
