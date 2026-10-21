@@ -4,12 +4,11 @@ vi.mock('../../supabase', () => ({
   supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'synthetic-token' } } }) } },
 }));
 import StudentsList from '../../pages/StudentsList.vue';
-afterEach(() => vi.unstubAllGlobals());
+import { settleConfirm } from '../../composables/useConfirmDialog';
+afterEach(() => { settleConfirm(false); vi.unstubAllGlobals(); });
 
 describe('teacher precheck without hidden course disclosure', () => {
   it.each([false, true])('warns before the form and respects continue=%s', async (proceed) => {
-    const confirmation = vi.fn(() => proceed);
-    vi.stubGlobal('confirm', confirmation);
     const fetchMock = vi.fn(async (input) => {
       const url = String(input);
       const body = url.includes('/active-courses') ? { courses: [], has_restricted_active_courses: true }
@@ -19,14 +18,17 @@ describe('teacher precheck without hidden course disclosure', () => {
       return { ok: true, json: async () => body };
     });
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true } });
+    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true, stubs: { ConfirmDialogHost: false, AtDialog: false, teleport: true } } });
     try {
       await flushPromises();
       await wrapper.find('.student-row').trigger('click');
       await flushPromises();
       await wrapper.findAll('button').find(b => b.text().includes('新增課程')).trigger('click');
       await flushPromises();
-      expect(confirmation).toHaveBeenCalledWith(expect.stringContaining('這不是強制建立'));
+      expect(wrapper.find('[data-testid="confirm-dialog-message"]').text()).toContain('這不是強制建立');
+      expect(wrapper.findComponent({ name: 'UniversalClassScheduler' }).exists()).toBe(false);
+      await wrapper.find(proceed ? '[data-testid="confirm-dialog-confirm"]' : '[data-testid="confirm-dialog-cancel"]').trigger('click');
+      await flushPromises();
       expect(wrapper.findComponent({ name: 'UniversalClassScheduler' }).exists()).toBe(proceed);
       expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
     } finally { wrapper.unmount(); }
