@@ -6468,10 +6468,10 @@ class StudentClassController extends Controller
         if ($changes === [] || $next === null) {
             return $blocked;
         }
-        // A forgotten unmarked row before taught lessons would make 轉課 move those taught
-        // lessons too; withhold the shortcut until that row is marked or cancelled.
+        // An unmarked row before any marked lesson would make 轉課 move that history: withhold.
+        // Fail closed: every status but scheduled/cancelled counts as history.
         if (ClassSession::query()->where('StudentClassID', $cid)->whereDate('SessionDate', '>=', $next)
-            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'completed', 'absent'])->exists()) {
+            ->whereRaw("COALESCE(Status, '') NOT IN ('scheduled', 'cancelled')")->exists()) {
             return $blocked;
         }
         $data = (array) $blocked->getData(true);

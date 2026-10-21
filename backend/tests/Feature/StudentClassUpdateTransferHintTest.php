@@ -121,10 +121,11 @@ class StudentClassUpdateTransferHintTest extends TestCase
 
     public function test_stale_unmarked_lesson_before_taught_lessons_withholds_the_hint(): void
     {
-        // 9/16 never marked, 9/23 taught: a 9/16 cutover would move the taught lesson.
+        // 9/16 never marked, 9/23 marked: a 9/16 cutover would move the marked lesson.
         $course = $this->course();
+        $this->makeSession($course, '2026-09-09', 'attended');
         $this->makeSession($course, '2026-09-16', 'scheduled');
-        $this->makeSession($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-09-23', 'leave_adjusted');
         $this->makeSession($course, '2026-10-07', 'scheduled');
 
         $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
