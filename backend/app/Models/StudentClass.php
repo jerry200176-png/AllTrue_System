@@ -307,6 +307,9 @@ class StudentClass extends Model
      * course's own Paid=1 needs ClassType=trial and PayDate; a paid state derived from the package needs the
      * package's class_type=trial and paid_at (a regular course bound to a trial package follows the package).
      * Shared by the course list, the tuition alerts and the accounting ledger so they cannot drift.
+     * #4339 review: the package is read only when it belongs to this course's own student and campus (same owner rule as
+     * BillingPayableResolver::validPaymentEvidence), so a stale PackageID to another student's or campus's package never
+     * clears 需核對 with foreign billing metadata.
      */
     public function isTrialFeeRecordedByDate(?CoursePackage $package = null): bool
     {
@@ -318,8 +321,12 @@ class StudentClass extends Model
             return false;
         }
         $package ??= $this->coursePackage;
+        $campusId = $this->student?->CampusID;
 
-        return $package !== null && $package->isTrialFeeRecordedByDate();
+        return $package !== null && (int) $package->id === (int) $this->PackageID
+            && (int) $package->student_id === (int) $this->StudentID
+            && $campusId !== null && (int) $package->campus_id === (int) $campusId
+            && $package->isTrialFeeRecordedByDate();
     }
 
     /**

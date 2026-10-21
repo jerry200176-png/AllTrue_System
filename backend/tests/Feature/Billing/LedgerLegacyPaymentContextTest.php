@@ -82,7 +82,7 @@ class LedgerLegacyPaymentContextTest extends TestCase
     /**
      * in-app #428: the ledger row carries the server-derived trial exemption (StudentClass::isTrialFeeRecordedByDate, the
      * same rule as legacy_paid_flag_only), so the panel does not show 需核對 for a dated paid trial. A trial paid without a
-     * date, a regular paid course, and a member of a trial package that has no paid_at stay unexempted.
+     * date, a regular paid course, a Paid=0 package member, and a member of a trial package that has no paid_at stay unexempted.
      */
     public function test_trial_fee_recorded_by_date_requires_trial_type_and_payment_date(): void
     {
@@ -105,7 +105,10 @@ class LedgerLegacyPaymentContextTest extends TestCase
         $this->assertTrue($flag($datedTrial));
         $this->assertFalse($flag($undatedTrial), 'a trial marked paid without a date stays 需核對');
         $this->assertFalse($flag($regular), '#4174 unchanged for a regular course');
-        $this->assertTrue($flag($datedMember), 'paid state derived from a dated trial package follows the package');
+        // #4339 review: the ledger serializes `paid` from the course's own Paid, so a Paid=0 member of a paid trial package is
+        // not flagged: its card keeps the unpaid state it had before #428 rather than a recorded payment beside 還沒開帳單.
+        $member = $courses->firstWhere('id', $datedMember->ID);
+        $this->assertSame([false, false, null], [$member['paid'], $member['trial_fee_recorded_by_date'], $member['paid_at']]);
         $this->assertFalse($flag($undatedMember), 'a trial package marked paid without paid_at stays unexempted');
     }
 

@@ -826,6 +826,33 @@ class TuitionAlertsApiTest extends TestCase
         }
     }
 
+    /**
+     * #4339 review: a stale PackageID to a dated trial package of another student, or of the same student on another campus,
+     * never clears 需核對: the trial exemption reads only a package owned by the course's student on the student's campus.
+     */
+    public function test_foreign_trial_package_link_does_not_clear_legacy_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag-trial-foreign@example.com');
+        $auth = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $mk = fn (string $name) => Student::create(['name' => $name, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        [$student, $other] = [$mk('S4339a'), $mk('S4339b')];
+        $pkg = fn (int $studentId, int $campusId, string $name) => CoursePackage::create(['student_id' => $studentId, 'campus_id' => $campusId,
+            'name' => $name, 'billing_mode' => 'count', 'total_sessions' => 1, 'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500,
+            'rate_unit' => 'session', 'class_type' => 'trial', 'paid' => true, 'paid_at' => now()->toDateString(), 'stop' => false, 'enabled' => true]);
+        $shape = ['RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500, 'Paid' => 0, 'PayDate' => null, 'ClassType' => 'trial'];
+        $otherStudents = $this->createCountModeClass($student->id, $shape + ['PackageID' => $pkg($other->id, 1, 'F1')->id, 'SubjectID' => 2]);
+        $otherCampus = $this->createCountModeClass($student->id, $shape + ['PackageID' => $pkg($student->id, 2, 'F2')->id, 'SubjectID' => 3]);
+        $own = $this->createCountModeClass($student->id, $shape + ['PackageID' => $pkg($student->id, 1, 'F3')->id, 'SubjectID' => 4]);
+
+        $list = collect($this->withHeaders($auth)->getJson('/api/v1/student-classes?branch_id=1')->assertOk()->json('data'));
+        $this->assertTrue($list->firstWhere('ID', $otherStudents->ID)['legacy_paid_flag_only'], "another student's package stays 需核對");
+        $this->assertTrue($list->firstWhere('ID', $otherCampus->ID)['legacy_paid_flag_only'], "another campus's package stays 需核對");
+        $this->assertFalse($list->firstWhere('ID', $own->ID)['legacy_paid_flag_only'], 'control: the own dated trial package is exempt');
+        // The tuition classifier and the ledger call the same helper on the loaded course (no caller-supplied package).
+        $this->assertSame([false, false, true], [$otherStudents->fresh()->isTrialFeeRecordedByDate(),
+            $otherCampus->fresh()->isTrialFeeRecordedByDate(), $own->fresh()->isTrialFeeRecordedByDate()]);
+    }
+
     public function test_payment_status_monthly_due_soon_for_date_mode_paid(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));

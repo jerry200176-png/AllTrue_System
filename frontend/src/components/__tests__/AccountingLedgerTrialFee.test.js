@@ -28,6 +28,8 @@ describe('帳務面板 · 有繳費日期的試聽課不顯示需核對 (in-app 
     expect(trial.exists()).toBe(true);
     expect(trial.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
     expect(trial.find('[data-testid="contract-money"]').text()).toContain('已收清');
+    // #4339 review: the pay line shows the recorded trial payment, never 還沒繳費 beside 已收清.
+    expect(trial.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/20　NT$ 500');
     expect(regular.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
   });
 

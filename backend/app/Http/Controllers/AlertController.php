@@ -523,7 +523,7 @@ class AlertController extends Controller
             // in-app #428: a trial package (create-multi-subject) that carries paid_at records its fee by that date alone.
             ->get(['id', 'paid', 'class_type', 'paid_at'])
             ->mapWithKeys(fn (CoursePackage $p) => [(int) $p->id => (bool) $p->paid && !$p->isTrialFeeRecordedByDate()])->all();
-        $classFlag = StudentClass::query()->with('coursePackage')
+        $classFlag = StudentClass::query()->with(['coursePackage', 'student'])
             ->whereIn('ID', $candidates->reject($isPackageRow)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all())->get()
             // in-app #428: a trial that carries its payment date (no invoice by design) has no legacy flag to verify.
             ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => $c->isEffectivelyPaid() && !$c->isTrialFeeRecordedByDate()])->all();
