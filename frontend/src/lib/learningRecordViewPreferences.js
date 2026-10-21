@@ -21,3 +21,13 @@ export const resolveLearningRecordViewDefaults = ({ viewportWidth, savedViewMode
 export const resolveLearningRecordViewMode = ({ viewportWidth, viewMode } = {}) => (
   normalizedWidth(viewportWidth) <= 640 ? 'card' : normalizedViewMode(viewMode, viewportWidth)
 );
+
+/**
+ * View modes the chooser may offer at this width: only modes that actually
+ * take effect when picked, so a narrow screen never shows a no-op 列表 button.
+ */
+export const resolveLearningRecordViewModeOptions = ({ viewportWidth } = {}) => (
+  ['table', 'card'].filter(
+    (mode) => resolveLearningRecordViewMode({ viewportWidth, viewMode: mode }) === mode,
+  )
+);
