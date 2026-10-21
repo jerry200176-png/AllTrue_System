@@ -35,6 +35,7 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     await flushPromises();
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
     expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('舊資料標記已收');
+    expect(w.find('[data-testid="ledger-sticky-pay"]').exists()).toBe(false);
     await w.get('[data-testid="legacy-backfill-open"]').trigger('click');
     expect(w.getComponent(EntryStub).props('mode')).toBe('legacy-backfill');
     expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');

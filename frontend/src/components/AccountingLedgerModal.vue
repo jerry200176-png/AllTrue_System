@@ -691,8 +691,13 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(courseId) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
+const needsLegacyChoice = (course) => canResolveLegacyPaidFlag(course, {
+  legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
+  isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
+  pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
+});
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && !needsLegacyChoice(c) && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
@@ -811,15 +816,11 @@ function runInitialAction() {
   const id = Number(props.studentClassId || 0);
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
+  if (needsLegacyChoice(course)) {
+    initialActionNote.value = '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
+    return;
+  }
   if (allocContracts.value.some((c) => Number(c.id) === id)) {
-    if (canResolveLegacyPaidFlag(course, {
-      legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
-      isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
-      pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
-    })) {
-      initialActionNote.value = '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
-      return;
-    }
     openEntry(course);
     return;
   }
