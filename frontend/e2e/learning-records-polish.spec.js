@@ -66,6 +66,8 @@ for (const viewport of viewports) {
     await expect(page.getByText('學習評量表', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('tab', { name: '待主任核准', exact: false }).first()).toBeVisible();
     await page.getByRole('button', { name: '卡片', exact: true }).click();
+    // In-app #417: phones always render cards, so the no-op 列表 choice must not be offered.
+    await expect(page.getByRole('button', { name: '列表', exact: true })).toHaveCount(viewport.width <= 640 ? 0 : 1);
     await expect(page.locator('.lr-group, .lr-record-card').first()).toBeVisible({ timeout: 15_000 });
     const pendingCard = page.locator('.lr-record-card').filter({ hasText: '測試學生甲' }).first();
     await expect(pendingCard.getByText('審核：待主任核准', { exact: true })).toBeVisible();

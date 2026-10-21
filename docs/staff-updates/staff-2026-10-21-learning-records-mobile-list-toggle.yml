@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-21-learning-records-mobile-list-toggle
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 手機版評量頁移除無效的「列表」按鈕
+    summary: 手機上評量頁一律以卡片顯示，原本按了沒反應的「列表」按鈕已移除。
+    items:
+      - category: fixed
+        text: 手機（螢幕較窄）開啟評量頁時只顯示「卡片」選項；要用列表檢視請在電腦或平板橫向開啟。
+    source_refs:
+      - "changelog:2026-10-21:learning-records-mobile-list-toggle"
