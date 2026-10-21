@@ -90,7 +90,9 @@
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
                 @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
                 @confirmed="openReceipt"
                 @changed="onPanelChanged"
@@ -301,7 +303,7 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -320,7 +322,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -751,12 +753,14 @@ async function submitIssue() {
 // PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
 const entryOpen = ref(false);
 const entryRow = ref(null);
-function openEntry(course) {
+const entryMode = ref('record');
+function openEntry(course, mode = 'record') {
+  entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
   entryRow.value = {
     id: course.id,
-    charge: course.charge,
+    charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,
@@ -807,7 +811,18 @@ function runInitialAction() {
   const id = Number(props.studentClassId || 0);
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
-  if (allocContracts.value.some((c) => Number(c.id) === id)) { openEntry(course); return; }
+  if (allocContracts.value.some((c) => Number(c.id) === id)) {
+    if (canResolveLegacyPaidFlag(course, {
+      legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
+      isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
+      pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
+    })) {
+      initialActionNote.value = '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
+      return;
+    }
+    openEntry(course);
+    return;
+  }
   // Say why the form did not open (the same conditions the card uses), instead of falling back silently.
   initialActionNote.value = recordBlockedReason(course);
 }

@@ -9,7 +9,7 @@ import AccountingLedgerModal from '../AccountingLedgerModal.vue';
 const course = (id, extra = {}) => ({ id, subject: `科目${id}`, schedule_mode: 'count', charge: 4400, paid: false, stop: false, package_id: null, ...extra });
 const inv = (id, scId) => ({ id, student_class_id: scId, status: 'unpaid', outstanding_amount: 4400, total_amount: 4400, due_date: '2026-10-01', payments: [] });
 
-const EntryStub = { name: 'PaymentEntryModal', props: ['show', 'row'], template: '<div v-if="show" data-testid="entry-stub">{{ row && row.id }}</div>' };
+const EntryStub = { name: 'PaymentEntryModal', props: ['show', 'row', 'mode'], template: '<div v-if="show" data-testid="entry-stub">{{ row && row.id }}</div>' };
 const ReceiptStub = { name: 'ReceiptModal', props: ['show', 'reportId', 'laterLabel'], template: '<div v-if="show" data-testid="receipt-stub">{{ reportId }}|{{ laterLabel }}</div>' };
 const SlipStub = { name: 'PaymentSlipModal', props: ['show', 'invoiceId', 'studentClassId'], template: '<div v-if="show" data-testid="slip-stub">{{ invoiceId }}|{{ studentClassId }}</div>' };
 
@@ -30,6 +30,17 @@ function mountLedger({ courses, invoices = [], receipts = [], props = {}, role =
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); document.body.innerHTML = ''; });
 
 describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
+  it('a legacy paid flag keeps its explicit backfill choice instead of opening the ordinary record form', async () => {
+    const w = mountLedger({ courses: [course(11, { paid: true })], invoices: [inv(1, 11)], props: { initialAction: 'record' } });
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('舊資料標記已收');
+    await w.get('[data-testid="legacy-backfill-open"]').trigger('click');
+    expect(w.getComponent(EntryStub).props('mode')).toBe('legacy-backfill');
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
+    w.unmount();
+  });
+
   it("initialAction='record' opens the entry form for the opened course once, after the ledger loads", async () => {
     const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11)], props: { initialAction: 'record' } });
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false); // not before load

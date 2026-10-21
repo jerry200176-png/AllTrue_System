@@ -11,7 +11,9 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\MonthlyRenewalPeriodService;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\SessionDeductionService;
+use App\Services\StaleScheduleExceptionFilter;
 use App\Services\TransactionDiscountCalculator;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -75,6 +77,58 @@ final class ContractRenewal
                 $q->whereNull('Stop')->orWhere('Stop', 0);
             })
             ->orderBy('ID')
+            ->first();
+    }
+
+    /**
+     * Stable identity of a purchase-batch request (#4349): the source course, the start date the user asked for
+     * (not the shifted start, which depends on mutable source lessons/cadence), the session count and the
+     * purchase mode. Stored on the new course so a retry of the same request is recognised however the source
+     * changes afterwards. preview and purchase share this helper so both see the same key.
+     */
+    private function purchaseRequestKey(StudentClass $source, string $requestedStart, int $sessions, string $mode): string
+    {
+        return hash('sha256', implode('|', [
+            'purchase_batch.v1',
+            (int) $source->getKey(),
+            (string) ContractSessionSchedule::normalizeDateString($requestedStart),
+            $sessions,
+            $mode,
+        ]));
+    }
+
+    /** The only purchase-batch mode purchaseBatch() accepts; renewal preview/confirm map purchase_batch to it. */
+    private const PURCHASE_MODE_NEW = 'new_purchase';
+
+    private static ?bool $hasPurchaseRequestKeyColumn = null;
+
+    private static function hasPurchaseRequestKeyColumn(): bool
+    {
+        // Memoize only a present column (true or null): deploy.yml switches code before it migrates.
+        return (bool) (self::$hasPurchaseRequestKeyColumn ??= Schema::hasColumn('StudentClass', 'purchase_request_key') ?: null);
+    }
+
+    /**
+     * A batch is stored with its shifted start (in-app #422), so its StartDate cannot identify a retry. An open
+     * count-mode course of the same student carrying the same purchase request key is the duplicate (#4349).
+     * Batches created before the key existed (purchase_request_key IS NULL) keep the pre-#422 exact matches on
+     * the requested and planned start.
+     */
+    private function findDuplicateShiftedBatch(StudentClass $studentClass, string $planStart, string $startDate, int $sessions, string $requestKey): ?StudentClass
+    {
+        $hasKey = self::hasPurchaseRequestKeyColumn();
+        $open = fn () => StudentClass::query()->where('ID', '<>', $studentClass->ID)
+            ->where('StudentID', $studentClass->StudentID)
+            ->where('ScheduleMode', 'count')
+            ->where(fn ($q) => $q->whereNull('Stop')->orWhere('Stop', 0))
+            ->orderBy('ID');
+        $keyed = $hasKey ? $open()->where('purchase_request_key', $requestKey)->first() : null;
+
+        return $keyed ?? $open()
+            ->where('SubjectID', $studentClass->SubjectID)
+            ->where('SessionCount', $sessions)
+            ->whereIn('StartDate', array_values(array_unique([$planStart, $startDate])))
+            ->when($hasKey, fn ($q) => $q->whereNull('purchase_request_key'))
             ->first();
     }
 
@@ -406,8 +460,20 @@ final class ContractRenewal
             }
         }
 
-        if ($startDate && $sessions > 0 && !empty($slots)) {
-            $sessionsPreview = ContractSessionSchedule::buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
+        // Same start purchaseBatch() writes as the new course's StartDate.
+        $planStart = $startDate;
+        if ($startDate && $sessions > 0) {
+            $plan = $this->batchStartAfterSource($studentClass, $startDate, $slots);
+            $planStart = $plan['start'];
+            $schedule['source_live_until'] = $plan['source_live_until'];
+        }
+        if ($planStart && $sessions > 0 && !empty($slots)) {
+            $sessionsPreview = ContractSessionSchedule::buildSessionsForCount((int) $studentClass->ID, $planStart, $sessions, $slots, $globalDur);
+            // The plan depends on live occupancy, so the state hash covers every planned occurrence.
+            $schedule['plan_fingerprint'] = hash('sha256', implode('|', array_map(
+                fn ($sess) => ContractSessionSchedule::normalizeDateString($sess['SessionDate']) . ' ' . $sess['StartTime'] . '-' . $sess['EndTime'],
+                $sessionsPreview
+            )));
             $schedule['created_sessions'] = count($sessionsPreview);
             $schedule['first_session_date'] = isset($sessionsPreview[0])
                 ? ContractSessionSchedule::normalizeDateString($sessionsPreview[0]['SessionDate'])
@@ -419,7 +485,8 @@ final class ContractRenewal
         }
 
         $duplicate = ($startDate && $sessions > 0)
-            ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions)
+            ? $this->findDuplicateShiftedBatch($studentClass, (string) $planStart, $startDate, $sessions,
+                $this->purchaseRequestKey($studentClass, $startDate, $sessions, self::PURCHASE_MODE_NEW))
             : null;
         if ($duplicate !== null) {
             $blockers[] = [
@@ -432,7 +499,7 @@ final class ContractRenewal
         $proposedCourse = [
             'schedule_mode' => 'count',
             'sessions' => $sessions,
-            'start_date' => $startDate,
+            'start_date' => $planStart,
             'end_date' => $schedule['last_session_date'],
             'charge' => ($discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
                 max(0, $charge), $data['discount'] ?? null,
@@ -453,6 +520,100 @@ final class ContractRenewal
             'billing' => $billing,
             'schedule' => $schedule,
         ];
+    }
+
+    /**
+     * in-app #422: a purchase batch continues its source course on the same fixed slots. When the source still
+     * holds pre-created future lessons, the batch's first occurrences landed on exactly those lessons and the
+     * student-overlap guard refused the whole purchase ("已有其他「科目」課程") although the blocker was the
+     * course being extended. The batch now starts on the first configured slot day after the source's last live
+     * lesson on or after the requested start, so the two contracts never interleave and every slot type is kept.
+     * Any other course that holds a slot in the shifted plan is still rejected by upsertSlot()'s write-time guard.
+     * With no live source lesson the requested start is used unchanged. Which source lessons count mirrors
+     * ClassSessionMaterializationService::assertStudentSlotAvailable(): only future dates, only inside the
+     * source's StartDate/EndDate, and never a trial or stopped source (a converting trial does not block).
+     *
+     * @param  array<int, array<string, mixed>>  $slots
+     * @return array{start: string, source_live_until: string|null}
+     */
+    private function batchStartAfterSource(StudentClass $source, string $startDate, array $slots): array
+    {
+        $sourceId = (int) $source->getKey();
+        $unchanged = ['start' => $startDate, 'source_live_until' => null];
+        if (strtolower(trim((string) $source->getAttribute('ClassType'))) === 'trial'
+            || (int) $source->getAttribute('Stop') === 1) {
+            return $unchanged;
+        }
+        // purchaseBatch() settles (stops, EndDate=today) a paid count source with no remaining sessions in the
+        // same transaction, after which its future rows no longer block; they must not shift the batch either.
+        if ((string) ($source->getAttribute('ScheduleMode') ?? '') === 'count'
+            && (int) $source->getAttribute('Paid') === 1
+            && (int) $source->getAttribute('RemainingSessions') <= 0) {
+            return $unchanged;
+        }
+        // Past dates never block (the write guard skips them), so a backdated batch keeps its requested start.
+        $from = max($startDate, Carbon::today()->toDateString());
+        $sourceStart = ContractSessionSchedule::normalizeDateString($source->getAttribute('StartDate'));
+        if ($sourceStart !== null && $sourceStart > $from) {
+            $from = $sourceStart;
+        }
+        $sourceEnd = ContractSessionSchedule::normalizeDateString($source->getAttribute('EndDate'));
+        if ($sourceEnd !== null && $sourceEnd < $from) {
+            return $unchanged;
+        }
+        $lastLesson = ClassSession::query()
+            ->where('StudentClassID', $sourceId)
+            ->whereDate('SessionDate', '>=', $from)
+            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $sourceEnd))
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
+            ->max('SessionDate');
+        // A schedule can exist before its ClassSession is materialized. Substitute/reschedule anchors
+        // (original_schedule_id) and projections of cancelled/leave lessons are not live, as in the
+        // student-slot guard.
+        $scheduleRows = DB::table('schedules')
+            ->where('student_course_id', $sourceId)
+            ->whereDate('schedule_date', '>=', $from)
+            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('schedule_date', '<=', $sourceEnd))
+            ->where('status', 'scheduled')
+            ->whereNull('original_schedule_id')
+            ->get(['schedule_date', 'student_course_id', 'start_time']);
+        $byDate = [];
+        foreach ($scheduleRows as $row) {
+            $ymd = ContractSessionSchedule::normalizeDateString($row->schedule_date);
+            if ($ymd !== null) {
+                $byDate[$ymd][] = $row;
+            }
+        }
+        $liveScheduleDates = array_keys(array_filter(app(StaleScheduleExceptionFilter::class)->rejectStaleBatch($byDate)));
+        $liveDates = array_filter([ContractSessionSchedule::normalizeDateString($lastLesson), ...$liveScheduleDates]);
+        $liveUntil = $liveDates === [] ? null : max($liveDates);
+        if ($liveUntil === null) {
+            return $unchanged;
+        }
+
+        return ['start' => self::nextSlotDayAfter($liveUntil, $slots, (int) Carbon::parse($startDate)->dayOfWeekIso),
+            'source_live_until' => $liveUntil];
+    }
+
+    /**
+     * buildSessionsForCount() always books its start date, so a shifted batch begins on the first configured
+     * slot weekday after $date. A course without fixed slots keeps the requested start's weekday, which
+     * purchaseBatch() turns into its fallback weekly slot.
+     *
+     * @param  array<int, array<string, mixed>>  $slots
+     */
+    private static function nextSlotDayAfter(string $date, array $slots, int $fallbackWeekday): string
+    {
+        $weekdays = array_filter(array_map(fn ($slot) => (int) ($slot['weekday'] ?? 0), $slots), fn ($wd) => $wd >= 1 && $wd <= 7);
+        if ($weekdays === []) {
+            $weekdays = [$fallbackWeekday];
+        }
+        $next = Carbon::parse($date)->addDay();
+        for ($i = 0; $i < 7 && !in_array($next->dayOfWeekIso, $weekdays, true); $i++) {
+            $next->addDay();
+        }
+
+        return $next->toDateString();
     }
 
     // Course lifecycle helpers shared with StudentClassController (togglePause, store, split, trial conversion).
@@ -551,9 +712,18 @@ final class ContractRenewal
     public function purchaseBatch(StudentClass $studentClass, int $sessions, string $startDate, string $mode, string $newClassType, ?array $discountInput, int $actorId, string $actorRole): array
     {
         return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType, $discountInput, $actorId, $actorRole) {
+            // Fail closed until the key migration has run: an unkeyed batch could be duplicated by a later retry.
+            if (! self::hasPurchaseRequestKeyColumn()) {
+                return $this->reply(['message' => '系統更新中，請稍後再試續報。', 'errors' => ['maintenance' => ['續報功能正在更新，請稍後再試。']]], 503);
+            }
+
             $studentClass = $this->lockCourse((int) $studentClass->ID);
 
-            $duplicate = $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions);
+            $planStart = $this->batchStartAfterSource(
+                $studentClass, $startDate, ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass)
+            )['start'];
+            $requestKey = $this->purchaseRequestKey($studentClass, $startDate, $sessions, $mode);
+            $duplicate = $this->findDuplicateShiftedBatch($studentClass, $planStart, $startDate, $sessions, $requestKey);
             if ($duplicate !== null) {
                 return $this->reply([
                     'message' => '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
@@ -606,7 +776,7 @@ final class ContractRenewal
                 'TeacherID' => (int) ($studentClass->TeacherID ?? 0),
                 'by1' => (int) ($studentClass->by1 ?? 1),
                 'Period' => (int) ($studentClass->Period ?? 4),
-                'StartDate' => $startDate,
+                'StartDate' => $planStart,
                 'EndDate' => null,
                 'week' => $studentClass->week,
                 'time' => $studentClass->time,
@@ -651,14 +821,34 @@ final class ContractRenewal
                 'UsedSessions' => 0,
                 'pricing_snapshot' => $discountSnapshot,
             ];
+            $newPayload['purchase_request_key'] = $requestKey;
 
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
 
+            // A paid count source with no sessions left is settled by this purchase. As in renewMonthly(), close
+            // it and cancel its future scheduled rows BEFORE materializing the batch: while it is still open, the
+            // student-slot guard sees those rows as another course and refuses the whole purchase (#4338).
+            // batchStartAfterSource() does not shift past such a source for the same reason.
+            $sourceClosed = false;
+            $sourceCancelledSessions = 0;
+            if (
+                (string) ($studentClass->ScheduleMode ?? '') === 'count'
+                && (int) ($studentClass->Paid ?? 0) === 1
+                && (int) ($studentClass->RemainingSessions ?? 0) <= 0
+            ) {
+                $studentClass->setAttribute('Stop', 1);
+                $studentClass->closed_reason = 'settled';
+                $studentClass->EndDate = Carbon::today()->toDateString();
+                $studentClass->save();
+                $sourceCancelledSessions = $this->cancelFutureScheduledSessions($studentClass, 'settled');
+                $sourceClosed = true;
+            }
+
             // ── Build ClassSession rows for the new course ──
             $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($newCourse);
             if (empty($slots)) {
-                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
+                $isoDow = (int) Carbon::parse($planStart)->dayOfWeekIso;
                 $fallbackTime = ContractSessionSchedule::normalizeSessionTime($newCourse->time ?? null, '16:00');
                 $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
                 if ($globalDur >= 30) {
@@ -666,7 +856,7 @@ final class ContractRenewal
                 }
             }
             $builtSessions = ContractSessionSchedule::buildSessionsForCount(
-                (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
+                (int) $newCourse->ID, $planStart, $sessions, $slots, $globalDur
             );
 
             $createdSessions = 0;
@@ -695,25 +885,13 @@ final class ContractRenewal
             SessionDeductionService::syncCounters($newCourse);
             $newCourse->refresh();
 
-            $sourceClosed = false;
-            if (
-                (string) ($studentClass->ScheduleMode ?? '') === 'count'
-                && (int) ($studentClass->Paid ?? 0) === 1
-                && (int) ($studentClass->RemainingSessions ?? 0) <= 0
-            ) {
-                $studentClass->setAttribute('Stop', 1);
-                $studentClass->closed_reason = 'settled';
-                $studentClass->EndDate = Carbon::today()->toDateString();
-                $studentClass->save();
-                $sourceClosed = true;
-            }
-
             return $this->reply([
                 'message' => $sourceClosed
                     ? '已新增購買批次，舊批次已自動結案'
                     : '已新增購買批次',
                 'mode' => $mode,
                 'source_closed' => $sourceClosed,
+                'source_cancelled_sessions' => $sourceCancelledSessions,
                 'created_sessions' => $createdSessions,
                 'source_course' => [
                     'id' => (int) $studentClass->ID,

@@ -33,7 +33,7 @@ describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + bi
     const historyStart = courseMgmt.indexOf('class="history-course-card__actions"');
     const historyEnd = courseMgmt.indexOf('<div v-if="expandedDates.has(hc.id)"', historyStart);
     const historyActions = courseMgmt.slice(historyStart, historyEnd);
-    expect(historyActions).toContain("effectiveClosedReason(hc) === 'completed'");
+    expect(historyActions).toContain("courseHistoryReason(hc) === 'completed'");
     expect(historyActions).toContain('@click="openCommercialPurchaseEntry(hc); closeActionMenu()"');
     expect(historyActions).not.toContain('/api/v1/student-classes/${hc.id}/purchase-batch');
   });

@@ -29,6 +29,18 @@ const slip = (w) => {
 };
 
 describe('ContractCard 繳費單 (in-app #425)', () => {
+  it('an outstanding invoice keeps its slip despite an unverified legacy Paid flag', async () => {
+    const w = await card({
+      course: { id: 9, subject: '數學', paid: true },
+      lastPayment: { legacyUnverified: true },
+      outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 },
+    });
+    expect(slip(w)).toEqual({ disabled: false, reason: null });
+    await w.get('[data-testid="contract-slip"]').trigger('click');
+    expect(w.emitted('slip')[0][0]).toMatchObject({ id: 9 });
+    w.unmount();
+  });
+
   it('money owed on an open bill: enabled, and click emits the course', async () => {
     const w = await card({ outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 } });
     expect(slip(w)).toEqual({ disabled: false, reason: null });
