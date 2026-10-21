@@ -11,3 +11,9 @@ gate-policy change in range, Codex no-findings confirmation on every PR's final 
 with zero open review threads, and no deploy freeze (main CI red or the last production
 deploy failed). Exact-main CI, health/identity/smoke verification and the automatic
 rollback are unchanged. Anything else still waits for the Founder on the release train.
+
+Gap #9: each PR in an `auto-r3` range must also ship dark. Its body declares exactly one
+`Feature-Flag: <perfflags key> (default off)` (the key is `(bool) env('X', false)` in the
+target's `backend/config/perfflags.php` and the PR's added lines use it) or
+`Feature-Flag: none — <reason>` (refused when the PR changes `frontend/src/`). A missing or
+invalid declaration falls back to the Founder click.

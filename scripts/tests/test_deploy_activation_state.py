@@ -33,6 +33,11 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     environment_protection_is_valid,
     commit_effective_class,
     decide_r3_auto_activation,
+    default_off_flag_keys,
+    feature_flag_decision,
+    feature_flag_evidence,
+    parse_feature_flag_declaration,
+    FEATURE_FLAG_CONFIG,
     deploy_freeze_reason,
     final_head_review_evidence,
     unresolved_review_threads,
@@ -1740,14 +1745,27 @@ class R3AutoActivationTest(unittest.TestCase):
                 "patch_complete": True, "declared_risk": risk, "declared_tier": tier}
 
     REVIEW_OK = {"ok": True, "reason": "final-head Codex review with no open threads on #4400"}
+    FLAGS_OK = {"ok": True, "reason": "dark launch: #4400 behind default-off flag `billing_v2`"}
 
     def _decide(self, records, rollback_evidence=True, range_paths=None, event_name="workflow_run",
-                review=REVIEW_OK, freeze_reason=None):
+                review=REVIEW_OK, freeze_reason=None, feature_flags=FLAGS_OK):
         if range_paths is None:
             range_paths = [path for record in records for path in record["paths"]]
         return decide_r3_auto_activation(records, event_name=event_name,
                                          rollback_evidence=rollback_evidence, range_paths=range_paths,
-                                         review=review, freeze_reason=freeze_reason)
+                                         review=review, freeze_reason=freeze_reason,
+                                         feature_flags=feature_flags)
+
+    def test_a_range_that_does_not_ship_dark_keeps_the_founder_gate(self):
+        records = [self._record(4400, self.BILLING)]
+        ok = self._decide(records)
+        self.assertTrue(ok["ok"])
+        self.assertIn(self.FLAGS_OK["reason"], ok["reason"])
+        for flags in (None, {"ok": False, "reason": "PR #4400: no valid `Feature-Flag:` declaration"}, {"ok": 1}):
+            with self.subTest(flags=flags):
+                held = self._decide(records, feature_flags=flags)
+                self.assertFalse(held["ok"])
+                self.assertIn("feature flag:", held["reason"])
 
     def test_missing_final_head_review_or_a_freeze_keeps_the_founder_gate(self):
         records = [self._record(4400, self.BILLING)]
@@ -1891,7 +1909,10 @@ class R3AutoActivationTest(unittest.TestCase):
         self.assertIn('r3 = next((result for result in r3_results if not result["ok"]), r3_results[0])', r3)
         self.assertIn('r3 = {"ok": False, "reason": f"R3 auto evidence unavailable ({type(exc).__name__})"}', r3)
         self.assertIn('mode, reason, approval_eligible = "auto-r3", r3["reason"], False', r3)
-        self.assertIn("review=review, freeze_reason=freeze,", r3)
+        self.assertIn("review=review, freeze_reason=freeze, feature_flags=flags,", r3)
+        # Gap #9: flag keys are read from the target's own config file, before the decision.
+        self.assertIn("with open(target_r3_gate.FEATURE_FLAG_CONFIG, encoding=\"utf-8\") as config:", r3)
+        self.assertLess(r3.index("feature_flag_evidence("), r3.index("r3_results = ["))
         self.assertLess(r3.index("final_head_review_evidence("), r3.index("r3_results = ["))
         self.assertLess(r3.index("deploy_freeze_reason("), r3.index("r3_results = ["))
         self.assertLess(r3.index('"auto-r3"'), r3.index("emit(mode,"))
@@ -1910,6 +1931,100 @@ class R3AutoActivationTest(unittest.TestCase):
         kick = workflow[workflow.index("  release-train-kick:\n"):workflow.index("  production-activation:\n")]
         self.assertIn("needs.classify-activation.outputs.mode == 'awaiting-activation'", kick)
         self.assertNotIn("auto-r3", kick)
+
+
+class R3FeatureFlagTest(unittest.TestCase):
+    """Gap #9: an auto-activated R3 range ships dark (default-off flag) or is non-user-facing."""
+
+    CONFIG = (
+        "<?php\nreturn [\n"
+        "    'billing_v2' => (bool) env('PERF_BILLING_V2', false),\n"
+        "    'legacy_on' => (bool) env('PERF_LEGACY_ON', true),\n"
+        "    'per_page' => (int) env('PERF_PER_PAGE', 50),\n];\n"
+    )
+
+    def test_declaration_parsing(self):
+        cases = {
+            "Feature-Flag: billing_v2 (default off)": {"kind": "flag", "key": "billing_v2"},
+            "**Feature-Flag:** `perfflags.billing_v2` (default off)": {"kind": "flag", "key": "billing_v2"},
+            "- Feature-Flag: none — backend-only ledger rounding, no UI": {
+                "kind": "none", "reason": "backend-only ledger rounding, no UI"},
+            "Feature-Flag: none - scheduled job only, no UI": {"kind": "none", "reason": "scheduled job only, no UI"},
+            "**Feature-Flag:** <!-- template hint -->\nFeature-Flag: billing_v2 (default off)": {
+                "kind": "flag", "key": "billing_v2"},
+        }
+        for body, expected in cases.items():
+            with self.subTest(body=body):
+                self.assertEqual(expected, parse_feature_flag_declaration(f"## Summary\nx\n{body}\n"))
+        for body in (
+            "", "no declaration here", "Feature-Flag: billing_v2", "Feature-Flag: none",
+            "Feature-Flag: none — short", "Feature-Flag: billing_v2 (default on)",
+            "Feature-Flag: billing_v2 (default off)\nFeature-Flag: none — backend-only change here",
+            "<!-- Feature-Flag: billing_v2 (default off) -->",
+        ):
+            with self.subTest(body=body):
+                self.assertIsNone(parse_feature_flag_declaration(body))
+
+    def test_default_off_keys_come_from_the_config_text(self):
+        self.assertEqual({"billing_v2"}, default_off_flag_keys(self.CONFIG))
+        flipped = self.CONFIG.replace("'PERF_BILLING_V2', false", "'PERF_BILLING_V2', true")
+        self.assertEqual(set(), default_off_flag_keys(flipped))
+        real = (ROOT / FEATURE_FLAG_CONFIG).read_text(encoding="utf-8")
+        keys = default_off_flag_keys(real)
+        self.assertTrue(keys)
+        for key in keys:
+            self.assertRegex(real, rf"'{key}'\s*=>\s*\(bool\)\s*env\('[A-Z0-9_]+',\s*false\)")
+
+    def test_decision_rule(self):
+        off = default_off_flag_keys(self.CONFIG)
+        flag = {"kind": "flag", "key": "billing_v2"}
+        backend = ["backend/app/Services/SessionDeductionService.php"]
+        uses = "if (config('perfflags.billing_v2')) {"
+        self.assertEqual((True, "behind default-off flag `billing_v2`"),
+                         feature_flag_decision(flag, default_off=off, paths=backend, added_code=uses))
+        self.assertFalse(feature_flag_decision(flag, default_off=off, paths=backend, added_code="$x = 1;")[0])
+        self.assertFalse(feature_flag_decision({"kind": "flag", "key": "legacy_on"}, default_off=off,
+                                               paths=backend, added_code="legacy_on")[0])
+        self.assertFalse(feature_flag_decision({"kind": "flag", "key": "per_page"}, default_off=off,
+                                               paths=backend, added_code="per_page")[0])
+        self.assertFalse(feature_flag_decision(None, default_off=off, paths=backend, added_code=uses)[0])
+        none = {"kind": "none", "reason": "backend-only"}
+        self.assertTrue(feature_flag_decision(none, default_off=off, paths=backend, added_code="")[0])
+        ui = feature_flag_decision(none, default_off=off, paths=backend + ["frontend/src/pages/Billing.vue"],
+                                   added_code="")
+        self.assertFalse(ui[0])
+        self.assertIn("frontend/src/pages/Billing.vue", ui[1])
+
+    def _api(self, bodies, files):
+        def api(path, *flags):
+            number = int(path.split("/pulls/")[1].split("/")[0].split("?")[0])
+            if "/files" in path:
+                self.assertEqual(("--paginate", "--slurp"), flags)
+                return [files.get(number, [])]
+            return {"body": bodies[number]}
+        return api
+
+    def test_evidence_checks_every_pr(self):
+        good_file = {"filename": "backend/app/Services/X.php",
+                     "patch": "@@ -1 +1,2 @@\n-old\n+if (config('perfflags.billing_v2')) {"}
+        ui_file = {"filename": "frontend/src/pages/Billing.vue", "patch": "@@ -1 +1 @@\n-a\n+b"}
+        bodies = {1: "Feature-Flag: billing_v2 (default off)", 2: "Feature-Flag: none — server-side cron only change"}
+        result = feature_flag_evidence(repo="o/r", pr_numbers=[1, 2], config_text=self.CONFIG,
+                                       api=self._api(bodies, {1: [good_file], 2: [good_file]}))
+        self.assertTrue(result["ok"], result)
+        self.assertIn("#1 behind default-off flag `billing_v2`", result["reason"])
+        result = feature_flag_evidence(repo="o/r", pr_numbers=[1, 2], config_text=self.CONFIG,
+                                       api=self._api(bodies, {1: [good_file], 2: [ui_file]}))
+        self.assertFalse(result["ok"])
+        self.assertIn("PR #2", result["reason"])
+        # The same PR passes or fails as the config default changes: the rule reads the config.
+        flipped = self.CONFIG.replace("'PERF_BILLING_V2', false", "'PERF_BILLING_V2', true")
+        self.assertFalse(feature_flag_evidence(repo="o/r", pr_numbers=[1], config_text=flipped,
+                                               api=self._api(bodies, {1: [good_file]}))["ok"])
+        self.assertFalse(feature_flag_evidence(repo="o/r", pr_numbers=[1], config_text=self.CONFIG,
+                                               api=self._api(bodies, {}))["ok"])  # files unavailable
+        self.assertFalse(feature_flag_evidence(repo="o/r", pr_numbers=[], config_text=self.CONFIG,
+                                               api=self._api(bodies, {}))["ok"])
 
 
 class FounderGoAutoActivationTest(unittest.TestCase):

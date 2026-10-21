@@ -49,6 +49,7 @@
 | (d) 驗證失敗自動回滾到上一版 | Flagger／Argo Rollouts／Spinnaker automated rollback | 既有 | `deploy.yml` L1645 `rollback_deploy`、L1734 `abort_deploy`（gate exit 20 → 回滾 PREV_COMMIT 並再驗舊版；有 migration 時 exit 13 不回滾——所以 migration 範圍不自動上線） |
 | (e) stop-the-line：main CI 紅，或上一次正式部署失敗／回滾／hold → 停止自動上線 | Google TAP「stop the line」／GitLab deploy freeze | **本 PR 新增** | `autonomy_gate.py` `deploy_freeze_reason`，`deploy.yml` L1023；之後一次 Founder 核准且成功的部署即解除 |
 | (f) 稽核紀錄：range、PR、tier、證據、結果 | SLSA provenance | **本 PR 新增**（結果沿用既有） | `deploy.yml` L1125（Release state summary）；結果見 deploy job 的 `state=production-verified` 或失敗摘要 |
+| (g) 暗啟動（gap #9，Founder 2026-10-21「你懷疑的這九點都把它規劃好補上」）：每個 PR 內文恰好一行 `Feature-Flag: <perfflags key> (default off)`（該 key 在目標版 `backend/config/perfflags.php` 為 `(bool) env('X', false)`，且 PR 新增行有用到它）或 `Feature-Flag: none — <理由>`（非使用者可見；改到 `frontend/src/` 即不成立）；缺漏／格式錯／key 不存在或預設開 → 回到 Founder 按 | LaunchDarkly／Unleash dark launch；Google flag-guarded launch | **新增** | `autonomy_gate.py` `feature_flag_evidence`、`decide_r3_auto_activation(feature_flags=…)` |
 | 雙政策：已部署版與目標版的 gate 都要同意 | two-person rule 的機器版（範圍不能自己審自己） | 既有模式沿用 | `deploy.yml` L1030 |
 
 已知缺口（follow-up，不阻擋）：runner 端獨立驗證（L2053）在 executor 已驗證成功後才失敗時只發警示、不自動回滾；canary／漸進式上線、error budget gating、DORA 指標尚未做。

@@ -1273,10 +1273,104 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
     return f"no production deploy in the last {_FREEZE_LOOKBACK_RUNS} deploy runs; state unknown"
 
 
+# Gap #9 (Founder 2026-10-21「你懷疑的這九點都把它規劃好補上」): an R3 range that skips the Founder
+# click must ship dark. Each PR body declares exactly one of
+#   Feature-Flag: <perfflags key> (default off)   the key is `(bool) env('X', false)` in
+#                                                 FEATURE_FLAG_CONFIG and the PR's added lines use it
+#   Feature-Flag: none — <reason>                 non-user-facing; refused if it touches the UI
+# Anything else (missing, duplicated, malformed, unknown key, default on) keeps the Founder reviewer.
+# LaunchDarkly / Unleash "dark launch"; Google flag-guarded launches.
+FEATURE_FLAG_CONFIG = "backend/config/perfflags.php"
+FEATURE_FLAG_USER_FACING_PREFIXES = ("frontend/src/",)
+_FEATURE_FLAG_LINE_RE = re.compile(r"(?im)^[ \t>*_-]*Feature-Flag[*_]*[ \t]*:[*_]*[ \t]*(?P<value>.*?)[ \t]*$")
+_FEATURE_FLAG_KEY_RE = re.compile(
+    r"^`?(?:perfflags\.)?(?P<key>[a-z][a-z0-9_]{2,63})`?\s*\(\s*default\s+off\s*\)\s*$", re.I
+)
+_FEATURE_FLAG_NONE_RE = re.compile(r"^`?none`?\s*(?:[-—–:]+)\s*(?P<reason>\S.{7,})$", re.I)
+_DEFAULT_OFF_RE = re.compile(r"'(?P<key>[a-z0-9_]+)'\s*=>\s*\(bool\)\s*env\(\s*'[A-Z0-9_]+'\s*,\s*false\s*\)")
+
+
+def parse_feature_flag_declaration(body: str) -> dict[str, str] | None:
+    """The PR body's single ``Feature-Flag:`` declaration, or None (missing, duplicated or malformed)."""
+
+    text = re.sub(r"<!--.*?-->", "", body or "", flags=re.DOTALL)
+    # An empty line (the PR template left unfilled) is not a declaration; two filled ones are ambiguous.
+    values = [v for v in (m.group("value").strip() for m in _FEATURE_FLAG_LINE_RE.finditer(text)) if v]
+    if len(values) != 1:
+        return None
+    value = values[0]
+    if match := _FEATURE_FLAG_NONE_RE.match(value):
+        return {"kind": "none", "reason": match.group("reason").strip()}
+    if match := _FEATURE_FLAG_KEY_RE.match(value):
+        return {"kind": "flag", "key": match.group("key").lower()}
+    return None
+
+
+def default_off_flag_keys(config_text: str) -> set[str]:
+    """Keys of FEATURE_FLAG_CONFIG whose default is literally ``(bool) env('X', false)``."""
+
+    return {match.group("key") for match in _DEFAULT_OFF_RE.finditer(config_text or "")}
+
+
+def feature_flag_decision(
+    declaration: Mapping[str, str] | None, *, default_off: set[str], paths: Iterable[str], added_code: str,
+) -> tuple[bool, str]:
+    """Pure rule for one PR: (accepted, reason)."""
+
+    if not declaration:
+        return False, "no valid `Feature-Flag:` declaration"
+    if declaration.get("kind") == "none":
+        user_facing = sorted(
+            path for path in (str(p).replace("\\", "/") for p in paths)
+            if path.startswith(FEATURE_FLAG_USER_FACING_PREFIXES)
+        )
+        if user_facing:
+            return False, f"`Feature-Flag: none` but the PR changes user-facing UI ({user_facing[0]})"
+        return True, "declared non-user-facing"
+    key = declaration.get("key") or ""
+    if key not in default_off:
+        return False, f"flag `{key}` is not a default-off key in {FEATURE_FLAG_CONFIG}"
+    if not re.search(rf"\b{re.escape(key)}\b", added_code or ""):
+        return False, f"flag `{key}` is not referenced by the PR's added lines"
+    return True, f"behind default-off flag `{key}`"
+
+
+def feature_flag_evidence(
+    *, repo: str, pr_numbers: Iterable[object], api: Callable[..., object], config_text: str,
+) -> dict[str, object]:
+    """Every PR of an R3 auto range ships dark (or is non-user-facing). API errors propagate (fail closed)."""
+
+    default_off = default_off_flag_keys(config_text)
+    numbers = [int(str(number)) for number in pr_numbers]
+    if not numbers:
+        return {"ok": False, "reason": "no PRs to check"}
+    accepted = []
+    for number in numbers:
+        pr = api(f"/repos/{repo}/pulls/{number}")
+        pages = api(f"/repos/{repo}/pulls/{number}/files?per_page=100", "--paginate", "--slurp")
+        files = [item for page in (pages if isinstance(pages, list) else []) for item in
+                 (page if isinstance(page, list) else [page])]
+        if not files:
+            return {"ok": False, "reason": f"PR #{number}: changed files unavailable"}
+        added = "\n".join(
+            line[1:] for item in files for line in str((item or {}).get("patch") or "").splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        )
+        ok, why = feature_flag_decision(
+            parse_feature_flag_declaration((pr or {}).get("body") or ""), default_off=default_off,
+            paths=[(item or {}).get("filename") or "" for item in files], added_code=added,
+        )
+        if not ok:
+            return {"ok": False, "reason": f"PR #{number}: {why}"}
+        accepted.append(f"#{number} {why}")
+    return {"ok": True, "reason": "dark launch: " + "; ".join(accepted)}
+
+
 def decide_r3_auto_activation(
     records: Iterable[dict[str, object]], *, event_name: str, rollback_evidence: bool,
     range_paths: Iterable[str] | None, review: Mapping[str, object] | None = None,
     freeze_reason: str | None = "freeze state not evaluated",
+    feature_flags: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Founder 2026-10-21（二）之二: may this held range activate through production-auto?
 
@@ -1284,8 +1378,9 @@ def decide_r3_auto_activation(
     solely because it is T3, its provenance is complete, every PR has rollback evidence, no PR
     carries a migration, data-repair, identity/credential or control-plane hold, and no commit in
     the range touches the gate policy, the line is not frozen (``deploy_freeze_reason``) and every
-    PR has final-head review (``final_head_review_evidence``). Exact-main CI is re-checked by the
-    deploy job before the executor. Fails closed.
+    PR has final-head review (``final_head_review_evidence``) and every PR ships dark behind a
+    default-off flag or declares itself non-user-facing (``feature_flag_evidence``, gap #9).
+    Exact-main CI is re-checked by the deploy job before the executor. Fails closed.
     """
 
     def hold(reason: str) -> dict[str, object]:
@@ -1331,10 +1426,12 @@ def decide_r3_auto_activation(
         return hold(f"deploy freeze: {freeze_reason}")
     if not isinstance(review, Mapping) or review.get("ok") is not True:
         return hold(f"final-head review: {(review or {}).get('reason', 'not evaluated')}")
+    if not isinstance(feature_flags, Mapping) or feature_flags.get("ok") is not True:
+        return hold(f"feature flag: {(feature_flags or {}).get('reason', 'not evaluated')}")
     numbers = ", ".join(f"#{pr['number']}" for pr in applications)
     return {"ok": True, "reason": f"R3 auto (Founder 2026-10-21): PRs {numbers}; tier T3; "
             "no migration/data-repair/identity/credential effect; rollback evidence; "
-            f"{review.get('reason')}; no deploy freeze"}
+            f"{review.get('reason')}; {feature_flags.get('reason')}; no deploy freeze"}
 
 
 def _parse_timestamp(value: object) -> datetime | None:

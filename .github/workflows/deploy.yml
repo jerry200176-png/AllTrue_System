@@ -1021,11 +1021,17 @@ jobs:
                           api=gh_api, graphql=graphql,
                       )
                       freeze = target_r3_gate.deploy_freeze_reason(repo=repo, api=gh_api)
+                      # Gap #9: ship dark. Flag keys come from the target's own config file.
+                      with open(target_r3_gate.FEATURE_FLAG_CONFIG, encoding="utf-8") as config:
+                          flags = target_r3_gate.feature_flag_evidence(
+                              repo=repo, pr_numbers=[pr["number"] for pr in provenance["application_prs"]],
+                              api=gh_api, config_text=config.read(),
+                          )
                       r3_results = [
                           gate.decide_r3_auto_activation(
                               attributed, event_name=classify_event,
                               rollback_evidence=rollback_evidence, range_paths=range_paths,
-                              review=review, freeze_reason=freeze,
+                              review=review, freeze_reason=freeze, feature_flags=flags,
                           )
                           for gate in (trusted_r3_gate, target_r3_gate)
                       ]
