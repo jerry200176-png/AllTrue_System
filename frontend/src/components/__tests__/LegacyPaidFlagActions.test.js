@@ -30,7 +30,6 @@ describe('ContractCard legacy-flag actions', () => {
     await flushPromises();
     return wrapper;
   };
-
   it('adds the next-step sentence and both actions under the 需核對 label', async () => {
     const w = await mountCard({});
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
@@ -38,7 +37,6 @@ describe('ContractCard legacy-flag actions', () => {
     expect(w.find('[data-testid="legacy-backfill-open"]').text()).toBe('已收過，補登收款');
     expect(w.find('[data-testid="legacy-clear-open"]').text()).toBe('其實沒收，改成未繳');
   });
-
   it('with an open bill the card has one way to take money: 補登收款, never 登記這筆 as well', async () => {
     const w = await mountCard({}, { outstanding: 3000 });
     expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
@@ -46,7 +44,6 @@ describe('ContractCard legacy-flag actions', () => {
     await w.find('[data-testid="legacy-backfill-open"]').trigger('click');
     expect(w.emitted('legacy-backfill')[0][0].id).toBe(9);
   });
-
   it.each([
     ['a role that cannot resolve', {}, { canResolveLegacy: false }],
     ['a shared package member', { package_id: 3 }, {}],
@@ -70,7 +67,6 @@ describe('LegacyPaidFlagActions 改成未繳', () => {
     const el = q('legacy-clear-reason').matches('textarea') ? q('legacy-clear-reason') : q('legacy-clear-reason').querySelector('textarea');
     el.value = v; el.dispatchEvent(new Event('input')); await flushPromises();
   };
-
   it('asks for a reason inline, then posts it to the clear endpoint', async () => {
     const w = await openClear();
     q('legacy-clear-submit').click();
@@ -84,7 +80,6 @@ describe('LegacyPaidFlagActions 改成未繳', () => {
     expect(posted()).toEqual([['/api/v1/payment-reports/legacy-flag-clear', { student_class_id: 9, reason: '家長說還沒繳' }]]);
     expect(w.emitted('resolved')).toHaveLength(1);
   });
-
   it('keeps the dialog open with the server refusal sentence', async () => {
     const w = await openClear();
     await setReason('其實沒收');
@@ -104,7 +99,6 @@ describe('PaymentEntryModal legacy-backfill mode (補登收款)', () => {
     await nextTick();
     return wrapper;
   };
-
   it('is the same form with the contract amount prefilled, no 免費 mark and a 送出即入帳 hint', async () => {
     const w = await open();
     expect(w.find('h3').text()).toBe('登記收款');
@@ -113,7 +107,6 @@ describe('PaymentEntryModal legacy-backfill mode (補登收款)', () => {
     expect(w.find('[data-testid="pe-free-gift"]').exists()).toBe(false);
     expect(w.find('input[type="date"]').attributes('max')).toBeTruthy();
   });
-
   it('posts legacy_flag_backfill with one idempotency key that a retry reuses', async () => {
     const w = await open();
     authedFetch.mockResolvedValueOnce(respond({ message: '網路中斷' }, 500));
