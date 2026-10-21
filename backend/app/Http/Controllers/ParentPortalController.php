@@ -818,6 +818,11 @@ class ParentPortalController extends Controller
             return $row;
         });
 
+        // in-app #418: dates behind each count-mode card's 「已上」 (parent-scoped $classes only).
+        $attendedLessons = $this->attendedLessonsByClass(
+            $classes->filter(fn ($c) => (string) ($c->ScheduleMode ?? 'count') === 'count')->pluck('ID')->all()
+        );
+
         // Per-course breakdown — 家長端「進行中」：
         //   - 堂數制：剩餘 > 0 才顯示（已用完或已停課+已繳不列）
         //   - 月結制：保留已繳結案課程，前端以「已繳費・課程已結束」降低家長誤解
@@ -838,7 +843,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap, $attendedLessons) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
@@ -898,6 +903,8 @@ class ParentPortalController extends Controller
                     'settlement_day'       => $isMonthly ? ((int) ($c->settlement_day ?? 0) ?: null) : null,
                     'monthly_target'       => $isMonthly ? ($monthlyTarget ?: null) : null,
                     'attended_this_month'  => $isMonthly ? $attended : null,
+                    // in-app #418: this course's own lesson dates (package members: own subject only), newest first.
+                    'attended_lessons'     => $isMonthly ? null : ($attendedLessons[(int) $c->ID] ?? []),
                     'monthly_fee_estimate' => $isMonthly ? $monthlyFee : null,
                 ];
             })
@@ -2469,5 +2476,110 @@ class ParentPortalController extends Controller
         ];
 
         return $map[$v] ?? '';
+    }
+
+    /**
+     * in-app #418: per-course list of the lessons behind 「已上 N 堂」, so a parent
+     * sees the dates under each count-mode card without matching the mixed
+     * 學習 timeline by hand. Read-only; mirrors the evidence sources of
+     * SessionDeductionService::batchObservedUsedSessions (deducted sign-ins,
+     * completed sessions, approved orphan learning records), de-duplicated by
+     * session (or date+time when no session is linked). Callers pass only the
+     * already parent-scoped class ids.
+     *
+     * @param  array<int>  $studentClassIds
+     * @return array<int, list<array{date:string, time:?string, note:?string}>> newest first
+     */
+    private function attendedLessonsByClass(array $studentClassIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds), fn ($id) => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+        $today = Carbon::today()->toDateString();
+        $lessons = [];
+        $add = function (int $classId, string $key, $date, ?string $start, ?string $end, ?string $note) use (&$lessons): void {
+            $d = $date ? substr((string) $date, 0, 10) : '';
+            if ($d === '' || isset($lessons[$classId][$key])) {
+                return;
+            }
+            $s = $this->trimToHM($start);
+            $e = $this->trimToHM($end);
+            $lessons[$classId][$key] = [
+                'date' => $d,
+                'time' => $s !== '' ? ($e !== '' ? "$s-$e" : $s) : null,
+                'note' => $note,
+            ];
+        };
+
+        $signIns = StudentSignIn::query()
+            ->active()
+            ->leftJoin('ClassSession as sign_in_cs', 'sign_in_cs.id', '=', 'StudentSingIn.ClassSessionID')
+            ->whereIn('StudentSingIn.StudentClassID', $ids)
+            ->where('SessionDeducted', true)
+            ->where(function ($query) use ($today) {
+                $query->whereNull('sign_in_cs.id')
+                    ->orWhere(function ($linked) use ($today) {
+                        $linked->whereDate('sign_in_cs.SessionDate', '<=', $today)
+                            ->whereIn('sign_in_cs.Status', [
+                                'completed', 'attended', 'late', 'cancelled',
+                                'scheduled', 'rescheduled', 'absent',
+                            ]);
+                    });
+            })
+            ->get([
+                'StudentSingIn.id', 'StudentSingIn.StudentClassID', 'StudentSingIn.SignInDT', 'StudentSingIn.Status',
+                'sign_in_cs.id as cs_id', 'sign_in_cs.SessionDate as cs_date',
+                'sign_in_cs.StartTime as cs_start', 'sign_in_cs.EndTime as cs_end',
+            ]);
+        foreach ($signIns as $row) {
+            $note = match (strtolower((string) $row->Status)) {
+                'absent' => '缺席（已扣堂）',
+                'leave', 'excused' => '請假（已扣堂）',
+                default => null,
+            };
+            $sessionId = $row->getAttribute('cs_id');
+            if ($sessionId) {
+                $add(
+                    (int) $row->StudentClassID,
+                    's:' . $sessionId,
+                    $row->getAttribute('cs_date'),
+                    $row->getAttribute('cs_start'),
+                    $row->getAttribute('cs_end'),
+                    $note
+                );
+            } elseif ($row->SignInDT) {
+                try {
+                    $dt = Carbon::parse($row->SignInDT);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                $add((int) $row->StudentClassID, 'd:' . $dt->format('Y-m-d|H:i'), $dt->toDateString(), $dt->format('H:i'), null, $note);
+            }
+        }
+
+        ClassSession::query()
+            ->whereIn('StudentClassID', $ids)
+            ->whereIn('Status', ['completed', 'attended', 'late'])
+            ->whereDate('SessionDate', '<=', $today)
+            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime'])
+            ->each(fn ($cs) => $add((int) $cs->StudentClassID, 's:' . $cs->id, $cs->SessionDate, $cs->StartTime, $cs->EndTime, null));
+
+        LearningRecord::query()
+            ->whereIn('StudentClassID', $ids)
+            ->where('Status', 'approved')
+            ->where(fn ($q) => $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0))
+            ->whereNotNull('SessionDate')
+            ->get(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime'])
+            ->each(function ($lr) use ($add) {
+                $date = substr((string) $lr->SessionDate, 0, 10);
+                $add((int) $lr->StudentClassID, 'd:' . $date . '|' . $this->trimToHM($lr->StartTime), $date, $lr->StartTime, $lr->EndTime, null);
+            });
+
+        return array_map(function (array $rows): array {
+            $rows = array_values($rows);
+            usort($rows, fn ($a, $b) => strcmp($b['date'] . ($b['time'] ?? ''), $a['date'] . ($a['time'] ?? '')));
+            return $rows;
+        }, $lessons);
     }
 }

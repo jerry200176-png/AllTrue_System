@@ -851,6 +851,18 @@
                 <p v-if="c.is_package" class="pp-package-hint">
                   與其他科目共用同一方案（共 {{ c.package_total_sessions ?? 0 }} 堂），剩餘為共用堂數，扣堂一起計算。
                 </p>
+                <!-- in-app #418：這門課自己的上課日期，不必切到「學習」分頁對科目數 -->
+                <details v-if="courseLessonRows(c).length" class="pp-lesson-dates">
+                  <summary>{{ c.is_package ? '本科已上' : '已上' }} {{ courseLessonRows(c).length }} 堂・查看上課日期</summary>
+                  <ol class="pp-lesson-list">
+                    <li v-for="row in courseLessonRows(c)" :key="row.key">
+                      <span class="pp-lesson-no">第 {{ row.number }} 堂</span>
+                      <span>{{ row.dateLabel }}</span>
+                      <span v-if="row.time" class="pp-lesson-time">{{ row.time }}</span>
+                      <span v-if="row.note" class="pp-lesson-note">{{ row.note }}</span>
+                    </li>
+                  </ol>
+                </details>
               </template>
               <!-- 月結制 -->
               <template v-else>
@@ -988,6 +1000,7 @@ import { buildParentActionItems, buildParentHomeSummary } from '../lib/parentAct
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
 import { isMonthlyPaymentType, remainingTone } from '../lib/courseMoneyState';
 import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
+import { courseLessonRows } from '../lib/parentCourseLessons';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -2838,6 +2851,12 @@ onMounted(async () => {
 .pp-remaining-number { font-size: 1.6em; font-weight: 800; }
 .pp-remaining-label { font-size: 0.78em; color: var(--ds-ink-mute); margin-left: 2px; }
 .pp-package-hint { font-size: 0.76em; line-height: 1.5; color: var(--ds-ink-mute); margin: 8px 0 0; }
+.pp-lesson-dates { margin-top: 8px; font-size: 0.8em; color: var(--ds-ink-mute); }
+.pp-lesson-dates summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--ds-ink); }
+.pp-lesson-list { list-style: none; margin: 4px 0 0; padding: 0; font-variant-numeric: tabular-nums; }
+.pp-lesson-list li { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; border-top: 1px solid var(--ds-canvas-soft); }
+.pp-lesson-no { min-width: 4.5em; color: var(--ds-ink); }
+.pp-lesson-note { color: var(--ds-warning); }
 
 /* PRD-H：月結課程「本月已上 + 月費預估」區塊 */
 .pp-monthly-stats {
