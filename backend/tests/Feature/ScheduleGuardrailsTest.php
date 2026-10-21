@@ -1155,7 +1155,7 @@ class ScheduleGuardrailsTest extends TestCase
         $res->assertCreated();
     }
 
-    public function test_two_trial_students_same_slot_are_blocked(): void
+    public function test_two_trial_students_same_slot_without_one_on_three_are_blocked(): void
     {
         $token = $this->createDirectorToken([1], 'director-guard-trial-b@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-guard-trial-b@example.com');
@@ -1230,75 +1230,88 @@ class ScheduleGuardrailsTest extends TestCase
         ]);
     }
 
-    /** @return \Illuminate\Testing\TestResponse */
-    private function postGuardSlotRow(string $token, int $studentId, int $teacherId, string $classType, string $date)
+    /**
+     * Seeds the Wednesday 2026-04-15 15:00-17:00 slot with the given class types
+     * (one new student each), then posts one more row of $incomingType.
+     *
+     * @param  array<int, string>  $existingTypes
+     * @return \Illuminate\Testing\TestResponse
+     */
+    private function postIntoSeededSlot(string $tag, array $existingTypes, string $incomingType)
     {
+        $token = $this->createDirectorToken([1], "director-guard-{$tag}@example.com");
+        $teacherId = $this->createTeacher(1, "teacher-guard-{$tag}@example.com");
+        $date = '2026-04-15';
+
+        foreach ($existingTypes as $i => $type) {
+            $this->insertGuardSlotRow($this->createStudent(1, "既有生{$i}")->id, $teacherId, $type, $date);
+        }
+
         return $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->postJson('/api/v1/schedules', [
-            'student_id' => $studentId,
+            'student_id' => $this->createStudent(1, '新加入生')->id,
             'teacher_id' => $teacherId,
             'subject' => 'Physics',
             'day_of_week' => 3,
             'start_time' => '15:00',
             'end_time' => '17:00',
             'duration_hours' => 2,
-            'class_type' => $classType,
+            'class_type' => $incomingType,
             'status' => 'scheduled',
-            'type' => $classType === 'trial' ? 'trial' : 'normal',
-            'deduction' => $classType === 'trial' ? 0 : 1,
+            'type' => $incomingType === 'trial' ? 'trial' : 'normal',
+            'deduction' => $incomingType === 'trial' ? 0 : 1,
             'branch_id' => 1,
             'schedule_date' => $date,
         ]);
     }
 
-    /**
-     * in-app #426: a trial auditor in a 1v3 slot must not take a regular seat.
-     * 1v3 x3 + trial is already allowed (trial bypass), so 1v3 x2 + trial must
-     * still accept the third 1v3 student; capacity cannot depend on booking order.
-     */
-    public function test_trial_auditor_does_not_take_one_on_three_seat(): void
+    /** in-app #426 / Founder 1a: a 1v3 slot accepts more than one trial while total <= 3. */
+    public function test_one_on_three_slot_allows_second_trial(): void
     {
-        $token = $this->createDirectorToken([1], 'director-guard-trial-1v3@example.com');
-        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-1v3@example.com');
-        $date = '2026-04-15';
-
-        $this->insertGuardSlotRow($this->createStudent(1, '一對三甲')->id, $teacherId, 'one_on_three', $date);
-        $this->insertGuardSlotRow($this->createStudent(1, '一對三乙')->id, $teacherId, 'one_on_three', $date);
-        $this->insertGuardSlotRow($this->createStudent(1, '試聽丙')->id, $teacherId, 'trial', $date);
-
-        $this->postGuardSlotRow($token, $this->createStudent(1, '一對三丁')->id, $teacherId, 'one_on_three', $date)
-            ->assertCreated();
+        $this->postIntoSeededSlot('1v3-t2', ['one_on_three', 'trial'], 'trial')->assertCreated();
     }
 
-    public function test_trial_auditor_does_not_lift_regular_one_on_three_limit(): void
+    /** Founder 1a: 2 regular + 1 trial is allowed in a 1v3 slot. */
+    public function test_one_on_three_slot_two_regular_plus_trial_is_allowed(): void
     {
-        $token = $this->createDirectorToken([1], 'director-guard-trial-1v3-full@example.com');
-        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-1v3-full@example.com');
-        $date = '2026-04-15';
+        $this->postIntoSeededSlot('1v3-r2t1', ['one_on_three', 'one_on_three'], 'trial')->assertCreated();
+    }
 
-        foreach (['一對三甲', '一對三乙', '一對三丙'] as $name) {
-            $this->insertGuardSlotRow($this->createStudent(1, $name)->id, $teacherId, 'one_on_three', $date);
-        }
-        $this->insertGuardSlotRow($this->createStudent(1, '試聽丁')->id, $teacherId, 'trial', $date);
-
-        $this->postGuardSlotRow($token, $this->createStudent(1, '一對三戊')->id, $teacherId, 'one_on_three', $date)
+    /** Founder 1a: trials take real seats, so 2 regular + 1 trial is full for a third regular. */
+    public function test_one_on_three_slot_trial_takes_a_seat_for_regular(): void
+    {
+        $this->postIntoSeededSlot('1v3-r2t1-r', ['one_on_three', 'one_on_three', 'trial'], 'one_on_three')
             ->assertStatus(409)
             ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
             ->assertJsonPath('conflicts.0.current_students', 3);
     }
 
-    public function test_trial_auditor_alone_does_not_block_one_on_one(): void
+    /** Founder 1a: a 4th trial in a full 1v3 slot (1 regular + 2 trials) is blocked. */
+    public function test_one_on_three_slot_fourth_trial_is_blocked(): void
     {
-        $token = $this->createDirectorToken([1], 'director-guard-trial-1v1@example.com');
-        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-1v1@example.com');
-        $date = '2026-04-15';
+        $this->postIntoSeededSlot('1v3-r1t2-t', ['one_on_three', 'trial', 'trial'], 'trial')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonPath('conflicts.0.current_students', 3);
+    }
 
-        $this->insertGuardSlotRow($this->createStudent(1, '試聽甲')->id, $teacherId, 'trial', $date);
+    /** Founder 1a: a trial no longer audits on top of a full 1v3 slot (3 regular). */
+    public function test_one_on_three_slot_full_of_regulars_blocks_trial(): void
+    {
+        $this->postIntoSeededSlot('1v3-r3-t', ['one_on_three', 'one_on_three', 'one_on_three'], 'trial')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonPath('conflicts.0.current_students', 3);
+    }
 
-        $this->postGuardSlotRow($token, $this->createStudent(1, '一對一乙')->id, $teacherId, 'one_on_one', $date)
-            ->assertCreated();
+    /** Blast radius: a 1v2 slot keeps the one-trial-per-slot rule. */
+    public function test_one_on_two_slot_still_blocks_second_trial(): void
+    {
+        $this->postIntoSeededSlot('1v2-t2', ['one_on_two', 'trial'], 'trial')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
     }
 
     /**

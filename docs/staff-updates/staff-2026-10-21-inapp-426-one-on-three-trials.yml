@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-inapp-426-one-on-three-trials
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 一對三時段可排多位試聽
+    summary: 一對三時段的試聽學生算進名額，正式與試聽合計最多三位，合計未滿時可排超過一位試聽。
+    items:
+      - category: improved
+        text: 一對三時段已有正式學生時，可再排第二位試聽；正式與試聽合計滿三位就不能再加任何學生。
+      - category: improved
+        text: 行事曆人數徽章顯示含試聽的總人數，滑過可看到其中試聽幾位；其他班型仍是每時段最多一位試聽。
+    source_refs:
+      - "changelog:2026-10-21:inapp-426-one-on-three-trials"

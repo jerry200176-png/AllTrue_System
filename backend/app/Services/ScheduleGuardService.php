@@ -960,6 +960,32 @@ class ScheduleGuardService
         // and the existing-type capacity check, but we still enforce at most
         // one trial student per teacher slot (FR-002).
         if ($newClassType === 'trial') {
+            // in-app #426 (Founder decision 1a, 2026-10-21): in a one-on-three slot trial
+            // students take real seats and several may join, as long as the slot total
+            // (regular + trial) stays within 3. A trial row carries no target class type,
+            // so the slot is one-on-three only when an overlapping regular row is
+            // one_on_three and none is one_on_one (§R116 slot typing). Other slots keep
+            // the one-trial-per-slot rule below.
+            if ($this->isOneOnThreeSlot($overlaps)) {
+                if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
+                    return $this->finalizeCapacityConflict([
+                        'type' => 'teacher_capacity',
+                        'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
+                        'start_time' => (string) ($slot['start_time'] ?? ''),
+                        'end_time' => (string) ($slot['end_time'] ?? ''),
+                        'current_students' => $existingCount,
+                        'allowed_students' => self::TEACHER_SLOT_ABSOLUTE_MAX,
+                        'message' => sprintf(
+                            '老師此一對三時段本分校已有 %d 位學生（含試聽），上限為 %d 位學生。',
+                            $existingCount,
+                            self::TEACHER_SLOT_ABSOLUTE_MAX
+                        ),
+                        ...$this->overlapPayload($overlaps),
+                    ]);
+                }
+                return null;
+            }
+
             $trialOverlaps = array_values(array_filter($overlaps, function ($entry) {
                 return (string) ($entry['class_type'] ?? '') === 'trial';
             }));
@@ -981,16 +1007,6 @@ class ScheduleGuardService
             }
             return null;
         }
-
-        // in-app #426: the trial auditor sits outside the regular seats (it bypassed
-        // capacity on the way in), so it must not consume a seat for a regular class
-        // added later. Otherwise capacity depends on the order of booking: 1v3 x3 + trial
-        // is allowed, but 1v3 x2 + trial blocks the third 1v3 student.
-        $overlaps = array_values(array_filter(
-            $overlaps,
-            fn ($entry) => (string) ($entry['class_type'] ?? '') !== 'trial'
-        ));
-        $existingCount = $this->countDistinctStudents($overlaps);
 
         $hasOneOnOne = false;
         foreach ($overlaps as $entry) {
@@ -1164,6 +1180,19 @@ class ScheduleGuardService
     {
         [$h, $m] = array_map('intval', explode(':', $time));
         return $h * 60 + $m;
+    }
+
+    /**
+     * in-app #426: a slot is one-on-three when a regular (non-trial) overlap is
+     * one_on_three and no overlap is one_on_one.
+     *
+     * @param  array<int, array<string, mixed>>  $overlaps
+     */
+    private function isOneOnThreeSlot(array $overlaps): bool
+    {
+        $types = array_map(fn ($entry) => (string) ($entry['class_type'] ?? ''), $overlaps);
+
+        return in_array('one_on_three', $types, true) && !in_array('one_on_one', $types, true);
     }
 
     /**

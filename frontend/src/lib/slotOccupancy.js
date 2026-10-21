@@ -50,42 +50,18 @@ export function displayMaxForClassTypes(types = []) {
   return TEACHER_SLOT_ABSOLUTE_MAX;
 }
 
-function isTrialCourse(course) {
-  return String(course?.class_type || '') === 'trial';
-}
-
-/**
- * in-app #426: a trial auditor (試聽旁聽) bypasses capacity when it is added, so it
- * never takes one of the regular seats either; otherwise 1v3 x2 + trial reads as full
- * while 1v3 x3 + trial was allowed. Only one trial per slot is enforced separately.
- */
-function splitTrialCourses(courses = []) {
-  const regular = [];
-  const trial = [];
-  for (const course of courses || []) {
-    (isTrialCourse(course) ? trial : regular).push(course);
-  }
-  return { regular, trial };
-}
-
 export function occupancyBadge({ courses = [] } = {}) {
-  const { regular, trial } = splitTrialCourses(courses);
-  const trialCount = uniqueStudentCount(trial);
-  const count = uniqueStudentCount(regular);
-  const trialNote = trialCount > 0 ? `；試聽 ${trialCount} 位（旁聽，不占名額）` : '';
+  const count = uniqueStudentCount(courses);
   if (count === 0) {
     return {
       count: 0,
       max: TEACHER_SLOT_ABSOLUTE_MAX,
       color: '#10b981',
-      label: trialCount > 0 ? '試聽' : '',
-      tooltip: trialCount > 0 ? `本分校正式學生 0 位（上限 ${TEACHER_SLOT_ABSOLUTE_MAX} 位）${trialNote}` : '',
-      remaining: TEACHER_SLOT_ABSOLUTE_MAX,
-      trialCount,
-      visible: trialCount > 0,
+      label: '',
+      tooltip: '',
     };
   }
-  const types = regular.map((course) => String(course.class_type || ''));
+  const types = courses.map((course) => String(course.class_type || ''));
   const max = displayMaxForClassTypes(types);
   const remaining = Math.max(0, max - count);
   const full = count >= max;
@@ -99,25 +75,42 @@ export function occupancyBadge({ courses = [] } = {}) {
     parts.push(rem === 0 ? `${label}已滿` : `${label}可再收 ${rem}`);
   }
   const detail = parts.length ? `：${parts.join('，')}` : '';
+  // in-app #426 (Founder 1a): trials are seats; say how many of the total are trials.
+  const trialCount = uniqueStudentCount(courses.filter((course) => String(course.class_type || '') === 'trial'));
+  const trialNote = trialCount > 0 ? `（含試聽 ${trialCount} 位）` : '';
   return {
     count,
     max,
     color,
-    label: `${count}/${max}${trialCount > 0 ? '+試' : ''}`,
-    tooltip: `本分校 ${count} 位（上限 ${max} 位，${status}）${detail}${trialNote}`,
+    label: `${count}/${max}`,
+    tooltip: `本分校 ${count} 位${trialNote}（上限 ${max} 位，${status}）${detail}`,
     remaining,
-    trialCount,
-    visible: true,
   };
 }
 
+/** in-app #426: slot is one-on-three when a row is one_on_three and none is one_on_one. */
+export function isOneOnThreeSlot(types = []) {
+  const list = (types || []).map((type) => String(type || ''));
+  return list.includes('one_on_three') && !list.includes('one_on_one');
+}
+
 export function incomingClassConflict({ incomingType, overlappingCourses = [] } = {}) {
-  const { regular } = splitTrialCourses(overlappingCourses);
-  const unique = uniqueStudentCount(regular);
-  const types = regular.map((course) => String(course.class_type || ''));
+  const unique = uniqueStudentCount(overlappingCourses);
+  const types = overlappingCourses.map((course) => String(course.class_type || ''));
   const newMax = Math.min(capacityForClassType(incomingType), TEACHER_SLOT_ABSOLUTE_MAX);
 
   if (incomingType === 'trial') {
+    // in-app #426 (Founder 1a): in a one-on-three slot trials take real seats and
+    // several may join while the total stays within 3. Mirrors ScheduleGuardService.
+    if (isOneOnThreeSlot(types)) {
+      const full = unique >= TEACHER_SLOT_ABSOLUTE_MAX;
+      return {
+        blocked: full,
+        reason: full ? 'absolute' : '',
+        unique,
+        newMax: TEACHER_SLOT_ABSOLUTE_MAX,
+      };
+    }
     const trialCount = uniqueStudentCount(
       overlappingCourses.filter((course) => String(course.class_type || '') === 'trial'),
     );
