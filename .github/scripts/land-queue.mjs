@@ -2,6 +2,7 @@
 // unavailable for this user-owned repo: a merge_queue ruleset probe returned 422).
 // Runs from the base branch only; it never checks out or executes PR code.
 import { execFileSync } from 'node:child_process';
+import { readReview, REVIEW_CHECK } from './review-gate.mjs';
 
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
@@ -72,7 +73,9 @@ export function unresolvedCount(conn) {
   return open;
 }
 
-// pr: {mergeStateStatus, behindBy, rollup, unresolvedThreads}. Spec order: BEHIND, DIRTY, threads, failed, merge, wait.
+// pr: {mergeStateStatus, behindBy, rollup, unresolvedThreads, review}. Spec order: BEHIND, DIRTY, threads, failed, merge, wait.
+// review = reviewGate() for the exact head (review-gate.mjs): green + 0 threads still waits ('review-pending')
+// until Codex completed clean on THIS head (or the independent-review fallback marker names it). Not ok = wait.
 // Every review thread must be replied to and resolved before merge (AGENTS.md; FOUNDER_STANDING_DECISIONS ④):
 // unresolvedThreads > 0 rejects; anything but a known 0 (null/undefined = unknown) never merges.
 // behindBy keeps "head contains main" enforced here once the ruleset's strict policy is off
@@ -90,7 +93,11 @@ export function decide(pr, required) {
   // required contexts can still be green (e.g. advisory "Warn if production change lacks
   // tests" cancelled by concurrency). Land on required green only; keep waiting on BLOCKED.
   const statusOk = pr.mergeStateStatus === 'CLEAN' || pr.mergeStateStatus === 'UNSTABLE';
-  if (statusOk && allGreen) return open === 0 ? { action: 'merge' } : { action: 'wait', reason: 'threads-unknown' };
+  if (statusOk && allGreen) {
+    if (open !== 0) return { action: 'wait', reason: 'threads-unknown' };
+    if (pr.review?.ok !== true) return { action: 'wait', reason: 'review-pending', text: `waiting for an independent review of this exact head ${pr.sha} (${pr.review?.why || 'review state unknown'}). Codex re-reviews new commits; if it is rate-limited, the orchestrator's reviewer agent can record the fallback marker (see .github/scripts/review-gate.mjs). The label stays.` };
+    return { action: 'merge' };
+  }
   return { action: 'wait' };
 }
 
@@ -135,11 +142,14 @@ export function batchVerdict(states, ageMs, ttlMs = 2 * 3600e3) {
   return ageMs > ttlMs ? 'red' : 'wait';
 }
 
-// Thread counts read by load() can be stale by the time a PR is squashed (a reviewer may open one in between).
-// Re-read immediately before every squash, serial or batch; only a known 0 squashes. Returns whether it squashed.
-export function guardedSquash(n, sha, readThreads, doSquash, log = console.log) {
+// Thread counts and review state read by load() can be stale by the time a PR is squashed (a reviewer may open a
+// thread or Codex may report findings in between). Re-read both immediately before every squash, serial or batch;
+// only a known 0 threads AND a passing final-head review of exactly `sha` squash. Returns whether it squashed.
+export function guardedSquash(n, sha, readThreads, readReviewOf, doSquash, log = console.log) {
   const open = readThreads(n);
   if (open !== 0) { log(`#${n}: review threads ${Number.isInteger(open) ? open + ' open' : 'unknown'} right before squash; not merging`); return false; }
+  const review = readReviewOf(n, sha);
+  if (review?.ok !== true) { log(`#${n}: no final-head review of ${sha} right before squash (${review?.why || 'unknown'}); not merging`); return false; }
   doSquash(n, sha);
   return true;
 }
@@ -157,7 +167,8 @@ const apiPages = (path) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, '--pag
 function requiredChecks() {
   const rules = api('rules/branches/main').filter((r) => r.type === 'required_status_checks');
   const checks = rules.flatMap((r) => r.parameters.required_status_checks);
-  const ctx = checks.map((c) => c.context);
+  // REVIEW_CHECK is evaluated in-process by reviewGate (same module); batch branches have no PR and never get it.
+  const ctx = checks.map((c) => c.context).filter((c) => c !== REVIEW_CHECK);
   PINS = new Map(checks.map((c) => [c.context, c.integration_id]));
   if (!ctx.length) throw new Error('no required status checks found; refusing to merge');
   return { required: [...new Set(ctx)], strict: rules.some((r) => r.parameters.strict_required_status_checks_policy) };
@@ -206,6 +217,7 @@ function load(n) {
     authorAssociation: p.authorAssociation,
     labels: (p.labels?.nodes || []).map((l) => l.name),
     unresolvedThreads: unresolvedThreads(n),
+    review: readReview(n, p.headRefOid),
   };
 }
 
@@ -291,7 +303,7 @@ function landBatch(name, base, members) {
     if (mainTip() !== expect) { console.log('main moved while landing; remaining members re-batch next run'); break; }
     // Thread counts were read when the batch was assessed; a reviewer may have opened one since. Re-read right
     // before each squash and stop (remaining members re-batch next run) unless it is still a known 0.
-    if (!guardedSquash(m.n, m.sha, unresolvedThreads, squash)) { console.log('stopping batch'); break; }
+    if (!guardedSquash(m.n, m.sha, unresolvedThreads, readReview, squash)) { console.log('stopping batch'); break; }
     expect = api(`pulls/${m.n}`).merge_commit_sha;
     console.log(`batch landed #${m.n} -> ${expect}`);
     // GitHub offers no compare-and-swap on the base, so verify right after each merge: the landed tree must be
@@ -387,7 +399,8 @@ function processQueue() {
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     // One serial merge per run: main moved, so every other head's behindBy is stale (strict used to refuse them).
     // load()'s thread count may be stale; guardedSquash re-reads it and skips this PR unless it is still 0.
-    if (d.action === 'merge') { if (guardedSquash(n, pr.sha, unresolvedThreads, squash)) break; continue; }
+    if (d.action === 'merge') { if (guardedSquash(n, pr.sha, unresolvedThreads, readReview, squash)) break; continue; }
+    if (d.reason === 'review-pending') note(n, pr.sha, d.reason, d.text); // once per head SHA
     kickChecksIfMissing(n, pr);
     continue; // wait: don't block the PRs behind it (no head-of-line blocking)
   }

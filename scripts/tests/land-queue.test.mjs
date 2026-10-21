@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, decodeEntities, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
+import fs from 'node:fs';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
-const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, unresolvedThreads: 0, ...o });
+const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, unresolvedThreads: 0, review: { ok: true, via: 'codex' }, ...o });
 
 test('orderQueue: oldest label first, skips drafts and non-main', () => {
   const q = orderQueue([
@@ -212,7 +214,7 @@ test('guardedSquash: re-reads threads right before squash; only a known 0 merges
   const run = (reading) => {
     const calls = [];
     const logs = [];
-    const did = guardedSquash(7, 'abc', (n) => { calls.push(['read', n]); return reading; }, (n, sha) => calls.push(['squash', n, sha]), (m) => logs.push(m));
+    const did = guardedSquash(7, 'abc', (n) => { calls.push(['read', n]); return reading; }, () => ({ ok: true }), (n, sha) => calls.push(['squash', n, sha]), (m) => logs.push(m));
     return { did, calls, logs };
   };
   const ok = run(0);
@@ -225,4 +227,107 @@ test('guardedSquash: re-reads threads right before squash; only a known 0 merges
     assert.equal(r.logs.length, 1);
     assert.match(r.logs[0], /^#7: review threads (\d+ open|unknown) right before squash; not merging$/);
   }
+});
+
+// ---- Final-head review gate (Founder 2026-10-21: green CI alone must not merge an unreviewed head) ----
+const H = 'a'.repeat(40);
+const OLD = 'b'.repeat(40);
+const OWNER = 'jerry200176-png';
+const codex = (cr, o = {}) => ({ user: { login: CODEX_LOGIN }, updated_at: '2026-10-21T05:00:00Z', body: `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: cr, security_review: { commit_sha: null, status: null } })} -->\n## Codex Review Summary`, ...o });
+const clean = (sha = H, o = {}) => ({ commit_sha: sha, has_any_findings: false, has_unresolved_findings: false, status: 'completed', ...o });
+const fallback = (sha, login = OWNER) => ({ user: { login }, body: `independent /code-review: no findings\n${reviewMarker(sha)}` });
+const gateOf = (comments) => reviewGate(comments, H, OWNER);
+const decideWith = (comments) => decide(pr({ sha: H, review: gateOf(comments) }), req);
+
+test('review gate: green + 0 threads + Codex running -> wait review-pending', () => {
+  const d = decideWith([codex(clean(H, { status: 'running', has_unresolved_findings: null }))]);
+  assert.equal(d.action, 'wait');
+  assert.equal(d.reason, 'review-pending');
+  assert.match(d.text, new RegExp(H));
+  assert.equal(decideWith([]).reason, 'review-pending'); // Codex never ran
+});
+
+test('review gate: Codex completed clean on an older SHA -> wait', () => {
+  const g = gateOf([codex(clean(OLD))]);
+  assert.equal(g.ok, false);
+  assert.match(g.why, /not head/);
+  assert.equal(decideWith([codex(clean(OLD))]).reason, 'review-pending');
+});
+
+test('review gate: completed with unresolved findings on head -> wait, and vetoes the fallback marker', () => {
+  const findings = codex(clean(H, { has_any_findings: true, has_unresolved_findings: true }));
+  assert.equal(decideWith([findings]).action, 'wait');
+  assert.match(gateOf([findings]).why, /unresolved findings/);
+  assert.equal(gateOf([findings, fallback(H)]).ok, false);
+  // completed but findings flag missing is unknown -> also a veto
+  assert.equal(gateOf([codex(clean(H, { has_unresolved_findings: null })), fallback(H)]).ok, false);
+});
+
+test('review gate: Codex completed clean on head -> merge (latest summary wins)', () => {
+  assert.deepEqual(gateOf([codex(clean())]), { ok: true, via: 'codex' });
+  assert.equal(decideWith([codex(clean())]).action, 'merge');
+  const older = codex(clean(OLD), { updated_at: '2026-10-21T04:00:00Z' });
+  assert.equal(gateOf([codex(clean()), older]).ok, true);
+  // HTML-entity encoded state (e.g. &#123;) is decoded before parsing
+  const enc = codex(clean());
+  enc.body = enc.body.replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/"/g, '&quot;');
+  assert.equal(gateOf([enc]).ok, true);
+  assert.equal(decodeEntities('&#123;&#x7d;&quot;&amp;'), '{}"&');
+});
+
+test('review gate: fallback marker by the owner with the exact head SHA -> merge', () => {
+  assert.deepEqual(gateOf([fallback(H)]), { ok: true, via: 'independent-review' });
+  assert.equal(decideWith([codex(clean(OLD)), fallback(H)]).action, 'merge'); // Codex stale/rate-limited
+  assert.equal(gateOf([fallback(H, 'JERRY200176-PNG')]).ok, true); // logins are case-insensitive
+});
+
+test('review gate: fallback marker with a mismatched SHA or another author -> wait', () => {
+  assert.equal(decideWith([fallback(OLD)]).reason, 'review-pending');
+  assert.equal(gateOf([fallback(H.slice(0, 39) + 'b')]).ok, false);
+  assert.equal(gateOf([fallback(H, 'someone-else')]).ok, false);
+  assert.equal(gateOf([fallback(H, 'github-actions[bot]')]).ok, false);
+  assert.equal(gateOf([{ user: { login: OWNER }, body: `<!-- independent-review:v1 sha=${H} verdict=fail -->` }]).ok, false);
+  // A Codex-looking state from a non-Codex author is ignored.
+  assert.equal(gateOf([{ ...codex(clean()), user: { login: OWNER } }]).ok, false);
+});
+
+test('review gate: malformed / unknown never merges (fail closed)', () => {
+  const bad = codex(clean());
+  bad.body = '<!-- codex-review-state:v1 {"code_review": {oops -->';
+  assert.match(gateOf([bad]).why, /unreadable/);
+  assert.equal(decideWith([bad]).action, 'wait');
+  assert.equal(gateOf([bad, fallback(H)]).ok, false); // malformed state is not overridden
+  assert.equal(gateOf([codex(null)]).ok, false); // code_review missing
+  assert.equal(reviewGate(null, H, OWNER).ok, false); // comments unreadable
+  assert.equal(reviewGate([codex(clean())], undefined, OWNER).ok, false);
+  assert.equal(reviewGate([codex(clean(H.slice(0, 7)))], H.slice(0, 7), OWNER).ok, false); // short SHA
+  assert.equal(reviewGate([codex(clean(H.toUpperCase()))], H.toUpperCase(), OWNER).ok, false);
+  for (const review of [undefined, null, {}, { ok: 'true' }, { ok: false, why: 'x' }]) assert.equal(decide(pr({ review }), req).action, 'wait');
+  // Review-pending never strips the label and never outranks a real rejection.
+  assert.equal(decide(pr({ review: undefined, unresolvedThreads: 1 }), req).reason, 'threads');
+  assert.equal(decide(pr({ review: undefined, mergeStateStatus: 'BLOCKED' }), req).reason, undefined);
+});
+
+test('guardedSquash: re-reads the final-head review for the exact SHA before squash (serial and batch)', () => {
+  for (const [review, did] of [[{ ok: true }, true], [{ ok: false, why: 'Codex review running' }, false], [null, false], [undefined, false]]) {
+    const calls = [];
+    const r = guardedSquash(7, H, () => 0, (n, sha) => { calls.push(['review', n, sha]); return review; }, (n, sha) => calls.push(['squash', n, sha]), () => {});
+    assert.equal(r, did);
+    assert.deepEqual(calls, did ? [['review', 7, H], ['squash', 7, H]] : [['review', 7, H]]);
+  }
+  // Batch eligibility (neutral) honors the review gate too.
+  assert.equal(decide(neutral(pr({ mergeStateStatus: 'BEHIND', behindBy: 2, review: { ok: false } })), req).action, 'wait');
+});
+
+test('review gate workflows: default-branch script only; auto-merge waits on the required check', () => {
+  const wf = fs.readFileSync(new URL('../../.github/workflows/review-gate.yml', import.meta.url), 'utf8');
+  assert.match(wf, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.doesNotMatch(wf, /head\.sha|head\.ref|pull_request\.head/);
+  assert.match(wf, /run: node \.github\/scripts\/review-gate\.mjs/);
+  assert.match(wf, /checks: write/);
+  const am = fs.readFileSync(new URL('../../.github/workflows/auto-merge-safe.yml', import.meta.url), 'utf8');
+  assert.ok(am.includes(`index("${REVIEW_CHECK}")`));
+  assert.ok(am.indexOf(REVIEW_CHECK) < am.indexOf('gh pr merge "$PR_NUMBER"'));
+  const lq = fs.readFileSync(new URL('../../.github/scripts/land-queue.mjs', import.meta.url), 'utf8');
+  assert.match(lq, /filter\(\(c\) => c !== REVIEW_CHECK\)/); // batch branches have no PR review; gated per member
 });

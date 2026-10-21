@@ -1,0 +1,51 @@
+name: Review gate
+
+# Publishes check run `review/final-head` on each open PR head: success only when
+# Codex completed a clean review of that exact SHA (or the independent-review
+# fallback marker names it), in_progress otherwise. Same rule as the land queue
+# (.github/scripts/review-gate.mjs). Native auto-merge waits on it once the
+# main ruleset requires it; until then the script switches auto-merge off on
+# unreviewed heads. Runs the script from the default branch only and never
+# checks out or executes PR code.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
+  schedule:
+    - cron: "*/10 * * * *"   # sweep: heads moved by GITHUB_TOKEN pushes fire no PR events
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number || github.event.issue.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Final-head review gate
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request }}
+    permissions:
+      contents: write       # disable auto-merge on unreviewed heads (until the ruleset requires the check)
+      pull-requests: write
+      checks: write         # create the review/final-head check run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout default branch only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Evaluate final-head review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: node .github/scripts/review-gate.mjs
