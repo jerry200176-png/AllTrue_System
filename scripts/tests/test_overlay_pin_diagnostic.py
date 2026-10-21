@@ -50,6 +50,22 @@ class OverlayPinDiagnosticTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("overlay-pin: FAIL: could not parse overlay pin version", result.stderr)
 
+    def test_initial_fetch_failure_does_not_pass_using_cached_legacy_pin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "constitution.md").write_text("**Version:** 0.1.0\n")
+            curl = root / "curl"
+            curl.write_text("#!/bin/sh\nexit 22\n")
+            curl.chmod(0o700)
+            result = subprocess.run(
+                ["bash", str(SCRIPT)], capture_output=True, text=True,
+                env={**os.environ, "CONSTITUTION_FILE": str(root / "constitution.md"),
+                     "OVERLAY_FILE": "", "PATH": str(root) + os.pathsep + os.environ["PATH"]},
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("refusing unverified cached SUNRISE_OVERLAY_PIN", result.stderr)
+            self.assertNotIn("overlay-pin: OK", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
