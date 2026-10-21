@@ -12,7 +12,7 @@
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
-        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :contract-amount="contractCharge" @resolved="emit('changed')" />
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
         <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
@@ -35,7 +35,8 @@
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
-      <AtButton v-else-if="!noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
+      <AtButton v-else-if="!legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -143,7 +144,7 @@ const props = defineProps({
   // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
   canResolveLegacy: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'legacy-backfill']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };

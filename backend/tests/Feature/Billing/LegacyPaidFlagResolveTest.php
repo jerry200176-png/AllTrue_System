@@ -59,6 +59,21 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame(1, PaymentReport::count());
     }
 
+    /** The backfill goes through confirm(): it collects on the open bill, capped by its balance; a refusal rolls the report back. */
+    public function test_backfill_uses_the_open_bill_and_rolls_back_on_a_confirm_refusal(): void
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1);
+        $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+
+        $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->assertSame([0, 0], [PaymentReport::count(), Payment::count()]);
+
+        $this->backfill($token, $course, ['amount' => 5000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
+        $this->assertSame([1, 'paid'], [Invoice::count(), (string) $invoice->fresh()->Status]);
+    }
+
     public function test_backfill_requires_idempotency_key_and_positive_amount(): void
     {
         $token = $this->token('A', [1]);

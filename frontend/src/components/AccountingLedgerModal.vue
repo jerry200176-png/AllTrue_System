@@ -90,6 +90,7 @@
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
                 :can-resolve-legacy="canManageInvoices()"
                 @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
                 @confirmed="openReceipt"
                 @changed="onPanelChanged"
@@ -291,7 +292,7 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" :return-focus-to="modalEl" @close="receiptOpen = false" />
     </div>
   </Transition>
@@ -734,12 +735,14 @@ async function submitIssue() {
 // PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
 const entryOpen = ref(false);
 const entryRow = ref(null);
-function openEntry(course) {
+const entryMode = ref('record');
+function openEntry(course, mode = 'record') {
+  entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
   entryRow.value = {
     id: course.id,
-    charge: course.charge,
+    charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,

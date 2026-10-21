@@ -66,16 +66,17 @@
               step="1"
             />
           </div>
-          <label v-if="isZeroCharge" class="pe-check">
+          <label v-if="isZeroCharge && !legacyBackfill" class="pe-check">
             <input type="checkbox" v-model="form.free_gift" data-testid="pe-free-gift" />
             這期是「{{ FREE_GIFT_LABEL }}」：登錄一張 NT$ 0 帳單（不是收款）
           </label>
-          <p v-if="isZeroCharge" class="pe-hint">課程沒填費用不會自動當免費；確定免費才勾選，否則請先到課程管理設定費用。</p>
+          <p v-if="isZeroCharge && !legacyBackfill" class="pe-hint">課程沒填費用不會自動當免費；確定免費才勾選，否則請先到課程管理設定費用。</p>
         </div>
 
         <div class="pe-workflow-hint" role="note" data-testid="pe-workflow-hint">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span v-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
+          <span v-if="legacyBackfill" data-testid="pe-legacy-hint">送出即入帳，不需要再確認：會建立已確認的收款紀錄（沒有帳單時一併開帳單），這門課維持已收。</span>
+          <span v-else-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
           <span v-else>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
         </div>
 
@@ -100,13 +101,26 @@
 
 <script setup>
 import { ref, reactive, watch, computed } from 'vue';
-import { recordPayment } from '../lib/paymentActions.js';
+import { backfillLegacyPayment, recordPayment } from '../lib/paymentActions.js';
 import { FREE_GIFT_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   row: { type: Object, default: null },
+  // 'legacy-backfill' (Founder GO 2026-10-21): 已收過，補登收款 for a course flagged paid with no payment record.
+  // Same form; the server records and confirms in one step (director-record legacy_flag_backfill).
+  mode: { type: String, default: 'record' },
 });
+const legacyBackfill = computed(() => props.mode === 'legacy-backfill');
+// One key per opened form, kept across failed submits: a retry after a lost response replays instead of paying twice.
+const idempotencyKey = ref('');
+function newKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const b = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 
 const emit = defineEmits(['close', 'confirmed', 'pending', 'conflict']);
 
@@ -130,12 +144,16 @@ watch(() => props.show, (val) => {
     form.payment_date = today.value;
     form.payment_method = 'transfer';
     form.account_last5 = '';
-    form.amount = props.row.payable_status === 'unbilled'
+    // 補登收款 with no bill yet prefills the contract amount (editable); the server caps it by any open bill.
+    form.amount = legacyBackfill.value && props.row.payable_status === 'unbilled'
+      ? (Number(props.row.charge) || '')
+      : props.row.payable_status === 'unbilled'
       ? ''
       : (props.row.payable_outstanding ?? props.row.payable_amount ?? '');
     form.note = '';
     form.free_gift = false;
     submitError.value = '';
+    idempotencyKey.value = legacyBackfill.value ? newKey() : '';
   }
 });
 
@@ -176,7 +194,7 @@ async function submit() {
     }
     // Pay the bill whose outstanding prefilled the amount (payable_invoice_id), not a display invoice_id (#3875, #3888).
     const invoiceId = props.row.payable_invoice_id ?? props.row.invoice_id;
-    if (invoiceId) {
+    if (invoiceId && !legacyBackfill.value) { // the backfill picks the open bill on the server, as confirm does
       body.invoice_id = invoiceId;
     }
     if (form.payment_method === 'transfer' && form.account_last5) {
@@ -186,7 +204,9 @@ async function submit() {
       body.note = form.note.trim();
     }
 
-    const res = await recordPayment(body);
+    const res = legacyBackfill.value
+      ? await backfillLegacyPayment({ ...body, idempotency_key: idempotencyKey.value })
+      : await recordPayment(body);
     if (!res.ok) {
       if (res.code === 'pending_report_exists') {
         submitError.value = `此課程已有「${REPORT_STATUS_LABELS.pending}」回報，不要重複送出。請先核對該回報金額與實收金額；相符才確認入帳，金額不符請先退回，再重新登記。退回回報不會更改帳單應繳金額。`;

@@ -20,6 +20,8 @@ use App\Services\PaymentReportTokenService;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -350,13 +352,21 @@ class PaymentReportController extends Controller
     {
         PaymentReport::findOrFail($id);
 
-        $userId = $request->attributes->get('auth_user_id');
-        $confirmationNote = trim((string) $request->input('note', ''));
-        // Routing id only — must not run inside the transaction (would start an RR
-        // consistent-read snapshot before waiting on the course lock).
-        $courseId = $this->resolveReportCourseId((int) $id);
+        return $this->confirmReport((int) $id, $request->attributes->get('auth_user_id'), trim((string) $request->input('note', '')));
+    }
 
-        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote) {
+    /**
+     * The one confirm path (確認入帳). $legacyFlagBackfill (Founder GO 2026-10-21) is set only by recordLegacyFlagBackfill(),
+     * after legacyFlagRefusal() proved the course's `paid` rests on the legacy Paid flag alone: it skips just the
+     * "already paid" guards that this flag trips; every other guard, the bill cap and the ledger writes are shared.
+     */
+    private function confirmReport(int $id, mixed $userId, string $confirmationNote, bool $legacyFlagBackfill = false)
+    {
+        // Routing id only — must not run inside the transaction (would start an RR
+        // consistent-read snapshot before waiting on the course lock). The backfill caller already holds that lock.
+        $courseId = $this->resolveReportCourseId($id);
+
+        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote, $legacyFlagBackfill) {
             // Global lock order with BillingCorrection::applyCountCorrection and void:
             // StudentClass → payment_reports (never report-first). Serializes confirm retries
             // after a lost response so a second Payment cannot be created.
@@ -394,10 +404,10 @@ class PaymentReportController extends Controller
             }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
-            if ($sc && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
+            if ($sc && !$legacyFlagBackfill && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
                 return $this->duplicateCoursePaymentResponse($blockReason);
             }
-            if ($sc && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
+            if ($sc && !$legacyFlagBackfill && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
                 return $over;
             }
 
@@ -434,7 +444,7 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
-            if (! $invoice && $sc && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+            if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse('paid');
             }
 
@@ -753,20 +763,7 @@ class PaymentReportController extends Controller
                 ], 422);
             }
 
-            $report = PaymentReport::create([
-                'StudentID'         => $sc->StudentID,
-                'StudentClassID'    => $sc->ID,
-                'InvoiceID'         => $invoice?->id,
-                'reported_by_name'  => $sc->student->name,
-                'payment_date'      => $data['payment_date'],
-                'payment_method'    => $data['payment_method'],
-                'reported_amount'   => $data['amount'],
-                'account_last5'     => $data['account_last5'] ?? null,
-                'note'              => trim((string) ($data['note'] ?? '')) ?: null,
-                'status'            => 'pending',
-                'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
-                'token_expires_at'  => Carbon::now()->addDays(30),
-            ]);
+            $report = $this->createPendingReport($sc, $data, $invoice?->id);
 
             Log::info('PaymentReport director-record pending', [
                 'report_id'  => $report->id,
@@ -786,9 +783,9 @@ class PaymentReportController extends Controller
 
     /**
      * Founder GO 2026-10-21 (§只有舊「已收」標記): the director says the money of a legacy-flag-only course was received.
-     * One transaction does what director-record + confirm do for an ordinary course: open bill (or a new one for the
-     * entered amount), a confirmed report and its Payment. Paid stays 1; the course now has payment evidence, so the
-     * existing #4114 rule stops showing 需核對. A replay of the same idempotency key returns the first result.
+     * No separate money rule: the same pending report director-record writes, then confirmReport() (the 確認入帳 path:
+     * bill pick or issue, Payment, projection, receipt) in this one transaction. Paid stays 1; the course now has payment
+     * evidence, so the #4114 rule stops showing 需核對. A replay of the same idempotency key returns the first result.
      *
      * @param array<string, mixed> $data
      */
@@ -812,46 +809,14 @@ class PaymentReportController extends Controller
             if ((int) $data['amount'] <= 0) {
                 return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
             }
-            $invoice = $this->pickOpenInvoice($courseId, $course);
-            if ($invoice && $this->invoiceCoveredByPayments($invoice, $course)) {
-                return $this->invoiceAlreadyCoveredResponse($invoice);
+            $report = $this->createPendingReport($course, $data, null, $tokenHash);
+            $confirmed = $this->confirmReport((int) $report->id, $userId, '', true);
+            if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
+                throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
-            if ($over = $this->amountExceedsInvoiceResponse($invoice, $course, (float) $data['amount'])) {
-                return $over;
-            }
-            $invoice ??= app(InvoiceIssuer::class)->issue([
-                'StudentID' => $course->StudentID, 'StudentClassID' => $courseId, 'IssueDate' => Carbon::today()->toDateString(),
-                'TotalAmount' => (int) $data['amount'], 'ScheduleModeAtIssue' => 'count',
-            ]);
-            $note = trim((string) ($data['note'] ?? ''));
-            /** @var PaymentReport $report */
-            $report = PaymentReport::query()->create([
-                'StudentID' => $course->StudentID, 'StudentClassID' => $courseId, 'InvoiceID' => $invoice->id,
-                'reported_by_name' => (string) Student::query()->whereKey($course->StudentID)->value('name'),
-                'payment_date' => $data['payment_date'], 'payment_method' => $data['payment_method'],
-                'reported_amount' => (int) $data['amount'], 'account_last5' => $data['account_last5'] ?? null,
-                'note' => $note ?: null, 'status' => 'confirmed', 'confirmed_by' => $userId, 'confirmed_at' => Carbon::now(),
-                'report_token_hash' => $tokenHash, 'token_expires_at' => Carbon::now(),
-            ]);
-            /** @var Payment $payment */
-            $payment = Payment::query()->create([
-                'InvoiceID' => $invoice->id, 'Amount' => (int) $data['amount'], 'PaidAt' => $data['payment_date'],
-                'Method' => $data['payment_method'] === 'transfer' ? 'transfer' : 'cash',
-                // Same system marker as confirm(): PaymentReport::displayNote() keeps it off receipts and the ledger.
-                'Note' => $note ?: "繳費回報核帳確認 (report #{$report->id})", 'payment_report_id' => $report->id,
-            ]);
-            // Same projection as confirm(): Payment rows decide the bill, never stored PaidAmount (#3864).
-            $after = $this->invoiceProjection($invoice, $course);
-            $invoice->update([
-                'PaidAmount' => (int) $after['net_applied'],
-                'Status' => (int) $after['outstanding_amount'] <= 0 ? 'paid' : ((int) $after['net_applied'] > 0 ? 'partial' : 'unpaid'),
-                'reconciled_at' => Carbon::now(), 'reconciled_by' => $userId,
-            ]);
-            $report->update(['payment_id' => $payment->id]);
             $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
 
-            return response()->json(['message' => '已補登收款', 'report_id' => $report->id, 'payment_id' => $payment->id,
-                'invoice_id' => (int) $invoice->id, 'status' => 'confirmed']);
+            return response()->json(['status' => 'confirmed'] + (array) $confirmed->getData(true));
         });
     }
 
@@ -948,6 +913,25 @@ class PaymentReportController extends Controller
             'actor_type' => 'user', 'actor_id' => $actorId,
             'subject_type' => 'student_class', 'subject_id' => (int) $course->getKey(),
         ], $metadata + ['outcome' => 'success'], true); // required: an audit failure rolls the billing write back
+    }
+
+    /** The 已回報、待核對 report director-record writes (also the first step of the legacy-flag backfill). @param array<string, mixed> $data */
+    private function createPendingReport(StudentClass $sc, array $data, ?int $invoiceId, ?string $tokenHash = null): PaymentReport
+    {
+        return PaymentReport::create([
+            'StudentID'         => $sc->StudentID,
+            'StudentClassID'    => $sc->ID,
+            'InvoiceID'         => $invoiceId,
+            'reported_by_name'  => (string) $sc->student?->name,
+            'payment_date'      => $data['payment_date'],
+            'payment_method'    => $data['payment_method'],
+            'reported_amount'   => $data['amount'],
+            'account_last5'     => $data['account_last5'] ?? null,
+            'note'              => trim((string) ($data['note'] ?? '')) ?: null,
+            'status'            => 'pending',
+            'report_token_hash' => $tokenHash ?? hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
+            'token_expires_at'  => Carbon::now()->addDays(30),
+        ]);
     }
 
     /** Receipt-intent reissue; confirmation separately settles the pending report. @param array<string, mixed> $data */
