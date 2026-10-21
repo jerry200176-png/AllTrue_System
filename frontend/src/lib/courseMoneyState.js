@@ -242,7 +242,7 @@ export const LEGACY_FLAG_ACTION_HELP = '這門課標記已收，但找不到收�
 export const canResolveLegacyPaidFlag = (course, {
   legacyUnverified, canResolveLegacy, isMonthly, waived, pendingReport, sharedFollower,
 } = {}) => Boolean(legacyUnverified && canResolveLegacy && course?.paid === true
-  && !course.package_id && !course.free_gift_settled && !isMonthly && !waived
+  && course.class_type !== 'tutoring' && !course.package_id && !course.free_gift_settled && !isMonthly && !waived
   && !pendingReport && !sharedFollower);
 export const ENDED_PENDING_LABEL = '課已結束，尚未收款';
 export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';

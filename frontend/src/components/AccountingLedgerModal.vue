@@ -691,7 +691,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(courseId) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
-const needsLegacyChoice = (course) => canResolveLegacyPaidFlag(course, {
+const needsLegacyChoice = (course) => !payload.value?.scope?.no_payment_obligation && canResolveLegacyPaidFlag(course, {
   legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
   isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
   pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),

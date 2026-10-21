@@ -30,6 +30,14 @@ function mountLedger({ courses, invoices = [], receipts = [], props = {}, role =
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); document.body.innerHTML = ''; });
 
 describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
+  it('a tutoring course with a stale paid flag still explains that no payment is required', async () => {
+    const w = mountLedger({ courses: [course(11, { class_type: 'tutoring', paid: true })], invoices: [inv(1, 11)], props: { initialAction: 'record' } });
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('輔導課不用繳費');
+    w.unmount();
+  });
+
   it('a legacy paid flag keeps its explicit backfill choice instead of opening the ordinary record form', async () => {
     const w = mountLedger({ courses: [course(11, { paid: true })], invoices: [inv(1, 11)], props: { initialAction: 'record' } });
     await flushPromises();
