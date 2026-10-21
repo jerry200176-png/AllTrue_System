@@ -182,10 +182,11 @@ describe('one name for adding lessons (#4331)', () => {
       '../../../lib/courseActions.js',
       '../CourseManager.vue',
       '../PurchaseSessionsModal.vue',
+      '../../EnrollmentConflictDecisionModal.vue',
     ];
     for (const f of files) {
       const src = read(f).replace(/^\s*\/\/.*$/gm, '');
-      for (const old of ["'加購堂數'", "'續報加購'", "'再次續報加購'", "'續約／加購'", '>加購堂數<']) {
+      for (const old of ["'加購堂數'", "'續報加購'", "'再次續報加購'", "'續約／加購'", '>加購堂數<', '去加購', '原加購規則', '加購失敗', '已建立加購批次', '加購／續報堂數']) {
         expect(src, `${f} still has ${old}`).not.toContain(old);
       }
     }

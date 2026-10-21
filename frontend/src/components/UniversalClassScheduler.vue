@@ -1,6 +1,6 @@
 <template>
   <div class="modal-overlay">
-    <div class="modal universal-scheduler-modal">
+    <div ref="schedulerPanel" class="modal universal-scheduler-modal" role="dialog" aria-modal="true" :aria-label="title">
       <header class="scheduler-header">
         <h3>{{ showTypeChooser && step === 1 ? '新增課程' : title }}</h3>
         <p class="scheduler-subtitle">
@@ -870,7 +870,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
@@ -1959,6 +1959,12 @@ function calendarCellAriaLabel(cell) {
   }[cell.status] || '未選取';
   return `${cell.ymd}，${statusLabel}`;
 }
+
+const schedulerPanel = ref(null);
+onMounted(async () => {
+  await nextTick();
+  schedulerPanel.value?.querySelector('input:not([disabled]), select:not([disabled]), button:not([disabled])')?.focus();
+});
 
 onMounted(async () => {
   try {

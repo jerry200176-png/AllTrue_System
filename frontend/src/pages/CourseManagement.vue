@@ -120,6 +120,12 @@
       </details>
     </div>
 
+    <AtInlineAlert v-if="transferHandoffError" tone="danger" title="轉課尚未開啟" data-testid="transfer-handoff-error">
+      <p>{{ transferHandoffError }}</p>
+      <button type="button" class="small primary" :disabled="coursesLoading" data-testid="transfer-handoff-retry" @click="loadCourses(1)">重新載入轉課</button>
+      <button type="button" class="small ghost" @click="pendingTransferCourseId = 0; convertTrialStudentId = null; transferHandoffError = ''">取消交接</button>
+    </AtInlineAlert>
+
     <!-- Post-creation success banner -->
     <transition name="fade">
       <div v-if="creationSuccessBanner" class="creation-success-banner" role="status">
@@ -1621,6 +1627,7 @@ const pendingManualSessionId = ref(0);
 const pendingLessonsCourseId = ref(0);
 // in-app #429: 學生管理「新增課程／續課 → 換科目／老師／時段」opens this course's 轉課 (CourseTransferModal).
 const pendingTransferCourseId = ref(0);
+const transferHandoffError = ref('');
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
@@ -2881,7 +2888,7 @@ function purchaseActionIsRenew(c) {
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
-  return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
+  return isSessionMode(c) ? '續課' : '月結課程結算本期並續約下個月';
 }
 
 function openPurchaseModal(course) {
@@ -3088,7 +3095,7 @@ async function submitPurchaseSessions() {
       const duplicateHint = json?.duplicate_course?.id
         ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
         : '';
-      alert((details || json?.message || '加購失敗') + duplicateHint);
+      alert((details || json?.message || '續課失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -3100,7 +3107,7 @@ async function submitPurchaseSessions() {
       focusedStudentKey.value = groupKey;
     }
     toastRef.value?.show?.({
-      title: '已建立加購批次',
+      title: '已建立續課批次',
       description: formatRenewSuccessMessage({
         kind: 'purchase',
         studentName: course?.student_name || '',
@@ -3113,7 +3120,7 @@ async function submitPurchaseSessions() {
       durationMs: 7000,
     });
   } catch (e) {
-    alert('加購失敗：' + (e?.message || '請稍後再試'));
+    alert('續課失敗：' + (e?.message || '請稍後再試'));
   } finally {
     purchaseSubmitting.value = false;
   }
@@ -5410,10 +5417,14 @@ watch(coursesLoading, (loading) => {
 watch(coursesLoading, (loading) => {
   if (loading || !pendingTransferCourseId.value) return;
   const course = courses.value.find((c) => c.id === pendingTransferCourseId.value);
+  if (!course) {
+    transferHandoffError.value = '目前無法載入要轉課的課程，請重新載入後再試，或返回學生管理重新選擇。';
+    return;
+  }
   pendingTransferCourseId.value = 0;
   convertTrialStudentId.value = null;
-  // Same flow as the row 「轉課」 (CourseTransferModal: subject / teacher / time by cutover date).
-  if (course) { editCourse(course, { openModal: false }); showCourseTransfer.value = true; }
+  transferHandoffError.value = '';
+  editCourse(course, { openModal: false }); showCourseTransfer.value = true;
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;

@@ -1,6 +1,6 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="!busy && $emit('close')">
-    <div class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="course-transfer-title">
+    <div ref="transferPanel" class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="course-transfer-title">
       <h3 id="course-transfer-title" class="modal-title">轉課（改科目／老師／時段）</h3>
       <p class="modal-desc">轉課日之前的堂次留在舊合約；轉課日起的堂次（含紀錄）與剩餘堂數、已繳金額轉到新合約。</p>
 
@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { supabase } from '../../supabase';
 
 const props = defineProps({
@@ -74,11 +74,14 @@ const error = ref('');
 const busy = ref(false);
 const canSubmit = computed(() => !!form.start_date && (form.subject || form.teacher_id || form.weekday));
 
-watch(() => props.show, (v) => {
+const transferPanel = ref(null);
+watch(() => props.show, async (v) => {
   if (v) {
     Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' });
     preview.value = null;
     error.value = '';
+    await nextTick();
+    transferPanel.value?.querySelector('input:not([disabled]), select:not([disabled]), button:not([disabled])')?.focus();
   }
 });
 // Any input change invalidates a previous preview.
