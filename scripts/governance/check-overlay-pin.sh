@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONST="${CONSTITUTION_FILE:-$ROOT/docs/governance/COMPANY_CONSTITUTION.md}"
 OVERLAY="${OVERLAY_FILE:-}"
+TMP=""
+trap '[[ -z "$TMP" ]] || rm -- "$TMP"' EXIT
 
 fail() { echo "overlay-pin: FAIL: $*" >&2; exit 1; }
 ok() { echo "overlay-pin: OK: $*"; }
@@ -32,8 +34,14 @@ if [[ -z "$OVERLAY" ]]; then
 fi
 
 [[ -f "$OVERLAY" ]] || fail "missing overlay $OVERLAY"
-PIN=$(grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" | head -1 | sed 's/^v//')
-[[ -n "$PIN" ]] || fail "could not parse overlay pin version"
+# A missing match is an input/contract error, not an unlabelled pipefail exit.
+PIN=$(grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" | head -1 | sed 's/^v//' || true)
+if [[ -z "$PIN" ]]; then
+  if grep -Fq 'governance/RULEBOOK.lock' "$OVERLAY"; then
+    fail "sunrise overlay migrated to RULEBOOK.lock (sunrise-cafe#470); legacy Constitution equality is unverified. Reconcile the canonical contract; do not substitute SUNRISE_OVERLAY_PIN."
+  fi
+  fail "could not parse overlay pin version"
+fi
 
 # Strip leading v from constitution if present
 VER_NORM="${VER#v}"
