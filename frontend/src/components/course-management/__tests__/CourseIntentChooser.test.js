@@ -1,7 +1,8 @@
 // in-app #429 (GitHub #4331): one 「新增課程／續課」 entry with three intents that land in the
 // existing flows, and one name (續課, Founder 2026-10-15 Q8=A) for adding lessons everywhere.
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,21 +13,54 @@ import { courseActions } from '../../../lib/courseActions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(resolve(__dirname, p), 'utf8');
+const mountedChoosers = [];
+const mountChooser = (options) => {
+  const wrapper = mount(CourseIntentChooser, { ...options, global: { stubs: { teleport: true } } });
+  mountedChoosers.push(wrapper);
+  return wrapper;
+};
+afterEach(() => { mountedChoosers.splice(0).forEach(w => w.unmount()); });
 const two = [
   { id: 1, label: '數學／王老師', course: { id: 1 }, transferable: true },
   { id: 2, label: '英文／李老師', course: { id: 2 }, transferable: true },
 ];
 
 describe('course intent chooser (#4331)', () => {
+  it('contains keyboard focus, handles Escape and restores the opener', async () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    const w = mountChooser({ attachTo: document.body, props: { show: false, courses: two } });
+    try {
+      await w.setProps({ show: true });
+      await nextTick();
+      expect(document.activeElement).toBe(w.find('[data-testid="course-intent-new"]').element);
+      await w.find('[data-testid="course-intent-renew"]').trigger('click');
+      await nextTick();
+      expect(document.activeElement).toBe(w.find('[data-testid="course-intent-course-1"]').element);
+      const panel = w.find('[role="dialog"]');
+      const buttons = panel.findAll('button');
+      buttons.at(-1).element.focus();
+      await buttons.at(-1).trigger('keydown', { key: 'Tab' });
+      expect(document.activeElement).toBe(buttons[0].element);
+      await buttons[0].trigger('keydown', { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(buttons.at(-1).element);
+      await panel.trigger('keydown', { key: 'Escape' });
+      expect(w.emitted('close')).toHaveLength(1);
+      await w.setProps({ show: false });
+      expect(document.activeElement).toBe(opener);
+    } finally { w.unmount(); opener.remove(); }
+  });
+
   it('全新課程 emits without a course', async () => {
-    const w = mount(CourseIntentChooser, { props: { show: true, courses: two } });
-    expect(w.find('h3').text()).toBe(COURSE_ENTRY_LABEL);
+    const w = mountChooser({ props: { show: true, courses: two } });
+    expect(w.find('h2').text()).toBe(COURSE_ENTRY_LABEL);
     await w.find('[data-testid="course-intent-new"]').trigger('click');
     expect(w.emitted('choose')).toEqual([[{ intent: 'new', course: null }]]);
   });
 
   it('續課 with several courses asks which one, then emits that course', async () => {
-    const w = mount(CourseIntentChooser, { props: { show: true, courses: two } });
+    const w = mountChooser({ props: { show: true, courses: two } });
     await w.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(w.emitted('choose')).toBeUndefined();
     expect(w.text()).toContain(`要${RENEW_LESSONS_LABEL}哪一門課`);
@@ -35,11 +69,11 @@ describe('course intent chooser (#4331)', () => {
   });
 
   it('a single course skips the picker; no courses points back to 全新課程', async () => {
-    const one = mount(CourseIntentChooser, { props: { show: true, courses: [two[0]] } });
+    const one = mountChooser({ props: { show: true, courses: [two[0]] } });
     await one.find('[data-testid="course-intent-change"]').trigger('click');
     expect(one.emitted('choose')).toEqual([[{ intent: 'change', course: { id: 1 } }]]);
 
-    const none = mount(CourseIntentChooser, { props: { show: true, courses: [] } });
+    const none = mountChooser({ props: { show: true, courses: [] } });
     await none.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(none.find('[data-testid="course-intent-empty"]').text()).toContain('全新課程');
     expect(none.emitted('choose')).toBeUndefined();
@@ -51,7 +85,7 @@ describe('course intent chooser (#4331)', () => {
       { id: 2, label: '數學／王老師', detail: '週五 18:00 · 剩 8 堂', course: { id: 2 }, transferable: true },
       { id: 3, label: '英文／李老師', detail: '試聽', course: { id: 3 }, renewable: false },
     ];
-    const w = mount(CourseIntentChooser, { props: { show: true, courses } });
+    const w = mountChooser({ props: { show: true, courses } });
     await w.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(w.find('[data-testid="course-intent-course-3"]').exists()).toBe(false);
     expect(w.find('[data-testid="course-intent-course-1"]').text()).toContain('週二 16:00');
@@ -60,7 +94,7 @@ describe('course intent chooser (#4331)', () => {
     await w.find('[data-testid="course-intent-change"]').trigger('click');
     expect(w.find('[data-testid="course-intent-course-3"]').exists()).toBe(false);
 
-    const trialOnly = mount(CourseIntentChooser, { props: { show: true, courses: [courses[2]] } });
+    const trialOnly = mountChooser({ props: { show: true, courses: [courses[2]] } });
     await trialOnly.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(trialOnly.emitted('choose')).toBeUndefined();
     expect(trialOnly.find('[data-testid="course-intent-empty"]').exists()).toBe(true);
@@ -73,7 +107,7 @@ describe('course intent chooser (#4331)', () => {
       { ...base, id: 2, PackageID: 7 },
       { ...base, id: 3, remaining_sessions: 8 },
     ].map(course => ({ id: course.id, course, ...courseIntentEligibility(course) }));
-    const w = mount(CourseIntentChooser, { props: { show: true, courses } });
+    const w = mountChooser({ props: { show: true, courses } });
     await w.find('[data-testid="course-intent-change"]').trigger('click');
     expect(w.find('[data-testid="course-intent-empty"]').exists()).toBe(true);
     expect(w.emitted('choose')).toBeUndefined();
@@ -83,7 +117,7 @@ describe('course intent chooser (#4331)', () => {
     const course = { id: 4, status: 'active', payment_type: 'session', payment_status: 'paid', sessions_purchased: 8, remaining_sessions: 0 };
     const eligibility = courseIntentEligibility(course);
     expect(eligibility).toMatchObject({ renewable: true, transferable: false });
-    const w = mount(CourseIntentChooser, { props: { show: true, courses: [{ id: 4, course, ...eligibility }] } });
+    const w = mountChooser({ props: { show: true, courses: [{ id: 4, course, ...eligibility }] } });
     await w.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(w.emitted('choose')).toEqual([[{ intent: 'renew', course }]]);
   });
@@ -101,7 +135,7 @@ describe('course intent chooser (#4331)', () => {
   });
 
   it('without a student (課程查找 header) 續課 shows where the row button is', async () => {
-    const w = mount(CourseIntentChooser, { props: { show: true } });
+    const w = mountChooser({ props: { show: true } });
     await w.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(w.find('[data-testid="course-intent-guide"]').text()).toContain(`「${RENEW_LESSONS_LABEL}」`);
     await w.find('[data-testid="course-intent-back"]').trigger('click');
@@ -124,6 +158,7 @@ describe('one name for adding lessons (#4331)', () => {
     expect(w.find('button.primary').text()).toBe('確認續課');
     expect(w.find('.modal-note').text()).toContain('續課會建立');
     expect(w.text()).not.toContain('加購');
+    expect(COURSE_INTENTS.find(i => i.id === 'renew').hint).toContain('原合約可能自動結案');
   });
 
   it('the row/⋯ menu default is the shared constant', () => {

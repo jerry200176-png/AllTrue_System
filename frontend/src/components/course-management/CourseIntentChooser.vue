@@ -1,7 +1,7 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal course-modal intent-chooser" role="dialog" aria-modal="true" aria-labelledby="course-intent-title" data-testid="course-intent-chooser">
-      <h3 id="course-intent-title" class="modal-title">{{ COURSE_ENTRY_LABEL }}</h3>
+  <AtDialog :open="show" :title="COURSE_ENTRY_LABEL" title-id="course-intent-title" size="sm"
+    initial-focus="[data-testid=course-intent-new]" @close="$emit('close')">
+    <div ref="chooserContent" data-testid="course-intent-chooser">
       <p v-if="studentName" class="modal-desc">{{ studentName }}</p>
 
       <template v-if="!picking">
@@ -52,11 +52,12 @@
         <button type="button" class="ghost" @click="$emit('close')">取消</button>
       </div>
     </div>
-  </div>
+  </AtDialog>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
+import AtDialog from '../design-system/AtDialog.vue';
 import { COURSE_ENTRY_LABEL, COURSE_INTENTS, RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
 
 const props = defineProps({
@@ -69,7 +70,12 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'choose']);
 
+const chooserContent = ref(null);
 const picking = ref('');
+watch(picking, async () => {
+  await nextTick();
+  if (props.show) chooserContent.value?.querySelector('button')?.focus();
+});
 watch(() => props.show, () => { picking.value = ''; });
 
 const optionsFor = (intent) => (props.courses || []).filter((c) => (
@@ -98,8 +104,6 @@ function onIntent(id) {
 </script>
 
 <style scoped>
-.course-modal { width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
-.modal-title { font-size: var(--ds-font-size-2xl); font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: var(--ds-font-size-md); margin: 0 0 12px; }
 .choice-intro { margin: 0 0 14px; color: var(--ds-ink-mute); font-size: var(--ds-font-size-md); }
 .choice-guide { margin: 0; color: var(--text); font-size: var(--ds-font-size-sm); line-height: 1.5; }

@@ -12,7 +12,7 @@ export const COURSE_ENTRY_LABEL = '新增課程／續課';
 /** Intent chooser options. Each id maps to an existing flow; nothing here creates a new one. */
 export const COURSE_INTENTS = Object.freeze([
   Object.freeze({ id: 'new', label: '全新課程', hint: '第一次報這門課：新的科目，或還沒有課的學生。', icon: 'add' }),
-  Object.freeze({ id: 'renew', label: `同一門課${RENEW_LESSONS_LABEL}`, hint: '同科目、同老師，再買一期堂數接著上；原合約與上課紀錄不變。', icon: 'autorenew' }),
+  Object.freeze({ id: 'renew', label: `同一門課${RENEW_LESSONS_LABEL}`, hint: '同科目、同老師，再買一期堂數接著上；保留原上課紀錄，已繳且堂數用完的原合約可能自動結案。', icon: 'autorenew' }),
   Object.freeze({ id: 'change', label: '換科目／老師／時段', hint: '用「轉課」把已上課紀錄轉到另一門課。', icon: 'swap_horiz' }),
 ]);
 

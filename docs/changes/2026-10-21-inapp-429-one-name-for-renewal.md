@@ -10,3 +10,5 @@
 - 驗證：實際 StudentsList／chooser／續課視窗與既有學生列表回歸測試，共 5 files、21 tests 通過。
 
 - 後續 review：保留 pending report ID 並排除待核對付款的轉課選項；瀏覽器測試改驗證現行「續課」文案。390px／1440px 真實 Vue 合成資料測試通過。正向收款但 Paid 不一致的權限投影仍待獨立修正，未宣稱全部 review 完成。
+
+- 後續 review：續課說明保留上課紀錄但揭露已繳且堂數用完的原合約可能自動結案；意圖選擇器改用既有 AtDialog，實測初始焦點、換頁後焦點、Tab／Shift+Tab、Escape 與關閉後焦點還原。
