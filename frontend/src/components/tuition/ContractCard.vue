@@ -12,6 +12,7 @@
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
         <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
@@ -34,7 +35,8 @@
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
-      <AtButton v-else-if="!noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
+      <AtButton v-else-if="!legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -112,6 +114,7 @@ import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
@@ -138,8 +141,10 @@ const props = defineProps({
   sharedLeadSubject: { type: String, default: '' },
   // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
+  // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
+  canResolveLegacy: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'legacy-backfill']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -188,10 +193,16 @@ const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p
 // #4150 review: a waiver (server ContractMoneyState::isWaived; a real one keeps Paid=0) is terminal, so no unpaid controls.
 const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
+// Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid with
+// no report waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
+const legacyResolvable = computed(() => legacyUnverified.value && props.canResolveLegacy && props.course.paid === true
+  && !props.course.package_id && !props.course.free_gift_settled && !isMonthly.value && !waived.value
+  && !props.pendingReport && !props.sharedFollower);
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
-  return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
+  if (!p?.date) return '還沒繳費';
+  return p.amount == null ? `繳費日 ${dateOnly(p.date)}` : `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
 });
 const monthLineText = (key) => {
   const m = props.monthLines?.[key];
