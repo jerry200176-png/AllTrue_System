@@ -1,33 +1,17 @@
 name: Bug Phase-A triage write-back
 
-# Narrow, auditable write-back for a freshly verified in-app bug.
-# This workflow never resolves a bug. With close_as_logged it closes a
+# Narrow, auditable write-back for freshly verified in-app bugs, in batches of up to 20 rows.
+# This workflow never resolves a bug. With close_as_logged a row closes a
 # suggestion/ux/not-planned/duplicate report via BugReportService::closeAsLogged (F12).
+# Founder 2026-10-21 (FOUNDER_STANDING_DECISIONS.md): no per-run Founder approval; main only,
+# secrets only on the main-only production-ssh environment, every row validated before any write.
 on:
   workflow_dispatch:
     inputs:
-      bug_id:
-        description: In-app bug ID
+      rows_json:
+        description: 'JSON array (1-20) of {"bug_id","github_issue_url","public_reply"(<=600 chars, contains the URL),"disposition"(default bug),"close_as_logged"(default false)}'
         required: true
         type: string
-      github_issue_url:
-        description: GitHub issue URL, required in the public reply
-        required: true
-        type: string
-      disposition:
-        description: Product disposition kind validated by BugReportService
-        required: true
-        default: bug
-        type: string
-      public_reply:
-        description: Public reply to post on the in-app bug
-        required: true
-        type: string
-      close_as_logged:
-        description: Close as logged (suggestion, ux_friction, not_planned, duplicate); reporter reply reopens
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -39,102 +23,37 @@ concurrency:
 
 jobs:
   preview:
-    # Runs before the approval so the reviewer sees exactly what will be written.
-    name: Preview the in-app write
+    # Validates every row (all-or-nothing) and records an ID/hash-only table before the write job.
+    name: Preview the in-app write batch
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      logged_issues: ${{ steps.rows.outputs.logged_issues }}
     steps:
-      - name: Show the requested write
-        # Every displayed input is read from the event payload (never env: GitHub prints step env in the
-        # public log header) and validated before anything reaches the public run summary. Errors name
-        # the field, never the value; a failed preview blocks approval and the write.
-        run: |
-          set -euo pipefail
-          ev() { jq -r --arg k "$1" '.inputs[$k] | if . == null then "" else tostring end' "$GITHUB_EVENT_PATH"; }
-          BUG_ID="$(ev bug_id)"
-          ISSUE_URL="$(ev github_issue_url)"
-          DISPOSITION="$(ev disposition)"
-          CLOSE_AS_LOGGED="$(ev close_as_logged)"
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          [[ "$ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
-          [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
-          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
-          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
-          [[ "$PUBLIC_REPLY" == *"$ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-          reply_len="$(jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH")"
-          reply_sha="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum | cut -d' ' -f1)"
-          {
-            echo "## In-app write requested (approve only if this matches the reviewed list)"
-            echo
-            printf -- '- bug_id: %s\n' "$BUG_ID"
-            printf -- '- github_issue_url: %s\n' "$ISSUE_URL"
-            printf -- '- disposition: %s\n' "$DISPOSITION"
-            printf -- '- close_as_logged: %s\n' "$CLOSE_AS_LOGGED"
-            printf -- '- public_reply length (characters): %s\n' "$reply_len"
-            printf -- '- public_reply sha256 (exact UTF-8 input, no trailing newline added): %s\n' "$reply_sha"
-            echo
-            echo "The reply text is intentionally not shown (public repo). Compare the sha256 with the reviewed private list row."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  approve:
-    # Founder approval gate. Secrets stay on production-ssh (main-only); this job holds none.
-    name: Founder approval for production write
-    needs: preview
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: production-activation
-    # GET environment / deployment-branch-policies need Actions: read for GITHUB_TOKEN (as in deploy.yml).
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - name: Verify production-activation protection
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, os, subprocess
-          base = f"/repos/{os.environ['REPO']}/environments/production-activation"
-          def api(path):
-              return json.loads(subprocess.check_output(["gh", "api", path], text=True))
-          env = api(base)
-          rules = env.get("protection_rules") or []
-          reviewer_rules = [r for r in rules if r.get("type") == "required_reviewers"]
-          if not reviewer_rules:
-              raise SystemExit("production-activation has no required reviewer; refusing to write")
-          # The only approver must be the Founder: exactly one User reviewer, jerry200176-png, in every rule.
-          for r in reviewer_rules:
-              found = sorted((str(x.get("type")), str((x.get("reviewer") or {}).get("login"))) for x in (r.get("reviewers") or []))
-              if found != [("User", "jerry200176-png")]:
-                  raise SystemExit(f"production-activation reviewers must be exactly the Founder, got {found}; refusing to write")
-          if env.get("can_admins_bypass") is not False:
-              raise SystemExit("production-activation allows admin bypass; refusing to write")
-          # Same main-only check as deploy.yml production-activation gate.
-          policy = env.get("deployment_branch_policy") or {}
-          if policy.get("custom_branch_policies") is not True or policy.get("protected_branches") is not False:
-              raise SystemExit("production-activation needs a custom main-only branch policy; refusing to write")
-          policies = api(f"{base}/deployment-branch-policies").get("branch_policies") or []
-          names = sorted(str(p.get("name")) for p in policies)
-          if names != ["main"]:
-              raise SystemExit(f"production-activation must allow only main, got {names}; refusing to write")
-          print("production-activation verified: Founder-only reviewer, no admin bypass, main only")
-          PY
+      - name: Checkout pinned row validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/scripts/inapp-writeback-rows.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Show the requested writes
+        id: rows
+        # rows_json is read from the event payload (never env); errors name the row and field, never the value.
+        run: python3 .github/scripts/inapp-writeback-rows.py phase-a preview
 
   triage:
-    needs: approve
+    needs: preview
     runs-on: ubuntu-latest
     environment: production-ssh
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and row validator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            .github/scripts/inapp-writeback-rows.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Configure pinned production SSH trust
@@ -155,27 +74,19 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Write triage and public reply
+      - name: Write triage and public replies
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          BUG_ID: ${{ inputs.bug_id }}
-          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
-          DISPOSITION: ${{ inputs.disposition }}
-          CLOSE_AS_LOGGED: ${{ inputs.close_as_logged }}
-        # PUBLIC_REPLY is deliberately not in env (GitHub prints step env in the public log header).
-        # Read the exact bytes from the event payload; the trailing x keeps trailing newlines.
+        # rows_json is deliberately not in env (GitHub prints step env in the public log header). The
+        # validator re-reads the event payload and emits one safe line per row: validated tokens plus
+        # the base64 reply. Rows run in order in one SSH session; the first failing row stops the batch
+        # (earlier rows stay written; a rerun is idempotent per row).
         run: |
           set -euo pipefail
-          PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"
-          PUBLIC_REPLY="${PUBLIC_REPLY%x}"
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
-          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-          [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
-          PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
+          ROWS="$(python3 .github/scripts/inapp-writeback-rows.py phase-a write)"
+          ROW_COUNT="$(printf '%s\n' "$ROWS" | wc -l | tr -d ' ')"
+          ROWS_B64="$(printf '%s' "$ROWS" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
@@ -183,10 +94,18 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+            "ROW_COUNT='$ROW_COUNT' ROWS_B64='$ROWS_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
+          applied=0
+          # fd 3 carries the rows; tinker gets /dev/null so it can never eat this script (bash -s stdin).
+          while read -r -u 3 BUG_ID GITHUB_ISSUE_URL DISPOSITION CLOSE_AS_LOGGED PUBLIC_REPLY_B64; do
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
+          [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
+          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
@@ -254,25 +173,32 @@ jobs:
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           });
           }
-          '
+          ' \
+          </dev/null
+          applied=$((applied + 1))
+          done 3< <(printf '%s' "$ROWS_B64" | base64 -d; echo)
+          [[ "$applied" == "$ROW_COUNT" ]] || { echo "applied $applied of $ROW_COUNT rows"; exit 1; }
+          echo "applied $applied of $ROW_COUNT rows"
           REMOTE
 
   # F12/F14: a logged suggestion's issue is the backlog; label it so reconcile keeps it open.
   label-logged:
-    needs: triage
-    if: inputs.close_as_logged
+    needs: [preview, triage]
+    if: needs.preview.outputs.logged_issues != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       issues: write
     steps:
-      - name: Label the backlog issue in-app:logged
+      - name: Label the backlog issues in-app:logged
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
+          LOGGED_ISSUES: ${{ needs.preview.outputs.logged_issues }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
           gh label create in-app:logged --force --color C2E0C6 --description "F12: in-app suggestion closed as logged; this issue is the backlog"
-          gh issue edit "$GITHUB_ISSUE_URL" --add-label in-app:logged
+          for GITHUB_ISSUE_URL in $(jq -r '.[]' <<< "$LOGGED_ISSUES"); do
+            [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
+            gh issue edit "$GITHUB_ISSUE_URL" --add-label in-app:logged
+          done
