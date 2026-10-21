@@ -7,7 +7,10 @@ use App\Models\LearningRecord;
 use App\Models\Notification;
 use App\Models\NotificationRead;
 use App\Models\PendingSwipe;
+use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +19,21 @@ use Illuminate\Support\Facades\Log;
 
 class NotificationSyncService
 {
+    /**
+     * in-app #413: deduction_failed is written elsewhere (StudentPresenceBackfillService) and never
+     * created here; this re-check resolves/reopens it from its source row. lr_feedback is NOT polled:
+     * FeedbackPushNotifier resolves it on staff reply / 不需回覆 and reopens it on parent follow-up.
+     * `substitute` stays manual: its ResolvedAt means "substitute undone/restored", not "handled".
+     */
+    private const DEDUCTION_FAILED_TYPE = 'deduction_failed';
+
+    /** Resolved rows are re-checked for reopen only this long after resolve (bounded, indexed scan). */
+    private const SOURCE_REOPEN_LOOKBACK_DAYS = 14;
+
+    /** Payload keys on rows this re-check resolved: when, and why (shown as 已自動結案 reason; rollback finds them). */
+    public const SOURCE_RESOLVED_MARKER = 'source_resolved_at';
+    public const SOURCE_RESOLVED_REASON = 'source_resolved_reason';
+
     /**
      * Sync notifications from multiple business sources.
      *
@@ -139,13 +157,125 @@ class NotificationSyncService
             }
         });
 
+        $sourceChecked = self::recheckSourceResolvedTypes($scopedCampusIds);
+
         return [
             'created' => $created,
             'updated' => $updated,
             'resolved' => $resolved,
             'active_count' => count($activeByKey),
             'source_key_races_recovered' => $sourceKeyRacesRecovered,
+            'source_resolved' => $sourceChecked['resolved'],
+            'source_reopened' => $sourceChecked['reopened'],
         ];
+    }
+
+    /**
+     * @param  array<int>  $campusIds
+     * @return array{resolved:int, reopened:int}
+     */
+    private static function recheckSourceResolvedTypes(array $campusIds): array
+    {
+        if (!config('perfflags.notification_source_resolve_enabled', false)) {
+            return ['resolved' => 0, 'reopened' => 0];
+        }
+        // Open rows plus rows resolved inside the lookback — not every row ever written. Uses the
+        // (CampusID, Type) / (ResolvedAt, OccurredAt) indexes.
+        $scoped = function () use ($campusIds) {
+            $q = Notification::query()->where('Type', self::DEDUCTION_FAILED_TYPE);
+            if (!empty($campusIds)) {
+                $q->whereIn('CampusID', $campusIds);
+            }
+
+            return $q;
+        };
+        $rows = $scoped()->whereNull('ResolvedAt')->get()
+            ->concat($scoped()->where('ResolvedAt', '>=', now()->subDays(self::SOURCE_REOPEN_LOOKBACK_DAYS))->get());
+        if ($rows->isEmpty()) {
+            return ['resolved' => 0, 'reopened' => 0];
+        }
+
+        $resolved = 0;
+        $reopened = 0;
+        $handledReason = self::deductionFailedHandledReasons($rows);
+        foreach ($rows as $notification) {
+            if (!array_key_exists((int) $notification->id, $handledReason)) {
+                continue;
+            }
+            $reason = $handledReason[(int) $notification->id];
+            $payload = (array) ($notification->Payload ?? []);
+            if ($reason !== null && $notification->ResolvedAt === null) {
+                $notification->ResolvedAt = now();
+                $notification->Payload = array_merge($payload, [
+                    self::SOURCE_RESOLVED_MARKER => now()->toIso8601String(),
+                    self::SOURCE_RESOLVED_REASON => $reason,
+                ]);
+                $notification->save();
+                $resolved++;
+            } elseif ($reason === null && $notification->ResolvedAt !== null) {
+                // Same as tuition: a resolved -> open transition must show unread again.
+                unset($payload[self::SOURCE_RESOLVED_MARKER], $payload[self::SOURCE_RESOLVED_REASON]);
+                $notification->ResolvedAt = null;
+                $notification->Payload = $payload;
+                $notification->save();
+                NotificationRead::query()->where('NotificationID', $notification->id)->delete();
+                $reopened++;
+            }
+        }
+
+        return ['resolved' => $resolved, 'reopened' => $reopened];
+    }
+
+    /**
+     * Attendance recorded but not deducted. Handled (reason) once that sign-in is deducted, voided,
+     * deleted or corrected to a non-deductible status (AttendanceStatus::META: leave, absent, trial, …),
+     * or the session has a net deduction in the ledger (e.g. a manual 補扣); null = still open.
+     * Only rows it could evaluate are returned.
+     *
+     * @param  \Illuminate\Support\Collection<int, Notification>  $notifications
+     * @return array<int, string|null>
+     */
+    private static function deductionFailedHandledReasons($notifications): array
+    {
+        $signInIds = $notifications->where('SourceType', 'StudentSignIn')
+            ->pluck('SourceID')->map(fn ($v) => (int) $v)->filter()->unique()->values()->all();
+        $signIns = StudentSignIn::query()->whereIn('id', $signInIds ?: [0])
+            ->get(['id', 'StudentClassID', 'ClassSessionID', 'Status', 'SessionDeducted', 'VoidedAt'])->keyBy('id');
+        $sessionIds = $signIns->pluck('ClassSessionID')->map(fn ($v) => (int) $v)->filter()->unique()->values()->all();
+        $netDeducted = SessionDeductionLedger::query()->whereIn('class_session_id', $sessionIds ?: [0])
+            ->groupBy('student_class_id', 'class_session_id')
+            ->selectRaw("student_class_id, class_session_id, SUM(CASE WHEN event_type='deduct' THEN 1 "
+                . "WHEN event_type='reverse' THEN -1 ELSE 0 END) as net")
+            ->get()
+            ->filter(fn ($r) => (int) $r->net > 0)
+            ->mapWithKeys(fn ($r) => [(int) $r->student_class_id . ':' . (int) $r->class_session_id => true])
+            ->all();
+
+        $out = [];
+        foreach ($notifications as $notification) {
+            $signInId = (int) $notification->SourceID;
+            if ($notification->SourceType !== 'StudentSignIn' || $signInId <= 0) {
+                continue;
+            }
+            $signIn = $signIns->get($signInId);
+            $out[(int) $notification->id] = match (true) {
+                $signIn === null => 'sign_in_deleted',
+                $signIn->VoidedAt !== null => 'sign_in_voided',
+                (bool) $signIn->SessionDeducted => 'deducted',
+                self::isNonDeductibleStatus((string) $signIn->Status) => 'non_deductible_status',
+                isset($netDeducted[(int) $signIn->StudentClassID . ':' . (int) $signIn->ClassSessionID]) => 'ledger_deducted',
+                default => null,
+            };
+        }
+
+        return $out;
+    }
+
+    private static function isNonDeductibleStatus(string $status): bool
+    {
+        $code = strtolower(trim($status));
+
+        return $code !== '' && AttendanceStatus::exists($code) && !AttendanceStatus::isDeductible($code);
     }
 
     /** System-only: retire tuition notices left in a student's former campus after transfer. */
