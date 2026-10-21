@@ -611,6 +611,11 @@ const payLineFor = (course) => {
   const paid = lastInvoicePayment(ids);
   if (paid) return paid;
   if (isWaivedContract(course)) return { waived: true };
+  // in-app #428: a trial that carries its payment date has no invoice by design; the server derives this
+  // (StudentClass::isTrialFeeRecordedByDate, same rule as legacy_paid_flag_only), so it is not 需核對 legacy data.
+  // #4339 review: show that recorded date and the trial fee, never 還沒繳費 beside 已收清.
+  // A package-created trial member carries Charge=0 (the fee lives on the package): show the date only, never NT$ 0.
+  if (course.trial_fee_recorded_by_date === true && course.paid_at) return { date: course.paid_at, amount: Number(course.charge) > 0 ? Number(course.charge) : null };
   return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
