@@ -90,6 +90,15 @@ final class ContractRenewal
     {
         $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
         $starts = [$startDate => true, $planStart => true];
+        // A source that can never shift a batch (trial, stopped, or settled by this purchase) yields only the exact
+        // starts, as before #422.
+        $settledByPurchase = (string) ($studentClass->getAttribute('ScheduleMode') ?? '') === 'count'
+            && (int) $studentClass->getAttribute('Paid') === 1 && (int) $studentClass->getAttribute('RemainingSessions') <= 0;
+        if (strtolower(trim((string) $studentClass->getAttribute('ClassType'))) === 'trial'
+            || (int) $studentClass->getAttribute('Stop') === 1 || $settledByPurchase) {
+            return $this->findDuplicatePurchaseBatch($studentClass, $planStart, $sessions)
+                ?? ($planStart !== $startDate ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions) : null);
+        }
         // Same contract-period bounds as batchStartAfterSource(): residue outside them never shifts a batch.
         $sourceStart = ContractSessionSchedule::normalizeDateString($studentClass->getAttribute('StartDate'));
         $sourceEnd = ContractSessionSchedule::normalizeDateString($studentClass->getAttribute('EndDate'));
