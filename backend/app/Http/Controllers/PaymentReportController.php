@@ -794,7 +794,7 @@ class PaymentReportController extends Controller
                 return $denied;
             }
             $replay = PaymentReport::query()->where('StudentClassID', $courseId)->where('report_token_hash', $tokenHash)->first();
-            if ($replay) {
+            if ($replay && (int) $replay->reported_amount === (int) $data['amount'] && $replay->payment_method === $data['payment_method'] && $replay->payment_date?->toDateString() === Carbon::parse($data['payment_date'])->toDateString()) {
                 return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
                     'invoice_id' => $replay->InvoiceID, 'status' => $replay->status, 'replayed' => true]);
             }
@@ -810,7 +810,7 @@ class PaymentReportController extends Controller
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
             if (!$this->courseResolvedPaid($course)) { // a partial payment leaves money owed: drop the flag, as void() does
-                $course->refresh()->update(['Paid' => 0, 'PayDate' => null]
+                $course->refresh()->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null]
                     + ($course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
             }
             $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);

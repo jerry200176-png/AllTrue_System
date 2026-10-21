@@ -49,8 +49,8 @@ class LegacyPaidFlagResolveTest extends TestCase
         $first = $this->backfill($token, $course)->assertOk();
         $this->backfill($token, $course)->assertOk()->assertJsonPath('replayed', true)
             ->assertJsonPath('report_id', $first->json('report_id'))->assertJsonPath('payment_id', $first->json('payment_id'));
-        // A new key is refused: the course now has a payment record, so it is no longer legacy-flag-only.
-        $this->backfill($token, $course, ['idempotency_key' => 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'])
+        // Same key with changed details (or a new key) is not a replay: the course now has a payment record, so it is refused.
+        $this->backfill($token, $course, ['amount' => 8000])
             ->assertStatus(422)->assertJsonPath('code', 'legacy_flag_has_payment');
         $this->assertSame(1, Payment::count());
         $this->assertSame(1, PaymentReport::count());
