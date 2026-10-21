@@ -165,14 +165,9 @@ complete evidence package, but must stop before the protected action and request
 Founder approval with the exact action, worst credible downside,
 rollback/reversibility, and post-action verification.
 
-Merging an R3 PR is not itself a protected action under
+When an Agent may merge an R3 PR is defined only in
 [`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-21
-item 2(a): the Agent merges when exact-head required checks are green, every
-review finding is addressed, every thread is resolved and the PR has no
-migration (additive migrations keep the R5 T2 rule). This does not cover
-workflow/control-plane or governance changes that grant or change permissions,
-approval methods or protected boundaries: those still need the Founder decision
-at merge authorization (2026-10-14（二）item 5; see Rollback below).
+item 2(a).
 
 ## Rollback
 
