@@ -741,6 +741,13 @@ class TuitionAlertsApiTest extends TestCase
         $shape = ['Paid' => 1, 'PayDate' => now()->toDateString(), 'RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500];
         $trial = $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial']);
         $regular = $this->createCountModeClass($student->id, $shape + ['SubjectID' => 2]);
+        // create-multi-subject trial package: package and members carry class_type=trial and paid/paid_at, no invoice.
+        $trialPkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'T428', 'billing_mode' => 'count',
+            'total_sessions' => 1, 'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'trial', 'paid' => true, 'paid_at' => now()->toDateString(), 'stop' => false, 'enabled' => true]);
+        foreach ([3, 4] as $subjectId) {
+            $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial', 'PackageID' => $trialPkg->id, 'SubjectID' => $subjectId]);
+        }
 
         $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
@@ -749,6 +756,9 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNotNull($row($trial->ID), 'the low-remaining trial is listed (shape under test)');
         $this->assertFalse($row($trial->ID)['legacy_paid_flag_only']);
         $this->assertTrue($row($regular->ID)['legacy_paid_flag_only'], '#4174 unchanged for a regular course');
+        $pkgRow = $rows->firstWhere('package_id', $trialPkg->id);
+        $this->assertNotNull($pkgRow, 'the low-remaining trial package is listed (shape under test)');
+        $this->assertFalse($pkgRow['legacy_paid_flag_only'], 'a create-multi-subject trial package is not legacy data either');
     }
 
     public function test_payment_status_monthly_due_soon_for_date_mode_paid(): void
