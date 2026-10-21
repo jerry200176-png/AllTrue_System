@@ -202,7 +202,7 @@ describe('one name for adding lessons (#4331)', () => {
     const cm = read('../../../pages/CourseManagement.vue');
     expect(cm).toContain("props.initialCourseIntent === 'transfer'");
     // 換科目／老師／時段 = the row 「轉課」 (CourseTransferModal), not the records-only TransferSessionsModal.
-    expect(cm).toMatch(/pendingTransferCourseId\.value = 0;[\s\S]{0,200}editCourse\(course, \{ openModal: false \}\); showCourseTransfer\.value = true;/);
+    expect(cm).toContain("runRowAction(course, 'transfer');");
     expect(src).toContain('courseIntentEligibility(course)');
   });
 });

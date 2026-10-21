@@ -5424,7 +5424,7 @@ watch(coursesLoading, (loading) => {
   pendingTransferCourseId.value = 0;
   convertTrialStudentId.value = null;
   transferHandoffError.value = '';
-  editCourse(course, { openModal: false }); showCourseTransfer.value = true;
+  runRowAction(course, 'transfer');
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;
