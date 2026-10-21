@@ -9,6 +9,12 @@ whole run (all-or-nothing). Errors name the row index and field, never a value (
 
 preview: appends a bug_id / issue / status / close / len / sha256 table to $GITHUB_STEP_SUMMARY
          (never the reply text) and writes ID-only job outputs to $GITHUB_OUTPUT.
+Reply content guard (Founder 2026-10-21): the session that writes these replies also reads untrusted
+in-app reports and can post publicly (the "lethal trifecta": private data + untrusted content + an
+outbound channel). A reply carrying a phone number, national ID, email, credential-like string, or a
+link other than this repo's issues / the production app is rejected (OWASP LLM02 sensitive
+information disclosure, LLM01 prompt-injection exfiltration). Errors name the row and rule only.
+
 write:   prints one space-separated line per row for the SSH writer; every token is validated to a
          safe charset and the reply is base64, so no reply byte reaches a shell unencoded.
 """
@@ -26,6 +32,20 @@ DISPOSITION = re.compile(r"[a-z_]{1,64}")
 STATUSES = ("triaged", "in_progress", "resolved", "closed")
 REV = re.compile(r"[0-9a-f]{40}")
 RUN_ID = re.compile(r"[0-9]{1,20}")
+APP_ORIGIN = "https://daan.lifenet.com.tw"  # the production app; its own links are allowed in replies
+# URLs are ASCII; stopping at the first non-ASCII character keeps "<url>請查看" from swallowing the text.
+URL = re.compile(r"(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&*+,;=%]+", re.I)
+BARE_DOMAIN = re.compile(r"(?<![\w.@-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|tw|me|co|app|dev|xyz|ly|gg|ru|cn|info|biz)(?![\w-])", re.I)
+REPLY_RULES = (
+    ("tw_mobile", re.compile(r"(?<!\d)(?:\+?886[-\s]?9|09)\d{2}[-\s]?\d{3}[-\s]?\d{3}(?!\d)")),
+    ("tw_landline", re.compile(r"(?<!\d)(?:\(?0[2-8]\d?\)?|\+?886[-\s]?[2-8]\d?)[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")),
+    ("tw_national_id", re.compile(r"(?<![A-Za-z0-9])[A-Za-z][12]\d{8}(?!\d)")),
+    ("email", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
+    ("secret_token", re.compile(r"(?<![A-Za-z0-9])(?:ghp_|gho_|ghs_|ghu_|github_pat_|sk-|xox[bpas]-|AKIA)[A-Za-z0-9_-]{8,}")),
+    ("private_key", re.compile(r"BEGIN [A-Z ]*KEY", re.I)),
+    ("long_hex", re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{32,}(?![0-9A-Fa-f])")),
+    ("long_base64", re.compile(r"(?=[A-Za-z0-9+/=_-]*\d)(?=[A-Za-z0-9+/=_-]*[A-Za-z])[A-Za-z0-9+/=_-]{32,}")),
+)
 FIELDS = {
     "phase-a": {"bug_id", "github_issue_url", "public_reply", "disposition", "close_as_logged"},
     "followup": {"bug_id", "expected_status", "github_issue_url", "public_reply", "production_revision", "deploy_run_id"},
@@ -41,6 +61,23 @@ def text(row, key, where, default=None):
     if value is None or isinstance(value, bool) or not isinstance(value, (str, int)):
         fail(f"{where}: invalid {key}")
     return str(value)
+
+
+def reply_violation(reply, repo):
+    """Name of the first content rule the reply breaks, or None. Never returns the matched text."""
+    allowed_issue = re.compile(r"https://github\.com/" + re.escape(repo) + r"/issues/[1-9][0-9]*")
+    allowed_app = re.compile(re.escape(APP_ORIGIN) + r"(?:[/?#]\S*)?")
+    for match in URL.finditer(reply):
+        url = match.group(0).rstrip(".,:;!?")
+        if not (allowed_issue.fullmatch(url) or allowed_app.fullmatch(url)):
+            return "url_not_allowed"
+    rest = URL.sub(" ", reply)  # allowed links are checked; scan the remaining text
+    if BARE_DOMAIN.search(rest):
+        return "url_not_allowed"
+    for name, pattern in REPLY_RULES:
+        if pattern.search(rest):
+            return name
+    return None
 
 
 def validate(kind, raw, repo):
@@ -74,6 +111,9 @@ def validate(kind, raw, repo):
             fail(f"{where}: public_reply longer than {MAX_REPLY_CHARS} characters")
         if issue not in reply:
             fail(f"{where}: public reply must contain github_issue_url")
+        rule = reply_violation(reply, repo)
+        if rule:
+            fail(f"{where}: public_reply rejected by content rule {rule}")
         try:
             reply_bytes = reply.encode("utf-8")
         except UnicodeEncodeError:
