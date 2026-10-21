@@ -3,6 +3,7 @@
     <div class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="course-transfer-title">
       <h3 id="course-transfer-title" class="modal-title">轉課（改科目／老師／時段）</h3>
       <p class="modal-desc">轉課日之前的堂次留在舊合約；轉課日起的堂次（含紀錄）與剩餘堂數、已繳金額轉到新合約。</p>
+      <p v-if="prefill" class="prefill-note" data-testid="transfer-prefill-note">已帶入你在課程設定改的內容，轉課日預設為下一堂未點名的課。請確認後先「試算」。</p>
 
       <label class="form-label" for="ct-subject">新科目</label>
       <select id="ct-subject" v-model="form.subject" class="form-input" :disabled="busy">
@@ -65,6 +66,8 @@ const props = defineProps({
   courseId: { type: [Number, String], default: null },
   subjects: { type: Array, default: () => [] },
   teachers: { type: Array, default: () => [] },
+  // in-app #409: values carried over from a blocked 課程設定 save.
+  prefill: { type: Object, default: null },
 });
 const emit = defineEmits(['close', 'done']);
 const DAYS = ['一', '二', '三', '四', '五', '六', '日'];
@@ -76,7 +79,7 @@ const canSubmit = computed(() => !!form.start_date && (form.subject || form.teac
 
 watch(() => props.show, (v) => {
   if (v) {
-    Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' });
+    Object.assign(form, { subject: '', teacher_id: '', start_date: '', weekday: '', time: '16:00', duration_minutes: 120, reason: '' }, props.prefill || {});
     preview.value = null;
     error.value = '';
   }
@@ -122,6 +125,7 @@ async function run(previewOnly) {
 .course-modal { width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
 .modal-title { font-size: 1.2rem; font-weight: 800; margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin: 0 0 12px; }
+.prefill-note { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
 .form-label { display: block; font-size: 13px; font-weight: 700; margin: 10px 0 6px; }
 .form-input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 14px; }
 .slot-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
