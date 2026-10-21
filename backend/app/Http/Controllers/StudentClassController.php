@@ -650,8 +650,10 @@ class StudentClassController extends Controller
             }
             // Display only: payment_status stays `paid` (not owed, no reminder); the client shows 需核對, not 已收.
             // Only a real legacy flag (Paid=1 / package paid) qualifies: a derived `paid` (e.g. a Charge=0 single
-            // period, 0 >= 0) has no flag to verify (#4174 review).
-            $class->setAttribute('legacy_paid_flag_only', $effectivePaid && !$isTutoringCourse && !ContractMoneyState::isWaived($class)
+            // period, 0 >= 0) has no flag to verify (#4174 review). A trial that carries its payment date (PayDate, or the
+            // effective trial package's paid_at) never gets an invoice by design, so it is not legacy data (in-app #428).
+            $class->setAttribute('legacy_paid_flag_only', $effectivePaid && !$isTutoringCourse
+                && !$class->isTrialFeeRecordedByDate($pkg) && !ContractMoneyState::isWaived($class)
                 && $class->getAttribute('payment_status') === 'paid' && !isset($paymentEvidence[(int) $class->ID]));
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
