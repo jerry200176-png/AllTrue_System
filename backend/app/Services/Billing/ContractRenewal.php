@@ -12,6 +12,7 @@ use App\Services\MonthlyRenewalPeriodService;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\SessionDeductionService;
 use App\Services\TransactionDiscountCalculator;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -407,16 +408,15 @@ final class ContractRenewal
         }
 
         if ($startDate && $sessions > 0 && !empty($slots)) {
-            // Same slot plan purchaseBatch() writes: the stand-in batch is not yet saved (key 0), so only the
-            // source and the student's other courses can hold a slot.
-            $probe = (new StudentClass())->forceFill([
-                'StudentID' => (int) $studentClass->StudentID,
-                'PackageID' => null,
-                'Stop' => 0,
-                'RemainingSessions' => $sessions,
-                'ClassType' => (string) ($studentClass->ClassType ?? ''),
-            ]);
-            $sessionsPreview = $this->buildBatchSessionsAfterSource($studentClass, $probe, (int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
+            // Same slot plan purchaseBatch() writes.
+            $plan = $this->buildBatchSessionsAfterSource($studentClass, (int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
+            $sessionsPreview = $plan['sessions'];
+            $schedule['source_live_until'] = $plan['source_live_until'];
+            // The plan depends on live occupancy, so the state hash covers every planned occurrence.
+            $schedule['plan_fingerprint'] = hash('sha256', implode('|', array_map(
+                fn ($sess) => ContractSessionSchedule::normalizeDateString($sess['SessionDate']) . ' ' . $sess['StartTime'] . '-' . $sess['EndTime'],
+                $sessionsPreview
+            )));
             $schedule['created_sessions'] = count($sessionsPreview);
             $schedule['first_session_date'] = isset($sessionsPreview[0])
                 ? ContractSessionSchedule::normalizeDateString($sessionsPreview[0]['SessionDate'])
@@ -468,45 +468,40 @@ final class ContractRenewal
      * in-app #422: a purchase batch continues its source course on the same fixed slots. When the source still
      * holds pre-created future lessons, the batch's first occurrences landed on exactly those lessons and the
      * student-overlap guard refused the whole purchase ("已有其他「科目」課程") although the blocker was the
-     * course being extended. A slot the source itself occupies is skipped, so the batch starts after it.
-     * Only the source is skipped: a slot held by any other course is kept, so upsertSlot() still rejects it.
-     * The same write-time guard decides occupancy (findStudentSlotConflict, R142), never a second rule here.
+     * course being extended. The batch now starts the day after the source's last live lesson on or after the
+     * requested start, so the two contracts never interleave and every slot type is kept. Any other course
+     * that holds a slot in the shifted plan is still rejected by upsertSlot()'s write-time guard.
      *
      * @param  array<int, array<string, mixed>>  $slots
-     * @return array<int, array<string, mixed>>
+     * @return array{sessions: array<int, array<string, mixed>>, source_live_until: string|null}
      */
-    private function buildBatchSessionsAfterSource(StudentClass $source, StudentClass $batch, int $batchId, string $startDate, int $sessions, array $slots, int $durationMinutes): array
+    private function buildBatchSessionsAfterSource(StudentClass $source, int $batchId, string $startDate, int $sessions, array $slots, int $durationMinutes): array
     {
         $sourceId = (int) $source->getKey();
-        $materializer = app(ClassSessionMaterializationService::class);
-        $extra = 0;
-        while (true) {
-            $built = ContractSessionSchedule::buildSessionsForCount($batchId, $startDate, $sessions + $extra, $slots, $durationMinutes);
-            $kept = [];
-            $skipped = 0;
-            foreach ($built as $session) {
-                if (count($kept) >= $sessions) {
-                    break;
-                }
-                $conflict = $materializer->findStudentSlotConflict(
-                    $batch,
-                    (string) $session['SessionDate'],
-                    (string) $session['StartTime'],
-                    (string) $session['EndTime'],
-                );
-                if ($conflict !== null && $conflict->conflictCourseId === $sourceId) {
-                    $skipped++;
-                    continue;
-                }
-                $kept[] = $session;
-            }
-            // Done when the batch is full, the generator ran out of dates, or nothing new was skipped.
-            // buildSessionsForCount() is prefix-stable, so each pass only extends the previous one.
-            if (count($kept) >= $sessions || count($built) < $sessions + $extra || $skipped <= $extra) {
-                return $kept;
-            }
-            $extra = $skipped;
-        }
+        $lastLesson = ClassSession::query()
+            ->where('StudentClassID', $sourceId)
+            ->whereDate('SessionDate', '>=', $startDate)
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
+            ->max('SessionDate');
+        // A schedule can exist before its ClassSession is materialized; substitute/reschedule anchors
+        // (original_schedule_id) are history, as in the student-slot guard.
+        $lastSchedule = DB::table('schedules')
+            ->where('student_course_id', $sourceId)
+            ->whereDate('schedule_date', '>=', $startDate)
+            ->where('status', 'scheduled')
+            ->whereNull('original_schedule_id')
+            ->max('schedule_date');
+        $liveDates = array_filter([
+            ContractSessionSchedule::normalizeDateString($lastLesson),
+            ContractSessionSchedule::normalizeDateString($lastSchedule),
+        ]);
+        $liveUntil = $liveDates === [] ? null : max($liveDates);
+        $from = $liveUntil !== null ? Carbon::parse($liveUntil)->addDay()->toDateString() : $startDate;
+
+        return [
+            'sessions' => ContractSessionSchedule::buildSessionsForCount($batchId, $from, $sessions, $slots, $durationMinutes),
+            'source_live_until' => $liveUntil,
+        ];
     }
 
     // Course lifecycle helpers shared with StudentClassController (togglePause, store, split, trial conversion).
@@ -720,8 +715,8 @@ final class ContractRenewal
                 }
             }
             $builtSessions = $this->buildBatchSessionsAfterSource(
-                $studentClass, $newCourse, (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
-            );
+                $studentClass, (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
+            )['sessions'];
 
             $createdSessions = 0;
             $lastSessionDate = null;

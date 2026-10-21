@@ -69,6 +69,33 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             ->count());
     }
 
+    public function test_batch_starts_after_the_source_final_lesson_even_with_a_gap(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        $source = $this->createSourceCourse($student->id);
+        // Source lessons in weeks 0 and 2; week 1 is free but still before the source's last lesson.
+        foreach ([0, 2] as $week) {
+            ClassSession::create([
+                'StudentClassID' => $source->ID,
+                'SessionDate' => $this->weeksAfterBase($week),
+                'StartTime' => '18:00:00',
+                'EndTime' => '20:00:00',
+                'Status' => 'scheduled',
+            ]);
+        }
+
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+                'sessions' => 2,
+                'start_date' => $this->base->toDateString(),
+                'mode' => 'new_purchase',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('new_course.first_session_date', $this->weeksAfterBase(3))
+            ->assertJsonPath('new_course.last_session_date', $this->weeksAfterBase(4));
+    }
+
     public function test_renewal_preview_shows_the_same_shifted_batch_dates(): void
     {
         $token = $this->createDirectorToken();
@@ -85,7 +112,8 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             ->assertOk()
             ->assertJsonPath('schedule.created_sessions', 3)
             ->assertJsonPath('schedule.first_session_date', $this->weeksAfterBase(2))
-            ->assertJsonPath('schedule.last_session_date', $this->weeksAfterBase(4));
+            ->assertJsonPath('schedule.last_session_date', $this->weeksAfterBase(4))
+            ->assertJsonPath('schedule.source_live_until', $this->weeksAfterBase(1));
     }
 
     public function test_purchase_batch_still_rejects_a_slot_held_by_another_course(): void
