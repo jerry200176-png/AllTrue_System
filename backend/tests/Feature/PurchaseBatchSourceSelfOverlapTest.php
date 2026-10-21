@@ -61,6 +61,8 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             $newDates
         );
         $this->assertSame([], array_values(array_intersect($sourceDates, $newDates)), 'batch must not double-book the source lessons');
+        // The contract starts on its first real lesson (a Monday slot), not on the requested date.
+        $this->assertSame($this->weeksAfterBase(3), substr((string) StudentClass::query()->findOrFail($newId)->StartDate, 0, 10));
 
         // The source keeps every lesson it already had.
         $this->assertSame(3, ClassSession::query()
@@ -113,7 +115,8 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             ->assertJsonPath('schedule.created_sessions', 3)
             ->assertJsonPath('schedule.first_session_date', $this->weeksAfterBase(2))
             ->assertJsonPath('schedule.last_session_date', $this->weeksAfterBase(4))
-            ->assertJsonPath('schedule.source_live_until', $this->weeksAfterBase(1));
+            ->assertJsonPath('schedule.source_live_until', $this->weeksAfterBase(1))
+            ->assertJsonPath('proposed_course.start_date', $this->weeksAfterBase(2));
     }
 
     public function test_purchase_batch_still_rejects_a_slot_held_by_another_course(): void
