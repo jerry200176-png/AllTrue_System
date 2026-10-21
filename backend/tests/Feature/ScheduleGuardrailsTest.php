@@ -1207,6 +1207,100 @@ class ScheduleGuardrailsTest extends TestCase
             ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
     }
 
+    private function insertGuardSlotRow(int $studentId, int $teacherId, string $classType, string $date): void
+    {
+        DB::table('schedules')->insert([
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 3,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => $classType,
+            'status' => 'scheduled',
+            'type' => $classType === 'trial' ? 'trial' : 'normal',
+            'deduction' => $classType === 'trial' ? 0 : 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'student_course_id' => null,
+            'original_schedule_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /** @return \Illuminate\Testing\TestResponse */
+    private function postGuardSlotRow(string $token, int $studentId, int $teacherId, string $classType, string $date)
+    {
+        return $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 3,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => $classType,
+            'status' => 'scheduled',
+            'type' => $classType === 'trial' ? 'trial' : 'normal',
+            'deduction' => $classType === 'trial' ? 0 : 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+        ]);
+    }
+
+    /**
+     * in-app #426: a trial auditor in a 1v3 slot must not take a regular seat.
+     * 1v3 x3 + trial is already allowed (trial bypass), so 1v3 x2 + trial must
+     * still accept the third 1v3 student; capacity cannot depend on booking order.
+     */
+    public function test_trial_auditor_does_not_take_one_on_three_seat(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-trial-1v3@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-1v3@example.com');
+        $date = '2026-04-15';
+
+        $this->insertGuardSlotRow($this->createStudent(1, '一對三甲')->id, $teacherId, 'one_on_three', $date);
+        $this->insertGuardSlotRow($this->createStudent(1, '一對三乙')->id, $teacherId, 'one_on_three', $date);
+        $this->insertGuardSlotRow($this->createStudent(1, '試聽丙')->id, $teacherId, 'trial', $date);
+
+        $this->postGuardSlotRow($token, $this->createStudent(1, '一對三丁')->id, $teacherId, 'one_on_three', $date)
+            ->assertCreated();
+    }
+
+    public function test_trial_auditor_does_not_lift_regular_one_on_three_limit(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-trial-1v3-full@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-1v3-full@example.com');
+        $date = '2026-04-15';
+
+        foreach (['一對三甲', '一對三乙', '一對三丙'] as $name) {
+            $this->insertGuardSlotRow($this->createStudent(1, $name)->id, $teacherId, 'one_on_three', $date);
+        }
+        $this->insertGuardSlotRow($this->createStudent(1, '試聽丁')->id, $teacherId, 'trial', $date);
+
+        $this->postGuardSlotRow($token, $this->createStudent(1, '一對三戊')->id, $teacherId, 'one_on_three', $date)
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonPath('conflicts.0.current_students', 3);
+    }
+
+    public function test_trial_auditor_alone_does_not_block_one_on_one(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-trial-1v1@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-1v1@example.com');
+        $date = '2026-04-15';
+
+        $this->insertGuardSlotRow($this->createStudent(1, '試聽甲')->id, $teacherId, 'trial', $date);
+
+        $this->postGuardSlotRow($token, $this->createStudent(1, '一對一乙')->id, $teacherId, 'one_on_one', $date)
+            ->assertCreated();
+    }
+
     /**
      * 調課時代課老師為有效老師：合約老師(A)有其他課不應阻擋以B代課的調課操作。
      *

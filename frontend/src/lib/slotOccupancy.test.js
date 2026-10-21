@@ -160,3 +160,62 @@ const otherCampusRoom = pickerSlotConflict({
 assert.equal(otherCampusRoom.conflict, true, 'under-capacity other-campus lesson still blocks');
 assert.equal(otherCampusRoom.otherCampusConflict, true);
 assert.equal(otherCampusRoom.capacityWarn, false);
+
+// in-app #426: a trial auditor in a 1v3 slot does not take a regular seat
+// (it bypasses capacity on the way in), so capacity cannot depend on booking order.
+const oneOnThreeTwoPlusTrial = [
+  { id: 41, student_id: 501, class_type: 'one_on_three' },
+  { id: 42, student_id: 502, class_type: 'one_on_three' },
+  { id: 43, student_id: 503, class_type: 'trial' },
+];
+const trialBadge = occupancyBadge({ courses: oneOnThreeTwoPlusTrial });
+assert.equal(trialBadge.count, 2);
+assert.equal(trialBadge.max, 3);
+assert.equal(trialBadge.visible, true);
+assert.equal(trialBadge.label, '2/3+試');
+assert.equal(trialBadge.remaining, 1);
+assert.match(trialBadge.tooltip, /一對三可再收 1/);
+assert.match(trialBadge.tooltip, /試聽 1 位/);
+assert.doesNotMatch(trialBadge.tooltip, /已滿/);
+
+const addThirdWithTrial = incomingClassConflict({
+  incomingType: 'one_on_three',
+  overlappingCourses: oneOnThreeTwoPlusTrial,
+});
+assert.equal(addThirdWithTrial.blocked, false);
+assert.equal(addThirdWithTrial.unique, 2);
+
+const fullThreePlusTrial = [
+  ...oneOnThreeTwoPlusTrial,
+  { id: 44, student_id: 504, class_type: 'one_on_three' },
+];
+const fullTrialBadge = occupancyBadge({ courses: fullThreePlusTrial });
+assert.equal(fullTrialBadge.label, '3/3+試');
+assert.match(fullTrialBadge.tooltip, /已滿/);
+const addFourthWithTrial = incomingClassConflict({
+  incomingType: 'one_on_three',
+  overlappingCourses: fullThreePlusTrial,
+});
+assert.equal(addFourthWithTrial.blocked, true);
+assert.equal(addFourthWithTrial.reason, 'absolute');
+assert.equal(addFourthWithTrial.unique, 3);
+
+const secondTrial = incomingClassConflict({
+  incomingType: 'trial',
+  overlappingCourses: oneOnThreeTwoPlusTrial,
+});
+assert.equal(secondTrial.blocked, true);
+assert.equal(secondTrial.reason, 'trial');
+
+// A trial-only slot keeps a visible badge and does not block a regular class.
+const trialOnly = [{ id: 51, student_id: 601, class_type: 'trial' }];
+const trialOnlyBadge = occupancyBadge({ courses: trialOnly });
+assert.equal(trialOnlyBadge.count, 0);
+assert.equal(trialOnlyBadge.visible, true);
+assert.equal(trialOnlyBadge.label, '試聽');
+assert.match(trialOnlyBadge.tooltip, /試聽 1 位/);
+assert.equal(incomingClassConflict({ incomingType: 'one_on_one', overlappingCourses: trialOnly }).blocked, false);
+
+// Existing regular badges keep their shape.
+assert.equal(badge.visible, true);
+assert.equal(occupancyBadge({ courses: [] }).visible, false);

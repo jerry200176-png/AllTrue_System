@@ -216,7 +216,7 @@
                 @drop.prevent="!isTeacher && onSlotDrop(selectedDow, h, selectedDateStr, teacher.id)"
               >
                 <span
-                  v-if="getSlotOccupancy(teacher.id, selectedDow, h).count > 0"
+                  v-if="getSlotOccupancy(teacher.id, selectedDow, h).visible"
                   class="capacity-badge"
                   :class="{ 'capacity-badge-compact': isTeacherGridCompact }"
                   :style="{ background: getSlotOccupancy(teacher.id, selectedDow, h).color }"
@@ -242,7 +242,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, selectedDateStr), evalMissing: evalBadge(course, selectedDateStr), teacherTag: null }"
-                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, splitCount: getCoursesForTeacherAt(teacher.id, h).length, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
+                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, splitCount: getCoursesForTeacherAt(teacher.id, h).length, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).visible) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
                   />
                 </div>
               </div>

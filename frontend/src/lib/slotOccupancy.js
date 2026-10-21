@@ -50,18 +50,42 @@ export function displayMaxForClassTypes(types = []) {
   return TEACHER_SLOT_ABSOLUTE_MAX;
 }
 
+function isTrialCourse(course) {
+  return String(course?.class_type || '') === 'trial';
+}
+
+/**
+ * in-app #426: a trial auditor (試聽旁聽) bypasses capacity when it is added, so it
+ * never takes one of the regular seats either; otherwise 1v3 x2 + trial reads as full
+ * while 1v3 x3 + trial was allowed. Only one trial per slot is enforced separately.
+ */
+function splitTrialCourses(courses = []) {
+  const regular = [];
+  const trial = [];
+  for (const course of courses || []) {
+    (isTrialCourse(course) ? trial : regular).push(course);
+  }
+  return { regular, trial };
+}
+
 export function occupancyBadge({ courses = [] } = {}) {
-  const count = uniqueStudentCount(courses);
+  const { regular, trial } = splitTrialCourses(courses);
+  const trialCount = uniqueStudentCount(trial);
+  const count = uniqueStudentCount(regular);
+  const trialNote = trialCount > 0 ? `；試聽 ${trialCount} 位（旁聽，不占名額）` : '';
   if (count === 0) {
     return {
       count: 0,
       max: TEACHER_SLOT_ABSOLUTE_MAX,
       color: '#10b981',
-      label: '',
-      tooltip: '',
+      label: trialCount > 0 ? '試聽' : '',
+      tooltip: trialCount > 0 ? `本分校正式學生 0 位（上限 ${TEACHER_SLOT_ABSOLUTE_MAX} 位）${trialNote}` : '',
+      remaining: TEACHER_SLOT_ABSOLUTE_MAX,
+      trialCount,
+      visible: trialCount > 0,
     };
   }
-  const types = courses.map((course) => String(course.class_type || ''));
+  const types = regular.map((course) => String(course.class_type || ''));
   const max = displayMaxForClassTypes(types);
   const remaining = Math.max(0, max - count);
   const full = count >= max;
@@ -79,15 +103,18 @@ export function occupancyBadge({ courses = [] } = {}) {
     count,
     max,
     color,
-    label: `${count}/${max}`,
-    tooltip: `本分校 ${count} 位（上限 ${max} 位，${status}）${detail}`,
+    label: `${count}/${max}${trialCount > 0 ? '+試' : ''}`,
+    tooltip: `本分校 ${count} 位（上限 ${max} 位，${status}）${detail}${trialNote}`,
     remaining,
+    trialCount,
+    visible: true,
   };
 }
 
 export function incomingClassConflict({ incomingType, overlappingCourses = [] } = {}) {
-  const unique = uniqueStudentCount(overlappingCourses);
-  const types = overlappingCourses.map((course) => String(course.class_type || ''));
+  const { regular } = splitTrialCourses(overlappingCourses);
+  const unique = uniqueStudentCount(regular);
+  const types = regular.map((course) => String(course.class_type || ''));
   const newMax = Math.min(capacityForClassType(incomingType), TEACHER_SLOT_ABSOLUTE_MAX);
 
   if (incomingType === 'trial') {

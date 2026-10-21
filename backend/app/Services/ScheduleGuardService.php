@@ -982,6 +982,16 @@ class ScheduleGuardService
             return null;
         }
 
+        // in-app #426: the trial auditor sits outside the regular seats (it bypassed
+        // capacity on the way in), so it must not consume a seat for a regular class
+        // added later. Otherwise capacity depends on the order of booking: 1v3 x3 + trial
+        // is allowed, but 1v3 x2 + trial blocks the third 1v3 student.
+        $overlaps = array_values(array_filter(
+            $overlaps,
+            fn ($entry) => (string) ($entry['class_type'] ?? '') !== 'trial'
+        ));
+        $existingCount = $this->countDistinctStudents($overlaps);
+
         $hasOneOnOne = false;
         foreach ($overlaps as $entry) {
             if ((string) ($entry['class_type'] ?? '') === 'one_on_one') {
