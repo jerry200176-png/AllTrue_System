@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
+use App\Models\SecurityAuditEvent;
 use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -599,6 +600,16 @@ class PaymentReportController extends Controller
         }
 
         $userId = $request->attributes->get('auth_user_id');
+        // Founder GO 2026-10-21: 已收過，補登收款 for a legacy-flag-only course (Paid=1, no payment record).
+        if ($request->boolean('legacy_flag_backfill')) {
+            if ($freeGift || !empty($data['invoice_id']) || !empty($data['replaces_invoice_id'])) {
+                return response()->json(['message' => '補登收款不能同時指定帳單、更正或標記免費。沒有登記任何款項。', 'code' => 'legacy_backfill_conflict'], 422);
+            }
+            $request->validate(['idempotency_key' => 'required|uuid']);
+            $actorId = $request->attributes->get('auth_user')?->id;
+
+            return $this->recordLegacyFlagBackfill($request, $data, (int) $sc->getKey(), $actorId === null ? null : (int) $actorId);
+        }
         // #4132 Codex P1: feature gate + campus auth before tutoring/zero-fee classification.
         if (!empty($data['replaces_invoice_id'])) {
             if (!config('billing.receipt_correction_reissue_enabled', false)) {
@@ -771,6 +782,169 @@ class PaymentReportController extends Controller
                 'status'     => 'pending',
             ]);
         });
+    }
+
+    /**
+     * Founder GO 2026-10-21 (§只有舊「已收」標記): the director says the money of a legacy-flag-only course was received.
+     * One transaction does what director-record + confirm do for an ordinary course: open bill (or a new one for the
+     * entered amount), a confirmed report and its Payment. Paid stays 1; the course now has payment evidence, so the
+     * existing #4114 rule stops showing 需核對. A replay of the same idempotency key returns the first result.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function recordLegacyFlagBackfill(Request $request, array $data, int $courseId, ?int $userId)
+    {
+        $tokenHash = hash('sha256', "legacy-flag-backfill|{$courseId}|" . $data['idempotency_key']);
+
+        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash) {
+            $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
+                return $denied;
+            }
+            $replay = PaymentReport::query()->where('StudentClassID', $courseId)->where('report_token_hash', $tokenHash)->first();
+            if ($replay) {
+                return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
+                    'invoice_id' => $replay->InvoiceID, 'status' => $replay->status, 'replayed' => true]);
+            }
+            if ($refusal = $this->legacyFlagRefusal($course)) {
+                return $refusal;
+            }
+            if ((int) $data['amount'] <= 0) {
+                return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
+            }
+            $invoice = $this->pickOpenInvoice($courseId, $course);
+            if ($invoice && $this->invoiceCoveredByPayments($invoice, $course)) {
+                return $this->invoiceAlreadyCoveredResponse($invoice);
+            }
+            if ($over = $this->amountExceedsInvoiceResponse($invoice, $course, (float) $data['amount'])) {
+                return $over;
+            }
+            $invoice ??= app(InvoiceIssuer::class)->issue([
+                'StudentID' => $course->StudentID, 'StudentClassID' => $courseId, 'IssueDate' => Carbon::today()->toDateString(),
+                'TotalAmount' => (int) $data['amount'], 'ScheduleModeAtIssue' => 'count',
+            ]);
+            $note = trim((string) ($data['note'] ?? ''));
+            $report = PaymentReport::create([
+                'StudentID' => $course->StudentID, 'StudentClassID' => $courseId, 'InvoiceID' => $invoice->id,
+                'reported_by_name' => (string) Student::query()->whereKey($course->StudentID)->value('name'),
+                'payment_date' => $data['payment_date'], 'payment_method' => $data['payment_method'],
+                'reported_amount' => (int) $data['amount'], 'account_last5' => $data['account_last5'] ?? null,
+                'note' => $note ?: null, 'status' => 'confirmed', 'confirmed_by' => $userId, 'confirmed_at' => Carbon::now(),
+                'report_token_hash' => $tokenHash, 'token_expires_at' => Carbon::now(),
+            ]);
+            $payment = Payment::create([
+                'InvoiceID' => $invoice->id, 'Amount' => (int) $data['amount'], 'PaidAt' => $data['payment_date'],
+                'Method' => $data['payment_method'] === 'transfer' ? 'transfer' : 'cash',
+                'Note' => $note ?: "舊資料已收標記補登收款 (report #{$report->id})", 'payment_report_id' => $report->id,
+            ]);
+            // Same projection as confirm(): Payment rows decide the bill, never stored PaidAmount (#3864).
+            $after = $this->invoiceProjection($invoice, $course);
+            $invoice->update([
+                'PaidAmount' => (int) $after['net_applied'],
+                'Status' => (int) $after['outstanding_amount'] <= 0 ? 'paid' : ((int) $after['net_applied'] > 0 ? 'partial' : 'unpaid'),
+                'reconciled_at' => Carbon::now(), 'reconciled_by' => $userId,
+            ]);
+            $report->update(['payment_id' => $payment->id]);
+            $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
+
+            return response()->json(['message' => '已補登收款', 'report_id' => $report->id, 'payment_id' => $payment->id,
+                'invoice_id' => (int) $invoice->id, 'status' => 'confirmed']);
+        });
+    }
+
+    /**
+     * POST /api/v1/payment-reports/legacy-flag-clear — Founder GO 2026-10-21: 其實沒收，改成未繳.
+     * Clears only the legacy flag (Paid=0, Pay=0, PayDate=null) of a legacy-flag-only course; never touches invoices or
+     * payments. Repeating it on a course already back to Paid=0 changes nothing (idempotent).
+     */
+    public function clearLegacyFlag(Request $request)
+    {
+        $data = $request->validate([
+            'student_class_id' => 'required|integer|min:1',
+            'reason' => 'required|string|min:2|max:200',
+        ]);
+        $courseId = (int) $data['student_class_id'];
+        $actorId = $request->attributes->get('auth_user')?->id;
+
+        return DB::transaction(function () use ($request, $data, $courseId, $actorId) {
+            $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
+                return $denied;
+            }
+            $hasPayment = isset(app(BillingPayableResolver::class)->validPaymentEvidence([$courseId])['classes'][$courseId]);
+            if ((int) ($course->Paid ?? 0) !== 1 && !$hasPayment) {
+                return response()->json(['message' => '這門課已經是未繳，不需要再改', 'student_class_id' => $courseId, 'replayed' => true]);
+            }
+            if ($refusal = $this->legacyFlagRefusal($course)) {
+                return $refusal;
+            }
+            $reopen = $course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+            $course->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null] + $reopen);
+            $this->auditLegacyFlag($course, $actorId === null ? null : (int) $actorId, 'student_class.legacy_paid_flag_cleared', [
+                'reason_code' => 'legacy_paid_flag_cleared',
+                'reason_hash' => hash('sha256', trim((string) $data['reason'])),
+                'outstanding_amount' => (int) ($course->Charge ?? 0),
+            ]);
+
+            return response()->json(['message' => '已改成未繳', 'student_class_id' => $courseId]);
+        });
+    }
+
+    /** Campus authorization for the legacy-flag actions (404 for a missing course, 403 outside the caller's campuses). */
+    private function legacyFlagAccessRefusal(Request $request, ?StudentClass $course)
+    {
+        $campusId = $course ? (int) DB::table('Student')->where('id', $course->StudentID)->value('CampusID') : 0;
+        if (!$course || $campusId <= 0) {
+            return response()->json(['message' => '找不到此課程'], 404);
+        }
+        $allowed = $request->attributes->get('auth_role') === 'super_admin'
+            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
+
+        return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
+    }
+
+    /**
+     * Both legacy-flag actions apply only to a single count-mode course whose `paid` rests on StudentClass.Paid alone:
+     * Paid=1, no net payment on any non-void bill (BillingPayableResolver::validPaymentEvidence, the #4114 rule) and no
+     * pending or confirmed payment report. Caller holds the course row lock.
+     */
+    private function legacyFlagRefusal(StudentClass $course)
+    {
+        $id = (int) $course->getKey();
+        $refuse = fn (string $message, string $code) => response()->json(['message' => $message . '沒有變更任何資料。', 'code' => $code], 422);
+        if ($blocked = $this->tutoringPaymentBlocked($course)) {
+            return $blocked;
+        }
+        if ($waived = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能變更繳費狀態')) {
+            return $waived;
+        }
+        if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage()) {
+            return $refuse('目前只有單一堂數制課程可以在這裡處理舊「已收」標記；月結或共用方案請到學生帳務逐筆核對。', 'legacy_flag_count_only');
+        }
+        if ((int) ($course->Paid ?? 0) !== 1) {
+            return $refuse('這門課沒有「已收」標記，請重新整理。', 'legacy_flag_not_set');
+        }
+        if (isset(app(BillingPayableResolver::class)->validPaymentEvidence([$id])['classes'][$id])) {
+            return $refuse('這門課已有收款紀錄，不是只有舊標記；請重新整理後在學生帳務核對。', 'legacy_flag_has_payment');
+        }
+        $report = PaymentReport::query()->where('StudentClassID', $id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->first();
+        if ($report) {
+            return $report->status === 'pending'
+                ? $refuse('這門課有待核對的繳費回報，請先確認入帳或退回那筆回報。', 'pending_report_exists')
+                : $refuse('這門課已有確認過的收款回報，請在學生帳務核對那筆收款。', 'confirmed_report_exists');
+        }
+
+        return null;
+    }
+
+    /** @param array<string, int|string> $metadata no free text: a reason is stored only as its hash */
+    private function auditLegacyFlag(StudentClass $course, ?int $actorId, string $event, array $metadata): void
+    {
+        SecurityAuditEvent::append($event, 'success', [
+            'campus_id' => DB::table('Student')->where('id', $course->StudentID)->value('CampusID'),
+            'actor_type' => 'user', 'actor_id' => $actorId,
+            'subject_type' => 'student_class', 'subject_id' => (int) $course->getKey(),
+        ], $metadata + ['outcome' => 'success']);
     }
 
     /** Receipt-intent reissue; confirmation separately settles the pending report. @param array<string, mixed> $data */

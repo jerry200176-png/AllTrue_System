@@ -88,6 +88,7 @@
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
                 @record="openEntry"
                 @issue="openIssue"
                 @confirmed="openReceipt"

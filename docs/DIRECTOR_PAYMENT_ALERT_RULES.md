@@ -170,3 +170,12 @@ Founder Q3 是本次對 `GET /api/v1/alerts/tuition` 顯示語意的明示同意
 - 前端把這類 `paid` 顯示為中性的「需核對：舊資料標記已收，缺付款紀錄」（琥珀色），不顯示綠色「已收」，也不顯示「未繳」。`renew_needed`／`monthly_due_soon` 的狀態文字不變，但學生清單不再把它們算成「已收」。
 - `payment_status`、列入條件、金額、`outstanding`、對外通知與催繳都**不變**：不算欠款、不進「有未繳」、不催繳；學生清單「沒有未繳」篩選照常包含。
 - 唯讀：不寫帳務、不改 `StudentClass.Paid`／`CoursePackage.paid`、不需 migration。課程管理 `GET /api/v1/student-classes` 的 `paid` 列帶同一欄位。
+
+### 主任處理：補登收款或改成未繳（Founder GO 2026-10-21）
+
+上面的標示本身仍是唯讀；Founder 2026-10-21 另外同意（§變更管制）在學生帳務的合約卡給主任／超級管理員兩個**明確動作**，取代沒有出路的「需核對」。卡片文字：「這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。」
+
+- **適用範圍（兩個動作相同，後端鎖課程列後重查）**：單一堂數制課程（不含月結、共用方案、輔導／0 元、確認不收）、`Paid=1`、`validPaymentEvidence` 沒有淨額 > 0 的收款、沒有 `pending`／`confirmed` 繳費回報；並依學生校區授權（其他校區 403，老師 403）。不符一律 422（中文說明，結尾「沒有變更任何資料。」），不寫任何東西。
+- **已收過，補登收款**：`POST /api/v1/payment-reports/director-record`，`legacy_flag_backfill=true`、必填 `idempotency_key`（UUID）、收款日期、繳費方式（匯款／現金）、金額（預填合約金額，可改）、選填備註。走與「登記＋確認入帳」相同的證據：有未繳清帳單就收在那張（不超過其未收額），沒有帳單就用 `InvoiceIssuer` 依填寫金額開一張；建立 `confirmed` 繳費回報與 Payment、依 Payment 重算帳單狀態。`Paid` 維持 1，之後有收款紀錄，「需核對」依上方規則自然消失。同一 `idempotency_key` 重送回傳第一次的結果（`replayed=true`）；換新 key 會因為已有收款紀錄被擋。
+- **其實沒收，改成未繳**：`POST /api/v1/payment-reports/legacy-flag-clear`，必填原因。只寫 `Paid=0`、`Pay=0`、`PayDate=null`（`closed_reason=settled` 改回 `settled_pending`，與撤銷收款相同）；**不動任何帳單或收款**。之後依既有規則列為未繳、未收額 = 合約金額。已經是未繳時重送回 200（`replayed=true`）且不重複記錄。`SecurityAuditEvent`（`student_class.legacy_paid_flag_cleared`）只存原因的 SHA-256，不存原文；補登記 `student_class.legacy_paid_flag_backfill`。
+- 測試：`tests/Feature/Billing/LegacyPaidFlagResolveTest.php`、`frontend/src/components/__tests__/LegacyPaidFlagActions.test.js`。

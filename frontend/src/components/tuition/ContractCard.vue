@@ -10,7 +10,8 @@
     <!-- Excel card: pay date + amount on top, remaining lessons as the big number (spec 2.3). -->
     <div class="contract__excel" data-testid="contract-excel">
       <div class="contract__pay">
-        <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :contract-amount="contractCharge" @resolved="emit('changed')" />
+        <p v-else-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
@@ -112,6 +113,7 @@ import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
@@ -138,6 +140,8 @@ const props = defineProps({
   sharedLeadSubject: { type: String, default: '' },
   // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
+  // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
+  canResolveLegacy: { type: Boolean, default: false },
 });
 const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
 
@@ -188,6 +192,11 @@ const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p
 // #4150 review: a waiver (server ContractMoneyState::isWaived; a real one keeps Paid=0) is terminal, so no unpaid controls.
 const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
+// Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid,
+// nothing owed or waiting for review. The server re-checks everything and refuses with a sentence otherwise.
+const legacyResolvable = computed(() => legacyUnverified.value && props.canResolveLegacy && props.course.paid === true
+  && !props.course.package_id && !props.course.free_gift_settled && !isMonthly.value && !waived.value
+  && !(props.outstanding > 0) && !props.pendingReport && !props.sharedFollower);
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
