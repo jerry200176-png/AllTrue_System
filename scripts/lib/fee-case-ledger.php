@@ -206,7 +206,7 @@ function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $cou
                 ->orWhereIn('payment_report_id', $reportIds))->orderBy('id')
                 ->select(array_merge(['id', 'student_class_id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at'], $optional)))
                 ->map(static function ($c) use ($enum) {
-                    if (property_exists($c, 'kind')) $c->kind = $enum($c->kind, ['receipt_reissue', 'agreed_fee', 'agreed_fee_unbilled']);
+                    if (property_exists($c, 'kind')) $c->kind = $enum($c->kind, ['receipt_reissue', 'agreed_fee', 'agreed_fee_unbilled', 'agreed_fee_in_place']);
                     return $c;
                 })->all()
             : [];

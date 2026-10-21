@@ -26,6 +26,8 @@ final class SecurityAuditEvent
         'verification_method',
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
         'acting_as', 'capability_campus_count', 'outstanding_amount',
+        // Agreed-fee in-place correction (Founder 2026-10-21): integer money before/after only.
+        'paid_before', 'outstanding_after',
         // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
         'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
     ];

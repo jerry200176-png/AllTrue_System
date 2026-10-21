@@ -137,8 +137,10 @@ final class ContractMoneyState
      * Each voided report must match exactly one full reversal; duplicates and split reversals fail closed.
      * Missing legacy links and inconsistent stored balances also fail closed.
      * Agreed-fee replacement opts into checking retained void history too; legacy callers keep their scope.
+     * $settledInvoiceId (agreed-fee in-place, Founder 2026-10-21): that one live bill may carry confirmed net money;
+     * every other bill must still net to zero and every reversal on any bill still needs exact receipt provenance.
      */
-    public static function blocksUnpaidCorrection(int $studentClassId, bool $includeVoided = false): bool
+    public static function blocksUnpaidCorrection(int $studentClassId, bool $includeVoided = false, ?int $settledInvoiceId = null): bool
     {
         // Default path keeps the #4217 live-invoice filter line intact (stale-copy guard).
         // includeVoided=true widens scope for agreed-fee retained void history only.
@@ -151,13 +153,14 @@ final class ContractMoneyState
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->groupBy('Invoice.id', 'Invoice.PaidAmount')
             ->havingRaw("Invoice.PaidAmount != 0 OR SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE COALESCE(Payment.Amount, 0) END) != 0")
+            ->when($settledInvoiceId !== null, fn ($q) => $q->where('Invoice.id', '!=', $settledInvoiceId))
             ->exists()) {
             return true;
         }
         $payments = $invoices()->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')->get(['Payment.*']);
         // SQL collation can treat 'VOID' or 'void ' as 'void'; provenance uses exact PHP semantics.
         // Refuse any balance disagreement rather than normalizing ambiguous historical methods.
-        if ($payments->groupBy('InvoiceID')->contains(fn ($rows) => (int) $rows->sum(fn ($p) =>
+        if ($payments->groupBy('InvoiceID')->except((array) $settledInvoiceId)->contains(fn ($rows) => (int) $rows->sum(fn ($p) =>
             (int) $p->Amount < 0 || (string) $p->Method === 'void' ? -abs((int) $p->Amount) : (int) $p->Amount) !== 0)) {
             return true;
         }

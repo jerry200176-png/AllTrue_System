@@ -144,7 +144,7 @@ final class AgreedFeeTestSchema
     {
         self::assertTestConnection();
         if (DB::table('invoice_corrections')
-            ->whereIn('kind', ['agreed_fee', 'agreed_fee_unbilled'])
+            ->whereIn('kind', ['agreed_fee', 'agreed_fee_unbilled', 'agreed_fee_in_place'])
             ->orWhereNull('original_invoice_id')
             ->orWhereNull('replacement_invoice_id')
             ->orWhereNull('amount')

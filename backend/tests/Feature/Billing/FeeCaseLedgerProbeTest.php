@@ -98,13 +98,14 @@ class FeeCaseLedgerProbeTest extends TestCase
         $r = $this->probe($f);
         $this->assertTrue($r['snapshot_complete']); $this->assertCount(1, $r['corrections']);
         $this->assertSame('receipt_reissue', ((array) $r['corrections'][0])['kind'] ?? null);
-        foreach (['agreed_fee', 'agreed_fee_unbilled'] as $kind) {
+        foreach (['agreed_fee', 'agreed_fee_unbilled', 'agreed_fee_in_place'] as $kind) {
             $unbilled = $kind === 'agreed_fee_unbilled';
+            $inPlace = $kind === 'agreed_fee_in_place';
             DB::table('invoice_corrections')->where('id', $correction)->update(['kind' => $kind,
                 'old_charge' => 8000, 'new_charge' => 500, 'original_invoice_total' => $unbilled ? null : 7600,
                 'payment_report_id' => null,
                 'original_invoice_id' => $unbilled ? null : $f['invoice']->id,
-                'replacement_invoice_id' => $unbilled ? null : $replacement->id]);
+                'replacement_invoice_id' => $unbilled || $inPlace ? null : $replacement->id]);
             $fee = $this->probe($f);
             $c = (array) $fee['corrections'][0];
             $this->assertSame([$kind, 8000, 500, $unbilled ? null : 7600], [
