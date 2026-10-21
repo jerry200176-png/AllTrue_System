@@ -285,15 +285,16 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const noObligation = computed(() => data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
-// In-app #425: 繳費單 needs an open bill on this card; reasons worded as TuitionDocActions (no new money rule).
+// In-app #425: 繳費單 for an open bill, or the estimated one for a contract not billed yet (same as the 帳務中心 list);
+// otherwise disabled with the TuitionDocActions wording (no new money rule). 金額待確認 is the server verdict.
 const slipState = computed(() => {
   if (!props.canViewDocs) return { ok: false, reason: '沒有權限' };
+  if (legacyUnverified.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
+  if (props.course.amount_pending_confirmation === true) return { ok: false, reason: '金額待確認，請先確認應收金額' };
   if (props.sharedFollower) return { ok: false, reason: '共用方案繳費單請至成員課程開立' };
   if (props.pendingReport) return { ok: false, reason: '已回報，等確認入帳' };
-  if (props.outstanding > 0) return { ok: true };
-  if (legacyUnverified.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
-  if (props.course.paid) return { ok: false, reason: '已繳清，不用繳費單' };
-  return { ok: false, reason: '還沒開帳單' };
+  if (props.outstanding > 0 || (!props.course.paid && !props.amounts)) return { ok: true };
+  return { ok: false, reason: '已繳清，不用繳費單' };
 });
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.

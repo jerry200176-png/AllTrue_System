@@ -44,7 +44,8 @@ describe('ContractCard 繳費單 (in-app #425)', () => {
   it.each([
     ['pending report', { outstanding: 4400, pendingReport: { report_id: 1, amount: 4400, date: '' } }, { payment_status: 'pending_report' }],
     ['paid', { course: { id: 9, subject: '數學', paid: true } }, { payment_status: 'paid' }],
-    ['no bill yet', {}, { payment_status: undefined }],
+    ['bills all paid', { course: { id: 9, subject: '數學', paid: false }, amounts: { due: 4400, received: 4400, owed: 0 } }, { payment_status: 'paid' }],
+    ['金額待確認 (server verdict)', { outstanding: 4400, course: { id: 9, subject: '數學', paid: false, amount_pending_confirmation: true } }, { payment_status: 'unpaid', amount_pending_confirmation: true }],
     ['legacy flag only', { course: { id: 9, subject: '數學', paid: true }, lastPayment: { legacyUnverified: true } }, { payment_status: 'paid', legacy_paid_without_invoice: true }],
     ['no permission', { outstanding: 4400, canViewDocs: false }, { payment_status: 'unpaid', __noView: true }],
   ])('%s: disabled with the same reason as the 帳務中心 list', async (_l, props, row) => {
@@ -54,6 +55,12 @@ describe('ContractCard 繳費單 (in-app #425)', () => {
     expect(slip(w).disabled).toBe(true);
     await w.get('[data-testid="contract-slip"]').trigger('click');
     expect(w.emitted('slip')).toBeUndefined();
+  });
+
+  it('no bill yet: the estimated slip by course is offered, like the unbilled list row', async () => {
+    const w = await card({});
+    expect(slip(w)).toEqual(listReason({ payment_status: 'unpaid', payable_status: 'unbilled' }));
+    expect(slip(w)).toEqual({ disabled: false, reason: null });
   });
 
   it('shared-package follower and waived / tutoring cards', async () => {

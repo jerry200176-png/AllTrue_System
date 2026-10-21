@@ -245,7 +245,7 @@
                   class="ledger-more"
                   type="button"
                   :data-testid="`ledger-receipt-view-${r.report_id}`"
-                  @click="openReceipt(r.report_id, '')"
+                  @click="viewReceipt(r.report_id)"
                 >查看收據</button>
                 <button
                   v-if="canShowReceiptCoverage(r)"
@@ -302,7 +302,7 @@
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
-      <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" @close="slipOpen = false" />
+      <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
   </Transition>
 </template>
@@ -770,10 +770,15 @@ function openEntry(course) {
 const receiptOpen = ref(false);
 const receiptReportId = ref(null);
 const receiptLaterLabel = ref('');
-function openReceipt(reportId, laterLabel = '稍後再開') {
+function openReceipt(reportId) {
   receiptReportId.value = Number(reportId);
-  receiptLaterLabel.value = laterLabel;
+  receiptLaterLabel.value = '稍後再開';
   receiptOpen.value = true;
+}
+// In-app #425: viewing a confirmed row's receipt is not the post-確認入帳 step, so no 稍後再開 label.
+function viewReceipt(reportId) {
+  openReceipt(reportId);
+  receiptLaterLabel.value = '';
 }
 // In-app #425: 繳費單 on a contract card, same modal and request as the 帳務中心 list (oldest open bill first).
 const slipOpen = ref(false);
@@ -785,7 +790,8 @@ function openSlip(course) {
   slipStudentClassId.value = inv ? null : Number(course.id);
   slipOpen.value = true;
 }
-watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; slipOpen.value = false; });
+watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpen.value = false; });
 
 // In-app #398: 「登記繳費回報」 from 課程查找 lands on the entry form, with the ledger behind it. Armed once per open;
 // a course whose card would not offer 登記這筆 (pending report, waived, tutoring, package member) just shows the ledger.

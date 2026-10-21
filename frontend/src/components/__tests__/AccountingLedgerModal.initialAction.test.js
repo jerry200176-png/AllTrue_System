@@ -104,4 +104,20 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     expect(w.get('[data-testid="slip-stub"]').text()).toBe('1|');
     w.unmount();
   });
+
+  it('繳費單 on a contract with no bill yet opens the estimated slip by course', async () => {
+    const w = mountLedger({ courses: [course(12)], invoices: [] });
+    await flushPromises();
+    await w.get('[data-testid="contract-slip"]').trigger('click');
+    expect(w.get('[data-testid="slip-stub"]').text()).toBe('|12');
+    w.unmount();
+  });
+
+  it('a 金額待確認 contract keeps 繳費單 disabled with the list reason', async () => {
+    const w = mountLedger({ courses: [course(12, { stop: true, amount_pending_confirmation: true })], invoices: [inv(1, 12)] });
+    await flushPromises();
+    expect(w.get('[data-testid="contract-slip"]').element.disabled).toBe(true);
+    expect(w.get('[data-testid="contract-slip-reason"]').text()).toBe('金額待確認，請先確認應收金額');
+    w.unmount();
+  });
 });
