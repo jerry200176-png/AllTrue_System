@@ -34,14 +34,15 @@ if [[ -z "$OVERLAY" ]]; then
 fi
 
 [[ -f "$OVERLAY" ]] || fail "missing overlay $OVERLAY"
+# Sunrise #470 replaced its legacy version pin with a vendored rulebook lock.
+# Validate that pin's integrity, without importing rules or authority into AllTrue.
+if grep -Fq 'governance/RULEBOOK.lock' "$OVERLAY"; then
+  python3 "$ROOT/scripts/governance/validate-sunrise-rulebook-pin.py"
+  exit 0
+fi
 # A missing match is an input/contract error, not an unlabelled pipefail exit.
 PIN=$(grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" | head -1 | sed 's/^v//' || true)
-if [[ -z "$PIN" ]]; then
-  if grep -Fq 'governance/RULEBOOK.lock' "$OVERLAY"; then
-    fail "sunrise overlay migrated to RULEBOOK.lock (sunrise-cafe#470); legacy Constitution equality is unverified. Reconcile the canonical contract; do not substitute SUNRISE_OVERLAY_PIN."
-  fi
-  fail "could not parse overlay pin version"
-fi
+[[ -n "$PIN" ]] || fail "could not parse overlay pin version"
 
 # Strip leading v from constitution if present
 VER_NORM="${VER#v}"

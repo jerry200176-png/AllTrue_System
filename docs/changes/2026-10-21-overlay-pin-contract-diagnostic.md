@@ -1,7 +1,7 @@
-## 2026-10-21 — explain the shared overlay contract failure
+## 2026-10-21 — validate the successor Sunrise overlay pin
 <!-- release-notes: silent_ship=silent-2026-10-21-overlay-pin-contract-diagnostic -->
 <!-- silent-reason: internal CI failure diagnosis; no product behavior or governance authority change -->
 
-- The legacy overlay checker now explains the sunrise-cafe #470 rulebook migration instead of exiting silently on an empty version match, and removes its temporary download on exit.
-- Legacy version equality, drift rejection and malformed-input rejection remain enforced. This change does not migrate AllTrue governance or make the migrated upstream contract pass.
-- Four offline regression tests exercise the actual shell gate. Rollback: revert this diagnostic-only change; application runtime and data are unaffected.
+- Sunrise-cafe #470 replaced its legacy Constitution version with a rulebook lock. The checker validates the successor pin against both the vendored bytes and their immutable portfolio-ops source commit, rejecting missing/malformed provenance, drift and network failure.
+- Legacy input still requires exact Constitution version equality. AllTrue's own Constitution, authority, approval boundaries and specific holds are unchanged; no fetched rule text is executed or adopted.
+- Ten offline tests exercise the shell gate and hash verifier. Rollback: revert this compatibility change; application runtime and data are unaffected.
