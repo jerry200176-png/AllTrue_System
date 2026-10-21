@@ -38,6 +38,7 @@ use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
+use App\Services\StudentClassActivity;
 use App\Services\SessionContractRecoveryService;
 use App\Exceptions\SessionContractRecoveryException;
 use App\Services\ScheduleGuardService;
@@ -516,20 +517,13 @@ class StudentClassController extends Controller
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
             $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
-            // 堂數制 Remaining = 購買堂數 − 實際已上；月結 SessionCount 是預排數，不作餘額投影。
-
-            // #613 A1：若課程有「部分時數」事件（RemainingMinutes 非整堂倍數），分鐘為權威，
-            // 不可用 count-based observed 覆寫 recomputeCounters 已寫入的衍生值；否則沿用既有 self-heal。
-            $perSessionMin = max(1, (int) ($class->SessionDuration ?: 60));
+            // 堂數制 Remaining = 購買堂數 − 實際已上；月結與部分時數（#613 A1，分鐘為權威）不覆寫。
             $storedRemainingMinutes = $class->RemainingMinutes;
-            $hasFractionalBalance = $storedRemainingMinutes !== null
-                && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
-
-            if ($class->getAttribute('payment_type') === 'session'
-                && $class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
-                $observedUsedSessions = min($class->getAttribute('sessions_purchased'), $observedUsedSessions);
-                $class->UsedSessions = $observedUsedSessions;
-                $class->RemainingSessions = max(0, $class->getAttribute('sessions_purchased') - $observedUsedSessions);
+            $hasPartialLedger = (bool) ($usageDiagnostic['has_partial'] ?? false);
+            $healedUsage = StudentClassActivity::selfHealedUsage($class, $observedUsedSessions, $hasPartialLedger);
+            if ($healedUsage !== null) {
+                $class->UsedSessions = $healedUsage['used'];
+                $class->RemainingSessions = $healedUsage['remaining'];
             }
             $class->setAttribute('sessions_used', (int) ($class->UsedSessions ?? 0));
             $class->setAttribute('remaining_sessions', (int) ($class->RemainingSessions ?? 0));
@@ -657,6 +651,10 @@ class StudentClassController extends Controller
                 && $class->getAttribute('payment_status') === 'paid' && !isset($paymentEvidence[(int) $class->ID]));
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
+            // in-app #427: the one 進行中／歷史 verdict; 學生管理, 課程管理 and the duplicate prompt all read it.
+            $historyReason = StudentClassActivity::historyReason($class, (int) ($class->RemainingSessions ?? 0), $resolved, $hasPartialLedger);
+            $class->setAttribute('history_reason', $historyReason);
+            $class->setAttribute('is_active_course', StudentClassActivity::isActive($class, $historyReason));
             $class->trial_converted_to_id = $class->trial_converted_to_id
                 ? (int) $class->trial_converted_to_id
                 : null;
@@ -4884,18 +4882,7 @@ class StudentClassController extends Controller
      */
     private function applyTeacherOrSubstituteStudentClassScope($query, int $teacherId): void
     {
-        $query->where(function ($q) use ($teacherId) {
-            $q->where('TeacherID', $teacherId)
-                ->orWhereExists(function ($sub) use ($teacherId) {
-                    $sub->select(DB::raw(1))
-                        ->from('schedules')
-                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
-                        ->where('schedules.teacher_id', $teacherId)
-                        ->where('schedules.status', 'scheduled')
-                        ->whereNotNull('schedules.original_schedule_id');
-                });
-            SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
-        });
+        (new StudentClass())->scopeVisibleToTeacher($query, $teacherId);
     }
 
     /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */

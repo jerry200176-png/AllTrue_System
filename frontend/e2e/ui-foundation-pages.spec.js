@@ -476,6 +476,9 @@ async function installApiMocks(page, mode, pageName = '', authProfile = null, on
               room_name: '303教室',
               status: 'inactive',
               closed_reason: 'completed',
+              // Server verdict (StudentClassActivity, in-app #427); the page reads it instead of re-deriving.
+              history_reason: 'completed',
+              is_active_course: false,
             },
           ],
         }),
