@@ -14,7 +14,7 @@
 
 ### 2. 合併與 R3 上線分批（Founder 對話中對提案回覆「好」）
 
-- **(a) 合併**：Agent 可自行合併**任何風險等級 R0–R3** 的 PR，不必問 Founder，條件全部成立：head 上每個 required check 綠；Codex／review 指出的問題已處理且每個 review thread 都已 resolve；PR **不含 migration**。只新增型 migration 照舊適用 R5 的 T2 規則（2026-10-14（三）補充第 1 條）；會 drop／rename／change 欄位或寫資料的 migration 仍須 Founder 對確切範圍決定。本條取代 2026-10-12 第 1 條與 `RISK_BASED_MERGE_POLICY.md` §Founder standing exception 中「R3 只限已決定的帳務／權限規則才可自行合併」的較窄條件（僅限合併；不放寬下列 (b)(c)）。
+- **(a) 合併**：Agent 可自行合併**任何風險等級 R0–R3** 的 PR，不必問 Founder，條件全部成立：head 上每個 required check 綠；Codex／review 指出的問題已處理且每個 review thread 都已 resolve；PR **不含 migration**。只新增型 migration 照舊適用 R5 的 T2 規則（2026-10-14（三）補充第 1 條）；會 drop／rename／change 欄位或寫資料的 migration 仍須 Founder 對確切範圍決定。本條取代 2026-10-12 第 1 條與 `RISK_BASED_MERGE_POLICY.md` §Founder standing exception 中「R3 只限已決定的帳務／權限規則才可自行合併」的較窄條件（僅限合併；不放寬下列 (b)(c)）。**不取代** 2026-10-14（二）第 5 條：會授予／擴大權限或改變核准方式、受保護邊界的治理／控制面變更（含 workflow、`deploy.yml`、`autonomy_gate.py`）仍由 Founder 批准後才合併。`AGENTS.md` Workflow Risk Tiers 的 T3 列與 `RISK_BASED_MERGE_POLICY.md` §T3/protected boundary 已同步。
 - **(b) R3 上線**：R3 的 production activation 仍由 Founder 在平台上審核（GO 文字任何 Agent token 都寫得出來，Founder 2026-10-08 Q1 A 維持），但**分批**：R3 範圍隨 release train 班次（台北 12:17／18:17）上線，Founder 每班最多按一次；除重大 production 事故外，Agent 不另外 dispatch 單次 R3 部署。
 - **(c) 仍須問 Founder**：非只新增型 migration、正式資料修改／修復、credential rotation、受保護的政策決定（帳務／付款規則、權限）。
 

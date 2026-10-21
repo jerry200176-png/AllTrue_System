@@ -125,7 +125,7 @@ def main():
             print(" ".join(fields + [r["reply_b64"]]))
         return
     head = "close_as_logged" if kind == "phase-a" else "expected_status"
-    lines = [f"## In-app write batch: {len(rows)} row(s), applied in order without per-run approval", "",
+    lines = [f"## In-app write batch requested: {len(rows)} row(s) (not yet applied; the write job reports the result)", "",
              f"| # | bug_id | github_issue_url | {'disposition' if kind == 'phase-a' else 'production_revision'} | {head} | len | sha256 |",
              "|---|---|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
@@ -136,7 +136,7 @@ def main():
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     if kind == "phase-a":
-        logged = [r["github_issue_url"] for r in rows if r["close_as_logged"] == "true"]
+        logged = [[r["bug_id"], r["github_issue_url"]] for r in rows if r["close_as_logged"] == "true"]
         output = {"logged_issues": json.dumps(logged, separators=(",", ":"))}
     else:
         shipped = [[r["bug_id"], r["github_issue_url"], r["production_revision"]] for r in rows

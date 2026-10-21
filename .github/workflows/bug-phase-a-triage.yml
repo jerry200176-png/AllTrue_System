@@ -47,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-ssh
     timeout-minutes: 30
+    outputs:
+      applied: ${{ steps.write.outputs.applied }}
     steps:
       - name: Checkout pinned SSH trust helper and row validator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,18 +77,21 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
       - name: Write triage and public replies
+        id: write
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
         # rows_json is deliberately not in env (GitHub prints step env in the public log header). The
         # validator re-reads the event payload and emits one safe line per row: validated tokens plus
         # the base64 reply. Rows run in order in one SSH session; the first failing row stops the batch
-        # (earlier rows stay written; a rerun is idempotent per row).
+        # (earlier rows stay written; a rerun is idempotent per row). The bug_ids the remote confirms
+        # are published as `applied`, so the follow-on job still handles rows written before a failure.
         run: |
           set -euo pipefail
           ROWS="$(python3 .github/scripts/inapp-writeback-rows.py phase-a write)"
           ROW_COUNT="$(printf '%s\n' "$ROWS" | wc -l | tr -d ' ')"
           ROWS_B64="$(printf '%s' "$ROWS" | base64 | tr -d '\n')"
+          set +e
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
@@ -94,7 +99,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "ROW_COUNT='$ROW_COUNT' ROWS_B64='$ROWS_B64' bash -s" <<'REMOTE'
+            "ROW_COUNT='$ROW_COUNT' ROWS_B64='$ROWS_B64' bash -s" <<'REMOTE' | tee "$RUNNER_TEMP/write.log"
           set -euo pipefail
           cd /home/admin/backend
           applied=0
@@ -176,15 +181,23 @@ jobs:
           ' \
           </dev/null
           applied=$((applied + 1))
+          echo "applied_row=$BUG_ID"
           done 3< <(printf '%s' "$ROWS_B64" | base64 -d; echo)
           [[ "$applied" == "$ROW_COUNT" ]] || { echo "applied $applied of $ROW_COUNT rows"; exit 1; }
           echo "applied $applied of $ROW_COUNT rows"
           REMOTE
+          rc=${PIPESTATUS[0]}
+          set -e
+          APPLIED="$({ grep -E '^applied_row=[0-9]+$' "$RUNNER_TEMP/write.log" || true; } | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          echo "applied=$APPLIED" >> "$GITHUB_OUTPUT"
+          echo "Write result: $(jq length <<< "$APPLIED") of $ROW_COUNT row(s) applied (exit $rc)." >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
 
   # F12/F14: a logged suggestion's issue is the backlog; label it so reconcile keeps it open.
   label-logged:
     needs: [preview, triage]
-    if: needs.preview.outputs.logged_issues != '[]'
+    # always(): label the rows that were written even if a later row failed.
+    if: always() && needs.preview.outputs.logged_issues != '[]' && needs.triage.outputs.applied != '' && needs.triage.outputs.applied != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -195,10 +208,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           LOGGED_ISSUES: ${{ needs.preview.outputs.logged_issues }}
+          APPLIED: ${{ needs.triage.outputs.applied }}
         run: |
           set -euo pipefail
           gh label create in-app:logged --force --color C2E0C6 --description "F12: in-app suggestion closed as logged; this issue is the backlog"
-          for GITHUB_ISSUE_URL in $(jq -r '.[]' <<< "$LOGGED_ISSUES"); do
+          for GITHUB_ISSUE_URL in $(jq -r --argjson a "$APPLIED" '.[] | select(.[0] as $id | $a | index($id)) | .[1]' <<< "$LOGGED_ISSUES"); do
             [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
             gh issue edit "$GITHUB_ISSUE_URL" --add-label in-app:logged
           done

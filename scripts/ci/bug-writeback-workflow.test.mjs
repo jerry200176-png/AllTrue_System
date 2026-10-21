@@ -83,7 +83,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
     assert.ok(good.summary.includes(`| 1 | 41 | ${url(7)} | bug | false | ${[...tricky].length} | ${createHash('sha256').update(tricky, 'utf8').digest('hex')} |`)
       && good.summary.includes(`| 2 | 42 | ${url(8)} | suggestion | true |`), 'preview table must list every row id, issue, disposition, close, len and sha256');
     assert.ok(!good.summary.includes('第一行') && !good.summary.includes('已記錄') && !good.out.includes('第一行'), 'reply text never reaches the summary or log');
-    assert.equal(good.output, `logged_issues=${JSON.stringify([url(8)])}\n`);
+    assert.equal(good.output, `logged_issues=${JSON.stringify([['42', url(8)]])}\n`);
     const f = [
       { bug_id: '50', expected_status: 'resolved', github_issue_url: url(9), public_reply: `更新 ${url(9)}` },
       { bug_id: '51', expected_status: 'closed', github_issue_url: url(10), public_reply: `上線 ${url(10)}`, production_revision: 'a'.repeat(40), deploy_run_id: '123' },
@@ -119,35 +119,54 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       }
     }
 
-    // Run each writer's remote script against stub php/git; replies must round-trip exactly.
+    // Run each writer step end to end: a stub ssh runs the remote command locally, stub php/git stand in
+    // for tinker. Replies must round-trip exactly, and a mid-batch failure publishes only written rows.
     const stubs = path.join(dir, 'bin');
     fs.mkdirSync(stubs);
-    fs.writeFileSync(path.join(stubs, 'php'), '#!/usr/bin/env bash\n{ printf "%s %s %s " "$BUG_ID" "$GITHUB_ISSUE_URL" "${DISPOSITION:-$EXPECTED_STATUS}"; printf "%s" "$PUBLIC_REPLY" | base64 -w0; printf " %s\\n" "$(cat | wc -c)"; } >> "$CALLS"\n');
+    fs.writeFileSync(path.join(stubs, 'php'), '#!/usr/bin/env bash\n[[ "$BUG_ID" == "$FAIL_BUG" ]] && exit 1\n{ printf "%s %s %s " "$BUG_ID" "$GITHUB_ISSUE_URL" "${DISPOSITION:-$EXPECTED_STATUS}"; printf "%s" "$PUBLIC_REPLY" | base64 -w0; printf " %s\\n" "$(cat | wc -c)"; } >> "$CALLS"\n');
     fs.writeFileSync(path.join(stubs, 'git'), '#!/usr/bin/env bash\n[[ "$1" == rev-parse ]] && echo deadbeef; exit 0\n');
-    for (const name of ['php', 'git']) fs.chmodSync(path.join(stubs, name), 0o755);
+    fs.writeFileSync(path.join(stubs, 'ssh'), '#!/usr/bin/env bash\nexec bash -c "${@: -1}"\n');
+    for (const name of ['php', 'git', 'ssh']) fs.chmodSync(path.join(stubs, name), 0o755);
     for (const [workflow, kind, rows] of [[workflows[0][0], 'phase-a', a], [workflows[1][0], 'followup', f]]) {
       const source = fs.readFileSync(workflow, 'utf8');
-      const runBlock = source.match(/\n        run: \|\n          set -euo pipefail\n          ROWS="\$\(python3[\s\S]*?\n          REMOTE\n/)[0];
-      const lines = runBlock.split('\n').slice(2).map((l) => l.replace(/^ {10}/, ''));
-      const sshAt = lines.findIndex((l) => l.startsWith('ssh '));
-      const local = lines.slice(0, sshAt).join('\n');
-      const remote = lines.slice(lines.indexOf('set -euo pipefail', sshAt), lines.indexOf('REMOTE')).join('\n')
+      const runBlock = source.match(/\n        run: \|\n          set -euo pipefail\n          ROWS="\$\(python3[\s\S]*?\n          exit "\$rc"\n/)[0];
+      const script = runBlock.split('\n').slice(2).map((l) => l.replace(/^ {10}/, '')).join('\n')
         .replace('cd /home/admin/backend', 'cd "$BACKEND"');
-      const calls = path.join(dir, `${kind}.calls`);
-      fs.writeFileSync(eventPath, JSON.stringify({ inputs: { rows_json: JSON.stringify(rows) } }));
-      execFileSync('bash', ['-c', `${local}\nROW_COUNT="$ROW_COUNT" ROWS_B64="$ROWS_B64" bash -s <<'REMOTE'\n${remote}\nREMOTE\n`], {
-        stdio: 'ignore', env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, CALLS: calls, BACKEND: dir,
-          GITHUB_EVENT_PATH: eventPath, GITHUB_REPOSITORY: 'o/r', GITHUB_REF: 'refs/heads/main' } });
-      const got = fs.readFileSync(calls, 'utf8').trim().split('\n').map((l) => l.split(' '));
-      assert.equal(got.length, rows.length, `${workflow} must apply every row once, in order`);
+      const writeStep = (failBug) => {
+        const calls = path.join(dir, `${kind}-${failBug}.calls`);
+        fs.writeFileSync(calls, '');
+        fs.writeFileSync(output, '');
+        fs.writeFileSync(summary, '');
+        fs.writeFileSync(eventPath, JSON.stringify({ inputs: { rows_json: JSON.stringify(rows) } }));
+        let ok = true;
+        try {
+          execFileSync('bash', ['-c', script], { stdio: 'ignore', env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`,
+            CALLS: calls, BACKEND: dir, RUNNER_TEMP: dir, FAIL_BUG: failBug, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary,
+            GITHUB_EVENT_PATH: eventPath, GITHUB_REPOSITORY: 'o/r', GITHUB_REF: 'refs/heads/main', PI_SSH_USER: 'u', PI_SSH_HOST: 'h' } });
+        } catch { ok = false; }
+        const got = fs.readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map((l) => l.split(' '));
+        return { ok, got, output: fs.readFileSync(output, 'utf8'), summary: fs.readFileSync(summary, 'utf8') };
+      };
+      const all = writeStep('none');
+      assert.ok(all.ok, `${workflow} write step must succeed`);
+      assert.equal(all.got.length, rows.length, `${workflow} must apply every row once, in order`);
+      assert.equal(all.output, `applied=${JSON.stringify(rows.map((r) => String(r.bug_id)))}\n`, `${workflow} must publish every applied bug_id`);
+      assert.ok(all.summary.includes(`${rows.length} of ${rows.length} row(s) applied (exit 0)`), `${workflow} must report the write result`);
       rows.forEach((row, i) => {
-        assert.equal(got[i][0], String(row.bug_id));
-        assert.equal(got[i][1], row.github_issue_url);
-        assert.equal(got[i][2], row.disposition || row.expected_status || 'bug');
-        assert.equal(Buffer.from(got[i][3], 'base64').toString('utf8'), row.public_reply.replace(/\n+$/, ''),
+        assert.equal(all.got[i][0], String(row.bug_id));
+        assert.equal(all.got[i][1], row.github_issue_url);
+        assert.equal(all.got[i][2], row.disposition || row.expected_status || 'bug');
+        assert.equal(Buffer.from(all.got[i][3], 'base64').toString('utf8'), row.public_reply.replace(/\n+$/, ''),
           `${workflow} reply must reach tinker exactly (command substitution trims trailing newlines, as before)`);
-        assert.equal(got[i][4], '0', `${workflow} tinker stdin must be /dev/null, not the remote script`);
+        assert.equal(all.got[i][4], '0', `${workflow} tinker stdin must be /dev/null, not the remote script`);
       });
+      const partial = writeStep(String(rows[1].bug_id));
+      assert.ok(!partial.ok, `${workflow} a failing row must fail the job`);
+      assert.equal(partial.output, `applied=${JSON.stringify([String(rows[0].bug_id)])}\n`,
+        `${workflow} must still publish the rows written before the failure`);
+      const downstream = jobBlock(source, workflows.find((w) => w[0] === workflow)[3]);
+      assert.ok(downstream.includes('if: always() && ') && downstream.includes('--argjson a "$APPLIED"'),
+        `${workflow} follow-on job must run for, and only for, applied rows`);
     }
     assert.equal(fs.existsSync(marker), false, 'reply metacharacters must never execute');
   } finally {
