@@ -824,7 +824,8 @@ class PaymentReportController extends Controller
                 'TotalAmount' => (int) $data['amount'], 'ScheduleModeAtIssue' => 'count',
             ]);
             $note = trim((string) ($data['note'] ?? ''));
-            $report = PaymentReport::create([
+            /** @var PaymentReport $report */
+            $report = PaymentReport::query()->create([
                 'StudentID' => $course->StudentID, 'StudentClassID' => $courseId, 'InvoiceID' => $invoice->id,
                 'reported_by_name' => (string) Student::query()->whereKey($course->StudentID)->value('name'),
                 'payment_date' => $data['payment_date'], 'payment_method' => $data['payment_method'],
@@ -832,10 +833,12 @@ class PaymentReportController extends Controller
                 'note' => $note ?: null, 'status' => 'confirmed', 'confirmed_by' => $userId, 'confirmed_at' => Carbon::now(),
                 'report_token_hash' => $tokenHash, 'token_expires_at' => Carbon::now(),
             ]);
-            $payment = Payment::create([
+            /** @var Payment $payment */
+            $payment = Payment::query()->create([
                 'InvoiceID' => $invoice->id, 'Amount' => (int) $data['amount'], 'PaidAt' => $data['payment_date'],
                 'Method' => $data['payment_method'] === 'transfer' ? 'transfer' : 'cash',
-                'Note' => $note ?: "舊資料已收標記補登收款 (report #{$report->id})", 'payment_report_id' => $report->id,
+                // Same system marker as confirm(): PaymentReport::displayNote() keeps it off receipts and the ledger.
+                'Note' => $note ?: "繳費回報核帳確認 (report #{$report->id})", 'payment_report_id' => $report->id,
             ]);
             // Same projection as confirm(): Payment rows decide the bill, never stored PaidAmount (#3864).
             $after = $this->invoiceProjection($invoice, $course);
@@ -944,7 +947,7 @@ class PaymentReportController extends Controller
             'campus_id' => DB::table('Student')->where('id', $course->StudentID)->value('CampusID'),
             'actor_type' => 'user', 'actor_id' => $actorId,
             'subject_type' => 'student_class', 'subject_id' => (int) $course->getKey(),
-        ], $metadata + ['outcome' => 'success']);
+        ], $metadata + ['outcome' => 'success'], true); // required: an audit failure rolls the billing write back
     }
 
     /** Receipt-intent reissue; confirmation separately settles the pending report. @param array<string, mixed> $data */

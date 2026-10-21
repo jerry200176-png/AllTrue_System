@@ -10,9 +10,9 @@
     <!-- Excel card: pay date + amount on top, remaining lessons as the big number (spec 2.3). -->
     <div class="contract__excel" data-testid="contract-excel">
       <div class="contract__pay">
-        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :contract-amount="contractCharge" @resolved="emit('changed')" />
-        <p v-else-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
+        <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :contract-amount="contractCharge" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
         <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
@@ -192,11 +192,11 @@ const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p
 // #4150 review: a waiver (server ContractMoneyState::isWaived; a real one keeps Paid=0) is terminal, so no unpaid controls.
 const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
-// Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid,
-// nothing owed or waiting for review. The server re-checks everything and refuses with a sentence otherwise.
+// Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid with
+// no report waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
 const legacyResolvable = computed(() => legacyUnverified.value && props.canResolveLegacy && props.course.paid === true
   && !props.course.package_id && !props.course.free_gift_settled && !isMonthly.value && !waived.value
-  && !(props.outstanding > 0) && !props.pendingReport && !props.sharedFollower);
+  && !props.pendingReport && !props.sharedFollower);
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either

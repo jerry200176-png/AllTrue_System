@@ -35,12 +35,15 @@ describe('ContractCard legacy-flag actions', () => {
     return wrapper;
   };
 
-  it('replaces the dead-end label with the next-step sentence and both actions', async () => {
-    const w = await mountCard({});
-    expect(w.find('[data-testid="legacy-flag-help"]').text()).toBe(HELP);
-    expect(w.find('[data-testid="legacy-backfill-open"]').text()).toBe('已收過，補登收款');
-    expect(w.find('[data-testid="legacy-clear-open"]').text()).toBe('其實沒收，改成未繳');
-    expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
+  it('adds the next-step sentence and both actions under the 需核對 label, also when a bill is still open', async () => {
+    for (const props of [{}, { outstanding: 3000 }]) {
+      const w = await mountCard({}, props);
+      expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
+      expect(w.find('[data-testid="legacy-flag-help"]').text()).toBe(HELP);
+      expect(w.find('[data-testid="legacy-backfill-open"]').text()).toBe('已收過，補登收款');
+      expect(w.find('[data-testid="legacy-clear-open"]').text()).toBe('其實沒收，改成未繳');
+      w.unmount(); wrapper = null; document.body.innerHTML = '';
+    }
   });
 
   it.each([
@@ -82,13 +85,19 @@ describe('LegacyPaidFlagActions', () => {
     authedFetch.mockResolvedValueOnce(respond({ message: '網路中斷' }, 500));
     q('legacy-backfill-submit').click();
     await flushPromises();
-    expect(w.find('[data-testid="legacy-error"]').exists()).toBe(true);
+    // The form stays open with the error, so a retry reuses the same key (replay, never a second payment).
+    expect(q('legacy-error')).not.toBeNull();
     expect(w.emitted('resolved')).toBeUndefined();
+    authedFetch.mockResolvedValueOnce(respond({ status: 'confirmed', replayed: true }));
+    q('legacy-backfill-submit').click();
+    await flushPromises();
+    expect(w.emitted('resolved')).toHaveLength(1);
 
-    const [[url, body]] = posted();
+    const [[url, body], [, retry]] = posted();
     expect(url).toBe('/api/v1/payment-reports/director-record');
     expect(body).toMatchObject({ student_class_id: 9, legacy_flag_backfill: true, payment_date: '2025-01-15', payment_method: 'cash', amount: 8000 });
     expect(body.idempotency_key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(retry.idempotency_key).toBe(body.idempotency_key);
   });
 
   it('改成未繳 needs a reason and posts it to the clear endpoint', async () => {
@@ -112,7 +121,7 @@ describe('LegacyPaidFlagActions', () => {
     authedFetch.mockResolvedValueOnce(respond({ message: '這門課已有收款紀錄，不是只有舊標記；請重新整理後在學生帳務核對。沒有變更任何資料。', code: 'legacy_flag_has_payment' }, 422));
     q('legacy-clear-submit').click();
     await flushPromises();
-    expect(w.find('[data-testid="legacy-error"]').text()).toContain('已有收款紀錄');
+    expect(q('legacy-error').textContent).toContain('已有收款紀錄');
     expect(w.emitted('resolved')).toBeUndefined();
   });
 });

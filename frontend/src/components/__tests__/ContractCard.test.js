@@ -571,9 +571,8 @@ describe('AccountingLedgerModal Excel-card sources (spec B-PR3)', () => {
     const text = (id) => w.find(`[data-testid="contract-card-${id}"]`).text();
     expect(text(2)).toContain('繳費日 2026/09/03　NT$ 8,000');
     expect(text(2)).toContain('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未收 NT$ 0');
-    // #4150: course 3 has only a legacy PayDate + Charge, no receipt or payment -> no 繳費日 line; a director gets
-    // the next-step sentence and actions instead of the dead-end label (Founder GO 2026-10-21).
-    expect(text(3)).toContain('這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。');
+    // #4150: course 3 has only a legacy PayDate + Charge, no receipt or payment -> neutral 需核對, no 繳費日 line.
+    expect(text(3)).toContain('需核對：舊資料標記已收，缺付款紀錄');
     expect(text(3)).not.toContain('繳費日');
     expect(text(4)).toContain('還沒繳費');
     expect(text(4)).toContain('未繳 NT$ 3,000');
@@ -668,7 +667,6 @@ describe('AccountingLedgerModal allocation step (PRD D18/D19)', () => {
 // #4150: legacy metadata (PayDate / Charge / Paid flag) is not a payment record; only real evidence becomes 繳費日.
 describe('AccountingLedgerModal legacy payment display (#4150)', () => {
   const LEGACY = '需核對：舊資料標記已收，缺付款紀錄';
-  const LEGACY_HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
   const mountWith = async (body) => {
     const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
     authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
@@ -694,7 +692,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
 
   it('(2) legacy Paid flag without any receipt or payment: neutral note, never 已收清 or a 繳費日 amount', async () => {
     const w = await mountWith({ courses: [{ id: 2, subject: '數學', paid: true, paid_at: null, charge: 6000 }] });
-    expect(card(w).find('[data-testid="legacy-flag-help"]').text()).toBe(LEGACY_HELP);
+    expect(card(w).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     expect(card(w).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card(w).text()).not.toContain('已收清');
     // #4155: 合約金額 may show Charge; the forbidden money is a fabricated 繳費日 / bill settlement
@@ -802,7 +800,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
       courses: [pkg({ id: 2 }), { id: 4, subject: '國文', paid: true, paid_at: '2026-09-05', charge: 6000, package_id: null }],
       invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }] })],
     });
-    expect(w3.find('[data-testid="contract-card-4"] [data-testid="legacy-flag-help"]').text()).toBe(LEGACY_HELP);
+    expect(w3.find('[data-testid="contract-card-4"] [data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     w3.unmount(); vi.unstubAllGlobals();
   });
 

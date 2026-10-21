@@ -128,10 +128,10 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertStringNotContainsString($reason, (string) $event->metadata);
         $this->assertSame(hash('sha256', $reason), json_decode((string) $event->metadata, true)['reason_hash']);
 
-        // Existing rules now list it as owed for the whole contract amount.
+        // Existing rules now list it as owed for the whole contract amount; settled → settled_pending (as 撤銷收款) reads 待收款.
         $row = collect($this->withHeaders($this->auth($token))->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())
             ->firstWhere('id', $course->ID);
-        $this->assertSame(['unpaid', 8800, false], [$row['payment_status'], $row['outstanding'], $row['legacy_paid_flag_only'] ?? false]);
+        $this->assertSame(['pending_reconciliation', 8800, false], [$row['payment_status'], $row['outstanding'], $row['legacy_paid_flag_only'] ?? false]);
 
         // Replay: already unpaid, nothing changes and no second audit event.
         $this->clear($token, $course, $reason)->assertOk()->assertJsonPath('replayed', true);

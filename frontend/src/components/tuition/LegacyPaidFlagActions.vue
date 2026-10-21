@@ -5,7 +5,6 @@
       <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="openBackfill">已收過，補登收款</AtButton>
       <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="legacy-clear-open" @click="openClear">其實沒收，改成未繳</AtButton>
     </div>
-    <p v-if="error" class="legacy__error" role="alert" data-testid="legacy-error">{{ error }}</p>
 
     <AtDialog :open="backfillOpen" title="補登收款" size="sm" :title-id="`legacy-backfill-title-${courseId}`" @close="backfillOpen = false">
       <form class="legacy__form" data-testid="legacy-backfill-form" @submit.prevent="submitBackfill">
@@ -18,6 +17,7 @@
         <AtInput :id="`legacy-amount-${courseId}`" v-model="form.amount" type="number" inputmode="numeric" data-testid="legacy-backfill-amount" />
         <label class="legacy__label" :for="`legacy-note-${courseId}`">備註（選填）</label>
         <AtTextarea :id="`legacy-note-${courseId}`" v-model="form.note" :rows="2" data-testid="legacy-backfill-note" />
+        <p v-if="error" class="legacy__error" role="alert" data-testid="legacy-error">{{ error }}</p>
       </form>
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" @click="backfillOpen = false">取消</AtButton>
@@ -29,6 +29,7 @@
       <p class="legacy__note">只把舊的「已收」標記拿掉，這門課會變成未繳、依合約金額列入收款。不會動任何帳單或收款紀錄。</p>
       <label class="legacy__label" :for="`legacy-reason-${courseId}`">原因 *</label>
       <AtTextarea :id="`legacy-reason-${courseId}`" v-model="reason" :rows="2" data-testid="legacy-clear-reason" />
+      <p v-if="error" class="legacy__error" role="alert" data-testid="legacy-error">{{ error }}</p>
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" @click="clearOpen = false">取消</AtButton>
         <AtButton size="sm" shape="rect" :disabled="reason.trim().length < 2 || busy" data-testid="legacy-clear-submit" @click="submitClear">改成未繳</AtButton>
@@ -90,13 +91,16 @@ function openClear() {
   clearOpen.value = true;
 }
 
+// A failure keeps the dialog (and the backfill key) open: if the write committed but the response was lost,
+// submitting again replays the same key instead of being refused as a second payment.
 async function run(action) {
   busy.value = true;
+  error.value = '';
   const res = await action();
   busy.value = false;
+  if (!res.ok) { error.value = res.message; return; }
   backfillOpen.value = false;
   clearOpen.value = false;
-  if (!res.ok) { error.value = res.message; return; }
   emit('resolved');
 }
 function submitBackfill() {
