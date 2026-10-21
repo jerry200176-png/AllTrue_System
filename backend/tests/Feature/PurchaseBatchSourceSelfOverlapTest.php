@@ -117,6 +117,29 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
             ->assertJsonPath('schedule.first_session_date', $this->weeksAfterBase(1));
     }
 
+    public function test_retry_after_the_source_lessons_pass_is_still_a_duplicate(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        $source = $this->createSourceCourse($student->id);
+        $this->seedSourceFutureSessions($source, 3);
+        $payload = ['sessions' => 4, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase'];
+
+        $first = $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", $payload)
+            ->assertCreated();
+
+        // The source lessons are now in the past, so today's anchor no longer shifts the request.
+        AuthToken::query()->update(['expires_at' => now()->addMonths(3)]);
+        $this->travelTo($this->base->copy()->addWeeks(2)->addDay());
+
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('duplicate_course.id', (int) $first->json('new_course.id'));
+        $this->travelBack();
+    }
+
     public function test_renewal_preview_shows_the_same_shifted_batch_dates(): void
     {
         $token = $this->createDirectorToken();

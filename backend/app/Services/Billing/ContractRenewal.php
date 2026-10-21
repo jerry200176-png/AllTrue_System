@@ -80,11 +80,41 @@ final class ContractRenewal
             ->first();
     }
 
-    /** A batch is stored with its shifted start (in-app #422); older batches carry the requested one. */
+    /**
+     * A batch is stored with its shifted start (in-app #422), and the shift depends on which source lessons are
+     * still in the future. So a retry must not depend on today's anchor: any open batch of the same size that starts
+     * between the requested date and a week after the source's last lesson on or after it (attended or not) is the
+     * same purchase. Exact matches on the requested and planned start are kept for batches created before #422.
+     */
     private function findDuplicateShiftedBatch(StudentClass $studentClass, string $planStart, string $startDate, int $sessions): ?StudentClass
     {
-        return $this->findDuplicatePurchaseBatch($studentClass, $planStart, $sessions)
+        $exact = $this->findDuplicatePurchaseBatch($studentClass, $planStart, $sessions)
             ?? ($planStart !== $startDate ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions) : null);
+        if ($exact !== null) {
+            return $exact;
+        }
+        $lastLesson = ContractSessionSchedule::normalizeDateString(ClassSession::query()
+            ->where('StudentClassID', (int) $studentClass->ID)
+            ->whereDate('SessionDate', '>=', $startDate)
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
+            ->max('SessionDate'));
+        if ($lastLesson === null) {
+            return null;
+        }
+        $upper = max($planStart, Carbon::parse($lastLesson)->addDays(7)->toDateString());
+
+        return StudentClass::query()->where('ID', '<>', $studentClass->ID)
+            ->where('StudentID', $studentClass->StudentID)
+            ->where('SubjectID', $studentClass->SubjectID)
+            ->where('ScheduleMode', 'count')
+            ->whereDate('StartDate', '>=', $startDate)
+            ->whereDate('StartDate', '<=', $upper)
+            ->where('SessionCount', $sessions)
+            ->where(function ($q) {
+                $q->whereNull('Stop')->orWhere('Stop', 0);
+            })
+            ->orderBy('ID')
+            ->first();
     }
 
     public function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass
