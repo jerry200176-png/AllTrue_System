@@ -66,8 +66,8 @@ for (const width of [390, 1440]) {
     const workspace = page.getByTestId('student-course-workspace');
     await workspace.locator('.student-course-card__actions > summary').click();
     if (before) {
-      await workspace.getByRole('button', { name: /再次續報加購|^加購$/ }).first().click();
-      await expect(page.getByRole('dialog', { name: /加購堂數/ })).toContainText('未繳課程批次');
+      await workspace.getByRole('button', { name: /^續課$/ }).first().click();
+      await expect(page.getByRole('dialog', { name: /續課/ })).toContainText('未繳課程批次');
       await page.screenshot({ path: testInfo.outputPath('before-tutoring-charge-copy.png'), fullPage: true });
       expect(state.writes).toEqual([]);
       return;

@@ -4440,7 +4440,7 @@ class StudentClassController extends Controller
                         'available_sessions' => $available,
                         'next_actions' => [[
                             'code' => 'open_target_purchase',
-                            'label' => '前往目標課程加購',
+                            'label' => '前往目標課程續課',
                             'available' => true,
                             'student_class_id' => (int) $target->ID,
                         ]],

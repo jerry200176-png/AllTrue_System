@@ -747,7 +747,7 @@
               <label v-if="needsOverageConfirmation" class="coverage-overage">
                 <input v-model="form.overage_confirmed" type="checkbox" />
                 <span>
-                  我確認這門課的排程超出已購額度，超額部分會另行續約、加購或再處理。
+                  我確認這門課的排程超出已購額度，超額部分會另行續課或再處理。
                   不勾選無法建立課程；建立後仍可正常點名，不會擋住學生上課。
                 </span>
               </label>

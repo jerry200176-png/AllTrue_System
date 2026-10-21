@@ -5,11 +5,11 @@ updates:
       - director
     importance: digest
     title: 加堂統一叫「續課」
-    summary: 加購堂數、續報加購等名稱統一改叫「續課」；新增課程時先選新課、續課或換課。
+    summary: 原本「加購堂數」「續報加購」「去加購」等名稱，全系統統一改叫「續課」。
     items:
       - category: improved
-        text: 同一門課要再買堂數，全系統都叫「續課」，課程列、⋯ 選單和學生管理都一樣。
+        text: 同一門課要再買堂數，課程列、⋯ 選單、學生管理和續課視窗都叫「續課」，按鈕是「確認續課」。
       - category: improved
-        text: 按「新增課程／續課」會先選：全新課程、同一門課續課、換科目／老師／時段（轉課），再帶到原本的畫面。
+        text: 在學生管理按「新增課程」時，若學生已有同科課程，提示裡的按鈕也改叫「續課」。
     source_refs:
       - "changelog:2026-10-21:inapp-429-one-name-for-renewal"

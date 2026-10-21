@@ -1397,7 +1397,7 @@ class EnrollmentService
         $calc = new LessonEntitlementCoverageCalculator();
 
         return response()->json([
-            'message' => '目前排程超出已購額度，請先確認超額部分需要續約、加購或後續處理',
+            'message' => '目前排程超出已購額度，請先確認超額部分需要續課或後續處理',
             'code' => 'overage_confirmation_required',
             'errors' => ['overage_confirmed' => ['請勾選確認後再建立課程。']],
             'coverage' => [

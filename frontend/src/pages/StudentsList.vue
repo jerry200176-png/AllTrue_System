@@ -195,7 +195,7 @@
                   class="btn-course-disclosure"
                   :class="{ 'is-active': expandedId === student.id }"
                   :aria-expanded="expandedId === student.id"
-                  :title="expandedId === student.id ? '收合課程與加購明細' : '展開課程、排課與購課詳情'"
+                  :title="expandedId === student.id ? '收合課程與續課明細' : '展開課程、排課與購課詳情'"
                   @click="toggleExpand(student, $event)"
                 >
                   <span class="material-symbols-outlined" style="font-size:15px;" aria-hidden="true">menu_book</span>
@@ -223,9 +223,9 @@
                       <span class="material-symbols-outlined btn-icon">autorenew</span>
                       月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）
                     </button>
-                    <button type="button" class="primary small" data-testid="student-course-entry" @click="courseIntentStudent = student">
+                    <button type="button" class="primary small" @click="openAddCourse(student)">
                       <span class="material-symbols-outlined btn-icon">add</span>
-                      {{ COURSE_ENTRY_LABEL }}
+                      新增課程
                     </button>
                   </div>
                 </div>
@@ -235,7 +235,7 @@
                 </div>
 
                 <div v-if="getStudentCourses(student.id).length === 0" class="empty-text">
-                  {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程／續課」→「全新課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
+                  {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
                 </div>
 
                 <template v-else>
@@ -779,14 +779,6 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
-    <CourseIntentChooser
-      :show="!!courseIntentStudent"
-      :student-name="courseIntentStudent?.name || ''"
-      :courses="courseIntentStudent ? courseIntentOptions(courseIntentStudent.id) : []"
-      @close="courseIntentStudent = null"
-      @choose="onCourseIntent"
-    />
-
     <MonthlyBatchRenewModal
       :show="!!batchRenewStudent"
       :student-name="batchRenewStudent?.name || ''"
@@ -817,15 +809,15 @@
           <label>{{ isPackageMember(selectedCourse) ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
           <p :style="{ fontSize: '20px', fontWeight: 700, color: isLowRemaining(modalRemainingSessions(selectedCourse)) ? '#e65100' : 'var(--primary)' }">
             {{ modalRemainingSessions(selectedCourse) }} 堂
-            <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
+            <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快續課）' }}</span>
           </p>
         </div>
         <p class="hint sessions-package-hint">
           {{ isTutoringCourse(selectedCourse)
             ? '複製原課程設定建立下一期，保留前後期關聯。固定排課沿用原星期時段，手動排課仍需逐堂安排。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
             : isPackageMember(selectedCourse)
-            ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
-            : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
+            ? '此課程屬於多科共用方案，續課會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
+            : '此次續課會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
           }}
         </p>
         <div v-if="!(isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly')" class="form-group">
@@ -855,7 +847,7 @@
         <div class="actions">
           <button type="button" class="ghost" :disabled="addSessionsSubmitting" @click="showSessionsModal = false">取消</button>
           <button type="button" class="primary" :disabled="addSessionsSubmitting" @click="submitAddSessions">
-            {{ addSessionsSubmitting ? '建立中…' : isTutoringCourse(selectedCourse) ? '確認建立下一期輔導課' : '確認加購' }}
+            {{ addSessionsSubmitting ? '建立中…' : isTutoringCourse(selectedCourse) ? '確認建立下一期輔導課' : '確認續課' }}
           </button>
         </div>
       </div>
@@ -1064,8 +1056,7 @@ import {
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
-import CourseIntentChooser from '../components/course-management/CourseIntentChooser.vue';
-import { COURSE_ENTRY_LABEL, RENEW_LESSONS_LABEL, routeCourseIntent } from '../lib/courseIntent.js';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildCourseMgmtOpsNav,
@@ -1097,36 +1088,6 @@ const openTuitionLedger = (course) => {
   ledgerOpen.value = true;
 };
 const goToTuitionBilling = openTuitionLedger;
-
-// in-app #429: 「新增課程／續課」 chooser. Each intent lands in the flow the row buttons already use.
-const courseIntentStudent = ref(null);
-// Trials are not renewed (轉為正式課程) and tutoring packages cannot be extended here, so 續課 hides them.
-// `detail` (time, remaining, end date) tells parallel same-subject/teacher contracts apart.
-const courseIntentOptions = (studentId) => getStudentAllCourses(studentId)
-  .filter((course) => !isHistoricalCourse(course))
-  .map((course) => {
-    const remaining = ownRemainingSessions(course);
-    return {
-      id: course.id,
-      label: [getStudentCourseSubjectDisplayLabel(course), course.teacher_name].filter(Boolean).join('／'),
-      detail: [
-        scheduleDisplayLines(course).join('、'),
-        remaining != null && !isPackageMember(course) ? `剩 ${remaining} 堂` : '',
-        course.end_date ? `到 ${course.end_date}` : '',
-      ].filter(Boolean).join(' · '),
-      course,
-      renewable: !isTrialCourse(course) && !(isTutoringCourse(course) && isPackageMember(course)),
-    };
-  });
-const onCourseIntent = ({ intent, course }) => {
-  const student = courseIntentStudent.value;
-  courseIntentStudent.value = null;
-  routeCourseIntent(intent, {
-    new: () => openAddCourse(student),
-    renew: () => openAddSessionsForCourse(course),
-    change: () => emit('navigate', { ...buildCourseMgmtOpsNav(course, { intent: 'transfer' }), studentName: student?.name || '' }),
-  });
-};
 
 const goToCourseMgmtOps = (course, studentName = '') => {
   emit('navigate', {
@@ -2950,7 +2911,7 @@ const interceptGoToPurchase = (conflict) => {
     openAddSessionsForCourse(target);
     return;
   }
-  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
+  alert('找不到要續課的課程，請重新整理後再從課程列點「續課」。');
 };
 
 const editCourse = (course) => {
@@ -3376,7 +3337,7 @@ const openAddSessionsForCourse = (course) => {
     return;
   }
   if (isTutoringCourse(course) && isPackageMember(course)) {
-    alert('此輔導課屬於共用方案，不能從這裡延續或加購；請先確認方案設定。');
+    alert('此輔導課屬於共用方案，不能從這裡延續或續課；請先確認方案設定。');
     return;
   }
   if (course?.payment_type === 'monthly' && !isTutoringCourse(course)) {
@@ -3467,7 +3428,7 @@ const submitAddSessions = async () => {
       if (submittedStudent?.id) {
         await loadStudentCourses(submittedStudent.id);
       }
-      alert(`已加購共用方案堂數：總堂數由 ${currentTotal} 堂增加為 ${nextTotal} 堂。所有方案科目共用同一個堂數池。`);
+      alert(`已續課：共用方案總堂數由 ${currentTotal} 堂增加為 ${nextTotal} 堂。所有方案科目共用同一個堂數池。`);
       return;
     }
 

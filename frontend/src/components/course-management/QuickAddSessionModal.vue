@@ -41,7 +41,7 @@
 
       <div v-else-if="conflict && conflict.existing_session_id" class="existing-session-banner">
         <p class="conflict-msg">
-          這個日期／時段已經有一堂課（未上課）。送出只會更新這一堂，不會重複新增，也不會增加購買堂數。
+          這個日期／時段已經有一堂課（未上課）。送出只會更新這一堂，不會重複新增，也不會增加已購堂數。
         </p>
         <p class="existing-session-hint">如果是要完成點名，請在上課後到「出缺勤」處理。</p>
       </div>

@@ -31,10 +31,7 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
 
   it('course creation entry lives once in the header, not per student card', () => {
     expect(source).toContain('data-testid="course-header-goto-students-create"');
-    // in-app #429: the header entry opens the 新增課程／續課 chooser (全新課程 still goes to 學生管理).
-    expect(source).toContain('@click="showCourseIntentChooser = true">{{ COURSE_ENTRY_LABEL }}</AtButton>');
-    expect(source).not.toContain('到學生管理新增課程');
-    expect(source).toContain("new: () => emit('navigate', 'students')");
+    expect(source.split('到學生管理新增課程').length - 1).toBe(1);
     expect(source).not.toContain('student-group-goto-students');
     expect(source).not.toContain('openBackfillModalForGroup');
   });

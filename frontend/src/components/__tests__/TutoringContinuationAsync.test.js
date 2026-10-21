@@ -16,7 +16,7 @@ function setup() {
     addSessionsError: { value: '' },
     isTutoringCourse: c => c?.class_type === 'tutoring', isTrialCourse: c => c?.class_type === 'trial', isPackageMember: c => Boolean(c?.PackageID),
     getSubjectLabel: subject => subject === 'Science' ? '自然科學' : subject,
-    formatDuplicatePurchaseHint: ({ subject }) => `\\n\\n已有相同「${subject}」加購批次，請先確認是否已經續報過。`,
+    formatDuplicatePurchaseHint: ({ subject }) => `\\n\\n已有相同「${subject}」續課批次，請先確認是否已經續報過。`,
     supabase: { auth: { getSession: () => auth } },
     fetch: vi.fn(async () => ({ ok: false, json: async () => ({ message: 'conflict' }) })),
     alert: vi.fn(), goToTrialConversion: vi.fn(),
@@ -71,7 +71,7 @@ describe('tutoring continuation async identity', () => {
     expect(buildCourseMgmtOpsNav({ id: 31, student_id: 8 }, { intent: 'convert-trial' })).toMatchObject({ target: 'course-mgmt', courseId: 31, intent: 'convert-trial' });
     const cm = readFileSync(`${process.cwd()}/src/pages/CourseManagement.vue`, 'utf8');
     expect(cm).toMatch(/initialCourseIntent === 'convert-trial'[\s\S]*pendingConvertTrialId\.value = Number/);
-    expect(cm).toMatch(/\(pendingConvertTrialId\.value \|\| pendingManualSessionId\.value \|\| pendingLessonsCourseId\.value \|\| pendingTransferCourseId\.value\) && convertTrialStudentId\.value\) params\.set\('student_id'/);
+    expect(cm).toMatch(/\(pendingConvertTrialId\.value \|\| pendingManualSessionId\.value \|\| pendingLessonsCourseId\.value\) && convertTrialStudentId\.value\) params\.set\('student_id'/);
     expect(cm).toMatch(/class_type === 'trial' && !isSessionMode\(course\)\) \{\s+alert\(/);
     expect(cm).toMatch(/watch\(coursesLoading[\s\S]*openPurchaseModal\(trial\)/);
     expect(submit).not.toContain('convert-trial');
@@ -120,7 +120,7 @@ describe('tutoring continuation async identity', () => {
     expect(c.fetch).toHaveBeenCalledWith('/api/v1/student-classes/7/purchase-batch', expect.objectContaining({
       body: JSON.stringify({ sessions: 4, start_date: '2026-10-01', mode: 'new_purchase' }),
     }));
-    expect(c.addSessionsError.value).toContain('已有相同「自然科學」加購批次');
+    expect(c.addSessionsError.value).toContain('已有相同「自然科學」續課批次');
     expect(c.addSessionsError.value).not.toContain('#99');
     expect(c.alert).not.toHaveBeenCalled();
     expect(c.addSessionsSubmitting.value).toBe(false);

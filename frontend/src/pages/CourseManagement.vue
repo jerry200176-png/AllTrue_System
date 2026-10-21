@@ -31,7 +31,7 @@
         </AtHelpDisclosure>
       </template>
       <template #actions>
-        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="showCourseIntentChooser = true">{{ COURSE_ENTRY_LABEL }}</AtButton>
+        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
         <AtButton class="course-lens-nav-action" shape="rect" variant="ghost" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
         <details class="course-tools-menu">
           <summary class="btn-soft course-tools-menu__summary">
@@ -987,13 +987,6 @@
       </div>
     </div>
 
-    <!-- in-app #429: one entry for new / 續課 / change; 全新課程 goes to 學生管理, the other two point at the row. -->
-    <CourseIntentChooser
-      :show="showCourseIntentChooser"
-      @close="showCourseIntentChooser = false"
-      @choose="onCourseIntent"
-    />
-
     <ContractAdjustmentChoiceModal
       :show="showContractAdjustmentModal"
       :student-name="contractAdjustmentCourse?.student_name || ''"
@@ -1465,8 +1458,7 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
-import CourseIntentChooser from '../components/course-management/CourseIntentChooser.vue';
-import { COURSE_ENTRY_LABEL, RENEW_LESSONS_LABEL, routeCourseIntent } from '../lib/courseIntent.js';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1619,8 +1611,6 @@ const pendingConvertTrialId = ref(0);
 const pendingManualSessionId = ref(0);
 // in-app #342: calendar 「看全部堂次」 opens this course's 排課與堂次 tab.
 const pendingLessonsCourseId = ref(0);
-// in-app #429: 學生管理「新增課程／續課 → 換科目／老師／時段」opens this course's 轉課 (CourseTransferModal).
-const pendingTransferCourseId = ref(0);
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
@@ -2161,7 +2151,7 @@ function interceptGoToPurchaseCM(conflict) {
     openCommercialPurchaseEntry(target);
     return;
   }
-  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
+  alert('找不到要續課的課程，請重新整理後再從課程列點「續課」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -2399,12 +2389,6 @@ const {
   notify: (opts) => toastRef.value?.show?.(opts),
 });
 const showContractAdjustmentModal = ref(false);
-const showCourseIntentChooser = ref(false);
-// Header chooser has no course context: only 全新課程 emits here (renew / change show where the row button is).
-function onCourseIntent({ intent }) {
-  showCourseIntentChooser.value = false;
-  routeCourseIntent(intent, { new: () => emit('navigate', 'students') });
-}
 const contractAdjustmentCourse = ref(null);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
@@ -2647,7 +2631,7 @@ function courseManagerNextSessionLabel(c) {
 function courseManagerOverviewNeeds(c) {
   const needs = [];
   if (isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 99))) {
-    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
+    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續課', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
   if (makeups.length) needs.push({ id: 'makeup', title: `${makeups.length} 堂待補課`, action: 'quick-add', actionLabel: '安排補課' });
@@ -2881,7 +2865,7 @@ function purchaseActionIsRenew(c) {
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
-  return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
+  return isSessionMode(c) ? '續課（加買堂數）' : '月結課程結算本期並續約下個月';
 }
 
 function openPurchaseModal(course) {
@@ -3056,7 +3040,7 @@ async function submitPurchaseSessions() {
         focusedStudentKey.value = groupKey;
       }
       toastRef.value?.show?.({
-        title: op === 'set' ? '已設定共用方案總堂數' : '已加購共用方案堂數',
+        title: op === 'set' ? '已設定共用方案總堂數' : '已續課：共用方案堂數已增加',
         description: `方案總堂數已由 ${currentTotal} 堂調整為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
         variant: 'success',
         durationMs: 7000,
@@ -3088,7 +3072,7 @@ async function submitPurchaseSessions() {
       const duplicateHint = json?.duplicate_course?.id
         ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
         : '';
-      alert((details || json?.message || '加購失敗') + duplicateHint);
+      alert((details || json?.message || '續課失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -3100,7 +3084,7 @@ async function submitPurchaseSessions() {
       focusedStudentKey.value = groupKey;
     }
     toastRef.value?.show?.({
-      title: '已建立加購批次',
+      title: '已建立續課批次',
       description: formatRenewSuccessMessage({
         kind: 'purchase',
         studentName: course?.student_name || '',
@@ -3113,7 +3097,7 @@ async function submitPurchaseSessions() {
       durationMs: 7000,
     });
   } catch (e) {
-    alert('加購失敗：' + (e?.message || '請稍後再試'));
+    alert('續課失敗：' + (e?.message || '請稍後再試'));
   } finally {
     purchaseSubmitting.value = false;
   }
@@ -4279,7 +4263,7 @@ const loadCourses = async (page = 1) => {
   coursesLoading.value = true;
   // Cleared only once this request wins, so a failed/superseded load keeps them (Codex r4289665973).
   const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
-  const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, pendingTransferCourseId.value, convertTrialStudentId.value]);
+  const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     let token = sess?.access_token;
@@ -4296,14 +4280,14 @@ const loadCourses = async (page = 1) => {
         page: String(page),
       });
       // A manual-session handoff fetches that student's courses only, so list filters can't hide the target (#382).
-      const pinnedHandoff = Boolean(pendingManualSessionId.value || pendingLessonsCourseId.value || pendingTransferCourseId.value);
+      const pinnedHandoff = Boolean(pendingManualSessionId.value || pendingLessonsCourseId.value);
       if (!pinnedHandoff && filters.value.class_type) params.set('class_type', filters.value.class_type);
       if (!pinnedHandoff && filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
       if (!pinnedHandoff && filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (!pinnedHandoff && filters.value.course_status) params.set('status', filters.value.course_status);
       if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
-      if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value || pendingTransferCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
+      if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
@@ -5408,14 +5392,6 @@ watch(coursesLoading, (loading) => {
   if (course) openCourseManager(course, 'sessions');
 });
 watch(coursesLoading, (loading) => {
-  if (loading || !pendingTransferCourseId.value) return;
-  const course = courses.value.find((c) => c.id === pendingTransferCourseId.value);
-  pendingTransferCourseId.value = 0;
-  convertTrialStudentId.value = null;
-  // Same flow as the row 「轉課」 (CourseTransferModal: subject / teacher / time by cutover date).
-  if (course) { editCourse(course, { openModal: false }); showCourseTransfer.value = true; }
-});
-watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;
   const course = courses.value.find((c) => c.id === pendingManualSessionId.value);
   pendingManualSessionId.value = 0;
@@ -5452,9 +5428,6 @@ watch(
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'manual-session') {
       pendingManualSessionId.value = Number(props.initialCourseId) || 0;
-      convertTrialStudentId.value = sid ?? null;
-    } else if (props.initialCourseIntent === 'transfer') {
-      pendingTransferCourseId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     }
     loadCourses(1);

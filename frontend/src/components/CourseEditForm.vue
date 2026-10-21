@@ -8,7 +8,7 @@
         <strong>{{ packageInfo.name || '共用方案' }}</strong>
         <span class="package-info-pool">方案池剩餘 {{ packageInfo.remaining_sessions ?? 0 }} / {{ packageInfo.total_sessions ?? 0 }} 堂</span>
         <span v-if="packageInfo.renewal_warning" class="package-info-warning" role="alert">
-          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續約或加購` }}
+          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續課` }}
         </span>
       </div>
     </div>
