@@ -26,6 +26,21 @@ describe('one name for adding lessons (#4331)', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('no 「加購」 wording remains in backend/app responses', () => {
+    const backend = resolve(root, '../../backend/app');
+    // ContractRenewal.php is being edited by open PR #4338; its two messages are renamed once that lands.
+    const pending = new Set(['Services/Billing/ContractRenewal.php']);
+    const walkPhp = (dir) => readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      return statSync(p).isDirectory() ? walkPhp(p) : (name.endsWith('.php') ? [p] : []);
+    });
+    const offenders = walkPhp(backend)
+      .filter((f) => !pending.has(relative(backend, f)))
+      .filter((f) => stripComments(readFileSync(f, 'utf8')).replace(/^\s*#.*$/gm, '').includes('加購'))
+      .map((f) => relative(backend, f));
+    expect(offenders).toEqual([]);
+  });
+
   it('the row/⋯ menu default is the shared constant', () => {
     const billing = courseActions({ status: 'active' }, {}).groups.find((g) => g.id === 'billing');
     expect(billing.items[0]).toEqual({ id: 'purchase', label: RENEW_LESSONS_LABEL });
