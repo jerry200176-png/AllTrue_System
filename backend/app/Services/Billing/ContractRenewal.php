@@ -407,7 +407,16 @@ final class ContractRenewal
         }
 
         if ($startDate && $sessions > 0 && !empty($slots)) {
-            $sessionsPreview = ContractSessionSchedule::buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
+            // Same slot plan purchaseBatch() writes: the stand-in batch is not yet saved (key 0), so only the
+            // source and the student's other courses can hold a slot.
+            $probe = (new StudentClass())->forceFill([
+                'StudentID' => (int) $studentClass->StudentID,
+                'PackageID' => null,
+                'Stop' => 0,
+                'RemainingSessions' => $sessions,
+                'ClassType' => (string) ($studentClass->ClassType ?? ''),
+            ]);
+            $sessionsPreview = $this->buildBatchSessionsAfterSource($studentClass, $probe, (int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
             $schedule['created_sessions'] = count($sessionsPreview);
             $schedule['first_session_date'] = isset($sessionsPreview[0])
                 ? ContractSessionSchedule::normalizeDateString($sessionsPreview[0]['SessionDate'])
@@ -453,6 +462,51 @@ final class ContractRenewal
             'billing' => $billing,
             'schedule' => $schedule,
         ];
+    }
+
+    /**
+     * in-app #422: a purchase batch continues its source course on the same fixed slots. When the source still
+     * holds pre-created future lessons, the batch's first occurrences landed on exactly those lessons and the
+     * student-overlap guard refused the whole purchase ("已有其他「科目」課程") although the blocker was the
+     * course being extended. A slot the source itself occupies is skipped, so the batch starts after it.
+     * Only the source is skipped: a slot held by any other course is kept, so upsertSlot() still rejects it.
+     * The same write-time guard decides occupancy (findStudentSlotConflict, R142), never a second rule here.
+     *
+     * @param  array<int, array<string, mixed>>  $slots
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildBatchSessionsAfterSource(StudentClass $source, StudentClass $batch, int $batchId, string $startDate, int $sessions, array $slots, int $durationMinutes): array
+    {
+        $sourceId = (int) $source->getKey();
+        $materializer = app(ClassSessionMaterializationService::class);
+        $extra = 0;
+        while (true) {
+            $built = ContractSessionSchedule::buildSessionsForCount($batchId, $startDate, $sessions + $extra, $slots, $durationMinutes);
+            $kept = [];
+            $skipped = 0;
+            foreach ($built as $session) {
+                if (count($kept) >= $sessions) {
+                    break;
+                }
+                $conflict = $materializer->findStudentSlotConflict(
+                    $batch,
+                    (string) $session['SessionDate'],
+                    (string) $session['StartTime'],
+                    (string) $session['EndTime'],
+                );
+                if ($conflict !== null && $conflict->conflictCourseId === $sourceId) {
+                    $skipped++;
+                    continue;
+                }
+                $kept[] = $session;
+            }
+            // Done when the batch is full, the generator ran out of dates, or nothing new was skipped.
+            // buildSessionsForCount() is prefix-stable, so each pass only extends the previous one.
+            if (count($kept) >= $sessions || count($built) < $sessions + $extra || $skipped <= $extra) {
+                return $kept;
+            }
+            $extra = $skipped;
+        }
     }
 
     // Course lifecycle helpers shared with StudentClassController (togglePause, store, split, trial conversion).
@@ -665,8 +719,8 @@ final class ContractRenewal
                     $slots[0]['duration_minutes'] = $globalDur;
                 }
             }
-            $builtSessions = ContractSessionSchedule::buildSessionsForCount(
-                (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
+            $builtSessions = $this->buildBatchSessionsAfterSource(
+                $studentClass, $newCourse, (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
             );
 
             $createdSessions = 0;
