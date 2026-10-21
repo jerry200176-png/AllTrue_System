@@ -8,6 +8,7 @@ vi.mock('../../../supabase', () => ({ supabase: { auth: { getSession: async () =
 
 import CourseTransferModal from '../CourseTransferModal.vue';
 import CourseSaveErrorAlert from '../CourseSaveErrorAlert.vue';
+import { editabilityNextStepForError } from '../../../lib/courseEditability.js';
 import { transferPrefillFromBlockedEdit, formatTransferStartDate } from '../../../lib/courseTransferPrefill.js';
 
 // in-app #409: a blocked 課程設定 save hands off to 轉課, prefilled.
@@ -116,6 +117,17 @@ describe('CourseTransferModal prefill', () => {
 
 describe('CourseSaveErrorAlert (one next step per refusal)', () => {
   const canOpen = (a) => ['course_transfer', 'billing_correction'].includes(a);
+
+  it('does not recreate an action explicitly withheld by the server', () => {
+    const refusal = { code: 'subject_change_requires_transfer', message: '請先處理課程狀態' };
+    const nextStep = editabilityNextStepForError(refusal);
+    expect(nextStep).toBe('');
+    const wrapper = mount(CourseSaveErrorAlert, { props: { error: { ...refusal, nextStep }, canOpen } });
+    expect(wrapper.find('[data-testid="save-error-action"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain(refusal.message);
+    expect(editabilityNextStepForError({ ...refusal, next_step: 'course_transfer' })).toBe('course_transfer');
+    wrapper.unmount();
+  });
 
   it('shows only the 轉課 next step, dated, with what it will not carry', async () => {
     const error = { message: '已鎖定', nextStep: 'course_transfer',

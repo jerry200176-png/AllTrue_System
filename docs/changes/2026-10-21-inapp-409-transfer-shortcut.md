@@ -13,3 +13,5 @@
 - 轉課捷徑明確提示只帶入科目／老師／時段；備註、教室、班型、單價與其他帳務設定不會儲存，需另外處理。在儲存錯誤面板及轉課視窗均顯示，避免混合編輯被誤認為完整儲存。
 
 - 每週 7 時段的修改不再顯示必然失敗的轉課捷徑：現有 endpoint 上限為 6，畫面明確說明尚未儲存並保留原編輯內容，不截斷時段或改變 API 限制。6 時段仍可交接；13 focused tests 通過。
+
+- 只有 server 明確給出 next_step 才顯示轉課錯誤捷徑；不再由 subject_change_requires_transfer 錯誤碼自行重建被 server 隱藏的動作。完整 focused frontend selection：27 tests + lint 通過。

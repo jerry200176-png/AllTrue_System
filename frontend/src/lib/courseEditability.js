@@ -12,7 +12,6 @@ const NEXT_STEP_LABELS = {
 
 const ERROR_NEXT_STEPS = {
   billing_contract_locked: 'billing_correction',
-  subject_change_requires_transfer: 'course_transfer',
   payment_record_locked: 'void_payment',
   billing_correction_payment_locked: 'void_payment',
   billing_correction_payment_report_locked: 'payment_report',
