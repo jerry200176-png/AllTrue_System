@@ -6422,8 +6422,8 @@ class StudentClassController extends Controller
     /**
      * in-app #409: a blocked 課程設定 save that also changes subject / teacher / weekly
      * slots on a count-mode course can be done by 轉課 instead (past lessons stay on the
-     * old contract). Adds `use_transfer` + the cutover date to the existing 422 so the
-     * client can offer it in one click. Read-only hint: the block itself is unchanged.
+     * old contract). Sets `next_step: course_transfer` + the cutover date on the existing
+     * 422 so the client offers it as the refusal's one next step. Read-only hint: the block itself is unchanged.
      * Locked billing fields (SessionCount etc.) are NOT carried by 轉課: listed in
      * `not_carried` so the UI states it instead of silently dropping them.
      *
@@ -6469,8 +6469,9 @@ class StudentClassController extends Controller
             return $blocked;
         }
         $data = (array) $blocked->getData(true);
-        $actions = is_array($data['suggested_actions'] ?? null) ? array_values($data['suggested_actions']) : [];
-        $data['suggested_actions'] = array_values(array_unique([...$actions, 'use_transfer']));
+        // One next step per refusal: the client's editability next-step map reads
+        // `next_step` before the per-code default (courseEditability.js).
+        $data['next_step'] = 'course_transfer';
         $data['transfer_hint'] = [
             'start_date' => ContractSessionSchedule::normalizeDateString($next),
             'changes' => $changes,

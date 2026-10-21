@@ -16,7 +16,7 @@ use Tests\TestCase;
 
 /**
  * in-app #409: when 課程設定 blocks a subject / teacher / slot change on a count-mode
- * course partway through, the 422 points to 轉課 with the cutover date. The block
+ * course partway through, the 422 names 轉課 as its one next step (next_step) with the cutover date. The block
  * itself (and the course) stays unchanged.
  */
 class StudentClassUpdateTransferHintTest extends TestCase
@@ -48,7 +48,8 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'subject_change_requires_transfer')
-            ->assertJsonPath('suggested_actions', ['split_contract', 'use_transfer'])
+            ->assertJsonPath('suggested_actions', ['split_contract'])
+            ->assertJsonPath('next_step', 'course_transfer')
             ->assertJsonPath('transfer_hint.start_date', '2026-10-07')
             ->assertJsonPath('transfer_hint.changes', ['subject']);
 
@@ -66,7 +67,7 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->putCourse($course, ['sessions_purchased' => 12, 'teacher_id' => $teacher, 'days_of_week' => [5], 'start_time' => '15:00'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'billing_contract_locked')
-            ->assertJsonPath('suggested_actions', ['use_transfer'])
+            ->assertJsonPath('next_step', 'course_transfer')
             ->assertJsonPath('transfer_hint.changes', ['teacher', 'slots'])
             ->assertJsonPath('transfer_hint.not_carried', ['SessionCount']);
 
@@ -96,6 +97,7 @@ class StudentClassUpdateTransferHintTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('code', 'subject_change_requires_transfer')
             ->assertJsonPath('suggested_actions', ['split_contract'])
+            ->assertJsonMissingPath('next_step')
             ->assertJsonMissingPath('transfer_hint');
     }
 

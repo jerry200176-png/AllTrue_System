@@ -41,7 +41,7 @@
         <button type="button" class="choice-card" @click="onChoose('transfer')">
           <span class="choice-card__icon" aria-hidden="true">↪</span>
           <span class="choice-card__copy">
-            <strong>把已上課紀錄轉到另一份合約</strong>
+            <strong>搬移上課紀錄到另一份合約</strong>
             <small>搬移評量與點名紀錄；不改任何課程堂數或金額。</small>
           </span>
           <span class="choice-card__arrow" aria-hidden="true">›</span>

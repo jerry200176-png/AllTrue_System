@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 vi.mock('../../../supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
 import CourseTransferModal from '../CourseTransferModal.vue';
+import CourseSaveErrorAlert from '../CourseSaveErrorAlert.vue';
 import { transferPrefillFromBlockedEdit, formatTransferStartDate } from '../../../lib/courseTransferPrefill.js';
 
 // in-app #409: a blocked 課程設定 save hands off to 轉課, prefilled.
@@ -15,12 +16,12 @@ const form = {
   days_of_week: [3], day_time_slots: [{ day: 5, start_time: '15:00', duration_hours: 1.5 }],
 };
 const blocked = (changes, extra = {}) => ({
-  code: 'billing_contract_locked', suggested_actions: ['use_transfer'],
+  code: 'billing_contract_locked', next_step: 'course_transfer',
   transfer_hint: { start_date: '2026-10-07', changes }, ...extra,
 });
 
 describe('transferPrefillFromBlockedEdit', () => {
-  it('maps use_transfer to a prefill with only the changed fields', () => {
+  it('maps the course_transfer next step to a prefill with only the changed fields', () => {
     expect(transferPrefillFromBlockedEdit(blocked(['subject']), form)).toEqual({ start_date: '2026-10-07', subject: 'math' });
     expect(transferPrefillFromBlockedEdit(blocked(['teacher', 'slots']), form)).toEqual({
       start_date: '2026-10-07', teacher_id: 7, weekday: 5, time: '15:00', duration_minutes: 90,
@@ -46,8 +47,9 @@ describe('transferPrefillFromBlockedEdit', () => {
     expect(transferPrefillFromBlockedEdit(err, form).not_carried).toEqual(['購買堂數']);
   });
 
-  it('returns null without the use_transfer suggestion (monthly / settled courses keep today\'s message)', () => {
+  it('returns null without the course_transfer next step + hint (monthly / settled courses keep today\'s message)', () => {
     expect(transferPrefillFromBlockedEdit({ code: 'subject_change_requires_transfer', suggested_actions: ['split_contract'] }, form)).toBeNull();
+    expect(transferPrefillFromBlockedEdit({ ...blocked(['subject']), next_step: undefined }, form)).toBeNull();
     expect(transferPrefillFromBlockedEdit({ code: 'billing_contract_locked' }, form)).toBeNull();
     expect(transferPrefillFromBlockedEdit(null, form)).toBeNull();
   });
@@ -98,12 +100,37 @@ describe('CourseTransferModal prefill', () => {
   });
 });
 
+describe('CourseSaveErrorAlert (one next step per refusal)', () => {
+  const canOpen = (a) => ['course_transfer', 'billing_correction'].includes(a);
+
+  it('shows only the 轉課 next step, dated, with what it will not carry', async () => {
+    const error = { message: '已鎖定', nextStep: 'course_transfer',
+      transferPrefill: { start_date: '2026-10-07', not_carried: ['購買堂數'] } };
+    const wrapper = mount(CourseSaveErrorAlert, { props: { error, canOpen } });
+    expect(wrapper.find('[data-testid="save-error-action"]').text()).toBe('改用轉課（10/7 起生效）');
+    expect(wrapper.find('[data-testid="save-error-next-step"]').text()).toContain('轉課');
+    expect(wrapper.text()).not.toContain('合約／堂次調整');
+    expect(wrapper.find('[data-testid="save-error-not-carried"]').text()).toContain('購買堂數');
+    await wrapper.find('[data-testid="save-error-action"]').trigger('click');
+    expect(wrapper.emitted('action')).toEqual([['course_transfer']]);
+  });
+
+  it('keeps the existing next step when no transfer applies', () => {
+    const wrapper = mount(CourseSaveErrorAlert, { props: { error: { message: 'x', nextStep: 'billing_correction' }, canOpen } });
+    expect(wrapper.find('[data-testid="save-error-action"]').text()).toBe('更正未付款堂數');
+    expect(wrapper.find('[data-testid="save-error-not-carried"]').exists()).toBe(false);
+  });
+});
+
 describe('課程設定 save error wiring', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../pages/CourseManagement.vue'), 'utf8');
 
   it('stores the prefill on the save error and offers the CTA in both edit surfaces', () => {
     expect(page).toContain('transferPrefill: transferPrefillFromBlockedEdit(err, form)');
-    expect(page.match(/data-testid="open-course-transfer-prefilled"/g)).toHaveLength(2);
+    expect(page.match(/<CourseSaveErrorAlert /g)).toHaveLength(2);
     expect(page).toContain(':prefill="courseTransferPrefill"');
+    expect(page).toContain("openCourseTransfer(course, editSaveError.value?.transferPrefill || null)");
+    // Only the single opener flips the modal on.
+    expect(page.match(/showCourseTransfer\.value = true/g)).toHaveLength(1);
   });
 });

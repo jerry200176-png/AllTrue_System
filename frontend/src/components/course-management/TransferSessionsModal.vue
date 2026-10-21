@@ -1,7 +1,7 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
     <div class="modal course-modal transfer-sessions-modal">
-      <h3 class="modal-title">轉移堂次紀錄</h3>
+      <h3 class="modal-title">搬移上課紀錄</h3>
       <p class="modal-desc">來源課程／{{ studentName }}／{{ subjectLabel }}</p>
       <p class="source-course-meta">
         來源剩餘 {{ sourceCourse?.remaining_sessions ?? sourceCourse?.RemainingSessions ?? '—' }} 堂
@@ -64,7 +64,7 @@
 
       <div class="form-group">
         <label>選擇要搬的堂次（{{ selectedIds.length }} / {{ sessions.length }}）</label>
-        <div v-if="sessions.length === 0" class="hint">這門課目前沒有可轉移的已上課堂次。</div>
+        <div v-if="sessions.length === 0" class="hint">這門課目前沒有可搬移的已上課堂次。</div>
         <div v-else class="session-pick-list">
           <label v-for="s in sessions" :key="s.id" class="session-pick-row">
             <input type="checkbox" :value="s.id" v-model="selectedIds" :disabled="submitting" />
@@ -113,7 +113,7 @@
           class="primary"
           :disabled="submitting || selectedIds.length === 0 || !targetCourseId || (hasRecoverySelection && !recoveryReason)"
           @click="onSubmit"
-        >{{ submitting ? '轉移中…' : `轉移 ${selectedIds.length} 堂` }}</button>
+        >{{ submitting ? '搬移中…' : `搬移 ${selectedIds.length} 堂` }}</button>
       </div>
     </div>
   </div>

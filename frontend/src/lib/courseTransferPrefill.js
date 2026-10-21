@@ -1,6 +1,9 @@
 // in-app #409: when 課程設定 is blocked for a count-mode course partway through, the
-// backend adds `use_transfer` + `transfer_hint` ({ start_date, changes, not_carried })
-// to the 422. Turn that, plus the values the director just typed, into a 轉課 prefill.
+// backend sets the refusal's next step to `course_transfer` (courseEditability.js) and
+// adds `transfer_hint` ({ start_date, changes, not_carried }). Turn that, plus the
+// values the director just typed, into a 轉課 prefill.
+import { editabilityNextStepForError } from './courseEditability.js';
+
 const normTime = (t) => (t ? String(t).slice(0, 5) : '');
 const NOT_CARRIED_LABELS = { SessionCount: '購買堂數', standard_lesson_minutes: '標準堂長', deduction_basis: '扣堂方式' };
 
@@ -20,7 +23,7 @@ function editedSlots(f) {
 
 export function transferPrefillFromBlockedEdit(err, form) {
   const hint = err?.transfer_hint;
-  if (!Array.isArray(err?.suggested_actions) || !err.suggested_actions.includes('use_transfer')) return null;
+  if (editabilityNextStepForError(err) !== 'course_transfer') return null;
   if (!hint?.start_date || !Array.isArray(hint.changes) || !hint.changes.length) return null;
   const f = form || {};
   const prefill = { start_date: String(hint.start_date).slice(0, 10) };

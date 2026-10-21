@@ -9,5 +9,7 @@ updates:
     items:
       - category: improved
         text: 堂數制課程上到一半要換科目、老師或時段，轉課日預設為下一堂未點名的課，之前的上課紀錄不變。
+      - category: improved
+        text: 「轉移已上課紀錄」改名為「搬移上課紀錄」，避免與「轉課」混淆。
     source_refs:
       - "changelog:2026-10-21:inapp-409-transfer-shortcut"

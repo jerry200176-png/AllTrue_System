@@ -7,10 +7,12 @@ const NEXT_STEP_LABELS = {
   package_adjustment: '請從方案調整入口修改共用堂數。',
   reconcile_usage: '請先完成重複堂次／扣堂對帳。',
   new_contract: '若需改變已使用的合約，請結案後另開新課程。',
+  course_transfer: '要從某天起改科目、老師或時段，請改用「轉課」：之前的上課與扣堂紀錄留在原課程，之後的堂次轉到新合約。',
 };
 
 const ERROR_NEXT_STEPS = {
   billing_contract_locked: 'billing_correction',
+  subject_change_requires_transfer: 'course_transfer',
   payment_record_locked: 'void_payment',
   billing_correction_payment_locked: 'void_payment',
   billing_correction_payment_report_locked: 'payment_report',
@@ -28,12 +30,13 @@ const FIELD_LABELS = {
 
 const ACTION_LABELS = {
   billing_correction: '更正未付款堂數',
-  transfer_sessions: '轉移已上課紀錄',
+  transfer_sessions: '搬移上課紀錄',
   void_payment: '查看帳單與作廢流程',
   payment_report: '查看帳單與繳費回報',
   package_adjustment: '改走方案調整',
   reconcile_usage: '先完成堂數對帳',
   new_contract: '結案後建立新課程',
+  course_transfer: '改用轉課',
 };
 
 const ACTION_DESCRIPTIONS = {
@@ -44,6 +47,7 @@ const ACTION_DESCRIPTIONS = {
   package_adjustment: '共用方案的堂數要由方案池管理，不能單獨改這門課。',
   reconcile_usage: '先釐清課堂狀態與扣堂紀錄的差異，再決定帳務變更。',
   new_contract: '已使用的合約不直接改寫；需要新條件時建立新課程。',
+  course_transfer: '從某天起改科目／老師／時段；之前的上課紀錄留在原課程。',
 };
 
 export function editabilityNextStepLabel(nextStep) {
