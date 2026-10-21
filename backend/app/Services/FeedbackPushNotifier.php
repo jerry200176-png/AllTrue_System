@@ -84,7 +84,7 @@ class FeedbackPushNotifier
         $body = "{$studentName} 的家長在學習回饋留言，請至學習評量查看並回覆。";
 
         // SourceKey 唯一 → 同一回饋串只會有一筆鈴鐺，重複事件更新同列（天然合併）。
-        Notification::updateOrCreate(
+        $notification = Notification::updateOrCreate(
             ['SourceKey' => "lrfb:{$feedback->campus_id}:{$feedback->learning_record_id}:to_staff"],
             [
                 'CampusID' => (int) $feedback->campus_id,
@@ -102,6 +102,10 @@ class FeedbackPushNotifier
                 'ResolvedAt' => null,
             ]
         );
+        // in-app #413: a new parent message on an existing thread is new work → unread again for staff.
+        if (!$notification->wasRecentlyCreated && config('perfflags.notification_source_resolve_enabled', false)) {
+            DB::table('NotificationReads')->where('NotificationID', $notification->id)->delete();
+        }
 
         $this->recordPush($feedback, 'to_staff');
     }

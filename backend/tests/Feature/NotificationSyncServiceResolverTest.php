@@ -17,6 +17,14 @@ class NotificationSyncServiceResolverTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $sessionSeq = 900;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['perfflags.notification_source_resolve_enabled' => true]);
+    }
+
     private function notice(string $type, string $sourceType, int $sourceId, int $campusId = 1): Notification
     {
         return Notification::create([
@@ -137,8 +145,8 @@ class NotificationSyncServiceResolverTest extends TestCase
 
     public function test_only_scoped_campus_and_own_types_are_touched(): void
     {
-        $other = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn(['SessionDeducted' => true])->id, 2);
-        $manual = $this->notice('system_alert', 'StudentSignIn', (int) $this->signIn(['SessionDeducted' => true])->id);
+        $other = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn(['ClassSessionID' => $this->sessionSeq++, 'SessionDeducted' => true])->id, 2);
+        $manual = $this->notice('system_alert', 'StudentSignIn', (int) $this->signIn(['ClassSessionID' => $this->sessionSeq++, 'SessionDeducted' => true])->id);
         $substitute = $this->notice('substitute', 'ClassSession', 701);
 
         NotificationSyncService::sync([1]);
@@ -149,5 +157,60 @@ class NotificationSyncServiceResolverTest extends TestCase
 
         NotificationSyncService::sync([2]);
         $this->assertFalse($this->isOpen($other));
+    }
+
+    public function test_flag_off_leaves_every_notice_untouched(): void
+    {
+        config(['perfflags.notification_source_resolve_enabled' => false]);
+        $n = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn(['SessionDeducted' => true])->id);
+
+        $result = NotificationSyncService::sync([]);
+
+        $this->assertTrue($this->isOpen($n));
+        $this->assertSame(0, $result['source_resolved']);
+    }
+
+    public function test_deduction_failed_reversal_long_after_resolve_still_reopens(): void
+    {
+        $n = $this->notice('deduction_failed', 'StudentSignIn', (int) $this->signIn()->id);
+        $this->ledger('deduct');
+        NotificationSyncService::sync([]);
+        $n->forceFill(['ResolvedAt' => now()->subDays(60)])->save();
+
+        $this->ledger('reverse');
+        NotificationSyncService::sync([]);
+
+        $this->assertTrue($this->isOpen($n));
+    }
+
+    public function test_parent_follow_up_through_producer_shows_unread_again(): void
+    {
+        config(['perfflags.feedback_push_enabled' => true]);
+        $fb = $this->feedback();
+        $notifier = app(\App\Services\FeedbackPushNotifier::class);
+        $notifier->notifyParentSubmitted($fb);
+        $n = Notification::where('Type', 'lr_feedback')->firstOrFail();
+        NotificationRead::create(['NotificationID' => $n->id, 'UserID' => 1, 'ReadAt' => now()]);
+        \App\Models\FeedbackPushLog::query()->delete();
+
+        $notifier->notifyParentReplied($fb);
+
+        $this->assertTrue($this->isOpen($n));
+        $this->assertSame(0, NotificationRead::where('NotificationID', $n->id)->count());
+    }
+
+    public function test_flag_off_producer_keeps_read_receipts(): void
+    {
+        config(['perfflags.feedback_push_enabled' => true, 'perfflags.notification_source_resolve_enabled' => false]);
+        $fb = $this->feedback();
+        $notifier = app(\App\Services\FeedbackPushNotifier::class);
+        $notifier->notifyParentSubmitted($fb);
+        $n = Notification::where('Type', 'lr_feedback')->firstOrFail();
+        NotificationRead::create(['NotificationID' => $n->id, 'UserID' => 1, 'ReadAt' => now()]);
+        \App\Models\FeedbackPushLog::query()->delete();
+
+        $notifier->notifyParentReplied($fb);
+
+        $this->assertSame(1, NotificationRead::where('NotificationID', $n->id)->count());
     }
 }

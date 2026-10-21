@@ -26,8 +26,11 @@ class NotificationSyncService
      */
     private const SOURCE_RESOLVED_TYPES = ['deduction_failed', 'lr_feedback'];
 
-    /** Resolved rows older than this are not re-checked (bounds the scan; matches the feedback awaiting window). */
-    private const SOURCE_REOPEN_LOOKBACK_DAYS = ParentFeedbackAwaitingService::AWAITING_STALE_AFTER_DAYS;
+    /**
+     * Resolved lr_feedback rows older than the awaiting window cannot become awaiting again, so they
+     * are not re-checked. deduction_failed has no such bound: a ledger reversal can come any time later.
+     */
+    private const FEEDBACK_REOPEN_LOOKBACK_DAYS = ParentFeedbackAwaitingService::AWAITING_STALE_AFTER_DAYS;
 
     /**
      * Sync notifications from multiple business sources.
@@ -171,10 +174,14 @@ class NotificationSyncService
      */
     private static function recheckSourceResolvedTypes(array $campusIds): array
     {
+        if (!config('perfflags.notification_source_resolve_enabled', false)) {
+            return ['resolved' => 0, 'reopened' => 0];
+        }
         $query = Notification::query()
             ->whereIn('Type', self::SOURCE_RESOLVED_TYPES)
             ->where(fn ($q) => $q->whereNull('ResolvedAt')
-                ->orWhere('ResolvedAt', '>=', now()->subDays(self::SOURCE_REOPEN_LOOKBACK_DAYS)));
+                ->orWhere('Type', '!=', 'lr_feedback')
+                ->orWhere('ResolvedAt', '>=', now()->subDays(self::FEEDBACK_REOPEN_LOOKBACK_DAYS)));
         if (!empty($campusIds)) {
             $query->whereIn('CampusID', $campusIds);
         }
