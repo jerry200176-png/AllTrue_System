@@ -1,0 +1,92 @@
+# governance-capability: non-production
+name: Contract 4131 dump request
+
+# Cloud agents often lack workflow_dispatch. Mirror xinzhuang-fee-dump-request:
+# push a request file on main → dispatch Production Case Dump for fixed case
+# contract_4131_stale_teacher only (Track B #401/#402 path acceptance).
+# Child workflow still uses production-ssh + DUMP_ARTIFACT_KEY fail-closed.
+# Not inventory-listed: dispatcher has no SSH/artisan markers; child
+# production-case-dump.yml stays classified. Cursor must not redispath.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/contract-4131-stale-teacher.request.md'
+      - '.github/workflows/contract-4131-dump-request.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: contract-4131-dump-request
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout request
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            operations/closeout/contract-4131-stale-teacher.request.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Validate request file
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('operations/closeout/contract-4131-stale-teacher.request.md').read_text(encoding='utf-8')
+          if not re.search(r'(?m)^case_key:\s*contract_4131_stale_teacher\s*$', text):
+              raise SystemExit('case_key must be exactly contract_4131_stale_teacher')
+          if not re.search(r'(?m)^authorized_course_id:\s*4131\s*$', text):
+              raise SystemExit('authorized_course_id must be exactly 4131')
+          print('Request file OK for contract_4131_stale_teacher')
+          PY
+
+      - name: Dispatch production-case-dump (single serial)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          before=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow=production-case-dump.yml \
+            --event=workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // 0')
+          echo "Dispatching contract_4131_stale_teacher (before_run=$before)"
+          gh workflow run production-case-dump.yml \
+            --repo "${{ github.repository }}" \
+            --ref main \
+            -f case_key=contract_4131_stale_teacher
+
+          deadline=$((SECONDS + 120))
+          run_id=""
+          while (( SECONDS < deadline )); do
+            run_id=$(gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow=production-case-dump.yml \
+              --event=workflow_dispatch \
+              --limit 5 \
+              --json databaseId \
+              --jq "[.[] | select(.databaseId > ${before})] | sort_by(.databaseId) | .[0].databaseId // empty")
+            if [[ -n "$run_id" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          if [[ -z "$run_id" ]]; then
+            echo "timed out waiting for new production-case-dump run (before=$before)" >&2
+            exit 1
+          fi
+          echo "Watching production-case-dump run $run_id"
+          gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
+          echo "Completed run $run_id for contract_4131_stale_teacher"

@@ -1,7 +1,7 @@
 # Xinzhuang agreed-fee correction: minimal release package
 
 **Risk:** R3 / T3 — billing schema, bounded API activation, and later financial repair.
-**State:** implementation candidate only; no merge, deployment, schema write, feature activation, or financial write is authorized by this package.
+**State (2026-10-19T20:35Z):** additive schema + default-off API merged via #4283 (`506729c7`); dump path #4293/#4296 (`5e4c48c0`); allowlist config surface #4300 (`8e6228a3`) on main. **Not** production-activated: tip dumps report public `completeness=correction_schema_missing` / `snapshot_complete=false` for courses 4064/3753/3693; Deploy to Production still SKIPPED (release-train window `10:17Z` already served by `39241462999`; next auto ≈ `04:17Z` or Founder manual train). Feature flag remains default-off. No financial write authorized. Acceptance still **0/3**. Public status: `operations/closeout/xinzhuang-fee-closeout.status.md`.
 
 ## Production evidence and reconciliation
 
@@ -11,7 +11,7 @@ The deployed backend source contains `2026_10_15_120000_create_invoice_correctio
 
 ## Scope and release gates
 
-The existing API and behavior from #4259 are reused. No UI from the stale #4251 draft is included. The proposed campus/course allowlist fails closed when empty. Production allowlist values must be supplied only through a protected deployment configuration path and must name the three cases in the private handoff; values and case evidence must not be committed to this repository or printed in workflow logs. The existing deploy workflow currently has no agreed-fee allowlist configuration surface, so a release operator must identify the supported protected configuration path before requesting production activation. The feature remains default-off until that activation is separately authorized.
+The existing API and behavior from #4259 are reused. No UI from the stale #4251 draft is included. The proposed campus/course allowlist fails closed when empty. Production allowlist values must be supplied only through the Founder-gated workflow [`.github/workflows/agreed-fee-allowlist-activation.yml`](../../.github/workflows/agreed-fee-allowlist-activation.yml) (`set_allowlist` / `clear_allowlist`), reading repo secrets `AGREED_FEE_CORRECTION_CAMPUS_IDS` and `AGREED_FEE_CORRECTION_COURSE_IDS` (never committed; logs emit counts/fingerprint only). That surface does **not** flip `billing.agreed_fee_correction_enabled` (literal false until a separate Founder-authorized code activation). Tip schema still requires normal `deploy.yml` production-activation for #4283.
 
 For course 003753, the private parallel history review found that the excess reversal and pending report can be planned as a signed-net-zero sequence, but the exported evidence omitted the original reversal row. The original server-side row proof and owner disposition are still mandatory before any restatement or fee correction. The other two cases likewise require fresh post-release previews before case-specific financial authorization.
 

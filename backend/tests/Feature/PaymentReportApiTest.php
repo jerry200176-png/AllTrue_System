@@ -2600,6 +2600,73 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.payments.1.application_status', 'applied');
     }
 
+    public function test_accounting_ledger_does_not_show_a_reversed_receipt_as_overpaid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 500, 'Paid' => 0]);
+        // The first receipt fills the bill; before the fix the reversed duplicate was still allocated and showed as 多收.
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-10-01',
+            'DueDate' => '2026-10-10',
+            'TotalAmount' => 500,
+            'PaidAmount' => 0,
+            'Status' => 'paid',
+            'billing_period' => '2026-10',
+        ]);
+        $receipt = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 500,
+            'PaidAt' => '2026-10-09',
+            'Method' => 'cash',
+            'Note' => '第一筆',
+        ]);
+        $extra = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 500,
+            'PaidAt' => '2026-10-09',
+            'Method' => 'cash',
+            'Note' => '重複登記',
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-10-09',
+            'payment_method' => 'cash',
+            'reported_amount' => 500,
+            'status' => 'voided',
+            'payment_id' => $extra->id,
+            'report_token_hash' => hash('sha256', 'ledger-reversed-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $extra->update(['payment_report_id' => $report->id]);
+        // 撤銷 writes this reversal row (PaymentReportController::void).
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => -500,
+            'PaidAt' => '2026-10-10',
+            'Method' => 'void',
+            'Note' => '重複收款',
+            'payment_report_id' => $report->id,
+        ]);
+
+        $payments = collect($this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")
+            ->assertOk()
+            ->json('invoices.0.payments'))->keyBy('id');
+
+        $this->assertSame('applied', $payments[$receipt->id]['application_status']);
+        $this->assertSame('voided', $payments[$extra->id]['application_status']);
+        $this->assertSame(0, $payments[$extra->id]['unapplied_amount']);
+        $this->assertSame([], $payments->where('application_status', 'overpayment_pending_review')->keys()->all());
+    }
+
     public function test_accounting_ledger_exposes_last5_note_and_rejected_reports_director_only(): void
     {
         $token = $this->createDirectorToken([1]);

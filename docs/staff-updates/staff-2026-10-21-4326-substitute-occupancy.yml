@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-4326-substitute-occupancy
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 調課代課占用與提示修正
+    summary: 調課檢查依該堂有效授課老師計算占用，並改善重複提示與已作廢課堂的預檢。
+    items:
+      - category: fixed
+        text: 已由其他老師代課的堂次，不再因原老師的課堂或排課投影而占用原老師容量；真正滿額仍會阻擋。
+      - category: fixed
+        text: 調課錯誤不再重複附上同一組名單，預檢也會排除已作廢課堂。預檢僅供參考，送出時系統仍會重新確認。
+    source_refs:
+      - "changelog:2026-10-21:4326-substitute-occupancy"

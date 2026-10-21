@@ -183,7 +183,7 @@
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'waived' ? WAIVED_LABEL : effectiveClosedReason(course) === 'settled_pending' ? ENDED_PENDING_LABEL : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ courseHistoryReason(course) === 'waived' ? WAIVED_LABEL : courseHistoryReason(course) === 'settled_pending' ? ENDED_PENDING_LABEL : (courseHistoryReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -195,7 +195,7 @@
                   class="btn-course-disclosure"
                   :class="{ 'is-active': expandedId === student.id }"
                   :aria-expanded="expandedId === student.id"
-                  :title="expandedId === student.id ? '收合課程與加購明細' : '展開課程、排課與購課詳情'"
+                  :title="expandedId === student.id ? '收合課程與續課明細' : '展開課程、排課與購課詳情'"
                   @click="toggleExpand(student, $event)"
                 >
                   <span class="material-symbols-outlined" style="font-size:15px;" aria-hidden="true">menu_book</span>
@@ -464,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLow(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : RENEW_LESSONS_LABEL }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" title="打開這位學生的帳務" @click="openTuitionLedger(course)">學生帳務</button>
                         <button v-if="isSessionPaymentLow(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -548,6 +548,7 @@
                       </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
+                        <button v-if="courseHistoryReason(hc) === 'completed'" type="button" class="small ghost" @click="openAddSessionsForCourse(hc)">{{ isTutoringCourse(hc) ? '延續輔導課（不收費）' : isTrialCourse(hc) ? '轉為正式課程' : RENEW_LESSONS_LABEL }}</button>
                         <button v-if="effectiveClosedReason(hc) !== 'waived'" type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
                       </div>
                     </div>
@@ -800,7 +801,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : RENEW_LESSONS_LABEL }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -809,19 +810,19 @@
           <label>{{ isPackageMember(selectedCourse) ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
           <p :style="{ fontSize: '20px', fontWeight: 700, color: isLowRemaining(modalRemainingSessions(selectedCourse)) ? '#e65100' : 'var(--primary)' }">
             {{ modalRemainingSessions(selectedCourse) }} 堂
-            <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
+            <span v-if="isLowRemaining(modalRemainingSessions(selectedCourse))" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快續課）' }}</span>
           </p>
         </div>
         <p class="hint sessions-package-hint">
           {{ isTutoringCourse(selectedCourse)
             ? '複製原課程設定建立下一期，保留前後期關聯。固定排課沿用原星期時段，手動排課仍需逐堂安排。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
             : isPackageMember(selectedCourse)
-            ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
-            : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
+            ? '此課程屬於多科共用方案，續課會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
+            : '此次續課會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
           }}
         </p>
         <div v-if="!(isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly')" class="form-group">
-          <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : '加購堂數' }}</label>
+          <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : `${RENEW_LESSONS_LABEL}堂數` }}</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
         <div v-if="!isPackageMember(selectedCourse)" class="form-group">
@@ -847,7 +848,7 @@
         <div class="actions">
           <button type="button" class="ghost" :disabled="addSessionsSubmitting" @click="showSessionsModal = false">取消</button>
           <button type="button" class="primary" :disabled="addSessionsSubmitting" @click="submitAddSessions">
-            {{ addSessionsSubmitting ? '建立中…' : isTutoringCourse(selectedCourse) ? '確認建立下一期輔導課' : '確認加購' }}
+            {{ addSessionsSubmitting ? '建立中…' : isTutoringCourse(selectedCourse) ? '確認建立下一期輔導課' : '確認續課' }}
           </button>
         </div>
       </div>
@@ -998,15 +999,18 @@
     </div>
   </div>
   <div v-if="toastVisible" class="toast-notification">{{ toastMsg }}</div>
+  <ConfirmDialogHost />
 </template>
 
 <script setup>
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
+import { askConfirm } from '../composables/useConfirmDialog';
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
-  closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
   modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -1056,6 +1060,7 @@ import {
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildCourseMgmtOpsNav,
@@ -1389,27 +1394,12 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-const isHistoricalCourse = (course) => {
-  if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
-  // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
-  // 月結課程只有明確停課（status=inactive，即 Stop=1）才視為歷史課程。
-  if (isMonthlyPaymentType(course)) {
-    return String(course?.status || '').toLowerCase() === 'inactive';
-  }
-  // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
-  // 被 over-deduction 誤設為 0；若此時又已繳費，舊邏輯會把 active 方案課程誤判為「歷史課程」並隱藏，
-  // 造成學生管理欄位顯示「尚未設定」。僅在明確停課（status=inactive，即 Stop=1）時才視為歷史。
-  if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') {
-    return false;
-  }
-  const remaining = ownRemainingSessions(course);
-  if (remaining == null) return false;
-  return remaining <= 0 && isCourseSettled(course);
-};
-const isHistoryCourseByReason = (course) => isHistoryCourse(course, { includePending: true });
-const getActiveStudentCourses = (id) => {
-  return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
-};
+// in-app #427: history is the server's verdict (StudentClassActivity), the same one behind the 「已有進行中課程」 prompt.
+const isHistoryCourseByReason = (course) => courseHistoryReason(course) !== null;
+// Display tier only (#3731): unrecorded, 待對帳 and 確認不收 history hides until 顯示已結業; other closures stay as 歷史 chips.
+const isHistoricalCourse = (course) => isHistoryCourseByReason(course)
+  && (!course?.closed_reason || ['settled_pending', 'waived'].includes(courseHistoryReason(course)));
+const getActiveStudentCourses = (id) => getStudentAllCourses(id).filter((c) => !isHistoryCourseByReason(c));
 /** Active, billable monthly courses: what the one-dialog 月結續報 offers. */
 const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
   isMonthlyPaymentType(c)
@@ -1421,10 +1411,10 @@ const openBatchRenew = (student) => { batchRenewStudent.value = student; };
 const getHistoryStudentCourses = (id) => {
   // History is a detail disclosure inside an expanded student, so it must remain
   // available even when the top-level list is showing active courses only.
-  return getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c));
+  return getStudentAllCourses(id).filter(isHistoryCourseByReason);
 };
 const getStudentHistoryCourseCount = (id) => (
-  getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c)).length
+  getStudentAllCourses(id).filter(isHistoryCourseByReason).length
 );
 const selectedCourseIdByStudent = ref(new Map());
 const hasCourseSchedule = (course) => (
@@ -1470,7 +1460,7 @@ const getCoursePrimaryAction = (course) => {
     return {
       key: 'renew',
       icon: 'add_circle',
-      label: isTutoringCourse(course) ? '延續輔導課' : '續報加購',
+      label: isTutoringCourse(course) ? '延續輔導課' : RENEW_LESSONS_LABEL,
       title: '先處理課程續報',
       description: isPackageMember(course)
         ? '請核對上方共用方案摘要，再處理方案續報。'
@@ -2092,6 +2082,8 @@ const loadStudentCourses = async (studentId) => {
           package_renewal_message: c.package_renewal_message ?? null,
           status: c.status ?? null,
           closed_reason: c.closed_reason ?? null,
+          history_reason: c.history_reason ?? null,
+          is_active_course: c.is_active_course ?? null,
           paid_at: c.paid_at ?? null,
           last_paid_at: c.last_paid_at ?? null,
           Charge: c.Charge ?? c.charge ?? 0,
@@ -2181,6 +2173,8 @@ const loadAllStudentCourses = async () => {
             package_renewal_message: c.package_renewal_message ?? null,
             status: c.status ?? null,
             closed_reason: c.closed_reason ?? null,
+            history_reason: c.history_reason ?? null,
+            is_active_course: c.is_active_course ?? null,
             paid_at: c.paid_at ?? null,
             last_paid_at: c.last_paid_at ?? null,
             data_source: 'laravel'
@@ -2823,12 +2817,18 @@ const openAddCourse = async (student) => {
     try {
       const token = await getAccessToken();
       if (token) {
+        // in-app #427: the server's 進行中 verdict, every campus (same as the create-time guard).
         const res = await authedFetch(`/api/v1/students/${sid}/active-courses`, {
           headers: { 'Accept': 'application/json' },
         }, token);
         if (res.ok) {
           const json = await res.json();
           const active = json?.courses || [];
+          if (json?.precheck_scope === 'teacher_courses' && !await askConfirm({
+            title: '請先確認是否重複建課',
+            message: '此預檢只列出你可見的課程，無法排除其他老師的課程重複。請先向主任確認；送出時仍會檢查，這不是強制建立。',
+            confirmLabel: '繼續填寫',
+          })) return;
           if (active.length > 0) {
             duplicateConflicts.value = normalizeActiveCourseConflicts(active);
             interceptPendingStudent.value = student;
@@ -2910,7 +2910,7 @@ const interceptGoToPurchase = (conflict) => {
     openAddSessionsForCourse(target);
     return;
   }
-  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
+  alert('找不到要續課的課程，請重新整理後再從課程列點「續課」。');
 };
 
 const editCourse = (course) => {
@@ -3336,7 +3336,7 @@ const openAddSessionsForCourse = (course) => {
     return;
   }
   if (isTutoringCourse(course) && isPackageMember(course)) {
-    alert('此輔導課屬於共用方案，不能從這裡延續或加購；請先確認方案設定。');
+    alert('此輔導課屬於共用方案，不能從這裡延續或續課；請先確認方案設定。');
     return;
   }
   if (course?.payment_type === 'monthly' && !isTutoringCourse(course)) {
@@ -3427,7 +3427,7 @@ const submitAddSessions = async () => {
       if (submittedStudent?.id) {
         await loadStudentCourses(submittedStudent.id);
       }
-      alert(`已加購共用方案堂數：總堂數由 ${currentTotal} 堂增加為 ${nextTotal} 堂。所有方案科目共用同一個堂數池。`);
+      alert(`已續課：共用方案總堂數由 ${currentTotal} 堂增加為 ${nextTotal} 堂。所有方案科目共用同一個堂數池。`);
       return;
     }
 
