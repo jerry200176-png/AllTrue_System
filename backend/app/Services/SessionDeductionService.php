@@ -108,19 +108,21 @@ class SessionDeductionService
                 // (BackfillSessionStatus), and the first row per key wins below.
                 $query->orderByDesc('StudentSingIn.id');
             }
-            $rows = $query->get();
-            foreach ($rows as $row) {
-                $classId = (int) $row->getAttribute('StudentClassID');
-                $key = (string) $row->getAttribute('evidence_key');
-                $date = $row->getAttribute('row_date') ?? $row->getAttribute('SignInDT');
+            // toBase(): plain rows (scopes still applied) — only the selected columns are read.
+            foreach ($query->toBase()->get() as $row) {
+                $vals = (array) $row;
+                $classId = (int) ($vals['StudentClassID'] ?? 0);
+                $key = (string) ($vals['evidence_key'] ?? '');
+                $signInDt = isset($vals['SignInDT']) ? (string) $vals['SignInDT'] : null;
+                $date = $vals['row_date'] ?? $signInDt;
                 $sets[$source][$classId][$key] ??= [
                     'source' => $source,
                     'date' => $date !== null ? substr((string) $date, 0, 10) : null,
-                    'start' => $row->getAttribute('row_start') !== null
-                        ? (string) $row->getAttribute('row_start')
-                        : ($row->getAttribute('SignInDT') !== null ? substr((string) $row->getAttribute('SignInDT'), 11, 8) : null),
-                    'end' => $row->getAttribute('row_end') !== null ? (string) $row->getAttribute('row_end') : null,
-                    'status' => $row->getAttribute('row_status') !== null ? (string) $row->getAttribute('row_status') : null,
+                    'start' => isset($vals['row_start'])
+                        ? (string) $vals['row_start']
+                        : ($signInDt !== null ? substr($signInDt, 11, 8) : null),
+                    'end' => isset($vals['row_end']) ? (string) $vals['row_end'] : null,
+                    'status' => isset($vals['row_status']) ? (string) $vals['row_status'] : null,
                 ];
             }
         }
@@ -152,7 +154,7 @@ class SessionDeductionService
      * Single definition of the observed-usage evidence: source => [query, distinct-key SQL].
      *
      * @param  list<int>  $ids
-     * @return array<string, array{0: \Illuminate\Database\Eloquent\Builder, 1: string}>
+     * @return array<string, array{0: mixed, 1: string}> query builder (Eloquent; typed mixed because larastan cannot resolve the active() scope), distinct-key SQL
      */
     private static function observedUsageSources(array $ids): array
     {
