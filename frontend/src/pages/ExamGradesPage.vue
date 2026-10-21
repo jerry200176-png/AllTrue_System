@@ -35,7 +35,7 @@
         <p class="muted">科目：{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</p>
         <div class="exam-round-card__actions">
           <AtButton shape="rect" size="sm" variant="primary" @click="openRound(round)">
-            {{ round.status === 'published' ? '登分' : '查看' }}
+            {{ examRoundActionLabel(round, isDirector) }}
           </AtButton>
           <AtButton v-if="isDirector && round.status === 'draft'" shape="rect" size="sm" variant="ghost" @click="publishRound(round)">發布</AtButton>
           <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="askCloseRound(round)">關閉</AtButton>
@@ -71,6 +71,19 @@
       <AtSkeleton v-if="studentsLoading" rows="3" />
       <AtInlineAlert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></AtInlineAlert>
       <AtEmpty v-else-if="!students.length" icon="person_off" title="沒有需登分的學生" description="此場次沒有符合年級且由你授課的學生。" />
+      <template v-else>
+      <div class="exam-score-search">
+        <label for="exam-score-search-input">找學生</label>
+        <input
+          id="exam-score-search-input"
+          v-model="studentQuery"
+          type="search"
+          placeholder="輸入學生姓名或編號"
+          autocomplete="off"
+        />
+        <small class="muted" aria-live="polite">顯示 {{ filteredStudents.length }} / {{ students.length }} 位</small>
+      </div>
+      <p v-if="!filteredStudents.length" class="muted exam-score-no-match">找不到符合「{{ studentQuery.trim() }}」的學生。</p>
       <div v-else class="exam-score-table-wrap">
         <table class="exam-score-table">
           <thead>
@@ -81,7 +94,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in students" :key="row.student_id">
+            <tr v-for="row in filteredStudents" :key="row.student_id">
               <td>
                 <strong>{{ row.student_name }}</strong>
                 <small :class="{ 'exam-complete': row.is_complete }">{{ row.filled_subject_count }}/{{ row.required_subject_count }}</small>
@@ -112,6 +125,7 @@
           </tbody>
         </table>
       </div>
+      </template>
       <p v-if="scoreError" class="exam-error">{{ scoreError }}</p>
       <template #actions>
         <AtButton shape="rect" variant="ghost" @click="selected = null">關閉</AtButton>
@@ -129,6 +143,7 @@ import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import { supabase } from '../supabase';
+import { canEditExamRound, examRoundActionLabel, filterExamStudents } from '../lib/examScoreStudentFilter';
 
 const props = defineProps({
   branchId: { type: [Number, String], required: true },
@@ -137,7 +152,7 @@ const props = defineProps({
 });
 
 const isDirector = computed(() => ['director', 'super_admin', 'admin'].includes(String(props.userRole || '')));
-const canEditScores = computed(() => selected.value && (selected.value.status === 'published' || isDirector.value));
+const canEditScores = computed(() => canEditExamRound(selected.value, isDirector.value));
 
 const loading = ref(false);
 const error = ref('');
@@ -151,6 +166,8 @@ const selected = ref(null);
 const students = ref([]);
 const studentsLoading = ref(false);
 const studentsError = ref('');
+const studentQuery = ref('');
+const filteredStudents = computed(() => filterExamStudents(students.value, studentQuery.value));
 const scoreError = ref('');
 const savingStudentId = ref(null);
 const draftScores = reactive({});
@@ -269,6 +286,7 @@ async function confirmCloseRound() {
 }
 
 async function openRound(round) {
+  if (String(selected.value?.id) !== String(round?.id)) studentQuery.value = '';
   selected.value = round;
   studentsLoading.value = true;
   studentsError.value = '';
@@ -335,6 +353,7 @@ async function saveStudent(row) {
   }
 }
 
+watch(selected, (round) => { if (!round) studentQuery.value = ''; });
 watch(() => props.branchId, loadRounds);
 watch(() => props.focusRoundId, async (id) => {
   if (!id || loading.value) return;
@@ -360,6 +379,10 @@ onMounted(loadRounds);
 .status-closed { background: var(--ds-surface-2); }
 .exam-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .exam-error { color: var(--danger); margin-top: 8px; }
+.exam-score-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.exam-score-search label { margin: 0; }
+.exam-score-search input { flex: 1 1 12rem; min-height: 40px; padding: 6px 10px; }
+.exam-score-no-match { margin: 8px 0; }
 .exam-score-table-wrap { overflow-x: auto; }
 .exam-score-table { width: 100%; border-collapse: collapse; }
 .exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
