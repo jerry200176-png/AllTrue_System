@@ -81,60 +81,75 @@ final class ContractRenewal
     }
 
     /**
-     * A batch is stored with its shifted start (in-app #422): the first slot day after the source's last live lesson
-     * at purchase time. That lesson stays on record (attended or not) after it passes, so a retry only needs to match
-     * the exact starts this request could have been shifted to: the requested and planned start, and the next slot
-     * day after each source lesson on or after the requested date. A separate batch on any other date is not matched.
+     * Stable identity of a purchase-batch request (#4349): the source course, the start date the user asked for
+     * (not the shifted start, which depends on mutable source lessons/cadence), the session count and the
+     * purchase mode. Stored on the new course so a retry of the same request is recognised however the source
+     * changes afterwards. preview and purchase share this helper so both see the same key.
      */
-    private function findDuplicateShiftedBatch(StudentClass $studentClass, string $planStart, string $startDate, int $sessions): ?StudentClass
+    private function purchaseRequestKey(StudentClass $source, string $requestedStart, int $sessions, string $mode): string
     {
-        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
-        $starts = [$startDate => true, $planStart => true];
-        // A source that can never shift a batch (trial, stopped, or settled by this purchase) yields only the exact
-        // starts, as before #422.
-        $settledByPurchase = (string) ($studentClass->getAttribute('ScheduleMode') ?? '') === 'count'
-            && (int) $studentClass->getAttribute('Paid') === 1 && (int) $studentClass->getAttribute('RemainingSessions') <= 0;
-        if (strtolower(trim((string) $studentClass->getAttribute('ClassType'))) === 'trial'
-            || (int) $studentClass->getAttribute('Stop') === 1 || $settledByPurchase) {
-            return $this->findDuplicatePurchaseBatch($studentClass, $planStart, $sessions)
-                ?? ($planStart !== $startDate ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions) : null);
+        return hash('sha256', implode('|', [
+            'purchase_batch.v1',
+            (int) $source->getKey(),
+            (string) ContractSessionSchedule::normalizeDateString($requestedStart),
+            $sessions,
+            $mode,
+        ]));
+    }
+
+    /** The only purchase-batch mode purchaseBatch() accepts; renewal preview/confirm map purchase_batch to it. */
+    private const PURCHASE_MODE_NEW = 'new_purchase';
+
+    private static ?bool $hasPurchaseRequestKeyColumn = null;
+
+    private static function hasPurchaseRequestKeyColumn(): bool
+    {
+        // Until the additive migration has run, keyed matching and storage are skipped (legacy matching only).
+        return self::$hasPurchaseRequestKeyColumn ??= Schema::hasColumn('StudentClass', 'purchase_request_key');
+    }
+
+    /**
+     * A batch is stored with its shifted start (in-app #422), so its StartDate cannot identify a retry. An open
+     * count-mode course of the same student carrying the same purchase request key is the duplicate (#4349).
+     * Batches created before the key existed (purchase_request_key IS NULL) keep the pre-#422 exact matches on
+     * the requested and planned start.
+     */
+    private function findDuplicateShiftedBatch(StudentClass $studentClass, string $planStart, string $startDate, int $sessions, string $requestKey): ?StudentClass
+    {
+        $hasKey = self::hasPurchaseRequestKeyColumn();
+        if ($hasKey) {
+            $keyed = StudentClass::query()->where('ID', '<>', $studentClass->ID)
+                ->where('StudentID', $studentClass->StudentID)
+                ->where('ScheduleMode', 'count')
+                ->where('purchase_request_key', $requestKey)
+                ->where(function ($q) {
+                    $q->whereNull('Stop')->orWhere('Stop', 0);
+                })
+                ->orderBy('ID')
+                ->first();
+            if ($keyed !== null) {
+                return $keyed;
+            }
         }
-        // Same contract-period bounds as batchStartAfterSource(): residue outside them never shifts a batch.
-        $sourceStart = ContractSessionSchedule::normalizeDateString($studentClass->getAttribute('StartDate'));
-        $sourceEnd = ContractSessionSchedule::normalizeDateString($studentClass->getAttribute('EndDate'));
-        $lessonDates = ClassSession::query()
-            ->where('StudentClassID', (int) $studentClass->ID)
-            ->whereDate('SessionDate', '>=', $sourceStart !== null && $sourceStart > $startDate ? $sourceStart : $startDate)
-            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $sourceEnd))
-            ->pluck('SessionDate');
-        // Lessons and schedule-only occurrences that may have set the shift can be cancelled or voided later,
-        // so every status counts here. A wider candidate set only asks staff to confirm a possible repeat
-        // purchase; it never shifts a batch. (A stable purchase key would need a schema change: #4349.)
-        $scheduleDates = DB::table('schedules')
-            ->where('student_course_id', (int) $studentClass->ID)
-            ->whereDate('schedule_date', '>=', $sourceStart !== null && $sourceStart > $startDate ? $sourceStart : $startDate)
-            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('schedule_date', '<=', $sourceEnd))
-            ->whereNull('original_schedule_id')
-            ->pluck('schedule_date');
-        $fallbackWeekday = (int) Carbon::parse($startDate)->dayOfWeekIso;
-        foreach ([...$lessonDates, ...$scheduleDates] as $date) {
-            $ymd = ContractSessionSchedule::normalizeDateString($date);
-            if ($ymd !== null) {
-                $starts[self::nextSlotDayAfter($ymd, $slots, $fallbackWeekday)] = true;
+        foreach (array_unique([$planStart, $startDate]) as $start) {
+            $legacy = StudentClass::query()->where('ID', '<>', $studentClass->ID)
+                ->where('StudentID', $studentClass->StudentID)
+                ->where('SubjectID', $studentClass->SubjectID)
+                ->where('ScheduleMode', 'count')
+                ->where('StartDate', $start)
+                ->where('SessionCount', $sessions)
+                ->when($hasKey, fn ($q) => $q->whereNull('purchase_request_key'))
+                ->where(function ($q) {
+                    $q->whereNull('Stop')->orWhere('Stop', 0);
+                })
+                ->orderBy('ID')
+                ->first();
+            if ($legacy !== null) {
+                return $legacy;
             }
         }
 
-        return StudentClass::query()->where('ID', '<>', $studentClass->ID)
-            ->where('StudentID', $studentClass->StudentID)
-            ->where('SubjectID', $studentClass->SubjectID)
-            ->where('ScheduleMode', 'count')
-            ->whereIn(DB::raw('DATE(StartDate)'), array_keys($starts))
-            ->where('SessionCount', $sessions)
-            ->where(function ($q) {
-                $q->whereNull('Stop')->orWhere('Stop', 0);
-            })
-            ->orderBy('ID')
-            ->first();
+        return null;
     }
 
     public function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass
@@ -490,7 +505,8 @@ final class ContractRenewal
         }
 
         $duplicate = ($startDate && $sessions > 0)
-            ? $this->findDuplicateShiftedBatch($studentClass, (string) $planStart, $startDate, $sessions)
+            ? $this->findDuplicateShiftedBatch($studentClass, (string) $planStart, $startDate, $sessions,
+                $this->purchaseRequestKey($studentClass, $startDate, $sessions, self::PURCHASE_MODE_NEW))
             : null;
         if ($duplicate !== null) {
             $blockers[] = [
@@ -721,7 +737,8 @@ final class ContractRenewal
             $planStart = $this->batchStartAfterSource(
                 $studentClass, $startDate, ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass)
             )['start'];
-            $duplicate = $this->findDuplicateShiftedBatch($studentClass, $planStart, $startDate, $sessions);
+            $requestKey = $this->purchaseRequestKey($studentClass, $startDate, $sessions, $mode);
+            $duplicate = $this->findDuplicateShiftedBatch($studentClass, $planStart, $startDate, $sessions, $requestKey);
             if ($duplicate !== null) {
                 return $this->reply([
                     'message' => '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
@@ -819,6 +836,9 @@ final class ContractRenewal
                 'UsedSessions' => 0,
                 'pricing_snapshot' => $discountSnapshot,
             ];
+            if (self::hasPurchaseRequestKeyColumn()) {
+                $newPayload['purchase_request_key'] = $requestKey;
+            }
 
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
@@ -1198,6 +1218,9 @@ final class ContractRenewal
                 'UsedSessions' => 0,
                 'pricing_snapshot' => $discountSnapshot,
             ];
+            if (self::hasPurchaseRequestKeyColumn()) {
+                $newPayload['purchase_request_key'] = $requestKey;
+            }
 
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);

@@ -128,6 +128,10 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $first = $this->withHeaders($this->headers($token))
             ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", $payload)
             ->assertCreated();
+        $firstId = (int) $first->json('new_course.id');
+        $key = StudentClass::query()->findOrFail($firstId)->purchase_request_key;
+        $this->assertIsString($key);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $key);
 
         // The source lessons are now in the past, so today's anchor no longer shifts the request.
         AuthToken::query()->update(['expires_at' => now()->addMonths(3)]);
@@ -136,8 +140,34 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $this->withHeaders($this->headers($token))
             ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", $payload)
             ->assertStatus(409)
-            ->assertJsonPath('duplicate_course.id', (int) $first->json('new_course.id'));
+            ->assertJsonPath('duplicate_course.id', $firstId);
         $this->travelBack();
+    }
+
+    public function test_retry_after_the_source_cadence_is_edited_is_still_a_duplicate(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        $source = $this->createSourceCourse($student->id);
+        $this->seedSourceFutureSessions($source, 2);
+        $payload = ['sessions' => 3, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase'];
+
+        $first = $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", $payload)
+            ->assertCreated();
+
+        // Moving the source from Monday 18:00 to Wednesday 19:00 changes every start the request could shift to.
+        StudentClass::query()->whereKey($source->ID)->update(['week' => 3, 'time' => '19:00:00']);
+
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('duplicate_course.id', (int) $first->json('new_course.id'));
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+                'mode' => 'purchase_batch', 'sessions' => 3, 'start_date' => $this->base->toDateString(),
+            ])
+            ->assertJsonFragment(['code' => 'possible_duplicate_batch']);
     }
 
     public function test_a_separate_later_batch_is_not_flagged_as_a_duplicate(): void
@@ -146,19 +176,43 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $student = $this->createStudent();
         $source = $this->createSourceCourse($student->id);
         $this->seedSourceFutureSessions($source, 2);
-        // Same student, subject and size, but it starts weeks after any date this request could shift to.
-        $this->createSourceCourse($student->id, [
-            'StartDate' => $this->weeksAfterBase(6), 'SessionCount' => 3, 'Paid' => 0, 'UsedSessions' => 0,
-        ]);
-
-        $res = $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
-                'mode' => 'purchase_batch',
-                'sessions' => 3,
-                'start_date' => $this->base->toDateString(),
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+                'sessions' => 3, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase',
             ])
+            ->assertCreated();
+
+        // Same student, subject and size, but a different request (a later requested start).
+        $later = ['sessions' => 3, 'start_date' => $this->weeksAfterBase(8)];
+        $res = $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", ['mode' => 'purchase_batch'] + $later)
             ->assertOk();
         $this->assertNotContains('possible_duplicate_batch', array_column($res->json('blockers') ?? [], 'code'));
+
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['mode' => 'new_purchase'] + $later)
+            ->assertCreated()
+            ->assertJsonPath('new_course.first_session_date', $this->weeksAfterBase(8));
+    }
+
+    public function test_a_legacy_batch_without_a_key_on_the_requested_start_is_still_a_duplicate(): void
+    {
+        $token = $this->createDirectorToken();
+        $student = $this->createStudent();
+        $source = $this->createSourceCourse($student->id);
+        $this->seedSourceFutureSessions($source, 2);
+        // Created before purchase_request_key existed: StartDate is the requested start, key is NULL.
+        $legacy = $this->createSourceCourse($student->id, [
+            'StartDate' => $this->base->toDateString(), 'SessionCount' => 3, 'Paid' => 0, 'UsedSessions' => 0,
+        ]);
+        $this->assertNull(StudentClass::query()->findOrFail($legacy->ID)->purchase_request_key);
+
+        $this->withHeaders($this->headers($token))
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+                'sessions' => 3, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('duplicate_course.id', (int) $legacy->ID);
     }
 
     public function test_renewal_preview_shows_the_same_shifted_batch_dates(): void

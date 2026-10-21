@@ -76,6 +76,7 @@ use Illuminate\Support\Facades\DB;
  * @property \Carbon\CarbonInterface|null $settlement_locked_at
  * @property string|null $settlement_snapshot
  * @property int|null $trial_converted_to_id
+ * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
  */
 class StudentClass extends Model
@@ -107,6 +108,7 @@ class StudentClass extends Model
         'rate_unit',
         'PackageID', 'PackageTotalSessions', 'PackageName',
         'trial_converted_to_id',
+        'purchase_request_key',
     ];
 
     protected $casts = [
