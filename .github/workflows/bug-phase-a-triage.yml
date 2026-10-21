@@ -160,8 +160,10 @@ jobs:
               ], "phase-a verified intake; GitHub issue=".$issueUrl);
               if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
           }
+          // LIKE narrows the candidates; the anchored match keeps issues/12 from matching issues/123.
+          $issueLinked = static fn ($body) => preg_match("#".preg_quote($issueUrl, "#")."(?![0-9])#", (string)$body) === 1;
           $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("body", "like", "%".$issueUrl."%")->exists();
+              ->where("body", "like", "%".$issueUrl."%")->pluck("body")->contains($issueLinked);
           $comment = $already ? ["ok" => true, "skipped" => true] : $svc::addComment($bugId, $actor, $reply, false);
           // addComment() returns the persisted BugReportComment model, while
           // an idempotent skip returns the small {ok, skipped} shape.

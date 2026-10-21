@@ -12,7 +12,9 @@
 - **批次**：輸入為 `rows_json`，一次 **1–20 筆**；任何一筆不合格（`bug_id`、本 repo issue URL 且回覆內含該 URL、disposition 語法、`close_as_logged` 布林、回覆 ≤600 字元、bug_id 不重複）整批在任何寫入前失敗。preview 只顯示 bug_id／issue／disposition 或狀態／長度／sha256，不印回覆全文。寫入依序在同一個 SSH session 執行，每筆的 tinker 邏輯不變。
 - **不在本條範圍、維持原關卡**：Phase C（`resolved`）、`deploy.yml` 與正式啟用、資料修復、migration、其他任何正式寫入。回覆內容仍須符合 `CHAT_BUG_SYSTEM.md` §3.8，公開紀錄不得含個資。2026-10-14（二）第 7 條的使用紀錄要求照舊。
 
-### 2. 合併與 R3 上線分批（Founder 對話中對提案回覆「好」）
+### 2. 合併與 R3 上線分批
+
+Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對下列提案（Agent 在 CI 綠＋review 處理完＋無 migration 時自行合併 R0–R3 PR；R3 上線隨 release train 班次分批；非只新增型 migration、資料修復、credential rotation 仍問 Founder）回覆「好」；之後又說「不要一直要我批准 很煩 反正我都按同意」。下列 (b) 若 PR #4359 合併，再由其 2026-10-21（二）之二 進一步取代（R3 application range 通過自動控制即上線）。
 
 - **(a) 合併**：Agent 可自行合併**任何風險等級 R0–R3** 的 PR，不必問 Founder，條件全部成立：head 上每個 required check 綠；Codex／review 指出的問題已處理且每個 review thread 都已 resolve；PR **不含 migration**。只新增型 migration 照舊適用 R5 的 T2 規則（2026-10-14（三）補充第 1 條）；會 drop／rename／change 欄位或寫資料的 migration 仍須 Founder 對確切範圍決定。本條取代 2026-10-12 第 1 條與 `RISK_BASED_MERGE_POLICY.md` §Founder standing exception 中「R3 只限已決定的帳務／權限規則才可自行合併」的較窄條件（僅限合併；不放寬下列 (b)(c)）。**不取代** 2026-10-14（二）第 5 條：會授予／擴大權限或改變核准方式、受保護邊界的治理／控制面變更（含 workflow、`deploy.yml`、`autonomy_gate.py`）仍由 Founder 批准後才合併。`AGENTS.md` Workflow Risk Tiers 的 T3 列與 `RISK_BASED_MERGE_POLICY.md` §T3/protected boundary 已同步。
 - **(b) R3 上線**：R3 的 production activation 仍由 Founder 在平台上審核（GO 文字任何 Agent token 都寫得出來，Founder 2026-10-08 Q1 A 維持），但**分批**：R3 範圍隨 release train 班次（台北 12:17／18:17）上線，Founder 每班最多按一次；除重大 production 事故外，Agent 不另外 dispatch 單次 R3 部署。

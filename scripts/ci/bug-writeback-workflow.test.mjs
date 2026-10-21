@@ -101,6 +101,8 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
     assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: clean }]).ok, 'a clean reply with the issue and app links passes');
     assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: `${url(7)} https://daan.lifenet.com.tw/learning-records/student-12345/session-67890?tab=open` }]).ok,
       'an ordinary app deep link with ids and a query passes');
+    assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: `${url(7)} 已在 daan.lifenet.com.tw 修正，版本 2026.10.21，下午 3:30，金額 1,200 元，共 8 堂、v1.2.3` }]).ok,
+      'bare allowed hosts, dates, times, amounts and versions pass');
     for (const [rule, leak] of [
       ['tw_mobile', '0912345678'], ['tw_mobile', '0912-345-678'], ['tw_mobile', '+886 912 345 678'],
       ['tw_landline', '02-2345-6789'], ['tw_landline', '(02)23456789'], ['tw_landline', '+886-2-2345-6789'],
@@ -115,6 +117,16 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       ['email', 'https://daan.lifenet.com.tw/?email=alice@example.com'], ['email', 'https://daan.lifenet.com.tw/?e=alice%40example.com'],
       ['tw_mobile', 'https://daan.lifenet.com.tw/p/0912345678'], ['secret_token', 'https://daan.lifenet.com.tw/?t=ghp_abcdefghijklmnop'],
       ['tw_national_id', 'https://daan.lifenet.com.tw/?id=A123456789'], ['long_hex', `https://daan.lifenet.com.tw/x#${'a'.repeat(40)}`],
+      // Independent review bypasses (5598196260): NFKC + format-character stripping, loose separators,
+      // obfuscated emails, any foreign/defanged/IP host, and redirect targets on the allowed app host.
+      ['tw_mobile', '0912.345.678'], ['tw_mobile', '09-12345678'], ['tw_mobile', '+886 (0)912 345 678'],
+      ['tw_mobile', '0912\u200b345\u200b678'], ['tw_mobile', '０９１２３４５６７８'], ['tw_landline', '02.2345.6789'],
+      ['tw_national_id', 'Ａ123456789'], ['tw_national_id', 'A 123456789'], ['tw_national_id', 'A123-456-789'],
+      ['email', 'user＠gmail．com'], ['email', 'user@gmail'], ['email', 'user at gmail dot com'],
+      ['email', 'user(at)gmail(dot)com'], ['url_not_allowed', 'evil.ai'], ['url_not_allowed', 'x.tk'],
+      ['url_not_allowed', 'y.site'], ['url_not_allowed', 'xn--80ak6aa92e.xn--p1ai'], ['url_not_allowed', 'ftp://x.ai'],
+      ['url_not_allowed', '1.2.3.4/x'], ['url_not_allowed', 'evil[.]com'], ['url_not_allowed', 'evil(.)com'],
+      ['url_not_allowed', 'https://daan.lifenet.com.tw/redirect?to=evil.ai'], ['url_not_allowed', 'https://daan.lifenet.com.tw/r?to=evil%2Eai'],
     ]) {
       const r = run('phase-a', 'preview', [a[1], { ...a[0], public_reply: `${url(7)} ${leak}` }]);
       assert.ok(!r.ok && r.out.includes(`row 2: public_reply rejected by content rule ${rule}`), `${rule} must reject the batch: ${r.out}`);
@@ -203,6 +215,16 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
 }
 
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
+{
+  // The Phase-A "already replied" check must not treat a comment linking issues/123 as the reply for issues/12.
+  const line = phaseASource.match(/\n          (\$issueLinked = static fn \(\$body\) => [^\n]*;)\n/);
+  assert.ok(line && phaseASource.includes('->pluck("body")->contains($issueLinked)'), 'Phase-A duplicate check must use the anchored predicate');
+  const php = `$issueUrl = "https://github.com/o/r/issues/12"; ${line[1]}
+    $cases = [["see https://github.com/o/r/issues/12", true], ["https://github.com/o/r/issues/12。", true],
+      ["https://github.com/o/r/issues/123", false], ["https://github.com/o/r/issues/1", false]];
+    foreach ($cases as [$body, $want]) { if ($issueLinked($body) !== $want) { fwrite(STDERR, $body); exit(1); } }`;
+  execFileSync('php', ['-r', php]);
+}
 assert.ok(
   phaseASource.includes('while read -r -u 3 BUG_ID GITHUB_ISSUE_URL DISPOSITION CLOSE_AS_LOGGED PUBLIC_REPLY_B64; do')
     && phaseASource.includes('"disposition" => $disposition')

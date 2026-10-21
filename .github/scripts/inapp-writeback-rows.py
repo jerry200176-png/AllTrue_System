@@ -24,6 +24,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 from urllib.parse import unquote_plus
 
 MAX_ROWS = 20
@@ -34,14 +35,20 @@ STATUSES = ("triaged", "in_progress", "resolved", "closed")
 REV = re.compile(r"[0-9a-f]{40}")
 RUN_ID = re.compile(r"[0-9]{1,20}")
 APP_ORIGIN = "https://daan.lifenet.com.tw"  # the production app; its own links are allowed in replies
-# URLs are ASCII; stopping at the first non-ASCII character keeps "<url>請查看" from swallowing the text.
-URL = re.compile(r"(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&*+,;=%]+", re.I)
-BARE_DOMAIN = re.compile(r"(?<![\w.@-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|tw|me|co|app|dev|xyz|ly|gg|ru|cn|info|biz)(?![\w-])", re.I)
+ALLOWED_HOSTS = ("daan.lifenet.com.tw", "github.com")  # bare mentions of these hosts are fine
+# Any scheme://... or www. link; URLs are ASCII, so a link stops at the first non-ASCII character.
+URL = re.compile(r"(?:[a-z][a-z0-9+.-]{1,15}://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&*+,;=%]+", re.I)
+DOT = r"\s*(?:\.|\[\.\]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\s+dot\s+)\s*"  # "." and defanged forms
+LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+DOMAIN = re.compile(rf"(?<![\w@-]){LABEL}(?:{DOT}{LABEL})*{DOT}(?:[a-z]{{2,63}}|xn--[a-z0-9-]+)(?![\w-])", re.I)
+IP = re.compile(r"(?<![\d.])\d{1,3}(?:\s*(?:\.|\[\.\])\s*\d{1,3}){3}(?![\d.])")
+SEP = r"[-\s.]*"  # separators people put between digits
 REPLY_RULES = (
-    ("tw_mobile", re.compile(r"(?<!\d)(?:\+?886[-\s]?9|09)\d{2}[-\s]?\d{3}[-\s]?\d{3}(?!\d)")),
-    ("tw_landline", re.compile(r"(?<!\d)(?:\(?0[2-8]\d?\)?|\+?886[-\s]?[2-8]\d?)[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")),
-    ("tw_national_id", re.compile(r"(?<![A-Za-z0-9])[A-Za-z][12]\d{8}(?!\d)")),
-    ("email", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
+    ("tw_mobile", re.compile(rf"(?<!\d)(?:(?:\+|00)?886{SEP}(?:\(0\){SEP})?|0)9(?:{SEP}\d){{8}}(?!\d)")),
+    ("tw_landline", re.compile(rf"(?<!\d)(?:(?:\+|00)?886{SEP}(?:\(0\){SEP})?\(?|\(?0)[2-8](?:[-\s.)]*\d){{7,8}}(?!\d)")),
+    ("tw_national_id", re.compile(r"(?<![A-Za-z0-9])[A-Za-z][-\s]*[12](?:[-\s]*\d){8}(?!\d)")),
+    ("email", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+")),
+    ("email", re.compile(r"[A-Za-z0-9._%+-]+\s*(?:\(at\)|\[at\]|\{at\}|\s+at\s+)\s*" + LABEL + DOT + LABEL, re.I)),
     ("secret_token", re.compile(r"(?<![A-Za-z0-9])(?:ghp_|gho_|ghs_|ghu_|github_pat_|sk-|xox[bpas]-|AKIA)[A-Za-z0-9_-]{8,}")),
     ("private_key", re.compile(r"BEGIN [A-Z ]*KEY", re.I)),
     ("long_hex", re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{32,}(?![0-9A-Fa-f])")),
@@ -64,25 +71,49 @@ def text(row, key, where, default=None):
     return str(value)
 
 
+def normalize(text):
+    """NFKC (full-width letters, digits, ＠ and ． become ASCII) and drop format characters (Cf, e.g.
+    zero-width spaces) so look-alike or split values cannot slip past the rules."""
+    return "".join(ch for ch in unicodedata.normalize("NFKC", text) if unicodedata.category(ch) != "Cf")
+
+
+def foreign_domain(text):
+    """True when the text names a host other than the allowed ones, or a bare IP address."""
+    if IP.search(text):
+        return True
+    for match in DOMAIN.finditer(text):
+        host = re.sub(DOT, ".", match.group(0), flags=re.I).lower()
+        if host not in ALLOWED_HOSTS:
+            return True
+    return False
+
+
 def reply_violation(reply, repo):
-    """Name of the first content rule the reply breaks, or None. Never returns the matched text."""
+    """Name of the first content rule the reply breaks, or None. Never returns the matched text.
+    Personal names are NOT detected: this is a pattern guard, not a PII guarantee."""
+    text = normalize(reply)
     allowed_issue = re.compile(r"https://github\.com/" + re.escape(repo) + r"/issues/[1-9][0-9]*")
     allowed_app = re.compile(re.escape(APP_ORIGIN) + r"(?:[/?#]\S*)?")
-    url_parts = []
-    for match in URL.finditer(reply):
+    url_parts, bad_link = [], False
+    for match in URL.finditer(text):
         url = match.group(0).rstrip(".,:;!?")
-        if not (allowed_issue.fullmatch(url) or allowed_app.fullmatch(url)):
-            return "url_not_allowed"
-        # An allowed link can still carry data in its path/query (?email=..., /0912345678): scan the
-        # decoded components with the same rules (#4351 review).
-        url_parts.append(re.sub(r"[/?&=#;]+", " ", unquote_plus(url.split("://", 1)[-1])))
-    rest = URL.sub(" ", reply)
-    if BARE_DOMAIN.search(rest):  # bare domains only outside links; the link host was checked above
-        return "url_not_allowed"
+        if allowed_issue.fullmatch(url):
+            continue
+        if not allowed_app.fullmatch(url):
+            bad_link = True
+            continue
+        # An allowed app link can still carry data or a redirect target in its path/query/fragment
+        # (?email=..., /0912345678, ?to=evil.ai): scan the decoded components after the host.
+        tail = normalize(unquote_plus(url[len(APP_ORIGIN):]))
+        bad_link = bad_link or foreign_domain(tail)
+        url_parts.append(re.sub(r"[/?&=#;]+", " ", tail))
+    rest = URL.sub(" ", text)
     scanned = " ".join([rest] + url_parts)
-    for name, pattern in REPLY_RULES:
+    for name, pattern in REPLY_RULES:  # the specific data rules first, so the error names the leak
         if pattern.search(scanned):
             return name
+    if bad_link or foreign_domain(rest):  # foreign, defanged or IP hosts, in or outside links
+        return "url_not_allowed"
     return None
 
 
