@@ -87,8 +87,28 @@ def check_text(text: str, *, label: str = str(PATH)) -> list[str]:
     # Ban LIVE→PREV mv as the backup method (would remove LIVE before replace).
     if re.search(r'mv\s+-f\s+"\$LIVE"\s+"\$PREV"', blob):
         errors.append("FAIL A6g: must not mv LIVE→PREV before STAGE→LIVE (use cp backup)")
-    if "validate_mount_file: chown" not in blob or "validate_mount_file: chmod" not in blob or "validate_mount_file: runuser cannot read" not in blob:
-        errors.append("FAIL A6h: validate_mount_file must explicitly fail-message chown/chmod/runuser")
+    for msg in ("validate_mount_file: setfacl failed", "validate_mount_file: fpm cannot read",
+                "validate_mount_file: fpm cannot traverse", "setfacl/getfacl missing"):
+        if msg not in blob:
+            errors.append(f"FAIL A6h: validate_mount_file must explicitly fail-message {msg!r}")
+    # Production sudo needs a password (run 39427575892); access is granted by the
+    # file owner's named ACL, so the remote must not depend on sudo at all.
+    if re.search(r"\bsudo\b", re.sub(r"#.*", "", blob)):
+        errors.append("FAIL A2b: remote must not call sudo (owner ACL instead)")
+    if not re.search(r'setfacl --set "u::rw-,g::---,o::---,u:\$\{uid\}:r--,m::r--"', blob):
+        errors.append("FAIL A2c: file ACL must be replaced (--set) granting only the bound worker uid read")
+    if "acl_exact" not in blob:
+        errors.append("FAIL A2d: file ACL must be verified exactly (no extra entries or wider mask)")
+    if "setfacl --restore" not in blob or "restore_dir_acls" not in blob:
+        errors.append("FAIL A6i: directory ACL grants must be restored on failure")
+    if not re.search(r"trap 'abort_mount' EXIT HUP INT TERM", blob) or "MOUNT_PHASE=swapped" not in blob:
+        errors.append("FAIL A6j: interrupted mounts must be rolled back via phase-aware EXIT/signal traps")
+    if not re.search(r'setfacl -m "u:\$\{uid\}:--x,m::', blob):
+        errors.append("FAIL A2e: directory traverse grant must set the mask explicitly (no recalculation)")
+    if 'fpm_can w "$d"' not in blob or "worker can write" not in blob:
+        errors.append("FAIL A2f: managed directories must not stay writable by the worker")
+    if '[ "$GITHUB_REF" = refs/heads/main ]' not in text:
+        errors.append("FAIL A7: mode=mount must be pinned to refs/heads/main")
 
     # scp destination must be $STAGE (or literal …json.staging), never bare LIVE path.
     if not (
@@ -99,6 +119,29 @@ def check_text(text: str, *, label: str = str(PATH)) -> list[str]:
     if "STAGE=" in text and f"{LIVE}.staging" not in text:
         errors.append("FAIL A6e: STAGE must resolve to reviewed-financial-cases.json.staging")
 
+    return errors
+
+
+DEPLOY_SOURCES = (
+    pathlib.Path(".github/workflows/deploy.yml"),
+    pathlib.Path("scripts/production-deploy/pi-remote-deploy.sh"),
+)
+RECURSIVE_STORAGE_CHMOD = re.compile(r"chmod\s+-R\s+[0-7]*[1-7]\s+[^\n]*\bstorage\b")
+
+
+def check_deploy_preserves_private(sources=DEPLOY_SOURCES) -> list[str]:
+    """A mount is only safe once deploy no longer re-widens storage/app/private
+    (a recursive chmod sets the ACL mask and other bits on the live file)."""
+    errors: list[str] = []
+    seen = False
+    for path in sources:
+        if not path.is_file():
+            continue
+        seen = True
+        if RECURSIVE_STORAGE_CHMOD.search(path.read_text(encoding="utf-8")):
+            errors.append(f"FAIL D1: {path} still runs a recursive chmod over storage; mount would be re-exposed by the next deploy")
+    if not seen:
+        errors.append("FAIL D1: no deploy source found to verify storage/app/private is preserved")
     return errors
 
 
@@ -124,6 +167,20 @@ REMOTE
         print("self-test FAIL: expected A6 on scp-to-live fixture", file=sys.stderr)
         print("\n".join(bad_errs), file=sys.stderr)
         return 1
+
+    bad_sudo = good.replace('elif ! setfacl --set', 'elif ! sudo -n setfacl --set', 1)
+    if bad_sudo == good or not any("A2b" in e for e in check_text(bad_sudo, label="fixture-sudo")):
+        print("self-test FAIL: expected A2b on sudo fixture", file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory() as td:
+        old_deploy = pathlib.Path(td) / "deploy.yml"
+        old_deploy.write_text("chmod -R 775 storage bootstrap/cache 2>/dev/null || true\n", encoding="utf-8")
+        new_deploy = pathlib.Path(td) / "deploy-new.yml"
+        new_deploy.write_text("bash /home/admin/scripts/deploy-storage-perms.sh\n", encoding="utf-8")
+        if not check_deploy_preserves_private((old_deploy,)) or check_deploy_preserves_private((new_deploy,)):
+            print("self-test FAIL: D1 deploy recursive-chmod detection", file=sys.stderr)
+            return 1
 
     bad644 = """
 ssh host bash -s <<'REMOTE'
@@ -159,6 +216,13 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("--self-test", "self-test"):
         return self_test()
+    if argv and argv[0] == "--require-deploy-safe":
+        errors = check_deploy_preserves_private()
+        if errors:
+            print("\n".join(errors), file=sys.stderr)
+            return 1
+        print("OK deploy preserves storage/app/private")
+        return 0
 
     text = PATH.read_text(encoding="utf-8")
     errors = check_text(text)
