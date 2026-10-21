@@ -152,11 +152,18 @@ export const closedPaymentState = (course) => {
 // The student-classes list computes these once (backend StudentClassActivity); the same verdict drives the
 // 「已有進行中課程」 prompt and the create-time duplicate guard. Pages read the flags, never re-derive them.
 
-/** Why the row is history ('completed' | 'settled' | 'settled_pending' | 'waived' | 'converted_trial' | …), or null. */
-export const courseHistoryReason = (course) => course?.history_reason || null;
+/**
+ * Why the row is history ('completed' | 'settled' | 'settled_pending' | 'waived' | 'converted_trial' | …), or null.
+ * A degraded fallback row (`_noncanonical`, no server verdict) only shows its recorded closure (closedReason).
+ */
+export const courseHistoryReason = (course) => (
+  course?._noncanonical ? closedReason(course) : (course?.history_reason || null)
+);
 
 /** 進行中: running and not history (paused courses are not 進行中 but stay in the active section). */
-export const isActiveCourse = (course) => course?.is_active_course === true;
+export const isActiveCourse = (course) => (course?._noncanonical
+  ? String(course?.status || '').toLowerCase() !== 'inactive' && courseHistoryReason(course) === null
+  : course?.is_active_course === true);
 
 /** 課程管理 keeps 待對帳結案 rows in its working list (that is where they are reconciled); everything else follows the server. */
 export const isCourseManagementHistory = (course) => {

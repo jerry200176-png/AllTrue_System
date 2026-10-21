@@ -235,6 +235,10 @@ assert.equal(M.courseHistoryReason({ history_reason: 'completed' }), 'completed'
 assert.equal(M.courseHistoryReason({ closed_reason: 'settled' }), null, 'no server flag, no client re-derivation');
 assert.equal(M.isActiveCourse({ is_active_course: true }), true);
 assert.equal(M.isActiveCourse({ is_active_course: false, history_reason: null }), false);
+// Degraded fallback rows (no server verdict) keep only their recorded closure.
+assert.equal(M.courseHistoryReason({ _noncanonical: true, closed_reason: 'settled', status: 'inactive' }), 'settled');
+assert.equal(M.isActiveCourse({ _noncanonical: true, status: 'active' }), true);
+assert.equal(M.isActiveCourse({ _noncanonical: true, status: 'inactive' }), false);
 assert.deepEqual(['settled_pending', 'completed', 'converted_trial', null].map((r) => M.isCourseManagementHistory({ history_reason: r })),
   [false, true, true, false], 'CourseManagement keeps 待對帳結案 in its working list');
 

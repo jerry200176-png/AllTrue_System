@@ -68,8 +68,11 @@ final class StudentClassActivity
         if ($running && (int) ($course->PackageID ?? 0) > 0) {
             return null; // FR-001: a package member draws on the shared pool.
         }
-        // A positive minutes balance (#613 A1) is entitlement left even when it rounds to 0 lessons.
-        if ((int) ($course->RemainingMinutes ?? 0) > 0) {
+        // A partial-minutes balance (#613 A1: not a whole number of lessons, so selfHealedUsage left it
+        // authoritative) is entitlement left even when it rounds to 0 lessons. Whole-lesson minutes are
+        // derived counters that the self-heal already corrected.
+        $minutes = (int) ($course->RemainingMinutes ?? 0);
+        if ($minutes > 0 && $minutes % max(1, (int) ($course->SessionDuration ?: 60)) !== 0) {
             return null;
         }
         $settled = in_array($settlement, self::SETTLED, true);

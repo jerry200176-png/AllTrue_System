@@ -19,6 +19,7 @@ class StudentClassActivityTest extends TestCase
             'used up but still owed' => [[], 0, 'unpaid', null, true],
             'paid, partial minutes left (rounds to 0 lessons)' => [['RemainingMinutes' => 30], 0, 'paid', null, true],
             'paid, explicit zero minutes' => [['RemainingMinutes' => 0], 0, 'paid', 'completed', false],
+            'paid, stale whole-lesson minutes after self-heal' => [['RemainingMinutes' => 60, 'SessionDuration' => 60], 0, 'paid', 'completed', false],
             'used up, verdict pending review' => [[], 0, 'review_required', null, true],
             'closed: settled_pending' => [['closed_reason' => 'settled_pending'], 2, 'unpaid', 'settled_pending', false],
             'closed: waived' => [['closed_reason' => 'waived'], 3, 'paid', 'waived', false],
