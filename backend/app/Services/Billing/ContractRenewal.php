@@ -117,39 +117,19 @@ final class ContractRenewal
     private function findDuplicateShiftedBatch(StudentClass $studentClass, string $planStart, string $startDate, int $sessions, string $requestKey): ?StudentClass
     {
         $hasKey = self::hasPurchaseRequestKeyColumn();
-        if ($hasKey) {
-            $keyed = StudentClass::query()->where('ID', '<>', $studentClass->ID)
-                ->where('StudentID', $studentClass->StudentID)
-                ->where('ScheduleMode', 'count')
-                ->where('purchase_request_key', $requestKey)
-                ->where(function ($q) {
-                    $q->whereNull('Stop')->orWhere('Stop', 0);
-                })
-                ->orderBy('ID')
-                ->first();
-            if ($keyed !== null) {
-                return $keyed;
-            }
-        }
-        foreach (array_unique([$planStart, $startDate]) as $start) {
-            $legacy = StudentClass::query()->where('ID', '<>', $studentClass->ID)
-                ->where('StudentID', $studentClass->StudentID)
-                ->where('SubjectID', $studentClass->SubjectID)
-                ->where('ScheduleMode', 'count')
-                ->where('StartDate', $start)
-                ->where('SessionCount', $sessions)
-                ->when($hasKey, fn ($q) => $q->whereNull('purchase_request_key'))
-                ->where(function ($q) {
-                    $q->whereNull('Stop')->orWhere('Stop', 0);
-                })
-                ->orderBy('ID')
-                ->first();
-            if ($legacy !== null) {
-                return $legacy;
-            }
-        }
+        $open = fn () => StudentClass::query()->where('ID', '<>', $studentClass->ID)
+            ->where('StudentID', $studentClass->StudentID)
+            ->where('ScheduleMode', 'count')
+            ->where(fn ($q) => $q->whereNull('Stop')->orWhere('Stop', 0))
+            ->orderBy('ID');
+        $keyed = $hasKey ? $open()->where('purchase_request_key', $requestKey)->first() : null;
 
-        return null;
+        return $keyed ?? $open()
+            ->where('SubjectID', $studentClass->SubjectID)
+            ->where('SessionCount', $sessions)
+            ->whereIn('StartDate', array_values(array_unique([$planStart, $startDate])))
+            ->when($hasKey, fn ($q) => $q->whereNull('purchase_request_key'))
+            ->first();
     }
 
     public function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass

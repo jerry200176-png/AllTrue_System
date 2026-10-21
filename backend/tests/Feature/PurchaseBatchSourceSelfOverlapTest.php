@@ -38,11 +38,7 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $sourceDates = $this->seedSourceFutureSessions($source, 3);
 
         $res = $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
-                'sessions' => 4,
-                'start_date' => $this->base->toDateString(),
-                'mode' => 'new_purchase',
-            ]);
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 4, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase']);
 
         $res->assertCreated()
             ->assertJsonPath('new_course.created_sessions', 4)
@@ -88,11 +84,7 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         }
 
         $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
-                'sessions' => 2,
-                'start_date' => $this->base->toDateString(),
-                'mode' => 'new_purchase',
-            ])
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 2, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase'])
             ->assertCreated()
             ->assertJsonPath('new_course.first_session_date', $this->weeksAfterBase(3))
             ->assertJsonPath('new_course.last_session_date', $this->weeksAfterBase(4));
@@ -107,11 +99,7 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $this->seedSourceFutureSessions($source, 3);
 
         $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
-                'mode' => 'purchase_batch',
-                'sessions' => 2,
-                'start_date' => $this->base->toDateString(),
-            ])
+            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", ['mode' => 'purchase_batch', 'sessions' => 2, 'start_date' => $this->base->toDateString()])
             ->assertOk()
             ->assertJsonPath('schedule.source_live_until', $this->weeksAfterBase(0))
             ->assertJsonPath('schedule.first_session_date', $this->weeksAfterBase(1));
@@ -224,11 +212,7 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $sourceDates = $this->seedSourceFutureSessions($source, 2);
 
         $res = $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
-                'sessions' => 3,
-                'start_date' => $this->base->toDateString(),
-                'mode' => 'new_purchase',
-            ]);
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 3, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase']);
 
         $this->assertSame(201, $res->status(), (string) $res->getContent());
         $res->assertJsonPath('source_closed', true)
@@ -251,11 +235,7 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         $this->seedSourceFutureSessions($source, 2);
 
         $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
-                'mode' => 'purchase_batch',
-                'sessions' => 3,
-                'start_date' => $this->base->toDateString(),
-            ])
+            ->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", ['mode' => 'purchase_batch', 'sessions' => 3, 'start_date' => $this->base->toDateString()])
             ->assertOk()
             ->assertJsonPath('schedule.created_sessions', 3)
             ->assertJsonPath('schedule.first_session_date', $this->weeksAfterBase(2))
@@ -282,11 +262,7 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
         ]);
 
         $res = $this->withHeaders($this->headers($token))
-            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
-                'sessions' => 4,
-                'start_date' => $this->base->toDateString(),
-                'mode' => 'new_purchase',
-            ]);
+            ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 4, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase']);
 
         $res->assertStatus(422)
             ->assertJsonPath('code', 'student_slot_conflict')
