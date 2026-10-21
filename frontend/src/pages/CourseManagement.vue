@@ -1619,7 +1619,7 @@ const pendingConvertTrialId = ref(0);
 const pendingManualSessionId = ref(0);
 // in-app #342: calendar 「看全部堂次」 opens this course's 排課與堂次 tab.
 const pendingLessonsCourseId = ref(0);
-// in-app #429: 學生管理「新增課程／續課 → 換科目／老師／時段」opens this course's 轉課.
+// in-app #429: 學生管理「新增課程／續課 → 換科目／老師／時段」opens this course's 轉課 (CourseTransferModal).
 const pendingTransferCourseId = ref(0);
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
@@ -5412,7 +5412,8 @@ watch(coursesLoading, (loading) => {
   const course = courses.value.find((c) => c.id === pendingTransferCourseId.value);
   pendingTransferCourseId.value = 0;
   convertTrialStudentId.value = null;
-  if (course) openTransferSessionsModal(course);
+  // Same flow as the row 「轉課」 (CourseTransferModal: subject / teacher / time by cutover date).
+  if (course) { editCourse(course, { openModal: false }); showCourseTransfer.value = true; }
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;

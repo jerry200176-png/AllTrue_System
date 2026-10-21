@@ -44,6 +44,27 @@ describe('course intent chooser (#4331)', () => {
     expect(none.emitted('choose')).toBeUndefined();
   });
 
+  it('parallel same-subject/teacher contracts are told apart, and 續課 hides non-renewable courses (#4358 review)', async () => {
+    const courses = [
+      { id: 1, label: '數學／王老師', detail: '週二 16:00 · 剩 2 堂', course: { id: 1 } },
+      { id: 2, label: '數學／王老師', detail: '週五 18:00 · 剩 8 堂', course: { id: 2 } },
+      { id: 3, label: '英文／李老師', detail: '試聽', course: { id: 3 }, renewable: false },
+    ];
+    const w = mount(CourseIntentChooser, { props: { show: true, courses } });
+    await w.find('[data-testid="course-intent-renew"]').trigger('click');
+    expect(w.find('[data-testid="course-intent-course-3"]').exists()).toBe(false);
+    expect(w.find('[data-testid="course-intent-course-1"]').text()).toContain('週二 16:00');
+    expect(w.find('[data-testid="course-intent-course-2"]').text()).toContain('週五 18:00');
+    await w.find('[data-testid="course-intent-back"]').trigger('click');
+    await w.find('[data-testid="course-intent-change"]').trigger('click');
+    expect(w.find('[data-testid="course-intent-course-3"]').exists()).toBe(true);
+
+    const trialOnly = mount(CourseIntentChooser, { props: { show: true, courses: [courses[2]] } });
+    await trialOnly.find('[data-testid="course-intent-renew"]').trigger('click');
+    expect(trialOnly.emitted('choose')).toBeUndefined();
+    expect(trialOnly.find('[data-testid="course-intent-empty"]').exists()).toBe(true);
+  });
+
   it('without a student (課程查找 header) 續課 shows where the row button is', async () => {
     const w = mount(CourseIntentChooser, { props: { show: true } });
     await w.find('[data-testid="course-intent-renew"]').trigger('click');
@@ -92,6 +113,10 @@ describe('one name for adding lessons (#4331)', () => {
     expect(src).toContain('new: () => openAddCourse(student)');
     expect(src).toContain('renew: () => openAddSessionsForCourse(course)');
     expect(src).toContain("buildCourseMgmtOpsNav(course, { intent: 'transfer' })");
-    expect(read('../../../pages/CourseManagement.vue')).toContain("props.initialCourseIntent === 'transfer'");
+    const cm = read('../../../pages/CourseManagement.vue');
+    expect(cm).toContain("props.initialCourseIntent === 'transfer'");
+    // 換科目／老師／時段 = the row 「轉課」 (CourseTransferModal), not the records-only TransferSessionsModal.
+    expect(cm).toMatch(/pendingTransferCourseId\.value = 0;[\s\S]{0,200}editCourse\(course, \{ openModal: false \}\); showCourseTransfer\.value = true;/);
+    expect(src).toContain('renewable: !isTrialCourse(course)');
   });
 });

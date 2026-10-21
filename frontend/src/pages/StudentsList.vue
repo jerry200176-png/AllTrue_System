@@ -1100,13 +1100,24 @@ const goToTuitionBilling = openTuitionLedger;
 
 // in-app #429: 「新增課程／續課」 chooser. Each intent lands in the flow the row buttons already use.
 const courseIntentStudent = ref(null);
+// Trials are not renewed (轉為正式課程) and tutoring packages cannot be extended here, so 續課 hides them.
+// `detail` (time, remaining, end date) tells parallel same-subject/teacher contracts apart.
 const courseIntentOptions = (studentId) => getStudentAllCourses(studentId)
   .filter((course) => !isHistoricalCourse(course))
-  .map((course) => ({
-    id: course.id,
-    label: [getStudentCourseSubjectDisplayLabel(course), course.teacher_name].filter(Boolean).join('／'),
-    course,
-  }));
+  .map((course) => {
+    const remaining = ownRemainingSessions(course);
+    return {
+      id: course.id,
+      label: [getStudentCourseSubjectDisplayLabel(course), course.teacher_name].filter(Boolean).join('／'),
+      detail: [
+        scheduleDisplayLines(course).join('、'),
+        remaining != null && !isPackageMember(course) ? `剩 ${remaining} 堂` : '',
+        course.end_date ? `到 ${course.end_date}` : '',
+      ].filter(Boolean).join(' · '),
+      course,
+      renewable: !isTrialCourse(course) && !(isTutoringCourse(course) && isPackageMember(course)),
+    };
+  });
 const onCourseIntent = ({ intent, course }) => {
   const student = courseIntentStudent.value;
   courseIntentStudent.value = null;
