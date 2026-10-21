@@ -35,6 +35,9 @@ export function transferPrefillFromBlockedEdit(err, form, originalForm = null) {
   if (!hint?.start_date || !Array.isArray(hint.changes) || !hint.changes.length) return null;
   const f = form || {};
   const prefill = { start_date: String(hint.start_date).slice(0, 10) };
+  if (originalForm && editedSlots(originalForm).length > 0 && editedSlots(f).length === 0) {
+    return { ...prefill, blocked_reason: '你已移除所有每週時段；轉課無法套用空排課，這些修改尚未儲存。請先確認排課方式。' };
+  }
   if (hint.changes.includes('subject') && f.subject) prefill.subject = f.subject;
   if (hint.changes.includes('teacher') && f.teacher_id) prefill.teacher_id = f.teacher_id;
   if (hint.changes.includes('slots')) {

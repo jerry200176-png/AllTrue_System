@@ -62,6 +62,18 @@ describe('transferPrefillFromBlockedEdit', () => {
     expect(transferPrefillFromBlockedEdit(err, form).not_carried).toEqual(['購買堂數']);
   });
 
+  it('withholds empty-schedule edits even when the server hint mentions only subject', () => {
+    const edited = { ...form, subject: 'english', day_time_slots: [], days_of_week: [] };
+    const prefill = transferPrefillFromBlockedEdit(blocked(['subject']), edited, form);
+    expect(prefill.blocked_reason).toContain('轉課無法套用空排課');
+    const wrapper = mount(CourseSaveErrorAlert, { props: {
+      error: { message: '未儲存', nextStep: 'course_transfer', transferPrefill: prefill }, canOpen: () => true,
+    } });
+    expect(wrapper.find('[data-testid="save-error-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-error-transfer-blocked"]').text()).toContain('尚未儲存');
+    wrapper.unmount();
+  });
+
   it('lists mixed edited fields even when the subject guard omitted locked_fields', () => {
     const original = { ...form, sessions_purchased: 8, memo: '原備註', room_id: 1, class_type: 'one_on_one', rate_per_30min: 500 };
     const edited = { ...original, subject: 'english', sessions_purchased: 12, memo: '新備註', room_id: 2, class_type: 'one_on_two', rate_per_30min: 600 };

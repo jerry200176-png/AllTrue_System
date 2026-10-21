@@ -17,3 +17,5 @@
 - 只有 server 明確給出 next_step 才顯示轉課錯誤捷徑；不再由 subject_change_requires_transfer 錯誤碼自行重建被 server 隱藏的動作。完整 focused frontend selection：27 tests + lint 通過。
 
 - 客戶端以原編輯 snapshot 列出每個轉課不會儲存的變更欄位（含科目＋購買堂數同時修改、server 未回 locked_fields 的情況）；不更改 server 拒絕原因、權限或帳務。28 focused tests + lint 通過。
+
+- 原表單有每週時段但新表單全部移除時，明確阻擋轉課捷徑，避免 server subject-only hint 導致沿用舊時段。既有表單保留、提示尚未儲存；16 transfer-prefill tests + lint 通過。
