@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-purchase-batch-source-overlap
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 加購堂數不再被原課程擋下
+    summary: 原課程還有預排堂次時加購，新批次會接在原課程最後一堂之後排課。
+    items:
+      - category: fixed
+        text: 加購時若原課程還有未上的預排堂次，系統不再顯示「已有其他課程」而拒絕；新批次會自動從原課程之後的時段開始排。
+      - category: fixed
+        text: 學生其他課程已占用的時段仍會阻擋，請改選開始日期或時段。
+    source_refs:
+      - "changelog:2026-10-21:purchase-batch-source-overlap"
