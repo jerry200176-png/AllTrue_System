@@ -8,7 +8,6 @@
 ## Worktree & path safety (canonical)
 
 **Default (Founder 2026-10-14（三）, [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)):** work in a Claude cloud session. Clone fresh from `origin/main`, branch with an accepted `scripts/ci/branch-policy.mjs` prefix, open a PR. No `agent-start`, no local preflight, no `.agent-session/manifest.json`. The PR diff, risk declaration, review and required checks are the delivery evidence.
-**Cloud checks before pushing:** the SessionStart hook (`.claude/hooks/session-start.sh`) installs `vendor/`, `node_modules/` and a local MariaDB `AllTrue_test`, so run `cd backend && vendor/bin/phpunit --filter X` (or a test file) and `vendor/bin/phpstan analyse --memory-limit=1G <files>` instead of waiting for CI; CI (MySQL 8) stays the source of truth.
 **Local WSL (legacy, being retired):** only if a task truly needs it; then `agent-start alltrue <task-id>` and never the forbidden checkouts.
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
 

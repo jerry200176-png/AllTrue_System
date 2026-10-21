@@ -103,11 +103,18 @@ seed_github_dists() { # $1=composer.lock
   local todo
   todo="$(python3 -I - "$1" "$COMPOSER_CACHE/files" <<'PY'
 import hashlib, json, os, re, sys
+PKG = re.compile(r"^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9]([_.-]?[a-z0-9]+)*$")
+GH = re.compile(r"^https://github\.com/[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*(\.git)?$")
 lock = json.load(open(sys.argv[1]))
 for p in lock.get("packages", []) + lock.get("packages-dev", []):
     url = (p.get("dist") or {}).get("url", "")
     m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/zipball/([0-9a-f]{40})$", url)
     if not m:
+        continue
+    name = p.get("name", "")
+    repo = m.group(1)
+    if not PKG.match(name) or not GH.match("https://github.com/" + repo + ".git"):
+        print("session-start: skipping invalid composer.lock entry (name or repo URL)", file=sys.stderr)
         continue
     dest = os.path.join(sys.argv[2], p["name"], hashlib.sha1(url.encode()).hexdigest() + ".zip")
     if not os.path.isfile(dest) or os.path.getsize(dest) == 0:

@@ -24,7 +24,9 @@ Each entry is a relative symlink. Edit the canonical file, not the link.
 | `.cursorrules` | Read the file; `CLAUDE.md` points to it for the full workflow. |
 | `agent models` (check the Sol slug) | Not applicable; the session model is fixed. Don't substitute a weaker model for a step that requires strong planning, and say so in the PR. |
 | `agent-start alltrue <task-id>` / WSL worktree | Cloud session: branch from `origin/main` (`docs/governance/WORKTREE_POLICY.md`). |
-| Local `vendor/bin/phpunit` / `/tmp/backend-test-*` (WSL) | GitHub Actions only (R2). The SessionStart hook installs `vendor/` for PHPStan and lint. |
+| Local `vendor/bin/phpunit` / `/tmp/backend-test-*` (WSL) | Never on the Pi/production (R2). In a cloud session, running `vendor/bin/phpunit` against the local `AllTrue_test` MariaDB is allowed and expected before pushing (the SessionStart hook installs `vendor/`, `node_modules/` and that DB); CI (MySQL 8) stays the source of truth. |
 | `.cursor/.local/test-credentials.md` | Local only, never committed; not available in cloud sessions. |
 | `$HOME/workspace/state/alltrue/delivery/` | Local WSL state; absent in cloud sessions. Use GitHub issues/PRs. |
 | `.cursor/skills-cursor/*` (create-rule, babysit, ...) | Cursor built-ins with no repo equivalent; use Claude Code's own `/code-review`, hooks and skills. |
+
+**Cloud checks before pushing:** the SessionStart hook (`.claude/hooks/session-start.sh`) installs `vendor/`, `node_modules/` and a local MariaDB `AllTrue_test`, so run `cd backend && vendor/bin/phpunit --filter X` (or a test file) and `vendor/bin/phpstan analyse --memory-limit=1G <files>` instead of waiting for CI; CI (MySQL 8) stays the source of truth.
