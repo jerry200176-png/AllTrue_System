@@ -843,6 +843,25 @@ final class ContractRenewal
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
 
+            // A paid count source with no sessions left is settled by this purchase. As in renewMonthly(), close
+            // it and cancel its future scheduled rows BEFORE materializing the batch: while it is still open, the
+            // student-slot guard sees those rows as another course and refuses the whole purchase (#4338).
+            // batchStartAfterSource() does not shift past such a source for the same reason.
+            $sourceClosed = false;
+            $sourceCancelledSessions = 0;
+            if (
+                (string) ($studentClass->ScheduleMode ?? '') === 'count'
+                && (int) ($studentClass->Paid ?? 0) === 1
+                && (int) ($studentClass->RemainingSessions ?? 0) <= 0
+            ) {
+                $studentClass->setAttribute('Stop', 1);
+                $studentClass->closed_reason = 'settled';
+                $studentClass->EndDate = Carbon::today()->toDateString();
+                $studentClass->save();
+                $sourceCancelledSessions = $this->cancelFutureScheduledSessions($studentClass, 'settled');
+                $sourceClosed = true;
+            }
+
             // ── Build ClassSession rows for the new course ──
             $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($newCourse);
             if (empty($slots)) {
@@ -883,25 +902,13 @@ final class ContractRenewal
             SessionDeductionService::syncCounters($newCourse);
             $newCourse->refresh();
 
-            $sourceClosed = false;
-            if (
-                (string) ($studentClass->ScheduleMode ?? '') === 'count'
-                && (int) ($studentClass->Paid ?? 0) === 1
-                && (int) ($studentClass->RemainingSessions ?? 0) <= 0
-            ) {
-                $studentClass->setAttribute('Stop', 1);
-                $studentClass->closed_reason = 'settled';
-                $studentClass->EndDate = Carbon::today()->toDateString();
-                $studentClass->save();
-                $sourceClosed = true;
-            }
-
             return $this->reply([
                 'message' => $sourceClosed
                     ? '已新增購買批次，舊批次已自動結案'
                     : '已新增購買批次',
                 'mode' => $mode,
                 'source_closed' => $sourceClosed,
+                'source_cancelled_sessions' => $sourceCancelledSessions,
                 'created_sessions' => $createdSessions,
                 'source_course' => [
                     'id' => (int) $studentClass->ID,

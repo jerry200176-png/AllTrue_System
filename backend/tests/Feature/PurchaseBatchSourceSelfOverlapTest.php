@@ -230,8 +230,8 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
                 'mode' => 'new_purchase',
             ]);
 
-        $res->assertCreated()
-            ->assertJsonPath('source_closed', true)
+        $this->assertSame(201, $res->status(), (string) $res->getContent());
+        $res->assertJsonPath('source_closed', true)
             ->assertJsonPath('source_course.stop', 1)
             ->assertJsonPath('new_course.first_session_date', $this->weeksAfterBase(0))
             ->assertJsonPath('new_course.created_sessions', 3);
