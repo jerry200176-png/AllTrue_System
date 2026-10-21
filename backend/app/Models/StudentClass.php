@@ -302,6 +302,27 @@ class StudentClass extends Model
     }
 
     /**
+     * in-app #428: a trial records its fee by payment date alone and never gets an invoice by design, so its paid
+     * flag is not legacy data to verify (no 需核對). Only a trial that actually carries the date qualifies: the
+     * course's own Paid=1 needs ClassType=trial and PayDate; a paid state derived from the package needs the
+     * package's class_type=trial and paid_at (a regular course bound to a trial package follows the package).
+     * Shared by the course list, the tuition alerts and the accounting ledger so they cannot drift.
+     */
+    public function isTrialFeeRecordedByDate(?CoursePackage $package = null): bool
+    {
+        if ((int) ($this->Paid ?? 0) === 1) {
+            return strtolower(trim((string) ($this->ClassType ?? ''))) === 'trial'
+                && trim((string) ($this->PayDate ?? '')) !== '';
+        }
+        if (!$this->isPartOfPackage()) {
+            return false;
+        }
+        $package ??= $this->coursePackage;
+
+        return $package !== null && $package->isTrialFeeRecordedByDate();
+    }
+
+    /**
      * F8 authority: a course holds its WEEKLY TEMPLATE seat iff Stop=0 and it is not a
      * used-up count course. Concrete ClassSession rows are NOT governed by this rule.
      */

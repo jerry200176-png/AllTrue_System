@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -76,6 +77,36 @@ class LedgerLegacyPaymentContextTest extends TestCase
         $this->assertSame([true, true], [$courses->firstWhere('id', $current->ID)['free_gift_settled'], $courses->firstWhere('id', $current->ID)['paid']]);
         $this->assertSame([false, false], [$courses->firstWhere('id', $stale->ID)['free_gift_settled'], $courses->firstWhere('id', $stale->ID)['paid']]);
         $this->assertFalse($courses->firstWhere('id', $owed->ID)['free_gift_settled']);
+    }
+
+    /**
+     * in-app #428: the ledger row carries the server-derived trial exemption (StudentClass::isTrialFeeRecordedByDate, the
+     * same rule as legacy_paid_flag_only), so the panel does not show 需核對 for a dated paid trial. A trial paid without a
+     * date, a regular paid course, and a member of a trial package that has no paid_at stay unexempted.
+     */
+    public function test_trial_fee_recorded_by_date_requires_trial_type_and_payment_date(): void
+    {
+        $student = $this->student();
+        $count = ['ScheduleMode' => 'count', 'Charge' => 500, 'SessionCount' => 1, 'RemainingSessions' => 1];
+        $datedTrial = $this->course($student, $count + ['ClassType' => 'trial', 'Paid' => 1, 'PayDate' => '2026-10-10']);
+        $undatedTrial = $this->course($student, $count + ['ClassType' => 'trial', 'Paid' => 1, 'SubjectID' => 2]);
+        $regular = $this->course($student, $count + ['Paid' => 1, 'PayDate' => '2026-10-10', 'SubjectID' => 3]);
+        $pkgFields = ['student_id' => $student->id, 'campus_id' => 1, 'billing_mode' => 'count', 'total_sessions' => 1,
+            'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'trial',
+            'paid' => true, 'stop' => false, 'enabled' => true];
+        $datedPkg = CoursePackage::create($pkgFields + ['name' => 'T1', 'paid_at' => '2026-10-10']);
+        $undatedPkg = CoursePackage::create($pkgFields + ['name' => 'T2']);
+        $datedMember = $this->course($student, $count + ['PackageID' => $datedPkg->id, 'SubjectID' => 4]);
+        $undatedMember = $this->course($student, $count + ['ClassType' => 'trial', 'PackageID' => $undatedPkg->id, 'SubjectID' => 5]);
+
+        $courses = collect($this->ledger($student));
+        $flag = fn (StudentClass $c) => $courses->firstWhere('id', $c->ID)['trial_fee_recorded_by_date'];
+
+        $this->assertTrue($flag($datedTrial));
+        $this->assertFalse($flag($undatedTrial), 'a trial marked paid without a date stays 需核對');
+        $this->assertFalse($flag($regular), '#4174 unchanged for a regular course');
+        $this->assertTrue($flag($datedMember), 'paid state derived from a dated trial package follows the package');
+        $this->assertFalse($flag($undatedMember), 'a trial package marked paid without paid_at stays unexempted');
     }
 
     /** @return array<int, array<string, mixed>> */

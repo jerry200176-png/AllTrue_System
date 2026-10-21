@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $campus_id
  * @property string|null $class_type
  * @property bool $paid
+ * @property string|null $paid_at
  */
 class CoursePackage extends Model
 {
@@ -42,6 +43,14 @@ class CoursePackage extends Model
         'stop'    => 'boolean',
         'enabled' => 'boolean',
     ];
+
+    /** in-app #428: a paid trial package (create-multi-subject) records its fee by paid_at alone; see StudentClass::isTrialFeeRecordedByDate. */
+    public function isTrialFeeRecordedByDate(): bool
+    {
+        return (bool) $this->paid
+            && strtolower(trim((string) ($this->class_type ?? ''))) === 'trial'
+            && trim((string) ($this->paid_at ?? '')) !== '';
+    }
 
     public function student()
     {

@@ -520,13 +520,13 @@ class AlertController extends Controller
         $candidates = $rows->filter($paidLike);
         $isPackageRow = fn (array $row) => isset($row['package_id']);
         $packageFlag = CoursePackage::query()->whereIn('id', $candidates->filter($isPackageRow)->pluck('package_id')->map(fn ($id) => (int) $id)->all())
-            // in-app #428: a trial package (create-multi-subject, class_type=trial) records its fee by paid_at alone, same as a trial course.
-            ->get(['id', 'paid', 'class_type'])
-            ->mapWithKeys(fn (CoursePackage $p) => [(int) $p->id => strtolower(trim((string) $p->class_type)) !== 'trial' && (bool) $p->paid])->all();
+            // in-app #428: a trial package (create-multi-subject) that carries paid_at records its fee by that date alone.
+            ->get(['id', 'paid', 'class_type', 'paid_at'])
+            ->mapWithKeys(fn (CoursePackage $p) => [(int) $p->id => (bool) $p->paid && !$p->isTrialFeeRecordedByDate()])->all();
         $classFlag = StudentClass::query()->with('coursePackage')
             ->whereIn('ID', $candidates->reject($isPackageRow)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all())->get()
-            // in-app #428: a trial records its fee by PayDate alone (no invoice by design), so it has no legacy flag to verify.
-            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => strtolower(trim((string) $c->ClassType)) !== 'trial' && $c->isEffectivelyPaid()])->all();
+            // in-app #428: a trial that carries its payment date (no invoice by design) has no legacy flag to verify.
+            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => $c->isEffectivelyPaid() && !$c->isTrialFeeRecordedByDate()])->all();
         $hasFlag = fn (array $row) => $isPackageRow($row)
             ? ($packageFlag[(int) $row['package_id']] ?? false)
             : ($classFlag[(int) ($row['id'] ?? 0)] ?? false);

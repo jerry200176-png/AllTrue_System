@@ -610,6 +610,9 @@ const payLineFor = (course) => {
   const paid = lastInvoicePayment(ids);
   if (paid) return paid;
   if (isWaivedContract(course)) return { waived: true };
+  // in-app #428: a trial that carries its payment date has no invoice by design; the server derives this
+  // (StudentClass::isTrialFeeRecordedByDate, same rule as legacy_paid_flag_only), so it is not 需核對 legacy data.
+  if (course.trial_fee_recorded_by_date === true) return null;
   return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {

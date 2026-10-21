@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BillingNote;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
@@ -703,6 +704,10 @@ class AccountingController extends Controller
         $invoiceTotal = (int) $invoiceRows->sum('total_amount');
         $openInvoiceTotal = (int) $invoiceRows->where('status', '!=', 'void')->sum('total_amount');
 
+        // in-app #428: one query, only when a course is in a package (StudentClass::isTrialFeeRecordedByDate reads it).
+        $ledgerPackageIds = $classes->pluck('PackageID')->map(fn ($v) => (int) $v)->filter(fn ($v) => $v > 0)->unique()->values()->all();
+        $ledgerPackages = $ledgerPackageIds === [] ? collect() : CoursePackage::query()->whereIn('id', $ledgerPackageIds)->get()->keyBy('id');
+
         return response()->json([
             'student' => [
                 'id' => (int) $student->id,
@@ -730,7 +735,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $ledgerPackages) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $freeGiftSettled = $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
@@ -748,6 +753,8 @@ class AccountingController extends Controller
                 'free_gift_settled' => $freeGiftSettled,
                 'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
+                // in-app #428: server-derived (same rule as legacy_paid_flag_only); the panel shows no 需核對 for it.
+                'trial_fee_recorded_by_date' => $class->isTrialFeeRecordedByDate($ledgerPackages->get((int) ($class->PackageID ?? 0))),
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
                 'stop' => (int) ($class->Stop ?? 0) === 1,
