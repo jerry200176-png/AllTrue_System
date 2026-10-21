@@ -32,7 +32,14 @@ if [[ -z "$OVERLAY" ]]; then
 fi
 
 [[ -f "$OVERLAY" ]] || fail "missing overlay $OVERLAY"
-PIN=$(grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" | head -1 | sed 's/^v//')
+PIN=$( (grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' "$OVERLAY" || true) | head -1 | sed 's/^v//')
+if [[ -z "$PIN" ]] && grep -q 'RULEBOOK' "$OVERLAY"; then
+  # sunrise-cafe#470 (2026-10-21) replaced its overlay with a pointer to the vendored portfolio
+  # RULEBOOK (checked byte-for-byte by its own check-rulebook.py), so there is no constitution pin left
+  # to compare. Retire this check when AllTrue vendors the rulebook too.
+  ok "sunrise overlay now points to governance/RULEBOOK.md; constitution pin superseded (constitution=${VER#v})"
+  exit 0
+fi
 [[ -n "$PIN" ]] || fail "could not parse overlay pin version"
 
 # Strip leading v from constitution if present
