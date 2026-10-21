@@ -29,7 +29,7 @@ describe('manual course → first lesson (in-app #382)', () => {
     expect(btn).toBeTruthy();
     await btn.trigger('click');
     expect(w.emitted('manual-session')[0][0].existing_course_id).toBe(4296);
-    expect(w.findAll('button').some((b) => b.text() === '去加購')).toBe(false);
+    expect(w.findAll('button').some((b) => b.text() === '續課')).toBe(false);
     // A trial that already has lessons keeps the action column hidden.
     const plain = mount(EnrollmentConflictDecisionModal, {
       props: { show: true, conflicts: [conflict({ class_type: 'trial', future_session_count: 2 })], classType: 'trial' },

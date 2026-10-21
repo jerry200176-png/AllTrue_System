@@ -619,7 +619,7 @@ class ContractSessionSchedule
             $isEnded = self::sessionEndedByEndTime($sessionDate, $endTime, $now);
             $session['Status'] = $isEnded ? 'completed' : 'scheduled';
             if ($isEnded && empty($session['Note'])) {
-                $session['Note'] = '系統補建堂次（增加購買堂數）';
+                $session['Note'] = '系統補建堂次（增加已購堂數）';
             }
 
             $classSession = app(ClassSessionMaterializationService::class)->upsertSlot($session)['session'];

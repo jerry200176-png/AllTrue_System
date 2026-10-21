@@ -1458,6 +1458,7 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -2150,7 +2151,7 @@ function interceptGoToPurchaseCM(conflict) {
     openCommercialPurchaseEntry(target);
     return;
   }
-  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
+  alert('找不到要續課的課程，請重新整理後再從課程列點「續課」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -2630,7 +2631,7 @@ function courseManagerNextSessionLabel(c) {
 function courseManagerOverviewNeeds(c) {
   const needs = [];
   if (isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 99))) {
-    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
+    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續課', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
   if (makeups.length) needs.push({ id: 'makeup', title: `${makeups.length} 堂待補課`, action: 'quick-add', actionLabel: '安排補課' });
@@ -2855,7 +2856,8 @@ async function duplicateCourseForTeacher(course) {
 function purchaseActionLabel(c) {
   if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
-  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? '續報加購' : '加購堂數';
+  // in-app #429: one name for the count-mode extension, low remaining or not (Founder Q8=A).
+  return RENEW_LESSONS_LABEL;
 }
 function purchaseActionIsRenew(c) {
   if (!isSessionMode(c)) return true;
@@ -2863,7 +2865,7 @@ function purchaseActionIsRenew(c) {
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
-  return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
+  return isSessionMode(c) ? '續課（加買堂數）' : '月結課程結算本期並續約下個月';
 }
 
 function openPurchaseModal(course) {
@@ -3038,7 +3040,7 @@ async function submitPurchaseSessions() {
         focusedStudentKey.value = groupKey;
       }
       toastRef.value?.show?.({
-        title: op === 'set' ? '已設定共用方案總堂數' : '已加購共用方案堂數',
+        title: op === 'set' ? '已設定共用方案總堂數' : '已續課：共用方案堂數已增加',
         description: `方案總堂數已由 ${currentTotal} 堂調整為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
         variant: 'success',
         durationMs: 7000,
@@ -3070,7 +3072,7 @@ async function submitPurchaseSessions() {
       const duplicateHint = json?.duplicate_course?.id
         ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
         : '';
-      alert((details || json?.message || '加購失敗') + duplicateHint);
+      alert((details || json?.message || '續課失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -3082,7 +3084,7 @@ async function submitPurchaseSessions() {
       focusedStudentKey.value = groupKey;
     }
     toastRef.value?.show?.({
-      title: '已建立加購批次',
+      title: '已建立續課批次',
       description: formatRenewSuccessMessage({
         kind: 'purchase',
         studentName: course?.student_name || '',
@@ -3095,7 +3097,7 @@ async function submitPurchaseSessions() {
       durationMs: 7000,
     });
   } catch (e) {
-    alert('加購失敗：' + (e?.message || '請稍後再試'));
+    alert('續課失敗：' + (e?.message || '請稍後再試'));
   } finally {
     purchaseSubmitting.value = false;
   }

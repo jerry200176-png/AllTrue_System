@@ -1,6 +1,72 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
+// #4331: use the existing enrollment prompt once, then open the existing renewal.
+test.describe('one existing entry for renewal (#429)', () => {
+  for (const width of [390, 1440]) {
+    for (const classType of ['one_on_one', 'tutoring']) {
+      test(`opens ${classType} renewal without a second chooser @${width}`, async ({ page }, testInfo) => {
+        const writes = [];
+        const errors = [];
+        const course = {
+          id: 9101, student_id: 2000, subject: 'Math', subject_name: '數學',
+          class_type: classType, payment_type: 'session', payment_status: 'paid',
+          sessions_purchased: 8, sessions_used: 7, remaining_sessions: 1,
+          status: 'active', stop: 0, branch_id: 1, teacher_id: 3000,
+          teacher_name: '合成測試老師', days_of_week: [1], start_time: '14:00', end_time: '16:00',
+        };
+        page.on('pageerror', error => errors.push(error.message));
+        await page.route('**/*', async route => {
+          const request = route.request();
+          const url = new URL(request.url());
+          if (url.origin !== new URL(testInfo.project.use.baseURL).origin) return route.abort();
+          if (!url.pathname.startsWith('/api/')) return route.continue();
+          if (request.method() === 'POST' && url.pathname.endsWith('/session-dates')) {
+            return route.fulfill({ json: { data: [] } }); // Existing read-only batch query.
+          }
+          if (request.method() !== 'GET') {
+            writes.push({ method: request.method(), path: url.pathname });
+            return route.abort();
+          }
+          if (url.pathname === '/api/v1/students') {
+            return route.fulfill({ json: { data: [students[0]], total: 1 } });
+          }
+          if (url.pathname.endsWith('/active-courses')) {
+            return route.fulfill({ json: { courses: [course] } });
+          }
+          if (url.pathname === '/api/v1/student-classes') {
+            return route.fulfill({ json: { data: [course], total: 1 } });
+          }
+          return route.fulfill({ json: { data: [], total: 0 } });
+        });
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/pilot-mount.html?page=students');
+        await page.locator('tr.student-row').first().focus();
+        await page.locator('tr.student-row').first().press('Enter');
+        await page.getByRole('button', { name: /新增課程/ }).click();
+        const prompt = page.getByRole('dialog', { name: '此學生已有進行中的課程', exact: true });
+        await expect(prompt).toBeVisible();
+        await expect(page.getByRole('dialog')).toHaveCount(1);
+        const action = classType === 'tutoring' ? '延續輔導課（不收費）' : '續課';
+        await expect(prompt.getByRole('button', { name: action, exact: true })).toBeVisible();
+        await prompt.getByRole('button', { name: action, exact: true }).click();
+        const renewal = page.getByRole('dialog', { name: `${action} — 數學`, exact: true });
+        await expect(prompt).toHaveCount(0);
+        await expect(renewal).toBeVisible();
+        await expect(page.getByRole('dialog')).toHaveCount(1);
+        await expect(renewal).toContainText(classType === 'tutoring' ? '費用 0 元' : '新的未繳課程批次');
+        await expect(renewal.getByRole('button', {
+          name: classType === 'tutoring' ? '確認建立下一期輔導課' : '確認續課', exact: true,
+        })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+        expect(writes).toEqual([]);
+        expect(errors).toEqual([]);
+        await page.screenshot({ path: testInfo.outputPath(`renewal-${classType}-${width}.png`), fullPage: true, animations: 'disabled' });
+      });
+    }
+  }
+});
+
 const students = [
   { id: 2000, name: '測試學生長名字驗證用名稱避免真實個資', grade: 'J1', school: '測試國民中學附設高級中等學校名稱很長', parent_name: '測試家長長名稱', rfid: null, status: 'active', notes: '', line_bound: false },
   { id: 2001, name: '測試學生02', grade: 'J1', school: '測試國中', parent_name: '測試家長', rfid: 'TEST1001', status: 'active', notes: '', line_bound: false },
