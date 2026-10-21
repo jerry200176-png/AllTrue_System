@@ -99,6 +99,8 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
     // leak personal data or credentials, or link anywhere but this repo's issues / the app, fails the batch.
     const clean = `您好，已收到並開立追蹤：${url(7)}。上線後可到 https://daan.lifenet.com.tw/admin/bugs 查看，版本 abc1234（2026-10-21）。`;
     assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: clean }]).ok, 'a clean reply with the issue and app links passes');
+    assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: `${url(7)} https://daan.lifenet.com.tw/learning-records/student-12345/session-67890?tab=open` }]).ok,
+      'an ordinary app deep link with ids and a query passes');
     for (const [rule, leak] of [
       ['tw_mobile', '0912345678'], ['tw_mobile', '0912-345-678'], ['tw_mobile', '+886 912 345 678'],
       ['tw_landline', '02-2345-6789'], ['tw_landline', '(02)23456789'], ['tw_landline', '+886-2-2345-6789'],
@@ -109,6 +111,10 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       ['url_not_allowed', 'https://evil.example/x'], ['url_not_allowed', 'https://github.com/o/r/pull/3'],
       ['url_not_allowed', 'https://github.com/o/other/issues/1'], ['url_not_allowed', 'https://daan.lifenet.com.tw.evil.io/'],
       ['url_not_allowed', 'www.evil.com'], ['url_not_allowed', 'evil.com/x'],
+      // An allowed link must not smuggle data in its path, query or fragment (#4351 review, P1).
+      ['email', 'https://daan.lifenet.com.tw/?email=alice@example.com'], ['email', 'https://daan.lifenet.com.tw/?e=alice%40example.com'],
+      ['tw_mobile', 'https://daan.lifenet.com.tw/p/0912345678'], ['secret_token', 'https://daan.lifenet.com.tw/?t=ghp_abcdefghijklmnop'],
+      ['tw_national_id', 'https://daan.lifenet.com.tw/?id=A123456789'], ['long_hex', `https://daan.lifenet.com.tw/x#${'a'.repeat(40)}`],
     ]) {
       const r = run('phase-a', 'preview', [a[1], { ...a[0], public_reply: `${url(7)} ${leak}` }]);
       assert.ok(!r.ok && r.out.includes(`row 2: public_reply rejected by content rule ${rule}`), `${rule} must reject the batch: ${r.out}`);

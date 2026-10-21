@@ -24,6 +24,7 @@ import json
 import os
 import re
 import sys
+from urllib.parse import unquote_plus
 
 MAX_ROWS = 20
 MAX_REPLY_CHARS = 600
@@ -67,15 +68,20 @@ def reply_violation(reply, repo):
     """Name of the first content rule the reply breaks, or None. Never returns the matched text."""
     allowed_issue = re.compile(r"https://github\.com/" + re.escape(repo) + r"/issues/[1-9][0-9]*")
     allowed_app = re.compile(re.escape(APP_ORIGIN) + r"(?:[/?#]\S*)?")
+    url_parts = []
     for match in URL.finditer(reply):
         url = match.group(0).rstrip(".,:;!?")
         if not (allowed_issue.fullmatch(url) or allowed_app.fullmatch(url)):
             return "url_not_allowed"
-    rest = URL.sub(" ", reply)  # allowed links are checked; scan the remaining text
-    if BARE_DOMAIN.search(rest):
+        # An allowed link can still carry data in its path/query (?email=..., /0912345678): scan the
+        # decoded components with the same rules (#4351 review).
+        url_parts.append(re.sub(r"[/?&=#;]+", " ", unquote_plus(url.split("://", 1)[-1])))
+    rest = URL.sub(" ", reply)
+    if BARE_DOMAIN.search(rest):  # bare domains only outside links; the link host was checked above
         return "url_not_allowed"
+    scanned = " ".join([rest] + url_parts)
     for name, pattern in REPLY_RULES:
-        if pattern.search(rest):
+        if pattern.search(scanned):
             return name
     return None
 
