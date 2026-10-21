@@ -549,6 +549,18 @@ class AccountingController extends Controller
                 $match = $receiptRows->first(fn ($p) => !isset($reversedReceiptIds[(int) $p->id]) && $reportId > 0
                     && (int) $p->Amount === $amount
                     && ((int) ($p->payment_report_id ?? 0) === $reportId || (int) ($reversedReport->payment_id ?? 0) === (int) $p->id));
+                // Older reversals carry no report id: pair them with an earlier receipt of the same amount whose
+                // receipt was voided (or never had one), never with a receipt that is still confirmed.
+                if (!$match && $reportId === 0) {
+                    $match = $receiptRows->first(function ($p) use ($reversedReceiptIds, $amount, $reversal, $reportsByPaymentId, $reportsById) {
+                        if (isset($reversedReceiptIds[(int) $p->id]) || (int) $p->Amount !== $amount || (int) $p->id >= (int) $reversal->id) {
+                            return false;
+                        }
+                        $receiptReport = $reportsByPaymentId->get((int) $p->id)
+                            ?? ($p->payment_report_id ? $reportsById->get((int) $p->payment_report_id) : null);
+                        return !$receiptReport || $receiptReport->status === 'voided';
+                    });
+                }
                 if ($match) {
                     $reversedReceiptIds[(int) $match->id] = true;
                 }
