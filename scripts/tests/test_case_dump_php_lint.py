@@ -27,6 +27,8 @@ def render(case):
                                    'TARGET_STUDENT_CLASS_ID': '4064', 'EXPECTED_TEACHER_IDS': ''})
     if case in SECRET_ID_CASES:
         return render_secret_case(case)
+    if case in NO_TARGET_CASES:
+        return render_secret_case(case, secret_class_id="")
     run = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Run bounded"))["run"]
     py = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)\nPY\n", run, re.S).group(1)
     return subprocess.run(["python3", "-"], input=py, capture_output=True, text=True,
@@ -38,6 +40,8 @@ RUN = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").sta
 PROBE_PY = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)\nPY\n", RUN, re.S).group(1)
 # Cases keyed by a StudentClass ID from the masked CASE_INPUT_STUDENT_CLASS_ID secret (no dispatch ID input accepted).
 SECRET_ID_CASES = {"inapp_414_amount_source"}
+# Cases that refuse any student or course target.
+NO_TARGET_CASES = {"migration_4283_preconditions"}
 
 
 def render_secret_case(case, student_id="", student_class_id="", secret_class_id="1"):
