@@ -1,5 +1,6 @@
 ## 2026-10-21 — explain the shared overlay contract failure
-<!-- release-notes: silent_ship -->
+<!-- release-notes: silent_ship=silent-2026-10-21-overlay-pin-contract-diagnostic -->
+<!-- silent-reason: internal CI failure diagnosis; no product behavior or governance authority change -->
 
 - The legacy overlay checker now explains the sunrise-cafe #470 rulebook migration instead of exiting silently on an empty version match, and removes its temporary download on exit.
 - Legacy version equality, drift rejection and malformed-input rejection remain enforced. This change does not migrate AllTrue governance or make the migrated upstream contract pass.
