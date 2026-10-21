@@ -4881,18 +4881,7 @@ class StudentClassController extends Controller
      */
     private function applyTeacherOrSubstituteStudentClassScope($query, int $teacherId): void
     {
-        $query->where(function ($q) use ($teacherId) {
-            $q->where('TeacherID', $teacherId)
-                ->orWhereExists(function ($sub) use ($teacherId) {
-                    $sub->select(DB::raw(1))
-                        ->from('schedules')
-                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
-                        ->where('schedules.teacher_id', $teacherId)
-                        ->where('schedules.status', 'scheduled')
-                        ->whereNotNull('schedules.original_schedule_id');
-                });
-            SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
-        });
+        (new StudentClass())->scopeVisibleToTeacher($query, $teacherId);
     }
 
     /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */

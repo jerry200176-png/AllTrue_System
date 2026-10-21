@@ -998,9 +998,12 @@
     </div>
   </div>
   <div v-if="toastVisible" class="toast-notification">{{ toastMsg }}</div>
+  <ConfirmDialogHost />
 </template>
 
 <script setup>
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
+import { askConfirm } from '../composables/useConfirmDialog';
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
@@ -2053,6 +2056,7 @@ const loadStudentCourses = async (studentId) => {
           end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
           sessions_purchased: c.sessions_purchased,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
+          remaining_minutes: c.remaining_minutes ?? c.RemainingMinutes ?? null,
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
           start_time: c.start_time,
           end_time: c.end_time,
@@ -2141,6 +2145,7 @@ const loadAllStudentCourses = async () => {
             end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
             sessions_purchased: c.sessions_purchased,
             remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
+            remaining_minutes: c.remaining_minutes ?? c.RemainingMinutes ?? null,
             sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
             start_time: c.start_time,
             end_time: c.end_time,
@@ -2820,6 +2825,11 @@ const openAddCourse = async (student) => {
         if (res.ok) {
           const json = await res.json();
           const active = json?.courses || [];
+          if (json?.precheck_scope === 'teacher_courses' && !await askConfirm({
+            title: '請先確認是否重複建課',
+            message: '此預檢只列出你可見的課程，無法排除其他老師的課程重複。請先向主任確認；送出時仍會檢查，這不是強制建立。',
+            confirmLabel: '繼續填寫',
+          })) return;
           if (active.length > 0) {
             duplicateConflicts.value = normalizeActiveCourseConflicts(active);
             interceptPendingStudent.value = student;

@@ -68,6 +68,10 @@ final class StudentClassActivity
         if ($running && (int) ($course->PackageID ?? 0) > 0) {
             return null; // FR-001: a package member draws on the shared pool.
         }
+        // A positive minutes balance (#613 A1) is entitlement left even when it rounds to 0 lessons.
+        if ((int) ($course->RemainingMinutes ?? 0) > 0) {
+            return null;
+        }
         $settled = in_array($settlement, self::SETTLED, true);
 
         return $settled && $ownRemaining <= 0 ? 'completed' : null;

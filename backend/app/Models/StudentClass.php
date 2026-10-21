@@ -330,6 +330,26 @@ class StudentClass extends Model
     }
 
     /**
+     * Courses a teacher may see: their own, plus ones they cover through a substitute schedule or makeup
+     * (the student-classes list scope; also the teacher's duplicate-course pre-check, in-app #427).
+     */
+    public function scopeVisibleToTeacher($query, int $teacherId)
+    {
+        return $query->where(function ($q) use ($teacherId) {
+            $q->where('TeacherID', $teacherId)
+                ->orWhereExists(function ($sub) use ($teacherId) {
+                    $sub->select(DB::raw(1))
+                        ->from('schedules')
+                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
+                        ->where('schedules.teacher_id', $teacherId)
+                        ->where('schedules.status', 'scheduled')
+                        ->whereNotNull('schedules.original_schedule_id');
+                });
+            \App\Services\SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
+        });
+    }
+
+    /**
      * F8 authority: a course holds its WEEKLY TEMPLATE seat iff Stop=0 and it is not a
      * used-up count course. Concrete ClassSession rows are NOT governed by this rule.
      */

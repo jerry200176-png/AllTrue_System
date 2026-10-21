@@ -36,6 +36,15 @@ async function withCourses(courses, assertions) {
   }
 }
 
+describe('fractional entitlement remains active', () => {
+  it('preserves positive minutes through the actual student course normalization', async () => {
+    await withCourses([{ ...ordinary, student_id: 2001, remaining_minutes: 30, payment_status: 'paid' }], async (wrapper) => {
+      expect(wrapper.findAll('.student-course-card')).toHaveLength(1);
+      expect(wrapper.find('.sl-history-toggle').exists()).toBe(false);
+    });
+  });
+});
+
 describe('In-App #353: existing course history stays distinct from current balances', () => {
   it.each([
     ['completed', '歷史 · 已完課'],

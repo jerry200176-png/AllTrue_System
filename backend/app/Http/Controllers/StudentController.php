@@ -166,13 +166,20 @@ class StudentController extends Controller
      * in-app #427: the same verdict and remaining number as the student-classes list
      * ({@see StudentClassActivity}), across every campus, like the create-time duplicate guard.
      */
-    public function activeCourses(Student $student)
+    public function activeCourses(Request $request, Student $student)
     {
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
 
-        $running = StudentClass::query()->where('StudentID', $student->id)->where('Stop', 0)->orderByDesc('ID')->get();
+        $isTeacher = $request->attributes->get('auth_role') === 'teacher';
+        $running = StudentClass::query()
+            ->where('StudentID', $student->id)
+            ->where(fn ($query) => $query->where('Stop', 0)->orWhereNull('Stop'))
+            // A teacher's pre-check stays within the courses their list shows (never another teacher's).
+            ->when($isTeacher, fn ($query) => $query->visibleToTeacher((int) $request->attributes->get('auth_teacher_id')))
+            ->orderByDesc('ID')
+            ->get();
         $verdicts = app(StudentClassActivity::class)->evaluate($running);
         $activeCourses = $running->filter(fn (StudentClass $sc) => $verdicts[(int) $sc->ID]['is_active_course'] ?? true)->values();
 
@@ -203,7 +210,12 @@ class StudentController extends Controller
             ];
         });
 
-        return response()->json(['courses' => $courses]);
+        // Scope metadata only: never disclose even the existence of another teacher's hidden course.
+        // The create guard still checks all candidates; a teacher's precheck cannot certify completeness.
+        return response()->json([
+            'courses' => $courses,
+            'precheck_scope' => $isTeacher ? 'teacher_courses' : 'visible_campuses',
+        ]);
     }
 
     public function store(Request $request)

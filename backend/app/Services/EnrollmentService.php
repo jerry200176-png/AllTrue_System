@@ -570,7 +570,7 @@ class EnrollmentService
 
         if ($studentId > 0 && empty($data['force'])) {
             $existingActive = StudentClass::where('StudentID', $studentId)
-                ->where('Stop', 0)
+                ->where(fn ($query) => $query->where('Stop', 0)->orWhereNull('Stop'))
                 ->get();
             // in-app #427: a Stop=0 course that is already finished or closed under the one 進行中 verdict
             // (StudentClassActivity, also used by the list and the pre-check prompt) is not a duplicate.

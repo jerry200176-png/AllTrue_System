@@ -107,9 +107,17 @@ class StudentActiveCoursesParityTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload(8, '16:00'))
             ->assertStatus(409)->assertJsonPath('code', 'duplicate_active_course');
 
+        // A paid 30-minute remainder rounds to zero sessions but must still block a duplicate.
+        \App\Models\Invoice::where('StudentClassID', $courseId)->update(['Status' => 'void']);
+        StudentClass::where('ID', $courseId)->update(['Paid' => 1, 'RemainingMinutes' => 30, 'RemainingSessions' => 0]);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->assertJsonPath('courses.0.id', $courseId);
+        $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload(8, '16:00'))
+            ->assertStatus(409)->assertJsonPath('code', 'duplicate_active_course');
+
         // Finished: the one lesson was taken and it is paid (legacy flag, no open bill), Stop never set.
         \App\Models\Invoice::where('StudentClassID', $courseId)->update(['Status' => 'void']);
-        StudentClass::where('ID', $courseId)->update(['Charge' => 500, 'Paid' => 1, 'SessionCount' => 1, 'RemainingSessions' => 1, 'Stop' => 0]);
+        StudentClass::where('ID', $courseId)->update(['Charge' => 500, 'Paid' => 1, 'SessionCount' => 1, 'RemainingSessions' => 1, 'RemainingMinutes' => 0, 'Stop' => 0]);
         $this->attended(StudentClass::findOrFail($courseId));
         $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
             ->assertOk()->assertJsonCount(0, 'courses');
@@ -117,6 +125,34 @@ class StudentActiveCoursesParityTest extends TestCase
         $second = $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', $payload(8, '16:00'));
         $this->assertNotSame('duplicate_active_course', $second->json('code'), (string) $second->getContent());
         $second->assertCreated();
+    }
+
+    public function test_teacher_precheck_discloses_its_scope_but_not_hidden_course_existence(): void
+    {
+        $campus = Campus::factory()->create();
+        $student = Student::create([
+            'name' => '範圍測試生', 'CampusID' => $campus->id, 'ClassID' => 1, 'enable' => 1,
+            'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $teacher = User::create([
+            'LoginName' => 'scope-teacher-'.uniqid().'@example.com', 'Name' => '測試老師',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => '0922000000',
+        ]);
+        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $teacher->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        $hidden = $this->course($student, ['TeacherID' => $teacher->id + 1000, 'Charge' => 8000]);
+        $headers = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'];
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->assertExactJson(['courses' => [], 'precheck_scope' => 'teacher_courses']);
+        // Even existence is private: stopping the hidden row must not change the response.
+        $hidden->update(['Stop' => 1]);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")
+            ->assertOk()->assertExactJson(['courses' => [], 'precheck_scope' => 'teacher_courses']);
+
+        $outside = Campus::factory()->create();
+        $student->update(['CampusID' => $outside->id]);
+        $this->withHeaders($headers)->getJson("/api/v1/students/{$student->id}/active-courses")->assertForbidden();
     }
 
     private function course(Student $student, array $overrides = []): StudentClass
