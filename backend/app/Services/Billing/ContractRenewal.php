@@ -539,6 +539,13 @@ final class ContractRenewal
             || (int) $source->getAttribute('Stop') === 1) {
             return $unchanged;
         }
+        // purchaseBatch() settles (stops, EndDate=today) a paid count source with no remaining sessions in the
+        // same transaction, after which its future rows no longer block; they must not shift the batch either.
+        if ((string) ($source->getAttribute('ScheduleMode') ?? '') === 'count'
+            && (int) $source->getAttribute('Paid') === 1
+            && (int) $source->getAttribute('RemainingSessions') <= 0) {
+            return $unchanged;
+        }
         // Past dates never block (the write guard skips them), so a backdated batch keeps its requested start.
         $from = max($startDate, Carbon::today()->toDateString());
         $sourceStart = ContractSessionSchedule::normalizeDateString($source->getAttribute('StartDate'));
@@ -597,7 +604,7 @@ final class ContractRenewal
             $weekdays = [$fallbackWeekday];
         }
         $next = Carbon::parse($date)->addDay();
-        for ($i = 0; $weekdays !== [] && $i < 7 && !in_array($next->dayOfWeekIso, $weekdays, true); $i++) {
+        for ($i = 0; $i < 7 && !in_array($next->dayOfWeekIso, $weekdays, true); $i++) {
             $next->addDay();
         }
 
