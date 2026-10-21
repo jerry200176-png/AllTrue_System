@@ -2851,7 +2851,7 @@ onMounted(async () => {
 .pp-remaining-number { font-size: 1.6em; font-weight: 800; }
 .pp-remaining-label { font-size: 0.78em; color: var(--ds-ink-mute); margin-left: 2px; }
 .pp-package-hint { font-size: 0.76em; line-height: 1.5; color: var(--ds-ink-mute); margin: 8px 0 0; }
-.pp-lesson-dates { margin-top: 8px; font-size: 0.8em; color: var(--ds-ink-mute); }
+.pp-lesson-dates { margin-top: 8px; font-size: var(--ds-font-size-sm); color: var(--ds-ink-mute); }
 .pp-lesson-dates summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--ds-ink); }
 .pp-lesson-list { list-style: none; margin: 4px 0 0; padding: 0; font-variant-numeric: tabular-nums; }
 .pp-lesson-list li { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; border-top: 1px solid var(--ds-canvas-soft); }

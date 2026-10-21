@@ -53,7 +53,7 @@ class ParentPortalAttendedLessonsTest extends TestCase
         ]);
     }
 
-    private function session(StudentClass $c, string $date, string $status, string $start = '16:00:00'): ClassSession
+    private function makeSession(StudentClass $c, string $date, string $status, string $start = '16:00:00'): ClassSession
     {
         return ClassSession::create([
             'StudentClassID' => $c->ID, 'SessionDate' => $date,
@@ -83,17 +83,17 @@ class ParentPortalAttendedLessonsTest extends TestCase
         $d1 = now()->subDays(20)->toDateString();
         $d2 = now()->subDays(13)->toDateString();
         $d3 = now()->subDays(6)->toDateString();
-        $first = $this->session($course, $d1, 'completed');
+        $first = $this->makeSession($course, $d1, 'completed');
         $this->deductedSignIn($course, $first, 'present');
-        $this->deductedSignIn($course, $this->session($course, $d2, 'attended'), 'late');
-        $noShow = $this->session($course, $d3, 'absent');
+        $this->deductedSignIn($course, $this->makeSession($course, $d2, 'attended'), 'late');
+        $noShow = $this->makeSession($course, $d3, 'absent');
         $this->deductedSignIn($course, $noShow, 'absent');
-        $this->session($course, now()->addDays(3)->toDateString(), 'scheduled');
+        $this->makeSession($course, now()->addDays(3)->toDateString(), 'scheduled');
 
         // Another family's lessons must never appear.
         $other = $this->makeStudent('0911000419');
         $otherCourse = $this->makeCourse($other, 3, 10);
-        $this->session($otherCourse, now()->subDays(2)->toDateString(), 'completed');
+        $this->makeSession($otherCourse, now()->subDays(2)->toDateString(), 'completed');
 
         $res = $this->dashboard($s)->assertOk();
         $card = collect($res->json('classes'))->firstWhere('id', $course->ID);
@@ -106,6 +106,24 @@ class ParentPortalAttendedLessonsTest extends TestCase
         $this->assertSame('缺席（已扣堂）', $lessons[0]['note']);
         $this->assertNull($lessons[1]['note']);
         $this->assertCount(1, $res->json('classes'), 'only the bound student course is returned');
+    }
+
+    public function test_list_follows_the_winning_evidence_set_when_sources_disagree(): void
+    {
+        // Codex P1 on #4354: 2 completed sessions without sign-ins + 1 deducted no-show
+        // elsewhere -> counter = max(1, 2, 0) = 2; the list must show those 2, not a union of 3.
+        $s = $this->makeStudent('0911000421');
+        $course = $this->makeCourse($s, 3, 10);
+        $d1 = now()->subDays(15)->toDateString();
+        $d2 = now()->subDays(8)->toDateString();
+        $this->makeSession($course, $d1, 'completed');
+        $this->makeSession($course, $d2, 'completed');
+        $this->deductedSignIn($course, $this->makeSession($course, now()->subDays(1)->toDateString(), 'absent'), 'absent');
+
+        $card = collect($this->dashboard($s)->assertOk()->json('classes'))->firstWhere('id', $course->ID);
+
+        $this->assertSame(2, $card['used_sessions']);
+        $this->assertSame([$d2, $d1], array_column($card['attended_lessons'], 'date'));
     }
 
     public function test_package_members_show_their_own_dates_under_the_shared_total(): void
@@ -122,9 +140,9 @@ class ParentPortalAttendedLessonsTest extends TestCase
         $m1 = now()->subDays(9)->toDateString();
         $m2 = now()->subDays(2)->toDateString();
         $p1 = now()->subDays(5)->toDateString();
-        $this->session($math, $m1, 'completed');
-        $this->session($math, $m2, 'completed');
-        $this->session($sci, $p1, 'completed', '18:00:00');
+        $this->makeSession($math, $m1, 'completed');
+        $this->makeSession($math, $m2, 'completed');
+        $this->makeSession($sci, $p1, 'completed', '18:00:00');
 
         $classes = collect($this->dashboard($s)->assertOk()->json('classes'));
         $mathCard = $classes->firstWhere('id', $math->ID);
