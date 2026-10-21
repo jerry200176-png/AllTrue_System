@@ -743,6 +743,13 @@
                       >繳費單</button>
                       <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
                       <button v-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <button
+                        v-if="row.agreedFeeCorrectionAvailable"
+                        class="small ghost"
+                        data-testid="billing-agreed-fee-correction-action"
+                        type="button"
+                        @click="openAgreedFeeCorrection(group, row)"
+                      >更正約定費用</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
@@ -1006,6 +1013,14 @@
       :error-message="contractRevertError"
       @close="showContractRevertModal = false"
       @submit="submitContractRevert"
+    />
+    <AgreedFeeCorrectionDialog
+      :open="!!agreedFeeCorrectionTarget"
+      :course="agreedFeeCorrectionTarget?.row.course || null"
+      :invoices="agreedFeeCorrectionTarget?.row.invoices || []"
+      :course-label="agreedFeeCorrectionTarget ? `${agreedFeeCorrectionTarget.row.course.student_name || '此學生'}／${getSubjectLabel(agreedFeeCorrectionTarget.row.course.subject)}／${formatCourseRef(agreedFeeCorrectionTarget.row.course.id)}` : ''"
+      @close="agreedFeeCorrectionTarget = null"
+      @applied="onAgreedFeeCorrectionApplied"
     />
     <ContractAmendmentModal
       :show="showContractAmendmentModal"
@@ -1441,6 +1456,8 @@ import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields, findCourseForPurchase, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
+import AgreedFeeCorrectionDialog from '../components/course-management/AgreedFeeCorrectionDialog.vue';
+import { isAgreedFeeCorrectionAvailable } from '../lib/agreedFeeCorrection.js';
 import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
@@ -5110,6 +5127,7 @@ const loadStudentGroupBilling = async (group) => {
         course: c,
         invoices: Array.isArray(invJson?.invoices) ? invJson.invoices : [],
         reports: Array.isArray(rptJson?.data) ? rptJson.data : [],
+        agreedFeeCorrectionAvailable: invRes.ok && isAgreedFeeCorrectionAvailable(invJson),
       };
     }));
     const ledgerRes = await ledgerPromise;
@@ -5124,6 +5142,19 @@ const loadStudentGroupBilling = async (group) => {
       [key]: { loading: false, error: e?.message || '帳務載入失敗，請稍後再試。', rows: [], ledgerSummary: null },
     };
   }
+};
+
+// Agreed-fee correction (default-off; server gates every call). Entry shown only when the invoices response says so.
+const agreedFeeCorrectionTarget = ref(null);
+const openAgreedFeeCorrection = (group, row) => {
+  agreedFeeCorrectionTarget.value = { group, row };
+};
+const onAgreedFeeCorrectionApplied = async () => {
+  const group = agreedFeeCorrectionTarget.value?.group;
+  await Promise.all([
+    group ? loadStudentGroupBilling(group) : null,
+    loadCourses(pagination.value.page),
+  ]);
 };
 
 const studentBillingAnchorCourse = (group) => {

@@ -3490,6 +3490,9 @@ class StudentClassController extends Controller
                     'can_exception_void' => $netApplied > 0 && $status !== 'void',
                 ];
             })->values()->all(),
+            // Read-only hint for the staff UI; the correction endpoints re-check every gate.
+            'agreed_fee_correction_available' => \App\Services\Billing\AgreedFeeCorrection::isAvailableFor(
+                $studentClass, (string) $role, (array) $request->attributes->get('auth_campus_ids', [])),
         ]);
     }
 

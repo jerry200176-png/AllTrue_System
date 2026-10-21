@@ -24,10 +24,8 @@ final class AgreedFeeCorrectionController extends Controller
         abort_unless($actorId > 0, 403);
         $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
         $campusId = (int) $course->student?->CampusID;
-        abort_unless(in_array($role, ['director', 'super_admin'], true) && $campusId > 0
-            && ($role === 'super_admin' || in_array($campusId, $campusIds, true)), 403);
-        abort_unless(in_array((int) $course->ID, array_map('intval', (array) config('billing.agreed_fee_correction_course_ids', [])), true)
-            && in_array($campusId, array_map('intval', (array) config('billing.agreed_fee_correction_campus_ids', [])), true), 404);
+        abort_unless(AgreedFeeCorrection::actorMayCorrect($role, $campusIds, $campusId), 403);
+        abort_unless(AgreedFeeCorrection::inAllowlist((int) $course->ID, $campusId), 404);
         $reason = $request->input('reason');
         if (is_string($reason)) $request->merge(['reason' => trim($reason)]);
         $data = $request->validate([

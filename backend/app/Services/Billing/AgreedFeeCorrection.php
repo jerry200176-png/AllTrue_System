@@ -18,6 +18,28 @@ final class AgreedFeeCorrection
             && Schema::hasTable('security_audit_events');
     }
 
+    /** Role/campus gate shared by the controller and the read-only availability hint. */
+    public static function actorMayCorrect(string $role, array $campusIds, int $campusId): bool
+    {
+        return in_array($role, ['director', 'super_admin'], true) && $campusId > 0
+            && ($role === 'super_admin' || in_array($campusId, array_map('intval', $campusIds), true));
+    }
+
+    /** Bounded course/campus allowlist; empty config fails closed. */
+    public static function inAllowlist(int $courseId, int $campusId): bool
+    {
+        return in_array($courseId, array_map('intval', (array) config('billing.agreed_fee_correction_course_ids', [])), true)
+            && in_array($campusId, array_map('intval', (array) config('billing.agreed_fee_correction_campus_ids', [])), true);
+    }
+
+    /** Read-only UI hint: true only when the controller's flag, role/campus and allowlist gates would all pass. */
+    public static function isAvailableFor(StudentClass $course, string $role, array $campusIds): bool
+    {
+        if (config('billing.agreed_fee_correction_enabled') !== true) return false;
+        $campusId = (int) $course->student?->CampusID;
+        return self::actorMayCorrect($role, $campusIds, $campusId) && self::inAllowlist((int) $course->ID, $campusId);
+    }
+
     public function run(int $courseId, array $input, array $actor, bool $apply = false): array
     {
         if (!self::available()) $this->refuse('更正功能尚未啟用或資料表尚未準備完成。', 'unavailable', 503);
