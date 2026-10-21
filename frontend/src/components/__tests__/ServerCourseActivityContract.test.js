@@ -31,6 +31,7 @@ describe('server-owned 進行中 verdict (in-app #427)', () => {
     expect(studentsList).toContain('const isHistoryCourseByReason = (course) => courseHistoryReason(course) !== null;');
     expect(studentsList).toContain('getStudentAllCourses(id).filter((c) => !isHistoryCourseByReason(c))');
     expect(studentsList).toContain('/api/v1/students/${sid}/active-courses`');
+    expect(studentsList).toContain(`v-if="courseHistoryReason(hc) === 'completed'" type="button" class="small ghost" @click="openAddSessionsForCourse(hc)"`);
   });
 
   it('課程管理 groups by the same verdict', () => {

@@ -548,6 +548,7 @@
                       </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
+                        <button v-if="courseHistoryReason(hc) === 'completed'" type="button" class="small ghost" @click="openAddSessionsForCourse(hc)">{{ isTutoringCourse(hc) ? '延續輔導課（不收費）' : isTrialCourse(hc) ? '轉為正式課程' : '再次續報加購' }}</button>
                         <button v-if="effectiveClosedReason(hc) !== 'waived'" type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
                       </div>
                     </div>
