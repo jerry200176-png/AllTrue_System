@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-21-exam-grades-student-search
+    published_at: "2026-10-21"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 段考登分可直接找學生
+    summary: 段考登分視窗多了「找學生」，輸入姓名就只顯示那位學生，不用再往下捲找。
+    items:
+      - category: improved
+        text: 打開段考的登分視窗後，在「找學生」輸入姓名或學生編號，表格只留下那位學生，填完按「儲存」即可。
+      - category: improved
+        text: 已關閉的段考，主任看到的按鈕改為「查看／登分」，仍可進去更正分數。
+    source_refs:
+      - "changelog:2026-10-21:exam-grades-student-search"
