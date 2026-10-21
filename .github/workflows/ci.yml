@@ -136,6 +136,9 @@ jobs:
       - name: Test POP mount atomic stage and remote guards
         run: bash scripts/pop-mount-atomic-stage.test.sh
 
+      - name: Test deploy storage permissions keep storage/app/private restricted
+        run: bash scripts/tests/deploy-storage-perms.test.sh
+
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
 
