@@ -1,15 +1,7 @@
 <template>
-  <div
-    v-if="show"
-    class="modal-overlay enrollment-conflict-overlay"
-    @click.self="emitCancel"
-  >
-    <div
-      class="modal enrollment-conflict-modal"
-      role="dialog"
-      aria-modal="true"
-      :aria-labelledby="headingId"
-    >
+  <AtDialog :open="show" :aria-label="isTrial ? '建立試聽確認' : '既有課程處理方式'"
+    panel-class="enrollment-conflict-modal" @close="emitCancel">
+    <div>
       <h3 :id="headingId" class="enrollment-conflict-heading">
         {{ isTrial ? '此學生已有相關課程 — 建立試聽？' : '此學生已有進行中的課程' }}
       </h3>
@@ -128,10 +120,11 @@
         </template>
       </div>
     </div>
-  </div>
+  </AtDialog>
 </template>
 
 <script setup>
+import AtDialog from './design-system/AtDialog.vue';
 import { needsFirstManualLesson } from '../lib/enrollmentConflictDecision.js';
 import { computed, ref, watch } from 'vue';
 

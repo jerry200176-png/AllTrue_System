@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-21-enrollment-conflict-keyboard-focus
+    published_at: "2026-10-21"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 既有課程確認視窗可用鍵盤操作
+    summary: 新增課程遇到既有課程時，焦點會留在處理視窗，關閉後回到原按鈕。
+    items:
+      - category: improved
+        text: 可用 Tab 選擇處理方式，按 Escape 取消；送出中仍會保護進行中的操作。
+    source_refs:
+      - "changelog:2026-10-21:enrollment-conflict-keyboard-focus"

@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { mount } from '@vue/test-utils';
+import { enableAutoUnmount, mount as mountComponent } from '@vue/test-utils';
+enableAutoUnmount(afterEach);
+const mount = (component, options) => mountComponent(component, { ...options, global: { stubs: { teleport: true } } });
 import EnrollmentConflictDecisionModal from '../EnrollmentConflictDecisionModal.vue';
 import { needsFirstManualLesson, normalizeDuplicateConflicts } from '../../lib/enrollmentConflictDecision.js';
 
