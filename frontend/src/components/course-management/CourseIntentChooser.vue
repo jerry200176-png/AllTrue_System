@@ -62,7 +62,7 @@ import { COURSE_ENTRY_LABEL, COURSE_INTENTS, RENEW_LESSONS_LABEL } from '../../l
 const props = defineProps({
   show: Boolean,
   studentName: { type: String, default: '' },
-  // [{ id, label, detail, course, renewable }] for one student; null when the page has no student
+  // [{ id, label, detail, course, renewable, transferable }] for one student; null when the page has no student
   // context (課程查找 header). `detail` tells parallel same-subject/teacher contracts apart;
   // `renewable: false` hides a course from 續課 (trial → 轉為正式課程, tutoring package).
   courses: { type: Array, default: null },
@@ -72,7 +72,9 @@ const emit = defineEmits(['close', 'choose']);
 const picking = ref('');
 watch(() => props.show, () => { picking.value = ''; });
 
-const optionsFor = (intent) => (props.courses || []).filter((c) => intent !== 'renew' || c.renewable !== false);
+const optionsFor = (intent) => (props.courses || []).filter((c) => (
+  intent === 'renew' ? c.renewable !== false : c.transferable === true
+));
 const pickable = computed(() => optionsFor(picking.value));
 
 const pickPrompt = computed(() => (picking.value === 'renew'

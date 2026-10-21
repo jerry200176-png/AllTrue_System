@@ -6,14 +6,15 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import CourseIntentChooser from '../CourseIntentChooser.vue';
-import { COURSE_ENTRY_LABEL, COURSE_INTENTS, RENEW_LESSONS_LABEL, routeCourseIntent } from '../../../lib/courseIntent.js';
+import PurchaseSessionsModal from '../PurchaseSessionsModal.vue';
+import { COURSE_ENTRY_LABEL, COURSE_INTENTS, RENEW_LESSONS_LABEL, courseIntentEligibility, routeCourseIntent } from '../../../lib/courseIntent.js';
 import { courseActions } from '../../../lib/courseActions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(resolve(__dirname, p), 'utf8');
 const two = [
-  { id: 1, label: '數學／王老師', course: { id: 1 } },
-  { id: 2, label: '英文／李老師', course: { id: 2 } },
+  { id: 1, label: '數學／王老師', course: { id: 1 }, transferable: true },
+  { id: 2, label: '英文／李老師', course: { id: 2 }, transferable: true },
 ];
 
 describe('course intent chooser (#4331)', () => {
@@ -46,8 +47,8 @@ describe('course intent chooser (#4331)', () => {
 
   it('parallel same-subject/teacher contracts are told apart, and 續課 hides non-renewable courses (#4358 review)', async () => {
     const courses = [
-      { id: 1, label: '數學／王老師', detail: '週二 16:00 · 剩 2 堂', course: { id: 1 } },
-      { id: 2, label: '數學／王老師', detail: '週五 18:00 · 剩 8 堂', course: { id: 2 } },
+      { id: 1, label: '數學／王老師', detail: '週二 16:00 · 剩 2 堂', course: { id: 1 }, transferable: true },
+      { id: 2, label: '數學／王老師', detail: '週五 18:00 · 剩 8 堂', course: { id: 2 }, transferable: true },
       { id: 3, label: '英文／李老師', detail: '試聽', course: { id: 3 }, renewable: false },
     ];
     const w = mount(CourseIntentChooser, { props: { show: true, courses } });
@@ -57,12 +58,46 @@ describe('course intent chooser (#4331)', () => {
     expect(w.find('[data-testid="course-intent-course-2"]').text()).toContain('週五 18:00');
     await w.find('[data-testid="course-intent-back"]').trigger('click');
     await w.find('[data-testid="course-intent-change"]').trigger('click');
-    expect(w.find('[data-testid="course-intent-course-3"]').exists()).toBe(true);
+    expect(w.find('[data-testid="course-intent-course-3"]').exists()).toBe(false);
 
     const trialOnly = mount(CourseIntentChooser, { props: { show: true, courses: [courses[2]] } });
     await trialOnly.find('[data-testid="course-intent-renew"]').trigger('click');
     expect(trialOnly.emitted('choose')).toBeUndefined();
     expect(trialOnly.find('[data-testid="course-intent-empty"]').exists()).toBe(true);
+  });
+
+  it('does not offer transfer for monthly, package or unstarted courses', async () => {
+    const base = { status: 'active', payment_type: 'session', sessions_purchased: 8, remaining_sessions: 4 };
+    const courses = [
+      { ...base, id: 1, payment_type: 'monthly' },
+      { ...base, id: 2, PackageID: 7 },
+      { ...base, id: 3, remaining_sessions: 8 },
+    ].map(course => ({ id: course.id, course, ...courseIntentEligibility(course) }));
+    const w = mount(CourseIntentChooser, { props: { show: true, courses } });
+    await w.find('[data-testid="course-intent-change"]').trigger('click');
+    expect(w.find('[data-testid="course-intent-empty"]').exists()).toBe(true);
+    expect(w.emitted('choose')).toBeUndefined();
+  });
+
+  it('keeps an exhausted paid course renewable without offering transfer', async () => {
+    const course = { id: 4, status: 'active', payment_type: 'session', payment_status: 'paid', sessions_purchased: 8, remaining_sessions: 0 };
+    const eligibility = courseIntentEligibility(course);
+    expect(eligibility).toMatchObject({ renewable: true, transferable: false });
+    const w = mount(CourseIntentChooser, { props: { show: true, courses: [{ id: 4, course, ...eligibility }] } });
+    await w.find('[data-testid="course-intent-renew"]').trigger('click');
+    expect(w.emitted('choose')).toEqual([[{ intent: 'renew', course }]]);
+  });
+
+  it('monthly renewal does not describe a zero lesson balance', () => {
+    expect(courseIntentEligibility({ status: 'active', payment_type: 'monthly', remaining_sessions: 0 }))
+      .toMatchObject({ renewable: true, transferable: false, showRemainingSessions: false });
+  });
+
+  it('does not make closed courses renewable or transferable', () => {
+    const base = { status: 'active', payment_type: 'session', sessions_purchased: 8, remaining_sessions: 4 };
+    for (const state of [{ status: 'inactive' }, { Stop: 1 }, { closed_reason: 'waived' }]) {
+      expect(courseIntentEligibility({ ...base, ...state })).toMatchObject({ renewable: false, transferable: false });
+    }
   });
 
   it('without a student (課程查找 header) 續課 shows where the row button is', async () => {
@@ -84,6 +119,13 @@ describe('course intent chooser (#4331)', () => {
 });
 
 describe('one name for adding lessons (#4331)', () => {
+  it('the actual renewal modal uses 續課 for the action and explanation', () => {
+    const w = mount(PurchaseSessionsModal, { props: { show: true, form: { student_name: '合成學生', subject: 'Math', sessions: 8 } } });
+    expect(w.find('button.primary').text()).toBe('確認續課');
+    expect(w.find('.modal-note').text()).toContain('續課會建立');
+    expect(w.text()).not.toContain('加購');
+  });
+
   it('the row/⋯ menu default is the shared constant', () => {
     const { groups } = courseActions({ status: 'active' }, {});
     const billing = groups.find((g) => g.id === 'billing');
@@ -117,6 +159,6 @@ describe('one name for adding lessons (#4331)', () => {
     expect(cm).toContain("props.initialCourseIntent === 'transfer'");
     // 換科目／老師／時段 = the row 「轉課」 (CourseTransferModal), not the records-only TransferSessionsModal.
     expect(cm).toMatch(/pendingTransferCourseId\.value = 0;[\s\S]{0,200}editCourse\(course, \{ openModal: false \}\); showCourseTransfer\.value = true;/);
-    expect(src).toContain('renewable: !isTrialCourse(course)');
+    expect(src).toContain('courseIntentEligibility(course)');
   });
 });
