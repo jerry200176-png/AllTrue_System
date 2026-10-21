@@ -18,6 +18,8 @@ validate-capabilities:
 	python3 scripts/governance/validate-capability-registry.py
 
 overlay-pin:
+	python3 scripts/tests/test_overlay_pin_diagnostic.py
+	python3 scripts/tests/test_sunrise_rulebook_pin.py
 	bash scripts/governance/check-overlay-pin.sh
 
 instruction-invariants:
