@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -277,20 +276,16 @@ class PurchaseBatchSourceSelfOverlapTest extends TestCase
     {
         $token = $this->createDirectorToken();
         $source = $this->createSourceCourse($this->createStudent()->id);
-        // deploy.yml switches code before migrating: simulate that window (column not there yet).
-        $real = Schema::getFacadeRoot();
-        Schema::swap(\Mockery::mock($real)->shouldReceive('hasColumn')->andReturnUsing(
-            fn ($table, $column) => $column !== 'purchase_request_key' && $real->hasColumn($table, $column)
-        )->getMock());
+        // deploy.yml switches code before migrating: simulate that window (memo says the column is missing).
         $memo = new \ReflectionProperty(\App\Services\Billing\ContractRenewal::class, 'hasPurchaseRequestKeyColumn');
-        $memo->setValue(null, null);
+        $memo->setAccessible(true);
+        $memo->setValue(null, false);
         try {
             $this->withHeaders($this->headers($token))
                 ->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", ['sessions' => 2, 'start_date' => $this->base->toDateString(), 'mode' => 'new_purchase'])
                 ->assertStatus(503)->assertJsonValidationErrors(['maintenance']);
             $this->assertSame(1, StudentClass::query()->where('StudentID', $source->StudentID)->count());
         } finally {
-            Schema::swap($real);
             $memo->setValue(null, null);
         }
     }
