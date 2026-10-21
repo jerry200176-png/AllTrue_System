@@ -7,14 +7,9 @@ use App\Models\StudentClass;
 use Illuminate\Support\Collection;
 
 /**
- * The one server definition of 「進行中」 vs 歷史 for a course (in-app #427).
- *
- * The student-classes list puts `history_reason` / `is_active_course` on every row (學生管理 and 課程管理
- * read those flags), and the duplicate-course prompt and the create-time duplicate guard call evaluate().
- * All three feed the same inputs to historyReason(): the self-healed own remaining (selfHealedUsage, also
- * what the list shows) and the BillingPayableResolver settlement verdict.
- *
- * Display/guard only: it never decides what is owed or changes a billing state.
+ * The one server definition of 「進行中」 vs 歷史 (in-app #427): student-classes rows carry it as
+ * history_reason / is_active_course; the duplicate prompt and create guard call evaluate() on the same
+ * inputs (selfHealedUsage + BillingPayableResolver). Display/guard only; never decides what is owed.
  */
 final class StudentClassActivity
 {
@@ -33,10 +28,7 @@ final class StudentClassActivity
     public static function selfHealedUsage(StudentClass $course, int $observedUsed, bool $hasPartialLedger = false): ?array
     {
         $purchased = (int) ($course->SessionCount ?? 0);
-        if (($course->ScheduleMode ?? 'count') !== 'count' || $purchased <= 0) {
-            return null;
-        }
-        if (self::minutesAreAuthoritative($course, $hasPartialLedger)) {
+        if (($course->ScheduleMode ?? 'count') !== 'count' || $purchased <= 0 || self::minutesAreAuthoritative($course, $hasPartialLedger)) {
             return null;
         }
         $used = min($purchased, $observedUsed);
@@ -67,13 +59,10 @@ final class StudentClassActivity
             return null; // FR-001: a package member draws on the shared pool.
         }
         // An authoritative minutes balance (#613 A1) is entitlement left even when it rounds to 0 lessons.
-        // Whole-lesson minutes without a partial ledger are derived counters the self-heal already corrected.
         if ((int) ($course->RemainingMinutes ?? 0) > 0 && self::minutesAreAuthoritative($course, $hasPartialLedger)) {
             return null;
         }
-        $settled = in_array($settlement, self::SETTLED, true);
-
-        return $settled && $ownRemaining <= 0 ? 'completed' : null;
+        return in_array($settlement, self::SETTLED, true) && $ownRemaining <= 0 ? 'completed' : null;
     }
 
     /**
@@ -82,12 +71,9 @@ final class StudentClassActivity
      */
     private static function minutesAreAuthoritative(StudentClass $course, bool $hasPartialLedger): bool
     {
-        $remainingMinutes = $course->RemainingMinutes;
-        if ($remainingMinutes === null) {
-            return false;
-        }
+        $minutes = $course->RemainingMinutes;
 
-        return $hasPartialLedger || ((int) $remainingMinutes % max(1, (int) ($course->SessionDuration ?: 60)) !== 0);
+        return $minutes !== null && ($hasPartialLedger || (int) $minutes % max(1, (int) ($course->SessionDuration ?: 60)) !== 0);
     }
 
     /** 進行中 = running and not history (what the duplicate prompt and guard count). */

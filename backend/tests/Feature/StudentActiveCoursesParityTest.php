@@ -13,10 +13,7 @@ use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/**
- * in-app #427: GET students/{id}/active-courses (the 「已有進行中課程」 prompt) lists only what the
- * 學生管理 course list shows as 進行中, with the same remaining number.
- */
+/** in-app #427: the 「已有進行中課程」 prompt, the course list and the create guard share one 進行中 verdict. */
 class StudentActiveCoursesParityTest extends TestCase
 {
     use RefreshDatabase;

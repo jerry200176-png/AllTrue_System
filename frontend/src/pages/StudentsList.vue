@@ -1394,8 +1394,7 @@ const parseCourseNumber = (value) => {
 };
 // in-app #427: history is the server's verdict (StudentClassActivity), the same one behind the 「已有進行中課程」 prompt.
 const isHistoryCourseByReason = (course) => courseHistoryReason(course) !== null;
-// Display tier only: history rows without a recorded closure (used up and settled), 待對帳結案 and 確認不收 are
-// hidden until 顯示已結業; other closed rows stay visible as labelled 歷史 chips (#3731).
+// Display tier only (#3731): unrecorded, 待對帳 and 確認不收 history hides until 顯示已結業; other closures stay as 歷史 chips.
 const isHistoricalCourse = (course) => isHistoryCourseByReason(course)
   && (!course?.closed_reason || ['settled_pending', 'waived'].includes(courseHistoryReason(course)));
 const getActiveStudentCourses = (id) => getStudentAllCourses(id).filter((c) => !isHistoryCourseByReason(c));
@@ -2056,7 +2055,6 @@ const loadStudentCourses = async (studentId) => {
           end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
           sessions_purchased: c.sessions_purchased,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
-          remaining_minutes: c.remaining_minutes ?? c.RemainingMinutes ?? null,
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
           start_time: c.start_time,
           end_time: c.end_time,
@@ -2145,7 +2143,6 @@ const loadAllStudentCourses = async () => {
             end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
             sessions_purchased: c.sessions_purchased,
             remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
-            remaining_minutes: c.remaining_minutes ?? c.RemainingMinutes ?? null,
             sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
             start_time: c.start_time,
             end_time: c.end_time,
