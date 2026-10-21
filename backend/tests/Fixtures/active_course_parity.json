@@ -1,0 +1,16 @@
+{
+  "_comment": "in-app #427 parity contract. Each row is a student-classes index projection row. expected_active = shown by the duplicate-course prompt (EnrollmentActiveCourseRule) AND, for running rows, by the 學生管理 course list (courseMoneyState.isStudentPageActiveCourse). expected_remaining = the number both show. server_only = a stopped row or a closure the page files differently; only the server rule is asserted.",
+  "rows": [
+    { "case": "open count course", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 8, "payment_status": "unpaid", "expected_active": true, "expected_remaining": 8 },
+    { "case": "finished: remaining corrected to 0 and paid", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "payment_status": "paid", "expected_active": false },
+    { "case": "finished free trial", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "payment_status": "free", "expected_active": false },
+    { "case": "used up but still owed", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 0, "payment_status": "unpaid", "expected_active": true, "expected_remaining": 0 },
+    { "case": "closed: settled_pending", "status": "active", "closed_reason": "settled_pending", "payment_type": "session", "PackageID": null, "remaining_sessions": 2, "payment_status": "unpaid", "expected_active": false },
+    { "case": "closed: waived", "status": "active", "closed_reason": "waived", "payment_type": "session", "PackageID": null, "remaining_sessions": 3, "payment_status": "paid", "expected_active": false },
+    { "case": "closed: completed", "status": "active", "closed_reason": "completed", "payment_type": "session", "PackageID": null, "remaining_sessions": 1, "payment_status": "paid", "expected_active": false },
+    { "case": "closed: converted trial", "status": "active", "closed_reason": "converted_trial", "payment_type": "session", "PackageID": null, "remaining_sessions": 1, "payment_status": "free", "expected_active": false, "server_only": true },
+    { "case": "stopped course", "status": "inactive", "closed_reason": null, "payment_type": "session", "PackageID": null, "remaining_sessions": 4, "payment_status": "unpaid", "expected_active": false, "server_only": true },
+    { "case": "monthly course", "status": "active", "closed_reason": null, "payment_type": "monthly", "PackageID": null, "remaining_sessions": 0, "payment_status": "paid", "expected_active": true, "expected_remaining": 0 },
+    { "case": "package member reads the pool", "status": "active", "closed_reason": null, "payment_type": "session", "PackageID": 7, "remaining_sessions": 0, "package_remaining_sessions": 5, "payment_status": "paid", "expected_active": true, "expected_remaining": 5 }
+  ]
+}

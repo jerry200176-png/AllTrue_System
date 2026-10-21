@@ -8,6 +8,7 @@ use App\Models\StudentLineBinding;
 use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Services\EnrollmentActiveCourseRule;
 use App\Services\ParentBinding\BindingService;
 use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\Utf8mb3SearchSanitizer;
@@ -160,22 +161,40 @@ class StudentController extends Controller
     }
 
     /**
-     * GET /api/v1/students/{student}/active-courses
-     * Return active (Stop=0) StudentClass records for a student,
-     * used by frontend to warn before creating duplicate courses.
+     * GET /api/v1/students/{student}/active-courses[?branch_id=]
+     * The student's 進行中 courses, used by 學生管理 to warn before creating a duplicate course.
+     *
+     * in-app #427: rows come from the same student-classes projection the student page lists
+     * (campus filter, self-healed remaining, shared-pool remaining, server payment_status) and are
+     * filtered by the one rule {@see EnrollmentActiveCourseRule}, so the prompt and the page agree.
+     * branch_id defaults to the student's own campus.
      */
-    public function activeCourses(Student $student)
+    public function activeCourses(Request $request, Student $student)
     {
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
 
+        $projectionRequest = Request::create('/api/v1/student-classes', 'GET', [
+            'student_id' => $student->id,
+            'branch_id' => $request->input('branch_id', $student->CampusID),
+            'status' => 'active',
+            'per_page' => 1000,
+        ]);
+        $projectionRequest->attributes->add($request->attributes->all());
+        $projection = app(StudentClassController::class)->index($projectionRequest);
+        if ($projection->getStatusCode() !== 200) {
+            return $projection;
+        }
+        $rows = collect($projection->getData(true)['data'] ?? [])
+            ->filter(fn (array $row) => EnrollmentActiveCourseRule::isActive($row))
+            ->keyBy(fn (array $row) => (int) ($row['ID'] ?? $row['id'] ?? 0));
+
+        $activeCourses = $rows->isEmpty()
+            ? collect()
+            : StudentClass::query()->whereIn('ID', $rows->keys()->all())->orderByDesc('ID')->get();
+
         $subjectNameCol = Schema::hasColumn('Subject', 'Subject_Name') ? 'Subject_Name' : 'name';
-
-        $activeCourses = StudentClass::where('StudentID', $student->id)
-            ->where('Stop', 0)
-            ->get();
-
         $subjectIds = $activeCourses->pluck('SubjectID')->unique()->filter()->values()->all();
         $subjectMap = !empty($subjectIds)
             ? DB::table('Subject')->whereIn('id', $subjectIds)->pluck($subjectNameCol, 'id')
@@ -183,22 +202,24 @@ class StudentController extends Controller
 
         $today = \Carbon\Carbon::today()->toDateString();
         $booking = app(\App\Services\ManualSessionBookingService::class);
-        $courses = $activeCourses->map(function ($sc) use ($subjectMap, $today, $booking) {
+        $courses = $activeCourses->map(function ($sc) use ($rows, $subjectMap, $today, $booking) {
+            $row = $rows->get((int) $sc->ID, []);
             return [
                 'id' => $sc->ID,
                 'subject_id' => (int) $sc->SubjectID,
                 'subject_name' => $subjectMap[$sc->SubjectID] ?? '',
                 'teacher_id' => (int) $sc->TeacherID,
-                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
-                'used_sessions' => (int) ($sc->UsedSessions ?? 0),
+                // Same number as the course card: self-healed, or the shared pool for package members.
+                'remaining_sessions' => EnrollmentActiveCourseRule::remainingSessions($row),
+                'used_sessions' => (int) ($row['sessions_used'] ?? $sc->UsedSessions ?? 0),
                 'session_count' => (int) ($sc->SessionCount ?? 0),
                 'class_type' => $sc->ClassType ?? 'one_on_one',
-                'payment_type' => $sc->settlement_day ? 'monthly' : 'session',
+                'payment_type' => (string) ($row['payment_type'] ?? ($sc->settlement_day ? 'monthly' : 'session')),
                 // in-app #382: lets the duplicate prompt offer 新增下一堂 for a manual course with nothing booked.
                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence' ? $booking->reservedSessionCount($sc, $today) : null,
             ];
-        });
+        })->values();
 
         return response()->json(['courses' => $courses]);
     }

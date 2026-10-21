@@ -154,6 +154,29 @@ export const isHistoryCourse = (course, { includePending = false } = {}) => {
   return reason === 'settled' || reason === 'completed' || reason === 'waived' || (includePending && reason === 'settled_pending');
 };
 
+/**
+ * StudentsList hides these rows unless 顯示歷史課程 is on: 待對帳結案 / 確認不收, a monthly course that
+ * is stopped, or an own-count course that is used up and settled. Package members stay until stopped
+ * (FR-001: their own remaining can read 0 while the shared pool still has sessions).
+ */
+export const isHiddenHistoricalCourse = (course) => {
+  if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
+  if (isMonthlyPaymentType(course)) return String(course?.status || '').toLowerCase() === 'inactive';
+  if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') return false;
+  const remaining = ownRemainingSessions(course);
+  if (remaining == null) return false;
+  return remaining <= 0 && isCourseSettled(course);
+};
+
+/**
+ * StudentsList course workspace membership (not history by either rule). The server's duplicate-course
+ * prompt (EnrollmentActiveCourseRule, in-app #427) agrees with this for every running (status active) row;
+ * backend/tests/Fixtures/active_course_parity.json pins both sides.
+ */
+export const isStudentPageActiveCourse = (course) => (
+  !isHiddenHistoricalCourse(course) && !isHistoryCourse(course, { includePending: true })
+);
+
 // ── payment-status labels (display only; the server owns the status itself) ──
 export const TUITION_STATUS_CONFIG = {
   unpaid: { label: '未繳', cls: 'st-unpaid' },

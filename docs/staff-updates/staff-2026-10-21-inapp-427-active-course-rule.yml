@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-inapp-427-active-course-rule
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 進行中課程提示與列表一致
+    summary: 新增課程時跳出的「已有進行中課程」，現在只列出學生頁上看得到的進行中課程。
+    items:
+      - category: fixed
+        text: 已上完並收款、已結案或已轉正的試聽、已停課與他校的課，不再出現在提示中。
+      - category: fixed
+        text: 提示中的剩餘堂數改為與學生頁課程卡相同的數字。
+    source_refs:
+      - "changelog:2026-10-21:inapp-427-active-course-rule"

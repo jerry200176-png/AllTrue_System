@@ -1006,7 +1006,7 @@ import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
-  closedReason as effectiveClosedReason, courseProgress, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
+  closedReason as effectiveClosedReason, courseProgress, isHiddenHistoricalCourse, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
   modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -1389,24 +1389,8 @@ const parseCourseNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
-const isHistoricalCourse = (course) => {
-  if (course?.closed_reason === 'settled_pending' || course?.closed_reason === 'waived') return true;
-  // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
-  // 月結課程只有明確停課（status=inactive，即 Stop=1）才視為歷史課程。
-  if (isMonthlyPaymentType(course)) {
-    return String(course?.status || '').toLowerCase() === 'inactive';
-  }
-  // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
-  // 被 over-deduction 誤設為 0；若此時又已繳費，舊邏輯會把 active 方案課程誤判為「歷史課程」並隱藏，
-  // 造成學生管理欄位顯示「尚未設定」。僅在明確停課（status=inactive，即 Stop=1）時才視為歷史。
-  if (isPackageMember(course) && String(course?.status || '').toLowerCase() !== 'inactive') {
-    return false;
-  }
-  const remaining = ownRemainingSessions(course);
-  if (remaining == null) return false;
-  return remaining <= 0 && isCourseSettled(course);
-};
 const isHistoryCourseByReason = (course) => isHistoryCourse(course, { includePending: true });
+// in-app #427: with 顯示歷史課程 off this is isStudentPageActiveCourse, the verdict the server's 進行中 prompt is pinned to.
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
@@ -1635,7 +1619,7 @@ const expandedCourseDateKeys = ref(new Set());
 const getStudentCourses = (id) => {
   const all = getStudentAllCourses(id);
   if (showHistoricalCourses.value) return all;
-  return all.filter((course) => !isHistoricalCourse(course));
+  return all.filter((course) => !isHiddenHistoricalCourse(course));
 };
 const getStudentCourseCount = (id) => getStudentCourses(id).length;
 const studentStatusLabel = (s) => ({ active: '在學中', graduated: '已畢業', paused: '暫停中', transferred: '已轉校' }[s] || s);
@@ -2823,7 +2807,9 @@ const openAddCourse = async (student) => {
     try {
       const token = await getAccessToken();
       if (token) {
-        const res = await authedFetch(`/api/v1/students/${sid}/active-courses`, {
+        // in-app #427: same campus as this page's course list.
+        const branchQuery = props.branchId ? `?branch_id=${encodeURIComponent(props.branchId)}` : '';
+        const res = await authedFetch(`/api/v1/students/${sid}/active-courses${branchQuery}`, {
           headers: { 'Accept': 'application/json' },
         }, token);
         if (res.ok) {
