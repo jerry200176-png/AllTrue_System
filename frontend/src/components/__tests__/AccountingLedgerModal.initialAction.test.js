@@ -57,10 +57,11 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     ['waived', { courses: [course(11, { waived: true })], invoices: [] }],
     ['tutoring', { courses: [course(11, { class_type: 'tutoring' })], invoices: [inv(1, 11)] }],
     ['multi-bill package member', { courses: [course(11, { package_id: 3 }), course(12, { package_id: 3 })], invoices: [inv(1, 11), inv(2, 12)] }],
-  ])('%s: opens the ledger only, no form', async (_label, data) => {
+  ])('%s: opens the ledger only, no form, and says why', async (_label, data) => {
     const w = mountLedger({ ...data, props: { initialAction: 'record' } });
     await flushPromises();
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').attributes('role')).toBe('status');
     w.unmount();
   });
 
@@ -68,6 +69,7 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)] });
     await flushPromises();
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-initial-action-note"]').exists()).toBe(false);
     w.unmount();
   });
 });
@@ -89,11 +91,11 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     w.unmount();
   });
 
-  it('non-director sees no receipt button and a disabled 繳費單', async () => {
+  it('non-director sees no receipt button and no 繳費單', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts, role: 'teacher' });
     await flushPromises();
     expect(w.find('[data-testid^="ledger-receipt-view-"]').exists()).toBe(false);
-    expect(w.get('[data-testid="contract-slip"]').element.disabled).toBe(true);
+    expect(w.find('[data-testid="contract-slip"]').exists()).toBe(false);
     w.unmount();
   });
 

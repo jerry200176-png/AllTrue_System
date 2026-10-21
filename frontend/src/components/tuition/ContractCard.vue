@@ -36,7 +36,7 @@
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <AtButton v-else-if="!noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
-      <template v-if="!noObligation && !waived">
+      <template v-if="showSlip">
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
         <span v-if="!slipState.ok" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
       </template>
@@ -120,6 +120,7 @@ import AtTextarea from '../design-system/AtTextarea.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
+import { AMOUNT_PENDING_REASON, slipAvailability } from '../../lib/billingDocState.js';
 import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, isWaivedContract } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
@@ -285,17 +286,20 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const noObligation = computed(() => data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
-// In-app #425: 繳費單 for an open bill, or the estimated one for a contract not billed yet (same as the 帳務中心 list);
-// otherwise disabled with the TuitionDocActions wording (no new money rule). 金額待確認 is the server verdict.
-const slipState = computed(() => {
-  if (!props.canViewDocs) return { ok: false, reason: '沒有權限' };
-  if (legacyUnverified.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
-  if (props.course.amount_pending_confirmation === true) return { ok: false, reason: '金額待確認，請先確認應收金額' };
-  if (props.sharedFollower) return { ok: false, reason: '共用方案繳費單請至成員課程開立' };
-  if (props.pendingReport) return { ok: false, reason: '已回報，等確認入帳' };
-  if (props.outstanding > 0 || (!props.course.paid && !props.amounts)) return { ok: true };
-  return { ok: false, reason: '已繳清，不用繳費單' };
-});
+// In-app #425: 繳費單 uses the 帳務中心 rule (lib/billingDocState.js); the card only maps its state into a list row.
+// Shown when it can open, or when the reason is something to act on (金額待確認); paid / reported / follower cards
+// already say so on the card, so no disabled button there.
+const slipRow = computed(() => ({
+  id: props.course.id,
+  amount_pending_confirmation: props.course.amount_pending_confirmation === true,
+  legacy_paid_without_invoice: legacyUnverified.value,
+  payable_status: props.amounts ? 'invoiced' : 'unbilled',
+  payment_status: props.pendingReport ? 'pending_report'
+    : (props.outstanding > 0 || (!props.course.paid && !props.amounts)) ? 'unpaid' : 'paid',
+}));
+const slipState = computed(() => slipAvailability(slipRow.value, props.canViewDocs));
+const showSlip = computed(() => props.canViewDocs && !props.sharedFollower && !noObligation.value && !waived.value
+  && (slipState.value.ok || slipState.value.reason === AMOUNT_PENDING_REASON));
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
 // 確認入帳 books money in one click, so ask first; 取消 has the initial focus (no undo: mistakes go through 撤銷收款).

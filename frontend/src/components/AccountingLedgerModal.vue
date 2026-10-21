@@ -34,6 +34,7 @@
             @done="onAllocDone"
           />
           <div v-show="!allocating">
+          <p v-if="initialActionNote" class="ledger-empty" role="status" data-testid="ledger-initial-action-note">{{ initialActionNote }}</p>
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
             <p class="ledger-owed__label">{{ owedLabel }}</p>
@@ -797,14 +798,25 @@ watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpe
 // a course whose card would not offer 登記這筆 (pending report, waived, tutoring, package member) just shows the ledger.
 let pendingInitialAction = null;
 watch(() => props.show, (open) => { pendingInitialAction = open ? props.initialAction : null; }, { immediate: true });
+const initialActionNote = ref('');
+watch(() => props.show, () => { initialActionNote.value = ''; });
 function runInitialAction() {
   const action = pendingInitialAction;
   pendingInitialAction = null;
   if (action !== 'record') return;
   const id = Number(props.studentClassId || 0);
-  if (!id || !allocContracts.value.some((c) => Number(c.id) === id)) return;
   const course = contractCourses.value.find((c) => Number(c.id) === id);
-  if (course) openEntry(course);
+  if (!course) return;
+  if (allocContracts.value.some((c) => Number(c.id) === id)) { openEntry(course); return; }
+  // Say why the form did not open (the same conditions the card uses), instead of falling back silently.
+  initialActionNote.value = recordBlockedReason(course);
+}
+function recordBlockedReason(c) {
+  if (payload.value?.scope?.no_payment_obligation || c.class_type === 'tutoring') return '輔導課不用繳費，所以沒有打開登記表。';
+  if (pendingReportFor(c.id)) return '這門課已有家長回報待核對，請在下面的課程卡按「確認入帳」或「退回」。';
+  if (isWaivedContract(c)) return '這門課已確認不收，所以沒有打開登記表。';
+  if (c.package_id) return '這是共用方案，請在下面的課程卡處理收款。';
+  return '這門課目前沒有要收的款，所以沒有打開登記表。';
 }
 
 async function onEntryConflict() {

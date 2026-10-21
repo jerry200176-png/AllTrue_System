@@ -1,5 +1,6 @@
-// In-app #425: the ledger contract card offers 繳費單 like the 帳務中心 list; when it cannot, it is disabled with
-// the same one-line reason TuitionDocActions gives for the equivalent list row (no new money rule).
+// In-app #425: the ledger contract card offers 繳費單 with the same rule as the 帳務中心 list (lib/billingDocState.js).
+// It is shown only when it opens, or when the reason is something to act on (金額待確認); otherwise the card already
+// says why (已收清 / 待核對 / 共用方案) and no disabled button is added.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 
@@ -7,7 +8,7 @@ const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 
 import ContractCard from '../tuition/ContractCard.vue';
-import TuitionDocActions from '../TuitionDocActions.vue';
+import { slipAvailability } from '../../lib/billingDocState.js';
 
 const respond = (body) => ({ ok: true, status: 200, json: async () => body });
 beforeEach(() => {
@@ -26,46 +27,41 @@ const slip = (w) => {
   const r = w.find('[data-testid="contract-slip-reason"]');
   return { disabled: b.element.disabled, reason: r.exists() ? r.text() : null };
 };
-const listReason = (row, canView = true) => {
-  const w = mount(TuitionDocActions, { props: { row: { id: 9, payable_status: 'invoiced', ...row }, canView } });
-  const r = w.find('[data-testid="tc-doc-slip-reason"]');
-  return { disabled: w.get('[data-testid="tc-doc-slip"]').element.disabled, reason: r.exists() ? r.text() : null };
-};
 
 describe('ContractCard 繳費單 (in-app #425)', () => {
   it('money owed on an open bill: enabled, and click emits the course', async () => {
-    const w = await card({ outstanding: 4400 });
-    expect(slip(w)).toEqual(listReason({ payment_status: 'unpaid' }));
+    const w = await card({ outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 } });
     expect(slip(w)).toEqual({ disabled: false, reason: null });
     await w.get('[data-testid="contract-slip"]').trigger('click');
     expect(w.emitted('slip')[0][0]).toMatchObject({ id: 9 });
   });
 
-  it.each([
-    ['pending report', { outstanding: 4400, pendingReport: { report_id: 1, amount: 4400, date: '' } }, { payment_status: 'pending_report' }],
-    ['paid', { course: { id: 9, subject: '數學', paid: true } }, { payment_status: 'paid' }],
-    ['bills all paid', { course: { id: 9, subject: '數學', paid: false }, amounts: { due: 4400, received: 4400, owed: 0 } }, { payment_status: 'paid' }],
-    ['金額待確認 (server verdict)', { outstanding: 4400, course: { id: 9, subject: '數學', paid: false, amount_pending_confirmation: true } }, { payment_status: 'unpaid', amount_pending_confirmation: true }],
-    ['legacy flag only', { course: { id: 9, subject: '數學', paid: true }, lastPayment: { legacyUnverified: true } }, { payment_status: 'paid', legacy_paid_without_invoice: true }],
-    ['no permission', { outstanding: 4400, canViewDocs: false }, { payment_status: 'unpaid', __noView: true }],
-  ])('%s: disabled with the same reason as the 帳務中心 list', async (_l, props, row) => {
-    const { __noView, ...r } = row;
-    const w = await card(props);
-    expect(slip(w)).toEqual(listReason(r, !__noView));
-    expect(slip(w).disabled).toBe(true);
+  it('no bill yet: the estimated slip by course is offered, same verdict as the unbilled list row', async () => {
+    expect(slip(await card({}))).toEqual({ disabled: false, reason: null });
+    expect(slipAvailability({ id: 9, payment_status: 'unpaid', payable_status: 'unbilled' })).toEqual({ ok: true });
+  });
+
+  it('金額待確認 (server verdict): shown disabled with the list reason', async () => {
+    const w = await card({ outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 }, course: { id: 9, subject: '數學', paid: false, amount_pending_confirmation: true } });
+    expect(slip(w)).toEqual({ disabled: true, reason: slipAvailability({ id: 9, payment_status: 'unpaid', amount_pending_confirmation: true }).reason });
+    expect(slip(w).reason).toBe('金額待確認，請先確認應收金額');
     await w.get('[data-testid="contract-slip"]').trigger('click');
     expect(w.emitted('slip')).toBeUndefined();
   });
 
-  it('no bill yet: the estimated slip by course is offered, like the unbilled list row', async () => {
-    const w = await card({});
-    expect(slip(w)).toEqual(listReason({ payment_status: 'unpaid', payable_status: 'unbilled' }));
-    expect(slip(w)).toEqual({ disabled: false, reason: null });
+  it.each([
+    ['paid', { course: { id: 9, subject: '數學', paid: true } }],
+    ['bills all paid', { amounts: { due: 4400, received: 4400, owed: 0 } }],
+    ['pending report', { outstanding: 4400, pendingReport: { report_id: 1, amount: 4400, date: '' } }],
+    ['legacy flag only', { course: { id: 9, subject: '數學', paid: true }, lastPayment: { legacyUnverified: true } }],
+    ['no permission', { outstanding: 4400, canViewDocs: false }],
+    ['shared-package follower', { outstanding: 4400, sharedFollower: true }],
+    ['waived', { course: { id: 9, subject: '數學', paid: false, waived: true } }],
+  ])('%s: no 繳費單 button on the card', async (_l, props) => {
+    expect(slip(await card(props))).toBeNull();
   });
 
-  it('shared-package follower and waived / tutoring cards', async () => {
-    expect(slip(await card({ outstanding: 4400, sharedFollower: true }))).toEqual({ disabled: true, reason: '共用方案繳費單請至成員課程開立' });
-    expect(slip(await card({ course: { id: 9, subject: '數學', paid: false, waived: true } }))).toBeNull();
+  it('tutoring: no 繳費單 button', async () => {
     authedFetch.mockResolvedValue(respond({ schedule_mode: 'count', sessions: [], unscheduled_count: 0, class_type: 'tutoring' }));
     expect(slip(await card({}))).toBeNull();
   });
