@@ -1,15 +1,9 @@
-/**
- * in-app #429 (GitHub #4331): one name and one entry for "add / renew a course".
- * Founder 2026-10-15 Q8=A: adding lessons to the same course is always 「續課」.
- * Every call site (課程查找 row + ⋯ menu, 學生管理 course card, server messages) uses these
- * constants instead of 加購堂數／續報加購／續約／加購.
- */
+// in-app #429: existing course intents and shared 續課 labels (Founder Q8=A).
 import { courseProgress, isMonthlyPaymentType, isPackageMember, isSessionPayment } from './courseMoneyState.js';
 
 export const RENEW_LESSONS_LABEL = '續課';
 export const COURSE_ENTRY_LABEL = '新增課程／續課';
 
-/** Intent chooser options. Each id maps to an existing flow; nothing here creates a new one. */
 export const COURSE_INTENTS = Object.freeze([
   Object.freeze({ id: 'new', label: '全新課程', hint: '第一次報這門課：新的科目，或還沒有課的學生。', icon: 'add' }),
   Object.freeze({ id: 'renew', label: `同一門課${RENEW_LESSONS_LABEL}`, hint: '同科目、同老師延續下一期：堂數制建立新批次，月結制延長期別；保留原上課紀錄，原合約可能自動結案。', icon: 'autorenew' }),
@@ -38,10 +32,6 @@ export function courseIntentEligibility(course) {
   };
 }
 
-/**
- * Run the handler for the chosen intent. Returns false when the intent is unknown or the page
- * did not wire a handler, so callers never fall through to a different flow silently.
- */
 export function routeCourseIntent(intentId, handlers = {}, ...args) {
   const fn = handlers[intentId];
   if (!COURSE_INTENTS.some((i) => i.id === intentId) || typeof fn !== 'function') return false;

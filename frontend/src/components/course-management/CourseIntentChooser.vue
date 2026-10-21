@@ -63,9 +63,7 @@ import { COURSE_ENTRY_LABEL, COURSE_INTENTS, RENEW_LESSONS_LABEL } from '../../l
 const props = defineProps({
   show: Boolean,
   studentName: { type: String, default: '' },
-  // [{ id, label, detail, course, renewable, transferable }] for one student; null when the page has no student
-  // context (課程查找 header). `detail` tells parallel same-subject/teacher contracts apart;
-  // `renewable: false` hides a course from 續課 (trial → 轉為正式課程, tutoring package).
+  // Null for the context-free header; each course carries renewal/transfer capabilities and display detail.
   courses: { type: Array, default: null },
 });
 const emit = defineEmits(['close', 'choose']);
@@ -95,7 +93,6 @@ function emitChoice(intent, course = null) {
 }
 
 function onIntent(id) {
-  // 全新課程 needs no course; the other two pick one (or show where the row button is).
   if (id === 'new') { emitChoice('new'); return; }
   const options = props.courses ? optionsFor(id) : [];
   if (options.length === 1) { emitChoice(id, options[0].course); return; }

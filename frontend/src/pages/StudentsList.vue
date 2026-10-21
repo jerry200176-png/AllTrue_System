@@ -1104,8 +1104,7 @@ const goToTuitionBilling = openTuitionLedger;
 const courseIntentStudent = ref(null);
 const sessionRenewalDialog = ref(null);
 const monthlyRenewalDialog = ref(null);
-// Trials are not renewed (轉為正式課程) and tutoring packages cannot be extended here, so 續課 hides them.
-// `detail` (time, remaining, end date) tells parallel same-subject/teacher contracts apart.
+// Per-intent capabilities filter courses; detail distinguishes parallel contracts.
 const courseIntentOptions = (studentId) => getStudentAllCourses(studentId)
   .map((course) => {
     const eligibility = courseIntentEligibility(course);
