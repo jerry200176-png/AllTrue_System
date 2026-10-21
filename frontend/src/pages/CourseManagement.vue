@@ -4974,7 +4974,7 @@ const submitEdit = async () => {
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
           nextStep: editabilityNextStepForError(err),
-          transferPrefill: transferPrefillFromBlockedEdit(err, form),
+          transferPrefill: transferPrefillFromBlockedEdit(err, form, JSON.parse(editFormSnapshot.value || '{}')),
         };
         toastRef.value?.show?.({
           title: '儲存失敗',

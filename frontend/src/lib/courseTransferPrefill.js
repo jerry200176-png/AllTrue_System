@@ -7,6 +7,14 @@ import { editabilityNextStepForError } from './courseEditability.js';
 const normTime = (t) => (t ? String(t).slice(0, 5) : '');
 const NOT_CARRIED_LABELS = { SessionCount: '購買堂數', standard_lesson_minutes: '標準堂長', deduction_basis: '扣堂方式' };
 
+const FORM_NOT_CARRIED_LABELS = {
+  sessions_purchased: '購買堂數', remaining_sessions: '剩餘堂數',
+  standard_lesson_minutes: '標準堂長', deduction_basis: '扣堂方式',
+  memo: '備註', room_id: '教室', class_type: '班型', rate_per_30min: '單價', rate_unit: '計費單位',
+  payment_type: '計費方式', settlement_day: '結算日', monthly_sessions: '月結堂數',
+  first_class_date: '開始日期', end_date: '結束日期', scheduling_policy: '排課方式', paid_at: '繳費日期',
+};
+
 function editedSlots(f) {
   const fromSlots = (f.day_time_slots || [])
     .filter((s) => Number(s?.day) >= 1 && Number(s?.day) <= 7)
@@ -21,7 +29,7 @@ function editedSlots(f) {
   }));
 }
 
-export function transferPrefillFromBlockedEdit(err, form) {
+export function transferPrefillFromBlockedEdit(err, form, originalForm = null) {
   const hint = err?.transfer_hint;
   if (editabilityNextStepForError(err) !== 'course_transfer') return null;
   if (!hint?.start_date || !Array.isArray(hint.changes) || !hint.changes.length) return null;
@@ -42,7 +50,16 @@ export function transferPrefillFromBlockedEdit(err, form) {
     }
   }
   const notCarried = (Array.isArray(hint.not_carried) ? hint.not_carried : []).map((k) => NOT_CARRIED_LABELS[k] || k);
-  if (notCarried.length) prefill.not_carried = notCarried;
+  // A subject guard may return before locked_fields is populated. The saved client snapshot
+  // still tells us exactly which submitted edits this transfer cannot apply.
+  if (originalForm) {
+    for (const [field, label] of Object.entries(FORM_NOT_CARRIED_LABELS)) {
+      if (Object.hasOwn(originalForm, field) && Object.hasOwn(f, field)
+        && String(originalForm[field] ?? '') !== String(f[field] ?? '')) notCarried.push(label);
+    }
+  }
+
+  if (notCarried.length) prefill.not_carried = [...new Set(notCarried)];
   return prefill;
 }
 

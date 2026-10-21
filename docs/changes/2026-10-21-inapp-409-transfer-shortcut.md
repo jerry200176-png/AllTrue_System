@@ -15,3 +15,5 @@
 - 每週 7 時段的修改不再顯示必然失敗的轉課捷徑：現有 endpoint 上限為 6，畫面明確說明尚未儲存並保留原編輯內容，不截斷時段或改變 API 限制。6 時段仍可交接；13 focused tests 通過。
 
 - 只有 server 明確給出 next_step 才顯示轉課錯誤捷徑；不再由 subject_change_requires_transfer 錯誤碼自行重建被 server 隱藏的動作。完整 focused frontend selection：27 tests + lint 通過。
+
+- 客戶端以原編輯 snapshot 列出每個轉課不會儲存的變更欄位（含科目＋購買堂數同時修改、server 未回 locked_fields 的情況）；不更改 server 拒絕原因、權限或帳務。28 focused tests + lint 通過。

@@ -62,6 +62,20 @@ describe('transferPrefillFromBlockedEdit', () => {
     expect(transferPrefillFromBlockedEdit(err, form).not_carried).toEqual(['購買堂數']);
   });
 
+  it('lists mixed edited fields even when the subject guard omitted locked_fields', () => {
+    const original = { ...form, sessions_purchased: 8, memo: '原備註', room_id: 1, class_type: 'one_on_one', rate_per_30min: 500 };
+    const edited = { ...original, subject: 'english', sessions_purchased: 12, memo: '新備註', room_id: 2, class_type: 'one_on_two', rate_per_30min: 600 };
+    const prefill = transferPrefillFromBlockedEdit(blocked(['subject']), edited, original);
+    expect(prefill.subject).toBe('english');
+    expect(prefill.not_carried).toEqual(['購買堂數', '備註', '教室', '班型', '單價']);
+    expect(transferPrefillFromBlockedEdit(blocked(['subject']), original, original).not_carried).toBeUndefined();
+    const wrapper = mount(CourseSaveErrorAlert, { props: {
+      error: { message: '未儲存', nextStep: 'course_transfer', transferPrefill: prefill }, canOpen: () => true,
+    } });
+    expect(wrapper.find('[data-testid="save-error-not-carried"]').text()).toContain('購買堂數、備註、教室、班型、單價');
+    wrapper.unmount();
+  });
+
   it('returns null without the course_transfer next step + hint (monthly / settled courses keep today\'s message)', () => {
     expect(transferPrefillFromBlockedEdit({ code: 'subject_change_requires_transfer', suggested_actions: ['split_contract'] }, form)).toBeNull();
     expect(transferPrefillFromBlockedEdit({ ...blocked(['subject']), next_step: undefined }, form)).toBeNull();
@@ -153,7 +167,7 @@ describe('課程設定 save error wiring', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../pages/CourseManagement.vue'), 'utf8');
 
   it('stores the prefill on the save error and offers the CTA in both edit surfaces', () => {
-    expect(page).toContain('transferPrefill: transferPrefillFromBlockedEdit(err, form)');
+    expect(page).toContain("transferPrefill: transferPrefillFromBlockedEdit(err, form, JSON.parse(editFormSnapshot.value || '{}'))");
     expect(page.match(/<CourseSaveErrorAlert /g)).toHaveLength(2);
     expect(page).toContain(':prefill="courseTransferPrefill"');
     expect(page).toContain("openCourseTransfer(course, editSaveError.value?.transferPrefill || null)");
