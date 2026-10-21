@@ -733,6 +733,126 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(['renew_needed', false], [$pkg($pkgPaid)['payment_status'], $pkg($pkgPaid)['legacy_paid_flag_only']]);
     }
 
+    /** in-app #428 (#4330): a trial paid at creation (Paid=1, no invoice by design) is not legacy data: no 需核對. */
+    public function test_legacy_paid_flag_only_skips_trial_paid_at_creation(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag-trial@example.com');
+        $student = Student::create(['name' => 'S428', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $shape = ['Paid' => 1, 'PayDate' => now()->toDateString(), 'RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500];
+        $trial = $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial']);
+        $regular = $this->createCountModeClass($student->id, $shape + ['SubjectID' => 2]);
+        // create-multi-subject trial package: package and members carry class_type=trial and paid/paid_at, no invoice.
+        $trialPkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'T428', 'billing_mode' => 'count',
+            'total_sessions' => 1, 'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'trial', 'paid' => true, 'paid_at' => now()->toDateString(), 'stop' => false, 'enabled' => true]);
+        foreach ([3, 4] as $subjectId) {
+            $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial', 'PackageID' => $trialPkg->id, 'SubjectID' => $subjectId]);
+        }
+
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $row = fn ($id) => $rows->first(fn ($r) => (int) $r['id'] === (int) $id && !isset($r['package_id']));
+
+        $this->assertNotNull($row($trial->ID), 'the low-remaining trial is listed (shape under test)');
+        $this->assertFalse($row($trial->ID)['legacy_paid_flag_only']);
+        $this->assertTrue($row($regular->ID)['legacy_paid_flag_only'], '#4174 unchanged for a regular course');
+        $pkgRow = $rows->firstWhere('package_id', $trialPkg->id);
+        $this->assertNotNull($pkgRow, 'the low-remaining trial package is listed (shape under test)');
+        $this->assertFalse($pkgRow['legacy_paid_flag_only'], 'a create-multi-subject trial package is not legacy data either');
+    }
+
+    /**
+     * in-app #428 review: only a trial that carries its payment date is exempt. A trial course marked paid without PayDate,
+     * and a trial package marked paid through PUT /course-packages/{id} without paid_at, stay 需核對 (as before #428).
+     */
+    public function test_legacy_paid_flag_only_requires_trial_payment_date(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag-trial-nodate@example.com');
+        $auth = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $student = Student::create(['name' => 'S428b', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $shape = ['RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500];
+        $undatedTrial = $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial', 'Paid' => 1]);
+        $trialPkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'T428b', 'billing_mode' => 'count',
+            'total_sessions' => 1, 'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'trial', 'paid' => false, 'stop' => false, 'enabled' => true]);
+        foreach ([3, 4] as $subjectId) {
+            $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial', 'PackageID' => $trialPkg->id, 'SubjectID' => $subjectId]);
+        }
+        $this->withHeaders($auth)->putJson("/api/v1/course-packages/{$trialPkg->id}", ['paid' => true])->assertOk();
+        $this->assertSame([true, null], [(bool) $trialPkg->fresh()->paid, $trialPkg->fresh()->paid_at], 'shape under test: paid without paid_at');
+
+        $rows = collect($this->withHeaders($auth)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $classRow = $rows->first(fn ($r) => (int) $r['id'] === (int) $undatedTrial->ID && !isset($r['package_id']));
+        $pkgRow = $rows->firstWhere('package_id', $trialPkg->id);
+        $this->assertNotNull($classRow, 'the low-remaining undated trial is listed (shape under test)');
+        $this->assertTrue($classRow['legacy_paid_flag_only'], 'a trial marked paid without PayDate stays 需核對');
+        $this->assertNotNull($pkgRow, 'the low-remaining trial package is listed (shape under test)');
+        $this->assertTrue($pkgRow['legacy_paid_flag_only'], 'a trial package marked paid without paid_at stays 需核對');
+
+        $list = collect($this->withHeaders($auth)->getJson('/api/v1/student-classes?branch_id=1')->assertOk()->json('data'));
+        $this->assertTrue($list->firstWhere('ID', $undatedTrial->ID)['legacy_paid_flag_only'], 'course list agrees for the undated trial');
+    }
+
+    /**
+     * in-app #428 review: a regular course bound to a paid trial package (POST /course-packages/{id}/bind-courses) takes its
+     * paid state from the package, so the course list follows the package's trial type and paid_at, like the tuition row.
+     */
+    public function test_regular_course_bound_to_trial_package_matches_tuition_package_row(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag-trial-bind@example.com');
+        $auth = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $student = Student::create(['name' => 'S428c', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $pkgFields = ['student_id' => $student->id, 'campus_id' => 1, 'billing_mode' => 'count', 'total_sessions' => 1,
+            'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'trial',
+            'paid' => true, 'stop' => false, 'enabled' => true];
+        $datedPkg = CoursePackage::create($pkgFields + ['name' => 'T428c', 'paid_at' => now()->toDateString()]);
+        $undatedPkg = CoursePackage::create($pkgFields + ['name' => 'T428d']);
+        $shape = ['RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500, 'Paid' => 0, 'PayDate' => null];
+        $boundDated = $this->createCountModeClass($student->id, $shape + ['SubjectID' => 2]);
+        $boundUndated = $this->createCountModeClass($student->id, $shape + ['SubjectID' => 3]);
+        foreach ([[$datedPkg, $boundDated], [$undatedPkg, $boundUndated]] as [$pkg, $course]) {
+            $this->withHeaders($auth)->postJson("/api/v1/course-packages/{$pkg->id}/bind-courses", ['student_class_ids' => [$course->ID]])->assertOk();
+            $this->assertSame([(int) $pkg->id, 'one_on_one'], [(int) $course->fresh()->PackageID, $course->fresh()->ClassType], 'bind keeps the member type');
+        }
+
+        $rows = collect($this->withHeaders($auth)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $list = collect($this->withHeaders($auth)->getJson('/api/v1/student-classes?branch_id=1')->assertOk()->json('data'));
+        foreach ([[$datedPkg, $boundDated, false], [$undatedPkg, $boundUndated, true]] as [$pkg, $course, $expected]) {
+            $pkgRow = $rows->firstWhere('package_id', $pkg->id);
+            $this->assertNotNull($pkgRow, 'the low-remaining trial package is listed (shape under test)');
+            $this->assertSame($expected, $pkgRow['legacy_paid_flag_only']);
+            $this->assertSame($pkgRow['legacy_paid_flag_only'], $list->firstWhere('ID', $course->ID)['legacy_paid_flag_only'],
+                'course list and tuition alerts agree for the bound member');
+        }
+    }
+
+    /**
+     * #4339 review: a stale PackageID to a dated trial package of another student, or of the same student on another campus,
+     * never clears 需核對: the trial exemption reads only a package owned by the course's student on the student's campus.
+     */
+    public function test_foreign_trial_package_link_does_not_clear_legacy_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag-trial-foreign@example.com');
+        $auth = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $mk = fn (string $name) => Student::create(['name' => $name, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        [$student, $other] = [$mk('S4339a'), $mk('S4339b')];
+        $pkg = fn (int $studentId, int $campusId, string $name) => CoursePackage::create(['student_id' => $studentId, 'campus_id' => $campusId,
+            'name' => $name, 'billing_mode' => 'count', 'total_sessions' => 1, 'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 500,
+            'rate_unit' => 'session', 'class_type' => 'trial', 'paid' => true, 'paid_at' => now()->toDateString(), 'stop' => false, 'enabled' => true]);
+        $shape = ['RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500, 'Paid' => 0, 'PayDate' => null, 'ClassType' => 'trial'];
+        $otherStudents = $this->createCountModeClass($student->id, $shape + ['PackageID' => $pkg($other->id, 1, 'F1')->id, 'SubjectID' => 2]);
+        $otherCampus = $this->createCountModeClass($student->id, $shape + ['PackageID' => $pkg($student->id, 2, 'F2')->id, 'SubjectID' => 3]);
+        $own = $this->createCountModeClass($student->id, $shape + ['PackageID' => $pkg($student->id, 1, 'F3')->id, 'SubjectID' => 4]);
+
+        $list = collect($this->withHeaders($auth)->getJson('/api/v1/student-classes?branch_id=1')->assertOk()->json('data'));
+        $this->assertTrue($list->firstWhere('ID', $otherStudents->ID)['legacy_paid_flag_only'], "another student's package stays 需核對");
+        $this->assertTrue($list->firstWhere('ID', $otherCampus->ID)['legacy_paid_flag_only'], "another campus's package stays 需核對");
+        $this->assertFalse($list->firstWhere('ID', $own->ID)['legacy_paid_flag_only'], 'control: the own dated trial package is exempt');
+        // The tuition classifier and the ledger call the same helper on the loaded course (no caller-supplied package).
+        $this->assertSame([false, false, true], [$otherStudents->fresh()->isTrialFeeRecordedByDate(),
+            $otherCampus->fresh()->isTrialFeeRecordedByDate(), $own->fresh()->isTrialFeeRecordedByDate()]);
+    }
+
     public function test_payment_status_monthly_due_soon_for_date_mode_paid(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
