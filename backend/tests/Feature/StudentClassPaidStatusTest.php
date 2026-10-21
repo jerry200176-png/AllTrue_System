@@ -560,6 +560,28 @@ class StudentClassPaidStatusTest extends TestCase
     }
 
     /**
+     * in-app #428 (#4330): a new trial saved with a payment date (Paid=1, PayDate) never gets an invoice by design, so it
+     * is not legacy data to verify; flagging it left a 需核對 card with no action. A regular course of the same shape
+     * still reads 需核對 (#4174 unchanged).
+     */
+    public function test_index_does_not_mark_trial_paid_at_creation_as_legacy_flag_only(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $trial = $this->createStudentClass($student->id, ['ClassType' => 'trial', 'Paid' => 1, 'PayDate' => now()->toDateString(),
+            'Charge' => 500, 'Rate' => 500, 'SessionCount' => 1, 'RemainingSessions' => 1]);
+        $regular = $this->createStudentClass($student->id, ['Paid' => 1, 'PayDate' => now()->toDateString(), 'Charge' => 500,
+            'SubjectID' => 2]);
+
+        $data = collect($this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk()->json('data'));
+        $pick = fn (StudentClass $c) => $data->firstWhere('ID', $c->ID);
+
+        $this->assertSame(['paid', false], [$pick($trial)['payment_status'], $pick($trial)['legacy_paid_flag_only']]);
+        $this->assertSame(['paid', true], [$pick($regular)['payment_status'], $pick($regular)['legacy_paid_flag_only']]);
+        $this->assertSame(1, (int) $trial->fresh()->Paid, 'read-only: the stored flag is untouched');
+    }
+
+    /**
      * TD-083 B1 / R94: partial invoice payment must NOT display as paid on the course list.
      */
     public function test_index_shows_partial_when_invoice_only_partially_paid(): void
