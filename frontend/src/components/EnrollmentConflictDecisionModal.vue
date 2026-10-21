@@ -60,7 +60,7 @@
                   :disabled="submitting"
                   @click="emit('purchase', c)"
                 >
-                  {{ c.class_type === 'tutoring' ? '延續輔導課（不收費）' : '去加購' }}
+                  {{ c.class_type === 'tutoring' ? '延續輔導課（不收費）' : RENEW_LESSONS_LABEL }}
                 </button>
               </td>
             </tr>
@@ -71,7 +71,7 @@
       <div v-if="!isTrial" class="enrollment-conflict-options">
         <p class="enrollment-conflict-options-title">請選擇下一步</p>
         <ul class="enrollment-conflict-option-list">
-          <li><strong>從既有課程延續</strong>：選上方對應課程。付費課依原加購規則；輔導課建立不收費的下一期並保留關聯。</li>
+          <li><strong>從既有課程延續</strong>：按上方對應課程的按鈕（付費課為「續課」、輔導課為「延續輔導課」）。付費課依原續課規則；輔導課建立不收費的下一期並保留關聯。</li>
           <li v-if="canRenewHere"><strong>建立下一期續報</strong>：使用這次填寫的設定另建課程，不自動延續原課程或建立前後期關聯。</li>
           <li><strong>建立獨立課程</strong>：與既有合約平行，需填寫原因（會留下操作紀錄）。</li>
           <li><strong>取消</strong>：不建立。</li>
@@ -133,6 +133,7 @@
 
 <script setup>
 import { needsFirstManualLesson } from '../lib/enrollmentConflictDecision.js';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
