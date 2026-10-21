@@ -1861,7 +1861,8 @@ class StudentClassController extends Controller
                 $oldRemaining = $studentClass->getAttribute('RemainingSessions');
                 $oldHoldsSeat = (int) ($studentClass->getAttribute('Stop') ?? 0) === 0
                     && ($oldMode === null || $oldMode !== 'count' || $oldRemaining === null || (int) $oldRemaining > 0);
-                $addsNoLoad = $oldHoldsSeat && !$trialTargetChanged
+                $addsNoLoad = $oldHoldsSeat
+                    && !$trialTargetChanged
                     && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
