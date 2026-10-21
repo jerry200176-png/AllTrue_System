@@ -3,7 +3,7 @@
     <div class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="course-transfer-title">
       <h3 id="course-transfer-title" class="modal-title">轉課（改科目／老師／時段）</h3>
       <p class="modal-desc">轉課日之前的堂次留在舊合約；轉課日起的堂次（含紀錄）與剩餘堂數、已繳金額轉到新合約。</p>
-      <p v-if="prefill" class="prefill-note" data-testid="transfer-prefill-note">已帶入你在課程設定改的內容，轉課日預設為下一堂未點名的課。請確認後先「試算」。</p>
+      <p v-if="prefill" class="prefill-note" data-testid="transfer-prefill-note">只帶入你修改的科目、老師與時段；備註、教室、班型、單價與其他帳務設定不會儲存，需另外處理。轉課日預設為下一堂未點名的課，請確認後先「試算」。</p>
       <p v-if="prefill?.not_carried?.length" class="prefill-note" data-testid="transfer-not-carried">轉課不會套用你改的{{ prefill.not_carried.join('、') }}：新合約沿用剩餘堂數；如需加堂，請在轉課後另外為新課程加堂。</p>
 
       <label class="form-label" for="ct-subject">新科目</label>

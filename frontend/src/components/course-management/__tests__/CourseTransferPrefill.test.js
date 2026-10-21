@@ -71,7 +71,7 @@ describe('CourseTransferModal prefill', () => {
     expect(wrapper.find('#ct-teacher').element.value).toBe('7');
     expect(wrapper.find('#ct-weekday').element.value).toBe('5');
     expect(wrapper.find('#ct-time').element.value).toBe('15:00');
-    expect(wrapper.find('[data-testid="transfer-prefill-note"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="transfer-prefill-note"]').text()).toContain('備註、教室、班型、單價與其他帳務設定不會儲存');
     wrapper.unmount();
   });
 
@@ -111,6 +111,7 @@ describe('CourseSaveErrorAlert (one next step per refusal)', () => {
     expect(wrapper.find('[data-testid="save-error-next-step"]').text()).toContain('轉課');
     expect(wrapper.text()).not.toContain('合約／堂次調整');
     expect(wrapper.find('[data-testid="save-error-not-carried"]').text()).toContain('購買堂數');
+    expect(wrapper.find('[data-testid="save-error-transfer-scope"]').text()).toContain('備註、教室、班型、單價與其他帳務設定不會儲存');
     await wrapper.find('[data-testid="save-error-action"]').trigger('click');
     expect(wrapper.emitted('action')).toEqual([['course_transfer']]);
   });
