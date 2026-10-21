@@ -302,7 +302,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'status' => 'ok',
-            'message' => '已送出，等你確認',
+            'message' => '已送出，待核對入帳',
             'report_id' => $body['report_id'] ?? null,
             'sync' => $syncResult,
             'unread_count' => $this->countUnread($userId, $campusIds),

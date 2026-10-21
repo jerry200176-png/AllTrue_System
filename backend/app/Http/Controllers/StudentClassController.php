@@ -211,6 +211,16 @@ class StudentClassController extends Controller
         // F7 S3b: one resolver batch per page is the payment_status authority (B7).
         $courseStatuses = app(\App\Services\BillingPayableResolver::class)
             ->courseStatusesByStudentClassIds($classIds, $classes->items());
+        // Match AR's invoice eligibility gate, including the paid-package hold.
+        $arCandidates = in_array($role, ['director', 'super_admin'], true)
+            ? Invoice::query()->whereIn('StudentClassID', $classIds)->whereRaw(Invoice::mayOweSql())
+                ->distinct()->pluck('StudentClassID')->flip()->all()
+            : [];
+        // #4114 (Founder Q3): contracts with a standing receipt; a `paid` without one is the legacy flag alone (需核對).
+        // Package expansion stays inside the caller's campuses (teachers / super admin: the owner-student rule alone).
+        $paymentEvidence = app(\App\Services\BillingPayableResolver::class)->validPaymentEvidence(
+            $classIds, [], $role === 'teacher' || empty($campusIds) ? null : array_map('intval', (array) $campusIds)
+        )['classes'];
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
                 ->whereIn('StudentClassID', $classIds)
@@ -326,7 +336,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -570,6 +580,17 @@ class StudentClassController extends Controller
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
             $resolved = $courseStatuses[(int) $class->ID]['status'] ?? 'review_required';
+            if (in_array($role, ['director', 'super_admin'], true)) {
+                // Read projection of the existing batch verdict, never Charge-Pay.
+                // Keep review/unbilled distinct so consumers cannot invent AR.
+                $verdict = $courseStatuses[(int) $class->ID] ?? [];
+                $class->setAttribute('billing_verdict', [
+                    'status' => $verdict['status'] ?? 'review_required',
+                    'source' => $verdict['source'] ?? null,
+                    'outstanding' => $verdict['outstanding'] ?? null,
+                    'ar_candidate' => isset($arCandidates[(int) $class->ID]),
+                ]);
+            }
             $class->setAttribute('payment_status', match (true) {
                 // Waived (確認不收) stays `paid` here; the client labels it from closed_reason.
                 ContractMoneyState::isWaived($class) => 'paid',
@@ -620,12 +641,20 @@ class StudentClassController extends Controller
                 $monthlyPayment = $monthlyPayments[(int) $class->ID];
                 $class->setAttribute('monthly_payment', $monthlyPayment);
                 // A report is an administrative claim, not a payment for all periods.
-                if (!($pendingReportId !== null && count($monthlyPayment['periods']) === 1
+                // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
+                if ($resolved !== 'free' && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1
                     && $monthlyPayment['periods'][0]['source'] === 'single_period_legacy'
                     && $monthlyPayment['payment_status'] === 'unpaid')) {
                     $class->setAttribute('payment_status', $monthlyPayment['payment_status']);
                 }
             }
+            // Display only: payment_status stays `paid` (not owed, no reminder); the client shows 需核對, not 已收.
+            // Only a real legacy flag (Paid=1 / package paid) qualifies: a derived `paid` (e.g. a Charge=0 single
+            // period, 0 >= 0) has no flag to verify (#4174 review). A trial that carries its payment date (PayDate, or the
+            // effective trial package's paid_at) never gets an invoice by design, so it is not legacy data (in-app #428).
+            $class->setAttribute('legacy_paid_flag_only', $effectivePaid && !$isTutoringCourse
+                && !$class->isTrialFeeRecordedByDate($pkg) && !ContractMoneyState::isWaived($class)
+                && $class->getAttribute('payment_status') === 'paid' && !isset($paymentEvidence[(int) $class->ID]));
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
             $class->trial_converted_to_id = $class->trial_converted_to_id
@@ -1818,7 +1847,10 @@ class StudentClassController extends Controller
                     && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
-                    && $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass) === $recurringSlots
+                    && $this->sameRecurringSlots(
+                        $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass),
+                        $recurringSlots
+                    )
                     && $this->activeWindowWithin($studentClass, $candidate);
                 $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
@@ -3342,7 +3374,7 @@ class StudentClassController extends Controller
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
             ->notVoided()
             ->with(['items', 'payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id', 'receipt_url'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
@@ -3350,6 +3382,7 @@ class StudentClassController extends Controller
             ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
+        $restatedPaymentIds = \App\Services\Billing\PaymentReversalRestatement::recordedDispositionIds($payments);
         $paymentIds = $payments->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $reportIds = $payments->pluck('payment_report_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $reports = empty($paymentIds) && empty($reportIds)
@@ -3369,7 +3402,7 @@ class StudentClassController extends Controller
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $studentClass, $canSeeAccountLast5, $canViewReceipt) {
+            'invoices' => $invoices->map(function ($inv) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $studentClass, $canSeeAccountLast5, $canViewReceipt) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
@@ -3421,10 +3454,10 @@ class StudentClassController extends Controller
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
                     'paid_at'        => $paidAt,
                     'payment_count'  => $effectivePayments->count(),
-                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
+                    'payments'       => $inv->payments->map(function ($payment) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
                         $report = $reportsByPaymentId->get((int) $payment->id)
                             ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
-                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void' || isset($restatedPaymentIds[(int) $payment->id]);
 
                         return [
                             'id'                => (int) $payment->id,
@@ -5093,6 +5126,36 @@ class StudentClassController extends Controller
         }
 
         return $recurring;
+    }
+
+    /**
+     * Order-independent equality for weekly slots (#4098).
+     * A resubmit of the same Mon/Sun pair as Sun/Mon must still count as no added load.
+     *
+     * @param  array<int, array{day_of_week: int, start_time: string, end_time: string}>  $a
+     * @param  array<int, array{day_of_week: int, start_time: string, end_time: string}>  $b
+     */
+    private function sameRecurringSlots(array $a, array $b): bool
+    {
+        $normalize = static function (array $slots): array {
+            usort($slots, static function ($x, $y) {
+                $c = ((int) ($x['day_of_week'] ?? 0)) <=> ((int) ($y['day_of_week'] ?? 0));
+                if ($c !== 0) {
+                    return $c;
+                }
+                $c = strcmp((string) ($x['start_time'] ?? ''), (string) ($y['start_time'] ?? ''));
+                if ($c !== 0) {
+                    return $c;
+                }
+
+                return strcmp((string) ($x['end_time'] ?? ''), (string) ($y['end_time'] ?? ''));
+            });
+
+            // usort already reindexes 0..n-1; array_values would be a no-op (PHPStan).
+            return $slots;
+        };
+
+        return $normalize($a) === $normalize($b);
     }
 
     /** True when the candidate's active window starts no earlier and ends no later than the stored one. */

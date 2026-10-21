@@ -94,6 +94,19 @@ test('decide: CLEAN and all green merges; helpers', () => {
   assert.equal(marker('conflict', 'abc'), '<!-- land-queue:conflict:abc -->');
 });
 
+test('decide: UNSTABLE with all required green merges (non-required cancel/fail)', () => {
+  assert.equal(decide(pr({ mergeStateStatus: 'UNSTABLE' }), req).action, 'merge');
+  assert.equal(decide(pr({ mergeStateStatus: 'UNSTABLE', unresolvedThreads: null }), req).action, 'wait');
+  assert.equal(decide(pr({ mergeStateStatus: 'UNSTABLE', unresolvedThreads: 1 }), req).reason, 'threads');
+  assert.equal(
+    decide(pr({
+      mergeStateStatus: 'UNSTABLE',
+      rollup: [ok[0], { name: 'B', status: 'IN_PROGRESS', conclusion: null }],
+    }), req).action,
+    'wait',
+  );
+});
+
 test('orderQueue: fork PRs never queue (batch merges heads into this repo)', () => {
   const q = orderQueue([{ number: 1, baseRefName: 'main', isCrossRepository: true }, { number: 2, baseRefName: 'main', isCrossRepository: false }]);
   assert.deepEqual(q.map((p) => p.number), [2]);

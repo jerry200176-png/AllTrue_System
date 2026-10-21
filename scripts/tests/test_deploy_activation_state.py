@@ -1074,15 +1074,21 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("PENDING=$((PENDING + n))", job)
         self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
         # One train per window: a train since the window that reached approval or deploy used it.
+        # Tip-ahead supplemental: compare served head...tip; stand down only if identical/behind.
         self.assertIn("created=%3E%3D${SINCE}", job)
         self.assertIn('select(.display_title == "Release train")', job)
         self.assertIn('(.name == "Founder production approval (same run)" or .name == "Deploy to Production") and .conclusion != "skipped"', job)
+        self.assertIn('commits/main', job)
+        self.assertIn("/compare/${head}...${TIP}", job)
+        self.assertIn('"identical" || "$CMP" == "behind"', job)
+        self.assertIn("supplemental dispatch", job)
         self.assertLess(job.index('if [[ "$USED" -ge 1 ]]'), dispatch)
         for name in ("Founder production approval (same run)", "Deploy to Production"):
             self.assertIn(f"    name: {name}\n", self.workflow)
         self.assertIn("group: alltrue-release-train-kick", job)
         # Least privilege; it never approves, reviews, or touches environments.
         self.assertIn("permissions:\n      actions: write", job)
+        self.assertIn("contents: read", job)
         for forbidden in ("environment", "pending_deployments", "contents: write", "secrets."):
             self.assertNotIn(forbidden, job)
 
@@ -1119,6 +1125,36 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('workflows: ["CI — PHPUnit Tests"]', self.workflow)
         self.assertIn("types: [completed]", self.workflow)
         self.assertIn("branches: [main]", self.workflow)
+
+    def test_calendar_course_acceptance_listens_for_deploy_run_identities(self):
+        """#4207: couple acceptance workflow_run names to deploy.yml identities.
+
+        deploy.yml keeps workflow name "Deploy to Pi" and sets run-name to
+        "Release train" for phase=release-train. Successful Release train runs
+        (e.g. 38905001544, 39241462999) did not start calendar-course-acceptance
+        while merge "Deploy to Pi" runs did. Docs say workflow_run.workflows
+        matches the workflow file name; observed API run.name follows run-name.
+        Listing both identities (and locking them here) prevents a silent
+        rename disconnect. Does not change acceptance assertions or gates.
+        """
+        acceptance = (WORKFLOW.parent / "calendar-course-acceptance.yml").read_text(
+            encoding="utf-8"
+        )
+        name_line = re.search(r"^name:\s*(.+)$", self.workflow, re.M)
+        self.assertIsNotNone(name_line)
+        self.assertEqual(name_line.group(1).strip().strip("'\""), "Deploy to Pi")
+        self.assertIn(
+            "run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}",
+            self.workflow,
+        )
+        wr_start = acceptance.index("\n  workflow_run:")
+        wr_block = acceptance[wr_start : acceptance.index("\npermissions:", wr_start)]
+        for identity in ("Deploy to Pi", "Release train"):
+            self.assertRegex(
+                wr_block,
+                rf"(?m)^(?:\s+-\s+{re.escape(identity)}\s*$|\s+workflows:.*['\"]{re.escape(identity)}['\"])",
+                msg=f"calendar-course-acceptance workflow_run must list {identity!r}",
+            )
 
     def test_manual_activation_is_existing_workflow_dispatch_and_environment_gate(self):
         self.assertIn("repository_dispatch:", self.workflow)
@@ -1249,11 +1285,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         """GOV-ACTIVATE-CLASSIFIER-JSON-EOF: empty/truncated gh bodies must fail closed with path context."""
         lookup = self.workflow[self.workflow.index("          def gh_api(path, *extra):"):]
         lookup = lookup[:lookup.index("          def pages(value):")]
-        self.assertIn("capture_output=True", lookup)
-        self.assertIn("gh api empty JSON body", lookup)
-        self.assertIn("gh api invalid JSON", lookup)
-        self.assertIn("json.JSONDecodeError", lookup)
+        self.assertIn("from scripts.governance.gh_api_retry import gh_api_json", lookup)
+        self.assertIn("return gh_api_json(path, *extra)", lookup)
         self.assertNotIn("subprocess.check_output", lookup)
+        helper = (ROOT / "scripts" / "governance" / "gh_api_retry.py").read_text(encoding="utf-8")
+        self.assertIn("capture_output=True", helper)
+        self.assertIn("gh api empty JSON body", helper)
+        self.assertIn("gh api invalid JSON", helper)
+        self.assertIn("json.JSONDecodeError", helper)
+        self.assertNotIn("subprocess.check_output", helper)
 
     def test_classifier_exception_emits_awaiting_activation_with_exception_class(self):
         except_block = self.workflow[self.workflow.index("          except Exception as exc:"):]
@@ -1353,6 +1393,18 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("neither its content nor the request body is emitted", self.workflow)
         self.assertIn("[[ \"$(stat -c '%a' \"$KEY_FILE\")\" == \"600\" ]]", self.workflow)
         self.assertIn("if: ${{ always() && inputs.phase != 'pop-bootstrap'", self.workflow)
+
+    def test_staged_principal_rotation_requires_a_green_contract_test(self):
+        # #4160: the rotation job writes production credentials, so it must not run
+        # in parallel with, or after a failure of, the transformer/preflight contract.
+        rotation_start = self.workflow.index("  staged_principal_rotation:")
+        header = self.workflow[rotation_start:self.workflow.index("    steps:", rotation_start)]
+        self.assertRegex(header, r"(?m)^    needs: contract-test$")
+        self.assertRegex(header, r"(?m)^    if: needs\.contract-test\.result == 'success' && ")
+        self.assertNotIn("always()", header)
+        contract = self.workflow[self.workflow.index("  contract-test:"):self.workflow.index("  resolve-target:")]
+        self.assertNotIn("\n    if:", contract)
+        self.assertIn("python3 scripts/tests/test_principal_rotation_grant_replay.py", contract)
 
     def test_production_concurrency_is_scoped_to_side_effecting_jobs(self):
         top_level = self.workflow.split("permissions:", 1)[0]
@@ -1472,6 +1524,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('if ! php artisan optimize; then', self.workflow)
         self.assertIn('if ! rm -f /home/admin/frontend/.env.production.local; then', self.workflow)
         self.assertIn('if ! OPCACHE_RESPONSE=$(curl -skf -X POST', self.workflow)
+        # A failed web refresh must name its HTTP status (curl writes 000 when it cannot connect).
+        self.assertIn("-w '\\n%{http_code}'", self.workflow)
+        self.assertIn("http=${OPCACHE_RESPONSE##*$'\\n'}", self.workflow)
         self.assertIn('abort_deploy "health check 或 smoke test 失敗"', self.workflow)
         self.assertIn('rollback_failed=1', self.workflow)
         self.assertIn('health=$health2 rollback_failed=$rollback_failed', self.workflow)
@@ -2440,6 +2495,99 @@ def json_bytes(value):
     import json
 
     return json.dumps(value).encode("utf-8")
+
+
+class GhApiRetryTest(unittest.TestCase):
+    """Run 38610137074: one empty /commits/{sha}/pulls body must not block, but a persistent one must."""
+
+    PATH = "/repos/o/r/commits/abc/pulls"
+    EMPTY = ("", "unexpected end of JSON input", 1)
+
+    def _call(self, responses, attempts=3):
+        from scripts.governance.gh_api_retry import gh_api_json
+
+        queue = list(responses)
+        calls, sleeps, logs = [], [], []
+
+        def runner(args, **kwargs):
+            calls.append(args)
+            stdout, stderr, code = queue.pop(0)
+            return subprocess.CompletedProcess(args, code, stdout, stderr)
+
+        try:
+            result = gh_api_json(
+                self.PATH, "--header", "Accept: application/vnd.github+json",
+                attempts=attempts, runner=runner, sleep=sleeps.append, log=logs.append,
+            )
+        except RuntimeError as exc:
+            return exc, calls, sleeps, logs
+        return result, calls, sleeps, logs
+
+    def test_empty_then_ok_proceeds(self):
+        result, calls, sleeps, logs = self._call([self.EMPTY, ('[{"number": 7}]', "", 0)])
+        self.assertEqual(result, [{"number": 7}])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], ["gh", "api", self.PATH, "--header", "Accept: application/vnd.github+json"])
+        self.assertEqual(len(sleeps), 1)
+        self.assertIn("attempt 1/3", logs[0])
+
+    def test_empty_body_with_success_code_then_ok_proceeds(self):
+        result, calls, _, _ = self._call([("  \n", "", 0), ("[]", "", 0)])
+        self.assertEqual(result, [])
+        self.assertEqual(len(calls), 2)
+
+    def test_empty_three_times_blocks(self):
+        error, calls, sleeps, logs = self._call([self.EMPTY] * 3)
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn(f"path={self.PATH}", str(error))
+        self.assertIn("unexpected end of JSON input", str(error))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(sleeps), 2)
+        self.assertGreater(sleeps[1], sleeps[0])
+        self.assertIn("persisted after 3 attempts", logs[-1])
+        self.assertIn("failing closed", logs[-1])
+
+    def test_server_error_is_retried_and_bounded(self):
+        error, calls, _, _ = self._call([("", "gh: Bad Gateway (HTTP 502)", 1)] * 3)
+        self.assertIsInstance(error, RuntimeError)
+        self.assertEqual(len(calls), 3)
+        result, calls, _, _ = self._call([("", "gh: Server Error (HTTP 500)", 1), ('{"ok": true}', "", 0)])
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(len(calls), 2)
+
+    def test_client_error_is_not_retried_and_keeps_404_marker(self):
+        error, calls, sleeps, _ = self._call([("", "gh: Not Found (HTTP 404)", 1)])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("HTTP 404", str(error))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(sleeps, [])
+
+    def test_invalid_json_is_not_treated_as_success(self):
+        error, calls, _, _ = self._call([('{"trunc', "", 0)])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("gh api invalid JSON", str(error))
+        self.assertEqual(len(calls), 1)
+
+    def test_server_error_text_on_stdout_only_is_not_retried(self):
+        body = '[{"message": "upstream said HTTP 502 earlier"}]'
+        error, calls, sleeps, _ = self._call([(body, "gh: Not Found (HTTP 404)", 1)])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("HTTP 404", str(error))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(sleeps, [])
+
+    def test_attempts_below_one_fails_closed_without_calling(self):
+        from scripts.governance.gh_api_retry import gh_api_json
+
+        calls = []
+        with self.assertRaises(ValueError):
+            gh_api_json(self.PATH, attempts=0, runner=lambda *a, **k: calls.append(a), sleep=lambda _: None)
+        self.assertEqual(calls, [])
+
+    def test_attempt_count_follows_argument(self):
+        error, calls, _, _ = self._call([self.EMPTY] * 5, attempts=5)
+        self.assertIsInstance(error, RuntimeError)
+        self.assertEqual(len(calls), 5)
 
 
 if __name__ == "__main__":

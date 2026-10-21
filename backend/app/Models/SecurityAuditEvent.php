@@ -27,7 +27,7 @@ final class SecurityAuditEvent
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
         'acting_as', 'capability_campus_count', 'outstanding_amount',
         // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
-        'route', 'client_ip_ref', 'attachment_ref',
+        'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string
@@ -79,7 +79,8 @@ final class SecurityAuditEvent
         string $eventType,
         string $outcome,
         array $context = [],
-        array $metadata = []
+        array $metadata = [],
+        bool $required = false
     ): void {
         try {
             $correlationId = (string) ($context['correlation_id'] ?? '');
@@ -100,6 +101,9 @@ final class SecurityAuditEvent
                 'retention_until' => now()->addDays((int) config('audit.retention_days', self::RETENTION_DAYS)),
             ]);
         } catch (Throwable $e) {
+            if ($required) {
+                throw $e;
+            }
             // Evidence must never turn a safe auth/notification action into a 500.
             Log::warning('security_audit.append_failed', ['error_class' => $e::class]);
         }

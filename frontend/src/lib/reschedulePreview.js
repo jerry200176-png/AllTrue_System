@@ -14,7 +14,7 @@ const CLASS_LABEL = {
   trial: '試聽',
 };
 
-const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
+const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused']);
 
 function hm(value) {
   const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
@@ -65,7 +65,10 @@ function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, excepti
   const hasNonOccupyingException = (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
     String(exception?.student_course_id ?? exception?.studentClassId ?? exception?.student_class_id ?? '') === courseId
       && String(exception?.schedule_date || exception?.session_date || exception?.date || '').slice(0, 10) === date
-      && NON_OCCUPYING_STATUSES.has(String(exception?.status || exception?.Status || '').toLowerCase()),
+      && NON_OCCUPYING_STATUSES.has(String(exception?.status || exception?.Status || '').toLowerCase())
+      && (String(exception?.status || exception?.Status || '').toLowerCase() !== 'voided'
+        || (hm(exception?.start_time || exception?.StartTime) != null
+          && hm(exception?.start_time || exception?.StartTime) === hm(course.start_time))),
   );
 
   // A leave exception is the date-level source of truth. The materialized
@@ -78,8 +81,12 @@ function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, excepti
     const sameDate = rows.filter((row) =>
       String(row?.session_date || row?.SessionDate || row?.date || '').slice(0, 10) === date,
     );
-    if (sameDate.length > 0) {
-      return sameDate.every((row) =>
+    const sameOccurrence = sameDate.filter((row) => {
+      const start = hm(row?.start_time || row?.StartTime);
+      return start == null || start === hm(course.start_time);
+    });
+    if (sameOccurrence.length > 0) {
+      return sameOccurrence.every((row) =>
         NON_OCCUPYING_STATUSES.has(String(row?.status || '').toLowerCase()),
       );
     }

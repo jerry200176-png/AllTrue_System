@@ -116,3 +116,25 @@ assert.deepEqual(
 const empty = buildTeacherTasks(base);
 assert.deepEqual(empty, []);
 assert.equal(countTeacherTasks(empty), 0);
+
+const examTasks = buildTeacherTasks({
+  ...base,
+  pendingExams: [{
+    exam_round_id: 7,
+    title: '第一次段考',
+    incomplete_students: 3,
+    entry_deadline: '2026-10-20',
+    campus_id: 1,
+  }],
+});
+assert.equal(examTasks.length, 1);
+assert.equal(examTasks[0].type, 'exam');
+assert.equal(examTasks[0].actionLabel, '去登分');
+assert.equal(examTasks[0].target.examRoundId, 7);
+assert.equal(countTeacherTasks(examTasks), 3);
+
+const examCompleteIgnored = buildTeacherTasks({
+  ...base,
+  pendingExams: [{ exam_round_id: 8, title: '已登完', incomplete_students: 0 }],
+});
+assert.deepEqual(examCompleteIgnored, []);

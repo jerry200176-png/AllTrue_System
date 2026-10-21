@@ -23,6 +23,168 @@ for (const workflow of workflows) {
   assert.ok(!source.includes('PUBLIC_REPLY=\\$(printf %q'), `${workflow} must not interpolate raw reply text`);
 }
 
+// Every production write waits for the Founder reviewer on production-activation,
+// after a preview job that shows the exact request. Secrets stay on production-ssh.
+for (const [workflow, writeJob] of [
+  ['.github/workflows/bug-phase-a-triage.yml', 'triage'],
+  ['.github/workflows/bug-followup-comment.yml', 'comment'],
+]) {
+  const source = fs.readFileSync(workflow, 'utf8');
+  assert.match(source, /\n  approve:\n[\s\S]*?    needs: preview\n[\s\S]*?    environment: production-activation\n/,
+    `${workflow} must gate on production-activation after the preview job`);
+  assert.ok(source.includes(`\n  ${writeJob}:\n    needs: approve\n    runs-on: ubuntu-latest\n    environment: production-ssh\n`),
+    `${workflow} write job must need the approval job`);
+  assert.ok(source.includes('group: inapp-production-writeback') && source.includes('cancel-in-progress: false'),
+    `${workflow} must serialize in-app writes`);
+  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/);
+  assert.ok(preview && !/secrets\./.test(preview[1]) && !/environment:/.test(preview[1]),
+    `${workflow} preview job must hold no secrets or environment`);
+  assert.ok(!/`\$[A-Z_]+`/.test(source), `${workflow} must not use backtick command substitution on inputs`);
+}
+
+// #4196 review: queue every in-app write (never drop a pending run), keep the reply text out of
+// the public run summary and step-env log headers, and require the exact main-only policy.
+for (const [workflow, writeJob, nextJob] of [
+  ['.github/workflows/bug-phase-a-triage.yml', 'triage', 'label-logged'],
+  ['.github/workflows/bug-followup-comment.yml', 'comment', 'close-shipped-issue'],
+]) {
+  const source = fs.readFileSync(workflow, 'utf8');
+  assert.ok(
+    source.includes('\nconcurrency:\n  group: inapp-production-writeback\n  cancel-in-progress: false\n  queue: max\n'),
+    `${workflow} workflow-level lock must queue (queue: max) like other production side-effect workflows`,
+  );
+  assert.ok(!source.includes('inputs.public_reply }}'),
+    `${workflow} must never expose public_reply through env or an expression (step env is printed in public logs)`);
+  assert.ok(!/^\s+PUBLIC_REPLY:/m.test(source), `${workflow} must not set PUBLIC_REPLY in a step env block`);
+  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
+  assert.ok(!/(printf|echo|cat|tee)[^\n]*\$\{?PUBLIC_REPLY/.test(preview), `${workflow} preview must not print the reply text`);
+  assert.ok(preview.includes(`jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum`)
+    && preview.includes(`jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH"`),
+    `${workflow} preview must show only the reply length and sha256`);
+  const approve = source.match(/\n  approve:\n([\s\S]*?)\n  [a-z-]+:\n    needs: approve\n/)[1];
+  assert.ok(approve.includes('api(f"{base}/deployment-branch-policies")')
+    && approve.includes('if names != ["main"]:')
+    && approve.includes('policy.get("protected_branches") is not False'),
+    `${workflow} approval gate must verify the exact main-only branch policy like deploy.yml`);
+  const write = source.match(new RegExp(`\\n  ${writeJob}:\\n([\\s\\S]*?)\\n  # [\\s\\S]*?\\n  ${nextJob}:\\n`))[1];
+  assert.ok(write.includes(`PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"\n          PUBLIC_REPLY="\${PUBLIC_REPLY%x}"`),
+    `${workflow} write job must read the reply from the event payload`);
+
+  // Behaviour: the event-payload read is byte-exact (trailing newline kept) and the preview hash matches.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-reply-event-'));
+  try {
+    const reply = '第一行 $(touch x) `id`\n second line https://github.com/o/r/issues/1\n';
+    const eventPath = path.join(dir, 'event.json');
+    fs.writeFileSync(eventPath, JSON.stringify({ inputs: { public_reply: reply } }));
+    const readLines = write.match(/\n          (PUBLIC_REPLY="\$\(jq [^\n]*)\n          (PUBLIC_REPLY="\$\{PUBLIC_REPLY%x\}")\n/);
+    const out = execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}\n${readLines[2]}\nprintf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\\n'`],
+      { encoding: 'utf8', cwd: dir, env: { ...process.env, GITHUB_EVENT_PATH: eventPath } });
+    assert.equal(Buffer.from(out, 'base64').toString('utf8'), reply, `${workflow} reply must round-trip exactly`);
+    assert.equal(fs.existsSync(path.join(dir, 'x')), false, `${workflow} reply must not execute`);
+    const shaLine = preview.match(/\n          (reply_sha="[^\n]*)\n/)[1];
+    const lenLine = preview.match(/\n          (reply_len="[^\n]*)\n/)[1];
+    const shown = execFileSync('bash', ['-c', `set -euo pipefail\n${shaLine}\n${lenLine}\nprintf '%s %s' "$reply_sha" "$reply_len"`],
+      { encoding: 'utf8', cwd: dir, env: { ...process.env, GITHUB_EVENT_PATH: eventPath } });
+    assert.equal(shown, `${createHash('sha256').update(reply, 'utf8').digest('hex')} ${[...reply].length}`,
+      `${workflow} preview hash/length must match the exact reply`);
+    fs.writeFileSync(eventPath, JSON.stringify({ inputs: {} }));
+    assert.throws(() => execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}`],
+      { stdio: 'ignore', env: { ...process.env, GITHUB_EVENT_PATH: eventPath } }), `${workflow} missing reply must fail closed`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// #4196 review round 2: the approval job can read the environment API, and the preview validates
+// every displayed input (read from the event payload, not env) before writing the public summary.
+for (const [workflow, extra] of [
+  ['.github/workflows/bug-phase-a-triage.yml', { disposition: 'bug', close_as_logged: 'false' }],
+  ['.github/workflows/bug-followup-comment.yml', { expected_status: 'resolved', production_revision: '', deploy_run_id: '' }],
+]) {
+  const source = fs.readFileSync(workflow, 'utf8');
+  const approve = source.match(/\n  approve:\n([\s\S]*?)\n    steps:\n/)[1];
+  assert.ok(/\n    permissions:\n      actions: read\n/.test(approve),
+    `${workflow} approval job needs actions: read for the environment API (as deploy.yml)`);
+
+  // The approver must be exactly the Founder: run the extracted gate against fake environment APIs.
+  const gateRun = approve.length && source.match(/\n  approve:\n[\s\S]*?\n          python3 - <<'PY'\n([\s\S]*?)\n          PY\n/)[1]
+    .split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const gateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-gate-'));
+  try {
+    const ghStub = path.join(gateDir, 'gh');
+    fs.writeFileSync(ghStub, '#!/usr/bin/env bash\ncase "$2" in *deployment-branch-policies) cat "$STUB_DIR/policies.json";; *) cat "$STUB_DIR/env.json";; esac\n');
+    fs.chmodSync(ghStub, 0o755);
+    fs.writeFileSync(path.join(gateDir, 'policies.json'), JSON.stringify({ branch_policies: [{ name: 'main' }] }));
+    fs.writeFileSync(path.join(gateDir, 'gate.py'), gateRun);
+    const founder = { type: 'User', reviewer: { login: 'jerry200176-png' } };
+    const gate = (reviewers) => {
+      fs.writeFileSync(path.join(gateDir, 'env.json'), JSON.stringify({
+        can_admins_bypass: false,
+        deployment_branch_policy: { custom_branch_policies: true, protected_branches: false },
+        protection_rules: [{ type: 'required_reviewers', reviewers }],
+      }));
+      try {
+        execFileSync('python3', [path.join(gateDir, 'gate.py')], { stdio: 'ignore',
+          env: { ...process.env, PATH: `${gateDir}:${process.env.PATH}`, STUB_DIR: gateDir, REPO: 'o/r' } });
+        return true;
+      } catch { return false; }
+    };
+    assert.equal(gate([founder]), true, `${workflow} gate must accept the Founder as sole reviewer`);
+    for (const bad of [
+      [],
+      [{ type: 'User', reviewer: { login: 'someone-else' } }],
+      [founder, { type: 'User', reviewer: { login: 'someone-else' } }],
+      [{ type: 'Team', reviewer: { login: 'jerry200176-png' } }],
+    ]) {
+      assert.equal(gate(bad), false, `${workflow} gate must reject reviewers ${JSON.stringify(bad)}`);
+    }
+  } finally {
+    fs.rmSync(gateDir, { recursive: true, force: true });
+  }
+  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
+  assert.ok(!preview.includes('${{ inputs.') && !/\n        env:\n/.test(preview),
+    `${workflow} preview must read inputs from the event payload, not env`);
+  const run = preview.split('\n        run: |\n')[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-preview-'));
+  try {
+    const summary = path.join(dir, 'summary.md');
+    const eventPath = path.join(dir, 'event.json');
+    const url = 'https://github.com/o/r/issues/7';
+    const reply = `已收到，追蹤：${url}`;
+    const runPreview = (inputs) => {
+      fs.writeFileSync(summary, '');
+      fs.writeFileSync(eventPath, JSON.stringify({ inputs }));
+      try {
+        const out = execFileSync('bash', ['-c', run], { encoding: 'utf8', cwd: dir, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summary, GITHUB_REPOSITORY: 'o/r' } });
+        return { ok: true, out, summary: fs.readFileSync(summary, 'utf8') };
+      } catch (e) {
+        return { ok: false, out: `${e.stdout}${e.stderr}`, summary: fs.readFileSync(summary, 'utf8') };
+      }
+    };
+    const good = runPreview({ bug_id: '42', github_issue_url: url, public_reply: reply, ...extra });
+    assert.ok(good.ok, `${workflow} preview must accept a valid request: ${good.out}`);
+    assert.ok(good.summary.includes('- bug_id: 42') && good.summary.includes(createHash('sha256').update(reply, 'utf8').digest('hex')),
+      `${workflow} preview summary must show the id and reply hash`);
+    assert.ok(!good.summary.includes('已收到'), `${workflow} preview summary must not contain reply text`);
+    const secret = '王小明 0912345678';
+    for (const bad of [
+      { github_issue_url: secret, public_reply: `回覆 ${secret}` },
+      { bug_id: secret },
+      { github_issue_url: 'https://github.com/other/repo/issues/7', public_reply: 'see https://github.com/other/repo/issues/7' },
+      { public_reply: 'no link here' },
+      ...Object.keys(extra).filter((k) => k !== 'production_revision' && k !== 'deploy_run_id').map((k) => ({ [k]: secret })),
+    ]) {
+      const r = runPreview({ bug_id: '42', github_issue_url: url, public_reply: reply, ...extra, ...bad });
+      assert.ok(!r.ok, `${workflow} preview must reject ${Object.keys(bad)[0]}`);
+      assert.equal(r.summary, '', `${workflow} rejected preview must write nothing to the summary`);
+      assert.ok(!r.out.includes('王小明'), `${workflow} rejected preview must not echo the value`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
 assert.ok(
   phaseASource.includes('DISPOSITION: ${{ inputs.disposition }}')
@@ -39,6 +201,25 @@ assert.ok(phaseASource.includes('$svc::normalizeDispositionOptions(['),
   'Phase-A must validate disposition against the deployed service even on an idempotent rerun');
 
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
+assert.ok(phaseCSource.includes('legacy_ssh_phase_c_retired:ADR-POP-015'),
+  'Phase-C SSH tinker write path must stay retired (ADR-POP-015)');
+{
+  // Refuse must appear before any BugReportService write in the remote script.
+  const remote = phaseCSource.split("<<'REMOTE'")[1] || '';
+  const throwAt = remote.indexOf('legacy_ssh_phase_c_retired:ADR-POP-015');
+  const commentAt = remote.indexOf('::addComment');
+  const statusAt = remote.indexOf('::changeStatus');
+  assert.ok(throwAt >= 0, 'remote script must throw the retirement guard');
+  assert.ok(commentAt < 0 || throwAt < commentAt, 'retirement throw must precede addComment');
+  assert.ok(statusAt < 0 || throwAt < statusAt, 'retirement throw must precede changeStatus');
+}
+assert.match(fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8'),
+  /Refuse newly allowlisted IDs/, 'Phase-C autodispatch must refuse new allowlist IDs');
+assert.match(
+  fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8'),
+  /bug-phase-c-autodispatch-\$\{\{ github\.sha \}\}/,
+  'autodispatch concurrency must be per-SHA so pending ID-add refuses are not dropped',
+);
 assert.match(phaseCSource, /workflow_dispatch:\s+inputs:\s+bug_id:\s+description:[^\n]+\s+required: true/,
   'Phase-C manual dispatch must require one target ID');
 assert.match(phaseCSource, /re\.fullmatch\(r"bug_id:\[ \\t\]\*\(\[1-9\]\[0-9\]\*\)/,
@@ -46,11 +227,11 @@ assert.match(phaseCSource, /re\.fullmatch\(r"bug_id:\[ \\t\]\*\(\[1-9\]\[0-9\]\*
 assert.match(phaseCSource, /if len\(target_lines\) != 1:/,
   'Phase-C request-file push must reject absent or ambiguous target IDs');
 assert.match(phaseCSource, /TARGET_BUG_ID: \$\{\{ steps\.target\.outputs\.bug_id \}\}/,
-  'Phase-C must pass the validated target into the write step');
+  'Phase-C must pass the validated target into the retired remote step');
 assert.match(phaseCSource, /TARGET_BUG_ID='\$TARGET_BUG_ID' bash/,
-  'Phase-C must pass only the numeric target to the remote write step');
+  'Phase-C must pass only the numeric target to the remote step');
 assert.match(phaseCSource, /!isset\(\$items\[\$targetBugId\]\)/,
-  'Phase-C must reject targets absent from the allowlist before writes');
+  'Phase-C must reject targets absent from the allowlist before the remote step');
 assert.match(phaseCSource, /git merge-base --is-ancestor/,
   'Phase-C must prove the allowlisted revision is an ancestor of production');
 assert.match(phaseCSource, /\$items = \[\$targetBugId => \$target\];[\s\S]*?foreach \(\$items as \$bugId => \$cfg\)/,
@@ -811,23 +992,26 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '343 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '343 must give a no-names reopen path');
   }
-// Merged != written (2026-10-07): newly allowlisted IDs are dispatched automatically, serially, verified.
+// 2026-10-19: SSH Phase-C autodispatch retired (ADR-POP-015). New allowlist IDs fail closed; no workflow_run dispatch.
 {
   const src = fs.readFileSync('.github/workflows/bug-phase-c-autodispatch.yml', 'utf8');
   assert.ok(src.includes("- '.github/workflows/bug-phase-c-allowlist.yml'") && src.includes('branches: [main]'), 'fires when the allowlist lands on main');
-  assert.ok(src.includes('actions: write') && /^permissions:\n  contents: read$/m.test(src), 'only the dispatch job can dispatch');
-  assert.ok(src.includes('gh run watch "$run" --exit-status'), 'waits for each run before the next (concurrency group cancels rapid dispatches)');
-  assert.ok(/"\\"id\\":\$\{id\},\\"action\\":\\"\(resolved\|skip_already\)\\""/.test(src), 'verifies the writer reported the report resolved');
-  // Execute the real before/after diff against fixtures.
+  assert.ok(src.includes('actions: write') && /^permissions:\n  contents: read$/m.test(src), 'only the dispatch job can hold actions: write');
+  assert.ok(src.includes('Refuse newly allowlisted IDs') && src.includes('Legacy SSH Phase-C autodispatch is retired'),
+    'autodispatch must refuse new allowlist IDs instead of SSH resolve');
+  assert.ok(!src.includes('gh workflow run bug-phase-c-allowlist.yml'), 'must not dispatch the SSH allowlist writer');
+  // Keep the before/after ID diff (used to detect newly allowlisted IDs before refusing).
   const py = src.split("python3 - /tmp/before.yml \"$f\" <<'PY'\n")[1].split('\n          PY')[0].replace(/^ {10}/gm, '');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'phasec-diff-'));
-  fs.writeFileSync(path.join(dir, 'b'), '          $items = [\n            364 => [\n            ],\n            343 => [\n            ],\n');
-  fs.writeFileSync(path.join(dir, 'a'), '          $items = [\n            364 => [\n            ],\n            343 => [\n            ],\n            "380" => [\n            ],\n            333 => [\n            ],\n');
-  const out = execFileSync('python3', ['-c', py, path.join(dir, 'b'), path.join(dir, 'a')], { encoding: 'utf8' }).trim();
-  assert.equal(out, '333 380', 'dispatches exactly the newly added IDs, sorted, including quoted keys');
-  assert.ok(src.includes('cannot read the previous allowlist') && !src.includes('|| : > /tmp/before.yml'), 'a missing base fails closed instead of dispatching everything');
-  assert.ok(src.includes("git log --diff-filter=A") && src.includes('known="$(gh run list'), 'durable first-run baseline and a pre-dispatch run snapshot (#3754 review)');
-  assert.ok(src.includes('{ grep -vx "$id" || true; }') && src.includes('<<<"$log"') && !/gh run view "\$run" --log[^\n]*\| grep/.test(src), 'no pipefail/grep exit traps (#3754 review)');
+  try {
+    fs.writeFileSync(path.join(dir, 'b'), '          $items = [\n            364 => [\n            ],\n            343 => [\n            ],\n');
+    fs.writeFileSync(path.join(dir, 'a'), '          $items = [\n            364 => [\n            ],\n            343 => [\n            ],\n            "380" => [\n            ],\n            333 => [\n            ],\n');
+    const out = execFileSync('python3', ['-c', py, path.join(dir, 'b'), path.join(dir, 'a')], { encoding: 'utf8' }).trim();
+    assert.equal(out, '333 380', 'diff still detects newly added IDs, sorted, including quoted keys');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.ok(src.includes('cannot read the previous allowlist') && !src.includes('|| : > /tmp/before.yml'), 'a missing base fails closed');
 }
 // F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
 {
@@ -836,7 +1020,7 @@ for (const [id, revision, issue] of [
   assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
   assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
   assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('.login == $owner or .login == "app/github-actions"')
-    && src.includes('[.comments[] | select('), 'issue dedupe by SourceRef in body or comments, trusted authors only');
+    && /\[\.comments\[\]\?? \| select\(/.test(src), 'issue dedupe by SourceRef in body or comments, trusted authors only');
   assert.equal((src.match(/if: github\.ref == 'refs\/heads\/main'/g) || []).length, 3, 'every job is main-only');
   assert.ok(!src.includes('page_key'), 'client-controlled page_key is never published');
   assert.ok(src.includes("!(github.event_name == 'workflow_dispatch' && inputs.dry_run)"), 'manual dry run never writes production');

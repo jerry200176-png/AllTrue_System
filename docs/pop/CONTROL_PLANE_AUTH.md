@@ -80,3 +80,39 @@ preserves the independently verified cash correction. Automatic financial
 rollback is disabled. Founder GO must explicitly cover policy activation
 and the immutable case result; the actual authenticated DB approval is still required. Remove the
 eligibility tuple after the completed audit to retire this one-case allowance.
+
+## Reviewed financial repair case binding
+
+The three reviewed single-record billing operations use a separate one-case
+authorization manifest mounted outside the repository at
+`POP_REVIEWED_FINANCIAL_CASES_PATH` (default:
+`backend/storage/app/private/pop/reviewed-financial-cases.json`). A missing or
+empty file denies draft creation. The file is owned by the deploy account and
+read by the app-serving PHP-FPM worker through one named ACL entry, exactly
+`user::rw-`, `user:<worker uid>:r--`, `group::---`, `mask::r--`,
+`other::---` (shown as mode `0640`; `0600` without an ACL only when the worker
+itself owns the file). `pop-mount-reviewed-financial-once.yml` sets and
+verifies this, adds only `u:<worker uid>:--x` on `storage/app/private` and its
+`pop` directory, and is the only supported way to install the file; do not
+`chmod`/`chgrp` it by hand (a group change widens the ACL mask). Until the
+deploy stops running a recursive `chmod` over `storage` (companion change
+#4332), a deploy would widen this file, so the mount workflow refuses to run
+(`check-pop-mount-remote-guards.py --require-deploy-safe`). Remove the
+tuple after its short UTC expiry and audit closeout.
+Never commit the file or put private case payloads, identifiers, tokens or
+keys in GitHub.
+
+The single tuple binds `operation_id`, canonical `parameters_sha256` (including
+the fresh `expected_state_hash`), `idempotency_sha256`, requester and approver
+actor digests, the exact `founder-go-{operation_id}-{parameter_hash_prefix}`
+reference, and `valid_until`. The application checks that tuple at draft,
+approval, and execution; approval also recomputes the strategy preview against
+live evidence, and execution repeats the authorization and strategy guards.
+The approval TTL must fit inside `valid_until`. Once a successful execute exists,
+the recorded exact approval remains sufficient to renew verify/rollback access
+after expiry; those proof-bound continuation phases do not depend on a still-live
+eligibility tuple.
+Any catalog version change invalidates old requests and previews. The database
+super_admin approval, deployed SHA, Pi-local executor, atomic proof, verification
+and rollback guards remain mandatory. A release approval or merge is not a
+case-specific financial authorization.

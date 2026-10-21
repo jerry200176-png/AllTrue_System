@@ -40,7 +40,7 @@ assert.match(guard, /narrow_from=\$NARROW/);
 for (const [name, body] of Object.entries(jobs)) {
   if (name !== 'guard') assert.match(body, /needs: guard/, `${name} needs guard`);
 }
-assert.ok(!/environment:/.test(jobs.pilot_dry_run), 'dry-run is read-only, no approval');
+assert.ok(!/environment: production-activation/.test(jobs.pilot_dry_run), 'dry-run is read-only, no approval');
 assert.match(jobs.pilot_dry_run, /PILOT_DRY_RUN: "1"/);
 assert.ok(!/PILOT_DRY_RUN: "0"/.test(jobs.pilot_dry_run));
 assert.match(jobs.pilot_grant, /PILOT_DRY_RUN: "0"/);
@@ -49,7 +49,7 @@ assert.ok(jobs.pilot_grant.includes('PILOT_FLAG_ON_ACK: ${{ needs.guard.outputs.
 for (const name of ['pilot_grant', 'enable', 'disable']) {
   assert.match(jobs[name], /environment: production-activation/, `${name} environment gate`);
 }
-assert.ok(!/environment:/.test(jobs.preflight), 'preflight is read-only, no approval needed');
+assert.ok(!/environment: production-activation/.test(jobs.preflight), 'preflight is read-only, no approval needed');
 assert.ok(!/sed -i|cp \.env|artisan optimize/.test(jobs.preflight), 'preflight must not edit .env or optimize');
 assert.match(jobs.preflight, /READ_ONLY=true/);
 

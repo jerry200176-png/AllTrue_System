@@ -319,6 +319,36 @@ describe('useNightlyReconcile', () => {
     expect(detailTruncated.value).toBe(true);
   });
 
+  // #4068: concurrent 「重新載入」 must not attach the old page set under new metadata.
+  it('drops paged rows when loadReport replaces the report mid-flight', async () => {
+    const base = makeReport({ mismatch_count: 5, checked_at: '2026-07-12 03:00:12' });
+    const newer = makeReport({
+      mismatch_count: 1,
+      checked_at: '2026-07-12 04:00:00',
+      mismatches: [base.mismatches[0]],
+    });
+    api.getReconcileLatest.mockResolvedValue(base);
+    let resolveFirstPage;
+    api.getReconcileRows.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveFirstPage = () => resolve({
+          rows: base.mismatches,
+          meta: { checked_at: base.checked_at, page: 1, last_page: 1, total: 3, complete: true },
+        });
+      }),
+    );
+    const { report, loadReport, loadAllRows, allRowsError, mismatches } = setup();
+    await loadReport();
+    const paging = loadAllRows();
+    api.getReconcileLatest.mockResolvedValue(newer);
+    await loadReport();
+    expect(report.value.checked_at).toBe(newer.checked_at);
+    resolveFirstPage();
+    await paging;
+    expect(allRowsError.value).toContain('重新載入');
+    expect(mismatches.value.map((r) => r.student_class_id)).toEqual([101]);
+  });
+
   it('does not flag truncation when every row is stored', async () => {
     api.getReconcileLatest.mockResolvedValue(makeReport());
     const { detailTruncated, loadReport } = setup();

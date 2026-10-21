@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-10-17-exam-grades-ui
+    published_at: "2026-10-17"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 段考成績可以登了
+    summary: 主任開段考場次後，老師可在工作台待辦直接登分。
+    items:
+      - category: added
+        text: 側欄新增「段考成績」。主任建立場次並發布後，老師就能登自己學生的學校各科分數。
+      - category: added
+        text: 老師工作台會列出尚未登完的段考，點「去登分」直接開啟該場次。
+      - category: action_required
+        text: 段考期間請主任先開場次並設截止日；老師請在截止前完成登分。
+    source_refs:
+      - "changelog:2026-10-17:exam-grades-ui"

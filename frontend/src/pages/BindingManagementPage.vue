@@ -249,6 +249,10 @@ const unbindError = ref('');
 
 const filters = ref({ studentName: '', campusId: '', status: '' });
 let searchTimer = null;
+// #4076: rapid campus switches leave overlapping list/stats requests in flight;
+// only the latest generation may write into list/stats (or clear loading).
+let listRequestSeq = 0;
+let statsRequestSeq = 0;
 
 const activeCampusId = computed(() => {
   if (filters.value.campusId) return Number(filters.value.campusId);
@@ -297,13 +301,17 @@ function formatDateTime(s) {
 
 /* ── 資料載入 ── */
 async function loadStats() {
+  const seq = ++statsRequestSeq;
   stats.value = null; // never show another scope's numbers if this load fails
   try {
-    stats.value = await fetchBindingStats({ campusId: activeCampusId.value });
+    const next = await fetchBindingStats({ campusId: activeCampusId.value });
+    if (seq !== statsRequestSeq) return;
+    stats.value = next;
   } catch { /* 統計卡失敗不阻擋列表 */ }
 }
 
 async function load() {
+  const seq = ++listRequestSeq;
   loading.value = true;
   loadError.value = '';
   try {
@@ -314,6 +322,7 @@ async function load() {
       page: page.value,
       perPage,
     });
+    if (seq !== listRequestSeq) return;
     const rows = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
     list.value = rows;
     const meta = data?.meta || data?.pagination || {};
@@ -325,13 +334,14 @@ async function load() {
       page.value = pagination.value.lastPage || 1;
     }
   } catch (e) {
+    if (seq !== listRequestSeq) return;
     list.value = [];
     const msg = e?.payload?.message || e?.message || '無法載入綁定清單';
     loadError.value = (e?.status === 404 || e?.status === 500)
       ? `後端綁定 API 尚未上線（HTTP ${e.status}）。此頁依賴 W31 P1-2 端點，合併後即可使用。`
       : msg;
   } finally {
-    loading.value = false;
+    if (seq === listRequestSeq) loading.value = false;
   }
 }
 

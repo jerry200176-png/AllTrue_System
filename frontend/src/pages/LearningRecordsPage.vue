@@ -607,8 +607,9 @@
     <!-- ===== Records Grouped By Student ===== -->
       <div class="lr-view-toolbar" aria-label="評量顯示模式">
         <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toolbar__label">顯示模式</div>
-        <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
+        <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toggle" role="group" :aria-label="availableViewModes.length > 1 ? '切換列表或卡片' : '卡片檢視'">
         <button
+          v-if="availableViewModes.includes('table')"
           type="button"
           :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
           :aria-pressed="effectiveViewMode === 'table' ? 'true' : 'false'"
@@ -1568,6 +1569,7 @@ import { deduplicateLearningRecordSessions, selectFormDaySession, pickSessionRec
 import {
   resolveLearningRecordViewDefaults,
   resolveLearningRecordViewMode,
+  resolveLearningRecordViewModeOptions,
 } from '../lib/learningRecordViewPreferences';
 import {
   fillStatusLabel,
@@ -1627,6 +1629,10 @@ const isNarrowViewport = ref(initialViewportWidth <= 640);
 const effectiveViewMode = computed(() => resolveLearningRecordViewMode({
   viewportWidth: isNarrowViewport.value ? 640 : 641,
   viewMode: viewMode.value,
+}));
+// 手機固定卡片：只顯示選了會生效的模式，避免主任看到按了沒反應的「列表」(in-app #417)。
+const availableViewModes = computed(() => resolveLearningRecordViewModeOptions({
+  viewportWidth: isNarrowViewport.value ? 640 : 641,
 }));
 const updateViewportMode = () => {
   isNarrowViewport.value = window.innerWidth <= 640;

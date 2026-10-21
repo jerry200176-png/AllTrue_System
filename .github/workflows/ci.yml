@@ -75,16 +75,27 @@ jobs:
           node scripts/ci/staff-identity-merge-workflow.test.mjs
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs
+          node scripts/ci/agreed-fee-allowlist-activation-workflow.test.mjs
+          # #4135 / #1387: required CI must enforce workflow secret-echo (gitleaks-style fail-closed).
+          # Already in `npm run test:gov`; without this step, main CI never ran the guard.
+          node scripts/ci/workflow-secret-echo.test.mjs
+          node --test scripts/ci/production-secret-triggers.test.mjs
+          node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 -m unittest scripts.tests.test_pr_declaration_gate
+          python3 -m unittest scripts.tests.test_pop_mount_policy_probe
           python3 -m unittest scripts.tests.test_additive_migration_gate
           python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 -m unittest scripts.tests.test_autonomous_convergence
+          python3 -m unittest scripts.tests.test_deploy_activation_state.GhApiRetryTest
+          # #4207: keep calendar-course-acceptance workflow_run names coupled to deploy.yml
+          python3 -m unittest scripts.tests.test_deploy_activation_state.DeployActivationWorkflowContractTest.test_calendar_course_acceptance_listens_for_deploy_run_identities
           python3 scripts/tests/test_required_php_checks.py
           python3 scripts/tests/test_evidence_contract_timeouts.py
+          python3 scripts/tests/test_principal_rotation_grant_replay.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
@@ -120,6 +131,13 @@ jobs:
 
       - name: Test production SSH host trust contract
         run: bash scripts/tests/production-ssh-trust.test.sh
+
+      # #4312: atomic POP mount stage + guard --self-test (fail paths keep LIVE contents/owner/mode)
+      - name: Test POP mount atomic stage and remote guards
+        run: bash scripts/pop-mount-atomic-stage.test.sh
+
+      - name: Test deploy storage permissions keep storage/app/private restricted
+        run: bash scripts/tests/deploy-storage-perms.test.sh
 
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
@@ -224,7 +242,8 @@ jobs:
     # GitHub rulesets do not treat a path-skipped required job as satisfied.
     # Keep the real suite and its existing threshold; never synthesize a pass.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Full coverage already takes >13m; retain room for runner/setup variance.
+    timeout-minutes: 25
     # Non-sensitive password for the ephemeral CI-only MySQL service.
     env:
       DB_PASSWORD: ci-ephemeral

@@ -53,17 +53,67 @@ All phases share the non-cancelling `production-deploy` concurrency group with a
 
 ## Phase 1 — create and verify; old principal and app untouched
 
+The rotation job declares `needs: contract-test` and runs only when that job succeeds. That job runs `scripts/tests/test_principal_rotation_grant_replay.py`, which executes the exact transformer and preflight shipped in `deploy.yml`.
+
 The remote job:
 
 1. Authenticates from `.env` and obtains the exact identity with `CURRENT_USER()`; no host suffix is assumed.
-2. Runs `SHOW GRANTS FOR CURRENT_USER()` and rewrites only the target; privileges are not guessed.
-3. Creates the new account and replays every `GRANT` or partial `REVOKE`; authentication material or an unrecognized target fails closed.
-4. Opens a fresh connection as the new account and runs `SELECT 1`.
-5. Writes the protected state file only after verification succeeds.
+2. Runs the **read-only leftover staged-principal preflight**, described below. A refusal here changes nothing.
+3. Runs `SHOW GRANTS FOR CURRENT_USER()` and rewrites only the target; privileges are not guessed.
+4. Removes the old account's authentication clause, then checks the result:
+   - On MariaDB, `SHOW GRANTS` appends that clause to the `GRANT USAGE` line, as `IDENTIFIED BY PASSWORD '*…'` or `IDENTIFIED VIA <plugin> [USING '…'] [OR …]`.
+   - The job strips only a clause that sits immediately after the grantee.
+   - If anything that still looks like authentication material remains (`IDENTIFIED`, `PASSWORD(`, a hash-like string), Phase 1 fails closed with `SHOW GRANTS contains authentication material; refusing unsafe replay`.
+   - An unrecognized target also fails closed.
+   - Every line is validated before anything is written, so a refusal sends zero bytes to `mysql`.
+   - The log shows only `grant replay: N statement(s), M authentication clause(s) stripped`.
+5. Creates the new account with its own host-generated password and replays every `GRANT` or partial `REVOKE`.
+6. Opens a fresh connection as the new account and runs `SELECT 1`.
+7. Writes the protected state file only after verification succeeds.
 
 MySQL documents `SHOW GRANTS` as executable statements for duplicating privilege/role assignments. Non-privilege account properties are not copied; the new account receives a host-generated credential.
 
-**Pass:** green run; exact grants replayed, new connection passed, `.env` untouched.
+### Leftover staged-principal preflight
+
+The preflight runs only when no state file exists, before a new name is generated.
+
+**What it counts.** It counts accounts whose `User` matches the generator's shape, `^atr_[0-9]{12}_[0-9a-f]{6}$`. Two kinds of account are excluded:
+
+- **The current principal.** This is the exact `CURRENT_USER()` `user@host`. After a completed rotation the app user is itself `atr_*`.
+- **Locked predecessors.** These are accounts Phase 3 contained with `ACCOUNT LOCK`.
+
+Any other `atr_*` account counts. This includes an orphan left by a failed Phase 1, and a predecessor contained by the *password-quarantine* fallback. Both are unlocked, so the job cannot tell them apart and fails closed.
+
+**Lock-status source, tried in order:**
+
+1. `mysql.global_priv`, using `JSON_VALUE(Priv, '$.account_locked')` (MariaDB 10.4+).
+2. `mysql.user.account_locked` (MySQL 5.7+/8).
+3. `mysql.user` with no lock filter. In this case locked predecessors also count, so the check can refuse more often but never less.
+
+**Never used:** `information_schema`, which lists only the grantees the old principal may see and so is not exhaustive.
+
+**Required privilege:** the old principal must be able to `SELECT` from `mysql.user` (or `mysql.global_priv`).
+
+**Logged:** only `Leftover staged-principal preflight: count=N source=<source> (current principal and locked predecessors excluded)`. Account names and hashes are never logged.
+
+**Refusals (exact messages):**
+
+- `The old principal cannot read mysql.user, so it cannot list all accounts and leftover staged principals cannot be ruled out; no account was changed. Founder review required.`
+- `An unlocked staged principal other than the current one exists without a state file; no account was changed. Founder review required before any rerun: confirm read-only whether each such account is an orphan or a password-quarantined predecessor, then lock or drop it manually.`
+- `Unexpected staged-principal count shape; no account was changed.`
+
+**Recovery path (Founder decision; nothing is automatic):**
+
+1. A Founder-authorized operator runs a read-only inventory with a sufficiently privileged account, for example `SELECT User, Host FROM mysql.user WHERE User REGEXP '^atr_'`. The operator also checks lock status: `JSON_VALUE(Priv,'$.account_locked')` in `mysql.global_priv` on MariaDB, or `account_locked` on MySQL. Do not paste names into GitHub; record IDs or counts only.
+2. Compare each unlocked `atr_*` account with the archived state of earlier rotations:
+   - An orphan, meaning an account no state file references, is dropped or locked by the operator after Founder confirmation.
+   - A password-quarantined predecessor can be locked with `ALTER USER … ACCOUNT LOCK`, or dropped after its rollback window.
+3. If the old principal cannot read `mysql.user`, the Founder decides whether to grant it `SELECT` on `mysql.user`. The alternative is to run Phase 1 from an account that can.
+4. Re-dispatch `phase1-create`. The first log line must show `count=0`.
+
+The preflight never drops or locks anything itself.
+
+**Pass:** green run; the preflight showed `count=0`, the grants were replayed with the old authentication clause stripped, the new connection passed, and `.env` was untouched.
 
 **Rollback:** failure after creation attempts `DROP USER` and removes incomplete state. After a green run, an authorized operator can drop the staged account using protected state, then remove that file. Stop if automatic drop fails.
 

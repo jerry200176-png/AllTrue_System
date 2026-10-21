@@ -6,6 +6,16 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F7／POP 回滾重試（#4271）**：原子撤回與失敗紀錄都正確，仍可能因快取失敗 receipt 永久失去回復路徑。回歸必須在 fault injection 後實際重試，驗證有效核准、失敗紀錄保留、成功冪等重播與序列化。拒絕測試的 `$this->fail()` 必須在 RuntimeException catch 外：PHPUnit 的 AssertionFailedError 也繼承 RuntimeException，否則 helper 會捕獲自己的失敗而假通過。見 [invoice alignment plan](plans/2026-10-18-unpaid-invoice-alignment.md)。
+
+### R157. MariaDB 上不可直接重放 MySQL 8 形狀的 SHOW GRANTS（staged DB principal rotation Phase 1，run 38724893175／#4160，2026-10-15）
+
+- **現象**：`deploy.yml` 的 `phase1-create` 以 `SHOW GRANTS contains authentication material; refusing unsafe replay` fail closed。正式機是 MariaDB，它會在 `GRANT USAGE` 行後面附上舊帳號的 `IDENTIFIED BY PASSWORD '*…'`／`IDENTIFIED VIA <plugin> USING '…'`；轉換器卻假設 MySQL 8 的形狀（GRANT 行不帶認證子句）。另外，轉換器在檢查 GRANT 之前就先印出 `CREATE USER`，所以拒絕時那一行仍可能送進 `mysql`，再被 cleanup trap 靜默 DROP，log 無法證明最後狀態。
+- **根因**：內嵌在 workflow 的轉換器沒有任何可執行測試，也沒有 MariaDB 樣本；而且輸出是邊檢查邊寫，不是全部通過才寫。
+- **強制規則**：只剝除緊接在被授權者後面的認證子句。剝除後若仍有 `IDENTIFIED`、`PASSWORD(` 或像 hash 的字串一律拒絕。全部輸入驗證通過前不得輸出任何位元組。建立新帳號前，先以舊帳號跑唯讀、可完整列舉的預檢：用 `mysql.global_priv`／`mysql.user` 計算 `atr_*` 帳號數，排除 `CURRENT_USER()` 的精確 user@host 與 Phase 3 已 `ACCOUNT LOCK` 的前任；讀不到鎖定狀態就把前任也算進去，讀不到 `mysql.user` 就 fail closed，不可退回只列可見授權的 `information_schema`。log 只記數量，不記名稱或 hash。
+- **強制規則（續）**：會寫正式憑證的 job 必須 `needs:` 其合約測試且要求 `result == 'success'`，不可與測試平行跑。
+- **測試必補**：`scripts/tests/test_principal_rotation_grant_replay.py` 直接抽出 `deploy.yml` 裡實際出貨的轉換器與預檢程式來跑：MariaDB `BY PASSWORD`／`VIA … USING … OR`、MySQL 8 不變、殘留認證字串拒絕、拒絕時 stdout 為零位元組、預檢的殘留拒絕／排除目前帳號／已鎖定前任＋目前帳號通過／未鎖定非目前 `atr_*` 拒絕／讀不到鎖定狀態時前任仍算／讀不到 `mysql.user` 拒絕／數量格式錯誤拒絕；`test_deploy_activation_state.py` 斷言輪替 job `needs: contract-test`。
+
 ### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
 
 - **現象**：100% 或等於原價的固定折扣讓續約產生 NT$0 帳單，但沒有任何流程能把它記成已結清：帳單維持未繳、課程卡一直提示「登記這筆」；而且這筆課有費用，所以「免費／贈送」也被拒絕（#4018）。
@@ -78,6 +88,10 @@ last_reviewed: 2026-09-05
 - **測試必補**：`InvoiceItemsEagerLoadQueryCountTest`——帳單數增加時 InvoiceItem 查詢數不得成長；守護端點：`alerts/tuition`、`accounting/settled-courses`、`accounting/ledger`、`payment-reports`、`student-classes/{id}/invoices`（逐一移除其 `items` eager-load 已驗證會失敗）。未覆蓋：`AccountingController::waiveCourse`（寫入路徑）與 `UnpaidHiddenClosuresStrategy`（維運清單），新增類似迴圈須自行補測。
 
 ### R142. 系統自選的補尾／向前堂次必須用寫入守門的同一規則避開學生占用（in-app #380，2026-10-07）
+
+- **2026-10-19 current-read 補充**：鎖定查詢不能依賴小型 fixture 的幸運 join plan；以有其他校區／老師資料及合法 correlated-EXISTS plan 的獨立 PDO 寫入驗證鎖範圍。existing proposed course 的老師／班型／教室也須在 caller 當前交易內重讀；不可沿用 model 原 connection，否則可能跨連線等自己的鎖。
+
+**2026-10-18 current-read 補充**：apply 不能沿用 RR 舊快照的老師占用；canonical ScheduleGuard 的 current mode 必須貫穿 schedules、ClassSession、stale filter、course metadata 與代課 LearningRecord/occurrence provenance。只鎖最外層查詢不能保證子查詢也讀最新。以獨立 PDO 先證明一般查詢仍舊，再確認 current guard 讀到已提交預約；preview 預設不鎖，不改 global isolation，仍守校區與 self exclusion。
 
 - **現象**：把已上的 10/1 轉到續約合約時，來源合約自動補回的尾端堂次落在續約合約第一堂（同一週固定時段），寫入守門判定學生時段重疊，整筆轉移 422，主任看到「課程重疊」但畫面上看不出重疊。
 - **根因**：自行挑時段的規劃器只比對自己合約的 `date|start`，沒看學生其他合約；向前生成與 ensure-horizon 雖有跨合約檢查，卻只比「同開始時間」，部分重疊仍會在 `upsertSlot()` 拋出 `student_slot_conflict`。
@@ -433,6 +447,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 > 下次改下列模組，**先認領家族 → 對照不變式 → 補該家族的回歸測試**，不要只修單一 symptom。
 > 追蹤 Epic：見 GitHub `[Epic] 復發家族根治`。各家族成員 issue 與 production 佐證寫在該 Epic。
 
+Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue may be a deliberately closed duplicate. Resolve explicit trusted same-repo canonical metadata and verify target SourceRef before reopening; do not substitute open-state preference or arbitrary redirect URLs. Behavioral shell tests cover trust, exact numeric IDs, one-hop validation, lookup failure and concurrent creation (`scripts/ci/bug-auto-intake-canonical.test.mjs`).
+
 | 家族 | 共同根因（不變式被違反） | 前例 | 必補回歸測試守門 |
 |------|--------------------------|------|------------------|
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示；**反面**：堂數制仍有 `RemainingSessions` 時不得把請假順延尾堂當幽靈取消 | #151、#427、#99、**#1839**、行290、§R32、§R59、**§R109** | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留；**count + RemainingSessions>0 禁止 settled/completed 除非 `forfeit_remaining`** |
@@ -671,6 +687,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R28. 已繳課程不可再次核帳建立新付款
 
+**2026-10-18 關聯不一致診斷**：strict probe 因付款關聯中止時，不可推定帳務根因。既有個案的明確 inspection mode 可保留已驗證歸屬資料與固定異常代碼，但不可追查／輸出外部引用資料；ownership、查詢錯誤、row budget 仍清空 payload。任何 link issue 必為 incomplete，不可當改帳或實收證據。
+
+**2026-10-18 唯讀個案查核校區補充**：不得從舊 probe 名稱或前端 fallback 推定現行分校 ID。先核對 production `/branches`，再以 Campus.id + name 及 Student.CampusID 三者綁定；新莊為11，舊 campus9 probe 查空不是「個案不存在」。編號只識別候選，帳單／回報／Payment 必須在同一 server READ ONLY snapshot 校驗 ownership、row budget 與未歸屬帳單；缺漏不推導可改帳。加密全文僅在既有授權的私密保管環境處理；本機不是必要 runtime。既有 dump 金鑰的窄範圍雲端遷移依 `FOUNDER_STANDING_DECISIONS.md` 2026-10-19 與 `BUG_INTAKE_TO_PRODUCTION.md` Cloud decryption custody；環境不符或 readiness 未知不算成功，原始金鑰保留至驗收成功，公開僅 PASS／FAIL，不公布私密案件／artifact 參照。Enum 必須核對 schema/controller（date/count、regular/tutoring），不可猜 monthly；report.payment_id 與 Payment.payment_report_id 要雙向核對同張帳單，NULL 歸屬明細不能算完整。 真正 READ ONLY 測試不能套在外層寫入交易；用具名、不同學生／課程的情境共用一次 schema generation，破壞 schema 的案例另開一代，避免每項 migrate:fresh 擠爆既有 CI15分鐘預算。保留全部斷言與 server 拒寫證據，不延長或略過關卡。
+
+
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
 - 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
 - **Founder Q2（2026-10-11，#3797／#3864）取代舊規則**：帳單＋Payment 紀錄才是真相，`Paid=1` 旁邊還欠的帳單**可以**收款；但只能收**目標帳單**依 Payment 紀錄（`InvoiceAmountReconciliationService`）算出的未收額（鎖住帳單後在 `directorRecord`／batch／`confirm` 都重算，超過回 422「這張帳單只欠 NT$X…」），不可用整門課的總未收額，也不可用儲存的 `PaidAmount`；`confirm` 寫回的 `PaidAmount`／`Status` 一律從 Payment 紀錄重算。Payment 紀錄已收足的帳單（即使 Status 過期仍是 unpaid）一律拒收；課程已收齊（resolver `paid`）且沒有未結帳單時仍回 422。
@@ -685,6 +706,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：對帳視窗若列出可處理的 Invoice，就必須同頁提供正確操作；一般作廢只看 `can_direct_void`，沖銷作廢只看 `can_exception_void`，不可用 anomaly 標籤自行推導按鈕。
 - **強制規則**：未收款錯帳不可因使用者按到沖銷作廢而卡住；後端若判斷淨收款與 `PaidAmount` 都是 0，必須安全降級為一般作廢。
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
+- **單課作廢要加入費用更正的課程鎖，並重查歸屬（#4247／#4262）**：從 DB 讀取當前 header/item 課程，鎖單課後再鎖帳單；以 fresh invoice/item locking reads 比對歸屬，漂移回409且不寫款項。多課合併帳單雖不符合新 fee API 資格，既有 count correction 仍可用 header 找到它，作廢至少要鎖 header owner；不可新增會與轉移相反的多課鎖集；直接收款保留既有 sorted course locks。測試以 PROCESSLIST 觀測真實等待查詢及 post-query marker 未出現，不能只憑 beforeExecuting 訊號宣稱已阻塞。
+
+- **Preview／冪等 hash 必須用同一份已驗證正規值（#4259）**：原因先確認是字串才 trim，拒絕 array/object 等型別；接受 integer 與 numeric-string 的單據 ID 要先轉成相同整數再簽章／比對，避免同一請求回409或產生無意義 audit reason。
+
+- **隔離 HTTP 驗證（#4253）**：沿用已合併的 before-provider DB guard，僅用 loopback synthetic schema；token/allowlist 改放每輪0700目錄與0600檔案，重用目錄前 fail closed。使用真實入站 API/MySQL，出站 Laravel transports fake 並 assert nothing sent/pushed；不 mock 成功回應。fixture seed 與 API 串成同一測試保留斷言，避免重建 schema 擠爆 CI；測試 helper 用 runSeed 等名稱，勿覆寫 Laravel TestCase 既有 seed()。
 
 ---
 
@@ -1060,6 +1086,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **`backend/public/storage` symlink 會卡住 `git reset --hard` / `git merge`**（WSL/Windows 掛載：`Function not implemented` / `File exists`）→ 改用 `git reset --mixed` 移 HEAD（不寫工作樹）再清殘留；勿對 protected 路徑設 `assume-unchanged`（R58 + pre-commit hook 會擋）。
 - **merge-train 稅（拓撲部分已 superseded）**：strict required checks 仍會讓其他 PR 在 main 前進後變 `BEHIND` 並重跑 CI；不可用 `gh pr merge --admin` 繞過。2026-07-14 起所有 jobs 已改用 GitHub-hosted runner，可平行執行，不再受單一 WSL2 runner 序列化；現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 - **同名測試 DB 的隔離取決於 runner 儲存邊界（#732 已 superseded）**：`backend/phpunit.xml` 仍以 `force="true"` 設定 `DB_DATABASE=AllTrue_test`，但每個 GitHub-hosted PHPUnit job 都有獨立 MySQL service container，因此同名 schema 不會跨 run 互相清表。若未來改回共享 self-hosted MySQL，必須先提供 run-scoped schema 或等價隔離，不能只改 runner label。
+- **測試開關須還原原始環境三個管道（#4262）**：ClassSession 唯一索引測試的 `putenv`／`$_ENV`／`$_SERVER` 只在該案例啟用；teardown 還原原值，重複 enable 只捕捉一次。否則中途 remigrate 會把測試索引帶進後續舊 fixture，讓相同時段的 leave/leave_adjusted 以1062失敗；不得刪索引斷言或只重跑 CI。
+- **測試 DDL 也要先驗證 resolved connection（#4256）**：沿用 synthetic schema／loopback allowlist，拒絕 URL、socket、read/write 與 PDO init-command 等替代目標；`migrate:fresh` 前驗證、DDL 前拒絕 open transaction。MySQL DDL 會 implicit commit，不可在 `RefreshDatabase` 外層交易中臨時補欄位。
+- **隔離啟動要拒絕設定快取重導（#4253）**：只查 `bootstrap/cache/config.php` 會漏掉 `APP_CONFIG_CACHE`。在 Laravel 啟動前拒絕替代快取；用 provider canary 證明錯誤設定未進入服務註冊，再用既有 ephemeral DB wrapper 驗證同程序 Migrator 與重放。
+- **測試 extension 不可污染下一個 RefreshDatabase，也不應每例重建全庫**：一般案例在 Laravel rollback callback 之後撤回 test-only DDL，核對 base 欄位與唯一索引才重用 generation；中途 DDL／部分 schema／committed lifecycle／cleanup 失敗保持 generation 無效，交回完整重建。改善效能必須保留實際 teardown 的 row/schema 隔離回歸及原 CI 門檻。
+- **Laravel 8 Schema 要直接 mock connection 的 builder（#4256）**：其 facade accessor 回傳物件，不是一般 binding 名稱。`Schema::swap()` 會出現 illegal offset，`Schema::shouldReceive()` 也可能先觸發未設定的 `getSchemaBuilder()`；這些初始化失敗不算有效 RED。先查該版本開源實作，再讓 connection 的 `getSchemaBuilder()` 回傳 builder mock，直接在 builder 設期待，並核對失敗 stack 確實進入受測路徑。
+- **更新 PR 證據內文時保留機器欄位（#4257）**：`Risk-Class`、`Autonomy-Tier`、`Release-Impact` 不可被自由文字摘要取代；可用既有 `check_pr_declaration.py` 先驗證。僅內文修正造成的失敗重跑原 Presubmit job，避免留下同名成功／失敗 check；程式碼未變不必重跑完整 PHPUnit。
 
 ---
 

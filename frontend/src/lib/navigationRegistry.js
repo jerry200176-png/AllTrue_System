@@ -49,6 +49,7 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
         { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
         { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
         { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
+        { page: 'exam-grades', label: '段考成績', icon: 'quiz' },
       ],
     },
     {
@@ -102,6 +103,7 @@ function teacherGroups({ truefitEnabled = false } = {}) {
     { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
     { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
     { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
+    { page: 'exam-grades', label: '段考成績', icon: 'quiz' },
   ];
   if (truefitEnabled) {
     teachingItems.push({ page: 'truefit', label: 'TrueFit', icon: 'school' });

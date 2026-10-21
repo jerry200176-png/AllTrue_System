@@ -150,6 +150,11 @@ class StudentClass extends Model
         if ($ids === []) {
             return false;
         }
+        // Unbilled agreed-fee rows keep no invoice link — still block hard-delete.
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_corrections')
+            && DB::table('invoice_corrections')->whereIn('student_class_id', $ids)->exists()) {
+            return true;
+        }
         $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
 
         // Every append-only table that keeps a contract id. Add new ones here.
@@ -160,6 +165,7 @@ class StudentClass extends Model
             'student_class_pricing_amendments' => ['student_class_id'],
             'dunning_events' => ['student_class_id'],
             'course_contract_group_members' => ['student_class_id'],
+            'bug_report_contract_links' => ['student_class_id'],
         ];
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {
@@ -293,6 +299,34 @@ class StudentClass extends Model
         }
 
         return CoursePackage::query()->where('id', $packageId)->where('paid', true)->exists();
+    }
+
+    /**
+     * in-app #428: a trial records its fee by payment date alone and never gets an invoice by design, so its paid
+     * flag is not legacy data to verify (no 需核對). Only a trial that actually carries the date qualifies: the
+     * course's own Paid=1 needs ClassType=trial and PayDate; a paid state derived from the package needs the
+     * package's class_type=trial and paid_at (a regular course bound to a trial package follows the package).
+     * Shared by the course list, the tuition alerts and the accounting ledger so they cannot drift.
+     * #4339 review: the package is read only when it belongs to this course's own student and campus (same owner rule as
+     * BillingPayableResolver::validPaymentEvidence), so a stale PackageID to another student's or campus's package never
+     * clears 需核對 with foreign billing metadata.
+     */
+    public function isTrialFeeRecordedByDate(?CoursePackage $package = null): bool
+    {
+        if ((int) ($this->Paid ?? 0) === 1) {
+            return strtolower(trim((string) ($this->ClassType ?? ''))) === 'trial'
+                && trim((string) ($this->PayDate ?? '')) !== '';
+        }
+        if (!$this->isPartOfPackage()) {
+            return false;
+        }
+        $package ??= $this->coursePackage;
+        $campusId = $this->student?->CampusID;
+
+        return $package !== null && (int) $package->id === (int) $this->PackageID
+            && (int) $package->student_id === (int) $this->StudentID
+            && $campusId !== null && (int) $package->campus_id === (int) $campusId
+            && $package->isTrialFeeRecordedByDate();
     }
 
     /**

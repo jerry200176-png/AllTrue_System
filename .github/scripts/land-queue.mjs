@@ -86,7 +86,11 @@ export function decide(pr, required) {
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
   const allGreen = Object.values(states).every((s) => s === 'pass');
-  if (pr.mergeStateStatus === 'CLEAN' && allGreen) return open === 0 ? { action: 'merge' } : { action: 'wait', reason: 'threads-unknown' };
+  // CLEAN = GitHub happy path. UNSTABLE = a non-required check failed/cancelled while
+  // required contexts can still be green (e.g. advisory "Warn if production change lacks
+  // tests" cancelled by concurrency). Land on required green only; keep waiting on BLOCKED.
+  const statusOk = pr.mergeStateStatus === 'CLEAN' || pr.mergeStateStatus === 'UNSTABLE';
+  if (statusOk && allGreen) return open === 0 ? { action: 'merge' } : { action: 'wait', reason: 'threads-unknown' };
   return { action: 'wait' };
 }
 

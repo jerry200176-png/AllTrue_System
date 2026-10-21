@@ -41,13 +41,13 @@ class SubstituteScheduleService
      * The one answer to "who teaches this occurrence" (the occurrence is addressed by its current slot).
      * Flag on: the live row's teacher (see occurrence()); flag off: exactly the legacy effective instructor.
      */
-    public static function teacherForOccurrence(int $studentClassId, $sessionDate, int $contractTeacherUserId, ?string $startTime = null): int
+    public static function teacherForOccurrence(int $studentClassId, $sessionDate, int $contractTeacherUserId, ?string $startTime = null, bool $lock = false): int
     {
-        $v2 = $studentClassId > 0 ? self::occurrence($studentClassId, $sessionDate, $startTime) : null;
+        $v2 = $studentClassId > 0 ? self::occurrence($studentClassId, $sessionDate, $startTime, $lock) : null;
         if ($v2 !== null) {
             return $v2[0] > 0 ? $v2[0] : max($contractTeacherUserId, $v2[1], 0);
         }
-        $sub = self::legacySubstituteUserId($studentClassId, $sessionDate, $startTime);
+        $sub = self::legacySubstituteUserId($studentClassId, $sessionDate, $startTime, $lock);
         if ($sub !== null) {
             return $sub;
         }
@@ -56,21 +56,44 @@ class SubstituteScheduleService
     }
 
     /**
-     * Effective Teacher for many occurrences (docs/adr/ADR-EFFECTIVE-TEACHER.md): teacherForOccurrence() per distinct
-     * course/date/start, so pay, stats and attribution read the same answer as the calendar and guard.
+     * Effective Teacher for many occurrences (docs/adr/ADR-EFFECTIVE-TEACHER.md): teacherForOccurrence() semantics per distinct
+     * course/date/start (legacy assignments batched), so pay, stats and attribution read the same answer as the calendar and guard.
      * ponytail: one resolve per distinct occurrence; batch the SQL if a month-wide report gets slow.
      *
      * @param  iterable<array{course_id:int, date:string, start_time:?string, contract_teacher_id:int}>  $occurrences
      * @return array<string, int> occurrenceKey() => teacher user id
      */
-    public static function teachersForOccurrences(iterable $occurrences): array
+    public static function teachersForOccurrences(iterable $occurrences, bool $lock = false): array
     {
-        $out = [];
-        foreach ($occurrences as $o) {
-            $key = self::occurrenceKey((int) $o['course_id'], (string) $o['date'], $o['start_time'] ?? null);
-            $out[$key] ??= self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null);
+        $items = [];
+        foreach ($occurrences as $o) $items[self::occurrenceKey((int) $o['course_id'], (string) $o['date'], $o['start_time'] ?? null)] ??= $o;
+        if ($items === []) return [];
+        $ids = array_values(array_unique(array_column($items, 'course_id')));
+        $v2 = [];
+        if (self::anyCampusOn()) {
+            $courses = DB::table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
+                ->whereIn('sc.ID', $ids)->when($lock, fn ($q) => $q->sharedLock())->get(['sc.ID', 's.CampusID']);
+            foreach ($courses as $course) $v2[(int) $course->ID] = OccurrenceAssignmentService::enabledFor((int) $course->CampusID);
         }
-
+        $legacyIds = array_values(array_filter($ids, fn ($id) => !($v2[$id] ?? false)));
+        $latest = [];
+        if ($legacyIds !== []) {
+            $rows = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
+                ->whereIn('student_course_id', $legacyIds)->whereIn('schedule_date', array_unique(array_column($items, 'date')))
+                ->where('status', 'scheduled')->whereNotNull('original_schedule_id')->orderByDesc('id')
+                ->when($lock, fn ($q) => $q->lockForUpdate())->get(['student_course_id', 'schedule_date', 'start_time', 'teacher_id']);
+            foreach ($rows as $row) {
+                $teacher = (int) $row->teacher_id;
+                $latest[self::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, (string) $row->start_time)] ??= $teacher;
+                $latest[self::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, null)] ??= $teacher;
+            }
+        }
+        $out = [];
+        foreach ($items as $key => $o) {
+            $out[$key] = ($v2[(int) $o['course_id']] ?? false)
+                ? self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null, $lock)
+                : (($latest[$key] ?? 0) > 0 ? $latest[$key] : max(0, (int) $o['contract_teacher_id']));
+        }
         return $out;
     }
 
@@ -80,9 +103,9 @@ class SubstituteScheduleService
     }
 
     /** Flag on for this course's campus and someone other than the contract teacher teaches the occurrence. */
-    public static function isSubstitutedAway(int $studentClassId, $sessionDate, ?string $startTime = null): bool
+    public static function isSubstitutedAway(int $studentClassId, $sessionDate, ?string $startTime = null, bool $lock = false): bool
     {
-        $v2 = $studentClassId > 0 ? self::occurrence($studentClassId, $sessionDate, $startTime) : null;
+        $v2 = $studentClassId > 0 ? self::occurrence($studentClassId, $sessionDate, $startTime, $lock) : null;
 
         return $v2 !== null && $v2[0] > 0 && $v2[0] !== $v2[1];
     }
@@ -223,13 +246,13 @@ class SubstituteScheduleService
     }
 
     /** @return array{0: int, 1: int}|null [teacher, contractTeacher] of the occurrence for the occurrence; null = flag off for this course's campus. */
-    public static function occurrence(int $courseId, $sessionDate, ?string $startTime): ?array
+    public static function occurrence(int $courseId, $sessionDate, ?string $startTime, bool $lock = false): ?array
     {
         if (!self::anyCampusOn()) {
             return null;
         }
         $course = DB::table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->where('sc.ID', $courseId)->first(['sc.TeacherID', 's.CampusID']);
+            ->where('sc.ID', $courseId)->when($lock, fn ($q) => $q->lockForUpdate())->first(['sc.TeacherID', 's.CampusID']);
         if (!$course || !OccurrenceAssignmentService::enabledFor((int) $course->CampusID)) {
             return null;
         }
@@ -240,8 +263,11 @@ class SubstituteScheduleService
         }
         $contract = (int) $course->TeacherID;
         $start = self::normalizeTime($startTime);
-        $at = function () use ($courseId, $d, $start) {
-            $q = DB::table('schedules')->where('student_course_id', $courseId)->whereDate('schedule_date', $d);
+        $at = function () use ($courseId, $d, $start, $lock) {
+            $q = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
+                ->where('student_course_id', $courseId)
+                ->when($lock, fn ($q) => $q->where('schedule_date', $d), fn ($q) => $q->whereDate('schedule_date', $d))
+                ->when($lock, fn ($q) => $q->lockForUpdate());
 
             return $start !== null ? $q->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start]) : $q;
         };
@@ -264,13 +290,18 @@ class SubstituteScheduleService
         $makeup = $at()->where('status', 'scheduled')->where('type', 'extra')->orderByDesc('id')->first(['teacher_id']);
         if ($makeup) {
             $rowTeacher = (int) $makeup->teacher_id ?: $contract;
-            $lr = DB::table('LearningRecord as lr')->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
-                ->where('cs.StudentClassID', $courseId)->whereDate('cs.SessionDate', $d)->whereNull('lr.VoidedAt')
-                ->where('lr.TeacherID', '>', 0);
+            $lr = $lock
+                ? DB::table(DB::raw('ClassSession as cs FORCE INDEX (cs_scid_sessiondate_idx)'))
+                    ->join(DB::raw('LearningRecord as lr FORCE INDEX (idx_lr_class_session_teacher)'), 'lr.ClassSessionID', '=', 'cs.id')
+                    ->selectRaw('STRAIGHT_JOIN lr.TeacherID')
+                : DB::table('LearningRecord as lr')->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID');
+            $lr->where('cs.StudentClassID', $courseId)
+                ->when($lock, fn ($q) => $q->where('cs.SessionDate', $d), fn ($q) => $q->whereDate('cs.SessionDate', $d))
+                ->whereNull('lr.VoidedAt')->where('lr.TeacherID', '>', 0);
             if ($start !== null) {
                 $lr->whereRaw('SUBSTRING(cs.StartTime, 1, 5) = ?', [$start]);
             }
-            $lrTeacher = (int) ($lr->orderByDesc('lr.id')->value('lr.TeacherID') ?? 0);
+            $lrTeacher = (int) ($lr->orderByDesc('lr.id')->when($lock, fn ($q) => $q->lockForUpdate())->value('lr.TeacherID') ?? 0);
 
             return [$lrTeacher > 0 ? $lrTeacher : $rowTeacher, $contract];
         }
@@ -286,23 +317,49 @@ class SubstituteScheduleService
      * @param  int[]  $excludeScheduleIds
      * @return list<object>  id, start_time, end_time, branch_id, student_course_id, student_id, class_type
      */
-    public static function makeupOccurrencesTaughtBy(int $teacherId, string $ymd, array $excludeScheduleIds = [], ?int $excludeStudentId = null, ?int $branchId = null): array
+    public static function makeupOccurrencesTaughtBy(int $teacherId, string $ymd, array $excludeScheduleIds = [], ?int $excludeStudentId = null, ?int $branchId = null, bool $lock = false): array
     {
         if ($teacherId <= 0 || !self::anyCampusOn()) {
             return [];
         }
-        $q = DB::table('schedules as m')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
-            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->whereDate('m.schedule_date', $ymd)
-            ->where('m.status', 'scheduled')->where('m.type', 'extra')
-            ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId)) // own-teacher rows are already counted
-            ->whereRaw(self::campusOnSql('st.CampusID'))
-            ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
-                ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
-                ->whereColumn('cs.StudentClassID', 'm.student_course_id')
-                ->whereDate('cs.SessionDate', $ymd)
-                ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId));
+        if ($lock && (!$branchId || $branchId <= 0)) {
+            throw new \InvalidArgumentException('Current makeup occupancy requires a campus');
+        }
+        if ($lock && !\App\Helpers\FeatureFlag::enabled(RescheduleSessionService::OCCURRENCE_V2_FLAG, (int) $branchId)) return [];
+        // Each discovery read is CURRENT and covering: hold ownership/index keys,
+        // not unrelated clustered payload rows. Same PDO includes caller writes.
+        $lrIds = [];
+        if ($lock) {
+            $students = DB::table(DB::raw('Student FORCE INDEX (idx_student_campus_name)'))
+                ->where('CampusID', $branchId)->sharedLock()->pluck('id');
+            $courses = DB::table(DB::raw('StudentClass FORCE INDEX (idx_sc_student_id)'))
+                ->whereIn('StudentID', $students)->sharedLock()->pluck('ID');
+            $sessions = DB::table(DB::raw('ClassSession FORCE INDEX (cs_scid_sessiondate_idx)'))
+                ->whereIn('StudentClassID', $courses)->where('SessionDate', $ymd)->sharedLock()->pluck('id');
+            $lrIds = DB::table(DB::raw('LearningRecord FORCE INDEX (idx_lr_class_session_teacher)'))
+                ->whereIn('ClassSessionID', $sessions)->where('TeacherID', $teacherId)->sharedLock()->pluck('id')->all();
+        }
+        $q = $lock
+            ? DB::table(DB::raw('LearningRecord as current_lr FORCE INDEX (PRIMARY)'))->whereIn('current_lr.id', $lrIds)
+                ->join(DB::raw('ClassSession as current_cs FORCE INDEX (PRIMARY)'), 'current_cs.id', '=', 'current_lr.ClassSessionID')
+                ->join(DB::raw('StudentClass as sc FORCE INDEX (PRIMARY)'), 'sc.ID', '=', 'current_cs.StudentClassID')
+                ->join(DB::raw('Student as st FORCE INDEX (PRIMARY)'), 'st.id', '=', 'sc.StudentID')
+                ->join(DB::raw('schedules as m FORCE INDEX (idx_sched_course_date_time_status)'), 'm.student_course_id', '=', 'sc.ID')
+                ->where('st.CampusID', $branchId)->where('current_cs.SessionDate', $ymd)
+                ->where('current_lr.TeacherID', $teacherId)->whereNull('current_lr.VoidedAt')
+                ->where('m.schedule_date', $ymd)->distinct()
+            : DB::table('schedules as m')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->whereDate('m.schedule_date', $ymd)
+                ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
+                    ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
+                    ->whereColumn('cs.StudentClassID', 'm.student_course_id')
+                    ->whereDate('cs.SessionDate', $ymd)
+                    ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId));
+        $q->where('m.status', 'scheduled')->where('m.type', 'extra')
+            ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId))
+            ->whereRaw(self::campusOnSql('st.CampusID'));
         if ($excludeScheduleIds) {
             $q->whereNotIn('m.id', $excludeScheduleIds);
         }
@@ -312,13 +369,13 @@ class SubstituteScheduleService
         if ($branchId) {
             $q->where('m.branch_id', $branchId);
         }
-        $rows = $q->get(['m.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
+        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
             DB::raw('COALESCE(m.student_id, sc.StudentID) as student_id'), DB::raw("COALESCE(sc.ClassType, 'one_on_one') as class_type")]);
 
-        return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time) === $teacherId)->values()->all();
+        return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, $lock) === $teacherId)->values()->all();
     }
 
-    private static function legacySubstituteUserId(int $studentClassId, $sessionDate, ?string $startTime): ?int
+    private static function legacySubstituteUserId(int $studentClassId, $sessionDate, ?string $startTime, bool $lock = false): ?int
     {
         if ($studentClassId <= 0) {
             return null;
@@ -328,9 +385,9 @@ class SubstituteScheduleService
         } catch (\Throwable) {
             return null;
         }
-        $query = DB::table('schedules')
+        $query = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
             ->where('student_course_id', $studentClassId)
-            ->whereDate('schedule_date', $d)
+            ->when($lock, fn ($q) => $q->where('schedule_date', $d), fn ($q) => $q->whereDate('schedule_date', $d))
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id');
 
@@ -339,7 +396,7 @@ class SubstituteScheduleService
             $query->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$normalizedStart]);
         }
 
-        $tid = (int) ($query->orderByDesc('id')->value('teacher_id') ?? 0);
+        $tid = (int) ($query->orderByDesc('id')->when($lock, fn ($q) => $q->lockForUpdate())->value('teacher_id') ?? 0);
 
         return $tid > 0 ? $tid : null;
     }

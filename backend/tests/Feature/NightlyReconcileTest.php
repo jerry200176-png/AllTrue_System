@@ -339,6 +339,22 @@ class NightlyReconcileTest extends TestCase
         $this->assertSame(1, $this->readReport()['mismatch_count']);
     }
 
+    /** #4068: a held Cache lock must skip overlapping publish (scheduled + manual). */
+    public function test_overlapping_run_skips_when_lock_held(): void
+    {
+        $this->bootstrapCourse(4, 2);
+        $lock = \Illuminate\Support\Facades\Cache::lock('reconcile:nightly:dry-run', 30);
+        $this->assertTrue($lock->get());
+
+        try {
+            $this->artisan('reconcile:nightly', ['--dry-run' => true])
+                ->expectsOutput('Another reconcile:nightly is already running; skipping overlapping publish.')
+                ->assertExitCode(0);
+        } finally {
+            $lock->release();
+        }
+    }
+
     // ── Helpers ──
 
     /** Most tests run --dry-run, which writes its own preview file (#3945). */

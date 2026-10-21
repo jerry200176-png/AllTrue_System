@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-17-4155-contract-vs-bill-amounts
+    published_at: "2026-10-17"
+    audiences:
+      - director
+    importance: digest
+    title: 合約金額和帳單應收分開顯示
+    summary: 帳務合約卡會先寫合約金額，帳單列改標應收／已收／未收，避免和約定搞混。
+    items:
+      - category: improved
+        text: 合約卡新增「合約金額」；帳單改標「本合約帳單 應收／已收／未收」。
+      - category: improved
+        text: 開單金額與合約不同時仍並列說明，不會自動改已開帳單。
+    source_refs:
+      - "changelog:2026-10-17:4155-contract-card-amounts"

@@ -21,6 +21,13 @@
     "scp"
   ],
   "retired_workflows": {
+    "bug-phase-c-allowlist.yml": {
+      "retired_at": "2026-10-19",
+      "reason": "Runner→SSH→tinker engineering Phase-C resolves retired (ADR-POP-015 / ADR-POP-008). Autodispatch of new allowlist IDs fails closed.",
+      "evidence": ["PR #4289 merge 20f51a19966be14438cca98fd85ae42c4a9104ac", "Remote step throws legacy_ssh_phase_c_retired before BugReportService writes", "bug-phase-c-autodispatch.yml refuses newly allowlisted IDs"],
+      "replacement": "Currently runnable: bug-followup-comment.yml (preview→Founder approve→write; comment-only, does not change status). ADR-POP-015 names inapp-report-resolve-after-deploy for status→resolved, but that operation is NOT in operations/catalog.yaml or founder-standing-inapp-lifecycle yet (only inapp-report-reporter-timeout is). Do not treat the ADR name as an executable path until it is catalogued and standing-approved.",
+      "production_authority_removed": true
+    },
     "lu-yue-1513-unpaid-rollback.yml": {"retired_at": "2026-10-06", "reason": "One-off SC1513 / Invoice 1070 unpaid rollback (#1939) was retired as a closed case by Founder decision.", "evidence": ["Diagnose run 32439596805; manifest docs/incidents/lu-yue-1513-unpaid-rollback-manifest.md; CHANGELOG 2026-08-21.", "No execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None; git history keeps the workflow", "production_authority_removed": true},
     "ops-reconcile-transferred-session-ledger.yml": {"retired_at": "2026-10-06", "reason": "One-off transferred-session ledger reconcile workflow (#2108) was retired by Founder decision.", "evidence": ["Introduced in PR #2108; no execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None. The generic command repair:transferred-session-ledger and its #2833 guard test stay in code; any future use needs a new Founder-approved controlled operation.", "production_authority_removed": true},
     "ops-unattended-session-29212.yml": {"retired_at": "2026-10-06", "reason": "One-off ghost attendance session 29212 repair (#2152, issue #2151 closed) was retired by Founder decision.", "evidence": ["Introduced in PR #2152; issue #2151 closed; no execute run id was found.", "Founder decision 2026-10-06: retire; case treated as closed."], "replacement": "None; git history keeps the command/test", "production_authority_removed": true},
@@ -105,7 +112,19 @@
       "required": "Founder-gated case-specific activation",
       "future_state": "Keep explicit or migrate to Founder-approved controlled flag operation"
     },
-    "attendance-case-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Push/request and manual diagnose path reviewed; tinker query writes only local evidence."},
+    "agreed-fee-allowlist-activation.yml": {
+      "classification": "legacy-case-specific-mutation",
+      "production_mutation": "confirmed",
+      "trigger": "workflow_dispatch",
+      "production_command_or_path": "production-activation guard + production-ssh; upsert /home/admin/backend/.env AGREED_FEE_CORRECTION_CAMPUS_IDS and AGREED_FEE_CORRECTION_COURSE_IDS from repo secrets, then artisan optimize/opcache; never flips billing.agreed_fee_correction_enabled",
+      "authorization": "Founder-gated production-activation on guard, exact SET/CLEAR AGREED FEE ALLOWLIST confirmation, expected_head_sha match, secrets-only value transport (counts/fingerprint in logs)",
+      "concurrency": "agreed-fee-allowlist-activation; cancel-in-progress=false",
+      "rollback": "Backed-up .env restored on failure; explicit clear_allowlist path empties both keys",
+      "canonical": false,
+      "required": "Founder-gated Xinzhuang agreed-fee allowlist configuration surface",
+      "future_state": "Keep explicit until fee closeout; retire or migrate after cases closed and flag remains default-off"
+    },
+    "attendance-case-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Manual dispatch from main only (feature-branch push trigger removed 2026-10-15); tinker query writes only local evidence."},
     "backup-restore-test.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Pi SSH reads a backup and restores into an isolated restore-test database, not the application database."},
     "inapp-289-backup-candidate-read.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Case-specific workflow lists fixed pre-incident backup metadata, runs gzip integrity checks, and checks only dump table-definition signatures; it has no restore, database creation, SQL, or production-data write path."},
     "inapp-289-preincident-target-manifest.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Founder-scoped one-case workflow restores a verified pre-incident snapshot only into a unique temporary database, emits no names or unrelated records, requires exactly one digest match, and drops that temporary database on exit; it never connects to or writes the application database."},
@@ -117,8 +136,8 @@
       "production_mutation": "confirmed",
       "trigger": "workflow_dispatch",
       "production_command_or_path": "BugReportService::addComment via artisan tinker",
-      "authorization": "Manual workflow dispatch with issue/reply validation and pinned production SSH trust",
-      "concurrency": "No workflow-level lock found; append operation is idempotent by duplicate check",
+      "authorization": "Manual workflow dispatch; a secret-free preview job shows bug_id, issue URL, status/disposition, reply length and sha256 (never the reply text); Founder approval in the production-activation environment (required reviewer, no admin bypass, main-only branch policy verified) before the production-ssh write job; issue/reply validation and pinned production SSH trust",
+      "concurrency": "Workflow-level inapp-production-writeback lock shared with bug-phase-a-triage.yml; cancel-in-progress=false; queue: max; append operation is idempotent by duplicate check",
       "rollback": "No automatic rollback; append-only comment can be corrected by a subsequent lifecycle action",
       "canonical": true,
       "required": "Current bug follow-up SOP exception",
@@ -142,24 +161,17 @@
       "production_mutation": "confirmed",
       "trigger": "workflow_dispatch",
       "production_command_or_path": "BugReportService::changeStatus(new→triaged) and addComment",
-      "authorization": "Manual workflow dispatch with issue/reply validation and pinned production SSH trust",
-      "concurrency": "No workflow-level lock found; duplicate comment/status guards in application path",
+      "authorization": "Manual workflow dispatch; a secret-free preview job shows bug_id, issue URL, status/disposition, reply length and sha256 (never the reply text); Founder approval in the production-activation environment (required reviewer, no admin bypass, main-only branch policy verified) before the production-ssh write job; issue/reply validation and pinned production SSH trust",
+      "concurrency": "Workflow-level inapp-production-writeback lock shared with bug-followup-comment.yml; cancel-in-progress=false; queue: max; duplicate comment/status guards in application path",
       "rollback": "Manual status correction/comment correction; no automatic rollback",
       "canonical": true,
       "required": "Phase-A bug intake SOP",
       "future_state": "Retain as explicit lifecycle writeback unless Founder approves a replacement"
     },
     "bug-phase-c-allowlist.yml": {
-      "classification": "in-app-lifecycle-writeback",
-      "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch plus narrowly scoped push fallback",
-      "production_command_or_path": "BugReportService::changeStatus(resolved/triage) and addComment",
-      "authorization": "Exact allowlist, production revision check, and apply confirmation/issue label path",
-      "concurrency": "bug-phase-c-allowlist; cancel-in-progress=false",
-      "rollback": "Manual reopen/correction; no automatic rollback",
-      "canonical": true,
-      "required": "Current Phase-C bug lifecycle exception",
-      "future_state": "Retain until a Founder-approved controlled lifecycle path replaces the exception"
+      "classification": "archive-deprecated",
+      "production_mutation": "marker-only",
+      "evidence": "Write authority retired 2026-10-19 (ADR-POP-015 / #4289): remote tinker throws legacy_ssh_phase_c_retired before BugReportService::addComment/changeStatus. Allowlist map + request-file parser retained for control-plane contract tests only. Markers remain because the refuse path still SSHs to throw. Currently runnable replacement: bug-followup-comment.yml only. ADR-named inapp-report-resolve-after-deploy is not catalogued yet."
     },
     "bug-queue-dump.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Tinker queue query and artifact export reviewed; no writes."},
     "bug-reporter-timeout.yml": {
@@ -188,7 +200,7 @@
       "future_state": "Retain until production acceptance has a separately governed short-lived session issuer; product acceptance remains read-only"
     },
     "ci.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Artisan commands run against ephemeral CI services; SSH/Pi strings are comments or local contract text."},
-    "classsession-duplicate-diagnose-push.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Audit and repair commands are dry-run-only; tinker output is diagnostic."},
+    "classsession-duplicate-diagnose-push.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Manual dispatch from main only (feature-branch push trigger removed 2026-10-15); audit and repair commands are dry-run-only; tinker output is diagnostic."},
     "credential-fingerprint-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Fingerprint comparison is read-only and uploads evidence; cleanup targets runner temp files."},
     "db-password-fingerprint-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Credential fingerprint audit reads connection metadata only; cleanup targets runner temp files."},
     "deploy.yml": {
@@ -255,6 +267,7 @@
     "ops-unpaid-history-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Unpaid history tinker query is report-only."},
     "pi-health.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Health/evidence commands read status and scheduler evidence; cache comment is not an executed business-data mutation."},
     "pop-founder-scoped-repair.yml": {"classification":"pop-controlled","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"POP request/draft/approval/execute strategy through the Founder-scoped POP contract","authorization":"production-activation environment, Founder token, exact target SHA, approval and audit evidence","concurrency":"alltrue-production-side-effects-v2; cancel-in-progress=false","rollback":"POP recovery/rollback operation and persisted request audit","canonical":true,"required":"Canonical controlled production data operation","future_state":"Remain the canonical POP path"},
+    "pop-mount-reviewed-financial-once.yml": {"classification":"pop-controlled","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"mount: validated staged tuple, backup and atomic LIVE replace; probe-identity: app-serving FPM metadata only; probe-policy: fixed metadata and sudo -l/-ll queries after vhost/socket/pool/worker binding, no mount or business mutation","authorization":"production-activation environment and pinned SSH trust for all modes; mount additionally requires exact case approval and POP_MOUNT_REVIEWED_FINANCIAL_B64; probe-policy requires separate exact-head one-use approval, fixed deadline, same environment PI_SSH_KEY/PI_SSH_USER/PI_SSH_HOST (or PI_HOST), encrypted evidence via existing DUMP_ARTIFACT_KEY","concurrency":"alltrue-production-side-effects-v2; cancel-in-progress=false","rollback":"mount: preserve/restore prior LIVE per separately approved scope; probe-policy: no production changes to undo, runner key/plaintext cleanup, encrypted artifact retained one day","canonical":false,"required":"case-specific Founder mount adapter; separately approved bounded read-only identity/policy investigation","future_state":"Retire mount after case closeout and policy probe after its diagnostic authorization expires; no financial or sudo grant authority implied"},
     "pop-invoice1997-stale-values.yml": {"classification":"pop-controlled","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"POP draft/dry-run/approval for invoice1997-stale-values-20261008; execution by the Pi-local POP scheduler","authorization":"production-activation environment, exact confirmation phrase, deployed backend SHA gate, founder-go approval reference bound to that SHA","concurrency":"alltrue-production-side-effects-v2; cancel-in-progress=false","rollback":"Strategy rollback from the stored POP snapshot via a new Founder-approved POP request (see RM-INVOICE1997-STALE-VALUES-20261008)","canonical":false,"required":"case-specific POP adapter","future_state":"Retire after case closure"},
     "pop-past-scheduled-cancel.yml": {"classification":"pop-controlled","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"POP draft/dry-run/approval for cancel-past-scheduled-course2942-20261008; execution by the Pi-local POP scheduler","authorization":"production-activation environment, exact confirmation phrase, deployed backend SHA gate, founder-go approval reference bound to that SHA","concurrency":"alltrue-production-side-effects-v2; cancel-in-progress=false","rollback":"Strategy rollback from the stored POP snapshot via a new Founder-approved POP request (see RM-PAST-SCHEDULED-CANCEL-20261008)","canonical":false,"required":"case-specific POP adapter","future_state":"Retire after case closure"},
     "pop-unpaid-hidden-closures.yml": {"classification":"pop-controlled","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"POP draft/dry-run/approval for unpaid-hidden-closures-20261005; execution by the Pi-local POP scheduler","authorization":"production-activation environment, exact confirmation phrase, deployed backend SHA gate, founder-go approval reference bound to that SHA","concurrency":"alltrue-production-side-effects-v2; cancel-in-progress=false","rollback":"Strategy rollback from the stored POP snapshot via a new Founder-approved POP request (see RM-UNPAID-HIDDEN-CLOSURES-20261005)","canonical":false,"required":"case-specific POP adapter","future_state":"Retire after case closure"},

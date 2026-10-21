@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
 const source = readFileSync(pagePath, 'utf8');
+// #4150: the badge verdict (labels, tutoring gate) lives in the shared coursePaymentBadge.
+const moneyState = readFileSync(resolve(__dirname, '../../lib/courseMoneyState.js'), 'utf8');
 
 describe('CourseManagement student billing tab', () => {
   it('keeps course and billing tabs on the student card header', () => {
@@ -27,7 +29,8 @@ describe('CourseManagement student billing tab', () => {
   });
 
   it('labels payment status via the shared plain labels and deep-links billing mutations to tuition-collect', () => {
-    expect(source).toContain("return TUITION_STATUS_CONFIG[status === 'paid' || status === 'pending_report' || status === 'partial' ? status : 'unpaid'].label;");
+    // #4150: the label comes from the shared coursePaymentBadge (courseMoneyState.js), never a local 未繳 fallback.
+    expect(source).toContain('const paymentStatusButtonLabel = (course) => paymentBadge(course).label;');
     expect(source).toContain('在這裡看帳務');
     expect(source).toContain('登記繳費回報');
     expect(source).toContain('return `查看「${REPORT_STATUS_LABELS.pending}」`;');
@@ -76,14 +79,14 @@ describe('CourseManagement student billing tab', () => {
 
   it('uses course type as the tutoring payment gate and fails closed on anomalies', () => {
     expect(source).toContain("const isTutoringCourse = (course) => course?.class_type === 'tutoring';");
-    expect(source).toContain("if (isTutoringCourse(course)) return '無須繳費';");
-    expect(source).toContain("if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';");
+    expect(moneyState).toContain("if (course?.class_type === 'tutoring') {");
+    expect(moneyState).toContain("{ label: '帳務資料需修正', tone: 'anomaly', nextAction: 'none' }");
+    expect(moneyState).toContain("{ label: '無須繳費', tone: 'no_payment', nextAction: 'none' }");
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isTutoringCourse(course);');
     expect(source).toContain('v-if="showsBillingRowNextAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');
-    expect(source).toContain("return 'tag-no-payment';");
-    expect(source).toContain("return 'tag-billing-anomaly';");
+    expect(source).toContain("anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment'");
   });
 
   it('uses the persisted rate unit for edit round-trip and course lookup pricing', () => {
@@ -106,6 +109,6 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain(`r.status === 'confirmed')" class="hint">可開收據</span>`);
     expect(source).toContain('<span v-else class="hint">核對入帳後才能開收據</span>');
     expect(source).not.toContain('確認入帳後可開');
-    expect(source).toContain("if (course?.payment_status === 'review_required') return REVIEW_REQUIRED_LABEL;");
+    expect(moneyState).toContain("if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };");
   });
 });

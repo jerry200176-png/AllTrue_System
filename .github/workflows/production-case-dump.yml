@@ -35,6 +35,11 @@ on:
           - paid_status_shadow_log
           - paid_status_shadow_courses
           - inapp_333_multi_teacher_templates
+          - billing_correction_past_session_impact
+          - inapp_414_amount_source
+          - xinzhuang_fee_cases
+          - contract_4131_stale_teacher
+          - migration_4283_preconditions
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -66,8 +71,19 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
+    environment: production-ssh
     timeout-minutes: 12
     steps:
+      # Public repo: case output goes only into an artifact encrypted with DUMP_ARTIFACT_KEY, the same mechanism as
+      # bug-detail-dump.yml / bug-queue-dump.yml (decrypt locally per docs/sop/BUG_INTAKE_TO_PRODUCTION.md step 5).
+      - name: Require DUMP_ARTIFACT_KEY (fail closed, no plaintext fallback)
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "::error::secret DUMP_ARTIFACT_KEY is missing or shorter than 16 chars; refusing to dump (see docs/sop/BUG_INTAKE_TO_PRODUCTION.md)"
+            exit 1
+          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
@@ -89,6 +105,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
       - name: Run bounded read-only production probe
+        id: probe
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
@@ -97,16 +114,19 @@ jobs:
           TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
           EXPECTED_TEACHER_IDS: ${{ inputs.expected_teacher_ids }}
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
+          # inapp_414_amount_source only: the StudentClass ID comes from a production-ssh environment secret, never a
+          # dispatch input. Inputs are printed in this public log's env block; secrets are masked.
+          CASE_INPUT_STUDENT_CLASS_ID: ${{ secrets.CASE_INPUT_STUDENT_CLASS_ID }}
         run: |
           set -euo pipefail
-          mkdir -p out
+          mkdir -p -m 700 raw
           if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
             [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && -z "$EXPECTED_TEACHER_IDS" && "$TARGET_SUBJECT_NAME" == "數學" ]]
             PREFLIGHT_B64=$(base64 -w0 scripts/laravel-2833-preflight.php)
             REQUEST_B64=$(base64 -w0 operations/closeout/laravel-2833-preflight.request.json)
             ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-              "PREFLIGHT_B64='$PREFLIGHT_B64' REQUEST_B64='$REQUEST_B64' bash -s" <<'PREFLIGHT' | tee out/production-case.log
+              "PREFLIGHT_B64='$PREFLIGHT_B64' REQUEST_B64='$REQUEST_B64' bash -s" <<'PREFLIGHT' > raw/production-case.log 2> raw/production-case.stderr.log
           set -euo pipefail
           cd /home/admin/backend
           php -r 'eval(substr(base64_decode(getenv("PREFLIGHT_B64"), true), 5)); Laravel2833Preflight::run(json_decode(base64_decode(getenv("REQUEST_B64"), true), true, 512, JSON_THROW_ON_ERROR));'
@@ -116,7 +136,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -126,7 +146,27 @@ jobs:
           id_cases = {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
-          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'} or not target_student_class_id.isdigit()):
+          if case == 'migration_4283_preconditions' and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
+              raise SystemExit('migration precondition probe takes no target')
+          if case == 'xinzhuang_fee_cases':
+              if target_student_id or target_student_class_id not in {'4064', '3753', '3693'}:
+                  raise SystemExit('fee case requires one approved course reference and no student override')
+              if os.environ.get('EXPECTED_TEACHER_IDS') or os.environ.get('TARGET_SUBJECT_NAME', '數學') not in {'', '數學'}:
+                  raise SystemExit('fee case takes no teacher or subject override')
+          import base64
+          from pathlib import Path
+          fee_reader_b64 = base64.b64encode(Path('scripts/lib/fee-case-ledger.php').read_bytes()).decode('ascii') if case == 'xinzhuang_fee_cases' else ''
+          if case == 'inapp_414_amount_source':
+              # The ID is read only from the masked secret. Rejection cannot redact public dispatch metadata; never submit a live ID there.
+              if target_student_id or target_student_class_id:
+                  raise SystemExit('inapp_414_amount_source takes no student_id/student_class_id input; set the CASE_INPUT_STUDENT_CLASS_ID secret')
+              if os.environ.get('EXPECTED_TEACHER_IDS') or os.environ.get('TARGET_SUBJECT_NAME', '數學') not in {'', '數學'}:
+                  raise SystemExit('restricted amount-source case takes no teacher or subject override')
+              secret_class_id = (os.environ.get('CASE_INPUT_STUDENT_CLASS_ID') or '').strip()
+              if not secret_class_id.isascii() or not secret_class_id.isdigit() or len(secret_class_id) > 12 or int(secret_class_id) <= 0:
+                  raise SystemExit('inapp_414_amount_source requires the CASE_INPUT_STUDENT_CLASS_ID secret as a positive numeric ID')
+              target_student_class_id = secret_class_id
+          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'inapp_414_amount_source', 'xinzhuang_fee_cases'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
           teacher_ids = expected_teacher_ids.split(',') if expected_teacher_ids else []
@@ -1707,6 +1747,676 @@ jobs:
             ];
             $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
               'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
+          }} elseif ($case === 'billing_correction_past_session_impact') {{
+            // Read-only historical impact of the #4184 defect (#4136): before #4184 the count-mode billing-correction
+            // apply cancelled EVERY excess `scheduled` ClassSession, including past-dated ones the preview never listed.
+            // Founder-approved scope: IDs and aggregate counts only (no names, amounts, notes or reasons). Takes no student_id.
+            // No row records which sessions a correction cancelled, so nothing here is causal proof; tiers are inferences:
+            //   inferred_strong = schedule_audit_logs scheduled->cancelled row whose SNAPSHOT StudentClassID is the corrected
+            //     contract, same operator (HMAC actor_ref), created within [occurred_at-30s, +2s];
+            //   inferred_weak = same row in the wider [-120s, +2s] window or with an operator mismatch, or (no log row) a live
+            //     ClassSession still cancelled with updated_at in the tight window (timing only).
+            // Historical contract/date come from the audit snapshot (old_data/new_data); the live join is only for current status.
+            // The cancel itself voids live sign-ins/LearningRecords (ClassSessionObserver::updated ->
+            // CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance); those are reported as impact, by ID.
+            // SecurityAuditEvent::append is best-effort, so completeness is checked (append_failed log lines, unmatched cancels).
+            // Everything runs inside one READ ONLY transaction that is rolled back; any write would fail with SQLSTATE 25006.
+            $windowStart = '2026-08-22 00:00:00'; // count-mode billing correction shipped 2026-08-22 (GitHub #1901)
+            $cap = 500;
+            // Fix gate (#4184 not merged yet, so no SHA to test): the fix adds this method; its presence in the deployed code
+            // (tinker loads the production checkout) means the defect can no longer add new cases after this snapshot.
+            $fixInProduction = method_exists(\\App\\Services\\Scheduling\\ContractSessionSchedule::class, 'partitionExcessScheduledRows');
+            $voidReason = \\App\\Services\\CourseLeaveCascadeService::VOID_REASON_CANCELLED; // bound only, never output
+            $sqlCoverage = <<<'SQL'
+          SELECT COUNT(*) AS n, MIN(occurred_at) AS first_at, MAX(occurred_at) AS last_at
+          FROM security_audit_events
+          WHERE event_type = 'student_class.billing_contract_correction' AND outcome = 'success'
+          SQL;
+            $sqlCorrections = <<<'SQL'
+          SELECT e.id AS audit_id, e.occurred_at, e.subject_ref, e.actor_ref,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.reason_code')) AS reason_code,
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.old_session_count')) AS SIGNED) AS old_session_count,
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.new_session_count')) AS SIGNED) AS new_session_count
+          FROM security_audit_events e
+          WHERE e.event_type = 'student_class.billing_contract_correction' AND e.outcome = 'success'
+            AND e.occurred_at >= ?
+          ORDER BY e.id
+          SQL;
+            $sqlRefused = <<<'SQL'
+          SELECT JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.reason_code')) AS reason_code, COUNT(*) AS n
+          FROM security_audit_events
+          WHERE event_type = 'student_class.edit_blocked' AND occurred_at >= ?
+            AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.reason_code')) LIKE 'billing_correction%'
+          GROUP BY JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.reason_code'))
+          ORDER BY reason_code
+          SQL;
+            $sqlClassIds = 'SELECT ID AS id FROM StudentClass ORDER BY ID';
+            // Every scheduled->cancelled audit row in a time range, with the historical contract and date from the snapshot.
+            $sqlLogCancels = <<<'SQL'
+          SELECT l.id AS log_id, l.session_id, l.operator_id, l.created_at,
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(l.old_data, '$.StudentClassID')) AS UNSIGNED) AS snap_class_id,
+            SUBSTRING(JSON_UNQUOTE(JSON_EXTRACT(l.new_data, '$.SessionDate')), 1, 10) AS snap_session_date,
+            cs.Status AS current_status
+          FROM schedule_audit_logs l
+          LEFT JOIN ClassSession cs ON cs.id = l.session_id
+          WHERE l.created_at BETWEEN ? AND ?
+            AND l.new_data LIKE '%cancelled%'
+            AND JSON_UNQUOTE(JSON_EXTRACT(l.old_data, '$.Status')) = 'scheduled'
+            AND JSON_UNQUOTE(JSON_EXTRACT(l.new_data, '$.Status')) = 'cancelled'
+          ORDER BY l.id
+          SQL;
+            $sqlTimingOnly = <<<'SQL'
+          SELECT cs.id AS session_id, DATE_FORMAT(cs.SessionDate, '%Y-%m-%d') AS session_date, cs.Status AS current_status
+          FROM ClassSession cs
+          WHERE cs.StudentClassID = ? AND cs.Status = 'cancelled' AND cs.SessionDate < ?
+            AND cs.updated_at BETWEEN ? AND ?
+          ORDER BY cs.id
+          SQL;
+            $sqlSignIns = 'SELECT DISTINCT ClassSessionID AS session_id FROM StudentSingIn WHERE VoidedAt IS NULL AND ClassSessionID IN (%s)';
+            $sqlLedger = "SELECT class_session_id AS session_id FROM session_deduction_ledger WHERE class_session_id IN (%s) GROUP BY class_session_id HAVING SUM(CASE WHEN event_type = 'deduct' THEN 1 WHEN event_type = 'reverse' THEN -1 ELSE 0 END) > 0";
+            $sqlVoidedSignIns = 'SELECT id, ClassSessionID AS session_id, VoidedAt AS voided_at FROM StudentSingIn WHERE VoidedAt IS NOT NULL AND VoidReason = ? AND ClassSessionID IN (%s)';
+            $sqlVoidedRecords = 'SELECT id, ClassSessionID AS session_id, VoidedAt AS voided_at FROM LearningRecord WHERE VoidedAt IS NOT NULL AND VoidReason = ? AND ClassSessionID IN (%s)';
+            $fmt = fn ($c) => $c->format('Y-m-d H:i:s');
+            $tz = 'Asia/Taipei';
+            // SET TRANSACTION applies to the next transaction only (on the write PDO, which beginTransaction uses).
+            $db::select('SET TRANSACTION READ ONLY', [], false);
+            $db::beginTransaction();
+            try {{
+              $coverage = $db::selectOne($sqlCoverage);
+              $events = $db::select($sqlCorrections, [$windowStart]);
+              $refused = $db::select($sqlRefused, [$windowStart]);
+              $refs = [];
+              foreach ($events as $e) {{ $refs[(string) $e->subject_ref] = null; }}
+              if ($refs !== []) {{
+                foreach ($db::select($sqlClassIds) as $r) {{
+                  $ref = \\App\\Models\\SecurityAuditEvent::ref('student_class', (int) $r->id);
+                  if (array_key_exists($ref, $refs)) {{ $refs[$ref] = (int) $r->id; }}
+                }}
+              }}
+              $corrections = []; $sessions = []; $seen = []; $matchedLogIds = []; $unresolved = []; $dateMode = 0; $futureCancelled = 0;
+              foreach ($events as $e) {{
+                if ((string) $e->reason_code === 'date_mode_transfer_billing_reconciliation') {{ $dateMode++; continue; }} // date mode cancels nothing
+                $classId = $refs[(string) $e->subject_ref] ?? null;
+                if ($classId === null) {{ $unresolved[] = (int) $e->audit_id; continue; }}
+                $at = \\Carbon\\Carbon::parse((string) $e->occurred_at, $tz);
+                $applyDate = $at->toDateString(); // Asia/Taipei date at apply (app timezone)
+                $tightLo = $at->copy()->subSeconds(30); $hi = $at->copy()->addSeconds(2); $wideLo = $at->copy()->subSeconds(120);
+                $corrections[] = ['audit_id' => (int) $e->audit_id, 'student_class_id' => $classId, 'applied_at' => $fmt($at),
+                  'apply_date_taipei' => $applyDate, 'old_session_count' => (int) $e->old_session_count, 'new_session_count' => (int) $e->new_session_count];
+                $logged = [];
+                foreach ($db::select($sqlLogCancels, [$fmt($wideLo), $fmt($hi)]) as $l) {{
+                  if ((int) $l->snap_class_id !== $classId) {{ continue; }}
+                  $sid = (int) $l->session_id; $logged[$sid] = true; $matchedLogIds[(int) $l->log_id] = true;
+                  if ((string) $l->snap_session_date >= $applyDate) {{ $futureCancelled++; continue; }}
+                  $operatorMatch = $e->actor_ref !== null && $l->operator_id !== null
+                    && hash_equals((string) $e->actor_ref, (string) \\App\\Models\\SecurityAuditEvent::ref('user', (int) $l->operator_id));
+                  $cancelAt = \\Carbon\\Carbon::parse((string) $l->created_at, $tz);
+                  $tight = $cancelAt->gte($tightLo);
+                  if (isset($seen[$sid])) {{ continue; }}
+                  $seen[$sid] = true;
+                  $sessions[] = ['audit_id' => (int) $e->audit_id, 'student_class_id' => $classId, 'class_session_id' => $sid,
+                    'session_date' => (string) $l->snap_session_date, 'current_status' => $l->current_status === null ? 'row_missing' : (string) $l->current_status,
+                    'schedule_audit_log_id' => (int) $l->log_id, 'cancel_at' => $cancelAt,
+                    'tier' => ($operatorMatch && $tight) ? 'inferred_strong' : 'inferred_weak',
+                    'basis' => ($operatorMatch && $tight) ? 'audit_log_same_operator_tight_window' : ($operatorMatch ? 'audit_log_wide_window' : 'audit_log_operator_mismatch')];
+                }}
+                foreach ($db::select($sqlTimingOnly, [$classId, $applyDate, $fmt($tightLo), $fmt($hi)]) as $s) {{
+                  $sid = (int) $s->session_id;
+                  if (isset($logged[$sid]) || isset($seen[$sid])) {{ continue; }}
+                  $seen[$sid] = true;
+                  $sessions[] = ['audit_id' => (int) $e->audit_id, 'student_class_id' => $classId, 'class_session_id' => $sid,
+                    'session_date' => (string) $s->session_date, 'current_status' => (string) $s->current_status,
+                    'schedule_audit_log_id' => null, 'cancel_at' => $at,
+                    'tier' => 'inferred_weak', 'basis' => 'updated_at_tight_window_no_audit_log'];
+                }}
+              }}
+              // Artifacts the erroneous cancel itself voided (same reason constant, VoidedAt within [cancel_at-30s, +2s]).
+              $ids = array_map(fn ($s) => $s['class_session_id'], $sessions);
+              $signed = []; $deducted = []; $voidedSignIns = []; $voidedRecords = [];
+              foreach (array_chunk($ids, 500) as $chunk) {{
+                $in = implode(',', array_map('intval', $chunk));
+                foreach ($db::select(sprintf($sqlSignIns, $in)) as $r) {{ $signed[(int) $r->session_id] = true; }}
+                foreach ($db::select(sprintf($sqlLedger, $in)) as $r) {{ $deducted[(int) $r->session_id] = true; }}
+                foreach ($db::select(sprintf($sqlVoidedSignIns, $in), [$voidReason]) as $r) {{ $voidedSignIns[(int) $r->session_id][] = $r; }}
+                foreach ($db::select(sprintf($sqlVoidedRecords, $in), [$voidReason]) as $r) {{ $voidedRecords[(int) $r->session_id][] = $r; }}
+              }}
+              $inCancelWindow = function (array $rows, $cancelAt) use ($tz) {{
+                $out = [];
+                foreach ($rows as $r) {{
+                  $v = \\Carbon\\Carbon::parse((string) $r->voided_at, $tz);
+                  if ($v->gte($cancelAt->copy()->subSeconds(30)) && !$v->gt($cancelAt->copy()->addSeconds(2))) {{ $out[] = (int) $r->id; }}
+                }}
+                return $out;
+              }};
+              $kept = []; $excluded = ['live_sign_in' => 0, 'positive_ledger_net' => 0];
+              $restored = ['inferred_strong' => 0, 'inferred_weak' => 0];
+              $voidedTotals = ['sessions_with_voided_artifacts' => 0, 'sign_ins' => 0, 'learning_records' => 0];
+              foreach ($sessions as $s) {{
+                $sid = $s['class_session_id'];
+                if (isset($signed[$sid])) {{ $excluded['live_sign_in']++; continue; }}
+                if (isset($deducted[$sid])) {{ $excluded['positive_ledger_net']++; continue; }}
+                $s['voided_sign_in_ids'] = $inCancelWindow($voidedSignIns[$sid] ?? [], $s['cancel_at']);
+                $s['voided_learning_record_ids'] = $inCancelWindow($voidedRecords[$sid] ?? [], $s['cancel_at']);
+                unset($s['cancel_at']);
+                if ($s['current_status'] !== 'cancelled') {{ $restored[$s['tier']]++; continue; }} // changed since; not still impacted
+                if ($s['voided_sign_in_ids'] !== [] || $s['voided_learning_record_ids'] !== []) {{
+                  $voidedTotals['sessions_with_voided_artifacts']++;
+                  $voidedTotals['sign_ins'] += count($s['voided_sign_in_ids']);
+                  $voidedTotals['learning_records'] += count($s['voided_learning_record_ids']);
+                }}
+                $kept[] = $s;
+              }}
+              $strong = array_values(array_filter($kept, fn ($s) => $s['tier'] === 'inferred_strong'));
+              $weak = array_values(array_filter($kept, fn ($s) => $s['tier'] === 'inferred_weak'));
+              $affected = array_values(array_unique(array_map(fn ($s) => $s['student_class_id'], $kept)));
+              sort($affected);
+              // Completeness: past-dated scheduled->cancelled audit rows in the window that no correction event explains.
+              // Other paths cancel past sessions too, so these are not defect cases; they only matter if an event is missing.
+              $unmatched = [];
+              foreach ($db::select($sqlLogCancels, [$windowStart, $fmt(now())]) as $l) {{
+                if (isset($matchedLogIds[(int) $l->log_id])) {{ continue; }}
+                if ((string) $l->snap_session_date >= substr((string) $l->created_at, 0, 10)) {{ continue; }}
+                $unmatched[] = ['schedule_audit_log_id' => (int) $l->log_id, 'class_session_id' => (int) $l->session_id,
+                  'student_class_id' => (int) $l->snap_class_id, 'session_date' => (string) $l->snap_session_date];
+              }}
+            }} finally {{
+              $db::rollBack();
+            }}
+            // Best-effort audit failures are logged as `security_audit.append_failed` (Laravel daily logs, 14/30-day retention).
+            // A day counts as covered only when one of its files was read to EOF; an open/read failure is recorded
+            // (date + count only) and never counts as coverage.
+            $failedLines = 0; $logDays = []; $unreadableDays = [];
+            foreach (glob(storage_path('logs/laravel*.log')) ?: [] as $f) {{
+              if (!preg_match('/(\\d{{4}}-\\d{{2}}-\\d{{2}})\\.log$/', $f, $m) || $m[1] < substr($windowStart, 0, 10)) {{ continue; }}
+              // feof() is also true after a failed read, so require every byte present at open time to have been read.
+              $size = is_file($f) ? @filesize($f) : false;
+              $h = $size === false ? false : @fopen($f, 'r');
+              $readOk = $h !== false; $bytes = 0;
+              while ($readOk && ($line = @fgets($h)) !== false) {{
+                $bytes += strlen($line);
+                if (str_contains($line, 'security_audit.append_failed')) {{ $failedLines++; }}
+              }}
+              if ($readOk) {{ fclose($h); $readOk = $bytes >= $size; }}
+              if ($readOk) {{ $logDays[$m[1]] = true; }} else {{ $unreadableDays[$m[1]] = ($unreadableDays[$m[1]] ?? 0) + 1; }}
+            }}
+            ksort($unreadableDays);
+            $unreadableFiles = array_sum($unreadableDays);
+            $missingDays = 0;
+            for ($d = \\Carbon\\Carbon::parse($windowStart, $tz)->startOfDay(); $d->lte(now()->startOfDay()); $d->addDay()) {{
+              if (!isset($logDays[$d->toDateString()])) {{ $missingDays++; }}
+            }}
+            $logsCoverWindow = $missingDays === 0;
+            // Established only when no correction event can be missing: either no unexplained past cancel exists at all,
+            // or the logs cover every day of the window and record no append failure.
+            // Never established while a correction event could not be tied to its contract (APP_KEY rotated or StudentClass
+            // missing) or a retained log file could not be read.
+            $completeness = ($unresolved === [] && $unreadableFiles === 0
+              && ($unmatched === [] || ($logsCoverWindow && $failedLines === 0))) ? 'established' : 'inconclusive';
+            $reasons = [];
+            if (!$fixInProduction) {{ $reasons[] = 'fix_not_deployed'; }}
+            if ($unresolved !== []) {{ $reasons[] = 'unresolved_audit_subjects'; }}
+            if ($unreadableFiles > 0) {{ $reasons[] = 'log_file_unreadable'; }}
+            if ($completeness !== 'established') {{ $reasons[] = 'completeness_inconclusive'; }}
+            $out['read_only_transaction'] = true;
+            $out['fix_in_production'] = $fixInProduction;
+            $out['fix_marker'] = 'ContractSessionSchedule::partitionExcessScheduledRows';
+            $out['snapshot_complete'] = $reasons === [];
+            $out['reason'] = $reasons === [] ? null : implode(',', $reasons);
+            $out['completeness'] = $completeness;
+            $out['completeness_evidence'] = [
+              'unmatched_past_cancel_audit_rows' => count($unmatched),
+              'unmatched_distinct_contracts' => count(array_unique(array_map(fn ($u) => $u['student_class_id'], $unmatched))),
+              'append_failed_log_lines' => $failedLines,
+              'log_days_present' => count($logDays),
+              'log_days_missing_in_window' => $missingDays,
+              'unresolved_audit_subject_events' => count($unresolved),
+              'unreadable_log_files' => $unreadableFiles,
+              'unreadable_log_file_days' => array_map(fn ($d, $n) => ['date' => $d, 'files' => $n], array_keys($unreadableDays), array_values($unreadableDays)),
+            ];
+            $out['window_start_taipei'] = $windowStart;
+            $out['coverage_all_time'] = ['success_events' => (int) $coverage->n, 'first_at' => $coverage->first_at, 'last_at' => $coverage->last_at];
+            $out['counts'] = [
+              'success_events_in_window' => count($events),
+              'date_mode_events_skipped' => $dateMode,
+              'unresolved_subject_ref_events' => count($unresolved),
+              'count_mode_corrections' => count($corrections),
+              'affected_contracts' => count($affected),
+              'inferred_strong_past_sessions_still_cancelled' => count($strong),
+              'inferred_weak_past_sessions_still_cancelled' => count($weak),
+              'past_sessions_status_changed_since' => $restored,
+              'voided_by_cancel' => $voidedTotals,
+              'excluded' => $excluded,
+              'today_or_later_cancellations_intended' => $futureCancelled,
+            ];
+            $out['refused_by_reason_code'] = array_map(fn ($r) => ['reason_code' => (string) $r->reason_code, 'n' => (int) $r->n], $refused);
+            $out['unresolved_audit_ids'] = array_slice($unresolved, 0, $cap);
+            $out['corrections'] = array_slice($corrections, 0, $cap);
+            $out['affected_student_class_ids'] = array_slice($affected, 0, $cap);
+            $out['inferred_strong_sessions'] = array_slice($strong, 0, $cap);
+            $out['inferred_weak_sessions'] = array_slice($weak, 0, $cap);
+            $out['unmatched_past_cancels'] = array_slice($unmatched, 0, $cap);
+            $out['truncated'] = max(count($corrections), count($affected), count($strong), count($weak), count($unresolved), count($unmatched)) > $cap;
+          }} elseif ($case === 'xinzhuang_fee_cases') {{
+            if (!in_array($targetStudentClassId, [4064, 3753, 3693], true)) {{ throw new \RuntimeException('unsupported_fee_case'); }}
+            eval(substr(base64_decode('{fee_reader_b64}', true), 5));
+            $out = array_merge($out, alltrue_fee_case_ledger(app('db')->connection(), $targetStudentClassId, 11, '新莊分校', $targetStudentClassId === 3753));
+          }} elseif ($case === 'migration_4283_preconditions') {{
+            // 新店 release gate for #4283 (2026_10_19_090000_extend_invoice_corrections_for_agreed_fee):
+            // schema shape, aggregate counts and which recent migrations are still pending.
+            // Counts and fixed tokens only; never row values. All reads, no writes.
+            if ($targetStudentId || $targetStudentClassId) {{ throw new \RuntimeException('no_target_allowed'); }}
+            $db = app('db')->connection();
+            // Same database migrate --force will alter: never a lagging read replica.
+            $db->useWriteConnectionWhenReading();
+            $iso = (function () use ($db) {{
+              try {{ return (string) $db->selectOne('SELECT @@transaction_isolation AS l')->l; }}
+              catch (\Throwable $e) {{ return (string) $db->selectOne('SELECT @@tx_isolation AS l')->l; }}
+            }})();
+            $t = [];
+            $hasTable = \Illuminate\Support\Facades\Schema::hasTable('invoice_corrections');
+            $t[] = 'table_' . ($hasTable ? 'yes' : 'no');
+            if ($hasTable) {{
+              $cols = collect($db->select('SHOW COLUMNS FROM invoice_corrections'))->keyBy('Field');
+              // Every base column AgreedFeeCorrection::run() inserts, plus the auto-increment id insertGetId() needs.
+              $base = ['id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'student_class_id',
+                'reason', 'idempotency_key', 'operator_user_id', 'created_at'];
+              $t[] = 'base_' . (collect($base)->every(fn ($c) => $cols->has($c)) ? 'ok' : 'missing');
+              $t[] = 'idauto_' . ($cols->has('id') && str_contains(strtolower((string) $cols->get('id')->Extra), 'auto_increment') ? 'yes' : 'no');
+              $keyCols = $cols->has('student_class_id') && $cols->has('idempotency_key');
+              // Columns AgreedFeeCorrection::available() needs; a ledger row for m1019 does not prove they exist.
+              $ext = ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'];
+              $t[] = 'ext_' . count(array_filter($ext, fn ($c) => $cols->has($c))) . 'of' . count($ext);
+              // Mirrors the migration: an existing kind must be varchar(32); if it is nullable or has another
+              // default the migration ALTERs it and aborts when NULL rows exist.
+              $kind = $cols->get('kind');
+              if (!$kind) {{
+                $t[] = 'kind_absent';
+              }} elseif (strtolower($kind->Type) !== 'varchar(32)') {{
+                $t[] = 'kind_unexpected';
+              }} else {{
+                $t[] = ($kind->Null === 'NO' && $kind->Default === 'receipt_reissue') ? 'kind_ok' : 'kind_needs_alter';
+                $t[] = 'kindnull_' . (int) $db->table('invoice_corrections')->whereNull('kind')->count();
+              }}
+              $t[] = 'rows_' . (int) $db->table('invoice_corrections')->count();
+              $t[] = 'dupkeys_' . (!$keyCols ? 'unavailable' : (int) $db->selectOne('SELECT COUNT(*) AS n FROM (SELECT student_class_id, idempotency_key FROM invoice_corrections WHERE idempotency_key IS NOT NULL GROUP BY student_class_id, idempotency_key HAVING COUNT(*) > 1) d')->n);
+              // The migration skips creation when the name exists, so check what that index actually is.
+              $uq = collect($db->select('SHOW INDEX FROM invoice_corrections'))->where('Key_name', 'uq_invoice_corrections_course_key')->sortBy('Seq_in_index')->values();
+              $t[] = 'uq_' . ($uq->isEmpty() ? 'no'
+                : (($uq->every(fn ($r) => (int) $r->Non_unique === 0 && $r->Sub_part === null)
+                    && $uq->pluck('Column_name')->all() === ['student_class_id', 'idempotency_key']) ? 'yes' : 'wrong_definition'));
+              // MySQL lets a unique index repeat keys that contain NULL.
+              $t[] = 'keycols_' . (collect(['student_class_id', 'idempotency_key'])->every(fn ($c) => $cols->has($c) && $cols->get($c)->Null === 'NO') ? 'not_null' : 'nullable');
+            }}
+            $recent = ['2026_10_15_120000_create_invoice_corrections_table' => 'm1015', '2026_10_17_120000_create_exam_round_tables' => 'm1017',
+              '2026_10_18_120000_add_schedules_teacher_day_index' => 'm1018', '2026_10_19_090000_extend_invoice_corrections_for_agreed_fee' => 'm1019'];
+            $ran = $db->table('migrations')->whereIn('migration', array_keys($recent))->pluck('migration')->all();
+            $pending = array_values(array_diff_key($recent, array_flip($ran)));
+            $t[] = 'pending_' . ($pending === [] ? 'none' : implode('_', $pending));
+            $t[] = 'iso_' . strtolower(str_replace('-', '_', $iso));
+            $out['ok'] = true;
+            $out['snapshot_complete'] = true;
+            $out['completeness'] = implode(',', $t);
+          }} elseif ($case === 'inapp_414_amount_source') {{
+            // in-app #414 (#4155): trace the stored amount behind the displayed course payable.
+            // Founder option A (#4136 comment 6216671699): one StudentClass ID, bound to campus 11 (Student.CampusID).
+            // Output is IDs, amounts, dates, statuses and enums only. Never names, phones, Memo, Note, Description,
+            // reasons, source references, receipt URLs, account digits or JSON blobs (billing_snapshot, pricing_snapshot).
+            // Schema notes (verified against backend/ migrations): StudentClass has no created_at (MDate instead);
+            // Invoice has no voided_at (void = Status 'void'; updated_at shown) and no outstanding column (computed);
+            // InvoiceItem has no qty/unit_price; Payment has no is_void (computed exactly as Invoice::netPaidSql).
+            // Everything runs inside one READ ONLY transaction that is rolled back; any write fails with SQLSTATE 25006.
+            $requiredCampusId = 11;
+            $cap = 200;
+            $conn = app('db')->connection();
+            $sqlContract = <<<'SQL'
+          SELECT sc.ID AS class_id, sc.StudentID AS student_id, s.CampusID AS campus_id, sc.Rate AS rate,
+            sc.rate_unit, sc.SessionCount AS session_count, sc.TotalHours AS total_hours, sc.Charge AS charge,
+            sc.Paid AS paid, sc.Pay AS pay, sc.PayDate AS pay_date, sc.Disconunt AS discount, sc.Stop AS stop,
+            sc.closed_reason, sc.ScheduleMode AS schedule_mode, sc.ClassType AS class_type, sc.PackageID AS package_id,
+            sc.standard_lesson_minutes, sc.deduction_basis, sc.MDate AS mdate, sc.StartDate AS start_date, sc.EndDate AS end_date
+          FROM StudentClass sc
+          JOIN Student s ON s.id = sc.StudentID
+          WHERE sc.ID = ?
+          SQL;
+            $sqlInvoices = <<<'SQL'
+          SELECT i.id AS invoice_id, i.StudentID AS student_id, i.StudentClassID AS student_class_id, i.Status AS status,
+            i.TotalAmount AS total_amount, i.PaidAmount AS paid_amount_stored, i.billing_period,
+            i.zero_amount_reason, i.ScheduleModeAtIssue AS schedule_mode_at_issue, i.IssueDate AS issue_date,
+            i.DueDate AS due_date, i.created_at, i.updated_at, i.reconciled_at
+          FROM Invoice i
+          WHERE i.StudentClassID = ? OR i.id IN (SELECT ii.InvoiceID FROM InvoiceItem ii WHERE ii.StudentClassID = ?)
+          ORDER BY i.id
+          SQL;
+            // Bills of the same student tied to no contract at all (legacy); shown by ID only, they may be the source.
+            $sqlUnlinked = <<<'SQL'
+          SELECT i.id AS invoice_id, i.Status AS status, i.TotalAmount AS total_amount, i.IssueDate AS issue_date, i.created_at
+          FROM Invoice i
+          WHERE i.StudentID = ? AND i.StudentClassID IS NULL
+            AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.StudentClassID IS NOT NULL)
+          ORDER BY i.id
+          SQL;
+            $sqlLines = 'SELECT id AS line_id, InvoiceID AS invoice_id, StudentClassID AS student_class_id, Amount AS amount, PeriodStart AS period_start, PeriodEnd AS period_end, created_at FROM InvoiceItem WHERE InvoiceID IN (%s) ORDER BY id';
+            $sqlPayments = 'SELECT id AS payment_id, InvoiceID AS invoice_id, Amount AS amount, Method AS method, payment_report_id AS report_id, PaidAt AS paid_at, created_at FROM Payment WHERE InvoiceID IN (%s) ORDER BY id';
+            $sqlReports = 'SELECT id AS report_id, StudentClassID AS student_class_id, InvoiceID AS invoice_id, reported_amount, payment_method, status, payment_date, payment_id, confirmed_at, voided_at, created_at FROM payment_reports WHERE StudentClassID = ? ORDER BY id';
+            $sqlAmendments = 'SELECT id AS amendment_id, effective_from, rate, rate_unit, created_at, voided_at FROM student_class_pricing_amendments WHERE student_class_id = ? ORDER BY effective_from, id';
+            $sqlAudit = <<<'SQL'
+          SELECT e.id AS audit_id, e.occurred_at, e.event_type, e.outcome, e.subject_ref, e.actor_ref,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.reason_code')) AS reason_code,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.old_charge')) AS old_charge,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.new_charge')) AS new_charge,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.old_session_count')) AS old_session_count,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.new_session_count')) AS new_session_count,
+            JSON_UNQUOTE(JSON_EXTRACT(e.metadata, '$.outstanding_amount')) AS outstanding_amount
+          FROM security_audit_events e
+          WHERE e.subject_ref IN (%s)
+          ORDER BY e.id
+          SQL;
+            $billingEvent = fn (string $t) => (bool) preg_match('/billing|accounting|invoice|payment|charge|contract|pop\\.|repair\\./', $t);
+            $num = fn ($v) => is_numeric($v) ? $v + 0 : null;
+            // The target ID came from a masked secret; the artifact is not masked, so it never carries that ID (or the
+            // student ID). Other contracts' IDs stay numeric.
+            $idOut = fn ($v) => $v === null ? null : ((int) $v === $targetStudentClassId ? 'target' : (int) $v);
+            $reasons = [];
+            // Case-local admission: never compute from a truncated ledger or session set.
+            $readComplete = static function (string $sql, array $bindings = []) use ($conn, $cap) {{
+              $rows = $conn->select($sql.' LIMIT '.($cap + 1), $bindings);
+              if (count($rows) > $cap) {{ throw new \LengthException('input_row_budget_exceeded'); }}
+              return $rows;
+            }};
+            $deadlineReady = false;
+            try {{
+              // SESSION only; unsupported engines/settings fail before target reads. No global configuration changes.
+              $conn->useWriteConnectionWhenReading();
+              $version = (string) $conn->getPdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
+              if (stripos($version, 'MariaDB') !== false) {{
+                $conn->select('SET SESSION max_statement_time = 2', [], false);
+                if ((float) $conn->selectOne('SELECT @@SESSION.max_statement_time AS budget')->budget !== 2.0) {{
+                  throw new \RuntimeException('deadline_unavailable');
+                }}
+              }} elseif (preg_match('/^(8\.|9\.|5\.7\.)/', $version)) {{
+                $conn->select('SET SESSION max_execution_time = 2000', [], false);
+                if ((int) $conn->selectOne('SELECT @@SESSION.max_execution_time AS budget')->budget !== 2000) {{
+                  throw new \RuntimeException('deadline_unavailable');
+                }}
+              }} else {{ throw new \RuntimeException('deadline_unavailable'); }}
+              $deadlineReady = true;
+              // The canonical resolver uses get(), never aggregates, for ClassSession. Limit N+1 and reject
+              // during hydration BEFORE get() returns, including its empty-billable zero-evidence query.
+              $sessionRows = 0;
+              \App\Models\ClassSession::addGlobalScope('diagnostic_row_budget', static function ($q) use (&$sessionRows) {{ $q->limit(2001 - $sessionRows); }});
+              \App\Models\ClassSession::retrieved(static function ($row) use (&$sessionRows) {{
+                if (++$sessionRows > 2000) {{ throw new \LengthException('input_row_budget_exceeded'); }}
+              }});
+            $conn->select('SET TRANSACTION READ ONLY', [], false);
+            $conn->beginTransaction();
+            try {{
+              $c = $conn->selectOne($sqlContract, [$targetStudentClassId]);
+              if ($c === null) {{ throw new \\RuntimeException('inapp_414: student_class not found'); }}
+              if ((int) $c->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('inapp_414: student_class is outside campus 11'); }}
+              $invoices = $readComplete($sqlInvoices, [$targetStudentClassId, $targetStudentClassId]);
+              $unlinked = $readComplete($sqlUnlinked, [(int) $c->student_id]);
+              $invoiceIds = array_map(fn ($r) => (int) $r->invoice_id, $invoices);
+              $in = implode(',', array_map('intval', $invoiceIds));
+              $lines = $invoiceIds === [] ? [] : $readComplete(sprintf($sqlLines, $in));
+              $payments = $invoiceIds === [] ? [] : $readComplete(sprintf($sqlPayments, $in));
+              $reports = $readComplete($sqlReports, [$targetStudentClassId]);
+              $amendments = $readComplete($sqlAmendments, [$targetStudentClassId]);
+              $refKinds = [\\App\\Models\\SecurityAuditEvent::ref('student_class', $targetStudentClassId) => ['student_class', $targetStudentClassId]];
+              foreach ($invoiceIds as $iid) {{ $refKinds[\\App\\Models\\SecurityAuditEvent::ref('invoice', $iid)] = ['invoice', $iid]; }}
+              $placeholders = implode(',', array_fill(0, count($refKinds), '?'));
+              $events = $readComplete(sprintf($sqlAudit, $placeholders), array_keys($refKinds));
+              // Project display amounts using the production resolver; never serialize models or session rows.
+              $hydrate = static function (string $type, array $attributes) use ($conn) {{
+                $model = new $type();
+                $model->setConnection($conn->getName());
+                $model->setRawAttributes($attributes);
+                return $model;
+              }};
+              $displayCourse = $hydrate(\\App\\Models\\StudentClass::class, [
+                'ID' => $targetStudentClassId, 'ScheduleMode' => $c->schedule_mode,
+                'StartDate' => $c->start_date, 'EndDate' => $c->end_date,
+                'Rate' => $c->rate, 'rate_unit' => $c->rate_unit, 'Charge' => $c->charge, 'PackageID' => $c->package_id,
+              ]);
+              $displayCourse->setRelation('pricingAmendments', new \\Illuminate\\Database\\Eloquent\\Collection(array_map(
+                fn ($a) => $hydrate(\\App\\Models\\StudentClassPricingAmendment::class, [
+                  'id' => $a->amendment_id, 'effective_from' => $a->effective_from, 'rate' => $a->rate,
+                  'rate_unit' => $a->rate_unit, 'voided_at' => $a->voided_at,
+                ]), $amendments)));
+              $displayResolver = app(\\App\\Services\\InvoiceAmountReconciliationService::class);
+              $displayKeys = array_fill_keys(['total_amount', 'computed_total_amount', 'outstanding_amount',
+                'amount_source', 'period_sessions', 'amount_discrepancy', 'repriceable'], true);
+              $displayProjections = [];
+              foreach (array_slice($invoices, 0, $cap) as $i) {{
+                $iid = (int) $i->invoice_id;
+                // StudentClassController::invoices only displays non-void top-level target invoices.
+                if ((int) $i->student_class_id !== $targetStudentClassId || (string) $i->status === 'void') {{
+                  $displayProjections[$iid] = ['status' => 'not_displayed_for_target'];
+                  continue;
+                }}
+                $displayInvoice = $hydrate(\\App\\Models\\Invoice::class, [
+                  'id' => $iid, 'StudentClassID' => $targetStudentClassId, 'TotalAmount' => $i->total_amount,
+                  'Status' => $i->status, 'billing_period' => $i->billing_period, 'IssueDate' => $i->issue_date,
+                ]);
+                $displayInvoice->setRelation('payments', new \\Illuminate\\Database\\Eloquent\\Collection(array_values(array_map(
+                  fn ($p) => $hydrate(\\App\\Models\\Payment::class, ['Amount' => $p->amount, 'Method' => $p->method]),
+                  array_filter($payments, fn ($p) => (int) $p->invoice_id === $iid)))));
+                $displayInvoice->setRelation('items', new \\Illuminate\\Database\\Eloquent\\Collection(array_values(array_map(
+                  fn ($l) => $hydrate(\\App\\Models\\InvoiceItem::class, [
+                    'StudentClassID' => $l->student_class_id, 'PeriodStart' => $l->period_start, 'PeriodEnd' => $l->period_end,
+                  ]), array_filter($lines, fn ($l) => (int) $l->invoice_id === $iid)))));
+                $displayProjections[$iid] = ['status' => 'resolved'] + array_intersect_key(
+                  $displayResolver->resolve($displayInvoice, $displayCourse), $displayKeys);
+              }}
+              // End display projection; all resolver reads occurred before transaction rollback.
+            }} finally {{
+              $conn->rollBack();
+            }}
+            $paymentRows = []; $netPaid = [];
+            foreach ($payments as $p) {{
+              $amount = (int) $p->amount;
+              $isVoid = (string) ($p->method ?? '') === 'void' || $amount < 0;
+              $signed = $isVoid ? -abs($amount) : ($amount > 0 ? $amount : 0);
+              $netPaid[(int) $p->invoice_id] = ($netPaid[(int) $p->invoice_id] ?? 0) + $signed;
+              $paymentRows[] = ['payment_id' => (int) $p->payment_id, 'invoice_id' => (int) $p->invoice_id, 'amount' => $amount,
+                'signed_amount' => $signed, 'method' => $p->method === null ? null : (string) $p->method, 'is_void' => $isVoid,
+                'report_id' => $p->report_id === null ? null : (int) $p->report_id, 'paid_at' => $p->paid_at, 'created_at' => $p->created_at];
+            }}
+            $lineSum = []; $lineSumThisClass = [];
+            $lineRows = array_map(function ($l) use (&$lineSum, &$lineSumThisClass, $targetStudentClassId, $idOut) {{
+              $iid = (int) $l->invoice_id;
+              $lineSum[$iid] = ($lineSum[$iid] ?? 0) + (int) $l->amount;
+              if ((int) $l->student_class_id === $targetStudentClassId) {{ $lineSumThisClass[$iid] = ($lineSumThisClass[$iid] ?? 0) + (int) $l->amount; }}
+              return ['line_id' => (int) $l->line_id, 'invoice_id' => $iid,
+                'student_class_id' => $idOut($l->student_class_id), 'amount' => (int) $l->amount,
+                'period_start' => $l->period_start, 'period_end' => $l->period_end, 'created_at' => $l->created_at];
+            }}, $lines);
+            $invoiceRows = array_map(function ($i) use ($netPaid, $lineSum, $lineSumThisClass, $c, $idOut, $displayProjections) {{
+              $iid = (int) $i->invoice_id;
+              $paidNet = max(0, $netPaid[$iid] ?? 0);
+              return ['invoice_id' => $iid, 'student_id_matches_contract' => (int) $i->student_id === (int) $c->student_id,
+                'student_class_id' => $idOut($i->student_class_id),
+                'status' => $i->status === null ? null : (string) $i->status, 'is_void' => (string) $i->status === 'void',
+                'total_amount' => (int) $i->total_amount, 'paid_amount_stored' => (int) $i->paid_amount_stored,
+                'paid_amount_net_payments' => $paidNet, 'outstanding_computed' => max(0, (int) $i->total_amount - $paidNet),
+                'display_projection' => $displayProjections[$iid] ?? ['status' => 'not_projected'],
+                'line_sum' => $lineSum[$iid] ?? 0, 'line_sum_this_class' => $lineSumThisClass[$iid] ?? 0,
+                'billing_period' => $i->billing_period, 'zero_amount_reason' => $i->zero_amount_reason,
+                'schedule_mode_at_issue' => $i->schedule_mode_at_issue, 'issue_date' => $i->issue_date, 'due_date' => $i->due_date,
+                'created_at' => $i->created_at, 'updated_at' => $i->updated_at, 'reconciled_at' => $i->reconciled_at];
+            }}, $invoices);
+            $auditRows = []; $otherEvents = 0;
+            foreach ($events as $e) {{
+              if (!$billingEvent((string) $e->event_type)) {{ $otherEvents++; continue; }}
+              [$kind, $sid] = $refKinds[(string) $e->subject_ref] ?? [null, null];
+              $auditRows[] = ['audit_id' => (int) $e->audit_id, 'occurred_at' => $e->occurred_at, 'event_type' => (string) $e->event_type,
+                'outcome' => (string) $e->outcome, 'subject_kind' => $kind, 'subject_id' => $kind === 'invoice' ? $sid : $idOut($sid),
+                'reason_code' => $e->reason_code === 'null' ? null : $e->reason_code, 'actor_ref' => $e->actor_ref,
+                'old_charge' => $num($e->old_charge), 'new_charge' => $num($e->new_charge),
+                'old_session_count' => $num($e->old_session_count), 'new_session_count' => $num($e->new_session_count),
+                'outstanding_amount' => $num($e->outstanding_amount)];
+            }}
+            $oldest = null;
+            foreach ($invoices as $i) {{ if ($i->created_at !== null && ($oldest === null || $i->created_at < $oldest)) {{ $oldest = $i->created_at; }} }}
+            $retentionDays = (int) config('audit.retention_days', 180);
+            if ($oldest !== null && \\Carbon\\Carbon::parse((string) $oldest)->lt(now()->subDays($retentionDays))) {{ $reasons[] = 'audit_history_may_be_purged'; }}
+            if ($invoices === []) {{ $reasons[] = 'no_linked_invoice'; }}
+            if ($unlinked !== []) {{ $reasons[] = 'unlinked_student_invoices_present'; }}
+            if (max(count($invoices), count($lineRows), count($paymentRows), count($reports), count($auditRows), count($unlinked), count($amendments)) > $cap) {{ $reasons[] = 'truncated'; }}
+            $out['read_only_transaction'] = true;
+            $out['campus_bound'] = $requiredCampusId;
+            $out['contract'] = ['class_id' => $idOut($c->class_id), 'campus_id' => (int) $c->campus_id,
+              'rate' => $num($c->rate), 'rate_unit' => $c->rate_unit, 'session_count' => $num($c->session_count),
+              'total_hours' => $num($c->total_hours), 'charge' => $num($c->charge), 'paid' => (int) $c->paid,
+              'pay' => $num($c->pay), 'pay_date' => $c->pay_date, 'discount' => $num($c->discount), 'stop' => (int) $c->stop,
+              'closed_reason' => $c->closed_reason, 'schedule_mode' => $c->schedule_mode, 'class_type' => $c->class_type,
+              'package_id' => $num($c->package_id), 'standard_lesson_minutes' => $num($c->standard_lesson_minutes),
+              'deduction_basis' => $c->deduction_basis, 'mdate' => $c->mdate];
+            $out['pricing_amendments'] = array_map(fn ($a) => ['amendment_id' => (int) $a->amendment_id, 'effective_from' => $a->effective_from,
+              'rate' => (int) $a->rate, 'rate_unit' => $a->rate_unit, 'created_at' => $a->created_at, 'voided_at' => $a->voided_at], array_slice($amendments, 0, $cap));
+            $out['invoices'] = array_slice($invoiceRows, 0, $cap);
+            $out['invoice_lines'] = array_slice($lineRows, 0, $cap);
+            $out['payments'] = array_slice($paymentRows, 0, $cap);
+            $out['payment_reports'] = array_map(fn ($r) => ['report_id' => (int) $r->report_id, 'student_class_id' => $idOut($r->student_class_id),
+              'invoice_id' => $r->invoice_id === null ? null : (int) $r->invoice_id, 'reported_amount' => $num($r->reported_amount),
+              'payment_method' => $r->payment_method, 'status' => $r->status, 'payment_date' => $r->payment_date,
+              'payment_id' => $r->payment_id === null ? null : (int) $r->payment_id, 'confirmed_at' => $r->confirmed_at,
+              'voided_at' => $r->voided_at, 'created_at' => $r->created_at], array_slice($reports, 0, $cap));
+            $out['unlinked_student_invoices'] = array_map(fn ($u) => ['invoice_id' => (int) $u->invoice_id, 'status' => $u->status,
+              'total_amount' => (int) $u->total_amount, 'issue_date' => $u->issue_date, 'created_at' => $u->created_at], array_slice($unlinked, 0, $cap));
+            $out['audit_events'] = array_slice($auditRows, 0, $cap);
+            $out['counts'] = ['invoices' => count($invoices), 'void_invoices' => count(array_filter($invoiceRows, fn ($r) => $r['is_void'])),
+              'invoice_lines' => count($lineRows), 'payments' => count($paymentRows), 'payment_reports' => count($reports),
+              'pricing_amendments' => count($amendments), 'audit_events' => count($auditRows),
+              'non_billing_audit_events_on_subjects' => $otherEvents, 'unlinked_student_invoices' => count($unlinked)];
+            $out['snapshot_complete'] = $reasons === [];
+            $out['reason'] = $reasons === [] ? null : implode(',', $reasons);
+            $out['evidence_limits'] = [
+              'Audit rows match on HMAC subject refs (APP_KEY); a rotated key or an event logged without subject_id is not found.',
+              'security_audit_events are purged after audit.retention_days; older amount changes leave no audit row.',
+              'outstanding_computed is persisted-ledger arithmetic; display_projection uses InvoiceAmountReconciliationService inside the read-only transaction.',
+              'Only non-void top-level target invoices receive display projection; item-linked invoices of other contracts are not repriced.',
+              'Course management shows 應繳 from the first non-void unpaid/partial invoice (else the first non-void one) of row.invoices.',
+            ];
+            }} catch (\Throwable $failure) {{
+              $out = ['ok' => false, 'case' => $case, 'snapshot_complete' => false,
+                'reason' => $failure instanceof \LengthException ? 'input_row_budget_exceeded'
+                  : (!$deadlineReady ? 'deadline_unavailable'
+                    : ($failure instanceof \Illuminate\Database\QueryException
+                      && in_array((int) ($failure->errorInfo[1] ?? 0), [1969, 3024], true)
+                        ? 'statement_timeout' : 'diagnostic_execution_failed'))];
+              // Fixed encrypted status only; never include exception SQL, bindings, identifiers or partial amounts.
+            }}
+          }} elseif ($case === 'contract_4131_stale_teacher') {{
+            // in-app #401/#402 (#4245 H1): fixed contract 4131 (campus opaque 16) — classify leftover
+            // schedules.teacher_id rows vs contract TeacherID. Mirrors ScheduleGuardService
+            // scheduleRowOccupiesQueriedTeacher keep/skip rules. IDs/enums/dates only; no names/phones/money.
+            // Dot/Founder dispatch only after backend SHA ≥ eb39beb5f; Cursor must not self-dispatch.
+            $prodHead = trim((string) shell_exec('git rev-parse HEAD'));
+            if (!preg_match('/^[0-9a-f]{{40}}$/', $prodHead)) {{ throw new \\RuntimeException('production_identity_unavailable'); }}
+            exec('git merge-base --is-ancestor eb39beb5f08c008c85a3a2e3b2da6f31dbc205c8 '.escapeshellarg($prodHead), $unused, $ancestorExit);
+            if ($ancestorExit !== 0) {{ throw new \\RuntimeException('required_fix_not_deployed'); }}
+            $out['prod_head'] = $prodHead;
+            $courseId = 4131;
+            $requiredCampusId = 16;
+            $cap = 200;
+            $conn = app('db')->connection();
+            if ($conn->transactionLevel() !== 0) {{ throw new \\RuntimeException('existing_transaction'); }}
+            $conn->useWriteConnectionWhenReading();
+            $conn->select('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ', [], false);
+            $conn->select('SET TRANSACTION READ ONLY', [], false);
+            $conn->beginTransaction();
+            try {{
+              $course = $conn->selectOne(
+                'SELECT sc.ID AS class_id, sc.StudentID AS student_id, s.CampusID AS campus_id, sc.TeacherID AS teacher_id, '
+                .'sc.ScheduleMode AS schedule_mode, sc.ClassType AS class_type, sc.SessionCount AS session_count, '
+                .'sc.RemainingSessions AS remaining_sessions, sc.Stop AS stop '
+                .'FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID WHERE sc.ID = ?',
+                [$courseId]
+              );
+              if ($course === null) {{ throw new \\RuntimeException('contract_4131: student_class not found'); }}
+              if ((int) $course->campus_id !== $requiredCampusId) {{ throw new \\RuntimeException('contract_4131: outside campus 16'); }}
+              $contractTeacherId = (int) ($course->teacher_id ?? 0);
+              $rows = $conn->select(
+                'SELECT id, student_course_id, branch_id, teacher_id, schedule_date, start_time, end_time, status, type, original_schedule_id '
+                .'FROM schedules WHERE student_course_id = ? ORDER BY schedule_date, start_time, id LIMIT '.($cap + 1),
+                [$courseId]
+              );
+              if (count($rows) > $cap) {{ throw new \\LengthException('input_row_budget_exceeded'); }}
+              $rowsByDate = [];
+              foreach ($rows as $row) {{
+                if ((int) $row->branch_id !== $requiredCampusId) {{ throw new \\RuntimeException('schedule_campus_mismatch'); }}
+                if ((string) $row->status !== 'scheduled') {{ continue; }}
+                $ymd = (string) $row->schedule_date;
+                $parsed = \\DateTimeImmutable::createFromFormat('!Y-m-d', $ymd);
+                if (!$parsed || $parsed->format('Y-m-d') !== $ymd) {{ throw new \\RuntimeException('invalid_schedule_date'); }}
+                $rowsByDate[$ymd][] = $row;
+              }}
+              $eligibleByDate = app(\\App\\Services\\StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate);
+              $rows = $eligibleByDate === [] ? [] : array_merge(...array_values($eligibleByDate));
+              $occupies = static function (object $row, int $queriedTeacherId, int $contractTeacherId): bool {{
+                if ($contractTeacherId === $queriedTeacherId) {{ return true; }}
+                $type = strtolower(trim((string) ($row->type ?? '')));
+                if ($type === 'extra' || $type === 'makeup') {{ return true; }}
+                if ((int) ($row->original_schedule_id ?? 0) > 0) {{ return true; }}
+                return false;
+              }};
+              $classified = [];
+              $staleSkipTeacherIds = [];
+              foreach ($rows as $r) {{
+                $tid = $r->teacher_id === null ? null : (int) $r->teacher_id;
+                $keep = $tid === null ? false : $occupies($r, $tid, $contractTeacherId);
+                $staleSkip = $tid !== null && $contractTeacherId > 0 && $tid !== $contractTeacherId && !$keep;
+                if ($staleSkip) {{ $staleSkipTeacherIds[$tid] = true; }}
+                $classified[] = [
+                  'schedule_id' => (int) $r->id,
+                  'teacher_id' => $tid,
+                  'schedule_date' => (string) $r->schedule_date,
+                  'start_time' => substr((string) $r->start_time, 0, 5),
+                  'end_time' => substr((string) $r->end_time, 0, 5),
+                  'status' => (string) ($r->status ?? ''),
+                  'type' => $r->type === null || $r->type === '' ? null : (string) $r->type,
+                  'original_schedule_id' => $r->original_schedule_id === null ? null : (int) $r->original_schedule_id,
+                  'occupies_row_teacher' => $keep,
+                  'stale_skip_vs_contract' => $staleSkip,
+                ];
+              }}
+              $out['scope_lock'] = [
+                'course_id' => $courseId,
+                'campus_id' => $requiredCampusId,
+                'production_mutation' => false,
+                'fix_sha_hint' => 'eb39beb5f',
+                'inapp_ids' => [401, 402],
+              ];
+              $out['contract'] = [
+                'class_id' => (int) $course->class_id,
+                'campus_id' => (int) $course->campus_id,
+                'teacher_id' => $contractTeacherId,
+                'schedule_mode' => (string) ($course->schedule_mode ?? ''),
+                'class_type' => (string) ($course->class_type ?? ''),
+                'session_count' => $course->session_count === null ? null : (int) $course->session_count,
+                'remaining_sessions' => $course->remaining_sessions === null ? null : (int) $course->remaining_sessions,
+                'stop' => (int) ($course->stop ?? 0),
+              ];
+              $out['schedule_rows'] = $classified;
+              $out['counts'] = [
+                'schedule_rows' => count($classified),
+                'stale_skip_rows' => count(array_filter($classified, fn ($r) => $r['stale_skip_vs_contract'])),
+                'keep_rows' => count(array_filter($classified, fn ($r) => $r['occupies_row_teacher'])),
+                'distinct_stale_skip_teacher_ids' => count($staleSkipTeacherIds),
+              ];
+              $out['stale_skip_teacher_ids'] = array_map('intval', array_keys($staleSkipTeacherIds));
+              $out['verification'] = [
+                'course_row_present' => true,
+                'campus_bound' => true,
+                'read_only' => true,
+                'snapshot_consistent' => true,
+                'eligibility' => 'scheduled_then_canonical_stale_filter',
+                'h1_rule' => 'skip normal leftover schedules.teacher_id when contract TeacherID already moved; keep extra|makeup|original_schedule_id',
+                'pass_hint' => 'after eb39: occupancy on stale_skip_teacher_ids must ignore stale_skip_vs_contract=true rows',
+              ];
+            }} finally {{
+              if ($conn->transactionLevel() > 0) {{ $conn->rollBack(); }}
+            }}
           }} elseif ($case === 'class_sessions_explain_319') {{
             // in-app #319 (#3069): EXPLAIN + timed paginate() of the /class-sessions index query for the real
             // Teacher Home request shapes. Read-only; plans, timings and row estimates only (no row data).
@@ -1826,17 +2536,29 @@ jobs:
             base64 -w76 /tmp/production_case_probe.php
             echo 'PROBE_B64'
             echo 'cd /home/admin/backend'
-            echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+            if [[ "$CASE_KEY" == 'inapp_414_amount_source' ]]; then
+              # A missing GNU timeout fails closed; no fallback to unbounded execution.
+              echo 'command -v timeout >/dev/null'
+              echo 'if timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"; then :; else'
+              echo '  probe_rc=$?; echo "remote_execution_failed_or_timed_out" >&2; exit "$probe_rc"'
+              echo 'fi'
+            elif [[ "$CASE_KEY" == 'xinzhuang_fee_cases' ]]; then
+              echo 'command -v timeout >/dev/null'
+              echo 'timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+            else
+              echo 'php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
+            fi
           } > "$remote_script"
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" | tee out/production-case.log
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' < "$remote_script" > raw/production-case.log 2> raw/production-case.stderr.log
           fi
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
-          text = Path('out/production-case.log').read_text(encoding='utf-8', errors='replace')
+          text = Path('raw/production-case.log').read_text(encoding='utf-8', errors='replace')
           obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
-          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('raw/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
           if not obj or not obj.get('ok'):
               raise SystemExit('probe did not return ok JSON')
           if obj.get('case') == 'fixed_slot_campus9_student':
@@ -1850,13 +2572,124 @@ jobs:
                   raise SystemExit('木柵 campus was not found')
               if obj.get('student_count') != 1:
                   raise SystemExit('parent binding probe requires exactly one target student')
-          print('parsed read-only production case', obj.get('case'))
+          if obj.get('case') == 'billing_correction_past_session_impact':
+              if obj.get('read_only_transaction') is not True or 'counts' not in obj or 'snapshot_complete' not in obj or 'completeness' not in obj:
+                  raise SystemExit('billing-correction impact probe did not finish inside its read-only transaction')
+          if os.environ.get('CASE_KEY') == 'inapp_414_amount_source' and obj.get('case') != 'inapp_414_amount_source':
+              raise SystemExit('restricted probe returned an unexpected case')
+          if obj.get('case') == 'inapp_414_amount_source':
+              if obj.get('read_only_transaction') is not True or obj.get('campus_bound') != 11 or 'snapshot_complete' not in obj or 'contract' not in obj:
+                  raise SystemExit('inapp_414 amount-source probe did not finish inside its read-only campus-11 transaction')
+          if os.environ.get('CASE_KEY') == 'xinzhuang_fee_cases':
+              if obj.get('case') != 'xinzhuang_fee_cases' or obj.get('read_only_transaction') is not True or obj.get('campus_bound') != 11 or 'snapshot_complete' not in obj:
+                  raise SystemExit('fee probe did not finish inside its read-only campus-11 transaction')
+              # #4289: do not green-wash a missing/soft-failed live alignment hash.
+              import re as _re
+              ap = obj.get('alignment_preview')
+              if not isinstance(ap, dict):
+                  raise SystemExit('fee probe missing alignment_preview')
+              if ap.get('error') == 'preview_failed':
+                  raise SystemExit('fee probe alignment_preview unavailable')
+              cid = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
+              hash_ok = bool(_re.fullmatch(r'[a-f0-9]{64}', str(ap.get('state_hash') or '')))
+              if ap.get('eligible') is True and not hash_ok:
+                  raise SystemExit('fee probe eligible alignment_preview missing 64-char state_hash')
+              # POP bind targets (4064/3693) require an eligible bindable hash; 3753 may be link-incomplete.
+              if cid in {'4064', '3693'} and (ap.get('eligible') is not True or not hash_ok):
+                  raise SystemExit('fee probe alignment target requires bindable state_hash')
+          if os.environ.get('CASE_KEY') == 'migration_4283_preconditions':
+              if obj.get('case') != 'migration_4283_preconditions' or not obj.get('completeness'):
+                  raise SystemExit('migration precondition probe returned no status tokens')
+          print('parsed read-only production case')
           PY
 
-      - name: Upload redacted evidence
+      - name: Encrypt case output (log shows status only)
+        if: always()
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+          CASE_KEY: ${{ inputs.case_key }}
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p out
+          if [ ! -d raw ] || [ -z "$(find raw -type f -print -quit)" ]; then
+            echo "case=$CASE_KEY probe_outcome=$PROBE_OUTCOME case_output=absent"
+            exit 0
+          fi
+          if [ "${#DUMP_ARTIFACT_KEY}" -lt 16 ]; then
+            echo "::error::DUMP_ARTIFACT_KEY is missing; case output is not uploaded"
+            exit 1
+          fi
+          # Status only, and only in the job log (no step summary): booleans, counts, byte lengths and machine reason tokens. Never case values.
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          token = lambda v: v if isinstance(v, str) and re.fullmatch(r'[a-z0-9_,]{1,200}', v) else (None if v is None else 'withheld')
+          flag = lambda v: v if isinstance(v, bool) or v is None else 'withheld'
+          case = os.environ['CASE_KEY'] if re.fullmatch(r'[a-z0-9_]{1,64}', os.environ['CASE_KEY']) else 'invalid'
+          size = lambda name: Path('raw', name).stat().st_size if Path('raw', name).is_file() else None
+          try:
+              obj = json.loads(Path('raw/production-case.json').read_text(encoding='utf-8'))
+          except Exception:
+              obj = None
+          obj = obj if isinstance(obj, dict) else {}
+          status = {
+              'case': case, 'probe_outcome': token(os.environ.get('PROBE_OUTCOME') or None),
+              'json_present': bool(obj), 'case_matches': obj.get('case') == case, 'ok': flag(obj.get('ok')),
+              'snapshot_complete': flag(obj.get('snapshot_complete')), 'completeness': token(obj.get('completeness')),
+              'reason': token(obj.get('reason')),
+              'bytes': {n: size(n) for n in ('production-case.log', 'production-case.stderr.log', 'production-case.json')},
+          }
+          # This restricted case exposes only execution status, never payload-derived reason strings.
+          if case == 'inapp_414_amount_source':
+              status.pop('reason')
+              status.pop('completeness')
+          if case == 'xinzhuang_fee_cases':
+              # Keep reason private (may join failure tokens). Pop the generic
+              # completeness field first (#4266), then re-publish only the fixed
+              # fee-case-ledger completeness enum so Track A can diagnose
+              # snapshot_complete=false without decrypting the artifact body.
+              status.pop('reason')
+              status.pop('completeness')
+              fee_completeness = {
+                  'not_started', 'correction_schema_missing', 'ambiguous_obligations',
+                  'complete', 'unlinked_obligations', 'monthly_amount_unverified',
+                  'payment_links_inconsistent', 'incomplete',
+              }
+              published = token(obj.get('completeness'))
+              status['completeness'] = published if published in fee_completeness else 'withheld'
+          print('case status:', json.dumps(status, sort_keys=True))
+          PY
+          tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/production-case.full.tar.gz.enc
+          (cd out && sha256sum production-case.full.tar.gz.enc > production-case.full.tar.gz.enc.sha256)
+          echo "encrypted_bytes=$(stat -c %s out/production-case.full.tar.gz.enc) sha256=$(cut -d' ' -f1 out/production-case.full.tar.gz.enc.sha256)"
+
+      - name: Shred plaintext case output
+        if: always()
+        run: |
+          set -uo pipefail
+          [ -d raw ] && find raw -type f -exec shred -u {} +
+          rm -rf raw
+          for f in /tmp/production_case_probe.php "$RUNNER_TEMP/production-case-remote.sh"; do
+            [ -e "$f" ] && shred -u "$f"
+          done
+          if [ -e raw ] || [ -e /tmp/production_case_probe.php ] || [ -e "$RUNNER_TEMP/production-case-remote.sh" ]; then
+            echo "::error::plaintext case output still present"
+            exit 1
+          fi
+          echo "plaintext shredded"
+
+      - name: Upload encrypted evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: production-case-${{ inputs.case_key }}
-          path: out/production-case.json
+          path: |
+            out/production-case.full.tar.gz.enc
+            out/production-case.full.tar.gz.enc.sha256
+          if-no-files-found: ignore
           retention-days: 14
 

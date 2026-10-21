@@ -162,6 +162,19 @@ assert.equal(M.PAUSED_PENDING_LABEL, '暫停中，尚未收款');
 assert.equal(M.INVOICE_STATUS_LABELS.partial, '繳了一部分');
 assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已收');
 assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
+// #4114 (Founder Q3): paid by the legacy flag alone is its own neutral wording, only when the server says so.
+assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '需核對：舊資料標記已收，缺付款紀錄');
+assert.equal(M.isWaivedContract({ waived: true, paid: false }), true);
+// #4150 round 3: reversal netting mirrors BillingPayableResolver::latestUnreversedReceiptDate.
+assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', report_id: 5 }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', report_id: 5 }]), null);
+assert.deepEqual(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash' }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void' }, { id: 3, paid_at: '2026-09-20', amount: 6000, method: 'cash' }]), { date: '2026-09-20', amount: 6000 });
+// a reversal cannot reverse a later repayment, and an orphan reversal (no earlier receipt) still nets the invoice to zero
+assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-07', amount: -6000, method: 'void' }, { id: 2, paid_at: '2026-09-20', amount: 6000, method: 'cash' }]), null);
+assert.deepEqual(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-01', amount: 3000, method: 'cash' }, { id: 2, paid_at: '2026-09-05', amount: 3000, method: 'cash', report_id: 8 }, { id: 3, paid_at: '2026-09-06', amount: -3000, method: 'void', report_id: 8 }]), { date: '2026-09-01', amount: 3000 });
+assert.equal(M.latestStandingPayment([]), null);
+assert.equal(M.isWaivedContract({ paid: true, stop: true, closed_reason: null }), false);
+assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid', legacy_paid_flag_only: true }), true);
+assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid' }), false, 'older payloads keep 已收');
 
 // ─── folded monthlyPaymentDisplay ───
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'paid' }), '2026-09 未繳');

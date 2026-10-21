@@ -27,7 +27,7 @@ description: >-
 3. [`docs/CHAT_BUG_SYSTEM.md`](../../../docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**（含 `product_loop`）  
 4. 工作狀態：GitHub issue／PR（cloud session 預設，2026-10-14 起）。本機 WSL 才有的 `agent-start` manifest 與  
    本機 `$HOME/workspace/state/alltrue/delivery/`（`*_RELEASE_PACKET.json`、`*_EXECUTION_PLAN.md`）若存在可參考；cloud session 沒有此目錄，略過  
-5. **In-app backlog 讀取與各階段自動化**（缺 dogfood actor ≠ 無法讀 backlog）：一律依 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](../../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表（哪個 workflow、schedule／push request-file／dispatch-only、cloud 能否自行完成）與 Freshness gate。要點：log 只有 ID／數量，標題／描述／留言只在加密 artifact，只有本機 agent 能解密（#3605）；`bug-auto-intake.yml` 每小時已自動建 issue＋留「收到」回覆；**禁止** Pi SSH。`meta.counts` 任一不符 → **PARTIAL**。`resolved` 是待回報者確認的獨立營運佇列，不回填 active delivery owner。
+5. **In-app backlog 讀取與各階段自動化**（缺 dogfood actor ≠ 無法讀 backlog）：一律依 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](../../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表（哪個 workflow、schedule／push request-file／dispatch-only、cloud 能否自行完成）與 Freshness gate。要點：log 只有 ID／數量，標題／描述／留言只在加密 artifact；解密由已授權且完成 secret 綁定的受控環境執行，不以本機為必要條件（見 SOP 的 Cloud decryption custody）；`bug-auto-intake.yml` 每小時已自動建 issue＋留「收到」回覆；**禁止** Pi SSH。`meta.counts` 任一不符 → **PARTIAL**。`resolved` 是待回報者確認的獨立營運佇列，不回填 active delivery owner。
 6. 依風險再開：`alltrue-debugging` · `alltrue-testing` · `alltrue-code-review` · `alltrue-release` · `alltrue-security`（非每筆全開）
 
 Codex／Cursor 共用本路徑。啟動：cloud session 從 `origin/main` 開 branch（本機 WSL 才用 `agent-start alltrue <task-id>`；禁編禁止 checkout）。

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-16-4150-legacy-payment-display
+    published_at: "2026-10-16"
+    audiences:
+      - director
+    importance: digest
+    title: 合約卡繳費日只看實際收款
+    summary: 學生帳務的合約卡只用收據或帳單收款顯示繳費日，舊資料日期不再當成已付款。
+    items:
+      - category: fixed
+        text: 沒有付款紀錄、只有舊資料標記的合約，會顯示「需核對：舊資料標記已收，缺付款紀錄」。
+      - category: improved
+        text: 請找出當時的收款憑證核對；帳單金額與已確認的收據照常顯示。
+    source_refs:
+      - "changelog:2026-10-16:4150-legacy-payment-display"
