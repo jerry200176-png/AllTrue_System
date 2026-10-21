@@ -20,6 +20,7 @@ describe('StudentsList actual intent options (#4358 review)', () => {
       { ...base, id: 7006, rate_unit: 'hour' },
       { ...base, id: 7007, latest_payment_report_id: 81 },
       { ...base, id: 7008, payment_status: 'pending_report' },
+      { ...base, id: 7009, payment_type: 'monthly', PackageID: 9 },
     ];
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input);
@@ -40,6 +41,7 @@ describe('StudentsList actual intent options (#4358 review)', () => {
       const chooser = w.findComponent(CourseIntentChooser);
       const options = chooser.props('courses');
       expect(options.find(c => c.id === 7001)?.renewable).toBe(true);
+      expect(options.find(c => c.id === 7009)).toBeUndefined();
       expect(options.find(c => c.id === 7003)?.detail).not.toContain('剩 0 堂');
       expect(options.filter(c => c.transferable).map(c => c.id)).toEqual([7002]);
       await chooser.find('[data-testid="course-intent-renew"]').trigger('click');

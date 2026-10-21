@@ -3380,8 +3380,8 @@ const openAddSessionsForCourse = (course) => {
     goToTrialConversion(course);
     return;
   }
-  if (isTutoringCourse(course) && isPackageMember(course)) {
-    alert('此輔導課屬於共用方案，不能從這裡延續或續課；請先確認方案設定。');
+  if (isPackageMember(course) && (isTutoringCourse(course) || isMonthlyPaymentType(course))) {
+    alert('此課程屬於共用方案，不能從這裡延續或續課；請先使用方案調整流程。');
     return;
   }
   if (course?.payment_type === 'monthly' && !isTutoringCourse(course)) {

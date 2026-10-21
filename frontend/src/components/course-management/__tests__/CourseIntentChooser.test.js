@@ -127,6 +127,13 @@ describe('course intent chooser (#4331)', () => {
       .toMatchObject({ renewable: true, transferable: false, showRemainingSessions: false });
   });
 
+  it('keeps monthly package members out of per-course renewal', () => {
+    expect(courseIntentEligibility({ status: 'active', payment_type: 'monthly', PackageID: 9 }))
+      .toMatchObject({ renewable: false, transferable: false });
+    expect(courseIntentEligibility({ status: 'active', payment_type: 'session', PackageID: 9 }))
+      .toMatchObject({ renewable: true, transferable: false });
+  });
+
   it('does not make closed courses renewable or transferable', () => {
     const base = { status: 'active', payment_type: 'session', sessions_purchased: 8, remaining_sessions: 4 };
     for (const state of [{ status: 'inactive' }, { Stop: 1 }, { closed_reason: 'waived' }]) {
@@ -159,6 +166,7 @@ describe('one name for adding lessons (#4331)', () => {
     expect(w.find('.modal-note').text()).toContain('續課會建立');
     expect(w.text()).not.toContain('加購');
     expect(COURSE_INTENTS.find(i => i.id === 'renew').hint).toContain('原合約可能自動結案');
+    expect(COURSE_INTENTS.find(i => i.id === 'renew').hint).toContain('月結制延長期別');
   });
 
   it('the row/⋯ menu default is the shared constant', () => {
