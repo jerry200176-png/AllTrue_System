@@ -758,7 +758,7 @@ class PaymentReportController extends Controller
                 ], 422);
             }
 
-            $report = $this->createPendingReport($sc, $data, $invoice?->id);
+            $report = $this->createPendingReport($lockedCourse, $data, $invoice?->id);
 
             Log::info('PaymentReport director-record pending', [
                 'report_id'  => $report->id,
