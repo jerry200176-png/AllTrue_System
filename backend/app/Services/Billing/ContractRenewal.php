@@ -1218,9 +1218,6 @@ final class ContractRenewal
                 'UsedSessions' => 0,
                 'pricing_snapshot' => $discountSnapshot,
             ];
-            if (self::hasPurchaseRequestKeyColumn()) {
-                $newPayload['purchase_request_key'] = $requestKey;
-            }
 
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
