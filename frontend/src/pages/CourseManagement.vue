@@ -1482,6 +1482,7 @@ import {
   buildStudentsCommercialNav,
 } from '../lib/authoritativeMutationRoutes.js';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
+import { trialTargetPayload } from '../lib/trialTarget.js';
 import { listExceptionWorkflows } from '../api';
 import {
   buildCourseLeaveDeepLink,
@@ -4802,6 +4803,7 @@ const editCourse = (c, options = {}) => {
     subject: c.subject,
     teacher_id: c.teacher_id || '',
     class_type: c.class_type,
+    trial_target_class_type: c.trial_target_class_type ?? null,
     rate_per_30min: c.rate_per_30min,
     rate_unit: c.rate_unit || 'session',
     duration_hours: c.duration_hours ?? 2,
@@ -4874,6 +4876,7 @@ const submitEdit = async () => {
             ? { teacher_effective_date: form.teacher_effective_date || new Date().toLocaleDateString('sv-SE') }
             : {}),
           class_type: form.class_type,
+          ...trialTargetPayload(form),
           rate_per_30min: form.rate_per_30min,
           rate_unit: form.rate_unit || 'session',
           sessions_purchased: form.sessions_purchased,

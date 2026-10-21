@@ -362,6 +362,10 @@ class ScheduleController extends Controller
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id'          => $effectiveTeacherId,
                 'class_type'          => $effectiveClassType,
+                // in-app #426: a linked trial course carries its target class type.
+                'trial_target_class_type' => $effectiveClassType === 'trial' && $courseId > 0
+                    ? DB::table('StudentClass')->where('ID', $courseId)->value('trial_target_class_type')
+                    : null,
                 'room_id'             => $effectiveRoomId,
                 'branch_id'           => $branchId,
                 'schedule_date'       => $data['schedule_date'] ?? null,

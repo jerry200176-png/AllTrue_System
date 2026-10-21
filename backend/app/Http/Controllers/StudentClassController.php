@@ -1767,6 +1767,19 @@ class StudentClassController extends Controller
             unset($mapped['RemainingSessions']);
         }
 
+        // in-app #426: a trial target class type is accepted only on a trial course.
+        $resultingClassType = (string) ($mapped['ClassType'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
+        $trialTarget = $mapped['trial_target_class_type'] ?? null;
+        if ($trialTarget !== null && ($resultingClassType !== 'trial' || !in_array($trialTarget, StudentClass::TRIAL_TARGET_CLASS_TYPES, true))) {
+            return response()->json([
+                'message' => '試聽班型只能用於試聽課程，且須為一對一、一對二或一對三。',
+                'code' => 'invalid_trial_target_class_type',
+            ], 422);
+        }
+        if ($resultingClassType !== 'trial' && $studentClass->getAttribute('trial_target_class_type') !== null) {
+            $mapped['trial_target_class_type'] = null;
+        }
+
         // RFC non-standard duration: validate + guard the billing contract fields.
         if ($contractError = $this->guardBillingContractUpdate($studentClass, $mapped)) {
             return $contractError;
@@ -1853,6 +1866,9 @@ class StudentClassController extends Controller
                 $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
                     'class_type' => $newClassType,
+                    'trial_target_class_type' => array_key_exists('trial_target_class_type', $mapped)
+                        ? $mapped['trial_target_class_type']
+                        : $studentClass->getAttribute('trial_target_class_type'),
                     'room_id' => $newRoomId,
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,
@@ -5670,6 +5686,9 @@ class StudentClassController extends Controller
         if (isset($input['teacher_id'])) $mappedData['TeacherID'] = $input['teacher_id'];
         if (isset($input['subject'])) $mappedData['SubjectID'] = $subjectId;
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
+        if (array_key_exists('trial_target_class_type', $input)) {
+            $mappedData['trial_target_class_type'] = $input['trial_target_class_type'] === '' ? null : $input['trial_target_class_type'];
+        }
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
         if (array_key_exists('scheduling_policy', $input)) {
             $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];

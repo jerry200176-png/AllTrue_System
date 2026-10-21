@@ -1966,6 +1966,7 @@ const checkConflict = () => {
 
   const verdict = incomingClassConflict({
     incomingType: modalForm.value.class_type,
+    incomingTrialTarget: modalForm.value.trial_target_class_type ?? null,
     overlappingCourses: overlapping,
   });
   if (verdict.blocked) {

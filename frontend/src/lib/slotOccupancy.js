@@ -88,21 +88,34 @@ export function occupancyBadge({ courses = [] } = {}) {
   };
 }
 
-/** in-app #426: slot is one-on-three when a row is one_on_three and none is one_on_one. */
-export function isOneOnThreeSlot(types = []) {
-  const list = (types || []).map((type) => String(type || ''));
-  return list.includes('one_on_three') && !list.includes('one_on_one');
+/**
+ * in-app #426: a slot is one-on-three when a booking is a one_on_three course or a trial
+ * whose trial_target_class_type is one_on_three, and no booking is one_on_one.
+ * Mirrors ScheduleGuardService::isOneOnThreeSlot().
+ */
+export function isOneOnThreeSlot(bookings = []) {
+  let oneOnThree = false;
+  for (const booking of bookings || []) {
+    const type = String(booking?.class_type || '');
+    if (type === 'one_on_one') return false;
+    if (type === 'one_on_three'
+      || (type === 'trial' && String(booking?.trial_target_class_type || '') === 'one_on_three')) {
+      oneOnThree = true;
+    }
+  }
+  return oneOnThree;
 }
 
-export function incomingClassConflict({ incomingType, overlappingCourses = [] } = {}) {
+export function incomingClassConflict({ incomingType, incomingTrialTarget = null, overlappingCourses = [] } = {}) {
   const unique = uniqueStudentCount(overlappingCourses);
   const types = overlappingCourses.map((course) => String(course.class_type || ''));
   const newMax = Math.min(capacityForClassType(incomingType), TEACHER_SLOT_ABSOLUTE_MAX);
 
   if (incomingType === 'trial') {
-    // in-app #426 (Founder 1a): in a one-on-three slot trials take real seats and
-    // several may join while the total stays within 3. Mirrors ScheduleGuardService.
-    if (isOneOnThreeSlot(types)) {
+    // in-app #426 (Founder 1a + trial target): in a one-on-three slot trials take real
+    // seats and several may join while the total stays within 3. Mirrors ScheduleGuardService.
+    const incoming = { class_type: 'trial', trial_target_class_type: incomingTrialTarget };
+    if (isOneOnThreeSlot([...overlappingCourses, incoming])) {
       const full = unique >= TEACHER_SLOT_ABSOLUTE_MAX;
       return {
         blocked: full,

@@ -1069,6 +1069,7 @@ import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
+import { trialTargetPayload } from '../lib/trialTarget.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -2923,6 +2924,7 @@ const editCourse = (course) => {
     subject: course.subject,
     teacher_id: course.teacher_id || '',
     class_type: course.class_type,
+    trial_target_class_type: course.trial_target_class_type ?? null,
     rate_per_30min: course.rate_per_30min,
     duration_hours: course.duration_hours,
     payment_type: course.payment_type || 'session',
@@ -3280,6 +3282,7 @@ const submitCourse = async () => {
     subject: form.subject,
     teacher_id: form.teacher_id || null,
     class_type: form.class_type,
+    ...trialTargetPayload(form),
     rate_per_30min: form.rate_per_30min,
     duration_hours: form.duration_hours,
     payment_type: form.payment_type,
