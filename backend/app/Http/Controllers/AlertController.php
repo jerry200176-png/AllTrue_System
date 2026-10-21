@@ -523,7 +523,8 @@ class AlertController extends Controller
             ->pluck('paid', 'id')->mapWithKeys(fn ($paid, $id) => [(int) $id => (bool) $paid])->all();
         $classFlag = StudentClass::query()->with('coursePackage')
             ->whereIn('ID', $candidates->reject($isPackageRow)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all())->get()
-            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => $c->isEffectivelyPaid()])->all();
+            // in-app #428: a trial records its fee by PayDate alone (no invoice by design), so it has no legacy flag to verify.
+            ->mapWithKeys(fn (StudentClass $c) => [(int) $c->ID => strtolower(trim((string) $c->ClassType)) !== 'trial' && $c->isEffectivelyPaid()])->all();
         $hasFlag = fn (array $row) => $isPackageRow($row)
             ? ($packageFlag[(int) $row['package_id']] ?? false)
             : ($classFlag[(int) ($row['id'] ?? 0)] ?? false);

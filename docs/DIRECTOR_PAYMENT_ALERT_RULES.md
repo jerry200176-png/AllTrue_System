@@ -170,3 +170,4 @@ Founder Q3 是本次對 `GET /api/v1/alerts/tuition` 顯示語意的明示同意
 - 前端把這類 `paid` 顯示為中性的「需核對：舊資料標記已收，缺付款紀錄」（琥珀色），不顯示綠色「已收」，也不顯示「未繳」。`renew_needed`／`monthly_due_soon` 的狀態文字不變，但學生清單不再把它們算成「已收」。
 - `payment_status`、列入條件、金額、`outstanding`、對外通知與催繳都**不變**：不算欠款、不進「有未繳」、不催繳；學生清單「沒有未繳」篩選照常包含。
 - 唯讀：不寫帳務、不改 `StudentClass.Paid`／`CoursePackage.paid`、不需 migration。課程管理 `GET /api/v1/student-classes` 的 `paid` 列帶同一欄位。
+- 試聽課（`ClassType = trial`）不標記（in-app #428／GitHub #4330）：試聽建立時以繳費日期（`PayDate`→`Paid=1`）記錄試聽費，依設計不開帳單，不是需要核對的舊資料；標成「需核對」卻沒有任何可做的動作。正式課程同樣形狀仍照上方規則標記。

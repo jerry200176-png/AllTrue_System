@@ -733,6 +733,24 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(['renew_needed', false], [$pkg($pkgPaid)['payment_status'], $pkg($pkgPaid)['legacy_paid_flag_only']]);
     }
 
+    /** in-app #428 (#4330): a trial paid at creation (Paid=1, no invoice by design) is not legacy data: no 需核對. */
+    public function test_legacy_paid_flag_only_skips_trial_paid_at_creation(): void
+    {
+        $token = $this->createDirectorToken([1], 'legacy-flag-trial@example.com');
+        $student = Student::create(['name' => 'S428', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $shape = ['Paid' => 1, 'PayDate' => now()->toDateString(), 'RemainingSessions' => 1, 'SessionCount' => 1, 'Charge' => 500];
+        $trial = $this->createCountModeClass($student->id, $shape + ['ClassType' => 'trial']);
+        $regular = $this->createCountModeClass($student->id, $shape + ['SubjectID' => 2]);
+
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $row = fn ($id) => $rows->first(fn ($r) => (int) $r['id'] === (int) $id && !isset($r['package_id']));
+
+        $this->assertNotNull($row($trial->ID), 'the low-remaining trial is listed (shape under test)');
+        $this->assertFalse($row($trial->ID)['legacy_paid_flag_only']);
+        $this->assertTrue($row($regular->ID)['legacy_paid_flag_only'], '#4174 unchanged for a regular course');
+    }
+
     public function test_payment_status_monthly_due_soon_for_date_mode_paid(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
