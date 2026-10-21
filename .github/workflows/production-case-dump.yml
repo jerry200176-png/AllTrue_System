@@ -2006,6 +2006,8 @@ jobs:
             // Counts and fixed tokens only; never row values. All reads, no writes.
             if ($targetStudentId || $targetStudentClassId) {{ throw new \RuntimeException('no_target_allowed'); }}
             $db = app('db')->connection();
+            // Same database migrate --force will alter: never a lagging read replica.
+            $db->useWriteConnectionWhenReading();
             $iso = (function () use ($db) {{
               try {{ return (string) $db->selectOne('SELECT @@transaction_isolation AS l')->l; }}
               catch (\Throwable $e) {{ return (string) $db->selectOne('SELECT @@tx_isolation AS l')->l; }}
@@ -2017,11 +2019,23 @@ jobs:
               $cols = collect($db->select('SHOW COLUMNS FROM invoice_corrections'))->keyBy('Field');
               $base = ['original_invoice_id', 'replacement_invoice_id', 'amount', 'student_class_id', 'idempotency_key'];
               $t[] = 'base_' . (collect($base)->every(fn ($c) => $cols->has($c)) ? 'ok' : 'missing');
+              // Mirrors the migration: an existing kind must be varchar(32); if it is nullable or has another
+              // default the migration ALTERs it and aborts when NULL rows exist.
               $kind = $cols->get('kind');
-              $t[] = 'kind_' . (!$kind ? 'absent' : (strtolower($kind->Type) === 'varchar(32)' ? 'ok' : 'unexpected'));
+              if (!$kind) {{
+                $t[] = 'kind_absent';
+              }} elseif (strtolower($kind->Type) !== 'varchar(32)') {{
+                $t[] = 'kind_unexpected';
+              }} else {{
+                $t[] = ($kind->Null === 'NO' && $kind->Default === 'receipt_reissue') ? 'kind_ok' : 'kind_needs_alter';
+                $t[] = 'kindnull_' . (int) $db->table('invoice_corrections')->whereNull('kind')->count();
+              }}
               $t[] = 'rows_' . (int) $db->table('invoice_corrections')->count();
               $t[] = 'dupkeys_' . (int) $db->selectOne('SELECT COUNT(*) AS n FROM (SELECT student_class_id, idempotency_key FROM invoice_corrections WHERE idempotency_key IS NOT NULL GROUP BY student_class_id, idempotency_key HAVING COUNT(*) > 1) d')->n;
-              $t[] = 'uq_' . (collect($db->select('SHOW INDEX FROM invoice_corrections'))->pluck('Key_name')->contains('uq_invoice_corrections_course_key') ? 'yes' : 'no');
+              // The migration skips creation when the name exists, so check what that index actually is.
+              $uq = collect($db->select('SHOW INDEX FROM invoice_corrections'))->where('Key_name', 'uq_invoice_corrections_course_key')->sortBy('Seq_in_index')->values();
+              $t[] = 'uq_' . ($uq->isEmpty() ? 'no'
+                : (($uq->every(fn ($r) => (int) $r->Non_unique === 0) && $uq->pluck('Column_name')->all() === ['student_class_id', 'idempotency_key']) ? 'yes' : 'wrong_definition'));
             }}
             $recent = ['2026_10_15_120000_create_invoice_corrections_table' => 'm1015', '2026_10_17_120000_create_exam_round_tables' => 'm1017',
               '2026_10_18_120000_add_schedules_teacher_day_index' => 'm1018', '2026_10_19_090000_extend_invoice_corrections_for_agreed_fee' => 'm1019'];
