@@ -31,9 +31,7 @@ class LegacyPaidFlagResolveTest extends TestCase
         $token = $this->token('A', [1]);
         $course = $this->legacyCourse(1);
         $this->assertSame(['paid', true], $this->courseRow($token, $course));
-
         $res = $this->backfill($token, $course)->assertOk()->assertJsonPath('status', 'confirmed');
-
         $invoice = Invoice::where('StudentClassID', $course->ID)->sole();
         $this->assertSame([8800, 'paid'], [(int) $invoice->TotalAmount, (string) $invoice->Status]);
         $payment = Payment::where('InvoiceID', $invoice->id)->sole();
@@ -49,7 +47,6 @@ class LegacyPaidFlagResolveTest extends TestCase
         $token = $this->token('A', [1]);
         $course = $this->legacyCourse(1);
         $first = $this->backfill($token, $course)->assertOk();
-
         $this->backfill($token, $course)->assertOk()->assertJsonPath('replayed', true)
             ->assertJsonPath('report_id', $first->json('report_id'))->assertJsonPath('payment_id', $first->json('payment_id'));
         // A new key is refused: the course now has a payment record, so it is no longer legacy-flag-only.
@@ -66,21 +63,12 @@ class LegacyPaidFlagResolveTest extends TestCase
         $course = $this->legacyCourse(1);
         $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01',
             'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-
-        $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
-        $this->assertSame([0, 0], [PaymentReport::count(), Payment::count()]);
-
-        $this->backfill($token, $course, ['amount' => 5000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
-        $this->assertSame([1, 'paid'], [Invoice::count(), (string) $invoice->fresh()->Status]);
-    }
-
-    public function test_backfill_requires_idempotency_key_and_positive_amount(): void
-    {
-        $token = $this->token('A', [1]);
-        $course = $this->legacyCourse(1);
         $this->backfill($token, $course, ['idempotency_key' => null])->assertStatus(422)->assertJsonValidationErrors('idempotency_key');
         $this->backfill($token, $course, ['amount' => 0])->assertStatus(422)->assertJsonPath('code', 'zero_amount_with_balance');
-        $this->assertSame(0, Payment::count());
+        $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'amount_exceeds_outstanding');
+        $this->assertSame([0, 0], [PaymentReport::count(), Payment::count()]);
+        $this->backfill($token, $course, ['amount' => 5000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
+        $this->assertSame([1, 'paid'], [Invoice::count(), (string) $invoice->fresh()->Status]);
     }
 
     public function test_both_actions_refuse_a_course_with_a_real_payment(): void
@@ -90,7 +78,6 @@ class LegacyPaidFlagResolveTest extends TestCase
         $invoice = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-01',
             'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid']);
         Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-09-01', 'Method' => 'cash']);
-
         $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_has_payment');
         $this->clear($token, $course)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_has_payment');
         $this->assertSame(1, Payment::count());
@@ -102,10 +89,8 @@ class LegacyPaidFlagResolveTest extends TestCase
         $token = $this->token('A', [1]);
         $course = $this->legacyCourse(1);
         $report = $this->report($course, 'pending');
-
         $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
         $this->clear($token, $course)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
-
         $report->update(['status' => 'confirmed', 'confirmed_at' => Carbon::now()]);
         $this->clear($token, $course)->assertStatus(422)->assertJsonPath('code', 'confirmed_report_exists');
         $this->assertSame(0, Payment::count());
@@ -118,7 +103,6 @@ class LegacyPaidFlagResolveTest extends TestCase
         $other = $this->token('A', [2]);
         $this->backfill($other, $course)->assertForbidden();
         $this->clear($other, $course)->assertForbidden();
-
         $teacher = $this->token('T', []);
         $this->backfill($teacher, $course)->assertForbidden();
         $this->clear($teacher, $course)->assertForbidden();
@@ -133,21 +117,17 @@ class LegacyPaidFlagResolveTest extends TestCase
         $reason = '家長確認尚未繳費';
         $this->clear($token, $course, '')->assertStatus(422)->assertJsonValidationErrors('reason');
         $this->assertSame(1, (int) $course->fresh()->Paid);
-
         $this->clear($token, $course, $reason)->assertOk();
-
         $fresh = $course->fresh();
         $this->assertSame([0, 0, null, 'settled_pending'], [(int) $fresh->Paid, (int) $fresh->Pay, $fresh->PayDate, $fresh->closed_reason]);
         $this->assertSame([0, 0, 0], [Invoice::count(), Payment::count(), PaymentReport::count()]);
         $event = DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->sole();
         $this->assertStringNotContainsString($reason, (string) $event->metadata);
         $this->assertSame(hash('sha256', $reason), json_decode((string) $event->metadata, true)['reason_hash']);
-
         // Existing rules now list it as owed for the whole contract amount; settled → settled_pending (as 撤銷收款) reads 待收款.
         $row = collect($this->withHeaders($this->auth($token))->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())
             ->firstWhere('id', $course->ID);
         $this->assertSame(['pending_reconciliation', 8800, false], [$row['payment_status'], $row['outstanding'], $row['legacy_paid_flag_only'] ?? false]);
-
         // Replay: already unpaid, nothing changes and no second audit event.
         $this->clear($token, $course, $reason)->assertOk()->assertJsonPath('replayed', true);
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->count());
@@ -158,7 +138,6 @@ class LegacyPaidFlagResolveTest extends TestCase
     {
         $row = collect($this->withHeaders($this->auth($token))->getJson('/api/v1/student-classes?branch_id=1')->assertOk()->json('data'))
             ->firstWhere('ID', $course->ID);
-
         return [$row['payment_status'] ?? null, $row['legacy_paid_flag_only'] ?? null];
     }
 
@@ -199,7 +178,6 @@ class LegacyPaidFlagResolveTest extends TestCase
         }
         $raw = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => Carbon::now()->addDay()]);
-
         return $raw;
     }
 
@@ -207,7 +185,6 @@ class LegacyPaidFlagResolveTest extends TestCase
     {
         $student = Student::create(['name' => 'S' . uniqid(), 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1,
             'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
-
         return StudentClass::create(array_merge([
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
             'StartDate' => now(), 'EndDate' => null, 'TotalHours' => 20, 'Charge' => 8800, 'Pay' => null,

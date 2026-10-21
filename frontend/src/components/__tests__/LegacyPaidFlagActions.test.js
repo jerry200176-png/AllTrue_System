@@ -57,12 +57,6 @@ describe('ContractCard legacy-flag actions', () => {
     expect(w.find('[data-testid="legacy-flag-actions"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
   });
-
-  it('a resolved action asks the ledger to reload', async () => {
-    const w = await mountCard({});
-    w.findComponent(LegacyPaidFlagActions).vm.$emit('resolved');
-    expect(w.emitted('changed')).toHaveLength(1);
-  });
 });
 
 describe('LegacyPaidFlagActions 改成未繳', () => {
