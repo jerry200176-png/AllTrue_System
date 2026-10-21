@@ -18,13 +18,15 @@ describe('teacher precheck without hidden course disclosure', () => {
       return { ok: true, json: async () => body };
     });
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true, stubs: { ConfirmDialogHost: false, AtDialog: false, teleport: true } } });
+    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true, stubs: { ConfirmDialogHost: false, CourseIntentChooser: false, AtDialog: false, teleport: true } } });
     try {
       await flushPromises();
       await wrapper.find('.student-row').trigger('click');
       await flushPromises();
       await wrapper.findAll('button').find(b => b.text().includes('新增課程')).trigger('click');
       await flushPromises();
+      const intent = wrapper.find('[data-testid="course-intent-new"]');
+      if (intent.exists()) { await intent.trigger('click'); await flushPromises(); }
       expect(wrapper.find('[data-testid="confirm-dialog-message"]').text()).toContain('這不是強制建立');
       expect(wrapper.findComponent({ name: 'UniversalClassScheduler' }).exists()).toBe(false);
       await wrapper.find(proceed ? '[data-testid="confirm-dialog-confirm"]' : '[data-testid="confirm-dialog-cancel"]').trigger('click');
