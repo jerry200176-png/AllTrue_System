@@ -6468,6 +6468,12 @@ class StudentClassController extends Controller
         if ($changes === [] || $next === null) {
             return $blocked;
         }
+        // A forgotten unmarked row before taught lessons would make 轉課 move those taught
+        // lessons too; withhold the shortcut until that row is marked or cancelled.
+        if (ClassSession::query()->where('StudentClassID', $cid)->whereDate('SessionDate', '>=', $next)
+            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'completed', 'absent'])->exists()) {
+            return $blocked;
+        }
         $data = (array) $blocked->getData(true);
         // One next step per refusal: the client's editability next-step map reads
         // `next_step` before the per-code default (courseEditability.js).

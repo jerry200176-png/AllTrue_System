@@ -81,10 +81,9 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->makeSession($course, '2026-10-07', 'scheduled');
         $this->ledger($course);
 
-        $this->putCourse($course, ['sessions_purchased' => 12, 'days_of_week' => [3], 'start_time' => '16:00'])
+        $this->assertMissingKeys($this->putCourse($course, ['sessions_purchased' => 12, 'days_of_week' => [3], 'start_time' => '16:00'])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'billing_contract_locked')
-            ->assertJsonMissingPath('transfer_hint');
+            ->assertJsonPath('code', 'billing_contract_locked'), 'transfer_hint');
     }
 
     public function test_monthly_course_keeps_todays_message(): void
@@ -93,12 +92,10 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->makeSession($course, '2026-09-23', 'attended');
         $this->makeSession($course, '2026-10-07', 'scheduled');
 
-        $this->putCourse($course, ['subject' => 'Math'])
+        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'subject_change_requires_transfer')
-            ->assertJsonPath('suggested_actions', ['split_contract'])
-            ->assertJsonMissingPath('next_step')
-            ->assertJsonMissingPath('transfer_hint');
+            ->assertJsonPath('suggested_actions', ['split_contract']), 'next_step', 'transfer_hint');
     }
 
     public function test_no_remaining_unmarked_lesson_means_no_transfer_hint(): void
@@ -106,9 +103,8 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $course = $this->course();
         $this->makeSession($course, '2026-09-23', 'attended');
 
-        $this->putCourse($course, ['subject' => 'Math'])
-            ->assertStatus(422)
-            ->assertJsonMissingPath('transfer_hint');
+        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
+            ->assertStatus(422), 'transfer_hint');
     }
 
     public function test_course_the_transfer_endpoint_would_reject_gets_no_hint(): void
@@ -118,10 +114,30 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->makeSession($course, '2026-09-23', 'scheduled');
         $this->makeSession($course, '2026-10-07', 'scheduled');
 
-        $this->putCourse($course, ['subject' => 'Math'])
+        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'subject_change_requires_transfer')
-            ->assertJsonMissingPath('transfer_hint');
+            ->assertJsonPath('code', 'subject_change_requires_transfer'), 'transfer_hint');
+    }
+
+    public function test_stale_unmarked_lesson_before_taught_lessons_withholds_the_hint(): void
+    {
+        // 9/16 never marked, 9/23 taught: a 9/16 cutover would move the taught lesson.
+        $course = $this->course();
+        $this->makeSession($course, '2026-09-16', 'scheduled');
+        $this->makeSession($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
+
+        $this->assertMissingKeys($this->putCourse($course, ['subject' => 'Math'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'subject_change_requires_transfer'), 'next_step', 'transfer_hint');
+    }
+
+    /** Laravel 8 TestResponse has no assertJsonMissingPath(). */
+    private function assertMissingKeys($response, string ...$keys): void
+    {
+        foreach ($keys as $key) {
+            $this->assertArrayNotHasKey($key, (array) $response->json());
+        }
     }
 
     private function putCourse(StudentClass $course, array $payload)
