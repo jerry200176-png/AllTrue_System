@@ -148,10 +148,27 @@ export const closedPaymentState = (course) => {
   return settled ? 'settled' : 'pending';
 };
 
-/** History list membership. includePending: StudentsList also files 待對帳結案 rows under history; CourseManagement keeps them in the active list. */
-export const isHistoryCourse = (course, { includePending = false } = {}) => {
-  const reason = closedReason(course);
-  return reason === 'settled' || reason === 'completed' || reason === 'waived' || (includePending && reason === 'settled_pending');
+// ── 進行中 / history (server-owned, in-app #427) ─────────────
+// The student-classes list computes these once (backend StudentClassActivity); the same verdict drives the
+// 「已有進行中課程」 prompt and the create-time duplicate guard. Pages read the flags, never re-derive them.
+
+/**
+ * Why the row is history ('completed' | 'settled' | 'settled_pending' | 'waived' | 'converted_trial' | …), or null.
+ * A degraded fallback row (`_noncanonical`, no server verdict) only shows its recorded closure (closedReason).
+ */
+export const courseHistoryReason = (course) => (
+  course?._noncanonical ? closedReason(course) : (course?.history_reason || null)
+);
+
+/** 進行中: running and not history (paused courses are not 進行中 but stay in the active section). */
+export const isActiveCourse = (course) => (course?._noncanonical
+  ? String(course?.status || '').toLowerCase() !== 'inactive' && courseHistoryReason(course) === null
+  : course?.is_active_course === true);
+
+/** 課程管理 keeps 待對帳結案 rows in its working list (that is where they are reconciled); everything else follows the server. */
+export const isCourseManagementHistory = (course) => {
+  const reason = courseHistoryReason(course);
+  return reason !== null && reason !== 'settled_pending';
 };
 
 // ── payment-status labels (display only; the server owns the status itself) ──
