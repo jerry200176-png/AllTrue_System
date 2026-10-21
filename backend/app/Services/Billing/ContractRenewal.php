@@ -99,10 +99,19 @@ final class ContractRenewal
             ->when($sourceEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $sourceEnd))
             ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
             ->pluck('SessionDate');
-        foreach ($lessonDates as $date) {
+        // A schedule-only occurrence can also have set the shift; it may have been cancelled since, so keep
+        // every status here (a wider candidate set only blocks a retry, it never shifts a batch).
+        $scheduleDates = DB::table('schedules')
+            ->where('student_course_id', (int) $studentClass->ID)
+            ->whereDate('schedule_date', '>=', $sourceStart !== null && $sourceStart > $startDate ? $sourceStart : $startDate)
+            ->when($sourceEnd !== null, fn ($q) => $q->whereDate('schedule_date', '<=', $sourceEnd))
+            ->whereNull('original_schedule_id')
+            ->pluck('schedule_date');
+        $fallbackWeekday = (int) Carbon::parse($startDate)->dayOfWeekIso;
+        foreach ([...$lessonDates, ...$scheduleDates] as $date) {
             $ymd = ContractSessionSchedule::normalizeDateString($date);
             if ($ymd !== null) {
-                $starts[self::nextSlotDayAfter($ymd, $slots)] = true;
+                $starts[self::nextSlotDayAfter($ymd, $slots, $fallbackWeekday)] = true;
             }
         }
 
@@ -570,18 +579,23 @@ final class ContractRenewal
             return $unchanged;
         }
 
-        return ['start' => self::nextSlotDayAfter($liveUntil, $slots), 'source_live_until' => $liveUntil];
+        return ['start' => self::nextSlotDayAfter($liveUntil, $slots, (int) Carbon::parse($startDate)->dayOfWeekIso),
+            'source_live_until' => $liveUntil];
     }
 
     /**
      * buildSessionsForCount() always books its start date, so a shifted batch begins on the first configured
-     * slot weekday after $date.
+     * slot weekday after $date. A course without fixed slots keeps the requested start's weekday, which
+     * purchaseBatch() turns into its fallback weekly slot.
      *
      * @param  array<int, array<string, mixed>>  $slots
      */
-    private static function nextSlotDayAfter(string $date, array $slots): string
+    private static function nextSlotDayAfter(string $date, array $slots, int $fallbackWeekday): string
     {
         $weekdays = array_filter(array_map(fn ($slot) => (int) ($slot['weekday'] ?? 0), $slots), fn ($wd) => $wd >= 1 && $wd <= 7);
+        if ($weekdays === []) {
+            $weekdays = [$fallbackWeekday];
+        }
         $next = Carbon::parse($date)->addDay();
         for ($i = 0; $weekdays !== [] && $i < 7 && !in_array($next->dayOfWeekIso, $weekdays, true); $i++) {
             $next->addDay();
