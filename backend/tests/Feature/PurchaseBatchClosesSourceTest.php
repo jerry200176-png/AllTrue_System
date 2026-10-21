@@ -195,7 +195,8 @@ class PurchaseBatchClosesSourceTest extends TestCase
         $this->assertSame('completed', $course->closed_reason);
     }
 
-    public function test_resume_clears_closed_reason(): void
+    // #4188: a settled course is not reopened in place; staff continue through 續課.
+    public function test_resume_of_settled_course_is_refused_and_close_kept(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = Student::create([
@@ -220,11 +221,11 @@ class PurchaseBatchClosesSourceTest extends TestCase
         ])->postJson("/api/v1/student-classes/{$course->ID}/pause", [
             'action' => 'resume',
         ]);
-        $res->assertOk();
+        $res->assertStatus(409)->assertJsonPath('error_code', 'course_closed_use_renewal');
 
         $course->refresh();
-        $this->assertSame(0, (int) $course->Stop);
-        $this->assertNull($course->closed_reason);
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('settled', $course->closed_reason);
     }
 
     public function test_resume_restores_sessions_cancelled_by_pause(): void
