@@ -891,8 +891,8 @@ class PaymentReportController extends Controller
         if ((int) ($course->Charge ?? 0) <= 0 && (float) ($course->Rate ?? 0) <= 0) { // 0 元 courses are out of scope
             return $refuse('這門課沒有設定收費金額，不需要補登或改未繳；若要收費請先到課程管理設定費用。', 'legacy_flag_zero_fee');
         }
-        if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage()) {
-            return $refuse('目前只有單一堂數制課程可以在這裡處理舊「已收」標記；月結或共用方案請到學生帳務逐筆核對。', 'legacy_flag_count_only');
+        if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage() || $course->isTrialFeeRecordedByDate()) {
+            return $refuse('目前只有單一堂數制正式課程可以在這裡處理舊「已收」標記；月結、共用方案或已記錄繳費日期的試聽請到學生帳務逐筆核對。', 'legacy_flag_count_only');
         }
         if ((int) ($course->Paid ?? 0) !== 1) {
             return $refuse('這門課沒有「已收」標記，請重新整理。', 'legacy_flag_not_set');

@@ -71,6 +71,7 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->backfill($token, $course, ['amount' => 3000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
         $this->assertSame([1, 'partial', 0], [Invoice::count(), (string) $invoice->fresh()->Status, (int) $course->fresh()->Paid]);
         $this->clear($token, $this->legacyCourse(1, ['Charge' => 0]))->assertStatus(422); // 0 元 is out of scope
+        $this->clear($token, $this->legacyCourse(1, ['ClassType' => 'trial']))->assertStatus(422)->assertJsonPath('code', 'legacy_flag_count_only'); // #4339 trial fee by date
     }
 
     public function test_both_actions_refuse_a_course_with_a_real_payment(): void
