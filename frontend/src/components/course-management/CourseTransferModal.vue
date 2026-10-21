@@ -134,7 +134,7 @@ async function run(previewOnly) {
 .course-modal { width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
 .modal-title { font-size: 1.2rem; font-weight: 800; margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin: 0 0 12px; }
-.prefill-note { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
+.prefill-note { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--ds-radius-md); font-size: var(--ds-font-size-sm); background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
 .form-label { display: block; font-size: 13px; font-weight: 700; margin: 10px 0 6px; }
 .form-input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 14px; }
 .slot-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }

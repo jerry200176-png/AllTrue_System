@@ -41,9 +41,9 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_subject_change_block_offers_transfer_from_first_unmarked_lesson(): void
     {
         $course = $this->course();
-        $this->session($course, '2026-09-23', 'attended');
-        $this->session($course, '2026-10-14', 'scheduled');
-        $this->session($course, '2026-10-07', 'scheduled');
+        $this->makeSession($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-10-14', 'scheduled');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
 
         $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
@@ -58,8 +58,8 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_locked_contract_with_teacher_and_slot_change_offers_transfer(): void
     {
         $course = $this->course();
-        $this->session($course, '2026-09-23', 'attended');
-        $this->session($course, '2026-10-07', 'scheduled');
+        $this->makeSession($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
         $this->ledger($course);
         $teacher = $this->user('T', 0);
 
@@ -76,8 +76,8 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_locked_contract_without_subject_teacher_or_slot_change_has_no_transfer_hint(): void
     {
         $course = $this->course();
-        $this->session($course, '2026-09-23', 'attended');
-        $this->session($course, '2026-10-07', 'scheduled');
+        $this->makeSession($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
         $this->ledger($course);
 
         $this->putCourse($course, ['sessions_purchased' => 12, 'days_of_week' => [3], 'start_time' => '16:00'])
@@ -89,8 +89,8 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_monthly_course_keeps_todays_message(): void
     {
         $course = $this->course(['ScheduleMode' => 'date', 'EndDate' => '2026-12-31']);
-        $this->session($course, '2026-09-23', 'attended');
-        $this->session($course, '2026-10-07', 'scheduled');
+        $this->makeSession($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
 
         $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
@@ -102,7 +102,7 @@ class StudentClassUpdateTransferHintTest extends TestCase
     public function test_no_remaining_unmarked_lesson_means_no_transfer_hint(): void
     {
         $course = $this->course();
-        $this->session($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-09-23', 'attended');
 
         $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
@@ -113,8 +113,8 @@ class StudentClassUpdateTransferHintTest extends TestCase
     {
         // A past lesson left unmarked: no observed usage, so split-contract would fail.
         $course = $this->course();
-        $this->session($course, '2026-09-23', 'scheduled');
-        $this->session($course, '2026-10-07', 'scheduled');
+        $this->makeSession($course, '2026-09-23', 'scheduled');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
 
         $this->putCourse($course, ['subject' => 'Math'])
             ->assertStatus(422)
@@ -132,7 +132,7 @@ class StudentClassUpdateTransferHintTest extends TestCase
         return (int) FrontendSubjectIdResolver::resolve($name);
     }
 
-    private function session(StudentClass $course, string $date, string $status): void
+    private function makeSession(StudentClass $course, string $date, string $status): void
     {
         ClassSession::create([
             'StudentClassID' => $course->ID, 'SessionDate' => $date,
