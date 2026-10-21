@@ -347,24 +347,19 @@ class PaymentReportController extends Controller
     /**
      * PUT /api/v1/payment-reports/{id}/confirm
      * Director confirms a payment report → creates Payment, updates Invoice.
+     * $legacyFlagBackfill (Founder GO 2026-10-21; never from the route) is set only by recordLegacyFlagBackfill() after
+     * legacyFlagRefusal() proved `paid` rests on the legacy Paid flag alone: it skips just the "already paid" guards that
+     * flag trips; every other guard, the bill cap and the ledger writes stay this one confirm path.
      */
-    public function confirm(Request $request, $id)
+    public function confirm(Request $request, $id, bool $legacyFlagBackfill = false)
     {
         PaymentReport::findOrFail($id);
 
-        return $this->confirmReport((int) $id, $request->attributes->get('auth_user_id'), trim((string) $request->input('note', '')));
-    }
-
-    /**
-     * The one confirm path (確認入帳). $legacyFlagBackfill (Founder GO 2026-10-21) is set only by recordLegacyFlagBackfill(),
-     * after legacyFlagRefusal() proved the course's `paid` rests on the legacy Paid flag alone: it skips just the
-     * "already paid" guards that this flag trips; every other guard, the bill cap and the ledger writes are shared.
-     */
-    private function confirmReport(int $id, mixed $userId, string $confirmationNote, bool $legacyFlagBackfill = false)
-    {
+        $userId = $request->attributes->get('auth_user_id');
+        $confirmationNote = trim((string) $request->input('note', ''));
         // Routing id only — must not run inside the transaction (would start an RR
-        // consistent-read snapshot before waiting on the course lock). The backfill caller already holds that lock.
-        $courseId = $this->resolveReportCourseId($id);
+        // consistent-read snapshot before waiting on the course lock).
+        $courseId = $this->resolveReportCourseId((int) $id);
 
         return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote, $legacyFlagBackfill) {
             // Global lock order with BillingCorrection::applyCountCorrection and void:
@@ -810,7 +805,7 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
             }
             $report = $this->createPendingReport($course, $data, null, $tokenHash);
-            $confirmed = $this->confirmReport((int) $report->id, $userId, '', true);
+            $confirmed = $this->confirm($request, $report->id, true); // the backfill already holds the course lock
             if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
