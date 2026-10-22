@@ -226,3 +226,14 @@ assert.deepEqual(TRIAL_TARGET_CLASS_TYPE_OPTIONS.map((o) => o.value), ['one_on_o
 // The calendar course mapping exposes the stored target to the conflict check.
 assert.equal(mapCalendarCourse({ id: 9, class_type: 'trial', trial_target_class_type: 'one_on_three' }).trial_target_class_type, 'one_on_three');
 assert.equal(mapCalendarCourse({ id: 9, class_type: 'trial' }).trial_target_class_type, null);
+// The badge uses the same trial-target rule as the guard: a 1v2 student plus a trial for a 1v3
+// class is a 1v3 slot, so it reads 2/3 with a seat left, and 3/3 after the permitted third.
+const targetedBadge = occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, 'one_on_three')] });
+assert.equal(targetedBadge.label, '2/3');
+assert.equal(targetedBadge.remaining, 1);
+assert.match(targetedBadge.tooltip, /一對二已滿/, 'the separate 1v2 capacity detail is kept');
+assert.equal(targetConflict([r(1, 'one_on_two'), t(2, 'one_on_three')], 'trial', 'one_on_three').blocked, false);
+assert.equal(occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, 'one_on_three'), t(3, 'one_on_three')] }).label, '3/3');
+// Untargeted or 1v2-targeted trials keep the class-type maximum.
+assert.equal(occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, null)] }).label, '2/2');
+assert.equal(occupancyBadge({ courses: [r(1, 'one_on_one'), t(2, 'one_on_three')] }).label, '2/1');

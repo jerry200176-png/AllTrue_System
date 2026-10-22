@@ -62,7 +62,8 @@ export function occupancyBadge({ courses = [] } = {}) {
     };
   }
   const types = courses.map((course) => String(course.class_type || ''));
-  const max = displayMaxForClassTypes(types);
+  // in-app #426: a trial targeting one_on_three makes the slot one-on-three, same as the guard.
+  const max = isOneOnThreeSlot(courses) ? TEACHER_SLOT_ABSOLUTE_MAX : displayMaxForClassTypes(types);
   const remaining = Math.max(0, max - count);
   const full = count >= max;
   const color = full ? '#ef4444' : remaining === 1 ? '#f59e0b' : '#10b981';
