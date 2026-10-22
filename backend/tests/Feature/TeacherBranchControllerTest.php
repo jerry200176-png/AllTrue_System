@@ -96,6 +96,67 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertEquals(1, $count);
     }
 
+    public function test_store_and_destroy_refuse_targets_the_director_does_not_manage(): void
+    {
+        $campus  = Campus::factory()->create();
+        $campus2 = Campus::factory()->create();
+        $director = User::create(['LoginName' => 'tb-dir1-' . uniqid() . '@test.com', 'Name' => 'D1', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912000006]);
+        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $director->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        $directorId = (int) $director->id;
+        $otherDirector = User::create(['LoginName' => 'tb-dir2-' . uniqid() . '@test.com', 'Name' => 'D2', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912000005]);
+        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $otherDirector->id, 'Admin' => 1, 'Approved' => 1]);
+        $foreignTeacher = $this->makeTeacher($campus2->id);
+
+        foreach ([$directorId, (int) $otherDirector->id, $foreignTeacher] as $target) {
+            $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $target, 'branch_id' => $campus2->id]])->assertForbidden();
+            $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $target, 'branch_id' => $campus->id]])->assertForbidden();
+        }
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $directorId, 'CampusID' => $campus2->id]);
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $foreignTeacher, 'CampusID' => $campus->id]);
+
+        $this->withToken($token)->deleteJson("/api/v1/teacher_branches?teacher_id={$otherDirector->id}")->assertForbidden();
+        $this->withToken($token)->deleteJson("/api/v1/teacher_branches?teacher_id={$foreignTeacher}")->assertForbidden();
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $otherDirector->id, 'CampusID' => $campus->id]);
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $foreignTeacher, 'CampusID' => $campus2->id]);
+
+        $listed = collect($this->withToken($token)->getJson('/api/v1/teacher_branches')->assertOk()->json())->pluck('branch_id')->unique()->values()->all();
+        $this->assertSame([(int) $campus->id], array_map('intval', $listed));
+    }
+
+    /** A batch mixing a managed teacher with one the director does not manage is refused as a whole: no row is written. */
+    public function test_a_mixed_batch_is_refused_without_partial_writes(): void
+    {
+        $campus  = Campus::factory()->create();
+        $campus2 = Campus::factory()->create();
+        $token   = $this->directorToken($campus->id);
+        $managed = $this->makeTeacher($campus->id);
+        $foreign = $this->makeTeacher($campus2->id);
+        $rows = fn () => DB::table('UserCampus')->whereIn('UserID', [$managed, $foreign])->orderBy('UserID')->orderBy('CampusID')
+            ->get(['UserID', 'CampusID', 'Approved', 'Admin'])->toArray();
+        $before = $rows();
+
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [
+            ['teacher_id' => $managed, 'branch_id' => $campus2->id],
+            ['teacher_id' => $foreign, 'branch_id' => $campus->id],
+        ])->assertForbidden();
+
+        $this->assertEquals($before, $rows(), 'the managed teacher is not assigned either');
+    }
+
+    /** A teacher linked to the director's campus only through legacy teacher_branches is still managed (Codex r4347865989). */
+    public function test_store_accepts_a_teacher_linked_only_through_teacher_branches(): void
+    {
+        $campus = Campus::factory()->create();
+        $token  = $this->directorToken($campus->id);
+        $legacy = User::create(['LoginName' => 'tb-legacy-' . uniqid() . '@test.com', 'Name' => 'Legacy', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912000007]);
+        DB::table('teacher_branches')->insert(['teacher_id' => $legacy->id, 'branch_id' => $campus->id]);
+
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $legacy->id, 'branch_id' => $campus->id]])->assertOk();
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $legacy->id, 'CampusID' => $campus->id]);
+    }
+
     public function test_destroy_removes_teacher_branches(): void
     {
         $campus    = Campus::factory()->create();
