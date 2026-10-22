@@ -1368,7 +1368,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         deploy_start = self.workflow.index("  deploy:\n")
         parent_smoke_start = self.workflow.index("  parent-portal-smoke:\n")
         deploy = self.workflow[deploy_start:parent_smoke_start]
-        self.assertIn("timeout-minutes: 30", deploy)
+        self.assertIn("timeout-minutes: 55", deploy)  # deploy + verify + 20-min post-deploy watch
         for option in (
             "-o BatchMode=yes",
             "-o ConnectTimeout=20",
@@ -1702,20 +1702,24 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn(self.MIGRATION_START, deploy)
         self.assertNotIn("continue-on-error", deploy)
         self.assertNotIn("set +e", deploy)
-        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  parent-portal-smoke:", 1)[0]
+        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  deploy-incident:", 1)[0]
         steps = after.split("      - name: ")[1:]
         names = [step.split("\n", 1)[0] for step in steps]
         self.assertEqual(
-            ["Checkout post-deploy verifier", "Verify production independently from the runner",
+            ["Verify production independently from the runner",
              "Record deployed and production-verified state", "Summarize production verification failure"],
             names,
         )
         # No `if:` override: the runner verification and the success marker run only when
         # Deploy (and so migration, executor verification and smoke) succeeded.
-        for step in steps[1:3]:
+        # The checkout moved before SSH so its strict stdout parser is already available.
+        self.assertLess(self.workflow.index("      - name: Checkout post-deploy verifier"),
+                        self.workflow.index("      - name: Deploy\n"))
+        for step in steps[:2]:
             self.assertNotRegex(step, r"(?m)^        if:")
             self.assertNotIn("continue-on-error", step)
-        self.assertIn("if: ${{ failure() && steps.deploy.outcome != 'skipped' }}", steps[3])
+        # Always summarize missing/cancelled results too, including a skipped executor.
+        self.assertIn("if: ${{ always() && (failure() || cancelled()) }}", steps[2])
 
 
 class FounderGoAutoActivationTest(unittest.TestCase):
@@ -2483,10 +2487,13 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             self.assertIn("smoke scripts/post-merge-smoke.sh expect=old strict=", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
-        self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)
+        # The stdout parser is a pipeline stage; capture SSH's status, never the parser's.
+        self.assertIn('capture-watch --output "$GITHUB_OUTPUT" || rc=${PIPESTATUS[0]}', self.workflow)
         self.assertIn('echo "rc=$rc" >> "$GITHUB_OUTPUT"\n          exit "$rc"', self.workflow)
         self.assertIn("RC: ${{ steps.deploy.outputs.rc }}", self.workflow)
-        self.assertIn('--rc "${RC:-1}"', self.workflow)
+        # Missing/cancelled executor output is now an explicit unknown, never invented rc=1.
+        self.assertIn('--rc "$RC"', self.workflow)
+        self.assertNotIn('${RC:-1}', self.workflow)
         self.assertIn('--expect-backend-sha "$TARGET_SHA" --attempts 12 --interval 5', self.workflow)
         self.assertNotIn("artisan", (ROOT / "scripts" / "post-deploy-verify.py").read_text())  # never migrate:rollback
 

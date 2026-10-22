@@ -91,6 +91,7 @@ jobs:
           python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 -m unittest scripts.tests.test_deploy_activation_state.GhApiRetryTest
+          python3 scripts/tests/test_post_deploy_watch.py
           # #4207: keep calendar-course-acceptance workflow_run names coupled to deploy.yml
           python3 -m unittest scripts.tests.test_deploy_activation_state.DeployActivationWorkflowContractTest.test_calendar_course_acceptance_listens_for_deploy_run_identities
           python3 scripts/tests/test_required_php_checks.py

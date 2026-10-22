@@ -18,6 +18,13 @@ Read-only. Used by `.github/workflows/deploy.yml`:
                 Exception (Founder 2026-10-14): when every migration in the
                 range is a new additive-only file (`range-additive` = 1),
                 code rollback is safe under the newer schema and proceeds.
+                With `--watch-seconds N` (gap #3), after verify + smoke pass
+                the gate keeps watching for N seconds: health + identity every
+                `--watch-interval`, and the Sentry error count when
+                SENTRY_WATCH is set. A breach
+                (`--watch-failures` consecutive failed checks, or an error-count
+                spike against the pre-deploy baseline) takes the same
+                rollback-or-hold decision as a failed verify.
 * `range-additive PREV TARGET` — prints 1 when every migration in the range is a new,
                 additive-only file per the previous commit's classifier, else 0.
 * `summarize` — the step summary for a failed production executor exit code.
@@ -36,6 +43,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE_URL = "https://daan.lifenet.com.tw"
@@ -227,8 +235,17 @@ def range_migrations(previous_sha: str, target_sha: str, run=subprocess.run) -> 
     return str(len([line for line in result.stdout.splitlines() if line.strip()]))
 
 
-def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migrations, additive_fn=None) -> int:
-    """Executor's final stage: 0 verified, RC_HELD_MIGRATION hold, 1 roll back (caller runs rollback_deploy)."""
+def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migrations, additive_fn=None,
+         watch_fn=None) -> int:
+    """Emit a terminal, secret-free observation without changing the executor decision."""
+    outcome = {"watch": "notrun", "sentry": "notrun"}
+    try:
+        return _gate(args, verify_fn, run, migrations_fn, additive_fn, watch_fn, outcome)
+    finally:
+        emit_watch_result(outcome)
+
+
+def _gate(args, verify_fn, run, migrations_fn, additive_fn, watch_fn, outcome):
     frontend_changed = str(args.frontend_changed).strip() not in ("", "0")
     verify_args = argparse.Namespace(
         base_url=args.base_url, health_path=None, expect_backend_sha=args.target_sha,
@@ -239,11 +256,31 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
     ok = (verify_fn or verify)(verify_args) == 0
     if ok:
         env = dict(os.environ)
+        env.pop(SENTRY_TOKEN_ENV, None)  # the smoke script never needs the Sentry read token
         if frontend_changed:
             env["SMOKE_STRICT_VERSION"] = "1"
         ok = run(["bash", args.smoke], env=env).returncode == 0
         if not ok:
             print("post-deploy smoke: FAILED")
+    if ok and getattr(args, "watch_seconds", 0) > 0:
+        watch_args = argparse.Namespace(**vars(verify_args))
+        watch_args.watch_seconds = args.watch_seconds
+        watch_args.watch_interval = args.watch_interval
+        watch_args.watch_failures = args.watch_failures
+        watch_args.sentry_every = args.sentry_every
+        watch_args.spike = SpikePolicy(args.sentry_factor, args.sentry_floor_per_min, args.sentry_min_count)
+        watch_args.sentry_baseline_minutes = args.sentry_baseline_minutes
+        watch_args.sentry_baseline_gap_minutes = args.sentry_baseline_gap_minutes
+        outcome.update(watch="unknown", sentry="unknown")
+        watch_args.outcome = outcome
+        config = sentry_config_from_env(os.environ)
+        if config is None:
+            outcome["sentry"] = "skipped_malformed" if os.environ.get(SENTRY_TOKEN_ENV, "").strip() else "skipped_unconfigured"
+        breach = (watch_fn or watch)(watch_args, sentry=config)
+        outcome["watch"] = "breached" if breach else "passed"
+        if breach:
+            print(f"::error::post-deploy watch breach: {breach}")
+            ok = False
     if ok:
         print("🚀 部署完成 — Health + identity + Smoke test 全通過")
         return 0
@@ -261,9 +298,205 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
     return RC_HELD_MIGRATION
 
 
-def summarize(rc: int, target_sha: str, previous_sha: str, runner_verify: str) -> str:
+# --- post-deploy watch (gap #3; Argo Rollouts AnalysisRun / Flagger / SRE canary analysis) ---
+
+SENTRY_TOKEN_ENV = "SENTRY_WATCH"
+DEFAULT_SENTRY_API = "https://sentry.io"
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
+
+
+class SpikePolicy:
+    """Error-count spike thresholds (all configurable from the gate's command line)."""
+
+    def __init__(self, factor: float, floor_per_min: float, min_count: int):
+        self.factor, self.floor_per_min, self.min_count = factor, floor_per_min, min_count
+
+
+def next_failure_streak(streak: int, problems: list) -> int:
+    """Consecutive failed health/identity checks; one passing check resets the streak."""
+    return streak + 1 if problems else 0
+
+
+def sentry_spike(baseline_count, baseline_minutes, watch_count, watch_minutes, policy: SpikePolicy) -> str | None:
+    """A reason when the post-deploy error rate is a spike against the pre-deploy baseline, else None.
+
+    Spike = at least ``min_count`` errors since the watch began AND a per-minute rate above
+    ``factor`` x max(baseline rate, ``floor_per_min``). The floor keeps a quiet baseline
+    (0 errors) from turning one stray error into a rollback; ``min_count`` keeps short
+    windows from tripping on a handful. Unknown counts never trigger.
+    """
+    if baseline_count is None or watch_count is None or baseline_minutes <= 0:
+        return None
+    watch_minutes = max(float(watch_minutes), 1.0)
+    baseline_rate = baseline_count / float(baseline_minutes)
+    watch_rate = watch_count / watch_minutes
+    threshold = policy.factor * max(baseline_rate, policy.floor_per_min)
+    if watch_count >= policy.min_count and watch_rate > threshold:
+        return (f"Sentry errors {watch_count} in {watch_minutes:.1f} min ({watch_rate:.2f}/min) exceed "
+                f"{policy.factor:g}x baseline {baseline_rate:.2f}/min (floor {policy.floor_per_min:g}/min)")
+    return None
+
+
+def sentry_config_from_env(environ) -> dict | None:
+    """Sentry read-only settings, or None when not configured (the watch then skips Sentry)."""
+    # "<org>/<project> <token>", or "<https base> <org>/<project> <token>" for a regional host
+    # such as https://de.sentry.io. One secret, so the executor heredoc stays under GitHub's limit.
+    parts = (environ.get(SENTRY_TOKEN_ENV) or "").split()
+    if not parts:
+        return None
+    if len(parts) not in (2, 3):
+        print("post-deploy watch: SENTRY_WATCH is malformed; Sentry check skipped")
+        return None
+    base = parts[0] if len(parts) == 3 else DEFAULT_SENTRY_API
+    org, _, project = parts[-2].partition("/")
+    token = parts[-1]
+    if not (_SLUG_RE.match(org) and _SLUG_RE.match(project) and base.startswith("https://")):
+        print("post-deploy watch: Sentry settings are malformed; Sentry check skipped")
+        return None
+    return {"token": token, "org": org, "project": project, "base": base.rstrip("/")}
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(epoch))
+
+
+def sentry_error_count(config: dict, start: float, end: float, timeout: float = 10.0, opener=None) -> int | None:
+    """Error events in [start, end) for the configured project; None on any failure (never a breach)."""
+    query = urllib.parse.urlencode({
+        "field": "count()", "query": f"event.type:error project:{config['project']}",
+        "start": _iso(start), "end": _iso(end), "dataset": "errors", "referrer": "alltrue.post-deploy-watch",
+    })
+    url = f"{config['base']}/api/0/organizations/{urllib.parse.quote(config['org'])}/events/?{query}"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {config['token']}",
+                                                  "User-Agent": USER_AGENT})
+    try:
+        with (opener or urllib.request.urlopen)(request, timeout=timeout) as response:  # noqa: S310 - https base checked
+            payload = json.loads(response.read(65536).decode("utf-8"))
+        value = payload["data"][0]["count()"]
+        return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    except Exception as error:  # noqa: BLE001 - Sentry outages must not roll production back
+        print(f"post-deploy watch: Sentry query failed ({error.__class__.__name__}); counted as unknown")
+        return None
+
+
+def watch(args, sentry=None, check=None, count=None, sleep=time.sleep, clock=time.monotonic,
+          wall=time.time) -> str | None:
+    """Watch a verified release; return the breach reason, or None when the window passed."""
+    outcome = getattr(args, "outcome", {"watch": "unknown", "sentry": "unknown"})
+    check = check or (lambda: check_once(args.base_url, args.health_path or DEFAULT_HEALTH_PATHS,
+                                         args.expect_backend_sha, args.expect_frontend_sha, args.timeout,
+                                         args.insecure))
+    count = count or sentry_error_count
+    start, wall_start = clock(), wall()
+    end = start + args.watch_seconds
+    baseline = None
+    baseline_minutes = float(args.sentry_baseline_minutes)
+    if sentry is None:
+        if outcome["sentry"] != "skipped_malformed":
+            outcome["sentry"] = "skipped_unconfigured"
+        print("post-deploy watch: Sentry check skipped (secret SENTRY_WATCH not set)")
+    else:
+        gap = args.sentry_baseline_gap_minutes * 60.0
+        baseline = count(sentry, wall_start - gap - baseline_minutes * 60.0, wall_start - gap)
+        if baseline is None:
+            outcome["sentry"] = "skipped_baseline_unavailable"
+            print("post-deploy watch: Sentry baseline unavailable; Sentry check skipped for this deploy")
+        else:
+            print(f"post-deploy watch: Sentry baseline {baseline} errors in {baseline_minutes:g} min")
+    print(f"post-deploy watch: {args.watch_seconds:g}s, health + identity every {args.watch_interval:g}s, "
+          f"breach after {args.watch_failures} consecutive failures")
+    streak, checks, next_sentry = 0, 0, start + args.sentry_every
+    while True:
+        problems = check()
+        checks += 1
+        streak = next_failure_streak(streak, problems)
+        if problems:
+            print(f"post-deploy watch: check {checks} failed ({streak}/{args.watch_failures}): {'; '.join(problems)}")
+        if streak >= args.watch_failures:
+            outcome["watch"] = "breached"
+            return f"{streak} consecutive failed health/identity checks: {'; '.join(problems)}"
+        last = clock() + args.watch_interval > end
+        if baseline is not None and (clock() >= next_sentry or last):
+            next_sentry += args.sentry_every
+            now = wall()
+            current = count(sentry, wall_start, now)
+            reason = sentry_spike(baseline, baseline_minutes, current, (now - wall_start) / 60.0, args.spike)
+            if reason:
+                outcome.update(watch="breached", sentry="breached")
+                return reason
+            if current is None:
+                outcome["sentry"] = "degraded_query_unavailable"
+            if current is not None:
+                print(f"post-deploy watch: Sentry {current} errors since watch start (no spike)")
+        if last:
+            break
+        sleep(args.watch_interval)
+    outcome["watch"] = "passed"
+    if baseline is not None and outcome["sentry"] != "degraded_query_unavailable":
+        outcome["sentry"] = "passed"
+    print(f"post-deploy watch: OK after {checks} checks over {args.watch_seconds:g}s")
+    return None
+
+
+WATCH_MARKER = "ALLTRUE_WATCH_RESULT="
+WATCH_STATES = {"passed", "breached", "notrun", "unknown"}
+SENTRY_STATES = {"passed", "breached", "skipped_unconfigured", "skipped_malformed",
+                 "skipped_baseline_unavailable", "degraded_query_unavailable", "notrun", "unknown"}
+
+
+def emit_watch_result(outcome, output=None):
+    print(WATCH_MARKER + json.dumps({"version": 1, **outcome}, separators=(",", ":")), file=output or sys.stdout)
+
+
+def capture_watch(stream, output):
+    """Stream logs without storing them; only strict finite terminal data reaches Actions outputs."""
+    markers, result = 0, None
+
+    def unique(pairs):
+        obj = dict(pairs)
+        if len(obj) != len(pairs):
+            raise ValueError("duplicate field")
+        return obj
+
+    for line in stream:
+        if not line.startswith(WATCH_MARKER):
+            sys.stdout.write(line)
+            continue
+        markers += 1
+        try:
+            value = json.loads(line[len(WATCH_MARKER):], object_pairs_hook=unique)
+            if (set(value) != {"version", "watch", "sentry"} or type(value["version"]) is not int
+                    or value["version"] != 1 or value["watch"] not in WATCH_STATES
+                    or value["sentry"] not in SENTRY_STATES):
+                raise ValueError("invalid schema")
+            if ((value["watch"] == "passed" and value["sentry"] in {"breached", "notrun"})
+                    or (value["sentry"] == "passed" and value["watch"] != "passed")
+                    or (value["watch"] == "notrun" and value["sentry"] != "notrun")):
+                raise ValueError("inconsistent result")
+            result = value
+        except (ValueError, TypeError, KeyError):
+            result = None
+    if markers != 1 or result is None:
+        result = {"watch": "unknown", "sentry": "unknown"}
+    output.write(f"watch={result['watch']}\nsentry={result['sentry']}\n")
+
+
+def watch_summary(watch_state, sentry_state):
+    watch_state = watch_state if watch_state in WATCH_STATES else "unknown"
+    sentry_state = sentry_state if sentry_state in SENTRY_STATES else "unknown"
+    return f"## post-deploy watch\nHealth/identity watch: {watch_state}.\nSentry error-count check: {sentry_state}.\n"
+
+
+def summarize(rc: int | str | None, target_sha: str, previous_sha: str, runner_verify: str) -> str:
     lines = ["## state=production-verification-failed", ""]
-    if rc == 0 and runner_verify != "success":
+    rc = int(str(rc)) if re.fullmatch(r"(?:0|[1-9][0-9]{0,2})", str(rc)) and int(str(rc)) <= 255 else None
+    if rc is None:
+        lines.append("Executor result is UNKNOWN (no valid exit code was recorded, including cancellation/timeout). "
+                     "Production and rollback state are UNKNOWN; check `/api/health` and `deployment.json` now.")
+    elif rc == 0 and runner_verify != "success" and runner_verify != "failure":
+        lines.append(f"The executor returned success for `{target_sha}`, but the independent runner check "
+                     "did not complete successfully. Production verification is UNKNOWN; no runner rollback was attempted.")
+    elif rc == 0 and runner_verify == "failure":
         lines.append(
             f"The executor verified `{target_sha}` from the Pi, but the independent runner check failed. "
             "No automatic rollback was attempted from the runner; check `/api/health` and `deployment.json` now."
@@ -327,6 +560,16 @@ def main(argv=None) -> int:
     g.add_argument("--frontend-changed", default="0")
     g.add_argument("--migration-ran", required=True)
     g.add_argument("--smoke", default=DEFAULT_SMOKE)
+    g.add_argument("--watch-seconds", type=float, default=0.0, help="post-deploy watch window; 0 = no watch")
+    g.add_argument("--watch-interval", type=float, default=30.0)
+    g.add_argument("--watch-failures", type=int, default=4, help="consecutive failed checks that breach")
+    g.add_argument("--sentry-every", type=float, default=300.0, help="seconds between Sentry queries")
+    g.add_argument("--sentry-factor", type=float, default=5.0)
+    g.add_argument("--sentry-floor-per-min", type=float, default=0.2)
+    g.add_argument("--sentry-min-count", type=int, default=20)
+    g.add_argument("--sentry-baseline-minutes", type=float, default=60.0)
+    g.add_argument("--sentry-baseline-gap-minutes", type=float, default=15.0,
+                   help="baseline ends this long before the watch, to leave the deploy itself out")
 
     q = sub.add_parser("pending-in-range")
     q.add_argument("previous_sha")
@@ -337,16 +580,24 @@ def main(argv=None) -> int:
     r.add_argument("target_sha")
 
     s = sub.add_parser("summarize")
-    s.add_argument("--rc", type=int, required=True)
+    s.add_argument("--rc", default="unknown")
     s.add_argument("--target-sha", required=True)
     s.add_argument("--previous-sha", default="unknown")
     s.add_argument("--runner-verify", default="skipped")
+
+    c = sub.add_parser("capture-watch")
+    c.add_argument("--output", required=True)
+    w = sub.add_parser("watch-summary")
+    w.add_argument("--watch", default="unknown")
+    w.add_argument("--sentry", default="unknown")
 
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)  # keep order with the smoke subprocess output
     if args.command in ("verify", "gate") and args.attempts < 1:
         parser.error("--attempts must be >= 1")
+    if args.command == "gate" and (args.watch_seconds < 0 or args.watch_failures < 1 or args.watch_interval <= 0):
+        parser.error("--watch-seconds must be >= 0, --watch-failures >= 1, --watch-interval > 0")
     if args.command == "verify":
         return verify(args)
     if args.command == "gate":
@@ -356,6 +607,13 @@ def main(argv=None) -> int:
         return 0
     if args.command == "range-additive":
         print(range_additive(args.previous_sha, args.target_sha))
+        return 0
+    if args.command == "capture-watch":
+        with open(args.output, "a", encoding="utf-8") as output:
+            capture_watch(sys.stdin, output)
+        return 0
+    if args.command == "watch-summary":
+        sys.stdout.write(watch_summary(args.watch, args.sentry))
         return 0
     sys.stdout.write(summarize(args.rc, args.target_sha, args.previous_sha, args.runner_verify))
     return 0
