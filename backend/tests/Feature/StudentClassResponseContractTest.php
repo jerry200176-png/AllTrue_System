@@ -190,6 +190,22 @@ class StudentClassResponseContractTest extends TestCase
         $this->authJson('GET', "/api/v1/student-classes/{$foreign->ID}", $token)->assertForbidden();
     }
 
+    /** #4144: a director of another campus cannot update a course, and nothing about the course changes. */
+    public function test_director_of_another_campus_cannot_update_a_course(): void
+    {
+        $campus = Campus::factory()->create();
+        $foreignCampus = Campus::factory()->create();
+        [$token] = $this->makeUserToken($campus->id, 'course-put-director@test.com', 'A');
+        [, $teacher] = $this->makeUserToken($foreignCampus->id, 'course-put-teacher@test.com', 'T');
+        $foreign = $this->makeCourse($teacher, $foreignCampus->id);
+        $before = $foreign->fresh()->getAttributes();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$foreign->ID}", ['StudentID' => $foreign->StudentID, 'Memo' => 'cross-campus edit'])
+            ->assertForbidden();
+        $this->assertSame($before, $foreign->fresh()->getAttributes());
+    }
+
     /** @dataProvider memoPayloadShapes */
     #[\PHPUnit\Framework\Attributes\DataProvider('memoPayloadShapes')]
     public function test_memo_update_preserves_object_and_legacy_single_row_json_payloads(bool $wrapped): void
