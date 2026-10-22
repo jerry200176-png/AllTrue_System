@@ -908,7 +908,8 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── Director: payment message for LINE copy ──────────────────────────
-    Route::middleware(['role:director', 'require_password_change'])->group(function () {
+    // require_campus: these act on one campus's LINE channel or students, so a director without a campus has nothing here.
+    Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
