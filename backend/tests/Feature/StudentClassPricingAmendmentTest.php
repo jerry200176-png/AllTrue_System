@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\StudentClass;
 use App\Services\MonthlyBillingService;
+use App\Services\StudentClassPricingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -59,6 +60,33 @@ class StudentClassPricingAmendmentTest extends TestCase
         $summary = app(MonthlyBillingService::class)->summarizePeriod($course, '2026-08');
 
         $this->assertSame(2200, $summary['charge']);
+    }
+
+    public function test_amendments_are_read_once_per_course_and_resolved_per_date(): void
+    {
+        // #3756: forDate() is called per lesson; without the relation loaded it must not query per date.
+        $course = $this->course();
+        $base = ['student_class_id' => $course->ID, 'rate_unit' => 'session', 'source_reference' => 'test-pricing-amendment',
+            'reason' => 'test', 'created_at' => now(), 'voided_at' => null, 'voided_by_user_id' => null, 'void_reason' => null];
+        DB::table('student_class_pricing_amendments')->insert([
+            $base + ['effective_from' => '2026-08-05', 'rate' => 2500],
+            $base + ['effective_from' => '2026-08-10', 'rate' => 2600],
+            $base + ['effective_from' => '2026-08-10', 'rate' => 2700],
+            ['effective_from' => '2026-08-20', 'rate' => 9999, 'voided_at' => now(), 'voided_by_user_id' => 4, 'void_reason' => 'test'] + $base,
+        ]);
+        $pricing = new StudentClassPricingService();
+        $fresh = StudentClass::query()->findOrFail($course->ID);
+
+        DB::enableQueryLog();
+        $rates = array_map(fn ($date) => $pricing->forDate($fresh, $date)['rate'],
+            ['2026-08-04', '2026-08-05', '2026-08-09', '2026-08-10', '2026-08-21']);
+        $amendmentQueries = collect(DB::getQueryLog())
+            ->filter(fn ($q) => str_contains($q['query'], 'student_class_pricing_amendments'))->count();
+        DB::disableQueryLog();
+
+        // Before the first amendment: legacy Rate; same-day tie: the later id; voided rows ignored.
+        $this->assertSame([2200, 2500, 2500, 2700, 2700], $rates);
+        $this->assertSame(1, $amendmentQueries);
     }
 
     private function course(): StudentClass
