@@ -149,18 +149,24 @@ class TeacherBranchControllerTest extends TestCase
     /** A teacher linked to the director's campus only through legacy teacher_branches is still managed (Codex r4347865989). */
     public function test_store_accepts_a_teacher_linked_only_through_teacher_branches(): void
     {
-        // No migration creates the legacy table, so the CI schema lacks it (same as ChatEnhancementTest FR-001);
-        // creating it here would commit the RefreshDatabase transaction on MySQL.
-        if (!Schema::hasTable('teacher_branches')) {
-            $this->markTestSkipped('legacy teacher_branches table is not in the test schema');
-        }
-        $campus = Campus::factory()->create();
-        $token  = $this->directorToken($campus->id);
-        $legacy = User::create(['LoginName' => 'tb-legacy-' . uniqid() . '@test.com', 'Name' => 'Legacy', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912000007]);
+        // The legacy teacher_branches table is created by the test-only fixture migration (Tests\\CreatesApplication),
+        // so this exercises the real fallback. A director with no UserCampus link to the teacher, only a
+        // teacher_branches row in the director's campus, still manages the teacher.
+        $this->assertTrue(Schema::hasTable('teacher_branches'), 'test fixture must provide teacher_branches');
+        $campus  = Campus::factory()->create();
+        $other   = Campus::factory()->create();
+        $token   = $this->directorToken($campus->id);
+        $legacy  = User::create(['LoginName' => 'tb-legacy-' . uniqid() . '@test.com', 'Name' => 'Legacy', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912000007]);
         DB::table('teacher_branches')->insert(['teacher_id' => $legacy->id, 'branch_id' => $campus->id]);
+        // A teacher bound only to another campus through teacher_branches is NOT managed.
+        $foreignLegacy = User::create(['LoginName' => 'tb-legacy2-' . uniqid() . '@test.com', 'Name' => 'Legacy2', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912000017]);
+        DB::table('teacher_branches')->insert(['teacher_id' => $foreignLegacy->id, 'branch_id' => $other->id]);
 
         $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $legacy->id, 'branch_id' => $campus->id]])->assertOk();
         $this->assertDatabaseHas('UserCampus', ['UserID' => $legacy->id, 'CampusID' => $campus->id]);
+
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $foreignLegacy->id, 'branch_id' => $campus->id]])->assertForbidden();
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $foreignLegacy->id, 'CampusID' => $campus->id]);
     }
 
     /** teacher_id[]=<victim> made (int) check User 1 while the delete matched the victim (security review, 2026-10-22). */
