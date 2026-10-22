@@ -60,7 +60,7 @@ class InappReportResolveEvidence
     }
 
     /**
-     * True when a production smoke workflow (config pop_inapp.smoke_workflows) run from main by schedule or dispatch
+     * True when a production smoke workflow (config pop_inapp.smoke_workflows) run from main by schedule, dispatch or deploy
      * succeeded and started after $after (an ISO time), and so did the named job if one is given.
      */
     public function smokePassedAfter(string $runId, ?string $jobId, string $after): bool
@@ -69,7 +69,7 @@ class InappReportResolveEvidence
         $started = strtotime((string) ($run['run_started_at'] ?? ''));
         $passed = (string) ($run['id'] ?? '') === $runId && ($run['conclusion'] ?? null) === 'success'
             && in_array($run['path'] ?? null, (array) config('pop_inapp.smoke_workflows'), true)
-            && in_array($run['event'] ?? null, ['schedule', 'workflow_dispatch'], true) && ($run['head_branch'] ?? null) === 'main'
+            && in_array($run['event'] ?? null, ['schedule', 'workflow_dispatch', 'workflow_run'], true) && ($run['head_branch'] ?? null) === 'main'
             && $started !== false && $started >= strtotime($after);
         if (!$passed || $jobId === null) return $passed;
         $job = $this->github("actions/jobs/{$jobId}");

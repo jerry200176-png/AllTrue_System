@@ -61,7 +61,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $this->reporter = User::create(['LoginName' => 'popResRep@test.com', 'Name' => 'R', 'PSW' => 'x', 'type' => 'T', 'phone' => rand(900000000, 999999999)])->id;
         $this->remote = ['run_path' => '.github/workflows/deploy.yml', 'run_head' => $this->deployed, 'job' => 'success', 'source_ref' => null,
             'pull_request' => false, 'author' => 'github-actions[bot]', 'health' => 200, 'pr_body' => 'Refs #' . self::ISSUE,
-            'smoke' => 'success', 'smoke_at' => '2026-10-22T09:30:00Z', 'smoke_event' => 'workflow_dispatch'];
+            'smoke' => 'success', 'smoke_at' => '2026-10-22T09:30:00Z', 'smoke_event' => 'workflow_run'];
         Http::fake(fn (Request $request) => $this->respond($request));
     }
 
