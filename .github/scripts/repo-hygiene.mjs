@@ -17,7 +17,11 @@ export const MARK_REPORT = '<!-- repo-hygiene:report -->';
 export const MARK_ALARM = '<!-- repo-hygiene:queue-alarm -->';
 const DAY = 86400e3;
 
-const t = (s) => Date.parse(s);
+const t = (s) => {
+  const n = typeof s === 'string' ? Date.parse(s) : NaN;
+  return Number.isFinite(n) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(s)
+    && new Date(n).toISOString().slice(0, 19) === s.slice(0, 19) ? n : NaN;
+};
 export const daysBetween = (now, then) => (now - t(then)) / DAY;
 
 // Legacy "agent PR" scope is the repo owner, shared by agents and the Founder.
@@ -54,8 +58,11 @@ export function queuedSince(events) {
 
 // runs: land-queue workflow runs, newest first. cancelled/skipped runs say nothing about health.
 export function failStreak(runs) {
+  if (!Array.isArray(runs)) throw new Error('Unknown workflow runs');
   let n = 0;
   for (const r of runs) {
+    if (!['completed', 'queued', 'in_progress', 'requested', 'waiting', 'pending'].includes(r?.status)
+        || (r.status === 'completed' && !['success', 'failure', 'cancelled', 'skipped', 'neutral', 'timed_out', 'action_required', 'startup_failure', 'stale'].includes(r.conclusion))) throw new Error('Unknown workflow run metadata');
     if (r.status !== 'completed' || ['cancelled', 'skipped', 'neutral'].includes(r.conclusion)) continue;
     if (r.conclusion === 'success') break;
     n += 1;
@@ -64,8 +71,10 @@ export function failStreak(runs) {
 }
 
 export function alarmFindings({ queued, runs, now, hours = QUEUE_HOURS, streak = FAIL_STREAK }) {
+  if (!Array.isArray(queued) || !Number.isFinite(now)) throw new Error('Unknown queue metadata');
   const out = [];
   for (const p of queued) {
+    if (!Number.isSafeInteger(p.number) || p.number <= 0 || !Number.isFinite(t(p.since)) || t(p.since) > now) throw new Error('Unknown queue age metadata');
     const h = (now - t(p.since)) / 3600e3;
     if (h > hours) out.push(`PR #${p.number} has carried \`queue\` for ${h.toFixed(1)}h (limit ${hours}h)`);
   }
@@ -168,9 +177,20 @@ function runQueueAlarm() {
   const now = Date.now();
   const queued = [];
   for (const pr of pages('pulls?state=open&per_page=100')) {
-    if (!(pr.labels || []).some((l) => l.name === 'queue')) continue;
-    const since = queuedSince(pages(`issues/${pr.number}/events?per_page=100`));
-    if (since) queued.push({ number: pr.number, since });
+    if (!Number.isSafeInteger(pr.number) || pr.number <= 0 || !Array.isArray(pr.labels)
+        || pr.labels.some((l) => typeof l?.name !== 'string' || !l.name)) throw new Error('Unknown queued PR metadata');
+    if (!pr.labels.some((l) => l.name === 'queue')) continue;
+    const events = pages(`issues/${pr.number}/events?per_page=100`);
+    let previous = -Infinity;
+    for (const e of events) {
+      const at = t(e?.created_at);
+      if (typeof e?.event !== 'string' || !e.event || !Number.isFinite(at) || at > now || at < previous
+          || (['labeled', 'unlabeled'].includes(e.event) && (typeof e.label?.name !== 'string' || !e.label.name))) throw new Error('Unknown queue event metadata');
+      previous = at;
+    }
+    const since = queuedSince(events);
+    if (!since) throw new Error('Unknown queue label history');
+    queued.push({ number: pr.number, since });
   }
   const runs = api('actions/workflows/land-queue.yml/runs?per_page=30').workflow_runs;
   const findings = alarmFindings({ queued, runs, now });

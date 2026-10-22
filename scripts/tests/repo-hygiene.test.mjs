@@ -195,6 +195,33 @@ test('manual hygiene: the serialized report and alarm reuse newly created labels
   assert.ok(f.state().issues.some((issue) => issue.title === '[ops] Land queue alarm'));
 });
 
+test('queue alarm: unknown age or eligibility cannot close or update an existing alarm', (t) => {
+  const event = { event: 'labeled', label: { name: 'queue' }, created_at: old() };
+  const pull = { number: 1, labels: [{ name: 'queue' }] };
+  const base = {
+    'pulls?state=open&per_page=100': { data: [pull] },
+    'issues/1/events?per_page=100': { data: [event] },
+    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs: [] } },
+    'issues?state=open&per_page=100&labels=ops-hygiene': { data: [{ number: 9000, body: '<!-- repo-hygiene:queue-alarm -->' }] },
+    'POST issues/9000/comments': { data: {} }, 'PATCH issues/9000': { data: { state: 'closed' } },
+  };
+  const bad = [
+    ...[undefined, '', 'invalid-timestamp', '2026-02-30T05:00:00Z', '9999-01-01T00:00:00Z'].map((created_at) => ({ 'issues/1/events?per_page=100': { data: [{ ...event, created_at }] } })),
+    ...[[], [{ ...event, event: undefined }], [{ ...event, label: {} }], [{ ...event, event: 'unlabeled' }], [{ ...event, created_at: recent() }, event]].map((data) => ({ 'issues/1/events?per_page=100': { data } })),
+    ...[{ number: 0 }, { labels: undefined }, { labels: [{}] }].map((fields) => ({ 'pulls?state=open&per_page=100': { data: [{ ...pull, ...fields }] } })),
+    ...[undefined, null, [{}], [{ status: 'completed', conclusion: null }]].map((workflow_runs) => ({ 'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs } } })),
+  ];
+  for (const override of bad) {
+    const f = fixture(t, { ...base, ...override }); const r = f.run('queue-alarm');
+    assert.notEqual(r.status, 0, JSON.stringify(override));
+    assert.equal(f.state().calls.filter((c) => c.method !== 'GET').length, 0, 'unknown is never tracker recovery or an upsert');
+    assert.doesNotMatch(r.stdout, /queue-alarm: clear/);
+  }
+  const healthy = fixture(t, { ...base, 'issues/1/events?per_page=100': { data: [{ ...event, created_at: new Date(Date.now() - 30 * 60e3).toISOString() }] } });
+  const r = healthy.run('queue-alarm'); assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(healthy.state().calls.filter((c) => c.method !== 'GET').map((c) => c.path), ['issues/9000/comments', 'issues/9000']);
+});
+
 test('fail closed: failed or malformed activity/labels never close an old draft', (t) => {
   const failures = [
     { 'pulls?state=open&per_page=100': { data: [apiPr({ head: {} })] } },
