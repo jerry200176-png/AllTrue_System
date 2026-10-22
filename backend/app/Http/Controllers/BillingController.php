@@ -203,9 +203,10 @@ class BillingController extends Controller
     public function recordPayment(Request $request, Invoice $invoice)
     {
         $invoice->loadMissing('student');
-        if ($invoice->student) {
-            $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
+        if (!$invoice->student) {
+            return response()->json(['message' => 'Invoice has no linked student'], 404); // as voidInvoice(): no campus, no write
         }
+        $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
         $data = $request->validate([
             'Amount' => 'required|integer|min:1',
