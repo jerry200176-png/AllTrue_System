@@ -830,7 +830,7 @@
       <template #settings>
         <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
         <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
-        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p></AtInlineAlert>
+        <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
           <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
@@ -868,12 +868,7 @@
         <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
           <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
         </AtInlineAlert>
-        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
-          <p>{{ editSaveError.message }}</p>
-          <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
-          <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
-          <button v-if="editSaveError.code === 'subject_change_requires_transfer'" type="button" class="small primary" data-testid="open-course-transfer" @click="showCourseTransfer = true">改用轉課</button>
-        </AtInlineAlert>
+        <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro">
             <strong>這門課有資料不能用一般編輯改寫</strong>
@@ -1103,7 +1098,8 @@
       :course-id="editingId"
       :subjects="subjectOptions"
       :teachers="editTeacherOptions"
-      @close="showCourseTransfer = false"
+      :prefill="courseTransferPrefill"
+      @close="showCourseTransfer = false; courseTransferPrefill = null"
       @done="onCourseTransferDone"
     />
     <TransferSessionsModal
@@ -1458,6 +1454,8 @@ import PurchaseSessionsModal from '../components/course-management/PurchaseSessi
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
+import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js';
+import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
@@ -2193,9 +2191,18 @@ const editForm = ref({});
 const editFormSnapshot = ref('');
 const editSaveError = ref(null);
 const showCourseTransfer = ref(false);
+const courseTransferPrefill = ref(null);
+// The one way to open 轉課 (CourseTransferModal): ⋯ menu, a refused 課程設定 save
+// (in-app #409, prefilled) and any later deep link. Always resets the prefill.
+function openCourseTransfer(course, prefill = null) {
+  if (course && Number(course.id) !== Number(editingId.value)) editCourse(course, { openModal: false });
+  courseTransferPrefill.value = prefill;
+  showCourseTransfer.value = true;
+}
 const onCourseTransferDone = async () => {
   showCourseTransfer.value = false;
-  showEditModal.value = false;
+  courseTransferPrefill.value = null;
+  closeCourseManager();
   editSaveError.value = null;
   await loadCourses();
   toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
@@ -2244,6 +2251,7 @@ const EDITABILITY_ACTION_HANDLERS = new Set([
   'package_adjustment',
   'reconcile_usage',
   'new_contract',
+  'course_transfer',
 ]);
 
 function canOpenEditabilityAction(action) {
@@ -2264,6 +2272,11 @@ const navigateToStudentCourse = (course) => {
 async function openEditabilityAction(action) {
   const course = editingCourseRaw.value;
   if (!course) return;
+  // 轉課 carries the refused edits over (in-app #409), so nothing is discarded.
+  if (action === 'course_transfer') {
+    openCourseTransfer(course, editSaveError.value?.transferPrefill || null);
+    return;
+  }
   if (editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value) {
     if (!await askConfirm({ title: '捨棄尚未儲存的修改？', message: '前往帳務更正會捨棄你目前在編輯畫面改的內容。', confirmLabel: '捨棄並前往', danger: true })) return;
   }
@@ -4964,6 +4977,8 @@ const submitEdit = async () => {
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
+          nextStep: editabilityNextStepForError(err),
+          transferPrefill: transferPrefillFromBlockedEdit(err, form, JSON.parse(editFormSnapshot.value || '{}')),
         };
         toastRef.value?.show?.({
           title: '儲存失敗',
@@ -5471,7 +5486,7 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   isDetailsOpen: (c) => expandedDates.value.has(c.id),
   isSessionEditOpen: () => showSessionEditModal.value,
   requestDelete: (c) => { confirmDeleteTarget.value = c; },
-  openCourseTransfer: (c) => { editCourse(c, { openModal: false }); showCourseTransfer.value = true; },
+  openCourseTransfer: (c) => openCourseTransfer(c),
   openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
   editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,
