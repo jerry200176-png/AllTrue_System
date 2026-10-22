@@ -221,7 +221,8 @@ bash /home/admin/scripts/deploy-storage-perms.sh || abort_deploy "private storag
 echo "✅ storage:link + chmod 完成"
 
 echo "=== [3/7] Migration 備份 + 執行 ==="
-# Laravel 8 "| No" / 9+ "Pending"; D1: status failure aborts.
+# Laravel 8 用 "| No" (Ran? 欄)；Laravel 9+ 用 "Pending"。兩者都偵測。
+# D1：migrate:status 本身失敗（DB 連不上等）不得被當成「0 筆 pending」靜默略過。
 if ! MIGRATE_STATUS=$(cd /home/admin/backend && php artisan migrate:status); then
   abort_deploy "php artisan migrate:status 失敗 — 無法判斷 pending migration，中止部署並回滾"
 fi
