@@ -70,7 +70,6 @@ class StudentClassPricingAmendmentTest extends TestCase
             'reason' => 'test', 'created_at' => now(), 'voided_at' => null, 'voided_by_user_id' => null, 'void_reason' => null];
         DB::table('student_class_pricing_amendments')->insert([
             $base + ['effective_from' => '2026-08-05', 'rate' => 2500],
-            $base + ['effective_from' => '2026-08-10', 'rate' => 2600],
             $base + ['effective_from' => '2026-08-10', 'rate' => 2700],
             ['effective_from' => '2026-08-20', 'rate' => 9999, 'voided_at' => now(), 'voided_by_user_id' => 4, 'void_reason' => 'test'] + $base,
         ]);
@@ -84,7 +83,8 @@ class StudentClassPricingAmendmentTest extends TestCase
             ->filter(fn ($q) => str_contains($q['query'], 'student_class_pricing_amendments'))->count();
         DB::disableQueryLog();
 
-        // Before the first amendment: legacy Rate; same-day tie: the later id; voided rows ignored.
+        // Before the first amendment: legacy Rate; then the latest effective amendment; voided rows ignored.
+        // (One amendment per course and date is a unique key, so a same-day tie cannot be stored.)
         $this->assertSame([2200, 2500, 2500, 2700, 2700], $rates);
         $this->assertSame(1, $amendmentQueries);
     }
