@@ -101,6 +101,7 @@ jobs:
         run: |
           python3 scripts/tests/test_deploy_activation_state.py
           python3 scripts/tests/test_principal_rotation_grant_replay.py
+          python3 scripts/tests/test_post_deploy_watch.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -1426,8 +1427,15 @@ jobs:
     environment: production-ssh
     # Bound the sole production executor so a lost SSH session cannot leave a
     # run waiting indefinitely. The remote script retains its existing
-    # rollback-on-error behavior before this runner-level deadline.
-    timeout-minutes: 30
+    # rollback-on-error behavior before this runner-level deadline. The 20-minute
+    # post-deploy watch (gap #3) runs inside the same executor, so the bound is
+    # deploy (~3-15 min) + verify/smoke (~3 min) + watch (20 min) + rollback margin.
+    timeout-minutes: 55
+    outputs:
+      rc: ${{ steps.deploy.outputs.rc }}
+      runner_verify: ${{ steps.runner_verify.outcome }}
+      watch: ${{ steps.deploy.outputs.watch }}
+      sentry: ${{ steps.deploy.outputs.sentry }}
     # Serialize only the side-effecting executor. Read-only preflight and
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
@@ -1540,8 +1548,31 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -l -f ~/.ssh/deploy_key
 
+      - name: Checkout post-deploy verifier
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          path: post-deploy-verify
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/post-deploy-verify.py
+          sparse-checkout-cone-mode: false
+
+      # Post-deploy watch (gap #3): after verify + smoke pass, the [6/7] gate keeps watching for
+      # 20 min (health + deployment.json identity every 30 s, 4 consecutive failures = breach; a
+      # Sentry error-count spike vs the pre-deploy hour when the secret SENTRY_WATCH is set to
+      # "<org>/<project> <read-only token>"). A breach takes the same rollback-or-hold
+      # decision as a failed verify, so the rollback stays this executor's rollback_deploy.
+      # Keep runtime identity separate from the frontend build artifact.
+      # version.json (Vite build) may intentionally remain old during backend-only deploys,
+      # so users get no spurious "please refresh" prompt;
+      # deployment.json always records the backend commit actually activated.
       - name: Deploy
         id: deploy
+        shell: bash
+        env:
+          WATCH_READER: post-deploy-verify/scripts/post-deploy-verify.py
         run: |
           rc=0
           ssh -i ~/.ssh/deploy_key \
@@ -1550,7 +1581,7 @@ jobs:
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=4 \
             -o IdentitiesOnly=yes \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH' || rc=$?
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH' | python3 -I "$WATCH_READER" capture-watch --output "$GITHUB_OUTPUT" || rc=${PIPESTATUS[0]}
           set -uo pipefail
           cd /home/admin
 
@@ -1877,8 +1908,6 @@ jobs:
             if ! rm -f /home/admin/frontend/.env.production.local; then
               abort_deploy "frontend temporary environment 清理失敗"
             fi
-            # version.json 由 Vite build 產生（vite.config.js），只在前端有重 build 時更新
-            # → backend-only deploy 不更新時間戳，使用者不會看到多餘的「請重新整理」通知
             echo "✅ version.json 已由 Vite build 更新"
           else
             echo "✅ 前端無變動且 assets 存在，跳過 build（version.json 不更新）"
@@ -1887,9 +1916,6 @@ jobs:
             fi
           fi
 
-          # Keep runtime identity separate from the frontend build artifact.
-          # version.json may intentionally remain old during backend-only deploys;
-          # deployment.json always records the backend commit actually activated.
           if ! write_deployment_manifest "$TARGET_SHA"; then
             abort_deploy "deployment manifest 寫入失敗"
           fi
@@ -1961,7 +1987,7 @@ jobs:
           export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
           export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
           export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
-          python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"
+          SENTRY_WATCH="${{ secrets.SENTRY_WATCH }}" python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN" --watch-seconds 1200
           case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
@@ -1975,17 +2001,6 @@ jobs:
       # any rollback (exit 12/13).
       # These steps add an independent read-only check from outside the Pi and a
       # loud summary; they open no new path into production.
-      - name: Checkout post-deploy verifier
-        if: ${{ !cancelled() && steps.deploy.outcome != 'skipped' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.resolve-target.outputs.target_sha }}
-          path: post-deploy-verify
-          persist-credentials: false
-          sparse-checkout: |
-            scripts/post-deploy-verify.py
-          sparse-checkout-cone-mode: false
-
       - name: Verify production independently from the runner
         id: runner_verify
         env:
@@ -1996,6 +2011,9 @@ jobs:
             --expect-backend-sha "$TARGET_SHA" --attempts 12 --interval 5
 
       - name: Record deployed and production-verified state
+        env:
+          WATCH: ${{ steps.deploy.outputs.watch }}
+          SENTRY: ${{ steps.deploy.outputs.sentry }}
         run: |
           {
             echo "## state=deployed"
@@ -2004,10 +2022,13 @@ jobs:
             echo "## state=production-verified"
             echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
             echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
+            echo ""
+            python3 -I post-deploy-verify/scripts/post-deploy-verify.py watch-summary --watch "$WATCH" --sentry "$SENTRY"
           } >> "$GITHUB_STEP_SUMMARY"
+          [ "$WATCH" = "passed" ] || { echo "::error::Watch completion is unknown; inspect this run."; exit 1; }
 
       - name: Summarize production verification failure
-        if: ${{ failure() && steps.deploy.outcome != 'skipped' }}
+        if: ${{ always() && (failure() || cancelled()) }}
         env:
           RC: ${{ steps.deploy.outputs.rc }}
           RUNNER_VERIFY: ${{ steps.runner_verify.outcome }}
@@ -2016,13 +2037,70 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f post-deploy-verify/scripts/post-deploy-verify.py ]; then
-            echo "::error title=Production deploy not verified::executor rc=${RC:-unknown}, runner verify=${RUNNER_VERIFY}; verifier checkout failed. Check /api/health and deployment.json now."
+            printf '%s\n' '## state=production-verification-failed' 'Executor/production/rollback state UNKNOWN; verifier checkout unavailable. Check /api/health and deployment.json now.' >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Production deploy not verified::Executor/production state UNKNOWN; verifier unavailable."
             exit 1
           fi
           summary="$(python3 post-deploy-verify/scripts/post-deploy-verify.py summarize \
-            --rc "${RC:-1}" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
+            --rc "$RC" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Production deploy not verified::$(printf '%s' "$summary" | tail -n 1)"
+
+  # Gap #3: a failed production executor (rollback, rollback failure, hold, lost SSH, or the
+  # runner re-check failing) opens or appends ONE incident issue. IDs and SHAs only, no PII.
+  # Failure/cancellation may have no rc. This records UNKNOWN, never invented rollback success.
+  # Draft/hold: current main has no deploy_freeze_reason; this change adds no activation freeze.
+  deploy-incident:
+    name: Record production deploy incident
+    needs: [resolve-target, detect-deployable, deploy]
+    if: ${{ always() && (needs.deploy.result == 'failure' || needs.deploy.result == 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout incident summarizer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/post-deploy-verify.py
+          sparse-checkout-cone-mode: false
+
+      - name: Open or append the deploy incident issue
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RC: ${{ needs.deploy.outputs.rc }}
+          RUNNER_VERIFY: ${{ needs.deploy.outputs.runner_verify }}
+          WATCH: ${{ needs.deploy.outputs.watch }}
+          SENTRY: ${{ needs.deploy.outputs.sentry }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Production deploy incident (deploy.yml)"
+          if [ -f scripts/post-deploy-verify.py ]; then
+            body="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
+              --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
+            watch_summary="$(python3 -I scripts/post-deploy-verify.py watch-summary --watch "$WATCH" --sentry "$SENTRY")"
+          else
+            body="Executor/production/rollback state UNKNOWN; incident summarizer checkout unavailable. Check /api/health and deployment.json now."
+            watch_summary="Watch and Sentry outcomes UNKNOWN."
+          fi
+          body="$(printf '%s\n\n%s\n\nRun: %s\nTarget: %s\nExecutor rc: %s\nNo automatic activation freeze is established by this incident record.\n' \
+            "$body" "$watch_summary" "$RUN_URL" "$TARGET_SHA" "${RC:-unknown}")"
+          existing="$(gh api -X GET search/issues -f q="repo:${REPO} is:issue is:open in:title \"${title}\"" \
+            --jq "[.items[] | select(.title == \"${title}\")][0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh api "repos/${REPO}/issues/${existing}/comments" -f body="$body" --jq .html_url
+          else
+            gh api "repos/${REPO}/issues" -f title="$title" -f body="$body" --jq .html_url
+          fi
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke
