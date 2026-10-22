@@ -514,6 +514,7 @@ jobs:
       reason: ${{ steps.classify.outputs.reason }}
       go_evidence: ${{ steps.classify.outputs.go_evidence }}
       go_reason: ${{ steps.classify.outputs.go_reason }}
+      r3_evidence: ${{ steps.classify.outputs.r3_evidence }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -754,6 +755,8 @@ jobs:
               seen_reconciled_prs = set()
               attributed_commits = set()
               provenance_complete = True
+              # Every path the range touches (Founder 2026-10-21 R3 auto); None once a commit is capped.
+              range_paths = set()
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
                   if not commit_sha:
@@ -765,6 +768,10 @@ jobs:
                       provenance_complete = False
                       continue
                   actual_paths = [item.get("filename", "") for item in actual_files]
+                  if range_paths is not None and len(actual_files) < 300:
+                      range_paths.update(p for item in actual_files for p in (item.get("filename"), item.get("previous_filename")) if p)
+                  else:
+                      range_paths = None
                   actual_patch_parts = []
                   actual_patch_complete = True
                   for item in actual_files:
@@ -994,10 +1001,51 @@ jobs:
                   # Founder Q1 A (2026-10-08): a GO line is plain text any agent on the owner
                   # token can write, so it never replaces the reviewer for an awaiting-activation
                   # (R3) range; only R0-R2 ranges activate without a human (#3797).
+              # Founder 2026-10-21（二）之二: a range held only because it is R3 activates through
+              # production-auto. Both the deployed and the target policy must accept it; an old
+              # deployed policy without the rule, or any error, keeps the Founder reviewer.
+              r3 = {"ok": False, "reason": "not evaluated"}
+              if mode == "awaiting-activation" and approval_eligible:
+                  try:
+                      import importlib.util
+                      import scripts.governance.autonomy_gate as target_r3_gate
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_r3_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
+                      )
+                      trusted_r3_gate = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(trusted_r3_gate)
+                      # Compensating controls for the removed click: final-head review and stop-the-line.
+                      graphql = lambda query: gh_api("graphql", "-f", f"query={query}")
+                      review = target_r3_gate.final_head_review_evidence(
+                          repo=repo, pr_numbers=[pr["number"] for pr in provenance["application_prs"]],
+                          api=gh_api, graphql=graphql,
+                      )
+                      freeze = target_r3_gate.deploy_freeze_reason(repo=repo, api=gh_api)
+                      # Gap #9: ship dark. Flag keys come from the target's own config file.
+                      with open(target_r3_gate.FEATURE_FLAG_CONFIG, encoding="utf-8") as config:
+                          flags = target_r3_gate.feature_flag_evidence(
+                              repo=repo, pr_numbers=[pr["number"] for pr in provenance["application_prs"]],
+                              api=gh_api, config_text=config.read(),
+                          )
+                      r3_results = [
+                          gate.decide_r3_auto_activation(
+                              attributed, event_name=classify_event,
+                              rollback_evidence=rollback_evidence, range_paths=range_paths,
+                              review=review, freeze_reason=freeze, feature_flags=flags,
+                          )
+                          for gate in (trusted_r3_gate, target_r3_gate)
+                      ]
+                      r3 = next((result for result in r3_results if not result["ok"]), r3_results[0])
+                  except Exception as exc:
+                      r3 = {"ok": False, "reason": f"R3 auto evidence unavailable ({type(exc).__name__})"}
+                  print(f"R3 auto-activation evidence: ok={r3['ok']} {r3['reason']}")
+                  if r3["ok"] is True:
+                      mode, reason, approval_eligible = "auto-r3", r3["reason"], False
               emit(mode, decision["effective_tier"], pr_number, reason, approval_eligible)
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"go_evidence={'verified' if go['ok'] else 'missing'}\n")
                   output.write(f"go_reason={go['reason']}\n")
+                  output.write(f"r3_evidence={'verified' if r3['ok'] is True else 'missing'}\n")
           except Exception as exc:
               # Keep fail-closed. Surface exception class so empty/truncated GitHub
               # JSON bodies are diagnosable without weakening approval eligibility.
@@ -1030,6 +1078,11 @@ jobs:
           RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
           GO_REASON: ${{ needs.classify-activation.outputs.go_reason }}
+          R3_EVIDENCE: ${{ needs.classify-activation.outputs.r3_evidence }}
+          PR_NUMBER: ${{ needs.classify-activation.outputs.pr_number }}
+          TIER: ${{ needs.classify-activation.outputs.tier }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -1067,6 +1120,22 @@ jobs:
                 echo "This state is not deployed. ${GO_REASON}; it activates through production-auto with no manual approval (Founder 1A)."
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
+            auto-r3)
+              if [[ "$R3_EVIDENCE" != "verified" ]]; then
+                echo "## state=blocked" >> "$GITHUB_STEP_SUMMARY"
+                echo "::error::auto-r3 without verified R3 evidence; fail closed." >&2
+                exit 1
+              fi
+              # Audit trail (SLSA-style provenance): range, PRs, tier, evidence; the deploy job records the outcome.
+              {
+                echo "## state=ready (R3, no Founder click)"
+                echo "This state is not deployed. It activates through production-auto with no manual approval (Founder 2026-10-21)."
+                echo "- Range: \`${RUNTIME_BASE_SHA:-unknown}\`...\`${TARGET_SHA}\`"
+                echo "- PRs: ${PR_NUMBER:-unknown}; tier: ${TIER:-unknown}; event: ${EVENT_NAME}; run: ${RUN_URL}"
+                echo "- Evidence: ${REASON}"
+                echo "- CI on the exact target SHA is re-checked by the deploy job before the executor; outcome is recorded in its summary (state=production-verified or the rollback summary)."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
             awaiting-activation)
               if [[ "$APPROVAL_ELIGIBLE" != "true" ]]; then
                 {
@@ -1079,7 +1148,7 @@ jobs:
               if [[ "$RELEASE_TRAIN" != "true" ]]; then
                 {
                   echo "## state=queued-for-release-train"
-                  echo "Not deployed. Founder-gated changes ride the next release train (12:17 and 18:17 Asia/Taipei; if GitHub drops the scheduled run, the next merge after the window starts it). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Not deployed. Founder-gated changes (migration, data repair, identity/credential, control plane, or incomplete evidence) ride the next release train (12:17 and 18:17 Asia/Taipei; if GitHub drops the scheduled run, the next merge after the window starts it). While one is pending, later R0-R2 merges wait for that train too."
                   echo "Reason: ${REASON}"
                   echo "Founder GO evidence: ${GO_REASON:-unavailable}"
                 } >> "$GITHUB_STEP_SUMMARY"
@@ -1366,9 +1435,9 @@ jobs:
     name: Evidence-gated production activation (no reviewer)
     needs: [resolve-target, detect-deployable, classify-activation]
     # Founder 1A (2026-10-07): replaces the manual approve only when classify verified that
-    # every merged PR in the production...target range is R0-R2 or carries a Founder GO line.
-    # Anything else keeps the reviewer-gated production-activation job above.
-    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.go_evidence == 'verified' && (needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')) }}
+    # every merged PR in the production...target range is R0-R2 or carries a Founder GO line, or
+    # (Founder 2026-10-21) for an R3 range with complete classifier evidence (auto-r3). Else: reviewer.
+    if: ${{ always() && needs.classify-activation.result == 'success' && ((needs.classify-activation.outputs.go_evidence == 'verified' && (needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true'))) || (needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence == 'verified')) }}
     environment:
       name: production-auto
     runs-on: ubuntu-latest
@@ -1388,7 +1457,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PHASE: ${{ inputs.phase || '' }}
           MODE: ${{ needs.classify-activation.outputs.mode }}
-          GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
+          GO_EVIDENCE: ${{ needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence || needs.classify-activation.outputs.go_evidence }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -1413,14 +1482,14 @@ jobs:
               event_name=os.environ["EVENT_NAME"], phase=os.environ["PHASE"],
               mode=os.environ["MODE"], go_evidence=os.environ["GO_EVIDENCE"], branch_names=names,
           ):
-              raise SystemExit(f"production-auto refused: main-only policy and verified GO evidence required (branches={names})")
-          print("production-auto verified: main-only environment, Founder GO evidence verified")
+              raise SystemExit(f"production-auto refused: main-only policy and verified GO/R3 evidence required (branches={names})")
+          print(f"production-auto verified: main-only environment, {os.environ['MODE']} evidence verified")
           PY
 
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation, production-auto]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true') || ((needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')) && needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success') || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true') || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true') || ((needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')) && needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success') || (needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence == 'verified' && needs.production-auto.result == 'success') || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true') || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
     environment: production-ssh
@@ -1442,22 +1511,23 @@ jobs:
     steps:
       # Founder 1A: without a reviewer, re-verify the GO evidence right before any
       # production side effect, under both the deployed and the target policy.
+      # auto-r3 carries no GO text; its machine evidence plus the exact-main CI gate below suffice.
       - name: Checkout target gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
           path: gate-target
           sparse-checkout: scripts/governance
       - name: Checkout deployed gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           path: gate-trusted
           sparse-checkout: scripts/governance
       - name: Recheck Founder GO evidence before production side effects
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
