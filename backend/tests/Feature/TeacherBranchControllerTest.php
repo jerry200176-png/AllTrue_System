@@ -125,6 +125,26 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertSame([(int) $campus->id], array_map('intval', $listed));
     }
 
+    /** A batch mixing a managed teacher with one the director does not manage is refused as a whole: no row is written. */
+    public function test_a_mixed_batch_is_refused_without_partial_writes(): void
+    {
+        $campus  = Campus::factory()->create();
+        $campus2 = Campus::factory()->create();
+        $token   = $this->directorToken($campus->id);
+        $managed = $this->makeTeacher($campus->id);
+        $foreign = $this->makeTeacher($campus2->id);
+        $rows = fn () => DB::table('UserCampus')->whereIn('UserID', [$managed, $foreign])->orderBy('UserID')->orderBy('CampusID')
+            ->get(['UserID', 'CampusID', 'Approved', 'Admin'])->toArray();
+        $before = $rows();
+
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [
+            ['teacher_id' => $managed, 'branch_id' => $campus2->id],
+            ['teacher_id' => $foreign, 'branch_id' => $campus->id],
+        ])->assertForbidden();
+
+        $this->assertEquals($before, $rows(), 'the managed teacher is not assigned either');
+    }
+
     /** A teacher linked to the director's campus only through legacy teacher_branches is still managed (Codex r4347865989). */
     public function test_store_accepts_a_teacher_linked_only_through_teacher_branches(): void
     {
