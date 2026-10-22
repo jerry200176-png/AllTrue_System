@@ -12,7 +12,7 @@ final class InappReportReplyGuard
 {
     public const MAX_CHARS = 600;
 
-    private const SEP = '[-\s.]*';
+    private const SEP = '[\s.\p{Pd}]*'; // any Unicode dash, not only '-'
     private const DOT = '\s*(?:\.|\[\.\]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\s+dot\s+)\s*';
     private const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
 
@@ -26,15 +26,16 @@ final class InappReportReplyGuard
                 if (mb_strpos($reply, $phrase) === false) $out[] = 'reply_missing_outcome_phrases';
             }
         }
-        $text = self::normalize($reply);
+        // Format characters (zero-width, soft hyphen) can hide inside a URL or a number: refuse them outright.
+        if (preg_match('/\p{Cf}/u', $reply) !== 0) $out[] = 'format_character';
+        // The exact issue URL, as posted, is the one allowed link: not a longer issue number, a path, a port or a
+        // userinfo/host glued to it. Anything URL- or host-like left after removing it fails.
+        $rest = preg_replace('/' . preg_quote($issueUrl, '/') . '(?![0-9A-Za-z\/?#_@:-]|\.[0-9A-Za-z])/u', ' ', $reply, -1, $links);
+        $text = is_string($rest) ? self::normalize($rest) : null;
         if ($text === null) return [...array_values(array_unique($out)), 'reply_unnormalizable'];
-        // The exact issue URL is the one allowed link (not a longer issue number or a path under it);
-        // anything URL- or host-like left after removing it fails.
-        $rest = preg_replace('/' . preg_quote($issueUrl, '/') . '(?![0-9A-Za-z\/?#_-])/u', ' ', $text, -1, $links);
-        if (!is_string($rest)) return [...array_values(array_unique($out)), 'reply_unnormalizable'];
         if ($links < 1) $out[] = 'reply_missing_issue_url';
         foreach (self::rules() as $name => $pattern) {
-            if (preg_match($pattern, $rest) !== 0) $out[] = $name; // 1 = match, false = regex error: both fail closed
+            if (preg_match($pattern, $text) !== 0) $out[] = $name; // 1 = match, false = regex error: both fail closed
         }
 
         return array_values(array_unique($out));
@@ -64,8 +65,8 @@ final class InappReportReplyGuard
 
         return [
             'tw_mobile' => "/(?<!\d)(?:(?:\+|00)?886{$sep}(?:\(0\){$sep})?|0)9(?:{$sep}\d){8}(?!\d)/u",
-            'tw_landline' => "/(?<!\d)(?:(?:\+|00)?886{$sep}(?:\(0\){$sep})?\(?|\(?0)[2-8](?:[-\s.)]*\d){7,8}(?!\d)/u",
-            'tw_national_id' => '/(?<![A-Za-z0-9])[A-Za-z][-\s]*[12](?:[-\s]*\d){8}(?!\d)/u',
+            'tw_landline' => "/(?<!\d)(?:(?:\+|00)?886{$sep}(?:\(0\){$sep})?\(?|\(?0)[2-8](?:[\s.)\p{Pd}]*\d){7,8}(?!\d)/u",
+            'tw_national_id' => '/(?<![A-Za-z0-9])[A-Za-z][\s\p{Pd}]*[12](?:[\s\p{Pd}]*\d){8}(?!\d)/u',
             'email' => '/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+/u',
             'email_defanged' => "/[A-Za-z0-9._%+-]+\s*(?:\(at\)|\[at\]|\{at\}|\s+at\s+)\s*{$label}{$dot}{$label}/iu",
             'secret_token' => '/(?<![A-Za-z0-9])(?:ghp_|gho_|ghs_|ghu_|github_pat_|sk-|xox[bpas]-|AKIA)[A-Za-z0-9_-]{8,}/u',
@@ -74,7 +75,7 @@ final class InappReportReplyGuard
             'long_base64' => '/(?=[A-Za-z0-9+\/=_-]*\d)(?=[A-Za-z0-9+\/=_-]*[A-Za-z])[A-Za-z0-9+\/=_-]{32,}/u',
             'percent_encoded' => '/%[0-9A-Fa-f]{2}/u',
             'url_not_allowed' => '/(?:[a-z][a-z0-9+.-]{1,15}:\/\/|https?:|www\.|[\\\\\/]{2})/iu',
-            'host_not_allowed' => "/(?<![\w@-]){$label}(?:{$dot}{$label})*{$dot}(?:[a-z]{2,63}|xn--[a-z0-9-]+)(?![\w-])/iu",
+            'host_not_allowed' => "/(?<![A-Za-z0-9-]){$label}(?:{$dot}{$label})*{$dot}(?:[a-z]{2,63}|xn--[a-z0-9-]+)(?![A-Za-z0-9-])/iu",
             'ip_address' => '/(?<![\d.])\d{1,3}(?:\s*(?:\.|\[\.\])\s*\d{1,3}){3}(?![\d.])/u',
         ];
     }

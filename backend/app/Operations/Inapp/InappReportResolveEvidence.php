@@ -3,12 +3,11 @@
 namespace App\Operations\Inapp;
 
 use Illuminate\Support\Facades\Http;
-use Symfony\Component\Process\Process;
 use Throwable;
 
 /**
- * ADR-POP-015 (b) deploy evidence, read on the Pi. Read-only; every method fails closed (null/false) on a
- * missing file, a git or network error, or an unexpected shape.
+ * ADR-POP-015 (b) deploy evidence: the deployment manifest read on the Pi, everything else read-only from the
+ * GitHub REST API (public repository). Every method fails closed (null/false/[]) on an error or an unexpected shape.
  */
 class InappReportResolveEvidence
 {
@@ -30,41 +29,64 @@ class InappReportResolveEvidence
     public function isAncestor(string $commit, string $of): bool
     {
         if (preg_match(self::SHA, $commit) !== 1 || preg_match(self::SHA, $of) !== 1) return false;
-        $git = new Process(['git', '-C', (string) (config('pop_inapp.git_dir') ?: base_path()), 'merge-base', '--is-ancestor', $commit, $of]);
-        $git->setTimeout(20);
-        try {
-            $git->run();
-        } catch (Throwable) {
-            return false;
-        }
+        $compare = $this->github("compare/{$commit}...{$of}");
 
-        return $git->getExitCode() === 0; // 1 = not an ancestor; anything else (unknown object, no repo) fails closed
+        return in_array($compare['status'] ?? null, ['ahead', 'identical'], true) && ($compare['merge_base_commit']['sha'] ?? null) === $commit;
     }
 
-    /** The run's head SHA when it is a deploy.yml run whose production deploy job concluded success; otherwise null. */
-    public function successfulDeployHeadSha(string $runId): ?string
+    /** True when the commit came from a merged pull request whose title or body references the issue or the in-app report. */
+    public function fixLinkedTo(string $commit, int $issue, int $bugId): bool
+    {
+        $pattern = '/(?<![\w\/])#' . $issue . '(?!\d)|in-app\s*#' . $bugId . '(?!\d)/i';
+        foreach ((array) $this->github("commits/{$commit}/pulls") as $pr) {
+            if (is_array($pr) && !empty($pr['merged_at']) && preg_match($pattern, ($pr['title'] ?? '') . "\n" . ($pr['body'] ?? '')) === 1) return true;
+        }
+
+        return false;
+    }
+
+    /** @return array{head: string, completed_at: string}|null a deploy.yml run on main whose production deploy job concluded success */
+    public function successfulDeploy(string $runId): ?array
     {
         $run = $this->github("actions/runs/{$runId}");
         $head = strtolower((string) ($run['head_sha'] ?? ''));
-        if (($run['path'] ?? null) !== self::DEPLOY_WORKFLOW || (string) ($run['id'] ?? '') !== $runId || preg_match(self::SHA, $head) !== 1) {
-            return null;
-        }
+        if (($run['path'] ?? null) !== self::DEPLOY_WORKFLOW || (string) ($run['id'] ?? '') !== $runId
+            || ($run['head_branch'] ?? null) !== 'main' || preg_match(self::SHA, $head) !== 1) return null;
         $jobs = $this->github("actions/runs/{$runId}/jobs", ['per_page' => 100, 'filter' => 'latest']);
         $deploy = array_values(array_filter((array) ($jobs['jobs'] ?? []), fn ($job): bool => is_array($job) && ($job['name'] ?? null) === self::DEPLOY_JOB));
+        if (count($deploy) !== 1 || ($deploy[0]['conclusion'] ?? null) !== 'success' || !is_string($deploy[0]['completed_at'] ?? null)) return null;
 
-        return count($deploy) === 1 && ($deploy[0]['status'] ?? null) === 'completed' && ($deploy[0]['conclusion'] ?? null) === 'success'
-            ? $head : null;
+        return ['head' => $head, 'completed_at' => $deploy[0]['completed_at']];
     }
 
-    /** The in-app report ID in the issue's single SourceRef line; null for a pull request, a missing issue or no single SourceRef. */
-    public function issueSourceBugId(int $issueNumber): ?int
+    /** True when the run succeeded and started after $after (an ISO time): the smoke ran against that deployment. */
+    public function smokePassedAfter(string $runId, string $after): bool
     {
-        $issue = $this->github("issues/{$issueNumber}");
-        if (!is_array($issue) || isset($issue['pull_request']) || (int) ($issue['number'] ?? 0) !== $issueNumber) return null;
-        preg_match_all('/^SourceRef:\s*alltrue:bug_report:([1-9][0-9]*)\s*$/m', (string) ($issue['body'] ?? ''), $m);
-        $ids = array_values(array_unique($m[1]));
+        $run = $this->github("actions/runs/{$runId}");
+        $started = strtotime((string) ($run['run_started_at'] ?? ''));
 
-        return count($ids) === 1 ? (int) $ids[0] : null;
+        return (string) ($run['id'] ?? '') === $runId && ($run['conclusion'] ?? null) === 'success'
+            && $started !== false && $started >= strtotime($after);
+    }
+
+    /**
+     * True when this repository's issue carries a SourceRef for the report written by the repository owner or the
+     * intake bot (body or comment). The same trust rule as bug-auto-intake.yml: anyone can quote a SourceRef in a
+     * public issue, and such an issue must never be linked to the reporter.
+     */
+    public function issueOwnsReport(int $issueNumber, int $bugId): bool
+    {
+        $repo = (string) config('pop_inapp.github_repo');
+        $issue = $this->github("issues/{$issueNumber}");
+        if (!is_array($issue) || isset($issue['pull_request']) || (int) ($issue['number'] ?? 0) !== $issueNumber
+            || !str_ends_with((string) ($issue['repository_url'] ?? ''), '/repos/' . $repo) || ($issue['state_reason'] ?? null) === 'duplicate') return false;
+        $trusted = fn ($author): bool => in_array($author['login'] ?? null, [strtok($repo, '/'), 'github-actions[bot]'], true);
+        $ref = '/^[ \t>*_#.)0-9`-]*SourceRef\b[^\r\n]*alltrue:bug_report:' . $bugId . '(?!\d)/m';
+        foreach ([$issue, ...(array) $this->github("issues/{$issueNumber}/comments", ['per_page' => 100])] as $item) {
+            if (is_array($item) && $trusted($item['user'] ?? []) && preg_match($ref, (string) ($item['body'] ?? '')) === 1) return true;
+        }
+
+        return false;
     }
 
     public function healthOk(): bool

@@ -29,7 +29,7 @@ final class InappReportResolveAfterDeployStrategy
         $errors = [];
         foreach (['bug_id', 'campus_id'] as $key) if (!is_int($p[$key] ?? null) || $p[$key] <= 0) $errors[] = $key . '_invalid';
         foreach (['request_id' => '/^[a-z0-9][a-z0-9-]{2,63}$/', 'fix_commit_sha' => '/^[0-9a-f]{40}$/', 'deploy_run_id' => '/^[1-9][0-9]{0,19}$/',
-            'smoke_result_ref' => '/^(?:run:[1-9][0-9]{0,19}|https:\/\/github\.com\/' . $repo . '\/[A-Za-z0-9_.\/#=?&-]{1,150})$/'] as $key => $pattern) {
+            'smoke_result_ref' => '/^(?:run:|https:\/\/github\.com\/' . $repo . '\/actions\/runs\/)[1-9][0-9]{0,19}(?:\/job\/[1-9][0-9]{0,19})?$/'] as $key => $pattern) {
             if (!is_string($p[$key] ?? null) || preg_match($pattern, $p[$key]) !== 1) $errors[] = $key . '_invalid';
         }
         $url = $p['github_issue_url'] ?? null;
@@ -41,22 +41,29 @@ final class InappReportResolveAfterDeployStrategy
         if (!is_array($proof) || array_keys($proof) !== ['captured_at', 'proof'] || !is_string($proof['captured_at']) || !is_string($proof['proof'])) $errors[] = 'writeback_proof_invalid';
         if ($errors !== []) return $this->result($errors, $p);
         [$bugId, $fix, $run] = [$p['bug_id'], $p['fix_commit_sha'], $p['deploy_run_id']];
+        preg_match('/(?:^run:|\/runs\/)([1-9][0-9]{0,19})/', $p['smoke_result_ref'], $smoke);
 
         $bug = BugReport::query()->whereKey($bugId)->first();
         if (!$bug) return $this->result(['report_missing'], $p);
         $status = (string) $bug->getRawOriginal('status');
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         if (!in_array($status, self::FROM, true)) $errors[] = 'status_not_resolvable';
-        // The review proof binds the report, comments, attachments, status logs and evidence as they were read.
-        if (!DB::transaction(fn (): bool => BugReportWritebackEvidence::verify($bug, $proof['captured_at'], $proof['proof']))) $errors[] = 'writeback_proof_stale';
         if ($errors !== []) return $this->result($errors, $p, $status);
 
-        if ($this->evidence->issueSourceBugId($issue) !== $bugId) $errors[] = 'issue_source_ref_mismatch';
-        $head = $this->evidence->successfulDeployHeadSha($run);
-        if ($head === null) $errors[] = 'deploy_run_not_successful';
+        // Remote evidence before the proof check, so no report row is locked while waiting on the network.
+        if (!$this->evidence->issueOwnsReport($issue, $bugId)) $errors[] = 'issue_source_ref_untrusted';
+        $deploy = $this->evidence->successfulDeploy($run);
+        $head = $deploy['head'] ?? null;
+        if ($deploy === null) $errors[] = 'deploy_run_not_successful';
         elseif (!in_array($head, $this->evidence->deployedShas(), true)) $errors[] = 'deploy_run_not_in_production';
         elseif (!$this->evidence->isAncestor($fix, $head)) $errors[] = 'fix_not_in_deployed_revision';
+        if (!$this->evidence->fixLinkedTo($fix, $issue, $bugId)) $errors[] = 'fix_not_linked_to_issue';
+        if ($deploy !== null && !$this->evidence->smokePassedAfter($smoke[1], $deploy['completed_at'])) $errors[] = 'smoke_not_passed_after_deploy';
         if (!$this->evidence->healthOk()) $errors[] = 'health_not_ok';
+        // The review proof binds the report, comments, attachments, status logs and evidence as they were read.
+        if ($errors === [] && !DB::transaction(fn (): bool => BugReportWritebackEvidence::verify($bug, $proof['captured_at'], $proof['proof']))) {
+            $errors[] = 'writeback_proof_stale';
+        }
 
         return $this->result($errors, $p, $status, $head);
     }

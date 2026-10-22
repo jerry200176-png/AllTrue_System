@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
 
-/** ADR-POP-015 (b) through the real POP path (draft, dry-run, approval, Pi-local execute); real git ancestry, faked GitHub/health HTTP. */
+/** ADR-POP-015 (b) through the real POP path (draft, dry-run, approval, Pi-local execute) with faked GitHub/health HTTP and real report rows. */
 final class PopInappResolveAfterDeployTest extends TestCase
 {
     use RefreshDatabase;
@@ -30,6 +30,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
     private const REPO = 'jerry200176-png/AllTrue_System';
     private const ISSUE = 77;
     private const RUN = '4242';
+    private const SMOKE = '5151';
 
     private string $dir;
     private PopOperationService $service;
@@ -47,7 +48,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-10-22 10:00:00'));
         $this->dir = sys_get_temp_dir() . '/pop-resolve-' . bin2hex(random_bytes(6));
         File::copyDirectory(dirname(base_path()) . '/operations', $this->dir);
-        [$this->fix, $this->deployed, $this->unrelated] = $this->gitRepository($this->dir . '/repo');
+        [$this->fix, $this->deployed, $this->unrelated] = [str_repeat('f', 40), str_repeat('d', 40), str_repeat('e', 40)];
         $this->writeManifest($this->deployed);
         $catalog = new PopOperationCatalog($this->dir . '/catalog.yaml');
         $this->app->instance(PopOperationCatalog::class, $catalog);
@@ -55,11 +56,12 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $this->policy = new InappStandingPolicy($catalog);
         config(['pop_inapp.standing_policy_enabled' => true, 'pop_inapp.daily_cap' => 20, 'pop_inapp.github_repo' => self::REPO,
             'pop_inapp.github_token' => null, 'pop_inapp.deployment_manifest' => $this->dir . '/deployment.json',
-            'pop_inapp.git_dir' => $this->dir . '/repo', 'pop_inapp.health_url' => 'https://health.test/api/v1/health']);
+            'pop_inapp.health_url' => 'https://health.test/api/v1/health']);
         $this->admin = User::create(['LoginName' => 'popResAdmin@test.com', 'Name' => 'A', 'PSW' => 'x', 'type' => 'S', 'phone' => rand(900000000, 999999999)])->id;
         $this->reporter = User::create(['LoginName' => 'popResRep@test.com', 'Name' => 'R', 'PSW' => 'x', 'type' => 'T', 'phone' => rand(900000000, 999999999)])->id;
-        $this->remote = ['run_path' => '.github/workflows/deploy.yml', 'run_head' => $this->deployed, 'job' => 'success',
-            'source_ref' => null, 'pull_request' => false, 'health' => 200];
+        $this->remote = ['run_path' => '.github/workflows/deploy.yml', 'run_head' => $this->deployed, 'job' => 'success', 'source_ref' => null,
+            'pull_request' => false, 'author' => 'github-actions[bot]', 'health' => 200, 'pr_body' => 'Refs #' . self::ISSUE,
+            'smoke' => 'success', 'smoke_at' => '2026-10-22T09:30:00Z'];
         Http::fake(fn (Request $request) => $this->respond($request));
     }
 
@@ -105,7 +107,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $id = $this->drafted($bug);
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
-        self::assertSame('policy:founder-standing-inapp-lifecycle@2', DB::table('pop_approval_events')->where('operation_id', $id)->value('approver'));
+        self::assertSame($this->policy->approverRef(), DB::table('pop_approval_events')->where('operation_id', $id)->value('approver'));
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         self::assertSame(['resolved', $this->admin], [BugReport::query()->whereKey($bug)->value('status'),
             (int) BugReportComment::query()->where('bug_report_id', $bug)->value('author_user_id')]);
@@ -119,15 +121,20 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'run is not deploy.yml' => ['run_path', 'deploy_run_not_successful'],
             'run target is not what the Pi runs' => ['run_head', 'deploy_run_not_in_production'],
             'manifest unreadable' => ['manifest_missing', 'deploy_run_not_in_production'],
+            'fix PR does not reference the issue' => ['pr_unlinked', 'fix_not_linked_to_issue'],
+            'smoke failed' => ['smoke_failed', 'smoke_not_passed_after_deploy'],
+            'smoke ran before the deploy finished' => ['smoke_early', 'smoke_not_passed_after_deploy'],
+            'SourceRef written by an outsider' => ['outsider', 'issue_source_ref_untrusted'],
             'health not 200' => ['health', 'health_not_ok'],
-            'issue names another report' => ['source_ref', 'issue_source_ref_mismatch'],
-            'issue is a pull request' => ['pull_request', 'issue_source_ref_mismatch'],
+            'issue names another report' => ['source_ref', 'issue_source_ref_untrusted'],
+            'issue is a pull request' => ['pull_request', 'issue_source_ref_untrusted'],
             'issue in another repository' => ['foreign_issue', 'github_issue_url_invalid'],
             'reply lacks outcome phrases' => ['reply_phrases', 'reply_missing_outcome_phrases'],
             'reply lacks the issue URL' => ['reply_no_url', 'reply_missing_issue_url'],
             'reply carries a phone number' => ['reply_phone', 'tw_mobile'],
             'reply carries a full-width phone number' => ['reply_fullwidth_phone', 'tw_mobile'],
             'reply carries another link' => ['reply_link', 'url_not_allowed'],
+            'reply glues a host to the issue URL' => ['reply_userinfo', 'reply_missing_issue_url'],
             'reply is too long' => ['reply_long', 'reply_length'],
             'smoke ref missing' => ['smoke', 'smoke_result_ref_invalid'],
             'report is new' => ['status_new', 'status_not_resolvable'],
@@ -150,6 +157,10 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'run_path' => $this->remote['run_path'] = '.github/workflows/ci.yml',
             'run_head' => $this->remote['run_head'] = $this->fix,
             'manifest_missing' => File::delete($this->dir . '/deployment.json'),
+            'pr_unlinked' => $this->remote['pr_body'] = 'Refs #' . (self::ISSUE + 1),
+            'smoke_failed' => $this->remote['smoke'] = 'failure',
+            'smoke_early' => $this->remote['smoke_at'] = '2026-10-22T08:00:00Z',
+            'outsider' => $this->remote['author'] = 'someone-else',
             'health' => $this->remote['health'] = 503,
             'source_ref' => $this->remote['source_ref'] = $bug + 1000,
             'pull_request' => $this->remote['pull_request'] = true,
@@ -159,6 +170,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'reply_phone' => $overrides['public_reply'] = $this->reply('有問題請打 0912-345-678。'),
             'reply_fullwidth_phone' => $overrides['public_reply'] = $this->reply('有問題請打 ０９１２３４５６７８。'),
             'reply_link' => $overrides['public_reply'] = $this->reply('說明在 https://example.com/x 。'),
+            'reply_userinfo' => $overrides['public_reply'] = $this->reply() . '@evil.example',
             'reply_long' => $overrides['public_reply'] = $this->reply(str_repeat('很', 600)),
             'smoke' => $overrides['smoke_result_ref'] = '',
             'proof_expired' => $overrides['writeback_proof'] = $this->proof($bug, Carbon::now()->subMinutes(16)),
@@ -206,6 +218,48 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertSame(0, BugReportStatusLog::query()->where('bug_report_id', $bug)->count());
     }
 
+    public function test_a_refusal_at_the_resolved_step_rolls_back_the_reply_and_the_in_progress_step(): void
+    {
+        $bug = $this->bug('triaged');
+        // A reopen stamped in the future: the resolved step does not count the new reply and refuses.
+        BugReportStatusLog::create(['bug_report_id' => $bug, 'changed_by' => $this->admin, 'from_status' => 'resolved', 'to_status' => 'triaged',
+            'note' => 'reopen', 'created_at' => now()->addHour()]);
+        $id = $this->drafted($bug);
+        $strategy = $this->app->make(InappReportResolveAfterDeployStrategy::class);
+        $plan = $strategy->plan($this->params($bug));
+        $this->service->approve($id, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
+
+        self::assertSame(['inapp_resolve_rejected_missing_both_outcomes_reply'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        self::assertSame(['triaged', 0, 1], [BugReport::query()->whereKey($bug)->value('status'),
+            BugReportComment::query()->where('bug_report_id', $bug)->count(), BugReportStatusLog::query()->where('bug_report_id', $bug)->count()]);
+    }
+
+    public function test_execute_rechecks_the_policy_kill_switches_inside_the_write_transaction(): void
+    {
+        $this->allowRequester();
+        $bug = $this->bug('triaged');
+        $id = $this->drafted($bug);
+        $this->policy->approvePending($this->service);
+        $strategy = $this->app->make(InappReportResolveAfterDeployStrategy::class);
+        $plan = $strategy->plan($this->params($bug));
+        config(['pop_inapp.standing_policy_enabled' => false]); // flipped after the executor claimed the request
+
+        self::assertSame(['inapp_standing_policy_kill_switch'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        $this->assertNothingWritten($bug, 0);
+    }
+
+    public function test_evidence_that_goes_bad_after_a_human_approval_stops_the_local_executor(): void
+    {
+        $bug = $this->bug('triaged');
+        $id = $this->drafted($bug);
+        $this->service->approve($id, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
+        $this->remote['health'] = 503;
+
+        $this->service->runApprovedLocally($id);
+        self::assertSame('failed', $this->requestStatus($id));
+        $this->assertNothingWritten($bug, 0);
+    }
+
     public static function outOfScope(): array
     {
         return ['another campus' => [[2]], 'empty scope' => [[]]];
@@ -232,7 +286,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
     {
         return array_merge(['bug_id' => $bug, 'campus_id' => 1, 'deploy_run_id' => self::RUN, 'fix_commit_sha' => $this->fix,
             'github_issue_url' => $this->issueUrl(), 'public_reply' => $this->reply(), 'request_id' => 'req-001',
-            'smoke_result_ref' => 'run:' . self::RUN, 'writeback_proof' => $this->proof($bug)], $overrides);
+            'smoke_result_ref' => 'run:' . self::SMOKE, 'writeback_proof' => $this->proof($bug)], $overrides);
     }
 
     private function proof(int $bug, ?Carbon $at = null): array
@@ -283,46 +337,30 @@ final class PopInappResolveAfterDeployTest extends TestCase
     {
         $api = 'https://api.github.com/repos/' . self::REPO . '/';
         $bug = $this->remote['source_ref'] ?? (int) BugReport::query()->max('id');
+        $url = $request->url();
+        $run = fn (string $id, string $path, string $conclusion, string $at) => Http::response(['id' => (int) $id, 'path' => $path,
+            'head_sha' => $this->remote['run_head'], 'head_branch' => 'main', 'conclusion' => $conclusion, 'run_started_at' => $at]);
 
         return match (true) {
-            $request->url() === 'https://health.test/api/v1/health' => Http::response(['ok' => true], $this->remote['health']),
-            str_starts_with($request->url(), $api . 'actions/runs/' . self::RUN . '/jobs?') => Http::response(['jobs' => [
-                ['name' => 'Detect deployable changes', 'status' => 'completed', 'conclusion' => 'success'],
-                ['name' => 'Deploy to Production', 'status' => 'completed', 'conclusion' => $this->remote['job']]]]),
-            $request->url() === $api . 'actions/runs/' . self::RUN => Http::response(['id' => (int) self::RUN, 'path' => $this->remote['run_path'], 'head_sha' => $this->remote['run_head']]),
-            $request->url() === $api . 'issues/' . self::ISSUE => Http::response(['number' => self::ISSUE, 'body' => "SourceRef: alltrue:bug_report:{$bug}\n\n- In-app ID: {$bug}"]
+            $url === 'https://health.test/api/v1/health' => Http::response(['ok' => true], $this->remote['health']),
+            str_starts_with($url, $api . 'actions/runs/' . self::RUN . '/jobs?') => Http::response(['jobs' => [
+                ['name' => 'Detect deployable changes', 'conclusion' => 'success', 'completed_at' => '2026-10-22T08:50:00Z'],
+                ['name' => 'Deploy to Production', 'conclusion' => $this->remote['job'], 'completed_at' => '2026-10-22T09:00:00Z']]]),
+            $url === $api . 'actions/runs/' . self::RUN => $run(self::RUN, $this->remote['run_path'], 'success', '2026-10-22T08:40:00Z'),
+            $url === $api . 'actions/runs/' . self::SMOKE => $run(self::SMOKE, '.github/workflows/ui-smoke.yml', $this->remote['smoke'], $this->remote['smoke_at']),
+            $url === $api . "compare/{$this->fix}...{$this->deployed}" => Http::response(['status' => 'ahead', 'merge_base_commit' => ['sha' => $this->fix]]),
+            str_starts_with($url, $api . 'compare/') => Http::response(['status' => 'diverged', 'merge_base_commit' => ['sha' => str_repeat('b', 40)]]),
+            str_starts_with($url, $api . 'commits/') => Http::response([['number' => 900, 'merged_at' => '2026-10-22T07:00:00Z', 'title' => 'fix', 'body' => $this->remote['pr_body']]]),
+            str_starts_with($url, $api . 'issues/' . self::ISSUE . '/comments') => Http::response([]),
+            $url === $api . 'issues/' . self::ISSUE => Http::response(['number' => self::ISSUE, 'repository_url' => rtrim($api, '/'),
+                'user' => ['login' => $this->remote['author']], 'body' => "SourceRef: alltrue:bug_report:{$bug}\n\n- In-app ID: {$bug}"]
                 + ($this->remote['pull_request'] ? ['pull_request' => ['url' => 'x']] : [])),
             default => Http::response('', 599), // never reach the network
         };
     }
 
-    private function allowRequester(): void
-    {
-        $this->app->instance(InappRequesterGuard::class, new class extends InappRequesterGuard {
-            public function allows(object $request): bool { return true; }
-            public function attributionUserId(object $request): ?int { return (int) User::query()->where('type', 'S')->value('id'); }
-        });
-    }
-
     private function writeManifest(string $sha): void
     {
         file_put_contents($this->dir . '/deployment.json', json_encode(['backend_sha' => $sha, 'frontend_build_sha' => $sha]));
-    }
-
-    /** @return array{0:string,1:string,2:string} fix commit, deployed commit (a descendant), unrelated commit */
-    private function gitRepository(string $path): array
-    {
-        File::ensureDirectoryExists($path);
-        $git = fn (string $args): string => trim((string) shell_exec('git -C ' . escapeshellarg($path)
-            . ' -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false ' . $args . ' 2>/dev/null'));
-        $commit = fn (string $message): string => $git("commit -q --allow-empty -m {$message}") . $git('rev-parse HEAD');
-        $git('init -q');
-        $base = $commit('base');
-        [$fix, $deployed] = [$commit('fix'), $commit('deployed')];
-        $git('checkout -q -b side ' . $base);
-        $shas = [$fix, $deployed, $commit('unrelated')];
-        foreach ($shas as $sha) self::assertMatchesRegularExpression('/^[0-9a-f]{40}$/', $sha, 'git is required for this test');
-
-        return $shas;
     }
 }
