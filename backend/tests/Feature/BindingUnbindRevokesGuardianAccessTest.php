@@ -9,12 +9,15 @@ use App\Models\Student;
 use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
 use App\Models\User;
+use App\Services\ParentBinding\BindingService;
 use App\Services\ParentBinding\ParentGuardianAccessService;
 use Database\Factories\CampusFactory;
 use Database\Factories\StudentFactory;
 use Database\Factories\UserCampusFactory;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -119,6 +122,43 @@ class BindingUnbindRevokesGuardianAccessTest extends TestCase
         $this->assertEquals($revokedAt, $this->linkFor($student, $line)->revoked_at);
         $this->assertSame(StudentGuardian::STATUS_ACTIVE, $this->linkFor($student, $other)->status);
         $this->dashboard($otherToken)->assertOk();
+    }
+
+    /** #3954: a stale binding id whose pair was deleted and re-bound revokes nothing of the new binding. */
+    public function test_a_stale_binding_id_does_not_revoke_the_re_bound_pair(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $student = $this->student();
+        $line = $this->lineId('g');
+        $stale = $this->bindLine($student, $line);
+        // Another request deleted the binding and the same pair was bound again.
+        DB::table('student_line_bindings')->where('id', $stale->id)->delete();
+        $rebound = $this->bindLine($student, $line);
+        $token = $this->parentToken($student, $line);
+
+        $this->assertFalse(app(BindingService::class)->deleteBinding((int) $stale->id));
+
+        $this->assertDatabaseHas('student_line_bindings', ['id' => $rebound->id]);
+        $this->assertSame(StudentGuardian::STATUS_ACTIVE, $this->linkFor($student, $line)->status);
+        $this->dashboard($token)->assertOk();
+    }
+
+    /** #3954: the binding is read inside the revoking transaction, so no window is left between the read and the revoke. */
+    public function test_unbind_reads_the_binding_inside_the_revoking_transaction(): void
+    {
+        $binding = $this->bindLine($this->student(), $this->lineId('h'));
+        $outer = DB::transactionLevel(); // RefreshDatabase wraps the test in a transaction
+        $levels = [];
+        DB::listen(function (QueryExecuted $q) use (&$levels): void {
+            if (preg_match('/^select .*student_line_bindings.* where [`"]?id[`"]? = \?/i', $q->sql)) {
+                $levels[] = DB::transactionLevel();
+            }
+        });
+
+        $this->assertTrue(app(BindingService::class)->deleteBinding((int) $binding->id));
+
+        $this->assertNotEmpty($levels, 'deleteBinding reads its binding row');
+        $this->assertGreaterThan($outer, min($levels), 'the binding read happens inside the revoking transaction');
     }
 
     public function test_director_of_another_campus_still_cannot_unbind_and_nothing_is_revoked(): void
