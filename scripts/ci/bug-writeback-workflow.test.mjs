@@ -138,6 +138,8 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       ...['//[2001:db8::1]/synthetic', '//127.1/synthetic', '//2130706433/synthetic',
         '///2130706433/synthetic', 'https:////2130706433/synthetic'].map((target) =>
         `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(target)}`),
+      '\\\\[2001:db8::1]/synthetic', '\\/[2001:db8::1]/synthetic', '/\\[2001:db8::1]/synthetic',
+      '/\t\\[2001:db8::1]/synthetic',
       'https://daan.lifenet.com.tw/help?to=https%253A%252F%252Fevil%252Ecom%252Fsynthetic',
       'https://daan.lifenet.com.tw/help?value=%ff',
       'https://daan.lifenet.com.tw\n詳情稍後更新',  // ambiguous bare authority; use an explicit path or delimiter

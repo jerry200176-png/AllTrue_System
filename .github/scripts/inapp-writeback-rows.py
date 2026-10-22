@@ -43,7 +43,7 @@ ALLOWED_HOSTS = ("daan.lifenet.com.tw", "github.com")  # bare mentions of these 
 # them before parsing; never remove line breaks from the actual reply.
 URL_HTTP = r"h[\t\r\n]*t[\t\r\n]*t[\t\r\n]*p(?:[\t\r\n]*s)?[\t\r\n]*:[\t\r\n]*(?:[\\/][\t\r\n]*)*"
 URL_STARTS = re.compile(r"(?i:(?:" + URL_HTTP
-                        + r"|[a-z][a-z0-9+.-]{1,15}://|www\.|(?<![\w:/])/(?:[\t\r\n]*/)+))")
+                        + r"|[a-z][a-z0-9+.-]{1,15}://|www\.|(?<![\w:/\\])[\\/](?:[\t\r\n]*[\\/])+))")
 # TAB/LF/CR are removed by URL parsers, so they must not truncate an authority
 # before userinfo or another host. A new URL after a line break stays separate.
 URL = re.compile(URL_STARTS.pattern + r"[^\s/?#<>]+(?:[\t\r\n]+(?!" + URL_STARTS.pattern + r")[^\s/?#<>]+)*"
