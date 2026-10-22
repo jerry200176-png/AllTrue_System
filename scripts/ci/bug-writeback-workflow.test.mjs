@@ -68,7 +68,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
             GITHUB_REPOSITORY: 'o/r', GITHUB_REF: ref } });
         return { ok: true, out, summary: fs.readFileSync(summary, 'utf8'), output: fs.readFileSync(output, 'utf8') };
       } catch (e) {
-        return { ok: false, out: `${e.stdout}${e.stderr}`, summary: fs.readFileSync(summary, 'utf8') };
+        return { ok: false, out: `${e.stdout}${e.stderr}`, summary: fs.readFileSync(summary, 'utf8'), output: fs.readFileSync(output, 'utf8') };
       }
     };
     const url = (n) => `https://github.com/o/r/issues/${n}`;
@@ -125,7 +125,46 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       `https://daan.lifenet.com.tw/redirect?to=${encodeURIComponent(`https://daan.lifenet.com.tw/redirect?to=${encodeURIComponent("https://daan.lifenet.com.tw'@evil.com/x")}`)}`,
       "123https://daan.lifenet.com.tw'@evil.com/x",
       "aaaaaaaaaaaaaaaaaaaaahttps://daan.lifenet.com.tw'@evil.com/x",
+      ...['\t', '\n', '\r'].flatMap((control) => [
+        `https://daan.lifenet.com.tw${control}@evil.com/synthetic`,
+        `https://daan.lifenet.com.tw${control}@[2001:db8::1]/synthetic`,
+        `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(`https://daan.lifenet.com.tw${control}@evil.com/synthetic`)}`,
+        `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(`https://daan.lifenet.com.tw${control}@[2001:db8::1]/synthetic`)}`,
+        `https${control}://[2001:db8::1]/synthetic`,
+        `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(`https${control}://[2001:db8::1]/synthetic`)}`,
+        `https:/${control}/2130706433/synthetic`,
+        `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(`/${control}/2130706433/synthetic`)}`,
+      ]),
+      ...['//[2001:db8::1]/synthetic', '//127.1/synthetic', '//2130706433/synthetic',
+        '///2130706433/synthetic', 'https:////2130706433/synthetic'].map((target) =>
+        `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(target)}`),
+      'https://daan.lifenet.com.tw/help?to=https%253A%252F%252Fevil%252Ecom%252Fsynthetic',
+      'https://daan.lifenet.com.tw/help?value=%ff',
+      'https://daan.lifenet.com.tw\n詳情稍後更新',  // ambiguous bare authority; use an explicit path or delimiter
+      `https${'\t\r\n'.repeat(8)}://[2001:db8::1]/synthetic`,
+      ...['https:/\n/[2001:db8::1]/synthetic', 'https:\t/\n/[2001:db8::1]/synthetic',
+        '/\n/[2001:db8::1]/synthetic', 'h\tttps://[2001:db8::1]/synthetic',
+        'https:\\[2001:db8::1]/synthetic', 'https:\\\\[2001:db8::1]/synthetic',
+        'https:[2001:db8::1]/synthetic', 'https:/[2001:db8::1]/synthetic'].flatMap((target) =>
+        [target, `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(target)}`]),
     ];
+    const encodeEveryByte = (value) => [...Buffer.from(value)].map((byte) => `%${byte.toString(16).padStart(2, '0')}`).join('');
+    const encodeLayers = (value, depth) => {
+      let encoded = encodeEveryByte(value);
+      for (let layer = 1; layer < depth; layer += 1) encoded = encoded.replaceAll('%', '%25');
+      return encoded;
+    };
+    // Encoding depth is limited by the 600-character reply, never an arbitrary two-layer decoder.
+    for (const depth of [2, 3, 5]) {
+      authorityAttacks.push(`https://daan.lifenet.com.tw/help?to=${encodeLayers('https://evil.com/x', depth)}`);
+    }
+    const encodedPhones = [1, 2, 3, 7, 15].map((depth) =>
+      `https://daan.lifenet.com.tw/help?value=${encodeLayers('0912345678', depth)}`);
+    let deepestPhone = encodeEveryByte('0912345678');
+    while (`${url(7)} https://daan.lifenet.com.tw/help?value=${deepestPhone.replaceAll('%', '%25')}`.length <= 600) {
+      deepestPhone = deepestPhone.replaceAll('%', '%25');
+    }
+    encodedPhones.push(`https://daan.lifenet.com.tw/help?value=${deepestPhone}`);
     const harmlessLinks = [
       'https://daan.lifenet.com.tw',
       'https://daan.lifenet.com.tw/courses?tab=open#help',
@@ -139,6 +178,12 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       `'${url(7)}'`,
       `[追蹤](${url(7)})`,
       `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(url(7))}`,
+      `https://daan.lifenet.com.tw/help?to=${encodeLayers(url(7), 3)}`,
+      'https://daan.lifenet.com.tw/help?progress=50%25&label=%E8%AA%B2%E7%A8%8B',
+      `https://daan.lifenet.com.tw/help\n詳情 ${url(7)}`,
+      `${url(7)}\r\nhttps://daan.lifenet.com.tw/help`,
+      `https://daan.lifenet.com.tw\n${url(7)}`,
+      'https://daan.lifenet.com.tw/help//12345/session/67890',
     ];
     for (const kind of ['phase-a', 'followup']) {
       const [candidate, first] = kind === 'phase-a' ? [a[0], a[1]] : [f[0], f[1]];
@@ -148,12 +193,20 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
           assert.ok(!result.ok, `${kind}/${mode} rejects complete malicious authority case ${index}`);
           assert.ok(result.out.includes('row 2: public_reply rejected by content rule url_not_allowed'),
             `${kind}/${mode} rejects authority case ${index} with a rule-only error`);
-          assert.ok(!result.out.includes(link) && !result.out.includes('/issues/') && result.summary === '',
+          assert.ok(!result.out.includes(link) && !result.out.includes('/issues/') && result.summary === '' && result.output === '',
             `${kind}/${mode} authority case ${index} emits no reply or partial summary`);
         });
         harmlessLinks.forEach((link, index) => {
           assert.ok(run(kind, mode, [{ ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]).ok,
             `${kind}/${mode} preserves harmless allowed link case ${index}`);
+        });
+        encodedPhones.forEach((link, index) => {
+          const result = run(kind, mode, [first, { ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]);
+          assert.ok(!result.ok, `${kind}/${mode} rejects multiply encoded synthetic phone case ${index}`);
+          assert.ok(result.out.includes('row 2: public_reply rejected by content rule tw_mobile'),
+            `${kind}/${mode} identifies encoded synthetic phone case ${index} with the original data rule`);
+          assert.ok(!result.out.includes(link) && !result.out.includes('/issues/') && result.summary === '' && result.output === '',
+            `${kind}/${mode} encoded phone case ${index} emits no reply or partial summary`);
         });
       }
     }

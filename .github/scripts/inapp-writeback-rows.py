@@ -39,8 +39,14 @@ ALLOWED_HOSTS = ("daan.lifenet.com.tw", "github.com")  # bare mentions of these 
 # Read the complete authority: quotes, parentheses, backslashes and Unicode must not
 # hide a later @/foreign hostname. Keep the established ASCII path/query boundary
 # so Chinese prose immediately after an issue URL is still treated as prose.
-URL_STARTS = re.compile(r"(?i:(?:[a-z][a-z0-9+.-]{1,15}://|www\.))")
-URL = re.compile(URL_STARTS.pattern + r"[^\s/?#<>]+"
+# Recognize parser-stripped controls in the scheme/separators as well, then reject
+# them before parsing; never remove line breaks from the actual reply.
+URL_HTTP = r"h[\t\r\n]*t[\t\r\n]*t[\t\r\n]*p(?:[\t\r\n]*s)?[\t\r\n]*:[\t\r\n]*(?:[\\/][\t\r\n]*)*"
+URL_STARTS = re.compile(r"(?i:(?:" + URL_HTTP
+                        + r"|[a-z][a-z0-9+.-]{1,15}://|www\.|(?<![\w:/])/(?:[\t\r\n]*/)+))")
+# TAB/LF/CR are removed by URL parsers, so they must not truncate an authority
+# before userinfo or another host. A new URL after a line break stays separate.
+URL = re.compile(URL_STARTS.pattern + r"[^\s/?#<>]+(?:[\t\r\n]+(?!" + URL_STARTS.pattern + r")[^\s/?#<>]+)*"
                  r"(?:[/?#][^\s<>\x7f-\U0010ffff]*)?")
 DOT = r"\s*(?:\.|\[\.\]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\s+dot\s+)\s*"  # "." and defanged forms
 LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
@@ -99,6 +105,8 @@ def allowed_url_authority(url):
     backslashes, ports, encoded hosts and noncanonical authorities fail closed.
     Path/query/fragment checks remain separate below.
     """
+    if re.search(r"[\x00-\x20\x7f]", url):
+        return False  # urlsplit strips some controls rather than reporting them
     try:
         parsed = urlsplit(url)
         return (parsed.scheme == "https" and parsed.hostname in ALLOWED_HOSTS
@@ -115,6 +123,7 @@ def reply_urls(text):
     for start in URL_STARTS.finditer(text):
         match = URL.match(text, start.start())
         if match is None:
+            yield start.group(0)  # a malformed URL/network-path prefix is never evidence of an allowed URL
             continue
         url = match.group(0).rstrip(".,:;!?。")
         if match.start() > 0:
@@ -128,11 +137,25 @@ def reply_urls(text):
 def reply_violation(reply, repo):
     """Name of the first content rule the reply breaks, or None. Never returns the matched text.
     Personal names are NOT detected: this is a pattern guard, not a PII guarantee."""
-    text = normalize(reply)
     allowed_issue = re.compile(r"https://github\.com/" + re.escape(repo) + r"/issues/[1-9][0-9]*")
     allowed_app = re.compile(re.escape(APP_ORIGIN) + r"(?:[/?#]\S*)?")
+    # Every successful percent decode consumes input bytes; '+' can change once.
+    # Inspect every representation until stable, not a fixed number of layers.
+    # The reply length cap bounds work; malformed UTF-8 or exhaustion fails closed.
+    views, text = [], normalize(reply)
+    try:
+        for _ in range(MAX_REPLY_CHARS + 1):
+            views.append(text)
+            decoded = normalize(unquote_plus(text, errors="strict"))
+            if decoded == text:
+                break
+            text = decoded
+        else:
+            return "url_not_allowed"
+    except UnicodeDecodeError:
+        return "url_not_allowed"
     url_parts, bad_link = [], False
-    pending, seen = list(reply_urls(text)), set()
+    pending, seen = [url for view in views for url in reply_urls(view)], set()
     while pending:
         url = pending.pop()
         if url in seen:
@@ -155,7 +178,7 @@ def reply_violation(reply, repo):
         # meet the same authority/destination rules; dedupe avoids repeated work.
         # Each tail is shorter than its parent URL, and replies are capped at 600 chars.
         pending.extend(reply_urls(tail))
-    rest = URL.sub(" ", text)
+    rest = " ".join(URL.sub(" ", view) for view in views)
     scanned = " ".join([rest] + url_parts)
     for name, pattern in REPLY_RULES:  # the specific data rules first, so the error names the leak
         if pattern.search(scanned):
