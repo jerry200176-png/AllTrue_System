@@ -102,9 +102,15 @@ class TeacherBranchController extends Controller
         // Frontend: .delete().eq('teacher_id', editingId.value)
         // Query param: teacher_id
         
-        $teacherId = $request->query('teacher_id');
-        if ($teacherId) {
-            if (!$this->managesTeacher($request, (int) $teacherId)) {
+        // One integer is checked and the same integer is deleted. teacher_id[]=<id> used to make (int) check User 1
+        // while the delete matched <id> (security review, 2026-10-22).
+        $raw = $request->query('teacher_id');
+        if ($raw !== null && $raw !== '' && (!is_scalar($raw) || !ctype_digit((string) $raw))) {
+            return response()->json(['message' => 'teacher_id must be one user id'], 422);
+        }
+        $teacherId = (int) $raw;
+        if ($teacherId > 0) {
+            if (!$this->managesTeacher($request, $teacherId)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
             UserCampus::where('UserID', $teacherId)->delete();
