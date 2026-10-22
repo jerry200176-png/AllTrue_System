@@ -183,7 +183,10 @@ test('main: posts the bounded attempt report to the existing tracker after colle
       posts.push({ path: args[3], body: JSON.parse(input).body });
       return '{}';
     }
-    if (args[1].includes('/issues?')) return JSON.stringify([{ number: 42, body: '<!-- actions-cost-report -->' }]);
+    if (args[1].includes('/issues?')) {
+      assert.deepEqual(args.slice(2), ['--paginate', '--slurp']);
+      return JSON.stringify([[{ number: 42, state: 'open', body: '<!-- actions-cost-report -->' }]]);
+    }
     return JSON.stringify(api(args[1]));
   };
   main({ repo: options.repo, now: base + WINDOW_DAYS * 86400000, gh });
@@ -192,6 +195,80 @@ test('main: posts the bounded attempt report to the existing tracker after colle
   assert.match(posts[0].body, /Total: 1 completed attempts, about 1 wall-clock minutes/);
   assert.match(posts[0].body, /Scope: 1 runs originally created in \[2026-10-20T00:00:00Z, 2026-10-27T00:00:00Z\)/);
   assert.match(posts[0].body, /not complete seven-day repository usage/);
+});
+
+const openIssue = (number, body = null, extra = {}) => ({ number, state: 'open', body, labels: [], ...extra });
+function trackerStub({ issuePages = [[]], labelPages = [[{ name: 'ops-hygiene' }]], failure } = {}) {
+  const { api } = runsApi([]);
+  const calls = [];
+  const gh = (args, input) => {
+    const writing = args.includes('POST');
+    const path = args[writing ? 3 : 1];
+    const body = input && JSON.parse(input);
+    calls.push({ writing, path, body });
+    if (writing) {
+      if (path.endsWith('/labels')) return JSON.stringify({ name: body.name });
+      if (path.endsWith('/issues')) return JSON.stringify(openIssue(500, body.body, { labels: body.labels.map((name) => ({ name })) }));
+      if (path.endsWith('/comments')) return '{}';
+      assert.fail(`unexpected write: ${path}`);
+    }
+    if (path.includes('/issues?') || path.includes('/labels?')) {
+      assert.deepEqual(args.slice(2), ['--paginate', '--slurp']);
+      const list = path.includes('/issues?') ? 'issues' : 'labels';
+      if (failure === list) throw new Error(`${list} later page failed (403)`);
+      return JSON.stringify(list === 'issues' ? issuePages : labelPages);
+    }
+    return JSON.stringify(api(path));
+  };
+  return { calls, run: () => main({ repo: options.repo, now: base + WINDOW_DAYS * 86400000, gh }) };
+}
+
+test('tracker: reuses an unlabelled marker after the first 100 issues, ignoring a marker on a pull request', () => {
+  const first = Array.from({ length: 100 }, (_, i) => openIssue(i + 1));
+  first[0] = openIssue(1, '<!-- actions-cost-report -->', { pull_request: { url: '/pulls/1' } });
+  const { calls, run } = trackerStub({ issuePages: [first, [openIssue(142, '<!-- actions-cost-report -->')]] });
+  run();
+  assert.deepEqual(calls.filter((c) => c.writing).map((c) => c.path), ['/repos/owner/repo/issues/142/comments']);
+  assert.equal(calls.some((c) => c.path.includes('/labels')), false, 'an existing unlabelled tracker needs no label mutation');
+  assert.match(calls.find((c) => c.path.includes('/issues?')).path, /state=open&sort=created&direction=asc&per_page=100/);
+  assert.equal(calls.some((c) => c.path.includes('state=all') || c.path.includes('state=closed')), false);
+});
+
+test('tracker: provisions a missing label after complete read-only lookups, then creates and comments on the active tracker', () => {
+  const { calls, run } = trackerStub({ labelPages: [[]] });
+  run();
+  assert.deepEqual(calls.map((c) => [c.writing, c.path.split('?')[0]]), [
+    [false, '/repos/owner/repo/actions/runs'], [false, '/repos/owner/repo/issues'],
+    [false, '/repos/owner/repo/labels'], [true, '/repos/owner/repo/labels'],
+    [true, '/repos/owner/repo/issues'], [true, '/repos/owner/repo/issues/500/comments'],
+  ]);
+  assert.equal(calls.find((c) => c.writing && c.path.endsWith('/labels')).body.name, 'ops-hygiene');
+  assert.deepEqual(calls.find((c) => c.writing && c.path.endsWith('/issues')).body.labels, ['ops-hygiene']);
+  assert.equal(calls.some((c) => c.body?.state === 'open'), false, 'closed issues are never reopened');
+});
+
+test('tracker: a label on a later page is reused without creating or changing its definition', () => {
+  const labels = Array.from({ length: 100 }, (_, i) => ({ name: `other-${i}` }));
+  const { calls, run } = trackerStub({ labelPages: [labels, [{ name: 'ops-hygiene' }]] });
+  run();
+  assert.deepEqual(calls.filter((c) => c.writing).map((c) => c.path), ['/repos/owner/repo/issues', '/repos/owner/repo/issues/500/comments']);
+});
+
+test('tracker: failed later-page lookups and unknown schemas never provision a label or create/comment on a tracker', () => {
+  const cases = [
+    { failure: 'issues' }, { failure: 'labels' },
+    { issuePages: { items: [] } }, { issuePages: [] },
+    { issuePages: [[{ number: 42 }]] }, { issuePages: [[openIssue(1, '<!-- actions-cost-report -->', { pull_request: 'unknown' })]] },
+    { labelPages: [[{ unexpected: 'schema' }]] },
+    { issuePages: [[openIssue(1)], [openIssue(2)]] },
+    { issuePages: [[openIssue(1), openIssue(1)]] },
+    { issuePages: [[openIssue(1, '<!-- actions-cost-report -->'), openIssue(2, '<!-- actions-cost-report -->')]] },
+  ];
+  for (const configuration of cases) {
+    const { calls, run } = trackerStub(configuration);
+    assert.throws(run, /later page failed|Invalid paginated lookup|Duplicate issues|Multiple active/);
+    assert.equal(calls.some((c) => c.writing), false, JSON.stringify(configuration));
+  }
 });
 
 test('workflow: schedule and manual runs serialize across refs without cancelling an active tracker writer', () => {

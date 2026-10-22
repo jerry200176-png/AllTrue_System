@@ -114,6 +114,18 @@ export function render(rows, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLA
 }
 
 const execGh = (args, input) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 256 << 20, input });
+const HYGIENE_LABEL = 'ops-hygiene';
+
+// gh follows every Link page, and a later-page/API/JSON failure aborts before writes.
+function readList(gh, path, valid) {
+  const pages = JSON.parse(gh(['api', path, '--paginate', '--slurp']));
+  if (!Array.isArray(pages) || pages.length === 0 || pages.some((page, n) => !Array.isArray(page) || page.length > PAGE_SIZE || (n < pages.length - 1 && page.length !== PAGE_SIZE) || page.some((item) => !valid(item)))) throw new Error(`Invalid paginated lookup: ${path}`);
+  return pages.flat();
+}
+
+const validIssue = (issue) => issue && Number.isSafeInteger(issue.number) && issue.number > 0 && issue.state === 'open'
+  && (issue.body === null || typeof issue.body === 'string')
+  && (!Object.hasOwn(issue, 'pull_request') || (issue.pull_request && typeof issue.pull_request.url === 'string'));
 
 export function main({ repo = process.env.GITHUB_REPOSITORY, now = Date.now(), gh = execGh } = {}) {
   if (!repo) throw new Error('GITHUB_REPOSITORY is required');
@@ -122,9 +134,23 @@ export function main({ repo = process.env.GITHUB_REPOSITORY, now = Date.now(), g
   const api = (path) => JSON.parse(gh(['api', path]));
   const { attempts, coverage } = collectAttempts(api, { repo, since, until });
   const body = render(aggregate(attempts), { date: iso(until).slice(0, 10), coverage });
-  const issues = JSON.parse(gh(['api', `/repos/${repo}/issues?state=open&labels=ops-hygiene&per_page=100`]));
-  let issue = issues.find((i) => !i.pull_request && i.body?.includes(MARK));
-  if (!issue) issue = JSON.parse(gh(['api', '-X', 'POST', `/repos/${repo}/issues`, '--input', '-'], JSON.stringify({ title: '[ops] Weekly Actions usage report', labels: ['ops-hygiene'], body: `${MARK}\nWeekly comments from .github/workflows/actions-cost-report.yml.` })));
+  // Search all open issues so an existing, unlabelled marker is still reused.
+  // Closing the tracker ends that active tracker; this workflow never reopens it.
+  const issues = readList(gh, `/repos/${repo}/issues?state=open&sort=created&direction=asc&per_page=100`, validIssue);
+  if (new Set(issues.map((issue) => issue.number)).size !== issues.length) throw new Error('Duplicate issues in tracker lookup');
+  const trackers = issues.filter((i) => !i.pull_request && i.body?.includes(MARK));
+  if (trackers.length > 1) throw new Error('Multiple active Actions report trackers; refusing to write');
+  let issue = trackers[0];
+  const post = (path, data) => JSON.parse(gh(['api', '-X', 'POST', path, '--input', '-'], JSON.stringify(data)));
+  if (!issue) {
+    const labels = readList(gh, `/repos/${repo}/labels?per_page=100`, (label) => label && typeof label.name === 'string' && label.name.length > 0);
+    if (!labels.some((label) => label.name.toLowerCase() === HYGIENE_LABEL)) {
+      const label = post(`/repos/${repo}/labels`, { name: HYGIENE_LABEL, color: 'c5def5', description: 'Operational workflow hygiene' });
+      if (label?.name !== HYGIENE_LABEL) throw new Error('Label creation was not confirmed');
+    }
+    issue = post(`/repos/${repo}/issues`, { title: '[ops] Weekly Actions usage report', labels: [HYGIENE_LABEL], body: `${MARK}\nWeekly comments from .github/workflows/actions-cost-report.yml. Single active tracker; closing it allows a new one next time.` });
+    if (!validIssue(issue) || !issue.body?.includes(MARK) || !Array.isArray(issue.labels) || !issue.labels.some((label) => label.name?.toLowerCase() === HYGIENE_LABEL)) throw new Error('Labelled tracker creation was not confirmed');
+  }
   gh(['api', '-X', 'POST', `/repos/${repo}/issues/${issue.number}/comments`, '--input', '-'], JSON.stringify({ body }));
   console.log(`completed_attempts=${attempts.length} cohort_runs=${coverage.runCount} issue=#${issue.number}`);
 }
