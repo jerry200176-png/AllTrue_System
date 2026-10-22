@@ -1,5 +1,6 @@
 """#4359 bounded subset: real-shaped evidence, ten fail-closed regressions, no flag oracle."""
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 import unittest
 
 from scripts.governance import autonomy_gate as gate
@@ -14,11 +15,14 @@ class Evidence:
     def __init__(self, skipped=0):
         self.body = "Rollback: revert this PR\nRisk-Class: R3\nAutonomy-Tier: T3"
         self.head, self.open_thread, self.ci = HEAD, False, "success"
-        self.runs = [{"id": n, "status": "completed"} for n in range(skipped + 1, 0, -1)]
+        self.runs = [{"id": n, "status": "completed", "run_attempt": 1} for n in range(skipped + 1, 0, -1)]
         self.jobs = {r["id"]: [{"id": r["id"], "name": gate.DEPLOY_JOB_NAME,
                       "status": "completed", "conclusion": "skipped" if r["id"] > 1 else "success"}]
                      for r in self.runs}
-        self.calls = []
+        for n, jobs in self.jobs.items():
+            start = datetime(2026, 10, 21, tzinfo=timezone.utc) + timedelta(minutes=2*n)
+            jobs[0].update(started_at=start.isoformat(), completed_at=(start + timedelta(minutes=1)).isoformat())
+        self.attempt_jobs, self.calls = {}, []
 
     def api(self, path, *extra):
         self.calls.append(path)
@@ -41,7 +45,9 @@ class Evidence:
         if "/deploy.yml/" in path:
             rows, key = self.runs, "workflow_runs"
         else:
-            rows, key = self.jobs[int(path.split("/runs/")[1].split("/")[0])], "jobs"
+            run_id = int(path.split("/runs/")[1].split("/")[0])
+            attempt = int(path.split("/attempts/")[1].split("/")[0]) if "/attempts/" in path else next(r["run_attempt"] for r in self.runs if r["id"] == run_id)
+            rows, key = self.attempt_jobs.get((run_id, attempt), self.jobs[run_id]), "jobs"
         return {"total_count": len(rows), key: rows[(page - 1) * 100:page * 100]}
 
     def graphql(self, query):
@@ -147,6 +153,42 @@ class ActivationEvidenceIntegrityTest(unittest.TestCase):
         evidence.runs[-1]["status"] = "in_progress"
         self.assertIsNotNone(evidence.read()["freeze_reason"])
 
+    def test_older_created_executor_failure_after_newer_success_freezes(self):
+        evidence = Evidence(skipped=1)
+        evidence.runs[0].update(created_at="2026-10-21T12:00:00Z")
+        evidence.runs[1].update(created_at="2026-10-21T11:00:00Z")
+        evidence.jobs[2][0].update(conclusion="success", started_at="2026-10-21T12:01:00Z", completed_at="2026-10-21T12:02:00Z")
+        evidence.jobs[1][0].update(conclusion="failure", started_at="2026-10-21T13:01:00Z", completed_at="2026-10-21T13:02:00Z")
+        self.assertIsNotNone(evidence.read()["freeze_reason"])
+        self.assertFalse(decide(evidence=evidence)["ok"])
+        evidence.jobs[1][0]["conclusion"], evidence.jobs[2][0]["conclusion"] = "success", "failure"
+        self.assertTrue(decide(evidence=evidence)["ok"])  # Later actual recovery, despite older run creation.
+
+    def test_queued_retry_does_not_hide_previous_failed_attempt(self):
+        evidence = Evidence(skipped=1); evidence.runs[0]["run_attempt"] = 2
+        evidence.jobs[2][0]["conclusion"] = "failure"
+        evidence.attempt_jobs[2, 2] = [{"id": 100, "name": gate.DEPLOY_JOB_NAME,
+            "status": "queued", "conclusion": None, "started_at": None, "completed_at": None}]
+        self.assertIsNotNone(evidence.read()["freeze_reason"])
+        self.assertTrue(any("/runs/2/attempts/1/jobs?" in p for p in evidence.calls))
+        self.assertTrue(any("/runs/2/attempts/2/jobs?" in p for p in evidence.calls))
+
+    def test_unknown_executor_chronology_or_attempt_is_not_old_or_skipped(self):
+        for field, value in (("name", None), ("started_at", None), ("completed_at", None),
+                             ("completed_at", "garbage"), ("started_at", "2026-10-22T00:00:00Z")):
+            evidence = Evidence(); evidence.jobs[1][0][field] = value
+            with self.assertRaises(ValueError):
+                evidence.read()
+        evidence = Evidence(skipped=1); evidence.jobs[2][0].update(conclusion="success", started_at=evidence.jobs[1][0]["started_at"])
+        with self.assertRaisesRegex(ValueError, "overlaps"):
+            evidence.read()
+        evidence = Evidence(); evidence.runs[0]["run_attempt"] = 1001
+        with self.assertRaisesRegex(ValueError, "ceiling"):
+            evidence.read()
+        evidence = Evidence(); evidence.runs[0].pop("run_attempt")
+        with self.assertRaises(ValueError):
+            evidence.read()
+
     def test_skip_own_run_but_not_a_previous_executors_failure(self):
         evidence = Evidence(skipped=1)
         evidence.jobs[2][0].update(status="in_progress", conclusion=None)
@@ -187,9 +229,10 @@ class ActivationEvidenceIntegrityTest(unittest.TestCase):
             return response | {"total_count": 101} if "/deploy.yml/" in path else response
         with self.assertRaises(ValueError):
             gate.deploy_freeze_reason(repo="o/r", api=partial)
-        evidence = Evidence(skipped=1001)
-        with self.assertRaises(ValueError):
+        evidence = Evidence(skipped=3383)  # Root observed3384 run metadata, not production proof.
+        with self.assertRaisesRegex(ValueError, "ceiling"):
             evidence.read()
+        self.assertFalse(any("/attempts/" in p for p in evidence.calls))
         conn = {"nodes": [], "pageInfo": {"hasNextPage": True}}
         self.assertIsNone(gate.unresolved_review_threads(conn))
 

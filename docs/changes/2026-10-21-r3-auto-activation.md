@@ -15,8 +15,9 @@ provenance and unknown guard/recovery cases retain the existing Founder path.
 This does not deliver true R3 billing auto-activation or close #3961/the broader direction.
 
 Complete compare identities/counts and per-commit file limits are checked; renamed
-source paths enter the actual effect record. History is paginated past skipped deploys
-to the last real executor; failure/cancellation/unknown status freezes activation.
+source paths enter the actual effect record. Complete paginated history and each run
+attempt use actual executor start/completion chronology, never run creation order.
+Unknown chronology/attempts and failed/cancelled/unknown latest executors freeze activation.
 After the shared executor queue, both policies re-read final-head review, unresolved
 threads, freeze and the strict existing `Rollback: revert this PR` directive. The existing
 public deployment manifest must still identify the classified base; drift requires a
@@ -34,3 +35,8 @@ Remaining limits: existing deterministic effect policy is not a general program 
 mutable evidence can change after the final read. Unknown/unsupported effects require
 Founder review. Evidence freshness is rechecked before SSH, and all existing executor
 and release-train gates remain required. No production or delivery proof is claimed.
+
+Root's read-only GitHub metadata observation found **3,384 deploy runs**, beyond the
+unchanged 1,000-run/attempt evidence ceiling. This candidate therefore remains
+**unready/held for auto-r3 activation** in AllTrue; a prefix success cannot prove the
+latest executor. No new history platform or larger/unbounded scan is proposed.

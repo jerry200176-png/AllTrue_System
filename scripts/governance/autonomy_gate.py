@@ -1243,6 +1243,8 @@ def _activation_api_rows(api, path: str, key: str):
                 or total < 0 or (expected is not None and expected != total)
                 or len(rows) != min(100, max(0, total - len(seen)))):
             raise ValueError("activation history is partial or changed")
+        if total > 1000:
+            raise ValueError("activation history exceeds the API result ceiling")
         expected = total
         for row in rows:
             identity = row.get("id") if isinstance(row, Mapping) else None
@@ -1256,7 +1258,7 @@ def _activation_api_rows(api, path: str, key: str):
 
 
 def deploy_freeze_reason(*, repo: str, api: Callable[..., object], current_run_id: object = None) -> str | None:
-    """Skip non-executing runs; an actual failed/cancelled/unknown executor freezes the line."""
+    """Compare actual executor intervals across complete attempts; never use run creation order."""
     ci = api(f"/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=20")
     if not isinstance(ci, Mapping) or not isinstance(ci.get("workflow_runs"), list):
         return "main CI state unknown"
@@ -1264,17 +1266,45 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object], current_run_i
                and r.get("name") == "CI — PHPUnit Tests" and r.get("conclusion") not in {"cancelled", "skipped"}]
     if not decided or decided[0].get("status") != "completed" or decided[0].get("conclusion") != "success":
         return "main CI is red or unknown"
-    for run in _activation_api_rows(api, f"/repos/{repo}/actions/workflows/deploy.yml/runs", "workflow_runs"):
+    history, attempts_seen = [], 0
+    runs = list(_activation_api_rows(api, f"/repos/{repo}/actions/workflows/deploy.yml/runs", "workflow_runs"))
+    for run in runs:
+        attempts = run.get("run_attempt")
+        if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 1:
+            raise ValueError("executor attempts unknown")
+        attempts_seen += attempts
+        if attempts_seen > 1000:
+            raise ValueError("executor attempt history exceeds the evidence ceiling")
         if str(run["id"]) == str(current_run_id):
+            if attempts != 1:
+                raise ValueError("executor rerun requires fresh classification")
             continue
-        for job in _activation_api_rows(api, f"/repos/{repo}/actions/runs/{run['id']}/jobs", "jobs"):
-            if (job.get("name") != DEPLOY_JOB_NAME or job.get("conclusion") == "skipped"
-                    or job.get("status") in {"queued", "waiting", "pending", "requested"}):
-                continue
-            if job.get("status") == "completed" and job.get("conclusion") == "success":
-                return None
-            return "previous production executor failed, was cancelled or is unknown; reviewed recovery required"
-    return "production deployment state unknown"
+        for attempt in range(1, attempts + 1):
+            path = f"/repos/{repo}/actions/runs/{run['id']}/attempts/{attempt}/jobs"
+            for job in _activation_api_rows(api, path, "jobs"):
+                if not isinstance(job.get("name"), str) or not job["name"]:
+                    raise ValueError("executor job identity unknown")
+                if job.get("name") != DEPLOY_JOB_NAME:
+                    continue
+                status, conclusion = job.get("status"), job.get("conclusion")
+                if status == "completed" and conclusion == "skipped":
+                    continue
+                started, finished = job.get("started_at"), job.get("completed_at")
+                if status in {"queued", "waiting", "pending", "requested"} and started is None and finished is None and conclusion is None:
+                    continue
+                if status != "completed":
+                    return "production executor active or unknown; reviewed recovery required"
+                started, finished = _parse_timestamp(started), _parse_timestamp(finished)
+                if (started is None or finished is None or started.tzinfo is None
+                        or finished.tzinfo is None or started > finished):
+                    raise ValueError("executor chronology unknown")
+                history.append((started, finished, conclusion))
+    if not history:
+        return "production deployment state unknown"
+    history.sort(key=lambda item: item[1])
+    if any(b[0] < a[1] or b[1] == a[1] for a, b in zip(history, history[1:])):
+        raise ValueError("executor chronology overlaps or is ambiguous")
+    return None if history[-1][2] == "success" else "last production executor failed, was cancelled or is unknown; reviewed recovery required"
 
 
 def r3_runtime_evidence(*, repo: str, pr_numbers: Iterable[object], api, graphql, current_run_id: object = None) -> dict:
