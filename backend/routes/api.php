@@ -712,7 +712,8 @@ Route::prefix('v1')->group(function () {
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
         Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
-        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
+        // Restore re-applies the cancelled lesson's deduction; director + super_admin only, as the calendar offers it.
+        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id')->middleware('role:director,super_admin');
         // Move a session to another contract of the same student+subject (director + super_admin, campus-scoped).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])->whereNumber('id')->middleware('role:director,super_admin');
         Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])->whereNumber('id')->middleware('role:director,super_admin');
