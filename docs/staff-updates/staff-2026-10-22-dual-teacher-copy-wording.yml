@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-22-dual-teacher-copy-wording
+    published_at: "2026-10-22"
+    audiences:
+      - director
+    importance: digest
+    title: 「換師複製」改名為「雙師複製」
+    summary: 替同一位學生再開一門另一位老師的課，原課程保留；換老師請用轉課。
+    items:
+      - category: improved
+        text: 「⋯」選單改叫「雙師複製」，課程設定按鈕改為「複製為雙師課程（原課程保留）」。
+      - category: improved
+        text: 確認說明寫清楚原課程和之後的堂次都保留、原老師名額不釋放；換老師請用轉課。
+    source_refs:
+      - "changelog:2026-10-22:dual-teacher-copy-wording"
