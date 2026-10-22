@@ -5,3 +5,4 @@
 - 新增 `scripts/ci/workflow_expression_size.py`，每個 PR 檢查所有 workflow：含 `${{ }}` 的 run 區塊達 18,000 位元組即失敗，無法精確量的 YAML 寫法一律失敗。
 - Current-main 整合保留 private-storage 權限 helper、FPM 失敗狀態碼診斷與既有 rollback；以合成值核對 main605 的原 heredoc 與抽出後的輸出逐位元組相同。防再犯條目使用 R158，避免覆蓋既有 MariaDB R157。
 - `rollback-readiness.sh` 會在呼叫端 checkout 執行 revert/reset；驗證必須先 commit，再於可丟棄的全新 clone 執行，不能把畫面上的 sandbox 標籤當成隔離保證。
+- 獨立審查重現 `run :` 與 sequence 後多空白會漏掉大小檢查；修補後兩種合法 YAML 也會量測並拒絕過大的 expression。Storage 權限測試改讀實際送出的 executor，保留所有原安全斷言；170 個部署合約及 synthetic storage 權限測試通過。

@@ -17,8 +17,8 @@ import sys
 GITHUB_LIMIT = 21_000
 DEFAULT_LIMIT = 18_000  # well below the hard limit, so a fix still fits
 ROOT = Path(__file__).resolve().parents[2]
-RUN_KEY = re.compile(r"^(\s*)(?:- )?run:(?:\s+(.*))?$")
-UNREADABLE_KEY = re.compile(r"^\s*(?:- )?(?:[\"']run[\"']\s*:|\{.*\brun\s*:)")
+RUN_KEY = re.compile(r"^(\s*)(?:-\s+)?run\s*:(?:\s+(.*))?$")
+UNREADABLE_KEY = re.compile(r"^\s*(?:-\s+)?(?:[\"']run[\"']\s*:|\{.*\brun\s*:)")
 BLOCK_INDICATOR = re.compile(r"[|>][-+]?(\s+#.*)?")
 UNMEASURABLE = re.compile(r"[&*!]|[|>][-+]?[0-9]")
 

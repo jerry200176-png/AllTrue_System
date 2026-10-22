@@ -1637,8 +1637,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             big = Path(tmp) / "big.yml"
-            big.write_text("      - run: |\n" + "          echo ${{ x }}\n" * 1500, encoding="utf-8")
-            self.assertEqual(1, guard.main([str(big)]))
+            for key in ("run:", "run :", " run:"):
+                big.write_text(f"      - {key} |\n" + "          echo ${{ x }}\n" * 1500, encoding="utf-8")
+                self.assertEqual(1, guard.main([str(big)]), key)
             self.assertEqual(0, guard.main(["--limit", "100000", str(big)]))
             # A plain block (no ${{ }}) is not an expression; it is reported but never fails.
             plain = Path(tmp) / "plain.yml"

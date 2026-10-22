@@ -15,7 +15,7 @@ for src in "$DEPLOY" "$ROOT/scripts/production-deploy/pi-remote-deploy.sh"; do
   fi
 done
 
-grep -qF 'bash /home/admin/scripts/deploy-storage-perms.sh || abort_deploy' "$DEPLOY" \
+grep -qF 'bash /home/admin/scripts/deploy-storage-perms.sh || abort_deploy' "$ROOT/scripts/production-deploy/pi-remote-deploy.sh" \
   || fail "deploy.yml [2b/7] must call scripts/deploy-storage-perms.sh and abort the deploy on failure"
 
 WORK="$(mktemp -d)"
