@@ -174,7 +174,7 @@ test('labels: provision missing definitions before stale labels and reuse one ho
   assert.ok(writes.some((c) => c.path === 'issues/1/labels'));
   const alarm = fixture(t, {
     'pulls?state=open&per_page=100': { data: [] },
-    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs: Array(3).fill({ status: 'completed', conclusion: 'failure' }) } },
+    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { total_count: 3, workflow_runs: Array(3).fill({ status: 'completed', conclusion: 'failure' }) } },
   }, []);
   for (let n = 0; n < 2; n++) { const r = alarm.run('queue-alarm'); assert.equal(r.status, 0, r.stderr); }
   assert.equal(alarm.state().issues.length, 1);
@@ -185,7 +185,7 @@ test('labels: provision missing definitions before stale labels and reuse one ho
 test('manual hygiene: the serialized report and alarm reuse newly created labels', (t) => {
   const f = fixture(t, {
     'pulls?state=open&per_page=100': { data: [] },
-    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs: Array(3).fill({ status: 'completed', conclusion: 'failure' }) } },
+    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { total_count: 3, workflow_runs: Array(3).fill({ status: 'completed', conclusion: 'failure' }) } },
   }, []);
   for (const mode of ['stale', 'queue-alarm']) {
     const r = f.run(mode); assert.equal(r.status, 0, r.stderr);
@@ -201,7 +201,7 @@ test('queue alarm: unknown age or eligibility cannot close or update an existing
   const base = {
     'pulls?state=open&per_page=100': { data: [pull] },
     'issues/1/events?per_page=100': { data: [event] },
-    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs: [] } },
+    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { total_count: 0, workflow_runs: [] } },
     'issues?state=open&per_page=100&labels=ops-hygiene': { data: [{ number: 9000, body: '<!-- repo-hygiene:queue-alarm -->' }] },
     'POST issues/9000/comments': { data: {} }, 'PATCH issues/9000': { data: { state: 'closed' } },
   };
@@ -209,7 +209,7 @@ test('queue alarm: unknown age or eligibility cannot close or update an existing
     ...[undefined, '', 'invalid-timestamp', '2026-02-30T05:00:00Z', '9999-01-01T00:00:00Z'].map((created_at) => ({ 'issues/1/events?per_page=100': { data: [{ ...event, created_at }] } })),
     ...[[], [{ ...event, event: undefined }], [{ ...event, label: {} }], [{ ...event, event: 'unlabeled' }], [{ ...event, created_at: recent() }, event]].map((data) => ({ 'issues/1/events?per_page=100': { data } })),
     ...[{ number: 0 }, { labels: undefined }, { labels: [{}] }].map((fields) => ({ 'pulls?state=open&per_page=100': { data: [{ ...pull, ...fields }] } })),
-    ...[undefined, null, [{}], [{ status: 'completed', conclusion: null }]].map((workflow_runs) => ({ 'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs } } })),
+    ...[undefined, null, [{}], [{ status: 'completed', conclusion: null }]].map((workflow_runs) => ({ 'actions/workflows/land-queue.yml/runs?per_page=30': { data: { total_count: Array.isArray(workflow_runs) ? workflow_runs.length : 0, workflow_runs } } })),
   ];
   for (const override of bad) {
     const f = fixture(t, { ...base, ...override }); const r = f.run('queue-alarm');
@@ -220,6 +220,39 @@ test('queue alarm: unknown age or eligibility cannot close or update an existing
   const healthy = fixture(t, { ...base, 'issues/1/events?per_page=100': { data: [{ ...event, created_at: new Date(Date.now() - 30 * 60e3).toISOString() }] } });
   const r = healthy.run('queue-alarm'); assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(healthy.state().calls.filter((c) => c.method !== 'GET').map((c) => c.path), ['issues/9000/comments', 'issues/9000']);
+});
+
+test('queue alarm: a truncated undecided run prefix cannot erase the existing alarm', (t) => {
+  const run = (conclusion, status = 'completed') => ({ status, conclusion });
+  const ignored = [run('cancelled'), run('skipped'), run(null, 'queued')];
+  const base = {
+    'pulls?state=open&per_page=100': { data: [{ number: 1, labels: [{ name: 'queue' }] }] },
+    'issues/1/events?per_page=100': { data: [{ event: 'labeled', label: { name: 'queue' }, created_at: new Date(Date.now() - 30 * 60e3).toISOString() }] },
+    'issues?state=open&per_page=100&labels=ops-hygiene': { data: [{ number: 9000, body: '<!-- repo-hygiene:queue-alarm -->' }] },
+    'POST issues/9000/comments': { data: {} }, 'PATCH issues/9000': { data: { number: 9000 } },
+  };
+  const check = (history) => {
+    const f = fixture(t, { ...base, 'actions/workflows/land-queue.yml/runs?per_page=30': { data: history } });
+    return { result: f.run('queue-alarm'), writes: () => f.state().calls.filter((c) => c.method !== 'GET') };
+  };
+  const unknown = [
+    { total_count: 33, workflow_runs: Array(30).fill(run('cancelled')) },
+    ...[0, 1, 2].map((n) => ({ total_count: 33, workflow_runs: [...ignored, ...Array(n).fill(run('failure'))] })),
+    ...[undefined, null, -1, 1.5, '33', Number.MAX_SAFE_INTEGER + 1].map((total_count) => ({ total_count, workflow_runs: [] })),
+    { total_count: 0, workflow_runs: ignored },
+  ];
+  for (const history of unknown) {
+    const { result, writes } = check(history);
+    assert.notEqual(result.status, 0, JSON.stringify(history));
+    assert.equal(writes().length, 0, 'incomplete history is not recovery or a tracker upsert');
+  }
+  for (const [workflow_runs, total_count, finding] of [[[], 0, false], [Array(30).fill(run('cancelled')), 30, false], [[...ignored, run('success')], 33, false],
+    [[run('failure'), run('failure'), run('success')], 33, false], [[...ignored, ...Array(3).fill(run('failure'))], 33, true]]) {
+    const { result, writes } = check({ total_count, workflow_runs });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(writes().map((c) => c.path), finding ? ['issues/9000'] : ['issues/9000/comments', 'issues/9000']);
+    assert.equal(writes().some((c) => c.input?.state === 'closed'), !finding);
+  }
 });
 
 test('fail closed: failed or malformed activity/labels never close an old draft', (t) => {

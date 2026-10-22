@@ -192,7 +192,13 @@ function runQueueAlarm() {
     if (!since) throw new Error('Unknown queue label history');
     queued.push({ number: pr.number, since });
   }
-  const runs = api('actions/workflows/land-queue.yml/runs?per_page=30').workflow_runs;
+  const history = api('actions/workflows/land-queue.yml/runs?per_page=30');
+  const runs = history?.workflow_runs;
+  if (!Number.isSafeInteger(history?.total_count) || !Array.isArray(runs)
+      || history.total_count < runs.length) throw new Error('Unknown workflow history count');
+  // Cancelled/skipped/pending runs cannot prove that a truncated failure streak ended.
+  if (history.total_count > runs.length && failStreak(runs) < FAIL_STREAK
+      && !runs.some((r) => r.status === 'completed' && r.conclusion === 'success')) throw new Error('Unknown truncated workflow failure streak');
   const findings = alarmFindings({ queued, runs, now });
   if (findings.length) {
     const body = `## Land queue alarm\n${findings.map((f) => `- ${f}`).join('\n')}\n\nChecked ${new Date(now).toISOString()}. Check the queue comment on the PR and the latest land-queue run; fix the cause, this issue closes itself when clear.`;
