@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\BankTransaction;
+use App\Models\StudentClass;
 use App\Models\User;
 use Database\Factories\CampusFactory;
+use Database\Factories\StudentFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -76,6 +78,7 @@ class BankReconciliationTest extends TestCase
     public function test_reconcile_marks_transaction(): void
     {
         [$token, $campus] = $this->seedDirector();
+        $course = $this->seedCourse((int) $campus->id);
 
         $txn = BankTransaction::create([
             'campus_id' => $campus->id, 'transaction_date' => '2026-05-01',
@@ -83,14 +86,69 @@ class BankReconciliationTest extends TestCase
         ]);
 
         $r = $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", [
-            'student_class_id' => 999,
+            'student_class_id' => $course->ID,
         ], $this->bearer($token));
 
         $r->assertOk();
         $this->assertDatabaseHas('bank_transactions', [
             'id' => $txn->id,
             'status' => 'reconciled',
-            'matched_payment_id' => 999,
+            'matched_payment_id' => $course->ID,
+        ]);
+    }
+
+    public function test_reconcile_refuses_a_course_that_does_not_exist(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $txn = $this->seedTransaction((int) $campus->id, 'NX1');
+        $missingId = (int) StudentClass::query()->max('ID') + 1000;
+
+        $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => $missingId], $this->bearer($token))
+            ->assertStatus(422)->assertJsonPath('code', 'course_not_found');
+        $this->assertNothingWritten($txn);
+    }
+
+    public function test_reconcile_refuses_a_course_at_another_campus(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $other = CampusFactory::new()->create();
+        $foreignCourse = $this->seedCourse((int) $other->id);
+        $txn = $this->seedTransaction((int) $campus->id, 'XC1');
+
+        $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => $foreignCourse->ID], $this->bearer($token))
+            ->assertForbidden()->assertJsonPath('code', 'course_campus_mismatch');
+        $this->assertNothingWritten($txn);
+    }
+
+    public function test_a_director_with_no_campus_cannot_reconcile(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $course = $this->seedCourse((int) $campus->id);
+        $txn = $this->seedTransaction((int) $campus->id, 'NC1');
+        $token = $this->seedUser('A', null);
+
+        $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => $course->ID], $this->bearer($token))
+            ->assertForbidden();
+        $this->assertNothingWritten($txn);
+    }
+
+    public function test_super_admin_reconciles_only_a_course_at_the_transaction_campus(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $other = CampusFactory::new()->create();
+        $course = $this->seedCourse((int) $campus->id);
+        $foreignCourse = $this->seedCourse((int) $other->id);
+        $txn = $this->seedTransaction((int) $campus->id, 'SA1');
+        $token = $this->seedUser('S', null);
+
+        $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => $foreignCourse->ID], $this->bearer($token))
+            ->assertForbidden()->assertJsonPath('code', 'course_campus_mismatch');
+        $this->assertNothingWritten($txn);
+
+        $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => $course->ID], $this->bearer($token))
+            ->assertOk();
+        $this->assertDatabaseHas('bank_transactions', [
+            'id' => $txn->id, 'status' => 'reconciled', 'matched_payment_id' => $course->ID,
         ]);
     }
 
@@ -143,6 +201,52 @@ class BankReconciliationTest extends TestCase
         $tok = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
         return [$tok, $campus];
+    }
+
+    private function seedUser(string $type, ?int $campusId): string
+    {
+        $user = User::create([
+            'LoginName' => 'bank_' . $type . '_' . uniqid() . '@test.com',
+            'Name' => 'U', 'PSW' => password_hash('s', PASSWORD_DEFAULT),
+            'type' => $type, 'phone' => '0900000000',
+        ]);
+        if ($campusId !== null) {
+            \App\Models\UserCampus::create(['UserID' => $user->id, 'CampusID' => $campusId, 'Approved' => 1]);
+        }
+        $tok = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
+        return $tok;
+    }
+
+    private function seedCourse(int $campusId): StudentClass
+    {
+        $student = StudentFactory::new()->create(['CampusID' => $campusId]);
+
+        return StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(10)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 5, 'UsedSessions' => 0,
+            'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+    }
+
+    private function seedTransaction(int $campusId, string $reference): BankTransaction
+    {
+        return BankTransaction::create([
+            'campus_id' => $campusId, 'transaction_date' => '2026-05-01',
+            'amount' => 5000, 'reference' => $reference, 'status' => 'unmatched',
+        ]);
+    }
+
+    private function assertNothingWritten(BankTransaction $txn): void
+    {
+        $fresh = $txn->fresh();
+        $this->assertSame('unmatched', (string) $fresh->status);
+        $this->assertNull($fresh->matched_payment_id);
+        $this->assertNull($fresh->reconciled_at);
+        $this->assertNull($fresh->reconciled_by);
     }
 
     private function bearer(string $token): array
