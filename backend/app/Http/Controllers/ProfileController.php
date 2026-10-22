@@ -724,6 +724,11 @@ class ProfileController extends Controller
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
+        // Same target rule as resetPassword() and destroy(): below super_admin, only teachers the caller manages.
+        if ((string) $request->attributes->get('auth_role') !== 'super_admin'
+            && ((string) $user->type !== 'T' || !$this->canManageTeacher($request, (int) $user->id))) {
+            return response()->json(['message' => '無權限修改此帳號'], 403);
+        }
         $input = $request->validate([
             'username'        => 'nullable|string|max:64',
             'name'            => 'nullable|string|max:64',
