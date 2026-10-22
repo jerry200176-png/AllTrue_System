@@ -381,7 +381,7 @@
                       </div>
                     </td>
                     <td>
-                      <div class="payment-status-and-action">
+                      <div class="payment-status-and-action" :data-course-id="c.id">
                         <span
                           :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
                           role="status"
