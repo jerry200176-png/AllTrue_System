@@ -1,0 +1,165 @@
+name: Bug Phase-C resolve (deployed fix)
+
+# Resolves a triaged / in_progress in-app bug AFTER its fix is deployed and verified, closing the Phase-C gap
+# the retired bug-phase-c-allowlist.yml left (that path throws legacy_ssh_phase_c_retired).
+#
+# NOT YET AUTHORIZED TO RUN: this adds a new production write (bug status -> resolved). It is held for a Founder
+# decision on that authority. Until the Founder approves, do not dispatch it.
+#
+# Each row needs production evidence (production_revision must be an ancestor of the live HEAD, plus deploy_run_id)
+# and a public reply that prompts the reporter with BOTH outcomes (確認已修好 / 問題仍存在); BugReportService
+# ::changeStatus('resolved') enforces assertResolvedEvidence internally, so a row with a weak reply or no evidence
+# is refused and never resolved. Mirrors bug-followup-comment.yml: main only, secrets only on the main-only
+# production-ssh environment, every row validated before any write, shared inapp-production-writeback concurrency.
+on:
+  workflow_dispatch:
+    inputs:
+      rows_json:
+        description: 'JSON array (1-20) of {"bug_id","github_issue_url","public_reply"(<=600 chars, contains the URL and both 確認已修好/問題仍存在),"production_revision"(40-hex, in production),"deploy_run_id"}'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inapp-production-writeback
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  preview:
+    name: Preview the Phase-C resolve batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      resolved: ${{ steps.rows.outputs.resolved }}
+    steps:
+      - name: Checkout pinned row validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/scripts/inapp-writeback-rows.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Show the requested resolves
+        id: rows
+        # rows_json is read from the event payload (never env); errors name the row and field, never the value.
+        run: python3 .github/scripts/inapp-writeback-rows.py phase-c preview
+
+  resolve:
+    needs: preview
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 30
+    outputs:
+      applied: ${{ steps.write.outputs.applied }}
+    steps:
+      - name: Checkout pinned SSH trust helper and row validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            .github/scripts/inapp-writeback-rows.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_SSH_HOST"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Resolve each bug with deployment evidence
+        id: write
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        # rows_json is deliberately not in env. The validator re-reads the event payload and emits one safe line
+        # per row (validated tokens + base64 reply). Rows run in order in one SSH session; the first failing row
+        # stops the batch (earlier rows stay written; a rerun is idempotent: an already-resolved bug is skipped).
+        run: |
+          set -euo pipefail
+          ROWS="$(python3 .github/scripts/inapp-writeback-rows.py phase-c write)"
+          ROW_COUNT="$(printf '%s\n' "$ROWS" | wc -l | tr -d ' ')"
+          ROWS_B64="$(printf '%s' "$ROWS" | base64 | tr -d '\n')"
+          set +e
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "ROW_COUNT='$ROW_COUNT' ROWS_B64='$ROWS_B64' bash -s" <<'REMOTE' | tee "$RUNNER_TEMP/write.log"
+          set -euo pipefail
+          cd /home/admin/backend
+          applied=0
+          PROD_HEAD=$(git rev-parse HEAD)
+          echo "prod_head=$PROD_HEAD"
+          while read -r -u 3 BUG_ID GITHUB_ISSUE_URL PRODUCTION_REVISION DEPLOY_RUN_ID PUBLIC_REPLY_B64; do
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "resolve needs the full 40-char production_revision"; exit 1; }
+          [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "resolve needs deploy_run_id"; exit 1; }
+          # Never resolve against a revision that is not actually live.
+          git merge-base --is-ancestor "$PRODUCTION_REVISION" "$PROD_HEAD" || { echo "production_revision is not in production"; exit 1; }
+          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
+          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+          export BUG_ID GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
+          php artisan tinker --execute='
+          $bugId = (int)getenv("BUG_ID");
+          $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
+          $reply = (string)getenv("PUBLIC_REPLY");
+          $rev = (string)getenv("PRODUCTION_REVISION");
+          $runId = (string)getenv("DEPLOY_RUN_ID");
+          $bug = \App\Models\BugReport::find($bugId);
+          if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+          $status = (string)$bug->getRawOriginal("status");
+          if ($status === "resolved") { echo json_encode(["bug_id"=>$bugId,"status"=>"resolved","skipped"=>true,"issue"=>$issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL; return; }
+          if (!in_array($status, ["triaged","in_progress"], true)) { throw new \RuntimeException("refusing status: ".$status); }
+          $admin = \Illuminate\Support\Facades\DB::table("UserCampus")->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
+          $actor = $admin ? (int)$admin : 1;
+          if ($status === "triaged") {
+              $toProg = \App\Services\BugReportService::changeStatus($bugId, $actor, "in_progress", "Phase-C: fix deployed (".substr($rev,0,9).")");
+              if (!($toProg["ok"] ?? false)) { throw new \RuntimeException(json_encode($toProg)); }
+          }
+          // The public reply prompts the reporter with both outcomes; addComment is idempotent on exact body.
+          $already = \App\Models\BugReportComment::query()->where("bug_report_id",$bugId)->where("body",$reply)->exists();
+          if (!$already) {
+              $c = \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
+              if (!(($c["ok"] ?? false) || isset($c->id))) { throw new \RuntimeException(json_encode($c)); }
+          }
+          $res = \App\Services\BugReportService::changeStatus($bugId, $actor, "resolved", "Phase-C resolve on deployed fix", [
+              "production_revision" => $rev,
+              "deploy_run_id" => $runId,
+              "require_both_outcomes_reply" => true,
+              "resolver_user_id" => $actor,
+          ]);
+          if (!($res["ok"] ?? false)) { throw new \RuntimeException(json_encode($res)); }
+          echo json_encode(["bug_id"=>$bugId,"status"=>"resolved","from"=>$status,"issue"=>$issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          ' \
+          </dev/null
+          applied=$((applied + 1))
+          echo "applied_row=$BUG_ID"
+          done 3< <(printf '%s' "$ROWS_B64" | base64 -d; echo)
+          [[ "$applied" == "$ROW_COUNT" ]] || { echo "applied $applied of $ROW_COUNT rows"; exit 1; }
+          echo "applied $applied of $ROW_COUNT rows"
+          REMOTE
+          rc=${PIPESTATUS[0]}
+          set -e
+          APPLIED="$({ grep -E '^applied_row=[0-9]+$' "$RUNNER_TEMP/write.log" || true; } | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          echo "applied=$APPLIED" >> "$GITHUB_OUTPUT"
+          echo "Resolve result: $(jq length <<< "$APPLIED") of $ROW_COUNT row(s) applied (exit $rc)." >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

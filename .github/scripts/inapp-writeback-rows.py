@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate in-app write-back batches; the batch change note records policy and rationale.
 
-Usage: inapp-writeback-rows.py {phase-a|followup} {preview|write}
+Usage: inapp-writeback-rows.py {phase-a|followup|phase-c} {preview|write}
 Read rows_json only from $GITHUB_EVENT_PATH; step env is publicly logged.
 Validate all rows before output; errors name fields/rules, never input values.
 preview emits only IDs/hashes; write emits validated fields and base64 replies.
@@ -23,6 +23,9 @@ DISPOSITION = re.compile(r"[a-z_]{1,64}")
 STATUSES = ("triaged", "in_progress", "resolved", "closed")
 REV = re.compile(r"[0-9a-f]{40}")
 RUN_ID = re.compile(r"[0-9]{1,20}")
+# BugReportService::RESOLVE_REPLY_OUTCOMES — a resolve reply must prompt the reporter with both outcomes,
+# or assertResolvedEvidence(require_both_outcomes_reply) rejects the resolve. Kept in sync by test.
+RESOLVE_REQUIRED_PHRASES = ("確認已修好", "問題仍存在")
 APP_ORIGIN = "https://daan.lifenet.com.tw"  # the production app; its own links are allowed in replies
 ALLOWED_HOSTS = ("daan.lifenet.com.tw", "github.com")  # bare mentions of these hosts are fine
 # Read the complete authority: quotes, parentheses, backslashes and Unicode must not
@@ -56,6 +59,9 @@ REPLY_RULES = (
 FIELDS = {
     "phase-a": {"bug_id", "github_issue_url", "public_reply", "disposition", "close_as_logged"},
     "followup": {"bug_id", "expected_status", "github_issue_url", "public_reply", "production_revision", "deploy_run_id"},
+    # phase-c resolves a triaged/in_progress bug after its fix is deployed. The reply must prompt the reporter
+    # with both outcomes (confirm/reopen), and production evidence is mandatory. Never resolves without both.
+    "phase-c": {"bug_id", "github_issue_url", "public_reply", "production_revision", "deploy_run_id"},
 }
 
 
@@ -244,6 +250,17 @@ def validate(kind, raw, repo):
             if not isinstance(close, bool):
                 fail(f"{where}: close_as_logged must be a JSON boolean")
             item.update(disposition=disposition, close_as_logged="true" if close else "false")
+        elif kind == "phase-c":
+            rev = text(row, "production_revision", where)
+            run_id = text(row, "deploy_run_id", where)
+            if not REV.fullmatch(rev):
+                fail(f"{where}: phase-c resolve needs a full 40-char production_revision")
+            if not RUN_ID.fullmatch(run_id):
+                fail(f"{where}: phase-c resolve needs deploy_run_id")
+            missing = [p for p in RESOLVE_REQUIRED_PHRASES if p not in reply]
+            if missing:
+                fail(f"{where}: resolve reply must prompt both outcomes (missing a required phrase)")
+            item.update(production_revision=rev, deploy_run_id=run_id)
         else:
             status = text(row, "expected_status", where)
             if status not in STATUSES:
@@ -263,7 +280,7 @@ def validate(kind, raw, repo):
 
 def main():
     if len(sys.argv) != 3 or sys.argv[1] not in FIELDS or sys.argv[2] not in ("preview", "write"):
-        sys.exit("usage: inapp-writeback-rows.py {phase-a|followup} {preview|write}")
+        sys.exit("usage: inapp-writeback-rows.py {phase-a|followup|phase-c} {preview|write}")
     kind, mode = sys.argv[1:]
     if os.environ.get("GITHUB_REF") != "refs/heads/main":
         sys.exit("in-app write-back runs only on refs/heads/main")
@@ -274,18 +291,29 @@ def main():
         for r in rows:
             if kind == "phase-a":
                 fields = [r["bug_id"], r["github_issue_url"], r["disposition"], r["close_as_logged"]]
+            elif kind == "phase-c":
+                fields = [r["bug_id"], r["github_issue_url"], r["production_revision"], r["deploy_run_id"]]
             else:  # "-" keeps empty optional fields from collapsing in `read`
                 fields = [r["bug_id"], r["expected_status"], r["github_issue_url"],
                           r["production_revision"] or "-", r["deploy_run_id"] or "-"]
             print(" ".join(fields + [r["reply_b64"]]))
         return
-    head = "close_as_logged" if kind == "phase-a" else "expected_status"
+    if kind == "phase-a":
+        mid_head, state_head = "disposition", "close_as_logged"
+    elif kind == "phase-c":
+        mid_head, state_head = "production_revision", "resolve"
+    else:
+        mid_head, state_head = "production_revision", "expected_status"
     lines = [f"## In-app write batch requested: {len(rows)} row(s) (not yet applied; the write job reports the result)", "",
-             f"| # | bug_id | github_issue_url | {'disposition' if kind == 'phase-a' else 'production_revision'} | {head} | len | sha256 |",
+             f"| # | bug_id | github_issue_url | {mid_head} | {state_head} | len | sha256 |",
              "|---|---|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
-        mid = r["disposition"] if kind == "phase-a" else (r["production_revision"] or "-")
-        state = r["close_as_logged"] if kind == "phase-a" else r["expected_status"]
+        if kind == "phase-a":
+            mid, state = r["disposition"], r["close_as_logged"]
+        elif kind == "phase-c":
+            mid, state = r["production_revision"], "triaged->resolved"
+        else:
+            mid, state = (r["production_revision"] or "-"), r["expected_status"]
         lines.append(f"| {i} | {r['bug_id']} | {r['github_issue_url']} | {mid} | {state} | {r['len']} | {r['sha256']} |")
     lines += ["", "Reply text is intentionally not shown (public repo); sha256 is over the exact UTF-8 reply."]
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
@@ -293,6 +321,9 @@ def main():
     if kind == "phase-a":
         logged = [[r["bug_id"], r["github_issue_url"]] for r in rows if r["close_as_logged"] == "true"]
         output = {"logged_issues": json.dumps(logged, separators=(",", ":"))}
+    elif kind == "phase-c":
+        resolved = [[r["bug_id"], r["github_issue_url"], r["production_revision"]] for r in rows]
+        output = {"resolved": json.dumps(resolved, separators=(",", ":"))}
     else:
         shipped = [[r["bug_id"], r["github_issue_url"], r["production_revision"]] for r in rows
                    if r["expected_status"] == "closed"]
