@@ -24,6 +24,13 @@ use Illuminate\Support\Facades\Schema;
  */
 class ContractSessionSchedule
 {
+    /**
+     * Statuses that keep a lesson on its date and time while it still takes place (or may, for a pending
+     * leave): syncFutureScheduledSessionTimes() never moves them. Cancelled, voided, approved-leave and
+     * one-off rescheduled rows are not listed: they do not hold a contract slot.
+     */
+    private const STATUS_LOCKED_LESSON_STATUSES = ['completed', 'attended', 'late', 'absent', SessionStatus::LEAVE_REQUESTED];
+
     public function __construct(private ClassSessionContractReflowService $contractSessionReflowService)
     {
     }
@@ -1602,6 +1609,39 @@ class ContractSessionSchedule
 
     public function countUnalignedFutureContractSessions(StudentClass $studentClass): int
     {
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
+
+        return $this->countOffContractSessions($studentClass, $query);
+    }
+
+    /**
+     * Not-yet-started lessons that a fixed-slot edit left off the saved contract slots because of their status.
+     * syncFutureScheduledSessionTimes() moves only 'scheduled' rows, so a lesson already marked (or with a
+     * pending leave) keeps its old time. Zero means nothing was left behind; zero rows moved by the sync is not
+     * evidence of a lock, because an unchanged slot needs no move (#4435).
+     */
+    public function countStatusLockedFutureContractSessions(StudentClass $studentClass): int
+    {
+        $now = Carbon::now();
+        $today = $now->toDateString();
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->whereIn('Status', self::STATUS_LOCKED_LESSON_STATUSES)
+            ->where(function ($q) use ($today, $now) {
+                $q->whereDate('SessionDate', '>', $today)
+                    ->orWhere(fn ($sameDay) => $sameDay->whereDate('SessionDate', $today)->where('StartTime', '>', $now->format('H:i:s')));
+            });
+
+        return $this->countOffContractSessions($studentClass, $query);
+    }
+
+    /**
+     * Regular (non-exception) rows of $query (a ClassSession query) whose weekday, start and end are not one of
+     * the course's contract slots.
+     */
+    private function countOffContractSessions(StudentClass $studentClass, $query): int
+    {
         $slots = self::resolveScheduleSlotsForRebuild($studentClass);
         $contractKeys = [];
         $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
@@ -1616,9 +1656,6 @@ class ContractSessionSchedule
             $contractKeys["{$day}|{$start}|{$end}"] = true;
         }
 
-        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
         if (Schema::hasColumn('ClassSession', 'IsContractException')) {
             $query->where(function ($q) {
                 $q->whereNull('IsContractException')->orWhere('IsContractException', 0);

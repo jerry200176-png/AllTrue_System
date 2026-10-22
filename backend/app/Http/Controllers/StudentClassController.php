@@ -2144,14 +2144,17 @@ class StudentClassController extends Controller
             if ($unalignedFuture > 0) {
                 $sessionSync['reconcile_skipped'] = true;
                 $sessionSync['warning'] = "固定時段已儲存，但仍有 {$unalignedFuture} 筆未來堂次與新時段不同。請在堂次列表確認狀態。";
-            } elseif (($sessionSync['reason'] ?? '') === 'history_exists'
-                && (
-                    !array_key_exists('updated_future_sessions', $sessionSync)
-                    || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
-                )
-            ) {
-                $sessionSync['reconcile_skipped'] = true;
-                $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+            } elseif (($sessionSync['reason'] ?? '') === 'history_exists') {
+                // #4435: zero rows moved is not a lock. Re-sending an unchanged
+                // slot (e.g. a 堂數制→月結 switch) moves nothing because every
+                // lesson is already in place. Warn only for upcoming lessons whose
+                // status kept them off the saved slots.
+                $statusLockedFuture = $this->contractSchedule->countStatusLockedFutureContractSessions($studentClass);
+                if ($statusLockedFuture > 0) {
+                    $sessionSync['status_locked_future_sessions'] = $statusLockedFuture;
+                    $sessionSync['reconcile_skipped'] = true;
+                    $sessionSync['warning'] = "有 {$statusLockedFuture} 筆未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但這些堂次仍為舊時段，請檢查堂次狀態。";
+                }
             }
         } elseif ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
             $this->contractSchedule->reconcileWeekTimeFieldsFromSessions($studentClass);
