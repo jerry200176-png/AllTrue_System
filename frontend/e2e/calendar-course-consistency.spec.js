@@ -1,10 +1,19 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
+import { coursePaymentBadge, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
+import { getNavigationGroups, sidebarMoreTrigger } from '../src/lib/navigationRegistry.js';
+import { formatCourseRef, formatCoursePeriod } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
-import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
+import {
+  BILLING_ACTION,
+  COURSE_PAYMENT_ACTION_NAME,
+  expectCoursePaymentEntryOpensLedgerInPlace,
+  recordCourseLists,
+} from './fixtures/coursePaymentEntry.js';
+import { recordLatestGetJson } from './fixtures/latestGetJson.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
-import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -22,6 +31,15 @@ const CALENDAR_NAV_LABEL = '班級行事曆';
 const COURSE_NAV_LABEL = '課程查找';
 const CALENDAR_PAGE_TITLE = '班級行事曆 / 課表';
 const COURSE_PAGE_TITLE = '課程查找';
+const LEARNING_NAV_LABEL = '學習評量';
+const LEARNING_PAGE_TITLE = '學習評量表';
+// #4102 (in-app 395/403/404) retired these billing labels; no billing view may show them again.
+// The current source has no 等你確認 at all, so the short form cannot match today's wording.
+const RETIRED_BILLING_LABELS = ['付款期間待確認', '等你確認收款', '家長說繳了，等你確認', '等你確認'];
+// Opening 學習評量表 as a director backfills past records (LearningRecordsPage ensurePastRecords).
+const LEARNING_ENSURE_PAST_PATH = '/api/v1/learning-records/ensure-past';
+const DESKTOP = { name: 'desktop', width: 1440, height: 900 };
+const MOBILE = { name: 'mobile', width: 390, height: 844 };
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
 // that drives the production release nudge. A hard-coded version makes this
 // read-only acceptance fail as soon as a newer staff update is published.
@@ -65,7 +83,8 @@ function valueOf(row, ...keys) {
 }
 
 function pageHeading(page, label) {
-  const name = label.includes('行事曆') ? CALENDAR_PAGE_TITLE : COURSE_PAGE_TITLE;
+  const name = label.includes('行事曆') ? CALENDAR_PAGE_TITLE
+    : label === LEARNING_NAV_LABEL ? LEARNING_PAGE_TITLE : COURSE_PAGE_TITLE;
   return page.getByRole('heading', { name, exact: true }).first();
 }
 
@@ -105,7 +124,7 @@ async function navigate(page, label) {
     await expect(pageHeading(page, label)).toBeVisible({ timeout: 15_000 });
     return;
   }
-  if (isMobile && label === COURSE_NAV_LABEL) {
+  if (isMobile) {
     const more = page.locator('.mobile-bottom-nav').getByRole('button', { name: /更多/ }).first();
     await expect(more).toBeVisible({ timeout: 15_000 });
     await more.click();
@@ -228,6 +247,63 @@ async function assertResponsive(page, label) {
   }
 }
 
+// The controlled account is a returning director: it has acknowledged the
+// current staff release and seen the intro, so neither an unrelated release
+// prompt nor the first-login animation races the acceptance target, while
+// production auth, routing, data loading and responsive layout still run.
+async function primeDirectorSession(page) {
+  await page.addInitScript(({ session, branch, releaseVersion }) => {
+    localStorage.setItem('alltrue_session', JSON.stringify(session));
+    localStorage.setItem('app_branch', String(branch));
+    localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
+    sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
+  }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+}
+
+async function openDirectorApp(page, viewport) {
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  await primeDirectorSession(page);
+  await page.goto('/');
+  await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+}
+
+// Production may lack the case a check needs (no deactivated teacher, no
+// binding, ...). The check is then skipped and recorded, so the run reads
+// "precondition absent" for it (acceptance-report-gate prints the note)
+// instead of reporting it as verified.
+function notePreconditionAbsent(name) {
+  test.info().annotations.push({ type: 'precondition-absent', description: name });
+}
+
+// How many live cases a check compared; a name and a number, never page text.
+function noteCoverage(name, count) {
+  test.info().annotations.push({ type: 'coverage', description: `${name}=${count}` });
+}
+
+// A failed course-list load must fail the test, never read as missing production data.
+async function expectCourseListLoaded(page, courses) {
+  await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.getByTestId('course-list-refresh-failed'), '課程查找 course list loads').toHaveCount(0);
+  await expect.poll(() => courses().length, { message: '課程查找 loaded a non-empty course list' }).toBeGreaterThan(0);
+}
+
+// User-entered free text on the checked views: a payment note (收款紀錄 備註) may quote any
+// wording, so it is left out. Everything else on the view is app wording and stays checked:
+// the #4102 labels render in tabs, reminders, page descriptions, status chips and badges,
+// card labels, hints and headers, which share no hook a positive selector could rely on.
+const FREE_TEXT_SELECTORS = '.acct-sub--note';
+
+async function expectNoRetiredBillingLabels(locator, where) {
+  const text = await locator.evaluate((root, freeText) => {
+    let visible = root.innerText;
+    for (const node of root.querySelectorAll(freeText)) visible = visible.replace(node.innerText, '\n');
+    return visible;
+  }, FREE_TEXT_SELECTORS);
+  for (const label of RETIRED_BILLING_LABELS) {
+    expect(text.includes(label), `${where} shows the retired label ${label}`).toBe(false);
+  }
+}
+
 // Enforce the read-only contract in the browser, like the other production
 // acceptance specs: no unsafe HTTP method from any page may reach any origin.
 // See fixtures/readOnlyAppGuard.js: app adoption POST telemetry is answered
@@ -237,6 +313,23 @@ async function assertResponsive(page, label) {
 // browser context so popup pages are guarded too.
 const APP_ORIGIN = appOriginOf(BASE);
 let blockedHttpWrites = [];
+// Requests a test expects its pages to send on their own. The guard still aborts them before the
+// first hop; they are counted instead of failing the test. Every other blocked request still fails.
+// Opt in only where no assertion needs the response: 課程查找 and 學習評量表 load session dates with a
+// known POST read (readOnlyAppGuard KNOWN_POST_READ_PATHS), so a blocked one leaves that data unloaded.
+let countKnownPostReads = false;
+let expectedAbortedPosts = new Set();
+
+function countBlockedKnownPostReads() {
+  countKnownPostReads = true;
+}
+
+function expectAbortedPost(path) {
+  expectedAbortedPosts.add(path);
+}
+
+const isExpectedAbort = (write) => (countKnownPostReads && isKnownPostRead(APP_ORIGIN, write))
+  || (write.method === 'POST' && write.origin === APP_ORIGIN && expectedAbortedPosts.has(write.path));
 
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
@@ -247,10 +340,15 @@ test.describe('production acceptance — calendar/course parity', () => {
 
   test.beforeEach(async ({ context }) => {
     blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
+    countKnownPostReads = false;
+    expectedAbortedPosts = new Set();
   });
 
   test.afterEach(async () => {
-    expect(blockedHttpWrites, 'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
+    const expected = blockedHttpWrites.filter(isExpectedAbort);
+    if (expected.length > 0) noteCoverage('expected_aborted_posts', expected.length);
+    expect(blockedHttpWrites.filter((write) => !expected.includes(write)),
+      'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
   });
 
   for (const viewport of [
@@ -258,6 +356,8 @@ test.describe('production acceptance — calendar/course parity', () => {
     { name: 'mobile', width: 390, height: 844 },
   ]) {
     test(`director ${viewport.name}: calendar and course management agree`, async ({ page, request }) => {
+      // Ends on 課程查找, whose session-dates read would otherwise fail the run only when it fires in time.
+      countBlockedKnownPostReads();
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
       const token = SESSION.access_token;
@@ -309,19 +409,7 @@ test.describe('production acceptance — calendar/course parity', () => {
         ));
       });
 
-      await page.addInitScript(({ session, branch, releaseVersion }) => {
-        localStorage.setItem('alltrue_session', JSON.stringify(session));
-        localStorage.setItem('app_branch', String(branch));
-        // The controlled account is also a returning user who has already
-        // acknowledged the current staff release. This keeps an unrelated
-        // release prompt from covering the acceptance target.
-        localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
-        // This is an existing-user state: the intro is already seen. Keeping
-        // the acceptance focused on the reported pages avoids the first-login
-        // animation racing the sidebar click while still exercising production
-        // auth, routing, data loading, and responsive layout.
-        sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-      }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+      await primeDirectorSession(page);
 
       const pageErrors = [];
       page.on('pageerror', (error) => pageErrors.push(String(error)));
@@ -393,12 +481,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const token = SESSION.access_token;
 
-    await page.addInitScript(({ session, branch, releaseVersion }) => {
-      localStorage.setItem('alltrue_session', JSON.stringify(session));
-      localStorage.setItem('app_branch', String(branch));
-      localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
-      sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-    }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+    await primeDirectorSession(page);
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     await navigateSubjectUnits(page);
@@ -467,13 +550,9 @@ test.describe('production acceptance — calendar/course parity', () => {
     test(`director ${viewport.name}: 課程付款狀態與帳務入口分開且可操作`, async ({ page }) => {
     test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
       'missing controlled production director session');
+    countBlockedKnownPostReads();
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await page.addInitScript(({ session, branch, releaseVersion }) => {
-      localStorage.setItem('alltrue_session', JSON.stringify(session));
-      localStorage.setItem('app_branch', String(branch));
-      localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
-      sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-    }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+    await primeDirectorSession(page);
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     const courses = recordCourseLists(page);
@@ -518,12 +597,7 @@ test.describe('production acceptance — calendar/course parity', () => {
       expect(studentName).not.toBe('');
       expect(subjectName).not.toBe('');
 
-      await page.addInitScript(({ session, branch, releaseVersion }) => {
-        localStorage.setItem('alltrue_session', JSON.stringify(session));
-        localStorage.setItem('app_branch', String(branch));
-        localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
-        sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-      }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+      await primeDirectorSession(page);
       await page.goto('/');
       await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
       await navigate(page, COURSE_NAV_LABEL);
@@ -560,6 +634,295 @@ test.describe('production acceptance — calendar/course parity', () => {
         // session after a contract amendment.
         await expect(makeupEntry).toBeDisabled();
       }
+    });
+  }
+
+  // ── Affected-path evidence for in-app reports whose fix is in production ──
+  // Each test asserts what its fix changed. Missing production data is recorded
+  // with notePreconditionAbsent and only that assertion is skipped.
+
+  test('director desktop: in-app 390 側欄入口與面板標題都叫「搜尋」', async ({ page }) => {
+    await openDirectorApp(page, DESKTOP);
+    // #4090: every director group is primary, so the panel holds only global search and is named 搜尋.
+    const role = SESSION?.user?.role || 'director';
+    expect(sidebarMoreTrigger(getNavigationGroups(role)).label, `${role} sidebar trigger in the shipped registry`).toBe('搜尋');
+    await dismissOverlays(page);
+    const trigger = page.locator('nav.sidebar-nav .sidebar-more-trigger').first();
+    await expect(trigger, 'sidebar search trigger').toBeVisible({ timeout: 15_000 });
+    await expect(trigger.locator('.nav-label')).toHaveText('搜尋');
+    await expect(trigger).toHaveAttribute('aria-label', '搜尋');
+    await expect(trigger).not.toContainText('更多功能');
+    await trigger.click();
+    const panel = page.locator('.sidebar-more-panel');
+    await expect(panel, 'sidebar search panel').toBeVisible({ timeout: 15_000 });
+    await expect(panel.locator('#sidebar-more-title')).toHaveText('搜尋');
+    await expect(panel.getByRole('button', { name: '關閉搜尋', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'search panel closes').toHaveCount(0);
+  });
+
+  test('director desktop: in-app 395/403 帳務中心應收分頁用新標籤，不再出現舊字樣', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openDirectorApp(page, DESKTOP);
+    await openPageFromSidebarSearch(page, {
+      role: SESSION?.user?.role || 'director',
+      pageKey: 'tuition-collect',
+      readySelector: '[data-guide="tuition-header"]',
+    });
+    const center = page.locator('.tc-page');
+    // loadAlerts() starts in setup, so 待處理清單 has no count while loading; then it reads
+    // 「待處理清單 N 筆」, or is hidden when nothing is pending.
+    const queue = page.getByTestId('tc-reminder-receivables');
+    const queueState = async () => {
+      if (await queue.count() === 0) return 'empty';
+      return /\d+\s*筆$/.test((await queue.innerText()).trim()) ? 'listed' : 'loading';
+    };
+    await expect.poll(queueState, { timeout: 20_000, message: '帳務中心 queue loads' }).not.toBe('loading');
+    await expectNoRetiredBillingLabels(center, '帳務中心 學生');
+
+    if (await queueState() === 'listed') {
+      await queue.click();
+      const tabs = page.locator('#tuition-accounting-panel-receivables .tc-tabs .tc-tab');
+      await expect(tabs.first(), '應收 tabs').toBeVisible({ timeout: 15_000 });
+      const labels = await tabs.evaluateAll((buttons) => buttons.map((button) => [...button.childNodes]
+        .filter((node) => !(node instanceof Element && node.classList.contains('tc-tab-badge')))
+        .map((node) => node.textContent).join('').trim()));
+      for (const label of [
+        `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}`,
+        REPORT_STATUS_LABELS.pending,
+        TUITION_STATUS_CONFIG.pending_reconciliation.label,
+        TUITION_STATUS_CONFIG.amount_review.label,
+      ]) expect(labels, `應收 tab ${label}`).toContain(label);
+      expect(labels.filter((label) => /等你確認|付款期間待確認/.test(label)), 'no 應收 tab keeps a retired label').toEqual([]);
+      await expectNoRetiredBillingLabels(center, '帳務中心 待處理清單');
+    } else {
+      notePreconditionAbsent('receivables_queue');
+    }
+
+    await page.getByTestId('tc-reminder-monthly-review').click();
+    const monthly = page.locator('#tuition-accounting-panel-monthly-review .monthly-review');
+    await expect(monthly, '月結要核對').toBeVisible({ timeout: 15_000 });
+    await expect(monthly.locator('.at-skeleton')).toHaveCount(0, { timeout: 20_000 });
+    await expect(monthly.getByText('無法載入月結待核對課程', { exact: true }), '月結要核對 loads').toHaveCount(0);
+    await expectNoRetiredBillingLabels(center, '帳務中心 月結要核對');
+
+    for (const view of [
+      { open: page.locator('#tuition-accounting-tab-payments'), path: '/api/v1/accounting/payments', panel: 'payments', where: '收款紀錄', failed: '收據紀錄載入失敗' },
+      { open: page.getByTestId('tc-reminder-settled'), path: '/api/v1/accounting/settled-courses', panel: 'settled', where: '已結清', failed: '已結清課程載入失敗' },
+    ]) {
+      const loaded = page.waitForResponse((response) => new URL(response.url()).pathname === view.path
+        && response.request().method() === 'GET', { timeout: 20_000 });
+      await view.open.click();
+      expect((await loaded).status(), `帳務中心 ${view.where} loads`).toBe(200);
+      const panel = page.locator(`#tuition-accounting-panel-${view.panel}`);
+      await expect(panel).toBeVisible({ timeout: 15_000 });
+      await expect(panel.locator('.tc-skeleton-area')).toHaveCount(0, { timeout: 15_000 });
+      await expect(panel.getByText(view.failed, { exact: true }), `帳務中心 ${view.where} shows no load error`).toHaveCount(0);
+      await expectNoRetiredBillingLabels(center, `帳務中心 ${view.where}`);
+    }
+  });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    test(`director ${viewport.name}: in-app 396 帳務入口開啟的合約卡被標示、捲到眼前並顯示課程編號`, async ({ page }) => {
+      countBlockedKnownPostReads();
+      await openDirectorApp(page, viewport);
+      const courses = recordCourseLists(page);
+      await navigate(page, COURSE_NAV_LABEL);
+      const heading = pageHeading(page, COURSE_NAV_LABEL);
+      await expect(heading).toBeVisible({ timeout: 15_000 });
+      await expectCourseListLoaded(page, courses);
+      const actionCells = page.locator('.payment-status-and-action');
+      if (await actionCells.filter({ has: page.getByRole('button', { name: COURSE_PAYMENT_ACTION_NAME }) }).count() === 0) {
+        notePreconditionAbsent('course_row_payment_action');
+        return;
+      }
+      // Prefer a row whose next action is 在這裡看帳務 and check the row offers it once. (The duplicate on
+      // 帳務資料 rows, fixed by #4125, is checked in the in-app 404 test.)
+      const actionLabel = await actionCells.getByRole('button', { name: BILLING_ACTION, exact: true }).count() > 0
+        ? BILLING_ACTION : undefined;
+      if (!actionLabel) notePreconditionAbsent('course_row_billing_action');
+      const { ledger, studentClassId, paymentCell } = await expectCoursePaymentEntryOpensLedgerInPlace(page, {
+        pageHeading: heading, courses, actionLabel,
+      });
+      if (actionLabel) {
+        const row = paymentCell.locator('xpath=ancestor::tr[contains(concat(" ", normalize-space(@class), " "), " course-row ")][1]');
+        await expect(row.getByRole('button', { name: BILLING_ACTION, exact: true }), 'the row offers 在這裡看帳務 once').toHaveCount(1);
+      }
+
+      const card = ledger.getByTestId(`contract-card-${studentClassId}`);
+      await expect(card, 'the opened course has a contract card').toHaveCount(1);
+      await expect(card).toHaveClass(/(^|\s)contract--focused(\s|$)/);
+      await expect(ledger.locator('.contract--focused'), 'only the opened course is marked').toHaveCount(1);
+      await expect(card.getByTestId('contract-ref')).toHaveText(formatCourseRef(studentClassId));
+      await expect(card, 'the opened contract is scrolled into view').toBeInViewport();
+      const order = await ledger.locator('[data-testid^="contract-card-"]')
+        .evaluateAll((cards) => cards.map((element) => element.getAttribute('data-testid')));
+      noteCoverage('contract_cards', order.length);
+      // #4120 scrolls only when the opened card is not already first; otherwise "in view" proves less.
+      if (order.indexOf(`contract-card-${studentClassId}`) < 1) notePreconditionAbsent('opened_contract_below_first');
+      await ledger.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
+      await expect(ledger, 'billing panel closes').toHaveCount(0);
+    });
+  }
+
+  test('director desktop: in-app 404 課程查找帳務資料每份合約顯示期間與付款狀態', async ({ page }) => {
+    test.setTimeout(90_000);
+    countBlockedKnownPostReads();
+    await openDirectorApp(page, DESKTOP);
+    const courses = recordCourseLists(page);
+    await navigate(page, COURSE_NAV_LABEL);
+    await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
+    await expectCourseListLoaded(page, courses);
+    const groups = page.locator('.student-group-card');
+    const groupCount = Math.min(await groups.count(), 3);
+    let checkedRows = 0;
+    for (let index = 0; index < groupCount; index += 1) {
+      const group = groups.nth(index);
+      await group.getByTestId('student-tab-billing').click();
+      const billing = group.locator('.student-billing-wrap');
+      await expect(billing, '帳務資料').toBeVisible({ timeout: 15_000 });
+      await expect(billing.getByText('載入帳務中…')).toHaveCount(0, { timeout: 20_000 });
+      await expect(billing.locator('.student-billing-error'), '帳務資料 loads').toHaveCount(0);
+      // #4102 relabelled this view as well.
+      await expectNoRetiredBillingLabels(billing, '課程查找 帳務資料');
+      // Every course row, found without the #4101 cell so a revert fails instead of reading as no rows.
+      // The empty-state row is one colspan cell.
+      const rows = billing.locator('table.student-billing-table > tbody > tr').filter({ hasNot: page.locator('td[colspan]') });
+      const rowCount = await rows.count();
+      for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+        const row = rows.nth(rowIndex);
+        const period = row.getByTestId('billing-contract-period');
+        await expect(period, 'each course row shows its contract and period').toHaveCount(1);
+        const ref = (await period.locator('div').first().innerText()).trim();
+        const id = Number(/^課程 (\d{6,})$/.exec(ref)?.[1] || 0);
+        expect(id, 'contract reference 課程 000123').toBeGreaterThan(0);
+        expect(ref).toBe(formatCourseRef(id));
+        const course = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === id);
+        expect(course, `course ${id} is in the list 課程查找 loaded`).toBeTruthy();
+        await expect(period.locator('.hint'), `course ${id} period`)
+          .toHaveText(formatCoursePeriod(course?.first_class_date || course?.StartDate, course?.end_date || course?.EndDate));
+        await expect(row.locator('.payment-status-badge[role="status"]'), `course ${id} payment state`)
+          .toHaveText(coursePaymentBadge(course ?? {}, { monthlyPeriod: true }).label);
+        await expect(row.getByRole('button', { name: BILLING_ACTION, exact: true }), `course ${id} offers 在這裡看帳務 once`).toHaveCount(1);
+        checkedRows += 1;
+      }
+    }
+    noteCoverage('billing_rows', checkedRows);
+    if (checkedRows === 0) notePreconditionAbsent('billing_rows');
+  });
+
+  test('director desktop: in-app 400 家長 LINE 綁定清單與統計卡和 API 一致', async ({ page }) => {
+    await openDirectorApp(page, DESKTOP);
+    const bindings = recordLatestGetJson(page, '/api/v1/bindings');
+    const stats = recordLatestGetJson(page, '/api/v1/bindings/stats');
+    // 設定's default tab (老師管理) is PIN-gated; search reaches the 家長 LINE 綁定 tab directly.
+    await openPageFromSidebarSearch(page, {
+      role: SESSION?.user?.role || 'director',
+      pageKey: 'binding-management',
+      readySelector: '[data-guide="binding-stats"]',
+    });
+    await expect.poll(() => Boolean(bindings() && stats()), { timeout: 20_000, message: 'GET /bindings and /bindings/stats' }).toBe(true);
+    const metric = (label) => page.locator('[data-guide="binding-stats"] .at-metric')
+      .filter({ has: page.locator('.at-metric__label', { hasText: label }) });
+    const desktopRows = page.locator('.bmp-desktop-table tbody tr');
+    let rowCount = 0;
+    // Compare with the latest responses the page received (a campus watch may reload once).
+    await expect(async () => {
+      const list = bindings()?.body;
+      const totals = stats()?.body;
+      expect(bindings()?.url.searchParams.get('page'), 'the page asks for the paged list').not.toBeNull();
+      expect(Array.isArray(list?.data), 'GET /bindings returns data').toBe(true);
+      for (const key of ['bound_count', 'unverified_bound_count', 'student_total']) {
+        expect(Number.isFinite(totals?.[key]), `GET /bindings/stats ${key}`).toBe(true);
+      }
+      const rate = totals.student_total ? `${((totals.bound_count / totals.student_total) * 100).toFixed(1)}%` : '—';
+      await expect(metric('已綁定 LINE').locator('.at-metric__value')).toHaveText(String(totals.bound_count), { timeout: 1_000 });
+      await expect(metric('綁定率').locator('.at-metric__value')).toHaveText(rate, { timeout: 1_000 });
+      await expect(metric('綁定率').locator('.at-metric__delta')).toHaveText(`${totals.bound_count}/${totals.student_total}`, { timeout: 1_000 });
+      await expect(metric('未驗證綁定').locator('.at-metric__value')).toHaveText(String(totals.unverified_bound_count), { timeout: 1_000 });
+      await expect(metric('總活躍學生').locator('.at-metric__value')).toHaveText(String(totals.student_total), { timeout: 1_000 });
+      rowCount = list.data.length;
+      await expect(page.getByText(`列表 ${rowCount} 筆`, { exact: true })).toBeVisible({ timeout: 1_000 });
+      if (rowCount > 0) {
+        await expect(desktopRows).toHaveCount(rowCount, { timeout: 1_000 });
+        const verified = list.data.filter((row) => Boolean(row?.verified_at || row?.status === 'verified')).length;
+        await expect(desktopRows.filter({ hasText: '已驗證' }), 'verified rows').toHaveCount(verified, { timeout: 1_000 });
+      } else {
+        await expect(page.getByText('沒有符合條件的綁定', { exact: true })).toBeVisible({ timeout: 1_000 });
+      }
+    }).toPass({ timeout: 20_000 });
+    noteCoverage('binding_rows', rowCount);
+    if (rowCount === 0) notePreconditionAbsent('binding_rows');
+  });
+
+  test('director desktop: in-app 411 快速排課老師選單排除停用老師', async ({ page }) => {
+    await openDirectorApp(page, DESKTOP);
+    const teachersResponse = recordLatestGetJson(page, '/api/v1/teachers');
+    await navigate(page, CALENDAR_NAV_LABEL);
+    await expect(pageHeading(page, CALENDAR_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
+    // The calendar's own campus list (useCalendarDataLoad: per_page=all, branch_id, strict_branch=1).
+    await expect.poll(() => teachersResponse()?.url.searchParams.get('strict_branch'), {
+      timeout: 20_000, message: 'the calendar loaded GET /teachers for its campus',
+    }).toBe('1');
+    const { url, body } = teachersResponse();
+    const branchId = Number(url.searchParams.get('branch_id'));
+    const campusTeachers = (Array.isArray(body) ? body : (body?.data || []))
+      .filter((teacher) => Number(teacher?.id) > 0)
+      .filter((teacher) => (Array.isArray(teacher?.branch_ids) && teacher.branch_ids.map(Number).includes(branchId))
+        || Number(teacher?.branch_id || 0) === branchId);
+    // Active per the API: status 'active', or no status (legacy rows).
+    const isActive = (teacher) => String(teacher?.status ?? 'active') === 'active';
+    const assignable = campusTeachers.filter(isActive);
+    const deactivated = campusTeachers.filter((teacher) => !isActive(teacher));
+    noteCoverage('campus_teachers', campusTeachers.length);
+    noteCoverage('deactivated_teachers', deactivated.length);
+
+    const quickAdd = page.locator('[data-guide="calendar-quick-add"]');
+    // 快速排課 sits in the 篩選與更多操作 disclosure, collapsed by default.
+    if (!(await quickAdd.isVisible())) await page.locator('.calendar-secondary-controls-summary').click();
+    await expect(quickAdd, '快速排課').toBeVisible({ timeout: 15_000 });
+    await quickAdd.click();
+    const scheduler = page.locator('.universal-scheduler-modal');
+    await expect(scheduler, '快速排課').toBeVisible({ timeout: 15_000 });
+    const picker = scheduler.locator('.form-group')
+      .filter({ has: page.locator('label', { hasText: /^老師 \*$/ }) }).locator('.searchable-select');
+    await picker.locator('.ss-input').click();
+    const options = picker.locator('.ss-dropdown .ss-option');
+    await expect(options, 'create picker offers exactly the active teachers').toHaveCount(assignable.length, { timeout: 15_000 });
+    if (deactivated.length === 0) {
+      notePreconditionAbsent('deactivated_teacher');
+    } else {
+      // Option text is 「name · campuses」 (UniversalClassScheduler); the name is what buildCreateTeacherOptions shows.
+      const shownName = (teacher) => String(teacher.username || teacher.name || teacher.Name || teacher.T_Name
+        || teacher.LoginName || `老師#${Number(teacher.id)}`).trim();
+      const activeNames = new Set(assignable.map(shownName));
+      const deactivatedOnly = new Set(deactivated.map(shownName).filter((name) => !activeNames.has(name)));
+      const offered = (await options.allInnerTexts()).map((text) => text.split(' · ')[0].trim());
+      expect(offered.filter((name) => deactivatedOnly.has(name)).length, 'deactivated teachers in the create picker').toBe(0);
+    }
+    // Close the picker, then cancel the scheduler without creating anything.
+    await scheduler.locator('.scheduler-header h3').click();
+    await expect(picker.locator('.ss-dropdown')).toHaveCount(0);
+    await scheduler.locator('.modal-actions').getByRole('button', { name: '取消', exact: true }).click();
+    await expect(scheduler, '快速排課 closes').toHaveCount(0);
+  });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    test(`director ${viewport.name}: in-app 417 學習評量表只在桌面提供「列表」切換`, async ({ page }) => {
+      // The director page backfills past records on open (a write) and reads session dates by POST.
+      // The guard aborts both before they leave the browser; nothing reaches production.
+      expectAbortedPost(LEARNING_ENSURE_PAST_PATH);
+      countBlockedKnownPostReads();
+      await openDirectorApp(page, viewport);
+      await navigate(page, LEARNING_NAV_LABEL);
+      await expect(pageHeading(page, LEARNING_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
+      const toggle = page.locator('.lr-view-toggle');
+      await expect(toggle, '顯示模式').toBeVisible({ timeout: 15_000 });
+      const phone = viewport.width <= 640;
+      await expect(toggle.getByRole('button', { name: '卡片', exact: true })).toHaveCount(1);
+      await expect(toggle.getByRole('button', { name: '列表', exact: true }), phone ? 'phones offer no no-op 列表' : 'desktop keeps 列表')
+        .toHaveCount(phone ? 0 : 1);
+      await expect(toggle).toHaveAttribute('aria-label', phone ? '卡片檢視' : '切換列表或卡片');
     });
   }
 });
