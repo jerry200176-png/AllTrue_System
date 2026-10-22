@@ -619,7 +619,7 @@
                           title="從這期已完課課程建立下一期；既有課程與帳務紀錄不會變更"
                           @click="openCommercialPurchaseEntry(hc); closeActionMenu()"
                         ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
-                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> {{ DUAL_TEACHER_COPY_LABEL }}</button>
                         <p class="action-section-label">狀態管理</p>
                         <button v-if="hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
@@ -847,7 +847,7 @@
           <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <details class="cm-settings-more">
             <summary>其他操作</summary>
-            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">複製為新課程並更換老師</button>
+            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">{{ DUAL_TEACHER_COPY_DRAWER_LABEL }}</button>
           </details>
           <details class="cm-settings-danger" data-testid="course-manager-danger">
             <summary>危險操作</summary>
@@ -1458,6 +1458,7 @@ import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js'
 import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
+import { DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, dualTeacherCopyNotice } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -2843,7 +2844,7 @@ function canCloseCourse(c) {
 async function duplicateCourseForTeacher(course) {
   const teacherName = course.teacher_name || '目前老師';
   const studentName = course.student_name || '學生';
-  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: `會複製這門課的設定並指定另一位老師。原課程（${teacherName}）不受影響。`, confirmLabel: '開啟新增課程' })) return;
+  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: dualTeacherCopyNotice(teacherName), confirmLabel: '開啟新增課程' })) return;
   backfillForm.value = {
     ...backfillForm.value,
     student_id: course.student_id || '',
