@@ -83,6 +83,7 @@ jobs:
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
+          node --test scripts/tests/actions-cost-report.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 -m unittest scripts.tests.test_pr_declaration_gate
