@@ -486,12 +486,15 @@ class PaymentReportApiTest extends TestCase
             ->assertForbidden();
         $this->withHeaders($other)->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$reportId]])
             ->assertJsonPath('accepted', 0)->assertJsonPath('results.0.http_status', 403);
+        // void answered 422 (pending) to another campus before checking it, which revealed the report's state.
+        $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'x'])->assertForbidden();
         $this->assertSame('pending', PaymentReport::query()->findOrFail($reportId)->status);
         $this->assertSame(0, Payment::query()->count());
         $this->assertSame(0, (int) $sc->fresh()->Paid);
 
-        // The course's own campus still works end to end.
-        $this->withHeaders($own)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        // A director of several campuses, including the course's, still works end to end.
+        $multi = ['Authorization' => 'Bearer ' . $this->createDirectorToken([2, 1]), 'Accept' => 'application/json'];
+        $this->withHeaders($multi)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
         $this->assertSame(1, Payment::query()->count());
     }
 

@@ -1529,6 +1529,9 @@ class PaymentReportController extends Controller
     public function void(Request $request, $id)
     {
         $report = PaymentReport::with('student')->findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $report->getAttribute('StudentID'))) {
+            return $denied; // #4142 review: before the status 422 and validation, which would reveal the report's state
+        }
 
         if ($report->status !== 'confirmed') {
             $msg = $report->status === 'voided'
@@ -1543,11 +1546,6 @@ class PaymentReportController extends Controller
 
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!empty($campusIds) && $report->student) {
-            if (!in_array((int) $report->student->CampusID, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-        }
 
         $userId = $request->attributes->get('auth_user_id');
         // Routing id only — outside the write transaction so waiting on the course
