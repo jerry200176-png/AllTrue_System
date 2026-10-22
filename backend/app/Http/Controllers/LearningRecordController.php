@@ -1275,6 +1275,8 @@ class LearningRecordController extends Controller
             return $timeGateResponse;
         }
 
+        // #3979: protection comes from the assessment text, so an approved record may not be edited down to no content.
+        $wasProtected = LearningRecordMutableOwnership::isFilledAndApproved($learningRecord);
         $learningRecord->Content = $data['Content'] ?? $learningRecord->Content;
         $learningRecord->AttachmentUrl = $data['AttachmentUrl'] ?? null;
         // SessionDate/StartTime/EndTime are derived from ClassSession and are intentionally
@@ -1289,6 +1291,12 @@ class LearningRecordController extends Controller
 
         if ($isDirector && $learningRecord->Status === 'approved') {
             // Director editing an approved record keeps it approved
+            if ($wasProtected && !LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
+                return response()->json([
+                    'message' => '已核准的評量至少要保留一項內容。若要清空，請先按「退回待審」再修改。沒有變更任何資料。',
+                    'code' => 'approved_assessment_content_required',
+                ], 422);
+            }
         } else {
             $learningRecord->Status = 'pending';
             $learningRecord->ReviewNote = null;

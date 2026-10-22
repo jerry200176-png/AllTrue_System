@@ -309,6 +309,33 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
     }
 
+    /** #3979 (1): a type change takes a makeup row out of the makeup branch, so it is refused like a move. */
+    public function test_a_type_change_on_a_protected_makeup_row_is_refused(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        $this->approve($lr, $this->bId); // substitute B taught it; the makeup row keeps the contract teacher A
+        $row = $this->schedule(self::DATE, '16:00', '18:00', $this->aId);
+        $row->update(['type' => 'extra']);
+        $this->assertLocked($lr, fn () => $this->api()->putJson("/api/v1/schedules/{$row->id}", ['type' => 'normal']), $this->bId);
+        $this->assertSame('extra', (string) $row->fresh()->type);
+    }
+
+    /** #3979 (2): a director may edit an approved assessment but not empty it, since the lock reads the text. */
+    public function test_an_approved_assessment_cannot_be_edited_down_to_no_content(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '（評量表）', 'Progress' => ''])
+            ->assertStatus(422)->assertJsonPath('code', 'approved_assessment_content_required');
+        $fresh = $lr->fresh();
+        $this->assertSame('老師實際填寫的評量正文', (string) $fresh->Content);
+        $this->assertSame('第三章', (string) $fresh->Progress);
+        $this->assertSame('approved', (string) $fresh->Status);
+
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '主任修正後的評量正文', 'Progress' => ''])->assertOk();
+        $this->assertSame('approved', (string) $lr->fresh()->Status, 'an edit that keeps content stays approved');
+        $this->assertSame('主任修正後的評量正文', (string) $lr->fresh()->Content);
+    }
+
     public function test_transfer_and_recover_transfer_to_another_teachers_contract_are_refused(): void
     {
         $s = $this->mkSession('attended');
