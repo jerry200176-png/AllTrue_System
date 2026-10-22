@@ -238,6 +238,12 @@ export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對：舊資料標記已收�
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
 // Founder GO 2026-10-21: on the ledger card the director gets the next step, not a dead-end label.
 export const LEGACY_FLAG_ACTION_HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
+// The ledger shortcut and card must use the same existing backfill eligibility.
+export const canResolveLegacyPaidFlag = (course, {
+  legacyUnverified, canResolveLegacy, isMonthly, waived, pendingReport, sharedFollower,
+} = {}) => Boolean(legacyUnverified && canResolveLegacy && course?.paid === true
+  && course.class_type !== 'tutoring' && !course.package_id && !course.free_gift_settled && !isMonthly && !waived
+  && !pendingReport && !sharedFollower);
 export const ENDED_PENDING_LABEL = '課已結束，尚未收款';
 export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };

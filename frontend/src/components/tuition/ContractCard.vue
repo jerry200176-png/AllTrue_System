@@ -37,6 +37,11 @@
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
       <AtButton v-else-if="!legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
+      <template v-if="showSlip">
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
+        <span v-if="!slipState.ok" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
+      </template>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -118,12 +123,15 @@ import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
-import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, isWaivedContract } from '../../lib/courseMoneyState.js';
+import { AMOUNT_PENDING_REASON, slipAvailability } from '../../lib/billingDocState.js';
+import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, canResolveLegacyPaidFlag, isWaivedContract } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
   // In-app #396: the course the billing panel was opened from.
   focused: { type: Boolean, default: false },
+  // In-app #425: director/super_admin, same gate as 帳務中心 canViewBillingDocs.
+  canViewDocs: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
@@ -144,7 +152,7 @@ const props = defineProps({
   // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
   canResolveLegacy: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'legacy-backfill']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -195,9 +203,11 @@ const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
 // Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid with
 // no report waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
-const legacyResolvable = computed(() => legacyUnverified.value && props.canResolveLegacy && props.course.paid === true
-  && !props.course.package_id && !props.course.free_gift_settled && !isMonthly.value && !waived.value
-  && !props.pendingReport && !props.sharedFollower);
+const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
+  legacyUnverified: legacyUnverified.value, canResolveLegacy: props.canResolveLegacy,
+  isMonthly: isMonthly.value, waived: waived.value, pendingReport: props.pendingReport,
+  sharedFollower: props.sharedFollower,
+}));
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
@@ -288,6 +298,20 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const noObligation = computed(() => data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
+// In-app #425: 繳費單 uses the 帳務中心 rule (lib/billingDocState.js); the card only maps its state into a list row.
+// Shown when it can open, or when the reason is something to act on (金額待確認); paid / reported / follower cards
+// already say so on the card, so no disabled button there.
+const slipRow = computed(() => ({
+  id: props.course.id,
+  amount_pending_confirmation: props.course.amount_pending_confirmation === true,
+  legacy_paid_without_invoice: legacyUnverified.value && !props.amounts,
+  payable_status: props.amounts ? 'invoiced' : 'unbilled',
+  payment_status: props.pendingReport ? 'pending_report'
+    : (props.outstanding > 0 || (!props.course.paid && !props.amounts)) ? 'unpaid' : 'paid',
+}));
+const slipState = computed(() => slipAvailability(slipRow.value, props.canViewDocs));
+const showSlip = computed(() => props.canViewDocs && !props.sharedFollower && !noObligation.value && !waived.value
+  && (slipState.value.ok || slipState.value.reason === AMOUNT_PENDING_REASON));
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
 // 確認入帳 books money in one click, so ask first; 取消 has the initial focus (no undo: mistakes go through 撤銷收款).
