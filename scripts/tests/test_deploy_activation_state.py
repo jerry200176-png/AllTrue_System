@@ -1241,7 +1241,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("scripts/governance/autonomy_gate.py", self.workflow)
         self.assertIn("authoritative classifier unavailable; fail closed", self.workflow)
         self.assertIn("classify_activation_scope", self.workflow)
-        self.assertIn("comparison.get(\"commits\")", self.workflow)
+        self.assertIn("commits = activation_range_commits(comparison, base, target)", self.workflow)
+        self.assertIn("for commit in commits:", self.workflow)
         self.assertIn("is_deployable_path(path)", self.workflow)
         self.assertIn("is_production_activation_sensitive_path(path)", self.workflow)
         self.assertIn("read-only GitHub API metadata", self.workflow)
@@ -1312,7 +1313,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Classify produced empty or unknown release mode; fail closed", release)
         self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", release)
 
-        attribution = self.workflow[self.workflow.index("              for commit in comparison.get(\"commits\") or []:"):]
+        attribution = self.workflow[self.workflow.index("              for commit in commits:"):]
         attribution = attribution[:attribution.index("              if not provenance_complete or not attributed:")]
         self.assertIn('commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")', attribution)
         self.assertIn('actual_files = commit_detail.get("files")', attribution)
