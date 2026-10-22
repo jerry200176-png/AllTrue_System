@@ -1641,17 +1641,23 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(1, self.workflow.count(self.MIGRATION_START))
         return self.MIGRATION_START + self.workflow.split(self.MIGRATION_START, 1)[1].split(self.MIGRATION_END, 1)[0]
 
-    def _execute_isolated_migration(self, status_output, status_exit=0, migrate_exit=0):
+    def _execute_isolated_migration(self, status_output, status_exit=0, migrate_exit=0, backup_output=None):
         with tempfile.TemporaryDirectory(prefix="alltrue-migration-contract-") as sandbox:
             (Path(sandbox) / "backend").mkdir()
             (Path(sandbox) / "backend" / ".env").write_text("DB_USERNAME=u\nDB_PASSWORD=p\n")
+            (Path(sandbox) / "scripts").mkdir()
+            (Path(sandbox) / "scripts" / "verify-db-backup.sh").write_text(
+                (ROOT / "scripts" / "verify-db-backup.sh").read_text()
+            )
+            if backup_output is None:
+                backup_output = "CREATE TABLE `fixture` (id int);\n-- Dump completed on 2026-10-22 04:30:00"
             trace = Path(sandbox) / "trace"
             block = self._migration_block().replace("/home/admin", sandbox)
             harness = textwrap.dedent(r"""
                 set -uo pipefail
                 MIGRATION_RAN=0
                 abort_deploy() { echo "abort" >> "$TRACE"; exit 1; }
-                mysqldump() { echo dump; }
+                mysqldump() { printf '%s\n' "$BACKUP_OUTPUT"; }
                 php() {
                     case "$2" in
                         migrate:status) printf '%s\n' "$STATUS_OUTPUT"; return "$STATUS_EXIT" ;;
@@ -1665,7 +1671,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 ["bash", "-c", harness + block + tail],
                 cwd=sandbox, text=True, capture_output=True,
                 env={"PATH": os.environ["PATH"], "TRACE": str(trace), "STATUS_OUTPUT": status_output,
-                     "STATUS_EXIT": str(status_exit), "MIGRATE_EXIT": str(migrate_exit)},
+                     "STATUS_EXIT": str(status_exit), "MIGRATE_EXIT": str(migrate_exit),
+                     "BACKUP_OUTPUT": backup_output},
             )
             calls = trace.read_text().splitlines() if trace.exists() else []
             return result, calls
@@ -1674,6 +1681,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         result, calls = self._execute_isolated_migration("| No | 2026_10_13_x |", migrate_exit=1)
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(["migrate", "abort"], calls)
+
+    def test_backup_completion_failure_aborts_before_migration(self):
+        result, calls = self._execute_isolated_migration(
+            "| No | 2026_10_13_x |", backup_output="CREATE TABLE `fixture` (id int);"
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["abort"], calls)
 
     def test_failed_migration_status_aborts_instead_of_skipping(self):
         result, calls = self._execute_isolated_migration("", status_exit=1)
