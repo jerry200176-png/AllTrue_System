@@ -221,15 +221,15 @@ export function formatRenewSuccessMessage({
   const n = sessions != null && sessions !== '' ? Number(sessions) : null;
   const range = firstDate && lastDate ? `，上課 ${firstDate} 至 ${lastDate}` : '';
   const countPart = Number.isFinite(n) ? ` ${n} 堂` : '';
-  return `${head}已新增加購${countPart}${range}。請到新批次查看日期；原課程不會追加堂次。`;
+  return `${head}已新增續課${countPart}${range}。請到新批次查看日期；原課程不會追加堂次。`;
 }
 
 /** Duplicate purchase error hint — no course id. */
 export function formatDuplicatePurchaseHint({ subject = '' } = {}) {
   const subj = trimStr(subject);
   return subj
-    ? `\n\n已有相同「${subj}」加購批次，請先確認是否已經續報過。`
-    : '\n\n已有相同加購批次，請先確認是否已經續報過。';
+    ? `\n\n已有相同「${subj}」續課批次，請先確認是否已經續報過。`
+    : '\n\n已有相同續課批次，請先確認是否已經續報過。';
 }
 
 /** Ledger / invoice course line — never COURSE-000123. */

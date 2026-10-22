@@ -8,6 +8,7 @@ use App\Models\StudentLineBinding;
 use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Services\StudentClassActivity;
 use App\Services\ParentBinding\BindingService;
 use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\Utf8mb3SearchSanitizer;
@@ -159,23 +160,22 @@ class StudentController extends Controller
         return response()->json($this->transformStudent($student));
     }
 
-    /**
-     * GET /api/v1/students/{student}/active-courses
-     * Return active (Stop=0) StudentClass records for a student,
-     * used by frontend to warn before creating duplicate courses.
-     */
-    public function activeCourses(Student $student)
+    /** GET students/{student}/active-courses: 進行中 courses for the duplicate prompt (in-app #427, {@see StudentClassActivity}). */
+    public function activeCourses(Request $request, Student $student)
     {
         if ($deny = $this->denyOutsideCampus($student)) {
             return $deny;
         }
 
+        $isTeacher = $request->attributes->get('auth_role') === 'teacher';
+        $running = StudentClass::query()->where('StudentID', $student->id)->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))
+            // A teacher's pre-check stays within the courses their list shows (never another teacher's).
+            ->when($isTeacher, fn ($q) => $q->visibleToTeacher((int) $request->attributes->get('auth_teacher_id')))
+            ->orderByDesc('ID')->get();
+        $verdicts = app(StudentClassActivity::class)->evaluate($running);
+        $activeCourses = $running->filter(fn (StudentClass $sc) => $verdicts[(int) $sc->ID]['is_active_course'] ?? true)->values();
+
         $subjectNameCol = Schema::hasColumn('Subject', 'Subject_Name') ? 'Subject_Name' : 'name';
-
-        $activeCourses = StudentClass::where('StudentID', $student->id)
-            ->where('Stop', 0)
-            ->get();
-
         $subjectIds = $activeCourses->pluck('SubjectID')->unique()->filter()->values()->all();
         $subjectMap = !empty($subjectIds)
             ? DB::table('Subject')->whereIn('id', $subjectIds)->pluck($subjectNameCol, 'id')
@@ -183,24 +183,31 @@ class StudentController extends Controller
 
         $today = \Carbon\Carbon::today()->toDateString();
         $booking = app(\App\Services\ManualSessionBookingService::class);
-        $courses = $activeCourses->map(function ($sc) use ($subjectMap, $today, $booking) {
+        $courses = $activeCourses->map(function ($sc) use ($verdicts, $subjectMap, $today, $booking) {
+            $verdict = $verdicts[(int) $sc->ID] ?? [];
             return [
                 'id' => $sc->ID,
                 'subject_id' => (int) $sc->SubjectID,
                 'subject_name' => $subjectMap[$sc->SubjectID] ?? '',
                 'teacher_id' => (int) $sc->TeacherID,
-                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
-                'used_sessions' => (int) ($sc->UsedSessions ?? 0),
+                // Same number as the course card: self-healed, or the shared pool for package members.
+                'remaining_sessions' => (int) ($verdict['remaining_sessions'] ?? $sc->RemainingSessions ?? 0),
+                'used_sessions' => (int) ($verdict['sessions_used'] ?? $sc->UsedSessions ?? 0),
                 'session_count' => (int) ($sc->SessionCount ?? 0),
                 'class_type' => $sc->ClassType ?? 'one_on_one',
-                'payment_type' => $sc->settlement_day ? 'monthly' : 'session',
+                'payment_type' => ($sc->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly',
                 // in-app #382: lets the duplicate prompt offer 新增下一堂 for a manual course with nothing booked.
                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence' ? $booking->reservedSessionCount($sc, $today) : null,
             ];
         });
 
-        return response()->json(['courses' => $courses]);
+        // Scope metadata only: never disclose even the existence of another teacher's hidden course.
+        // The create guard still checks all candidates; a teacher's precheck cannot certify completeness.
+        return response()->json([
+            'courses' => $courses,
+            'precheck_scope' => $isTeacher ? 'teacher_courses' : 'visible_campuses',
+        ]);
     }
 
     public function store(Request $request)

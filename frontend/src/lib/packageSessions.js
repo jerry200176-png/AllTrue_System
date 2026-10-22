@@ -49,7 +49,7 @@ export function computePackageNextTotal({ mode, currentTotal, value, usedSession
 
   // default: 'add'
   if (!Number.isInteger(val) || val < 1) {
-    return { ok: false, nextTotal: null, error: '請輸入正確的加購堂數（需為大於 0 的整數）' };
+    return { ok: false, nextTotal: null, error: '請輸入正確的續課堂數（需為大於 0 的整數）' };
   }
   if (!Number.isFinite(cur) || cur <= 0) {
     return { ok: false, nextTotal: null, error: '找不到方案總堂數，請先重新整理後再試' };

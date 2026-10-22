@@ -85,6 +85,7 @@ jobs:
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node --test scripts/tests/actions-cost-report.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
+          python3 scripts/ci/workflow_expression_size.py
           python3 scripts/tests/test_governance_simplification.py
           python3 -m unittest scripts.tests.test_pr_declaration_gate
           python3 -m unittest scripts.tests.test_pop_mount_policy_probe
@@ -273,7 +274,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: "8.2"
           extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype, pcov
