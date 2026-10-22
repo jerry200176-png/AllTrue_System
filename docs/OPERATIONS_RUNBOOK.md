@@ -132,7 +132,7 @@ gh auth refresh -h github.com -s workflow
 
 **Automation（每週一至五 08:00 自動 dry-run）**  
 GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫入 Actions Job Summary。
-同一個 workflow 另有：每週 stale 清掃（agent PR 14 天無動靜貼 `stale`、agent **draft** 30 天無動靜關閉、非 draft 與他人 PR 不動；豁免 label：`keep-open`/`hold`/`do-not-stale`/`founder-hold`/`queue`）與每小時 land-queue 警報（`queue` 超過 2 小時或 land-queue 連 3 次失敗 → 開／更新單一 `[ops] Land queue alarm` issue，恢復後自動關）。程式 `.github/scripts/repo-hygiene.mjs`；分支仍不自動刪除（B5）。
+同一個 workflow 另有：每週 stale 提醒（owner PR 14 天無動靜貼 `stale`、owner **draft** 30 天無動靜僅報告，auto-close deferred，須另有 explicit owner 處置／批准；豁免 label：`keep-open`/`hold`/`do-not-stale`/`founder-hold`/`queue`）與每小時 land-queue 警報（`queue` 超過 2 小時或 land-queue 連 3 次失敗 → 開／更新單一 `[ops] Land queue alarm` issue，恢復後自動關）。程式 `.github/scripts/repo-hygiene.mjs`；PR 與分支皆不自動關閉／刪除（B5）。
 
 手動執行：
 ```bash

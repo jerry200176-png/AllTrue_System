@@ -29,7 +29,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,9 +84,8 @@ jobs:
         env:
           STEPS_HYGIENE_OUTPUTS_OUTPUT: ${{ steps.hygiene.outputs.output }}
 
-      # Weekly: label agent PRs idle 14d `stale`, close agent DRAFTs idle 30d, post one report issue.
-      # Own script instead of actions/stale: stale cannot restrict closing to drafts (it only
-      # exempts them) and cannot tell agent PRs from other authors. Same label/comment model.
+      # Weekly: label owner PRs idle 14d `stale`; report drafts idle 30d for explicit owner review.
+      # Auto-close is deferred: the shared owner identity does not prove work can be discarded.
       - name: Stale PR sweep
         if: ${{ github.event.schedule == '0 0 * * 0' || github.event_name == 'workflow_dispatch' }}
         run: node .github/scripts/repo-hygiene.mjs stale
@@ -102,7 +101,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
+      pull-requests: read
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

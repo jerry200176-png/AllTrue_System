@@ -66,6 +66,10 @@ if sys.argv[1] == 'rev-parse':
         self.assertEqual(workflow.count("persist-credentials: false"), 2)
         self.assertNotIn("persist-credentials: true", workflow)
         self.assertIn("OUTPUT=$(./scripts/branch-hygiene.sh --no-fetch 2>&1)", workflow)
+        self.assertEqual(workflow.count("pull-requests: read"), 2)
+        self.assertNotIn("pull-requests: write", workflow)
+        self.assertIn("workflow_dispatch: {}", workflow)
+        self.assertNotIn("--close", workflow)
 
     def test_symbolic_remote_head_is_not_a_deletion_candidate(self):
         with tempfile.TemporaryDirectory(prefix="branch-hygiene-") as raw_dir:

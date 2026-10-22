@@ -16,10 +16,11 @@ test('stale: labels at the threshold, not before; boundaries follow the constant
   assert.equal(decideStale(pr({ labels: [{ name: 'stale' }] }), ago(STALE_DAYS + 1), NOW, 'o').action, 'none');
 });
 
-test('stale: only drafts are ever closed; non-draft never', () => {
-  assert.equal(decideStale(pr({ draft: true }), ago(CLOSE_DRAFT_DAYS), NOW, 'o').action, 'close');
-  assert.equal(decideStale(pr({ draft: true }), ago(CLOSE_DRAFT_DAYS - 1), NOW, 'o').action, 'label');
-  for (const d of [30, 365]) assert.notEqual(decideStale(pr(), ago(d), NOW, 'o').action, 'close');
+test('stale: original close decision requires explicit opt-in; non-draft never closes', () => {
+  assert.equal(decideStale(pr({ draft: true }), ago(CLOSE_DRAFT_DAYS), NOW, 'o', { closeDrafts: true }).action, 'close');
+  assert.equal(decideStale(pr({ draft: true }), ago(CLOSE_DRAFT_DAYS - 1), NOW, 'o', { closeDrafts: true }).action, 'label');
+  for (const d of [30, 365]) assert.notEqual(decideStale(pr(), ago(d), NOW, 'o', { closeDrafts: true }).action, 'close');
+  for (const closeDrafts of [undefined, false, 'true']) assert.equal(decideStale(pr({ draft: true }), ago(CLOSE_DRAFT_DAYS), NOW, 'o', { closeDrafts }).action, 'label');
 });
 
 test('stale: other authors, bots, non-main base and exempt labels are untouched', () => {
@@ -27,6 +28,7 @@ test('stale: other authors, bots, non-main base and exempt labels are untouched'
   assert.equal(decideStale(pr({ user: { login: 'o', type: 'Bot' }, draft: true }), ago(99), NOW, 'o').action, 'none');
   assert.equal(decideStale(pr({ base: { ref: 'dev' }, draft: true }), ago(99), NOW, 'o').action, 'none');
   for (const l of EXEMPT_LABELS) assert.equal(decideStale(pr({ labels: [{ name: l }], draft: true }), ago(99), NOW, 'o').action, 'none', l);
+  for (const l of EXEMPT_LABELS) assert.equal(decideStale(pr({ labels: [{ name: l }], draft: true }), ago(99), NOW, 'o', { closeDrafts: true }).action, 'none', l);
 });
 
 test('stale: activity resuming clears the label', () => {
@@ -139,18 +141,26 @@ test('stale: a recent reopen on a later event page clears stale instead of closi
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(prWrites(f).map((c) => [c.method, c.path]), [['DELETE', 'issues/1/labels/stale']]);
+  assert.match(result.stdout, /drafts_reported=0/);
   const call = f.state().calls.find((c) => c.path === 'issues/1/events?per_page=100');
   assert.ok(call.args.includes('--paginate') && call.args.includes('--slurp'));
 });
 
-test('stale: inactivity still labels non-drafts and closes drafts after excluding hygiene comments', (t) => {
+test('stale: default sweep labels and reports old drafts without any PR-close request', (t) => {
   for (const draft of [false, true]) {
     const routes = routesFor(apiPr({ draft }));
     routes['issues/1/comments?per_page=100'].data.push({ body: '<!-- repo-hygiene:stale --> closing', created_at: recent() });
     const f = fixture(t, routes);
     const result = f.run();
     assert.equal(result.status, 0, result.stderr);
-    assert.ok(prWrites(f).some((c) => draft ? c.path === 'pulls/1' && c.input.state === 'closed' : c.path === 'issues/1/labels'));
+    assert.ok(prWrites(f).some((c) => c.path === 'issues/1/labels'));
+    assert.ok(!prWrites(f).some((c) => c.input?.state === 'closed'));
+    assert.ok(!prWrites(f).some((c) => c.method === 'PATCH'));
+    assert.match(f.state().issues[0].body, /Draft auto-close: deferred/);
+    if (draft) {
+      assert.match(result.stdout, /drafts_reported=1/);
+      assert.match(f.state().issues[0].body, /explicit owner disposition\/approval required\): #1/);
+    }
   }
 });
 

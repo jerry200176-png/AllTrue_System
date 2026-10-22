@@ -1,8 +1,8 @@
 // Scheduled repo hygiene (read-mostly REST, no checkout of PR code, no secrets beyond GITHUB_TOKEN).
-//   node repo-hygiene.mjs stale        weekly: label inactive agent PRs, close inactive agent DRAFTs, report
+//   node repo-hygiene.mjs stale        weekly: label inactive owner PRs, report inactive drafts for owner review
 //   node repo-hygiene.mjs queue-alarm  hourly: one issue when `queue` is stuck or land-queue keeps failing
-// Never closes a non-draft PR or a PR by someone other than the repo owner (agents share the owner token,
-// RULEBOOK T1). Never deletes a branch (B5): merged-branch leftovers are only reported.
+// The CLI never closes a PR: owner identity/inactivity does not prove work can be discarded.
+// Never deletes a branch (B5): merged-branch leftovers are only reported.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -20,13 +20,13 @@ const DAY = 86400e3;
 const t = (s) => Date.parse(s);
 export const daysBetween = (now, then) => (now - t(then)) / DAY;
 
-// Agents and the Founder share the owner token, so "agent PR" = authored by the repo owner.
-// Dependabot and other bots/humans are never touched.
+// Legacy "agent PR" scope is the repo owner, shared by agents and the Founder.
+// It scopes reminders only, never authorizes discarding work. Other authors are untouched.
 export const isAgentPr = (pr, owner) => Boolean(owner) && pr.user?.login === owner && pr.user?.type === 'User';
 
 // lastActivity: ISO time of the newest head commit/comment/review/reopen, excluding our stale comment,
 // so our label/comment never resets the clock.
-export function decideStale(pr, lastActivity, now, owner) {
+export function decideStale(pr, lastActivity, now, owner, { closeDrafts = false } = {}) {
   if (pr.state !== 'open' || typeof pr.draft !== 'boolean' || !Array.isArray(pr.labels)
       || pr.labels.some((l) => typeof l?.name !== 'string' || !l.name)
       || !Number.isFinite(now) || !Number.isFinite(t(lastActivity))) return { action: 'none' };
@@ -35,7 +35,9 @@ export function decideStale(pr, lastActivity, now, owner) {
   if (!isAgentPr(pr, owner) || pr.base?.ref !== 'main' || labels.some((l) => EXEMPT_LABELS.includes(l))) return { action: 'none' };
   const idle = daysBetween(now, lastActivity);
   if (idle < 0) return { action: 'none' };
-  if (pr.draft && idle >= CLOSE_DRAFT_DAYS) return { action: 'close', idle };
+  // Preserve the original proposal as an explicit opt-in decision helper for tests.
+  // The scheduled/dispatch CLI never opts in and has no PR-close implementation.
+  if (closeDrafts === true && pr.draft && idle >= CLOSE_DRAFT_DAYS) return { action: 'close', idle };
   if (idle >= STALE_DAYS) return hasStale ? { action: 'none', idle } : { action: 'label', idle };
   return hasStale ? { action: 'unlabel', idle } : { action: 'none', idle };
 }
@@ -135,17 +137,14 @@ function lastActivity(pr) {
 function runStale() {
   const owner = REPO.split('/')[0];
   const now = Date.now();
-  const labeled = [], closed = [], cleared = [];
+  const labeled = [], deferred = [], cleared = [];
   for (const pr of pages('pulls?state=open&per_page=100')) {
     const d = decideStale(pr, lastActivity(pr), now, owner);
+    if (pr.draft === true && d.idle >= CLOSE_DRAFT_DAYS) deferred.push(pr.number);
     if (d.action === 'label') {
       send('POST', `issues/${pr.number}/labels`, { labels: [STALE_LABEL] });
-      send('POST', `issues/${pr.number}/comments`, { body: `${MARK_STALE}\nNo activity for ${STALE_DAYS}+ days. Push, comment or add \`keep-open\` to keep it. Draft PRs with no activity for ${CLOSE_DRAFT_DAYS} days are closed automatically (reopen any time); non-draft PRs are never auto-closed.` });
+      send('POST', `issues/${pr.number}/comments`, { body: `${MARK_STALE}\nNo activity for ${STALE_DAYS}+ days. Push, comment, reopen or add \`keep-open\` to keep it. This is a reminder only: no PR is automatically closed. Drafts inactive for ${CLOSE_DRAFT_DAYS} days are reported for explicit owner disposition/approval.` });
       labeled.push(pr.number);
-    } else if (d.action === 'close') {
-      send('POST', `issues/${pr.number}/comments`, { body: `${MARK_STALE}\nClosing this draft: no activity for ${CLOSE_DRAFT_DAYS}+ days. Reopen it if the work is still wanted.` });
-      send('PATCH', `pulls/${pr.number}`, { state: 'closed' });
-      closed.push(pr.number);
     } else if (d.action === 'unlabel') {
       try { send('DELETE', `issues/${pr.number}/labels/${STALE_LABEL}`); } catch { /* already gone */ }
       cleared.push(pr.number);
@@ -156,12 +155,13 @@ function runStale() {
   const body = [
     `## Weekly hygiene report (${new Date(now).toISOString().slice(0, 10)})`,
     `- Labeled \`${STALE_LABEL}\` (inactive ${STALE_DAYS}d): ${list(labeled)}`,
-    `- Closed agent drafts (inactive ${CLOSE_DRAFT_DAYS}d): ${list(closed)}`,
+    `- Owner drafts inactive ${CLOSE_DRAFT_DAYS}d (report only; explicit owner disposition/approval required): ${list(deferred)}`,
+    '- Draft auto-close: deferred. Inactivity does not establish that an unresolved request can be discarded.',
     `- Stale label cleared (activity resumed): ${list(cleared)}`,
     '', '### Merged-branch leftovers (report only, never deleted automatically)', '```', leftovers.slice(0, 6000), '```',
   ].join('\n');
   const issue = upsertIssue(MARK_REPORT, '[ops] Weekly repo hygiene report', body);
-  console.log(`stale: labeled=${labeled.length} closed=${closed.length} cleared=${cleared.length} report=#${issue.number}`);
+  console.log(`stale: labeled=${labeled.length} drafts_reported=${deferred.length} cleared=${cleared.length} report=#${issue.number}`);
 }
 
 function runQueueAlarm() {
