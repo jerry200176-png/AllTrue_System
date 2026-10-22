@@ -4,7 +4,7 @@ name: Rollback Readiness
 # 觸發：
 #   - 每月 1 日 03:00 UTC 常態演練（與 backup-restore-test 同日，組成完整回滾就緒月檢）
 #   - 手動 workflow_dispatch
-#   - PR 動到 deploy.yml 或 migrations 時（防止改壞回滾路徑 / 加入不可逆 migration）
+#   - PR 動到 deploy.yml、其遠端腳本（scripts/production-deploy/）或 migrations 時（防止改壞回滾路徑 / 加入不可逆 migration）
 # 檢查內容見 scripts/rollback-readiness.sh 與 docs/RUNBOOK_ROLLBACK.md。
 
 on:
@@ -18,6 +18,7 @@ on:
       - '.github/workflows/rollback-readiness.yml'
       - 'backend/database/migrations/**'
       - 'scripts/rollback-readiness.sh'
+      - 'scripts/production-deploy/**'
 
 permissions:
   contents: read
