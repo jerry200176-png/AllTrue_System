@@ -71,7 +71,7 @@ Pointers (no new gates): [`EVIDENCE_CONTRACT.md`](../../docs/governance/EVIDENCE
 See [`BUG_INTAKE_TO_PRODUCTION.md`](../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md):
 
 - **SSH Phase-C allowlist path retired** (2026-10-19; ADR-POP-015 / #4289). Allowlist request-file / `bug-phase-c-allowlist.yml` remote write is **not** an executable path.
-- **Currently executable** (when authorized): `bug-followup-comment.yml` — **comment-only** follow-up (preview → write; no per-run Founder approval since 2026-10-21, `rows_json` batch ≤20); does **not** change bug status by itself.
+- **Currently executable** (when authorized): `bug-followup-comment.yml` — **comment-only** follow-up (current main: preview → Founder approve → write; approved batch direction awaits #4386 acceptance); does **not** change bug status by itself.
 - **Unavailable:** Pi-local `inapp-report-resolve-after-deploy` is **not** catalogued / standing-policy-enabled — do **not** treat as runnable.
 - A bare **production-write GO** / WRITE_GO stamp does **not** re-enable retired SSH Phase-C or invent resolve-after-deploy.
 

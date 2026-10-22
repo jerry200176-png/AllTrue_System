@@ -7,6 +7,8 @@
 
 ### 1. In-app 公開回覆與 Phase A 回寫不再逐次核准（Founder 對話原文：「回覆幹嘛還要我核准啦」）
 
+批次 workflow 的技術實作 #4386 尚待接受；合併前以 main 實際 workflow 為準，本文件不自行停用平台 gate。
+
 - **範圍（只限這兩個 workflow）**：`bug-phase-a-triage.yml`（Phase A：`new`→`triaged`＋公開回覆，或 `close_as_logged` 經 `BugReportService::closeAsLogged`）與 `bug-followup-comment.yml`（只留言、不改狀態；`expected_status=closed` 只限已上線的 logged suggestion）。兩者**移除每次 run 的 `production-activation` Founder 審核**。
 - **保留的控制**：只能 `workflow_dispatch`、只能在 `refs/heads/main` 執行（否則 fail）、secret 只在 main-only 的 `production-ssh` environment、共用 `inapp-production-writeback` concurrency（`queue: max`）、先跑不含 secret 的 preview。
 - **批次**：輸入為 `rows_json`，一次 **1–20 筆**；任何一筆不合格（`bug_id`、本 repo issue URL 且回覆內含該 URL、disposition 語法、`close_as_logged` 布林、回覆 ≤600 字元、bug_id 不重複）整批在任何寫入前失敗。preview 只顯示 bug_id／issue／disposition 或狀態／長度／sha256，不印回覆全文。寫入依序在同一個 SSH session 執行，每筆的 tinker 邏輯不變。
