@@ -5,7 +5,7 @@
         <span class="premium-modal-icon">＋</span>
         <div>
           <p class="premium-kicker">Renewal Batch</p>
-          <h3 class="modal-title">{{ isTrialMode ? '試聽轉正式課程' : (isPackageMode ? '調整共用方案堂數' : '加購堂數') }}</h3>
+          <h3 class="modal-title">{{ isTrialMode ? '試聽轉正式課程' : (isPackageMode ? '調整共用方案堂數' : '續課') }}</h3>
           <p class="modal-desc">{{ form.student_name }} - {{ subjectLabel }}</p>
         </div>
       </div>
@@ -17,7 +17,7 @@
           :class="['package-op-btn', { active: form.package_op !== 'set' }]"
           :disabled="submitting"
           @click="selectOp('add')"
-        >加購堂數</button>
+        >續課（加堂數）</button>
         <button
           type="button"
           role="tab"
@@ -65,8 +65,8 @@ const props = defineProps({
 defineEmits(['close', 'submit']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const isSetMode = computed(() => props.isPackageMode && props.form?.package_op === 'set');
-const sessionsLabel = computed(() => (props.isTrialMode ? '正式課程堂數' : (isSetMode.value ? '設定後的總堂數' : '加購堂數')));
-const submitLabel = computed(() => (props.isTrialMode ? '確認轉為正式' : (isSetMode.value ? '確認設定' : '確認加購')));
+const sessionsLabel = computed(() => (props.isTrialMode ? '正式課程堂數' : (isSetMode.value ? '設定後的總堂數' : '續課堂數')));
+const submitLabel = computed(() => (props.isTrialMode ? '確認轉為正式' : (isSetMode.value ? '確認設定' : '確認續課')));
 function selectOp(op) {
   if (!props.form || props.form.package_op === op) return;
   props.form.package_op = op;
@@ -79,12 +79,12 @@ const packageNote = computed(() => {
     return '試聽堂次與評量會保留在歷史紀錄；未來試聽排課會取消，正式課程從你選的日期重新排 8 堂。不會搬移或重複計算試聽堂次。';
   }
   if (!props.isPackageMode) {
-    return '加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。';
+    return '續課會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。';
   }
   if (isSetMode.value) {
     return '此課程屬於多科共用方案。設定總堂數會把整個方案的共用總堂數改為你輸入的數字（所有方案科目共用同一個堂數池）；不可低於已使用堂數。';
   }
-  return '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。';
+  return '此課程屬於多科共用方案，續課會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。';
 });
 </script>
 

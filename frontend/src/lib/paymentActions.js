@@ -29,3 +29,7 @@ export const rejectReport = (reportId, note) => send(`payment-reports/${id(repor
 export const voidReport = (reportId, reason) => send(`payment-reports/${id(reportId)}/void`, 'PUT', { void_reason: reason }, '撤銷失敗');
 export const voidInvoice = (invoiceId, reason, { exception = false } = {}) =>
   send(`invoices/${id(invoiceId)}/${exception ? 'exception-void' : 'void'}`, 'POST', { reason }, exception ? '更正並作廢失敗' : '作廢失敗');
+// Founder GO 2026-10-21 (§只有舊「已收」標記): resolve a legacy-flag-only course either way.
+export const backfillLegacyPayment = (body) => send('payment-reports/director-record', 'POST', { ...body, legacy_flag_backfill: true }, '補登收款失敗');
+export const clearLegacyPaidFlag = (studentClassId, reason) =>
+  send('payment-reports/legacy-flag-clear', 'POST', { student_class_id: id(studentClassId), reason }, '改成未繳失敗');

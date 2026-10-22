@@ -115,10 +115,10 @@ describe('TransferSessionsModal', () => {
   it('offers a button to the full target course and emits its id (in-app #379)', async () => {
     const wrapper = mountModal({
       errorMessage: '目標課程堂數已滿（8/8）。請先在目標課程加買堂數，再轉課。',
-      errorNextActions: [{ code: 'open_target_purchase', label: '前往目標課程加購', available: true, student_class_id: 1849 }],
+      errorNextActions: [{ code: 'open_target_purchase', label: '前往目標課程續課', available: true, student_class_id: 1849 }],
     });
     const btn = wrapper.find('[data-testid="transfer-open-target-purchase"]');
-    expect(btn.text()).toBe('前往目標課程加購');
+    expect(btn.text()).toBe('前往目標課程續課');
     await btn.trigger('click');
     expect(wrapper.emitted('open-target-purchase')?.[0]).toEqual([1849]);
   });
