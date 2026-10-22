@@ -46,7 +46,43 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Check default-branch publisher installation
+        id: installation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -f .github/scripts/review-gate.mjs ]; then
+            echo 'installed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rules_file="$(mktemp "$RUNNER_TEMP/review-gate-rules.XXXXXX")"
+          trap 'rm -f "$rules_file"' EXIT
+          gh api "repos/${REPO}/rules/branches/main" > "$rules_file"
+          python3 - "$rules_file" <<'PY'
+          import json
+          import sys
+          rules = json.load(open(sys.argv[1], encoding="utf-8"))
+          if not isinstance(rules, list):
+              raise SystemExit("Default-branch rules unknown; publisher installation fails closed")
+          for rule in rules:
+              if not isinstance(rule, dict) or not isinstance(rule.get("type"), str) or not rule["type"]:
+                  raise SystemExit("Default-branch rule schema unknown; publisher installation fails closed")
+              if rule["type"] != "required_status_checks":
+                  continue
+              params = rule.get("parameters")
+              checks = params.get("required_status_checks") if isinstance(params, dict) else None
+              if not isinstance(checks, list) or any(not isinstance(c, dict) or not isinstance(c.get("context"), str) or not c["context"] for c in checks):
+                  raise SystemExit("Required-check schema unknown; publisher installation fails closed")
+              if any(c["context"] == "review/final-head" for c in checks):
+                  raise SystemExit("Required publisher missing from default branch; no review verdict published")
+          print("::notice::Review publisher not installed on default branch; no review verdict published. Existing merge gates remain required.")
+          PY
+          echo 'installed=false' >> "$GITHUB_OUTPUT"
+
       - name: Evaluate final-head review
+        if: ${{ steps.installation.outputs.installed == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

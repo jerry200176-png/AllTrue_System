@@ -350,11 +350,59 @@ test('review gate workflows: default-branch script only; auto-merge waits on the
   assert.doesNotMatch(wf, /head\.sha|head\.ref|pull_request\.head/);
   assert.match(wf, /run: node \.github\/scripts\/review-gate\.mjs/);
   assert.match(wf, /checks: write/);
+  assert.match(wf, /if: \$\{\{ steps\.installation\.outputs\.installed == 'true' \}\}/);
   const am = fs.readFileSync(new URL('../../.github/workflows/auto-merge-safe.yml', import.meta.url), 'utf8');
   assert.ok(am.includes(`index("${REVIEW_CHECK}")`));
   assert.ok(am.indexOf(REVIEW_CHECK) < am.indexOf('gh pr merge "$PR_NUMBER"'));
   const lq = fs.readFileSync(new URL('../../.github/scripts/land-queue.mjs', import.meta.url), 'utf8');
   assert.match(lq, /filter\(\(c\) => c !== REVIEW_CHECK\)/); // batch branches have no PR review; gated per member
+});
+
+test('review publisher bootstrap never substitutes for a missing required verdict', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const wf = fs.readFileSync(new URL('../../.github/workflows/review-gate.yml', import.meta.url), 'utf8');
+  const step = wf.split('      - name: Check default-branch publisher installation\n')[1]?.split('      - name: Evaluate final-head review\n')[0];
+  assert.ok(step, 'installation is checked before any evaluation');
+  const script = step.split('        run: |\n')[1].replace(/^ {10}/gm, '');
+  const dir = fs.mkdtempSync(join(tmpdir(), 'review-bootstrap-'));
+  try {
+    fs.mkdirSync(join(dir, 'bin'));
+    fs.mkdirSync(join(dir, '.github/scripts'), { recursive: true });
+    fs.writeFileSync(join(dir, 'bin/gh'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\ncat "$RULES_FIXTURE"\nexit "$API_RC"\n', { mode: 0o755 });
+    const run = (rules, apiRc = 0, present = false) => {
+      const publisher = join(dir, '.github/scripts/review-gate.mjs');
+      if (present) fs.writeFileSync(publisher, 'throw Error("must not execute in bootstrap");');
+      else fs.rmSync(publisher, { force: true });
+      fs.writeFileSync(join(dir, 'rules'), typeof rules === 'string' ? rules : JSON.stringify(rules));
+      fs.writeFileSync(join(dir, 'out'), ''); fs.writeFileSync(join(dir, 'calls'), '');
+      const result = spawnSync('bash', ['-e', '-c', script], { cwd: dir, encoding: 'utf8',
+        env: { PATH: `${join(dir, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: dir, REPO: 'o/r',
+          RULES_FIXTURE: join(dir, 'rules'), API_RC: String(apiRc), CALLS: join(dir, 'calls'), GITHUB_OUTPUT: join(dir, 'out') } });
+      return { ...result, output: fs.readFileSync(join(dir, 'out'), 'utf8'), calls: fs.readFileSync(join(dir, 'calls'), 'utf8') };
+    };
+    const installed = run(null, 7, true);
+    assert.equal(installed.status, 0); assert.equal(installed.output, 'installed=true\n'); assert.equal(installed.calls, '');
+    for (const rules of [[], [{ type: 'pull_request' }], [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'CI' }] } }]]) {
+      const result = run(rules);
+      assert.equal(result.status, 0); assert.equal(result.output, 'installed=false\n');
+      assert.match(result.stdout, /not installed.*no review verdict published/);
+      assert.equal(result.calls, 'api repos/o/r/rules/branches/main\n');
+    }
+    for (const rules of [null, {}, '{', [{}], [{ type: 'required_status_checks' }],
+      [{ type: 'required_status_checks', parameters: { required_status_checks: {} } }],
+      [{ type: 'required_status_checks', parameters: { required_status_checks: [{}] } }],
+      [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: REVIEW_CHECK, integration_id: 99 }] } }]]) {
+      const result = run(rules);
+      assert.notEqual(result.status, 0); assert.equal(result.output, '', 'unknown or pinned gate cannot bootstrap');
+      assert.equal(result.calls, 'api repos/o/r/rules/branches/main\n', 'only a rules read is authorized');
+    }
+    const failed = run([], 7);
+    assert.notEqual(failed.status, 0); assert.equal(failed.output, '');
+    assert.equal(fs.readdirSync(dir).filter((name) => name.startsWith('review-gate-rules.')).length, 0);
+    assert.doesNotMatch(script, /check-runs|statuses|node /);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('review gate publications serialize sweep and PR events across refs without dropping pending runs', () => {
