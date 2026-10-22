@@ -636,6 +636,12 @@ class CourseLeaveCascadeService
         }
         $slotDays = array_values(array_filter($weekdays, fn ($d) => in_array($d . '|' . $start, $contractSlots, true)));
         $next = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+        // #4058: an occupied compatible date keeps searching the same slot weekdays. Returning null here would let
+        // computeAppendOnlyPlan() fall back to every course weekday and put this lesson's time on another weekday.
+        for ($tries = 0; $tries < 52 && !$free($next); $tries++) {
+            $baseDates[$next] = true;
+            $next = self::nextRecurringDate(Carbon::parse($next)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+        }
 
         return $free($next) ? $next : null;
     }
