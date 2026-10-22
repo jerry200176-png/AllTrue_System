@@ -956,6 +956,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **根因**：heredoc SSH script 預設不因中途指令失敗而中止；成功訊息寫在指令後面而非以 exit code 分支。
 - **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。**D1（Founder 2026-10-13）起：migration 或 `migrate:status` 失敗一律 `abort_deploy`**（走既有 `rollback_deploy` 還原舊 code，不跑 build／health／smoke／success 標記）；不得再「code 繼續上線、run 結尾才紅」。
 - **測試必補**：`scripts/tests/test_deploy_activation_state.py`（`_execute_isolated_migration` 實際執行 migration 區塊：失敗即中止、status 失敗不得當成 0 筆 pending；success 標記步驟不得有 `if:`／`continue-on-error`）。
+- **同族告警（#4370）**：HTTP 呼叫完成不等於通知被接收。`monitor-alert.sh` 必須同時驗 HTTP 與 provider 成功回應；失敗回傳非零且不印成功，不輸出憑證／原始回應，也不自動重送可能已接收的 POST。`scripts/tests/test_monitor_alert_notify.py` 用 stub 驗證拒收、timeout、回應契約與清理，禁止對正式通知通道跑測試。
 
 ---
 

@@ -29,28 +29,69 @@ TEMP_EMERGENCY_C="${TEMP_EMERGENCY_C:-85}"
 # ─────────────────────────────────────────────
 # 函數：發送通知（自動選擇 Telegram 或 LINE Messaging API）
 # ─────────────────────────────────────────────
-send_notify() {
-    local message="$1"
-
+send_notify() (
+    # Keep private request/response files and cleanup traps local to this call.
+    umask 077
+    local message="$1" provider target token notify_tmp http_status curl_status
     if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":$(printf '%s' "$message" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
-            > /dev/null
-        echo "[NOTIFY] Telegram 已發送"
-
+        provider="Telegram"; target="$TELEGRAM_CHAT_ID"; token="$TELEGRAM_BOT_TOKEN"
     elif [ -n "$LINE_CHANNEL_TOKEN" ] && [ -n "$LINE_GROUP_ID" ]; then
-        curl -s -X POST "https://api.line.me/v2/bot/message/push" \
-            -H "Authorization: Bearer ${LINE_CHANNEL_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"to\":\"${LINE_GROUP_ID}\",\"messages\":[{\"type\":\"text\",\"text\":$(printf '%s' "$message" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}]}" \
-            > /dev/null
-        echo "[NOTIFY] LINE Messaging API 已發送"
-
+        provider="LINE Messaging API"; target="$LINE_GROUP_ID"; token="$LINE_CHANNEL_TOKEN"
     else
         echo "[WARN] 未設定通知管道（請填入 TELEGRAM_BOT_TOKEN 或 LINE_CHANNEL_TOKEN）"
+        return 0
     fi
-}
+    notify_tmp=$(mktemp -d)
+    trap 'rm -rf "$notify_tmp"' EXIT
+    # Secrets/message stay out of process arguments. JSON handles quotes/newlines in inputs.
+    printf '%s\0%s\0%s\0%s' "$provider" "$target" "$token" "$message" |
+        python3 -c '
+import json, pathlib, sys
+provider, target, token, message = sys.stdin.read().split("\0", 3)
+root = pathlib.Path(sys.argv[1])
+headers = ["Content-Type: application/json"]
+if provider == "Telegram":
+    url = "https://api.telegram.org/bot" + token + "/sendMessage"
+    payload = {"chat_id": target, "text": message}
+else:
+    url = "https://api.line.me/v2/bot/message/push"
+    headers.append("Authorization: Bearer " + token)
+    payload = {"to": target, "messages": [{"type": "text", "text": message}]}
+(root / "curl.cfg").write_text("url = " + json.dumps(url) + "\n" + "".join("header = " + json.dumps(h) + "\n" for h in headers))
+(root / "payload.json").write_text(json.dumps(payload))
+' "$notify_tmp"
+    # Do not retry an ambiguous POST: a timed-out request may already have been accepted.
+    if http_status=$(curl --config "$notify_tmp/curl.cfg" --silent --show-error \
+        --connect-timeout 5 --max-time 15 --output "$notify_tmp/response.json" \
+        --write-out '%{http_code}' --data-binary "@$notify_tmp/payload.json" 2>/dev/null); then
+        if [ "$http_status" != "200" ]; then
+            echo "[ERROR] $provider 未確認接收（HTTP $http_status）" >&2
+            return 1
+        fi
+    else
+        curl_status=$?
+        echo "[ERROR] $provider 未確認接收（curl $curl_status；可能已接收，請勿盲目重送）" >&2
+        return 1
+    fi
+    if ! python3 -c '
+import json, sys
+try:
+    with open(sys.argv[2]) as stream:
+        data = json.load(stream)
+    if sys.argv[1] == "Telegram":
+        valid = isinstance(data, dict) and data.get("ok") is True
+    else:
+        sent = data.get("sentMessages") if isinstance(data, dict) else None
+        valid = isinstance(sent, list) and len(sent) == 1 and isinstance(sent[0], dict) and isinstance(sent[0].get("id"), str) and bool(sent[0]["id"])
+except (OSError, ValueError):
+    valid = False
+sys.exit(0 if valid else 1)
+' "$provider" "$notify_tmp/response.json" 2>/dev/null; then
+        echo "[ERROR] $provider 未確認接收（回應格式或服務結果無效）" >&2
+        return 1
+    fi
+    echo "[NOTIFY] $provider 已確認服務接收"
+)
 
 # ─────────────────────────────────────────────
 # 函數：解析 vcgencmd get_throttled bitmask
