@@ -12,6 +12,9 @@ interrupted verification are explicit UNKNOWN; no exit code or rollback success
 is invented. A strict single terminal JSON marker carries finite watch/Sentry
 outcomes to the summary; malformed/duplicate/missing markers cannot pass. Sentry
 outages remain non-rollback outcomes, and secrets never enter these markers.
+Success state markers are written only after watch completion is confirmed. A
+missing or failing summarizer uses fixed UNKNOWN text without echoing its errors;
+the incident step still attempts to record the issue.
 
 **Draft / hold:** main `60507093` has no `deploy_freeze_reason`. This partial repair
 does not implement an activation freeze or stack unmerged #4359. That P1 and the

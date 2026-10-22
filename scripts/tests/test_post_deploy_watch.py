@@ -513,6 +513,67 @@ class OutcomeIntegrityTest(unittest.TestCase):
                 text = summary.read_text()
                 self.assertIn(f"Sentry error-count check: {sentry or 'unknown'}", text)
                 self.assertIn(f"Health/identity watch: {watch or 'unknown'}", text)
+                if watch != "passed":
+                    self.assertNotIn("## state=production-verified", text)
+                    self.assertNotIn("## state=deployed", text)
+                    self.assertIn("## state=production-verification-failed", text)
+                    self.assertIn("UNKNOWN", text)
+
+    def test_helper_failures_use_fixed_unknown_and_still_attempt_incident(self):
+        workflow = WORKFLOW.read_text()
+        def step_script(name):
+            block = workflow.split(f"      - name: {name}\n", 1)[1]
+            block = re.split(r"\n(?:      - name: |  [a-z].*:\n)", block, maxsplit=1)[0]
+            return textwrap.dedent(block.split("        run: |\n", 1)[1])
+        incident = step_script("Open or append the deploy incident issue")
+        failure = step_script("Summarize production verification failure")
+        success = step_script("Record deployed and production-verified state")
+        for broken_command in ("summarize", "watch-summary", "all"):
+            with self.subTest(broken_command=broken_command), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                # A present helper can crash or emit partial output before failing.
+                source = ("import sys\n"
+                          "if sys.argv[1] in (" + repr(broken_command) + ", 'all') or " + repr(broken_command) + " == 'all':\n"
+                          "    print('synthetic-secret')\n"
+                          "    raise RuntimeError('synthetic-secret')\n"
+                          "print('Automatic rollback was re-verified' if sys.argv[1] == 'summarize' else 'watch passed')\n")
+                for parent in (root / "scripts", root / "post-deploy-verify/scripts"):
+                    parent.mkdir(parents=True)
+                    (parent / "post-deploy-verify.py").write_text(source)
+                env = {"PATH": os.environ["PATH"], "RC": "", "RUNNER_VERIFY": "cancelled",
+                       "WATCH": "unknown", "SENTRY": "unknown", "TARGET_SHA": "target", "PREVIOUS_SHA": "previous",
+                       "RUN_URL": "https://example.test/run/1", "REPO": "o/r", "GITHUB_STEP_SUMMARY": str(root / "summary"),
+                       "INCIDENT_BODY": str(root / "body"), "GH_CALLED": str(root / "gh-called")}
+                gh = ('gh() { touch "$GH_CALLED"; for arg in "$@"; do case "$arg" in '
+                      'body=*) printf "%s" "${arg#body=}" > "$INCIDENT_BODY";; esac; done; }\n')
+                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", gh + incident],
+                                        cwd=root, env=env, text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertTrue((root / "gh-called").exists())
+                body = (root / "body").read_text()
+                self.assertIn("UNKNOWN", body)
+                for text in (body, result.stdout, result.stderr):
+                    self.assertNotIn("synthetic-secret", text)
+                    self.assertNotIn("rollback was re-verified", text)
+                # The always failure-summary path must also record unknown on a helper crash.
+                if broken_command != "watch-summary":
+                    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", failure],
+                                            cwd=root, env=env, text=True, capture_output=True)
+                    text = (root / "summary").read_text()
+                    self.assertIn("## state=production-verification-failed", text)
+                    self.assertIn("UNKNOWN", text)
+                    self.assertNotIn("synthetic-secret", text + result.stdout + result.stderr)
+                    self.assertEqual(1, result.returncode)
+                if broken_command != "summarize":
+                    env.update(WATCH="passed", SENTRY="passed")
+                    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", success],
+                                            cwd=root, env=env, text=True, capture_output=True)
+                    text = (root / "summary").read_text()
+                    self.assertEqual(1, result.returncode)
+                    self.assertIn("UNKNOWN", text)
+                    self.assertNotIn("## state=production-verified", text)
+                    self.assertNotIn("## state=deployed", text)
+                    self.assertNotIn("synthetic-secret", text + result.stdout + result.stderr)
 
     def test_incident_and_failure_summary_run_with_missing_outputs(self):
         workflow = WORKFLOW.read_text()

@@ -2015,6 +2015,16 @@ jobs:
           WATCH: ${{ steps.deploy.outputs.watch }}
           SENTRY: ${{ steps.deploy.outputs.sentry }}
         run: |
+          if ! watch_summary="$(python3 -I post-deploy-verify/scripts/post-deploy-verify.py watch-summary --watch "$WATCH" --sentry "$SENTRY" 2>/dev/null)"; then
+            printf '%s\n' '## state=production-verification-failed' 'Watch completion UNKNOWN; summarizer unavailable or failed.' >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Watch completion UNKNOWN; inspect this run."
+            exit 1
+          fi
+          if [ "$WATCH" != "passed" ]; then
+            printf '%s\n' '## state=production-verification-failed' 'Watch completion UNKNOWN; inspect this run.' "$watch_summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Watch completion UNKNOWN; inspect this run."
+            exit 1
+          fi
           {
             echo "## state=deployed"
             echo "Exact target SHA was activated by the sole production executor."
@@ -2023,9 +2033,8 @@ jobs:
             echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
             echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
             echo ""
-            python3 -I post-deploy-verify/scripts/post-deploy-verify.py watch-summary --watch "$WATCH" --sentry "$SENTRY"
+            printf '%s\n' "$watch_summary"
           } >> "$GITHUB_STEP_SUMMARY"
-          [ "$WATCH" = "passed" ] || { echo "::error::Watch completion is unknown; inspect this run."; exit 1; }
 
       - name: Summarize production verification failure
         if: ${{ always() && (failure() || cancelled()) }}
@@ -2036,13 +2045,13 @@ jobs:
           PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
         run: |
           set -euo pipefail
-          if [ ! -f post-deploy-verify/scripts/post-deploy-verify.py ]; then
-            printf '%s\n' '## state=production-verification-failed' 'Executor/production/rollback state UNKNOWN; verifier checkout unavailable. Check /api/health and deployment.json now.' >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Production deploy not verified::Executor/production state UNKNOWN; verifier unavailable."
+          if [ ! -f post-deploy-verify/scripts/post-deploy-verify.py ] || \
+              ! summary="$(python3 post-deploy-verify/scripts/post-deploy-verify.py summarize \
+                --rc "$RC" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY" 2>/dev/null)"; then
+            printf '%s\n' '## state=production-verification-failed' 'Executor/production/rollback state UNKNOWN; verifier unavailable or failed. Check /api/health and deployment.json now.' >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Production deploy not verified::Executor/production state UNKNOWN; verifier unavailable or failed."
             exit 1
           fi
-          summary="$(python3 post-deploy-verify/scripts/post-deploy-verify.py summarize \
-            --rc "$RC" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Production deploy not verified::$(printf '%s' "$summary" | tail -n 1)"
 
@@ -2084,13 +2093,14 @@ jobs:
         run: |
           set -euo pipefail
           title="Production deploy incident (deploy.yml)"
-          if [ -f scripts/post-deploy-verify.py ]; then
-            body="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
-              --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
-            watch_summary="$(python3 -I scripts/post-deploy-verify.py watch-summary --watch "$WATCH" --sentry "$SENTRY")"
-          else
-            body="Executor/production/rollback state UNKNOWN; incident summarizer checkout unavailable. Check /api/health and deployment.json now."
-            watch_summary="Watch and Sentry outcomes UNKNOWN."
+          body="Executor/production/rollback state UNKNOWN; incident summarizer unavailable or failed. Check /api/health and deployment.json now."
+          watch_summary="Watch and Sentry outcomes UNKNOWN."
+          if [ -f scripts/post-deploy-verify.py ] && \
+              executor_summary="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
+                --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY" 2>/dev/null)" && \
+              observed_watch="$(python3 -I scripts/post-deploy-verify.py watch-summary --watch "$WATCH" --sentry "$SENTRY" 2>/dev/null)"; then
+            body="$executor_summary"
+            watch_summary="$observed_watch"
           fi
           body="$(printf '%s\n\n%s\n\nRun: %s\nTarget: %s\nExecutor rc: %s\nNo automatic activation freeze is established by this incident record.\n' \
             "$body" "$watch_summary" "$RUN_URL" "$TARGET_SHA" "${RC:-unknown}")"
