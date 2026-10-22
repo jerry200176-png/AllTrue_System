@@ -63,6 +63,17 @@ class LearningRecordReviewCampusScopeTest extends TestCase
         $this->assertSame('approved', (string) $approved->fresh()->Status);
     }
 
+    public function test_a_director_of_another_campus_cannot_batch_reject_or_request_changes(): void
+    {
+        $foreign = $this->token([2]);
+        $record = $this->record('pending');
+        foreach (['batch-reject', 'batch-request-changes'] as $action) {
+            $this->api($foreign)->postJson("/api/v1/learning-records/{$action}", ['ids' => [$record->id], 'ReviewNote' => 'x'])->assertForbidden();
+        }
+        $this->assertSame('pending', (string) $record->fresh()->Status);
+        $this->assertSame(0, LearningRecord::whereIn('Status', ['rejected', 'changes_requested'])->count());
+    }
+
     public function test_a_director_of_another_campus_cannot_backfill_an_approval(): void
     {
         $before = LearningRecord::count();
@@ -76,6 +87,8 @@ class LearningRecordReviewCampusScopeTest extends TestCase
     {
         $this->api($this->token([1]))->postJson("/api/v1/learning-records/{$this->record('pending')->id}/approve", [])->assertOk();
         $this->api($this->token([2, 1]))->postJson("/api/v1/learning-records/{$this->record('pending', '2026-04-03')->id}/reject", [])->assertOk();
+        $this->api($this->token([1]))->postJson('/api/v1/learning-records/batch-request-changes', ['ids' => [$this->record('pending', '2026-04-04')->id]])
+            ->assertOk()->assertJsonPath('changed', 1);
     }
 
     private function record(string $status, string $date = self::DATE): LearningRecord

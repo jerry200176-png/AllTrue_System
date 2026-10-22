@@ -157,6 +157,26 @@ class LearningRecordController extends Controller
         return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
     }
 
+    /** Batch review: the whole batch is refused when any requested record is outside the caller's campuses. */
+    private function batchCampusRefusal(Request $request, array $ids): ?\Illuminate\Http\JsonResponse
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $campuses = DB::table('LearningRecord as lr')
+            ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->whereIn('lr.id', array_map('intval', $ids))
+            ->pluck('st.CampusID');
+        foreach ($campuses as $campusId) {
+            if ($refusal = $this->campusRefusal($request, (int) ($campusId ?? 0))) {
+                return $refusal;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Bug #495 / in-app #125：cascade-void 復原 helper。
      *
@@ -1458,11 +1478,10 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'DirectorID' => 'nullable|integer',
         ]);
-        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+        $campusId = $this->campusIdForLearningRecord($learningRecord);
+        if ($refusal = $this->campusRefusal($request, $campusId)) {
             return $refusal;
         }
-
-        $campusId = $this->campusIdForLearningRecord($learningRecord);
 
         $response = DB::transaction(function () use ($learningRecord, $data) {
             if ($learningRecord->Status === 'approved') {
@@ -1672,6 +1691,9 @@ class LearningRecordController extends Controller
         if ($role === 'teacher') {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($refusal = $this->batchCampusRefusal($request, $data['ids'])) {
+            return $refusal;
+        }
 
         $records = LearningRecord::active()
             ->whereIn('id', $data['ids'])
@@ -1706,6 +1728,9 @@ class LearningRecordController extends Controller
         if ($role === 'teacher') {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($refusal = $this->batchCampusRefusal($request, $data['ids'])) {
+            return $refusal;
+        }
 
         $records = LearningRecord::active()
             ->whereIn('id', $data['ids'])
@@ -1735,8 +1760,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'required|integer',
             'SessionDate' => 'required|date'
         ]);
-        $courseStudentId = DB::table('StudentClass')->where('ID', (int) $data['StudentClassID'])->value('StudentID');
-        if ($courseStudentId !== null && ($refusal = $this->campusRefusal($request, (int) (DB::table('Student')->where('id', (int) $courseStudentId)->value('CampusID') ?? 0)))) {
+        // A missing course keeps its 422 below; an existing course is checked, and fails closed without a student.
+        $course = DB::table('StudentClass')->where('ID', (int) $data['StudentClassID'])->first(['StudentID']);
+        if ($course !== null && ($refusal = $this->campusRefusal($request, (int) (DB::table('Student')->where('id', (int) ($course->StudentID ?? 0))->value('CampusID') ?? 0)))) {
             return $refusal;
         }
         $today = now()->toDateString();
