@@ -2671,7 +2671,7 @@ class StudentClassController extends Controller
         if ((int) $payload['new_charge'] === 0) {
             $this->auditEditBlocked($studentClass, 'charge_correction_zero_forbidden', 422);
             return response()->json([
-                'message' => '費用不能更正成 0 元。若這期確定不收費，請先在學生帳務作廢這張帳單，再用「登記收款」選「免費／贈送」。沒有變更任何資料。',
+                'message' => '費用不能更正成 0 元，沒有變更任何資料。這張帳單若不該收，請到學生帳務作廢；有設定費用的課程不能改成「免費／贈送」。',
                 'code' => 'charge_correction_zero_forbidden',
             ], 422);
         }
