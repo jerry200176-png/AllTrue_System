@@ -464,6 +464,37 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, \App\Models\Payment::query()->count());
     }
 
+    /** #4142: a director records, confirms and rejects only for students in their own campuses. */
+    public function test_director_of_another_campus_cannot_record_confirm_or_reject(): void
+    {
+        $own = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $other = ['Authorization' => 'Bearer ' . $this->createDirectorToken([2]), 'Accept' => 'application/json'];
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 3000, 'Paid' => 0]);
+        $payload = ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 3000];
+
+        $this->withHeaders($other)->postJson('/api/v1/payment-reports/director-record', $payload)->assertForbidden();
+        $this->withHeaders($other)->postJson('/api/v1/payment-reports/director-record-batch', [
+            'payment_date' => '2026-04-28', 'payment_method' => 'cash',
+            'entries' => [['student_class_id' => $sc->ID, 'amount' => 3000]],
+        ])->assertJsonPath('accepted', 0)->assertJsonPath('results.0.http_status', 403);
+        $this->assertSame(0, PaymentReport::query()->count());
+
+        $reportId = $this->withHeaders($own)->postJson('/api/v1/payment-reports/director-record', $payload)
+            ->assertOk()->json('report_id');
+        $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertForbidden();
+        $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/reject", ['rejection_note' => 'x'])
+            ->assertForbidden();
+        $this->withHeaders($other)->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$reportId]])
+            ->assertJsonPath('accepted', 0)->assertJsonPath('results.0.http_status', 403);
+        $this->assertSame('pending', PaymentReport::query()->findOrFail($reportId)->status);
+        $this->assertSame(0, Payment::query()->count());
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+
+        // The course's own campus still works end to end.
+        $this->withHeaders($own)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        $this->assertSame(1, Payment::query()->count());
+    }
+
     public function test_director_record_batch_creates_pending_only(): void
     {
         $token = $this->createDirectorToken([1]);
