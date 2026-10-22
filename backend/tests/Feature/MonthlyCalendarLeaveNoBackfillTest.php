@@ -325,6 +325,25 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertSame(['06:30 scheduled', '13:00 scheduled'], $this->startsOn($course), 'The 13:00 lesson must not disappear.');
     }
 
+    /** #3970: a chain of exactly MAX_HOPS (40) links still lends the root's slot, like the backfill resolver. */
+    public function test_a_reschedule_chain_of_exactly_forty_links_keeps_its_root_slot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3970@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // 18:00 moved 40 times on the same day (39 intermediate rows), ending at 06:30 (live session, no identity).
+        $prev = $this->extraSchedule($course, $teacherId, '18:00', 'rescheduled', 'normal');
+        for ($i = 1; $i <= 39; $i++) {
+            $prev = $this->extraSchedule($course, $teacherId, sprintf('05:%02d', $i), 'rescheduled', 'normal', ['original_schedule_id' => $prev->id]);
+        }
+        $this->extraSchedule($course, $teacherId, '06:30', 'scheduled', 'normal', ['original_schedule_id' => $prev->id]);
+        $this->createSession($course, '2026-10-13', '06:30', '08:30', 'scheduled');
+
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['06:30 scheduled', '13:00 scheduled'], $this->startsOn($course), 'The 40th hop reaches 18:00; 13:00 must stay.');
+    }
+
     /** @param array<string, mixed> $identity */
     private function extraSchedule(StudentClass $course, int $teacherId, string $start, string $status, string $type, array $identity = []): Schedule
     {

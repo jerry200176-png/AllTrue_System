@@ -692,21 +692,21 @@ class ClassSessionController extends Controller
         $origin = function (Schedule $row) use ($schedules, $hm, $ymd, $targetDate): array {
             $cur = $row;
             for ($hops = 0; $hops < \App\Services\BackfillScheduleOccurrenceIdentityService::MAX_HOPS; $hops++) {
-                if ($cur->original_start_time) {
-                    return [$ymd($cur->original_schedule_date), $hm($cur->original_start_time)];
+                if ($cur->original_start_time || (int) ($cur->original_schedule_id ?? 0) <= 0) {
+                    break;
                 }
-                $parentId = (int) ($cur->original_schedule_id ?? 0);
-                if ($parentId <= 0) {
-                    return $cur === $row ? [null, null] : [$targetDate, $hm($cur->start_time)];
-                }
-                $parent = $schedules->get($parentId);
+                $parent = $schedules->get((int) $cur->original_schedule_id);
                 if (!$parent instanceof Schedule) {
                     return ['', '--:--']; // moved in from another date: stands for no slot of this date
                 }
                 $cur = $parent;
             }
+            // #3970: the row reached at the hop limit gets the same terminal check, as in the backfill resolver.
+            if ($cur->original_start_time) {
+                return [$ymd($cur->original_schedule_date), $hm($cur->original_start_time)];
+            }
 
-            return [null, null];
+            return $cur === $row ? [null, null] : [$targetDate, $hm($cur->start_time)];
         };
         $scheduleKey = fn (Schedule $r): string => (int) $r->student_course_id . '|' . $hm($r->start_time);
         $extraBudget = [];
