@@ -67,6 +67,10 @@
   --ds-danger: #e11d48;
   --ds-danger-wash: #fdeaef;
   --ds-danger-line: #fca5a5; /* soft border on --ds-danger-wash */
+  /* #3931: status text on its own *-wash fill, >= 4.5:1 in both themes (base tokens stay for icons/solid fills). */
+  --ds-success-text: #167a3f;
+  --ds-warning-text: var(--ds-warning);
+  --ds-danger-text: #be123c;
   --ds-info: #C2410C; /* also used as text: AA 4.87:1 on --ds-info-wash, 5.18:1 on white */
   --ds-info-wash: #FFF8E1;
   --ds-focus-ring: rgba(245, 124, 0, 0.22);
@@ -251,6 +255,9 @@
   --ds-warning-line: #92400e;
   --ds-danger-wash: #450a0a;
   --ds-danger-line: #991b1b;
+  --ds-success-text: #4ade80;
+  --ds-warning-text: #fbbf24;
+  --ds-danger-text: #f87171;
   --ds-info: #FFB74D;
   --ds-info-wash: rgba(255, 167, 38, 0.16);
   --ds-focus-ring: rgba(255, 183, 77, 0.30);

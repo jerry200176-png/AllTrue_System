@@ -79,16 +79,16 @@ const icon = computed(() => ({
 .at-inline-alert--success {
   background: var(--ds-success-wash);
   border-color: transparent;
-  color: var(--ds-success);
+  color: var(--ds-success-text);
 }
 .at-inline-alert--warning {
   background: var(--ds-warning-wash);
   border-color: transparent;
-  color: var(--ds-warning);
+  color: var(--ds-warning-text);
 }
 .at-inline-alert--danger {
   background: var(--ds-danger-wash);
   border-color: transparent;
-  color: var(--ds-danger);
+  color: var(--ds-danger-text);
 }
 </style>
