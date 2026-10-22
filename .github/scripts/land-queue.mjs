@@ -93,11 +93,8 @@ export function decide(pr, required) {
   // required contexts can still be green (e.g. advisory "Warn if production change lacks
   // tests" cancelled by concurrency). Land on required green only; keep waiting on BLOCKED.
   const statusOk = pr.mergeStateStatus === 'CLEAN' || pr.mergeStateStatus === 'UNSTABLE';
-  if (statusOk && allGreen) {
-    if (open !== 0) return { action: 'wait', reason: 'threads-unknown' };
-    if (pr.review?.ok !== true) return { action: 'wait', reason: 'review-pending', text: `waiting for an independent review of this exact head ${pr.sha} (${pr.review?.why || 'review state unknown'}). Codex re-reviews new commits; if it is rate-limited, the orchestrator's reviewer agent can record the fallback marker (see .github/scripts/review-gate.mjs). The label stays.` };
-    return { action: 'merge' };
-  }
+  if (statusOk && allGreen && open === 0 && pr.review?.ok !== true) return { action: 'wait', reason: 'review-pending', text: `waiting for an independent review of this exact head ${pr.sha} (${pr.review?.why || 'review state unknown'}). Codex re-reviews new commits; if it is rate-limited, the orchestrator's reviewer agent can record the fallback marker (see .github/scripts/review-gate.mjs). The label stays.` };
+  if (statusOk && allGreen) return open === 0 ? { action: 'merge' } : { action: 'wait', reason: 'threads-unknown' };
   return { action: 'wait' };
 }
 
