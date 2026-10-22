@@ -283,12 +283,13 @@ final class BindingService
 
     public function deleteBinding(int $bindingId): bool
     {
-        $binding = DB::table('student_line_bindings')->where('id', $bindingId)->first();
-        if (!$binding) {
-            return false;
-        }
-
-        return DB::transaction(function () use ($binding, $bindingId) {
+        return DB::transaction(function () use ($bindingId) {
+            // #3954: read the exact row under lock in the revoking transaction. A pair
+            // deleted and re-bound since the caller looked is a new row and must not be revoked.
+            $binding = DB::table('student_line_bindings')->where('id', $bindingId)->lockForUpdate()->first();
+            if (!$binding) {
+                return false;
+            }
             // Revoke before deleting. Lock order: student_line_bindings (#3988)
             // -> student_guardians -> parent_sessions, as in GuardianSyncService::revoke().
             $revoked = $this->revokeGuardianAccess((int) $binding->student_id, (string) $binding->line_user_id);
