@@ -201,6 +201,32 @@ class SelfServiceAccessPendingApprovalTest extends TestCase
         $this->assertEqualsCanonicalizing([(int) $home->id, (int) $joined->id], $campuses);
     }
 
+    public function test_teacher_cannot_drop_every_approved_campus_for_a_pending_one(): void
+    {
+        $home = CampusFactory::new()->create();
+        $elsewhere = CampusFactory::new()->create();
+        $teacher = $this->teacher();
+        UserCampus::create(['UserID' => $teacher->id, 'CampusID' => $home->id, 'Admin' => 0, 'Approved' => 1]);
+
+        $this->putJson('/api/v1/me', ['branch_id' => $elsewhere->id, 'multi_branches' => []], $this->bearer($this->token($teacher)))
+            ->assertStatus(422);
+
+        $this->assertSame([['CampusID' => (int) $home->id, 'Admin' => 0, 'Approved' => 1]], $this->links((int) $teacher->id));
+    }
+
+    public function test_duplicate_rows_for_a_campus_keep_the_approved_one(): void
+    {
+        $home = CampusFactory::new()->create();
+        $teacher = $this->teacher();
+        UserCampus::create(['UserID' => $teacher->id, 'CampusID' => $home->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => '0099887766']);
+        UserCampus::create(['UserID' => $teacher->id, 'CampusID' => $home->id, 'Admin' => 0, 'Approved' => 0]);
+
+        $this->putJson('/api/v1/me', ['branch_id' => $home->id, 'multi_branches' => []], $this->bearer($this->token($teacher)))->assertOk();
+
+        $rows = DB::table('UserCampus')->where('UserID', $teacher->id)->get();
+        $this->assertSame([[1, '0099887766']], $rows->map(fn ($r) => [(int) $r->Approved, (string) $r->RFID])->all());
+    }
+
     private function teacher(): User
     {
         return User::create([
