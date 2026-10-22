@@ -326,11 +326,9 @@ class AuthController extends Controller
             if ($branchId !== null) {
                 $allBranches[] = (int) $branchId;
             }
-            if ($type === 'T') {
-                foreach ($multiBranchIds as $extraId) {
-                    if (!in_array($extraId, $allBranches, true)) {
-                        $allBranches[] = $extraId;
-                    }
+            foreach ($multiBranchIds as $extraId) {
+                if (!in_array($extraId, $allBranches, true)) {
+                    $allBranches[] = $extraId;
                 }
             }
 
@@ -343,28 +341,26 @@ class AuthController extends Controller
                 ]);
             }
 
-            if ($type === 'T') {
-                if (Schema::hasTable('teacher_branches') && !empty($allBranches)) {
-                    foreach ($allBranches as $campusId) {
-                        DB::table('teacher_branches')->insertOrIgnore([
+            if (Schema::hasTable('teacher_branches') && !empty($allBranches)) {
+                foreach ($allBranches as $campusId) {
+                    DB::table('teacher_branches')->insertOrIgnore([
+                        'teacher_id' => $user->id,
+                        'branch_id' => $campusId,
+                    ]);
+                }
+            }
+            if (Schema::hasTable('teacher_subjects')) {
+                foreach (array_values(array_unique(array_map('intval', (array) ($data['subject_ids'] ?? [])))) as $subjectId) {
+                    if ($subjectId > 0) {
+                        DB::table('teacher_subjects')->insertOrIgnore([
                             'teacher_id' => $user->id,
-                            'branch_id' => $campusId,
+                            'subject_id' => $subjectId,
                         ]);
                     }
                 }
-                if (Schema::hasTable('teacher_subjects')) {
-                    foreach (array_values(array_unique(array_map('intval', (array) ($data['subject_ids'] ?? [])))) as $subjectId) {
-                        if ($subjectId > 0) {
-                            DB::table('teacher_subjects')->insertOrIgnore([
-                                'teacher_id' => $user->id,
-                                'subject_id' => $subjectId,
-                            ]);
-                        }
-                    }
-                }
-                if (array_key_exists('subject_level_scopes', $data)) {
-                    TeacherScopeService::replaceScopes($user->id, (array) ($data['subject_level_scopes'] ?? []));
-                }
+            }
+            if (array_key_exists('subject_level_scopes', $data)) {
+                TeacherScopeService::replaceScopes($user->id, (array) ($data['subject_level_scopes'] ?? []));
             }
 
             return $user;
