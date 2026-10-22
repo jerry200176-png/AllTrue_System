@@ -25,9 +25,10 @@ let seq = 0; // module-level: one counter for every instance
 
 <script setup>
 import { computed } from 'vue';
-import { isLegacyPaidNoInvoice, PAID_STATUSES as RECEIPT_STATUSES } from '../lib/legacyPaid.js';
+import { isLegacyPaidNoInvoice } from '../lib/legacyPaid.js';
+import { slipAvailability, receiptAvailability } from '../lib/billingDocState.js';
 
-// 繳費單／收據固定兩顆入口：可用條件沿用既有 payment_status 判斷（無新 API／金流規則），不可用時 disabled 並寫一行原因。
+// 繳費單／收據固定兩顆入口：可用條件在 lib/billingDocState.js（學生帳務合約卡共用同一條規則），不可用時 disabled 並寫一行原因。
 const props = defineProps({
   row: { type: Object, required: true },
   canView: { type: Boolean, default: true },
@@ -35,32 +36,11 @@ const props = defineProps({
 });
 defineEmits(['slip', 'receipt', 'ledger']);
 
-const SLIP_STATUSES = ['unpaid', 'partial', 'pending_reconciliation'];
-const NO_PERMISSION = '沒有權限';
 const uid = `tc-doc-${++seq}`; // 月結包的列 id 為 null，所以用實例流水號讓 aria-describedby 不重複。
 
 const legacy = computed(() => isLegacyPaidNoInvoice(props.row));
-
-const slip = computed(() => {
-  if (!props.canView) return { ok: false, reason: NO_PERMISSION };
-  if (legacy.value) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
-  const s = props.row.payment_status;
-  if (props.row.amount_pending_confirmation === true) return { ok: false, reason: '金額待確認，請先確認應收金額' };
-  if (props.row.id == null && !props.row.invoice_id && SLIP_STATUSES.includes(s)) return { ok: false, reason: '共用方案繳費單請至成員課程開立' }; // 沒有課程 id 也沒有帳單 id，繳費單無從查起
-  if (SLIP_STATUSES.includes(s)) return { ok: true };
-  if (s === 'pending_report') return { ok: false, reason: '已回報，等確認入帳' };
-  if (RECEIPT_STATUSES.includes(s)) return { ok: false, reason: '已繳清，不用繳費單' };
-  return { ok: false, reason: '還沒開帳單' };
-});
-
-const receipt = computed(() => {
-  if (!props.canView) return { ok: false, reason: NO_PERMISSION };
-  if (props.row.id == null) return { ok: false, reason: '共用方案收據請至成員課程查看' }; // 月結包列沒有課程 id 可查收據
-  if (props.row.has_confirmed_receipt === true) return { ok: true }; // #3942: the row's current bill has a confirmed receipt (e.g. a confirmed partial payment)
-  if (props.row.payable_status === 'invoiced' && props.row.has_confirmed_receipt === false) return { ok: false, reason: '收款確認後才有收據' }; // #3942 review: the API's current-bill flag decides for a billed row, never an older term's receipt
-  if (RECEIPT_STATUSES.includes(props.row.payment_status)) return { ok: true };
-  return { ok: false, reason: '收款確認後才有收據' };
-});
+const slip = computed(() => slipAvailability(props.row, props.canView));
+const receipt = computed(() => receiptAvailability(props.row, props.canView));
 const actions = computed(() => [
   { key: 'slip', label: '繳費單', icon: 'receipt_long', title: '產生繳費單', state: slip.value },
   { key: 'receipt', label: '收據', icon: 'receipt', title: '查看收據', state: receipt.value },

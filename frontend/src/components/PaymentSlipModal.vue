@@ -1,6 +1,16 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal slip-modal">
+    <div
+      ref="panelRef"
+      class="modal slip-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="繳費通知單"
+      tabindex="-1"
+      data-testid="slip-modal-panel"
+      @keydown.esc.stop.prevent="$emit('close')"
+      @keydown.tab="onTab"
+    >
       <div class="slip-header">
         <h3>繳費通知單預覽</h3>
         <button class="ghost icon-btn" @click="$emit('close')" title="關閉">
@@ -42,11 +52,14 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import BillingDocument from './BillingDocument.vue';
 import { paymentSlipView } from '../lib/billingDocumentView.js';
+import { trapTab } from '../lib/focusTrap';
 
 const props = defineProps({
   show: Boolean,
   invoiceId: { type: Number, default: null },
   studentClassId: { type: Number, default: null },
+  // Where focus goes on close when the opener is gone (same as ReceiptModal).
+  returnFocusTo: { type: Object, default: null },
 });
 defineEmits(['close']);
 
@@ -88,6 +101,25 @@ async function fetchTuitionSlip(scId) {
   }
   return resp.json();
 }
+
+// Same nested-dialog behaviour as ReceiptModal (the slip can open over the ledger, in-app #425): take focus,
+// keep Tab inside, close only this dialog on Escape, give focus back on close.
+const panelRef = ref(null);
+let returnFocusEl = null;
+function onTab(event) {
+  trapTab(event, panelRef.value);
+}
+watch(() => props.show, (visible) => {
+  if (visible) {
+    returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    nextTick(() => panelRef.value?.focus());
+    return;
+  }
+  const opener = returnFocusEl;
+  returnFocusEl = null;
+  const target = opener && opener.isConnected ? opener : props.returnFocusTo;
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+}, { immediate: true });
 
 // ─── Export (modern-screenshot, MIT) ─────────────────────────────
 async function renderBlob() {

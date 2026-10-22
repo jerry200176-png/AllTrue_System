@@ -391,7 +391,7 @@ final class BillingCorrection
         if ($newCount >= $oldCount) {
             $audit('billing_correction_reduction_only', 422);
             return $this->reply([
-                'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用加購／續報。',
+                'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用「續課」。',
                 'code' => 'billing_correction_reduction_only',
             ], 422);
         }

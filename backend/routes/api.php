@@ -505,6 +505,8 @@ Route::prefix('v1')->group(function () {
         Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport']);
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);
         Route::post('payment-reports/director-record-batch', [PaymentReportController::class, 'directorRecordBatch']);
+        // Founder GO 2026-10-21: 其實沒收，改成未繳 for a legacy-flag-only course (§只有舊「已收」標記).
+        Route::post('payment-reports/legacy-flag-clear', [PaymentReportController::class, 'clearLegacyFlag']);
         Route::post('payment-reports/confirm-batch', [PaymentReportController::class, 'confirmBatch']);
         Route::get('payment-reports', [PaymentReportController::class, 'index']);
         Route::put('payment-reports/{id}/confirm', [PaymentReportController::class, 'confirm']);

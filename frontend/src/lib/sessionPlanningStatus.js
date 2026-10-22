@@ -101,7 +101,7 @@ export function buildSessionPlanningStatus({
       code: 'package_overplanned',
       severity: 'warning',
       title: `共用方案預排超過剩餘 ${packageOverage} 堂`,
-      message: course?.package_renewal_message || '仍可排課，但請安排續約或加購；未來預排不會鎖住其他科目。',
+      message: course?.package_renewal_message || '仍可排課，但請安排續課；未來預排不會鎖住其他科目。',
       action: 'review_package_renewal',
       counts: { ...counts, overBy: packageOverage },
     };
