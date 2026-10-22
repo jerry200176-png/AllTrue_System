@@ -1062,6 +1062,14 @@ class PaymentReportController extends Controller
                     'code' => 'free_gift_course_has_fee',
                 ], 422);
             }
+            // #4012: a pending report must be confirmed or rejected first; the NT$0 mark would make the course `free`,
+            // which drops it from the collection queue while the zero-fee guard blocks confirming that report.
+            if (PaymentReport::query()->where('StudentClassID', $course->ID)->where('status', 'pending')->exists()) {
+                return response()->json([
+                    'message' => '這門課還有一筆待核對入帳的付款回報，請先確認或退回那筆回報，再標記「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
+                    'code' => 'free_gift_pending_report',
+                ], 422);
+            }
             $freeNote = trim(Invoice::ZERO_REASON_FREE_GIFT_LABEL . ' ' . trim((string) ($data['note'] ?? '')));
             $named = !empty($data['invoice_id']);
             $period = !$named && $course->getAttribute('ScheduleMode') === 'date'
