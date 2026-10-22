@@ -13,7 +13,7 @@ import {
 } from './fixtures/coursePaymentEntry.js';
 import { recordLatestGetJson } from './fixtures/latestGetJson.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
-import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -34,12 +34,10 @@ const COURSE_PAGE_TITLE = '課程查找';
 const LEARNING_NAV_LABEL = '學習評量';
 const LEARNING_PAGE_TITLE = '學習評量表';
 // #4102 (in-app 395/403/404) retired these billing labels; no billing view may show them again.
-const RETIRED_BILLING_LABELS = ['付款期間待確認', '等你確認收款'];
+// The current source has no 等你確認 at all, so the short form cannot match today's wording.
+const RETIRED_BILLING_LABELS = ['付款期間待確認', '等你確認收款', '家長說繳了，等你確認', '等你確認'];
 // Opening 學習評量表 as a director backfills past records (LearningRecordsPage ensurePastRecords).
 const LEARNING_ENSURE_PAST_PATH = '/api/v1/learning-records/ensure-past';
-// 課程查找 and 學習評量表 ask for session dates with a POST that writes nothing (StudentClassController::sessionDates,
-// the same handler as the GET route). Tests count it, still blocked, only when no assertion needs its data.
-const SESSION_DATES_POST_READ = '/api/v1/student-classes/session-dates';
 const DESKTOP = { name: 'desktop', width: 1440, height: 900 };
 const MOBILE = { name: 'mobile', width: 390, height: 844 };
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
@@ -282,6 +280,13 @@ function noteCoverage(name, count) {
   test.info().annotations.push({ type: 'coverage', description: `${name}=${count}` });
 }
 
+// A failed course-list load must fail the test, never read as missing production data.
+async function expectCourseListLoaded(page, courses) {
+  await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.getByTestId('course-list-refresh-failed'), '課程查找 course list loads').toHaveCount(0);
+  await expect.poll(() => courses().length, { message: '課程查找 loaded a non-empty course list' }).toBeGreaterThan(0);
+}
+
 async function expectNoRetiredBillingLabels(locator, where) {
   const text = await locator.innerText();
   for (const label of RETIRED_BILLING_LABELS) {
@@ -298,13 +303,23 @@ async function expectNoRetiredBillingLabels(locator, where) {
 // browser context so popup pages are guarded too.
 const APP_ORIGIN = appOriginOf(BASE);
 let blockedHttpWrites = [];
-// POST paths a test expects its page to send on its own. The guard still aborts them before the
+// Requests a test expects its pages to send on their own. The guard still aborts them before the
 // first hop; they are counted instead of failing the test. Every other blocked request still fails.
+// Opt in only where no assertion needs the response: 課程查找 and 學習評量表 load session dates with a
+// known POST read (readOnlyAppGuard KNOWN_POST_READ_PATHS), so a blocked one leaves that data unloaded.
+let countKnownPostReads = false;
 let expectedAbortedPosts = new Set();
+
+function countBlockedKnownPostReads() {
+  countKnownPostReads = true;
+}
 
 function expectAbortedPost(path) {
   expectedAbortedPosts.add(path);
 }
+
+const isExpectedAbort = (write) => (countKnownPostReads && isKnownPostRead(APP_ORIGIN, write))
+  || (write.method === 'POST' && write.origin === APP_ORIGIN && expectedAbortedPosts.has(write.path));
 
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
@@ -315,11 +330,12 @@ test.describe('production acceptance — calendar/course parity', () => {
 
   test.beforeEach(async ({ context }) => {
     blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
+    countKnownPostReads = false;
     expectedAbortedPosts = new Set();
   });
 
   test.afterEach(async () => {
-    const expected = blockedHttpWrites.filter((write) => write.method === 'POST' && expectedAbortedPosts.has(write.path));
+    const expected = blockedHttpWrites.filter(isExpectedAbort);
     if (expected.length > 0) noteCoverage('expected_aborted_posts', expected.length);
     expect(blockedHttpWrites.filter((write) => !expected.includes(write)),
       'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
@@ -330,8 +346,8 @@ test.describe('production acceptance — calendar/course parity', () => {
     { name: 'mobile', width: 390, height: 844 },
   ]) {
     test(`director ${viewport.name}: calendar and course management agree`, async ({ page, request }) => {
-      // Ends on 課程查找, whose session-dates POST would otherwise fail the run only when it fires in time.
-      expectAbortedPost(SESSION_DATES_POST_READ);
+      // Ends on 課程查找, whose session-dates read would otherwise fail the run only when it fires in time.
+      countBlockedKnownPostReads();
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
       const token = SESSION.access_token;
@@ -524,7 +540,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     test(`director ${viewport.name}: 課程付款狀態與帳務入口分開且可操作`, async ({ page }) => {
     test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
       'missing controlled production director session');
-    expectAbortedPost(SESSION_DATES_POST_READ);
+    countBlockedKnownPostReads();
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await primeDirectorSession(page);
     await page.goto('/');
@@ -677,11 +693,12 @@ test.describe('production acceptance — calendar/course parity', () => {
     const monthly = page.locator('#tuition-accounting-panel-monthly-review .monthly-review');
     await expect(monthly, '月結要核對').toBeVisible({ timeout: 15_000 });
     await expect(monthly.locator('.at-skeleton')).toHaveCount(0, { timeout: 20_000 });
+    await expect(monthly.getByText('無法載入月結待核對課程', { exact: true }), '月結要核對 loads').toHaveCount(0);
     await expectNoRetiredBillingLabels(center, '帳務中心 月結要核對');
 
     for (const view of [
-      { open: page.locator('#tuition-accounting-tab-payments'), path: '/api/v1/accounting/payments', panel: 'payments', where: '收款紀錄' },
-      { open: page.getByTestId('tc-reminder-settled'), path: '/api/v1/accounting/settled-courses', panel: 'settled', where: '已結清' },
+      { open: page.locator('#tuition-accounting-tab-payments'), path: '/api/v1/accounting/payments', panel: 'payments', where: '收款紀錄', failed: '收據紀錄載入失敗' },
+      { open: page.getByTestId('tc-reminder-settled'), path: '/api/v1/accounting/settled-courses', panel: 'settled', where: '已結清', failed: '已結清課程載入失敗' },
     ]) {
       const loaded = page.waitForResponse((response) => new URL(response.url()).pathname === view.path
         && response.request().method() === 'GET', { timeout: 20_000 });
@@ -690,25 +707,27 @@ test.describe('production acceptance — calendar/course parity', () => {
       const panel = page.locator(`#tuition-accounting-panel-${view.panel}`);
       await expect(panel).toBeVisible({ timeout: 15_000 });
       await expect(panel.locator('.tc-skeleton-area')).toHaveCount(0, { timeout: 15_000 });
+      await expect(panel.getByText(view.failed, { exact: true }), `帳務中心 ${view.where} shows no load error`).toHaveCount(0);
       await expectNoRetiredBillingLabels(center, `帳務中心 ${view.where}`);
     }
   });
 
   for (const viewport of [DESKTOP, MOBILE]) {
     test(`director ${viewport.name}: in-app 396 帳務入口開啟的合約卡被標示、捲到眼前並顯示課程編號`, async ({ page }) => {
-      expectAbortedPost(SESSION_DATES_POST_READ);
+      countBlockedKnownPostReads();
       await openDirectorApp(page, viewport);
       const courses = recordCourseLists(page);
       await navigate(page, COURSE_NAV_LABEL);
       const heading = pageHeading(page, COURSE_NAV_LABEL);
       await expect(heading).toBeVisible({ timeout: 15_000 });
-      await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
+      await expectCourseListLoaded(page, courses);
       const actionCells = page.locator('.payment-status-and-action');
       if (await actionCells.filter({ has: page.getByRole('button', { name: COURSE_PAYMENT_ACTION_NAME }) }).count() === 0) {
         notePreconditionAbsent('course_row_payment_action');
         return;
       }
-      // Prefer a row whose next action is 在這裡看帳務 so the single-entry rule (#3982) is checked too.
+      // Prefer a row whose next action is 在這裡看帳務 and check the row offers it once. (The duplicate on
+      // 帳務資料 rows, fixed by #4125, is checked in the in-app 404 test.)
       const actionLabel = await actionCells.getByRole('button', { name: BILLING_ACTION, exact: true }).count() > 0
         ? BILLING_ACTION : undefined;
       if (!actionLabel) notePreconditionAbsent('course_row_billing_action');
@@ -738,12 +757,12 @@ test.describe('production acceptance — calendar/course parity', () => {
 
   test('director desktop: in-app 404 課程查找帳務資料每份合約顯示期間與付款狀態', async ({ page }) => {
     test.setTimeout(90_000);
-    expectAbortedPost(SESSION_DATES_POST_READ);
+    countBlockedKnownPostReads();
     await openDirectorApp(page, DESKTOP);
     const courses = recordCourseLists(page);
     await navigate(page, COURSE_NAV_LABEL);
     await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
+    await expectCourseListLoaded(page, courses);
     const groups = page.locator('.student-group-card');
     const groupCount = Math.min(await groups.count(), 3);
     let checkedRows = 0;
@@ -756,14 +775,18 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(billing.locator('.student-billing-error'), '帳務資料 loads').toHaveCount(0);
       // #4102 relabelled this view as well.
       await expectNoRetiredBillingLabels(billing, '課程查找 帳務資料');
-      const rows = billing.locator('tbody tr').filter({ has: page.getByTestId('billing-contract-period') });
+      // Every course row, found without the #4101 cell so a revert fails instead of reading as no rows.
+      // The empty-state row is one colspan cell.
+      const rows = billing.locator('table.student-billing-table > tbody > tr').filter({ hasNot: page.locator('td[colspan]') });
       const rowCount = await rows.count();
       for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
         const row = rows.nth(rowIndex);
         const period = row.getByTestId('billing-contract-period');
+        await expect(period, 'each course row shows its contract and period').toHaveCount(1);
         const ref = (await period.locator('div').first().innerText()).trim();
-        expect(ref, 'contract reference').toMatch(/^課程 \d{6}$/);
-        const id = Number(ref.replace(/\D/g, ''));
+        const id = Number(/^課程 (\d{6,})$/.exec(ref)?.[1] || 0);
+        expect(id, 'contract reference 課程 000123').toBeGreaterThan(0);
+        expect(ref).toBe(formatCourseRef(id));
         const course = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === id);
         expect(course, `course ${id} is in the list 課程查找 loaded`).toBeTruthy();
         await expect(period.locator('.hint'), `course ${id} period`)
@@ -879,7 +902,7 @@ test.describe('production acceptance — calendar/course parity', () => {
       // The director page backfills past records on open (a write) and reads session dates by POST.
       // The guard aborts both before they leave the browser; nothing reaches production.
       expectAbortedPost(LEARNING_ENSURE_PAST_PATH);
-      expectAbortedPost(SESSION_DATES_POST_READ);
+      countBlockedKnownPostReads();
       await openDirectorApp(page, viewport);
       await navigate(page, LEARNING_NAV_LABEL);
       await expect(pageHeading(page, LEARNING_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
