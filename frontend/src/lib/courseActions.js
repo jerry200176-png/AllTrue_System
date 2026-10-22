@@ -6,7 +6,7 @@
  * Pure: the page passes capabilities it already computes, so this never re-derives billing or
  * scheduling rules. Item ids are the existing CourseManagement action names (onCourseManagerAction).
  */
-import { RENEW_LESSONS_LABEL } from './courseIntent.js';
+import { DUAL_TEACHER_COPY_LABEL, RENEW_LESSONS_LABEL } from './courseIntent.js';
 
 export function courseActions(course, caps = {}) {
   const paused = String(course?.status || '').toLowerCase() === 'inactive';
@@ -37,7 +37,7 @@ export function courseActions(course, caps = {}) {
       schedule,
       extra,
       { id: 'transfer', label: '轉課' },
-      { id: 'duplicate', label: '換師複製' },
+      { id: 'duplicate', label: DUAL_TEACHER_COPY_LABEL },
     ] },
     { id: 'billing', label: '帳務', items: [
       purchase,
