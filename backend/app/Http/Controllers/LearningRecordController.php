@@ -144,6 +144,20 @@ class LearningRecordController extends Controller
     }
 
     /**
+     * Review actions (approve, reject, roll back, delete, backfill) stay within the caller's campuses, like update()
+     * and updateTeacher(); super_admin sees all. Fails closed when the record has no campus.
+     */
+    private function campusRefusal(Request $request, int $campusId): ?\Illuminate\Http\JsonResponse
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $allowed = $campusId > 0 && in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
+
+        return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
+    }
+
+    /**
      * Bug #495 / in-app #125：cascade-void 復原 helper。
      *
      * 條件已在呼叫端經 LearningRecordResurrectionPolicy::isEligibleForResurrect() 確認。
@@ -1428,6 +1442,9 @@ class LearningRecordController extends Controller
         if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
         if (LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
             // #3824: deleting would unprotect the occurrence without rolling back the teacher's count or audit.
             return response()->json(['message' => '這堂評量已填寫並核准，不能刪除。請先退回核准再處理。', 'code' => 'approved_assessment_teacher_locked'], 409);
@@ -1441,6 +1458,9 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'DirectorID' => 'nullable|integer',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         $campusId = $this->campusIdForLearningRecord($learningRecord);
 
@@ -1486,6 +1506,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
             'ReviewNote' => 'nullable|string|max:255',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         return DB::transaction(function () use ($learningRecord, $data) {
             if ($learningRecord->Status !== 'approved') {
@@ -1712,6 +1735,10 @@ class LearningRecordController extends Controller
             'DirectorID' => 'required|integer',
             'SessionDate' => 'required|date'
         ]);
+        $courseStudentId = DB::table('StudentClass')->where('ID', (int) $data['StudentClassID'])->value('StudentID');
+        if ($courseStudentId !== null && ($refusal = $this->campusRefusal($request, (int) (DB::table('Student')->where('id', (int) $courseStudentId)->value('CampusID') ?? 0)))) {
+            return $refusal;
+        }
         $today = now()->toDateString();
         if ($data['SessionDate'] > $today) {
             return response()->json(['message' => '補登僅限今天或已過的日期，今天以後的課尚不需補登'], 422);
@@ -2027,6 +2054,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
             'ReviewNote' => 'nullable|string|max:255',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         if ($learningRecord->Status === 'approved') {
             return response()->json(['message' => 'Record already approved'], 409);
@@ -2047,6 +2077,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
             'ReviewNote' => 'nullable|string|max:255',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         if ($learningRecord->Status === 'approved') {
             return response()->json(['message' => 'Record already approved'], 409);
