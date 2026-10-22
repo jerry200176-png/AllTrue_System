@@ -196,7 +196,11 @@ class PendingSwipeController extends Controller
             return null;
         }
 
-        if ($pendingSwipe->CampusID !== null && !in_array((int) $pendingSwipe->CampusID, $campusIds, true)) {
+        // A swipe without a campus falls back to its student's campus; with neither it is not listed to directors either.
+        $campusId = $pendingSwipe->CampusID !== null
+            ? (int) $pendingSwipe->CampusID
+            : (int) (Student::query()->whereKey((int) ($pendingSwipe->StudentID ?? 0))->value('CampusID') ?? 0);
+        if (!in_array($campusId, array_map('intval', (array) $campusIds), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
