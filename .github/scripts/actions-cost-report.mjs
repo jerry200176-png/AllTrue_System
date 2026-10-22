@@ -1,11 +1,80 @@
-// Weekly Actions usage report: runs and wall-clock minutes per workflow from the runs API
-// (the repo token cannot read account billing endpoints, so minutes are an approximation:
-// updated_at - run_started_at, includes waiting inside the run). One comment on one tracking issue.
+// Completed attempts for a bounded run-creation cohort, not account billing or token cost.
+// Fail before issue writes if capped, missing, or inconsistent API data prevents enumeration.
 import { execFileSync } from 'node:child_process';
 
 export const WINDOW_DAYS = 7;
 export const RUNS_PER_DAY_FLAG = 48; // land-queue's */5 schedule alone is 288/day
 export const MARK = '<!-- actions-cost-report -->';
+const PAGE_SIZE = 100;
+const SEARCH_CAP = 1000;
+const iso = (ms) => new Date(ms).toISOString().replace('.000Z', 'Z');
+
+// GitHub's created search is inclusive and capped at 1,000 even with pagination:
+// https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository
+// Use disjoint whole-second ranges, splitting capped ranges BEFORE following pages.
+export function collectRuns(api, { repo, since, until }) {
+  if (!Number.isSafeInteger(since) || !Number.isSafeInteger(until) || since % 1000 || until % 1000 || since >= until) throw new Error('Invalid creation window');
+  const runs = new Map();
+  function window(start, end) {
+    const page = (n) => {
+      const query = new URLSearchParams({ created: `${iso(start)}..${iso(end - 1000)}`, per_page: String(PAGE_SIZE), page: String(n) });
+      const data = api(`/repos/${repo}/actions/runs?${query}`);
+      if (data.incomplete_results || !Number.isSafeInteger(data.total_count) || data.total_count < 0 || !Array.isArray(data.workflow_runs)) throw new Error('Incomplete runs response');
+      return data;
+    };
+    const first = page(1);
+    if (first.total_count >= SEARCH_CAP) {
+      if (end - start <= 1000) throw new Error(`Runs API cap cannot be split at ${iso(start)}`);
+      const middle = start + Math.floor((end - start) / 2000) * 1000;
+      window(start, middle);
+      window(middle, end);
+      return;
+    }
+    const found = new Map();
+    for (let n = 1; n <= Math.max(1, Math.ceil(first.total_count / PAGE_SIZE)); n += 1) {
+      const data = n === 1 ? first : page(n);
+      const expected = Math.min(PAGE_SIZE, Math.max(0, first.total_count - (n - 1) * PAGE_SIZE));
+      if (data.total_count !== first.total_count || data.workflow_runs.length !== expected) throw new Error('Runs pagination changed or is partial');
+      for (const run of data.workflow_runs) {
+        const created = Date.parse(run.created_at);
+        if (!Number.isSafeInteger(run.id) || run.id <= 0 || !Number.isFinite(created) || created < start || created >= end || found.has(run.id) || runs.has(run.id)) throw new Error('Duplicate or out-of-window run');
+        found.set(run.id, run);
+      }
+    }
+    if (found.size !== first.total_count) throw new Error('Runs count is incomplete');
+    for (const [id, run] of found) runs.set(id, run);
+  }
+  window(since, until);
+  return [...runs.values()];
+}
+
+export function collectAttempts(api, { repo, since, until }) {
+  const runs = collectRuns(api, { repo, since, until });
+  const attempts = [];
+  const nonCompleted = {};
+  let afterCutoff = 0;
+  for (const run of runs) {
+    if (typeof run.name !== 'string' || !run.name) throw new Error(`Missing workflow name for run ${run.id}`);
+    if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new Error(`Missing attempt count for run ${run.id}`);
+    for (let n = 1; n <= run.run_attempt; n += 1) {
+      // The list already contains the latest attempt. Fetch each earlier attempt,
+      // retaining its failure/cancellation and elapsed time after a successful retry.
+      const attempt = n === run.run_attempt ? run : api(`/repos/${repo}/actions/runs/${run.id}/attempts/${n}`);
+      if (attempt.id !== run.id || attempt.run_attempt !== n || typeof attempt.status !== 'string') throw new Error(`Invalid attempt ${run.id}/${n}`);
+      if (attempt.status !== 'completed') {
+        if (n !== run.run_attempt) throw new Error(`Historical attempt is incomplete: ${run.id}/${n}`);
+        nonCompleted[attempt.status] = (nonCompleted[attempt.status] ?? 0) + 1;
+        continue;
+      }
+      const start = Date.parse(attempt.run_started_at);
+      const end = Date.parse(attempt.updated_at);
+      if (typeof attempt.conclusion !== 'string' || !attempt.conclusion || !Number.isFinite(start) || !Number.isFinite(end) || start < Date.parse(run.created_at) || end < start) throw new Error(`Missing or invalid completed-attempt data: ${run.id}/${n}`);
+      if (start >= until || end >= until) { afterCutoff += 1; continue; }
+      attempts.push({ ...attempt, name: run.name });
+    }
+  }
+  return { attempts, coverage: { since: iso(since), until: iso(until), runCount: runs.length, nonCompleted, afterCutoff } };
+}
 
 export function aggregate(runs, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLAG } = {}) {
   const by = new Map();
@@ -22,36 +91,42 @@ export function aggregate(runs, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_
     .sort((a, b) => b.minutes - a.minutes);
 }
 
-export function render(rows, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLAG, date }) {
+export function render(rows, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLAG, date, coverage }) {
   const total = rows.reduce((s, r) => s + r.minutes, 0);
   const lines = [
     MARK,
-    `## Actions usage, last ${days} days (${date})`,
-    `Total: ${rows.reduce((s, r) => s + r.runs, 0)} runs, about ${Math.round(total)} wall-clock minutes (approximation: includes time waiting inside a run; not the billed figure).`,
+    `## Actions completed attempts: ${days}-day run-creation cohort (${date})`,
+    `Total: ${rows.reduce((s, r) => s + r.runs, 0)} completed attempts, about ${Math.round(total)} wall-clock minutes (approximation: per-attempt updated_at minus run_started_at; includes waiting inside an attempt and possible metadata delay, counts parallel jobs as one elapsed span, excludes queueing before start; not billed minutes or monetary/token cost).`,
+    ...(coverage ? [
+      `Scope: ${coverage.runCount} runs originally created in [${coverage.since}, ${coverage.until}) UTC; only attempts started and completed before the exclusive cutoff are counted. Whole attempt intervals are summed, without clipping.`,
+      `Omitted attempts: ${Object.entries(coverage.nonCompleted).map(([status, count]) => `${count} ${status}`).join(', ') || '0 non-completed'}; ${coverage.afterCutoff} completed at/after the cutoff. Status is observed live during collection, not a historical snapshot.`,
+    ] : []),
+    'Coverage limit: reruns this week of runs originally created before the cohort are excluded. This is not complete seven-day repository usage; the runs API filters original creation time, not attempt activity.',
     '',
-    '| Workflow | Runs | Runs/day | ~Minutes | Failed | Cancelled | Flag |',
+    '| Workflow | Completed attempts | Attempts/day | ~Wall-clock minutes | Failed | Cancelled | Flag |',
     '|---|---:|---:|---:|---:|---:|---|',
     ...rows.slice(0, 25).map((r) => `| ${r.name} | ${r.runs} | ${r.perDay.toFixed(1)} | ${Math.round(r.minutes)} | ${r.failed} | ${r.cancelled} | ${r.flagged ? `> ${flagPerDay}/day` : ''} |`),
   ];
   const flagged = rows.filter((r) => r.flagged);
-  lines.push('', flagged.length ? `Flagged (more than ${flagPerDay} runs/day): ${flagged.map((r) => `**${r.name}**`).join(', ')}. Cancelled runs are usually concurrency churn; consider a longer schedule interval or path filters.` : `No workflow exceeded ${flagPerDay} runs/day.`);
+  lines.push('', flagged.length ? `Flagged (more than ${flagPerDay} completed attempts/day in this cohort): ${flagged.map((r) => `**${r.name}**`).join(', ')}. Check cancellations for concurrency churn; consider a longer schedule interval or path filters.` : `No workflow exceeded ${flagPerDay} completed attempts/day in this cohort.`);
   lines.push('', 'Founder one-time action: set a GitHub spending limit / budget alert (Settings > Billing and licensing > Budgets and alerts) so a runaway workflow stops at a known cost.');
   return lines.join('\n');
 }
 
-const REPO = process.env.GITHUB_REPOSITORY;
-const gh = (args, input) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 256 << 20, input });
+const execGh = (args, input) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 256 << 20, input });
 
-function main() {
-  const since = new Date(Date.now() - WINDOW_DAYS * 86400e3).toISOString().slice(0, 10);
-  const out = gh(['api', `/repos/${REPO}/actions/runs?created=>=${since}&status=completed&per_page=100`, '--paginate', '--jq', '.workflow_runs[] | {name,run_started_at,updated_at,conclusion}']);
-  const runs = out.split('\n').filter(Boolean).map((l) => JSON.parse(l));
-  const body = render(aggregate(runs), { date: new Date().toISOString().slice(0, 10) });
-  const issues = JSON.parse(gh(['api', `/repos/${REPO}/issues?state=open&labels=ops-hygiene&per_page=100`]));
+export function main({ repo = process.env.GITHUB_REPOSITORY, now = Date.now(), gh = execGh } = {}) {
+  if (!repo) throw new Error('GITHUB_REPOSITORY is required');
+  const until = Math.floor(now / 1000) * 1000;
+  const since = until - WINDOW_DAYS * 86400e3;
+  const api = (path) => JSON.parse(gh(['api', path]));
+  const { attempts, coverage } = collectAttempts(api, { repo, since, until });
+  const body = render(aggregate(attempts), { date: iso(until).slice(0, 10), coverage });
+  const issues = JSON.parse(gh(['api', `/repos/${repo}/issues?state=open&labels=ops-hygiene&per_page=100`]));
   let issue = issues.find((i) => !i.pull_request && i.body?.includes(MARK));
-  if (!issue) issue = JSON.parse(gh(['api', '-X', 'POST', `/repos/${REPO}/issues`, '--input', '-'], JSON.stringify({ title: '[ops] Weekly Actions usage report', labels: ['ops-hygiene'], body: `${MARK}\nWeekly comments from .github/workflows/actions-cost-report.yml.` })));
-  gh(['api', '-X', 'POST', `/repos/${REPO}/issues/${issue.number}/comments`, '--input', '-'], JSON.stringify({ body }));
-  console.log(`runs=${runs.length} issue=#${issue.number}`);
+  if (!issue) issue = JSON.parse(gh(['api', '-X', 'POST', `/repos/${repo}/issues`, '--input', '-'], JSON.stringify({ title: '[ops] Weekly Actions usage report', labels: ['ops-hygiene'], body: `${MARK}\nWeekly comments from .github/workflows/actions-cost-report.yml.` })));
+  gh(['api', '-X', 'POST', `/repos/${repo}/issues/${issue.number}/comments`, '--input', '-'], JSON.stringify({ body }));
+  console.log(`completed_attempts=${attempts.length} cohort_runs=${coverage.runCount} issue=#${issue.number}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
