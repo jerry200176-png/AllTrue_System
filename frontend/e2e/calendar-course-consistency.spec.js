@@ -287,8 +287,18 @@ async function expectCourseListLoaded(page, courses) {
   await expect.poll(() => courses().length, { message: '課程查找 loaded a non-empty course list' }).toBeGreaterThan(0);
 }
 
+// User-entered free text on the checked views: a payment note (收款紀錄 備註) may quote any
+// wording, so it is left out. Everything else on the view is app wording and stays checked:
+// the #4102 labels render in tabs, reminders, page descriptions, status chips and badges,
+// card labels, hints and headers, which share no hook a positive selector could rely on.
+const FREE_TEXT_SELECTORS = '.acct-sub--note';
+
 async function expectNoRetiredBillingLabels(locator, where) {
-  const text = await locator.innerText();
+  const text = await locator.evaluate((root, freeText) => {
+    let visible = root.innerText;
+    for (const node of root.querySelectorAll(freeText)) visible = visible.replace(node.innerText, '\n');
+    return visible;
+  }, FREE_TEXT_SELECTORS);
   for (const label of RETIRED_BILLING_LABELS) {
     expect(text.includes(label), `${where} shows the retired label ${label}`).toBe(false);
   }
