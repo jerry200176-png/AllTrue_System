@@ -8,7 +8,7 @@
         <strong>{{ packageInfo.name || '共用方案' }}</strong>
         <span class="package-info-pool">方案池剩餘 {{ packageInfo.remaining_sessions ?? 0 }} / {{ packageInfo.total_sessions ?? 0 }} 堂</span>
         <span v-if="packageInfo.renewal_warning" class="package-info-warning" role="alert">
-          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續約或加購` }}
+          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續課` }}
         </span>
       </div>
     </div>
@@ -161,7 +161,7 @@
             placeholder="8"
             :disabled="!!packageInfo || lockedFields.has('sessions_purchased')"
           />
-          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「加購／設定總堂數」調整（會同步方案所有科目）</span>
+          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「續課／設定總堂數」調整（會同步方案所有科目）</span>
           <span v-else-if="lockedFields.has('sessions_purchased')" class="field-hint field-hint--warning">已有扣堂紀錄，堂數改少請用「合約／堂次調整」；要加堂請用「續課」。</span>
         </div>
 

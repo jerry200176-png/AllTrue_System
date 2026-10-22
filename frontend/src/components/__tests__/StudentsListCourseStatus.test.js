@@ -42,7 +42,7 @@ describe('In-App #353: existing course history stays distinct from current balan
     ['settled', '歷史 · 已結算'],
     ['settled_pending', '歷史 · 課已結束，尚未收款'],
   ])('labels an existing %s row without hiding its recorded balance or reconciliation task', async (closed_reason, label) => {
-    await withCourses([{ ...ordinary, closed_reason }], async (wrapper) => {
+    await withCourses([{ ...ordinary, closed_reason, history_reason: closed_reason }], async (wrapper) => {
       if (closed_reason === 'settled_pending') {
         expect(wrapper.find('.subject-pill').exists()).toBe(false);
         wrapper.findAllComponents({ name: 'AtButton' }).find(b => b.text().includes('顯示已結業')).vm.$emit('click');

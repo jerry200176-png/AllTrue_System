@@ -902,6 +902,17 @@ class ParentPortalController extends Controller
                 ];
             })
             ->values();
+        // in-app #418: this course's own lesson dates (package members: own subject only), newest first.
+        // Queried only for the visible count-mode cards (already parent-scoped).
+        $attendedLessons = $this->attendedLessonsByClass(
+            $perCourse->filter(fn (array $row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
+                ->pluck('id')->all()
+        );
+        $perCourse = $perCourse->map(fn (array $row) => $row + [
+            'attended_lessons' => (string) ($row['schedule_mode'] ?? 'count') === 'count'
+                ? ($attendedLessons[(int) $row['id']] ?? [])
+                : null,
+        ]);
         $visibleClassIds = $perCourse->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
         // 總剩餘堂數：非共用方案逐課加總；共用方案「每池只算一次」（避免每科重複加總成數倍）。
@@ -2469,5 +2480,39 @@ class ParentPortalController extends Controller
         ];
 
         return $map[$v] ?? '';
+    }
+
+    /**
+     * in-app #418: per-course list of the lessons behind 「已上」. The rows come from
+     * SessionDeductionService::batchObservedUsedSessionEvidence(), the same evidence
+     * the 已上 counter counts; this method only formats them for display.
+     * Callers pass only parent-visible class ids.
+     *
+     * @param  array<int>  $studentClassIds
+     * @return array<int, list<array{date:?string, time:?string, note:?string}>> newest first
+     */
+    private function attendedLessonsByClass(array $studentClassIds): array
+    {
+        $out = [];
+        foreach (SessionDeductionService::batchObservedUsedSessionEvidence($studentClassIds) as $classId => $rows) {
+            $lessons = array_map(function (array $r): array {
+                $start = $this->trimToHM($r['start']);
+                $end = $this->trimToHM($r['end']);
+                $status = strtolower((string) $r['status']);
+                return [
+                    'date' => $r['date'],
+                    'time' => $start !== '' ? ($end !== '' ? "$start-$end" : $start) : null,
+                    'note' => $r['source'] !== 'deducted' ? null : match ($status) {
+                        'absent' => '缺席（已扣堂）',
+                        'leave', 'excused' => '請假（已扣堂）',
+                        default => null,
+                    },
+                ];
+            }, $rows);
+            usort($lessons, fn ($a, $b) => strcmp(($b['date'] ?? '') . ($b['time'] ?? ''), ($a['date'] ?? '') . ($a['time'] ?? '')));
+            $out[(int) $classId] = $lessons;
+        }
+
+        return $out;
     }
 }
