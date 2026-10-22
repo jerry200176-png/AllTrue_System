@@ -1459,7 +1459,8 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
-import { DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, RENEW_LESSONS_LABEL, dualTeacherCopyNotice } from '../lib/courseIntent.js';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
+import { DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, dualTeacherCopyNotice } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';

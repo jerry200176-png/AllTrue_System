@@ -4,9 +4,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, RENEW_LESSONS_LABEL, dualTeacherCopyNotice,
-} from '../../lib/courseIntent.js';
+import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
+import { DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, dualTeacherCopyNotice } from '../../lib/courseIntent.js';
 import { courseActions } from '../../lib/courseActions.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
