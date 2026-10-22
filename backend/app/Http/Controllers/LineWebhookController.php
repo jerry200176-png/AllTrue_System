@@ -370,7 +370,7 @@ class LineWebhookController extends Controller
         // Verify director has access to this campus
         $authCampusIds = $request->attributes->get('auth_campus_ids', []);
         $role = $request->attributes->get('auth_role');
-        if ($role !== 'super_admin' && !empty($authCampusIds) && !in_array($campusId, $authCampusIds, true)) {
+        if ($role !== 'super_admin' && !in_array($campusId, array_map('intval', (array) $authCampusIds), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
         $campus = $this->getCampus($campusId);
@@ -396,7 +396,7 @@ class LineWebhookController extends Controller
 
         $authCampusIds = $request->attributes->get('auth_campus_ids', []);
         $role = $request->attributes->get('auth_role');
-        if ($role !== 'super_admin' && !empty($authCampusIds) && !in_array($campusId, $authCampusIds, true)) {
+        if ($role !== 'super_admin' && !in_array($campusId, array_map('intval', (array) $authCampusIds), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
