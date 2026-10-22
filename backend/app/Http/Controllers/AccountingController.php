@@ -734,6 +734,15 @@ class AccountingController extends Controller
         $invoiceTotal = (int) $invoiceRows->sum('total_amount');
         $openInvoiceTotal = (int) $invoiceRows->where('status', '!=', 'void')->sum('total_amount');
 
+        // In-app #425: 金額待確認 only applies to a stopped contract (BillingPayableResolver::isAmountPendingConfirmation),
+        // so the resolver runs for stopped courses only; none stopped = no extra query.
+        $stoppedClasses = $classes->filter(fn (StudentClass $c) => (int) ($c->getAttribute('Stop') ?? 0) === 1)->values();
+        $stoppedVerdicts = $stoppedClasses->isEmpty() ? [] : app(BillingPayableResolver::class)
+            ->courseStatusesByStudentClassIds($stoppedClasses->pluck('ID')->map(fn ($id) => (int) $id)->all(), $stoppedClasses);
+        $amountPendingIds = $stoppedClasses
+            ->filter(fn (StudentClass $c) => BillingPayableResolver::isAmountPendingConfirmation($c, $stoppedVerdicts[(int) $c->ID] ?? []))
+            ->map(fn (StudentClass $c) => (int) $c->ID)->values()->all();
+
         return response()->json([
             'student' => [
                 'id' => (int) $student->id,
@@ -761,7 +770,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $freeGiftSettled = $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
@@ -790,6 +799,8 @@ class AccountingController extends Controller
                 // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
                 'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
                     ? (int) $class->PackageID : null,
+                // In-app #425: same 金額待確認 verdict as the tuition list (TuitionDocActions keeps 繳費單 disabled). Read-only.
+                'amount_pending_confirmation' => in_array((int) $class->ID, $amountPendingIds, true),
                 ];
             })->values()->all(),
             'invoices' => $invoiceRows->all(),
