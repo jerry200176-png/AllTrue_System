@@ -331,6 +331,14 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->assertSame('第三章', (string) $fresh->Progress);
         $this->assertSame('approved', (string) $fresh->Status);
 
+        // A drifted time mirror makes the update heal (and save) the record; the refusal must come first (Codex r4347282693).
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['StartTime' => '15:00:00']);
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '（評量表）', 'Progress' => ''])->assertStatus(422);
+        $drifted = $lr->fresh();
+        $this->assertSame('老師實際填寫的評量正文', (string) $drifted->Content);
+        $this->assertSame('第三章', (string) $drifted->Progress);
+        $this->assertSame($this->aId, (int) $drifted->TeacherID);
+
         $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '主任修正後的評量正文', 'Progress' => ''])->assertOk();
         $this->assertSame('approved', (string) $lr->fresh()->Status, 'an edit that keeps content stays approved');
         $this->assertSame('主任修正後的評量正文', (string) $lr->fresh()->Content);

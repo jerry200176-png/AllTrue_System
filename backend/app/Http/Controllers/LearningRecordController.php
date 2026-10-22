@@ -1286,17 +1286,18 @@ class LearningRecordController extends Controller
                 $learningRecord->$key = $data[$key];
             }
         }
+        // Checked before the mirror sync below, which saves the record when it heals a mirror (Codex r4347282693).
+        if ($wasProtected && !LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
+            return response()->json([
+                'message' => '已核准的評量至少要保留一項內容。若要清空，請先按「退回待審」再修改。沒有變更任何資料。',
+                'code' => 'approved_assessment_content_required',
+            ], 422);
+        }
 
         $this->syncRecordWithClassSession($learningRecord);
 
         if ($isDirector && $learningRecord->Status === 'approved') {
             // Director editing an approved record keeps it approved
-            if ($wasProtected && !LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
-                return response()->json([
-                    'message' => '已核准的評量至少要保留一項內容。若要清空，請先按「退回待審」再修改。沒有變更任何資料。',
-                    'code' => 'approved_assessment_content_required',
-                ], 422);
-            }
         } else {
             $learningRecord->Status = 'pending';
             $learningRecord->ReviewNote = null;
