@@ -148,7 +148,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
           assert.ok(!result.ok, `${kind}/${mode} rejects complete malicious authority case ${index}`);
           assert.ok(result.out.includes('row 2: public_reply rejected by content rule url_not_allowed'),
             `${kind}/${mode} rejects authority case ${index} with a rule-only error`);
-          assert.ok(!result.out.includes(link) && result.summary === '',
+          assert.ok(!result.out.includes(link) && !result.out.includes('/issues/') && result.summary === '',
             `${kind}/${mode} authority case ${index} emits no reply or partial summary`);
         });
         harmlessLinks.forEach((link, index) => {
