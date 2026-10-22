@@ -20,15 +20,17 @@
 | R2/T2 | Exact-target required CI, rollback readiness, risk/production-verification checklist, and resolved bot/reviewer threads |
 | R3/T3 | Evidence package, dry-run/recovery plan, and Repair Manifest where applicable; stop before protected execution or activation for Founder approval |
 
+All classes also need the exact final-head review evidence described in the canonical policy: a completed clean Codex summary, or an actual independent review recorded by the exact owner for the full head when Codex has not reviewed it. Current-head running/incomplete review or findings cannot be overridden by fallback. Missing evidence is `review-pending`, not merge clearance.
+
 ## After required checks (R0–R2 only)
 
-The implementing Agent may squash-merge when the applicable risk gates pass and
-the merge does not cross a T3/protected boundary. Do not wait for a blanket
-human approval.
+When the applicable risk gates and exact-head review pass without a T3/protected boundary, add `queue`; do not wait for a blanket human approval. The land queue re-reads threads and review before every serial/batch squash. A changed head needs fresh CI and review; `review-pending` retains the queue label while waiting.
 
 ```bash
-gh pr merge --squash --delete-branch
+gh pr edit <PR-number> --add-label queue
 ```
+
+Native auto-merge stays disabled until `review/final-head` is required by the main ruleset and pinned to GitHub Actions. The Founder changes that setting only after the default-branch gate has published checks. This SOP does not authorize a ruleset edit or a fake owner review marker.
 
 Never `--admin`. If a **code** merge to `main` starts `deploy.yml`, that is the product control plane (I1). Docs-only still skips deploy. Extra mutation uses committed `workflow_dispatch`, never SSH / artisan / phpunit on the Pi.
 

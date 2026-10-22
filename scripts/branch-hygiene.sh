@@ -9,23 +9,31 @@ set -euo pipefail
 #   ./scripts/branch-hygiene.sh
 #   ./scripts/branch-hygiene.sh --apply
 #   ./scripts/branch-hygiene.sh --apply --delete-backup
+#   ./scripts/branch-hygiene.sh --no-fetch  # dry-run using freshly checked-out refs
 
 APPLY=false
 DELETE_BACKUP=false
+FETCH=true
 BASE_BRANCH="origin/main"
 
 for arg in "$@"; do
   case "$arg" in
     --apply) APPLY=true ;;
     --delete-backup) DELETE_BACKUP=true ;;
+    --no-fetch) FETCH=false ;;
     --base=*) BASE_BRANCH="${arg#*=}" ;;
     *)
       echo "Unknown arg: $arg"
-      echo "Usage: $0 [--apply] [--delete-backup] [--base=origin/main]"
+      echo "Usage: $0 [--apply] [--delete-backup] [--no-fetch] [--base=origin/main]"
       exit 1
       ;;
   esac
 done
+
+if [[ "$FETCH" != true && "$APPLY" == true ]]; then
+  echo "Safety stop: --no-fetch is only supported for dry-run reports."
+  exit 1
+fi
 
 is_protected_branch() {
   local b="$1"
@@ -49,7 +57,11 @@ echo "Base branch: $BASE_BRANCH"
 echo "Delete backup branches: $DELETE_BACKUP"
 echo
 
-git fetch --prune
+if [[ "$FETCH" == true ]]; then
+  git fetch --prune
+fi
+# Fail before reporting success when the caller's checkout lacks the base ref.
+git rev-parse --verify "$BASE_BRANCH^{commit}" > /dev/null
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "Current branch: $CURRENT_BRANCH"
