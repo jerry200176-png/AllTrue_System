@@ -398,6 +398,16 @@ class ProfileController extends Controller
             'subject_level_scopes.*.level' => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
             'allow_duplicate_name' => 'nullable|boolean',
         ]);
+        // Below super_admin: teachers only, created in one of the caller's campuses (as bulkTeachers()).
+        if ((string) $request->attributes->get('auth_role') !== 'super_admin') {
+            if (($data['role'] ?? 'teacher') === 'director') {
+                return response()->json(['message' => '主任帳號請由超級管理員建立'], 403);
+            }
+            $mainCampus = $data['campus_id'] ?? $data['branch_id'] ?? null;
+            if ($mainCampus !== null && !in_array((int) $mainCampus, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
+                return response()->json(['message' => '無權限在此分校建立帳號'], 403);
+            }
+        }
         $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
         if ($loginName === '') {
             return response()->json(['message' => '帳號不可空白'], 422);
