@@ -135,6 +135,19 @@ class ClassSessionUpdateTest extends TestCase
         ]);
     }
 
+    /** Restore is offered to directors only (CalendarSessionEditModal); the course's own teacher cannot call it either. */
+    public function test_a_teacher_cannot_restore_a_cancelled_session(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])->assertOk();
+        $teacherToken = $this->createTeacherToken((int) \App\Models\StudentClass::findOrFail($courseId)->TeacherID);
+
+        $this->withHeaders(['Authorization' => "Bearer {$teacherToken}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/class-sessions/{$session->id}/restore", ['reason' => '老師誤按'])
+            ->assertForbidden();
+        $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'cancelled']);
+    }
+
     public function test_attended_to_leave_adjusted_succeeds(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession('attended');

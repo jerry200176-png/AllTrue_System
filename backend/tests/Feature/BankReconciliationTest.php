@@ -111,6 +111,24 @@ class BankReconciliationTest extends TestCase
         $r->assertStatus(422);
     }
 
+    public function test_a_director_of_another_campus_cannot_import_list_or_reconcile(): void
+    {
+        [, $campus] = $this->seedDirector();
+        [$foreignToken] = $this->seedDirector();
+        $txn = BankTransaction::create([
+            'campus_id' => $campus->id, 'transaction_date' => '2026-05-01',
+            'amount' => 5000, 'reference' => 'X1', 'status' => 'unmatched',
+        ]);
+
+        $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => 1], $this->bearer($foreignToken))->assertForbidden();
+        $this->assertSame('unmatched', (string) $txn->fresh()->status);
+        $this->postJson('/api/v1/bank-reconciliation/import', [
+            'campus_id' => $campus->id, 'transactions' => [['date' => '2026-05-02', 'amount' => 100]],
+        ], $this->bearer($foreignToken))->assertForbidden();
+        $this->assertSame(1, BankTransaction::where('campus_id', $campus->id)->count());
+        $this->getJson('/api/v1/bank-reconciliation?branch_id=' . $campus->id, $this->bearer($foreignToken))->assertForbidden();
+    }
+
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
