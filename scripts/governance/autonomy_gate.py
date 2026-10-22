@@ -82,6 +82,14 @@ _DEPLOYABLE_EXACT = {
     ".github/workflows/deploy.yml",
 }
 
+# The Deploy step's executor, moved out of deploy.yml verbatim (#4051). It runs from the
+# workflow's own checkout, not from the Pi's app tree, so it is classified exactly like
+# deploy.yml everywhere below: control plane, never application runtime, gate policy.
+_DEPLOY_EXECUTOR_PATHS = frozenset({
+    "scripts/production-deploy/pi-remote-deploy.sh",
+    "scripts/production-deploy/render_pi_remote_deploy.py",
+})
+
 _WORKFLOW_ONLY_PREFIXES = (
     ".github/",
     "scripts/governance/",
@@ -866,7 +874,7 @@ def is_application_runtime_path(path: str) -> bool:
     """
 
     normalized = path.replace("\\", "/")
-    if normalized.startswith(_WORKFLOW_ONLY_PREFIXES):
+    if normalized.startswith(_WORKFLOW_ONLY_PREFIXES) or normalized in _DEPLOY_EXECUTOR_PATHS:
         return False
     return is_deployable_path(normalized)
 
@@ -875,7 +883,11 @@ def is_control_plane_path(path: str) -> bool:
     """Identify changes effective in the delivery/control plane, not the app."""
 
     normalized = path.replace("\\", "/")
-    return normalized in _CONTROL_PLANE_EXACT or normalized.startswith(_CONTROL_PLANE_PREFIXES)
+    return (
+        normalized in _CONTROL_PLANE_EXACT
+        or normalized in _DEPLOY_EXECUTOR_PATHS
+        or normalized.startswith(_CONTROL_PLANE_PREFIXES)
+    )
 
 
 def is_control_plane_only_paths(paths: Iterable[str]) -> bool:
@@ -1637,7 +1649,7 @@ _ROLLBACK_TOKEN = "Rollback: revert this PR"
 _ROLLBACK_MENTION_RE = re.compile(r"roll[ -]?back|revers|revert|undo|recover", re.IGNORECASE)
 _TITLE_PR_RE = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
 _COMMIT_API_FILE_CAP = 300
-_GATE_POLICY_PATHS = {"scripts/governance/autonomy_gate.py", ".github/workflows/deploy.yml"}
+_GATE_POLICY_PATHS = {"scripts/governance/autonomy_gate.py", ".github/workflows/deploy.yml", *_DEPLOY_EXECUTOR_PATHS}
 
 
 def has_strict_rollback(body: str, *, after_go: bool = False) -> bool:
