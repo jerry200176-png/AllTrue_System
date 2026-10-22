@@ -676,6 +676,9 @@ const packageLeadOf = (c) => {
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
   if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    // #4002: a tutoring member has no payment obligation (the server answers tutoring_no_payment_obligation),
+    // so a payable regular member leads; the lines below stay as fallbacks (e.g. an all-tutoring package).
+    || members.find((m) => m.class_type !== 'tutoring' && !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
     || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
