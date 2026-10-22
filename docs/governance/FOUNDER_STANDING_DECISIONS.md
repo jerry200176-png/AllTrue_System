@@ -3,6 +3,23 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-21（二）
+
+### 1. In-app 公開回覆與 Phase A 回寫不再逐次核准（Founder 對話原文：「回覆幹嘛還要我核准啦」）
+
+- **範圍（只限這兩個 workflow）**：`bug-phase-a-triage.yml`（Phase A：`new`→`triaged`＋公開回覆，或 `close_as_logged` 經 `BugReportService::closeAsLogged`）與 `bug-followup-comment.yml`（只留言、不改狀態；`expected_status=closed` 只限已上線的 logged suggestion）。兩者**移除每次 run 的 `production-activation` Founder 審核**。
+- **保留的控制**：只能 `workflow_dispatch`、只能在 `refs/heads/main` 執行（否則 fail）、secret 只在 main-only 的 `production-ssh` environment、共用 `inapp-production-writeback` concurrency（`queue: max`）、先跑不含 secret 的 preview。
+- **批次**：輸入為 `rows_json`，一次 **1–20 筆**；任何一筆不合格（`bug_id`、本 repo issue URL 且回覆內含該 URL、disposition 語法、`close_as_logged` 布林、回覆 ≤600 字元、bug_id 不重複）整批在任何寫入前失敗。preview 只顯示 bug_id／issue／disposition 或狀態／長度／sha256，不印回覆全文。寫入依序在同一個 SSH session 執行，每筆的 tinker 邏輯不變。
+- **不在本條範圍、維持原關卡**：Phase C（`resolved`）、`deploy.yml` 與正式啟用、資料修復、migration、其他任何正式寫入。回覆內容仍須符合 `CHAT_BUG_SYSTEM.md` §3.8，公開紀錄不得含個資。2026-10-14（二）第 7 條的使用紀錄要求照舊。
+
+### 2. 合併與 R3 上線分批
+
+Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對下列提案（Agent 在 CI 綠＋review 處理完＋無 migration 時自行合併 R0–R3 PR；R3 上線隨 release train 班次分批；非只新增型 migration、資料修復、credential rotation 仍問 Founder）回覆「好」；之後又說「不要一直要我批准 很煩 反正我都按同意」。下列 (b) 若 PR #4359 合併，再由其 2026-10-21（二）之二 進一步取代（R3 application range 通過自動控制即上線）。
+
+- **(a) 合併**：Agent 可自行合併**任何風險等級 R0–R3** 的 PR，不必問 Founder，條件全部成立：head 上每個 required check 綠；Codex／review 指出的問題已處理且每個 review thread 都已 resolve；PR **不含 migration**。只新增型 migration 照舊適用 R5 的 T2 規則（2026-10-14（三）補充第 1 條）；會 drop／rename／change 欄位或寫資料的 migration 仍須 Founder 對確切範圍決定。本條取代 2026-10-12 第 1 條與 `RISK_BASED_MERGE_POLICY.md` §Founder standing exception 中「R3 只限已決定的帳務／權限規則才可自行合併」的較窄條件（僅限合併；不放寬下列 (b)(c)）。**不取代** 2026-10-14（二）第 5 條：會授予／擴大權限或改變核准方式、受保護邊界的治理／控制面變更（含 workflow、`deploy.yml`、`autonomy_gate.py`）仍由 Founder 批准後才合併。`AGENTS.md` Workflow Risk Tiers 的 T3 列與 `RISK_BASED_MERGE_POLICY.md` §T3/protected boundary 已同步。
+- **(b) R3 上線**：R3 的 production activation 仍由 Founder 在平台上審核（GO 文字任何 Agent token 都寫得出來，Founder 2026-10-08 Q1 A 維持），但**分批**：R3 範圍隨 release train 班次（台北 12:17／18:17）上線，Founder 每班最多按一次；除重大 production 事故外，Agent 不另外 dispatch 單次 R3 部署。
+- **(c) 仍須問 Founder**：非只新增型 migration、正式資料修改／修復、credential rotation、受保護的政策決定（帳務／付款規則、權限）。
+
 ## 2026-10-19（一）（既有 dump 金鑰的限定雲端保管遷移）
 
 使用者在本次交接明確批准：只將 **同一把既有 `DUMP_ARTIFACT_KEY`** 由自己的 Personal vault，以 **direct environment-variable** 類型綁定至 **AllTrue_System 專用受控雲端環境**，用於既有授權範圍的唯讀 artifact 解密。這是下方 2026-10-14（三）第 2 條低風險 token 限制的**具名例外**，不放寬其他正式密碼、token 或專案的限制；`ALLTRUE_TRIAGE_TOKEN` 的唯讀路徑及 proxy 注入條件仍不變。
