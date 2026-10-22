@@ -235,9 +235,10 @@ if [ "$PENDING" -gt 0 ]; then
   mkdir -p /home/admin/backups/emergency
   DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
   if ! mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
-    --single-transaction AllTrue | gzip > "$BACKUP_FILE"; then
+    --single-transaction --comments --dump-date AllTrue | gzip > "$BACKUP_FILE"; then
     abort_deploy "migration 前 DB backup 失敗"
   fi
+  bash /home/admin/scripts/verify-db-backup.sh "$BACKUP_FILE" || abort_deploy "DB backup verification failed"
   echo "✅ 備份完成：$BACKUP_FILE"
   # R67 + D1（Founder 2026-10-13）：migration 失敗絕不可被吞，且必須立即中止部署。
   # abort_deploy 走既有 rollback_deploy：還原 PREV_COMMIT 原始碼與 Composer 依賴，

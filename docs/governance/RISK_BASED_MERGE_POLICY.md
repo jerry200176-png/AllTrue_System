@@ -21,7 +21,7 @@ Preserve autonomous delivery for reversible changes while keeping a Founder gate
 | **R2 / T2** | Reversible scheduling/runtime changes without a protected boundary | Exact-target required CI, rollback readiness, documented risk/production-verification plan, and resolved bot/reviewer threads; Agent may merge/deploy automatically when deterministic classification stays non-protected. |
 | **R3 / T3** | Production data repair; destructive migration; privilege expansion; financial correction; security boundary; backup/restore; mass recalculation; protected product direction | Agent may prepare implementation, tests, dry-run, Repair Manifest, recovery plan, and evidence package. Stop for Founder approval before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz, destructive action, backup restore, security-sensitive credential change, or major product/brand direction. |
 
-## Founder standing exception (2026-10-12)
+## Founder standing exception (2026-10-12; merge eligibility superseded by `FOUNDER_STANDING_DECISIONS.md` 2026-10-21 item 2(a))
 
 The Founder pre-approved one R3 path ([`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) ①): R3 **code** that implements billing or permission rules the Founder has already decided may be **merged** by the Agent (merge only) when all of these hold: a focused regression test for each changed money/permission path added or updated in the PR and run in exact-head CI (not only the paths `high-risk-test-gate.yml` recognizes), exact-head required checks green, an independent review (Codex or a reviewer agent; the Agent checks this before adding `queue`, and the queue rechecks exact-head review evidence before squash), the full review gate of [`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-12 ④ satisfied (no open P0/P1, every regression this PR introduces fixed at any severity, and its required P2 remediation round done), and after release the direct affected-path production evidence required by [`EVIDENCE_CONTRACT.md`](./EVIDENCE_CONTRACT.md) for R2/R3. It does **not** cover new billing/entitlement semantics, an identity/authz boundary change, production data mutation or repair, production migration, credential rotation, or irreversible operations; those keep the Founder stop above. Deployment is **not** covered: a range containing such a PR still ships through the existing release train / production-activation Founder approval in `deploy.yml`, because `autonomy_gate.py` and `deploy.yml` do not yet carry machine evidence for this exception (#3961).
 
@@ -172,6 +172,10 @@ Required checks do not authorize protected execution. The Agent may prepare the
 complete evidence package, but must stop before the protected action and request
 Founder approval with the exact action, worst credible downside,
 rollback/reversibility, and post-action verification.
+
+When an Agent may merge an R3 PR is defined only in
+[`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-21
+item 2(a).
 
 ## Rollback
 

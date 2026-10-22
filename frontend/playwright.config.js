@@ -75,6 +75,8 @@ export default defineConfig({
     /binding-management-clarity|nightly-reconcile-clarity|director-accounts-clarity|parttime-payroll-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server and local PDF artifacts.
     /truefit-fixture-print\.spec\.js$/,
+    // Vitest unit test for the acceptance read-only guard (vitest.config.js).
+    /fixtures\/readOnlyAppGuard\.test\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
