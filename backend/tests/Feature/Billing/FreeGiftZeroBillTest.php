@@ -75,6 +75,27 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertFalse(collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->json('courses'))->firstWhere('id', $course->ID)['paid']);
     }
 
+    /** #4012: a course with a pending payment report cannot be marked 免費／贈送 until that report is resolved. */
+    public function test_a_pending_payment_report_blocks_the_free_gift_mark(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->monthlyCourse($this->student());
+        $report = PaymentReport::create([
+            'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'InvoiceID' => null,
+            'reported_by_name' => 'x', 'payment_date' => '2026-10-13', 'payment_method' => 'cash',
+            'reported_amount' => 3000, 'status' => 'pending', 'report_token_hash' => hash('sha256', 'free-gift-4012'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))
+            ->assertStatus(422)->assertJsonPath('code', 'free_gift_pending_report');
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+
+        // Once the report is rejected, the mark goes through as before.
+        $report->update(['status' => 'rejected']);
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
+    }
+
     /** #3991 review: a director of another campus cannot write a free/gift bill. */
     public function test_a_foreign_campus_director_cannot_record_a_free_gift_bill(): void
     {
