@@ -260,7 +260,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       ['tw_landline', '02-2345-6789'], ['tw_landline', '(02)23456789'], ['tw_landline', '+886-2-2345-6789'],
       ['tw_national_id', 'A123456789'], ['email', 'parent.name@example.com'],
       ['secret_token', 'ghp_abcdefghijklmnop'], ['secret_token', 'github_pat_11AAAAAAAAAA'], ['secret_token', 'sk-abcdefghijkl'],
-      ['secret_token', 'xoxb-123456789012'], ['secret_token', 'AKIAABCDEFGHIJKLMNOP'], ['private_key', '-----BEGIN RSA PRIVATE KEY-----'],
+      ['secret_token', 'xoxb-123456789012'], ['secret_token', 'AKIA' + 'ABCDEFGHIJKLMNOP'], ['private_key', '-----BEGIN' + ' RSA PRIVATE KEY-----'],
       ['long_hex', 'a'.repeat(40)], ['long_base64', 'QWxhZGRpbjpvcGVuIHNlc2FtZQ1234567890abcd=='],
       ['url_not_allowed', 'https://evil.example/x'], ['url_not_allowed', 'https://github.com/o/r/pull/3'],
       ['url_not_allowed', 'https://github.com/o/other/issues/1'], ['url_not_allowed', 'https://daan.lifenet.com.tw.evil.io/'],
