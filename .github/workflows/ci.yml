@@ -86,6 +86,7 @@ jobs:
           node --test scripts/tests/repo-hygiene.test.mjs
           python3 scripts/tests/test_branch_hygiene.py
           node scripts/governance/check-production-workflow-inventory.mjs
+          python3 scripts/ci/workflow_expression_size.py
           python3 scripts/tests/test_governance_simplification.py
           python3 -m unittest scripts.tests.test_pr_declaration_gate
           python3 -m unittest scripts.tests.test_pop_mount_policy_probe
