@@ -30,6 +30,31 @@ class ProfileStoreScopeTest extends TestCase
         $this->assertDatabaseHas('User', ['LoginName' => 'new-t@example.com', 'type' => 'T']);
     }
 
+    public function test_multi_branches_cannot_reach_a_campus_the_caller_does_not_manage(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $other = CampusFactory::new()->create();
+        $token = $this->token('A', [$campus->id]);
+
+        // Primary campus is the caller's, but a multi_branches entry is a foreign campus -> refused, nothing created.
+        $this->api($token)->postJson('/api/v1/profiles', [
+            'name' => 'x', 'account' => 'mb-foreign@example.com', 'password' => 'Password123', 'role' => 'teacher',
+            'campus_id' => $campus->id, 'multi_branches' => [$other->id],
+        ])->assertForbidden();
+        $this->assertDatabaseMissing('User', ['LoginName' => 'mb-foreign@example.com']);
+        $this->assertDatabaseMissing('UserCampus', ['CampusID' => $other->id]);
+
+        // multi_branches entirely within the caller's campuses still works.
+        $second = CampusFactory::new()->create();
+        $token2 = $this->token('A', [$campus->id, $second->id]);
+        $created = $this->api($token2)->postJson('/api/v1/profiles', [
+            'name' => 'ok', 'account' => 'mb-ok@example.com', 'password' => 'Password123', 'role' => 'teacher',
+            'campus_id' => $campus->id, 'multi_branches' => [$second->id],
+        ])->assertCreated();
+        $uid = (int) \App\Models\User::where('LoginName', 'mb-ok@example.com')->value('id');
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $uid, 'CampusID' => $second->id]);
+    }
+
     public function test_super_admin_can_still_create_a_director(): void
     {
         $campus = CampusFactory::new()->create();
