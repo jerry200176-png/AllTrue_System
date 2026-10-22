@@ -75,12 +75,42 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
     }
 
     /**
-     * A real move: 15:00 -> 13:00. Today's scheduled lesson moves; next week's pending leave is status-locked and
-     * stays at 15:00, so the save still warns even though one lesson was updated.
+     * The unchanged-slot switch leaves nothing behind, so a status-locked lesson that was already off the slot before
+     * this save (e.g. an older one-off move without the exception flag) is not reported as this edit's doing.
      */
-    public function test_status_locked_lesson_left_on_the_old_time_still_warns(): void
+    public function test_monthly_switch_ignores_a_status_locked_lesson_that_was_already_off_the_slot(): void
     {
-        [$token, $course] = $this->seedSundayCourse(withHistory: true, lockToday: false);
+        [$token, $course] = $this->seedSundayCourse(withHistory: true);
+        ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-04-16',
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'Status' => 'completed',
+            'IsContractException' => 0,
+        ]);
+        $this->assertSame(1, app(ContractSessionSchedule::class)->countStatusLockedFutureContractSessions($course->fresh()));
+        $before = $this->lessonRows($course);
+
+        $sync = $this->switchToMonthly($token, $course)->json('session_sync');
+
+        $this->assertSame(0, (int) ($sync['unaligned_future_sessions'] ?? -1));
+        $this->assertArrayNotHasKey('warning', $sync);
+        $this->assertArrayNotHasKey('reconcile_skipped', $sync);
+        $this->assertArrayNotHasKey('status_locked_future_sessions', $sync);
+        $this->assertSame($before, $this->lessonRows($course));
+    }
+
+    /**
+     * A real move: 15:00 -> 13:00. Today's scheduled lesson moves; next week's lesson is status-locked (a pending
+     * leave, or an attendance status such as 試聽 trial) and stays at 15:00, so the save still warns even though one
+     * lesson was updated.
+     *
+     * @dataProvider statusLockedStatuses
+     */
+    public function test_status_locked_lesson_left_on_the_old_time_still_warns(string $nextWeekStatus): void
+    {
+        [$token, $course] = $this->seedSundayCourse(withHistory: true, nextWeekStatus: $nextWeekStatus);
 
         $res = $this->withHeaders($this->headers($token))->putJson("/api/v1/student-classes/{$course->ID}", [
             'subject' => 'Math',
@@ -105,6 +135,12 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
         $this->assertSame('15:00', $this->startOn($course, '2026-04-19'));
     }
 
+    /** @return array<string, array{0: string}> */
+    public function statusLockedStatuses(): array
+    {
+        return ['pending leave' => ['leave_requested'], 'trial attendance' => ['trial']];
+    }
+
     /** Which rows count as a status-locked lesson left off the contract slot (Sunday 13:00-15:00 here). */
     public function test_status_locked_count_only_covers_upcoming_slot_holding_lessons(): void
     {
@@ -120,6 +156,10 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
             ['2026-05-10', '15:00', 'completed', 1],        // contract exception: off the slot on purpose
             ['2026-05-17', '13:00', 'leave_requested', 0],  // on the slot
             ['2026-05-24', '15:00', 'scheduled', 0],        // movable: countUnalignedFutureContractSessions() covers it
+            ['2026-05-31', '15:00', 'trial', 0],            // attendance status (AttendanceStatus::META): counted
+            ['2026-06-07', '15:00', 'suspended', 0],        // 停課: off the contract on purpose
+            ['2026-06-14', '15:00', 'rescheduled', 0],      // one-off move: off the contract on purpose
+            ['2026-06-21', '15:00', 'new_status', 0],       // unknown status fails toward the warning: counted
         ];
         foreach ($rows as [$date, $start, $status, $exception]) {
             ClassSession::create([
@@ -133,7 +173,7 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
         }
 
         $schedule = app(ContractSessionSchedule::class);
-        $this->assertSame(2, $schedule->countStatusLockedFutureContractSessions($course->fresh()));
+        $this->assertSame(4, $schedule->countStatusLockedFutureContractSessions($course->fresh()));
         $this->assertSame(1, $schedule->countUnalignedFutureContractSessions($course->fresh()));
     }
 
@@ -167,12 +207,17 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
 
     /**
      * A Sunday 15:00-17:00 count course from 2026-03-01 with its eight lessons: six past (completed), today's
-     * scheduled one and next week's. With history, 03-08 was attended (a sign-in) and next week's lesson has a
-     * pending leave; lockToday also signs today's lesson in, which locks it.
+     * scheduled one and next week's. With history, 03-08 was attended (a sign-in) and next week's lesson is in
+     * $nextWeekStatus (a pending leave by default); lockToday also signs today's lesson in, which locks it.
      *
      * @return array{0: string, 1: StudentClass}
      */
-    private function seedSundayCourse(bool $withHistory, bool $lockToday = false, bool $withLessons = true): array
+    private function seedSundayCourse(
+        bool $withHistory,
+        bool $lockToday = false,
+        bool $withLessons = true,
+        string $nextWeekStatus = 'leave_requested'
+    ): array
     {
         $token = $this->createDirectorToken();
         $student = Student::create([
@@ -215,7 +260,7 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
             if ($withHistory && $date === '2026-03-08') {
                 $status = 'attended';
             } elseif ($withHistory && $date === '2026-04-19') {
-                $status = 'leave_requested';
+                $status = $nextWeekStatus;
             }
             $session = ClassSession::create([
                 'StudentClassID' => $course->ID,

@@ -25,11 +25,12 @@ use Illuminate\Support\Facades\Schema;
 class ContractSessionSchedule
 {
     /**
-     * Statuses that keep a lesson on its date and time while it still takes place (or may, for a pending
-     * leave): syncFutureScheduledSessionTimes() never moves them. Cancelled, voided, approved-leave and
-     * one-off rescheduled rows are not listed: they do not hold a contract slot.
+     * Statuses that are NOT a status-locked lesson: 'scheduled' (the sync moves it), one-off 'rescheduled' rows
+     * and 停課 'suspended' (off the contract on purpose), and SessionStatus::futureReservationExclusionStatuses()
+     * (cancelled, voided, approved leave: no slot held). Every other status, including attendance outcomes from
+     * AttendanceStatus::META, a pending leave and any status added later, keeps the lesson where it is.
      */
-    private const STATUS_LOCKED_LESSON_STATUSES = ['completed', 'attended', 'late', 'absent', SessionStatus::LEAVE_REQUESTED];
+    private const NOT_STATUS_LOCKED_STATUSES = [SessionStatus::SCHEDULED, 'rescheduled', 'suspended'];
 
     public function __construct(private ClassSessionContractReflowService $contractSessionReflowService)
     {
@@ -1618,16 +1619,16 @@ class ContractSessionSchedule
 
     /**
      * Not-yet-started lessons that a fixed-slot edit left off the saved contract slots because of their status.
-     * syncFutureScheduledSessionTimes() moves only 'scheduled' rows, so a lesson already marked (or with a
-     * pending leave) keeps its old time. Zero means nothing was left behind; zero rows moved by the sync is not
-     * evidence of a lock, because an unchanged slot needs no move (#4435).
+     * syncFutureScheduledSessionTimes() moves only 'scheduled' rows, so a lesson in any status outside
+     * NOT_STATUS_LOCKED_STATUSES and the reservation exclusions (already marked, pending leave, an unknown status)
+     * keeps its old time. Zero rows moved by the sync is not evidence of a lock: an unchanged slot needs no move (#4435).
      */
     public function countStatusLockedFutureContractSessions(StudentClass $studentClass): int
     {
         $now = Carbon::now();
         $today = $now->toDateString();
         $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
-            ->whereIn('Status', self::STATUS_LOCKED_LESSON_STATUSES)
+            ->whereNotIn('Status', array_merge(self::NOT_STATUS_LOCKED_STATUSES, SessionStatus::futureReservationExclusionStatuses()))
             ->where(function ($q) use ($today, $now) {
                 $q->whereDate('SessionDate', '>', $today)
                     ->orWhere(fn ($sameDay) => $sameDay->whereDate('SessionDate', $today)->where('StartTime', '>', $now->format('H:i:s')));

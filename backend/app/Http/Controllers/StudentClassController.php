@@ -1659,6 +1659,8 @@ class StudentClassController extends Controller
         // a pure removal from a slot that was added or moved: deleting a slot
         // must not validate a retained locked occurrence as a new booking.
         $previousScheduleSlots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
+        // With the pre-edit SessionDuration, so a duration-only edit also counts as a slot change (#4435).
+        $previousRecurringSlots = $this->recurringSlotsFor($previousScheduleSlots, $studentClass);
         if (($rawInput['payment_status'] ?? null) === 'paid'
             && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
             return response()->json([
@@ -1928,6 +1930,7 @@ class StudentClassController extends Controller
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
+            $previousRecurringSlots,
             $scheduleFieldsPresent,
             $teacherEffectiveDate
         ) {
@@ -2144,11 +2147,17 @@ class StudentClassController extends Controller
             if ($unalignedFuture > 0) {
                 $sessionSync['reconcile_skipped'] = true;
                 $sessionSync['warning'] = "固定時段已儲存，但仍有 {$unalignedFuture} 筆未來堂次與新時段不同。請在堂次列表確認狀態。";
-            } elseif (($sessionSync['reason'] ?? '') === 'history_exists') {
+            } elseif (($sessionSync['reason'] ?? '') === 'history_exists'
+                && !$this->sameRecurringSlots(
+                    $previousRecurringSlots,
+                    $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass)
+                )
+            ) {
                 // #4435: zero rows moved is not a lock. Re-sending an unchanged
-                // slot (e.g. a 堂數制→月結 switch) moves nothing because every
-                // lesson is already in place. Warn only for upcoming lessons whose
-                // status kept them off the saved slots.
+                // slot (e.g. a 堂數制→月結 switch) moves nothing and leaves
+                // nothing behind, so it is skipped above. When the slots did
+                // change, warn only for upcoming lessons whose status kept them
+                // off the saved slots.
                 $statusLockedFuture = $this->contractSchedule->countStatusLockedFutureContractSessions($studentClass);
                 if ($statusLockedFuture > 0) {
                     $sessionSync['status_locked_future_sessions'] = $statusLockedFuture;
