@@ -398,6 +398,29 @@ class ProfileController extends Controller
             'subject_level_scopes.*.level' => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
             'allow_duplicate_name' => 'nullable|boolean',
         ]);
+        // Below super_admin: teachers only, created in one of the caller's campuses (as bulkTeachers()).
+        if ((string) $request->attributes->get('auth_role') !== 'super_admin') {
+            if (($data['role'] ?? 'teacher') === 'director') {
+                return response()->json(['message' => '主任帳號請由超級管理員建立'], 403);
+            }
+            $callerCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+            // Every target campus (primary + each multi_branches) must be one the caller manages; an unmanaged
+            // campus would otherwise get an Approved UserCampus row. Joining an unmanaged campus is the campus
+            // director's decision (pending-approval workflow is a separate change); refuse it here.
+            $mainCampus = $data['campus_id'] ?? $data['branch_id'] ?? null;
+            $targetCampuses = [];
+            if ($mainCampus !== null) {
+                $targetCampuses[] = (int) $mainCampus;
+            }
+            foreach ((array) ($data['multi_branches'] ?? []) as $extra) {
+                $targetCampuses[] = (int) $extra;
+            }
+            foreach (array_unique($targetCampuses) as $target) {
+                if ($target !== 0 && !in_array($target, $callerCampusIds, true)) {
+                    return response()->json(['message' => '無權限在此分校建立帳號'], 403);
+                }
+            }
+        }
         $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
         if ($loginName === '') {
             return response()->json(['message' => '帳號不可空白'], 422);
