@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import subprocess
+import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +20,53 @@ def run_git(cwd: Path, *args: str) -> None:
 
 
 class BranchHygieneTest(unittest.TestCase):
+    def test_checkout_report_needs_no_credentials_and_failures_stop(self):
+        with tempfile.TemporaryDirectory(prefix="branch-hygiene-stub-") as raw_dir:
+            root = Path(raw_dir)
+            log = root / "calls"
+            stub = root / "git"
+            stub.write_text(f"#!{sys.executable}\n" + """
+import os, sys
+with open(os.environ['GIT_STUB_LOG'], 'a') as log:
+    log.write(' '.join(sys.argv[1:]) + '\\n')
+if sys.argv[1] == 'fetch':
+    sys.exit(1)  # private origin has no checkout credential
+if sys.argv[1:3] == ['rev-parse', '--verify'] and os.environ.get('FAIL_BASE'):
+    sys.exit(1)
+if sys.argv[1] == 'rev-parse':
+    print('main')
+""", encoding="utf-8")
+            stub.chmod(0o755)
+            env = {**os.environ, "PATH": f"{root}{os.pathsep}{os.environ['PATH']}", "GIT_STUB_LOG": str(log)}
+
+            def report(*args, extra=None):
+                return subprocess.run(["bash", str(SCRIPT), *args], cwd=root,
+                                      env={**env, **(extra or {})}, capture_output=True, text=True)
+
+            result = report()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(log.read_text().splitlines(), ["fetch --prune"])
+            log.unlink()
+            result = report("--no-fetch")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Dry-run complete. No branch deleted.", result.stdout)
+            self.assertNotIn("fetch", log.read_text())
+            self.assertNotIn("push", log.read_text())
+            log.unlink()
+            result = report("--no-fetch", "--apply")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(log.exists())
+            result = report("--no-fetch", extra={"FAIL_BASE": "1"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Dry-run complete", result.stdout)
+
+    def test_workflow_reuses_complete_checkout_without_persisting_credentials(self):
+        workflow = (ROOT / ".github/workflows/branch-hygiene.yml").read_text()
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertEqual(workflow.count("persist-credentials: false"), 2)
+        self.assertNotIn("persist-credentials: true", workflow)
+        self.assertIn("OUTPUT=$(./scripts/branch-hygiene.sh --no-fetch 2>&1)", workflow)
+
     def test_symbolic_remote_head_is_not_a_deletion_candidate(self):
         with tempfile.TemporaryDirectory(prefix="branch-hygiene-") as raw_dir:
             root = Path(raw_dir)

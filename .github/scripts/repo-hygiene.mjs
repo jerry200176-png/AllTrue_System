@@ -22,15 +22,19 @@ export const daysBetween = (now, then) => (now - t(then)) / DAY;
 
 // Agents and the Founder share the owner token, so "agent PR" = authored by the repo owner.
 // Dependabot and other bots/humans are never touched.
-export const isAgentPr = (pr, owner) => pr.user?.login === owner && pr.user?.type !== 'Bot';
+export const isAgentPr = (pr, owner) => Boolean(owner) && pr.user?.login === owner && pr.user?.type === 'User';
 
-// lastActivity: ISO time of the newest commit/comment/review that is NOT our own stale comment,
+// lastActivity: ISO time of the newest head commit/comment/review/reopen, excluding our stale comment,
 // so our label/comment never resets the clock.
 export function decideStale(pr, lastActivity, now, owner) {
-  const labels = (pr.labels || []).map((l) => l.name);
+  if (pr.state !== 'open' || typeof pr.draft !== 'boolean' || !Array.isArray(pr.labels)
+      || pr.labels.some((l) => typeof l?.name !== 'string' || !l.name)
+      || !Number.isFinite(now) || !Number.isFinite(t(lastActivity))) return { action: 'none' };
+  const labels = pr.labels.map((l) => l.name);
   const hasStale = labels.includes(STALE_LABEL);
   if (!isAgentPr(pr, owner) || pr.base?.ref !== 'main' || labels.some((l) => EXEMPT_LABELS.includes(l))) return { action: 'none' };
   const idle = daysBetween(now, lastActivity);
+  if (idle < 0) return { action: 'none' };
   if (pr.draft && idle >= CLOSE_DRAFT_DAYS) return { action: 'close', idle };
   if (idle >= STALE_DAYS) return hasStale ? { action: 'none', idle } : { action: 'label', idle };
   return hasStale ? { action: 'unlabel', idle } : { action: 'none', idle };
@@ -72,8 +76,25 @@ export function alarmFindings({ queued, runs, now, hours = QUEUE_HOURS, streak =
 const REPO = process.env.GITHUB_REPOSITORY;
 const gh = (args, input) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 << 20, input });
 const api = (path, ...extra) => JSON.parse(gh(['api', `/repos/${REPO}/${path}`, ...extra]) || 'null');
-const pages = (path) => JSON.parse(gh(['api', `/repos/${REPO}/${path}`, '--paginate', '--slurp'])).flat();
+const pages = (path) => {
+  const result = JSON.parse(gh(['api', `/repos/${REPO}/${path}`, '--paginate', '--slurp']));
+  if (!Array.isArray(result) || !result.length || result.some((p) => !Array.isArray(p))) throw new Error(`Incomplete pages: ${path}`);
+  return result.flat();
+};
 const send = (method, path, body) => JSON.parse(gh(['api', '-X', method, `/repos/${REPO}/${path}`, '--input', '-'], JSON.stringify(body)) || 'null');
+
+function ensureLabels() {
+  const labels = pages('labels?per_page=100');
+  if (labels.some((l) => typeof l?.name !== 'string')) throw new Error('Incomplete label metadata');
+  for (const [name, color, description] of [
+    ['ops-hygiene', '5319e7', 'Repository hygiene reports and queue alarms'],
+    [STALE_LABEL, 'ededed', 'Pull request inactive for 14 days'],
+  ]) {
+    if (labels.some((l) => l.name === name)) continue;
+    const label = send('POST', 'labels', { name, color, description });
+    if (label?.name !== name) throw new Error(`Label was not created: ${name}`);
+  }
+}
 
 function findIssue(mark) {
   return pages('issues?state=open&per_page=100&labels=ops-hygiene').find((i) => !i.pull_request && i.body?.includes(mark));
@@ -93,12 +114,22 @@ function closeIssue(mark, note) {
 
 function lastActivity(pr) {
   const times = [pr.created_at];
-  const commits = api(`pulls/${pr.number}/commits?per_page=100`);
-  if (commits.length) times.push(commits[commits.length - 1].commit.committer.date);
+  // The PR commit-list endpoint is capped at 250 commits even when paginated.
+  // Read the exact head instead, so commits beyond page one cannot look inactive.
+  const sha = pr.head?.sha;
+  if (!Number.isSafeInteger(pr.number) || pr.number <= 0 || !/^[a-f0-9]{40}$/i.test(sha || '')) throw new Error('Incomplete PR head metadata');
+  const head = api(`commits/${sha}`);
+  if (head?.sha !== sha) throw new Error(`Unknown head commit for #${pr.number}`);
+  times.push(head.commit?.committer?.date);
   for (const c of pages(`issues/${pr.number}/comments?per_page=100`)) if (!c.body?.includes(MARK_STALE)) times.push(c.created_at);
   for (const c of pages(`pulls/${pr.number}/comments?per_page=100`)) times.push(c.created_at);
-  for (const r of pages(`pulls/${pr.number}/reviews?per_page=100`)) if (r.submitted_at) times.push(r.submitted_at);
-  return times.sort().pop();
+  for (const r of pages(`pulls/${pr.number}/reviews?per_page=100`)) times.push(r.submitted_at);
+  for (const e of pages(`issues/${pr.number}/events?per_page=100`)) {
+    if (typeof e?.event !== 'string' || typeof e.created_at !== 'string' || !Number.isFinite(t(e.created_at))) throw new Error(`Incomplete event metadata for #${pr.number}`);
+    if (e.event === 'reopened') times.push(e.created_at);
+  }
+  if (times.some((s) => typeof s !== 'string' || !Number.isFinite(t(s)))) throw new Error(`Unknown activity timestamp for #${pr.number}`);
+  return new Date(Math.max(...times.map(t))).toISOString();
 }
 
 function runStale() {
@@ -155,9 +186,10 @@ function runQueueAlarm() {
 
 function main() {
   const mode = process.argv[2];
+  if (!['stale', 'queue-alarm'].includes(mode)) { console.error('usage: repo-hygiene.mjs stale|queue-alarm'); process.exit(2); }
+  ensureLabels();
   if (mode === 'stale') runStale();
   else if (mode === 'queue-alarm') runQueueAlarm();
-  else { console.error('usage: repo-hygiene.mjs stale|queue-alarm'); process.exit(2); }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

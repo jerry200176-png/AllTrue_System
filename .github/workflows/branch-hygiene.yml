@@ -41,7 +41,8 @@ jobs:
         id: hygiene
         run: |
           chmod +x scripts/branch-hygiene.sh
-          OUTPUT=$(./scripts/branch-hygiene.sh 2>&1)
+          # checkout fetched all refs; no token remains for another private-repo fetch.
+          OUTPUT=$(./scripts/branch-hygiene.sh --no-fetch 2>&1)
           echo "$OUTPUT"
 
           # 把輸出存起來給 summary 用
