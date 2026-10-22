@@ -150,7 +150,7 @@ describe('useTransferSessions.submit', () => {
       post({ session_ids: [1], target_student_class_id: 8 }), 'tok');
     expect(t.showModal.value).toBe(false);
     expect(notify).toHaveBeenCalledWith({
-      title: '已轉移堂次紀錄', description: '已轉移 1 堂到課程 #8', variant: 'success', durationMs: 7000,
+      title: '已搬移上課紀錄', description: '已搬移 1 堂到課程 #8', variant: 'success', durationMs: 7000,
     });
     expect(reload).toHaveBeenCalledTimes(1);
   });
@@ -179,14 +179,14 @@ describe('useTransferSessions.submit', () => {
     expect(t.error.value).toBe('衝突預排 #6');
     authedFetch.mockResolvedValue(res(false, {}));
     await t.submit({ targetCourseId: 8, sessionIds: [1], reason: '' });
-    expect(t.error.value).toBe('轉移失敗');
+    expect(t.error.value).toBe('搬移失敗');
   });
 
-  it('network errors become the 轉移失敗 copy and re-enable submit', async () => {
+  it('network errors become the 搬移失敗 copy and re-enable submit', async () => {
     authedFetch.mockRejectedValue(new Error('offline'));
     const t = opened();
     await t.submit({ targetCourseId: 8, sessionIds: [1], reason: '' });
-    expect(t.error.value).toBe('轉移失敗：offline');
+    expect(t.error.value).toBe('搬移失敗：offline');
     expect(t.submitting.value).toBe(false);
   });
 });
