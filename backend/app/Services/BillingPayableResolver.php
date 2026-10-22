@@ -199,9 +199,9 @@ class BillingPayableResolver
         // #3991: staff marked a NT$0 bill 免費／贈送 on this no-fee course, so a period-engine review cannot reopen it.
         // #3991 review: B15 flags review only at the top level, so EVERY period it lists must be a marked term; an unmarked
         // month with lessons (an `unattributed` row) keeps the course in review.
-        // #4017: same rule as Invoice::freeGiftHolds(), but the course's fee evidence is read once, not once per marked term.
-        $marked = $invoices->filter(fn ($invoice) => $invoice->isMarkedFreeGift());
-        $freePeriods = $marked->isNotEmpty() && !Invoice::courseHasFee($course) ? $marked->pluck('billing_period')->filter()->all() : [];
+        // #4017: the course's fee evidence is read once (and only when a term is marked), not once per marked term.
+        $hasFee = !$invoices->contains(fn ($invoice) => $invoice->isMarkedFreeGift()) || Invoice::courseHasFee($course);
+        $freePeriods = $invoices->filter(fn ($invoice) => $invoice->freeGiftHolds($course, $hasFee))->pluck('billing_period')->filter()->all();
         $reviewPeriods = collect($monthly['periods'] ?? [])->pluck('billing_period');
         $markedFree = $reviewPeriods->isNotEmpty() && $reviewPeriods->diff($freePeriods)->isEmpty();
         $zeroFee = !$isPackageMember && (!$monthlyReview || $markedFree) && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
