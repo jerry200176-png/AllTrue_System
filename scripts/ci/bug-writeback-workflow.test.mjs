@@ -103,6 +103,60 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       'an ordinary app deep link with ids and a query passes');
     assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: `${url(7)} 已在 daan.lifenet.com.tw 修正，版本 2026.10.21，下午 3:30，金額 1,200 元，共 8 堂、v1.2.3` }]).ok,
       'bare allowed hosts, dates, times, amounts and versions pass');
+    // #4351 r4338359749: punctuation must not truncate an authority before @.
+    // Both workflows and both modes use the same guard, with no output for a rejected batch.
+    const authorityAttacks = [
+      "https://daan.lifenet.com.tw'@evil.com/private-name",
+      'https://daan.lifenet.com.tw"@evil.com/x',
+      'https://daan.lifenet.com.tw`@evil.com/x',
+      'https://daan.lifenet.com.tw)@evil.com/x',
+      'https://daan.lifenet.com.tw]@evil.com/x',
+      'https://daan.lifenet.com.tw\\@evil.com/x',
+      'https://daan.lifenet.com.tw:443@evil.com/x',
+      'https://daan.lifenet.com.tw%2F@evil.com/x',
+      'https://daan.lifenet.com.tw。evil.com/x',
+      'https://daan.lifenet.com.tw:/x',
+      'https://daan.lifenet.com.tw:bad/x',
+      'https://daan.lifenet.com.tw:443/x',
+      'https://daan.lifenet.com.tw./x',
+      "https://github.com'@evil.com/o/r/issues/7",
+      "https://daan.lifenet.com.tw/redirect?to=https://daan.lifenet.com.tw'@evil.com/x",
+      `https://daan.lifenet.com.tw/redirect?to=${encodeURIComponent("https://daan.lifenet.com.tw'@evil.com/x")}`,
+      `https://daan.lifenet.com.tw/redirect?to=${encodeURIComponent(`https://daan.lifenet.com.tw/redirect?to=${encodeURIComponent("https://daan.lifenet.com.tw'@evil.com/x")}`)}`,
+      "123https://daan.lifenet.com.tw'@evil.com/x",
+      "aaaaaaaaaaaaaaaaaaaaahttps://daan.lifenet.com.tw'@evil.com/x",
+    ];
+    const harmlessLinks = [
+      'https://daan.lifenet.com.tw',
+      'https://daan.lifenet.com.tw/courses?tab=open#help',
+      "'https://daan.lifenet.com.tw/help'",
+      '"https://daan.lifenet.com.tw"',
+      '`https://daan.lifenet.com.tw`',
+      '「https://daan.lifenet.com.tw」',
+      'https://daan.lifenet.com.tw。',
+      '[課程](https://daan.lifenet.com.tw/courses)',
+      `(https://daan.lifenet.com.tw/help)`,
+      `'${url(7)}'`,
+      `[追蹤](${url(7)})`,
+      `https://daan.lifenet.com.tw/help?to=${encodeURIComponent(url(7))}`,
+    ];
+    for (const kind of ['phase-a', 'followup']) {
+      const [candidate, first] = kind === 'phase-a' ? [a[0], a[1]] : [f[0], f[1]];
+      for (const mode of ['preview', 'write']) {
+        authorityAttacks.forEach((link, index) => {
+          const result = run(kind, mode, [first, { ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]);
+          assert.ok(!result.ok, `${kind}/${mode} rejects complete malicious authority case ${index}`);
+          assert.ok(result.out.includes('row 2: public_reply rejected by content rule url_not_allowed'),
+            `${kind}/${mode} rejects authority case ${index} with a rule-only error`);
+          assert.ok(!result.out.includes(link) && result.summary === '',
+            `${kind}/${mode} authority case ${index} emits no reply or partial summary`);
+        });
+        harmlessLinks.forEach((link, index) => {
+          assert.ok(run(kind, mode, [{ ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]).ok,
+            `${kind}/${mode} preserves harmless allowed link case ${index}`);
+        });
+      }
+    }
     for (const [rule, leak] of [
       ['tw_mobile', '0912345678'], ['tw_mobile', '0912-345-678'], ['tw_mobile', '+886 912 345 678'],
       ['tw_landline', '02-2345-6789'], ['tw_landline', '(02)23456789'], ['tw_landline', '+886-2-2345-6789'],

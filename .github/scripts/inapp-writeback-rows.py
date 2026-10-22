@@ -25,7 +25,7 @@ import os
 import re
 import sys
 import unicodedata
-from urllib.parse import unquote_plus
+from urllib.parse import unquote_plus, urlsplit
 
 MAX_ROWS = 20
 MAX_REPLY_CHARS = 600
@@ -36,8 +36,12 @@ REV = re.compile(r"[0-9a-f]{40}")
 RUN_ID = re.compile(r"[0-9]{1,20}")
 APP_ORIGIN = "https://daan.lifenet.com.tw"  # the production app; its own links are allowed in replies
 ALLOWED_HOSTS = ("daan.lifenet.com.tw", "github.com")  # bare mentions of these hosts are fine
-# Any scheme://... or www. link; URLs are ASCII, so a link stops at the first non-ASCII character.
-URL = re.compile(r"(?:[a-z][a-z0-9+.-]{1,15}://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&*+,;=%]+", re.I)
+# Read the complete authority: quotes, parentheses, backslashes and Unicode must not
+# hide a later @/foreign hostname. Keep the established ASCII path/query boundary
+# so Chinese prose immediately after an issue URL is still treated as prose.
+URL_STARTS = re.compile(r"(?i:(?:[a-z][a-z0-9+.-]{1,15}://|www\.))")
+URL = re.compile(URL_STARTS.pattern + r"[^\s/?#<>]+"
+                 r"(?:[/?#][^\s<>\x7f-\U0010ffff]*)?")
 DOT = r"\s*(?:\.|\[\.\]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\s+dot\s+)\s*"  # "." and defanged forms
 LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 DOMAIN = re.compile(rf"(?<![\w@-]){LABEL}(?:{DOT}{LABEL})*{DOT}(?:[a-z]{{2,63}}|xn--[a-z0-9-]+)(?![\w-])", re.I)
@@ -88,6 +92,39 @@ def foreign_domain(text):
     return False
 
 
+def allowed_url_authority(url):
+    """Require the same canonical HTTPS authorities as before, never URL userinfo.
+
+    urlsplit is deliberately stricter here than browser URL recovery: raw
+    backslashes, ports, encoded hosts and noncanonical authorities fail closed.
+    Path/query/fragment checks remain separate below.
+    """
+    try:
+        parsed = urlsplit(url)
+        return (parsed.scheme == "https" and parsed.hostname in ALLOWED_HOSTS
+                and parsed.username is None and parsed.password is None
+                and parsed.netloc == parsed.hostname and "\\" not in url)
+    except ValueError:
+        return False
+
+
+def reply_urls(text):
+    """Yield complete URLs, including nested starts, while excluding matching prose delimiters."""
+    # Scan prefixes rather than consuming full URL spans, so an outer app URL
+    # cannot hide a nested URL start or a preceding token hide an app link.
+    for start in URL_STARTS.finditer(text):
+        match = URL.match(text, start.start())
+        if match is None:
+            continue
+        url = match.group(0).rstrip(".,:;!?。")
+        if match.start() > 0:
+            closer = {"(": ")", "'": "'", '"': '"', "`": "`", "「": "」", "『": "』",
+                      "“": "”", "‘": "’"}.get(text[match.start() - 1])
+            if closer and url.endswith(closer):
+                url = url[:-1]
+        yield url
+
+
 def reply_violation(reply, repo):
     """Name of the first content rule the reply breaks, or None. Never returns the matched text.
     Personal names are NOT detected: this is a pattern guard, not a PII guarantee."""
@@ -95,8 +132,15 @@ def reply_violation(reply, repo):
     allowed_issue = re.compile(r"https://github\.com/" + re.escape(repo) + r"/issues/[1-9][0-9]*")
     allowed_app = re.compile(re.escape(APP_ORIGIN) + r"(?:[/?#]\S*)?")
     url_parts, bad_link = [], False
-    for match in URL.finditer(text):
-        url = match.group(0).rstrip(".,:;!?")
+    pending, seen = list(reply_urls(text)), set()
+    while pending:
+        url = pending.pop()
+        if url in seen:
+            continue
+        seen.add(url)
+        if not allowed_url_authority(url):
+            bad_link = True
+            continue
         if allowed_issue.fullmatch(url):
             continue
         if not allowed_app.fullmatch(url):
@@ -107,6 +151,10 @@ def reply_violation(reply, repo):
         tail = normalize(unquote_plus(url[len(APP_ORIGIN):]))
         bad_link = bad_link or foreign_domain(tail)
         url_parts.append(re.sub(r"[/?&=#;]+", " ", tail))
+        # Redirect targets may contain another encoded URL. Every nested URL must
+        # meet the same authority/destination rules; dedupe avoids repeated work.
+        # Each tail is shorter than its parent URL, and replies are capped at 600 chars.
+        pending.extend(reply_urls(tail))
     rest = URL.sub(" ", text)
     scanned = " ".join([rest] + url_parts)
     for name, pattern in REPLY_RULES:  # the specific data rules first, so the error names the leak
