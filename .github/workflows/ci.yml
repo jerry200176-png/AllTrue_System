@@ -83,6 +83,8 @@ jobs:
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
+          node --test scripts/tests/repo-hygiene.test.mjs
+          python3 scripts/tests/test_branch_hygiene.py
           node --test scripts/tests/actions-cost-report.test.mjs
           python3 -m venv "$RUNNER_TEMP/credential-expiry-test-venv"
           "$RUNNER_TEMP/credential-expiry-test-venv/bin/python" -m pip install --disable-pip-version-check -r scripts/requirements-credential-expiry.txt

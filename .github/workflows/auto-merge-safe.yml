@@ -122,5 +122,11 @@ jobs:
             echo "PR head changed before auto-merge; fail closed" >&2
             exit 1
           fi
+          # Native auto-merge only waits for checks the ruleset requires. Until `review/final-head`
+          # (review-gate.yml) is required, do not enable it: CI green alone would merge an unreviewed head.
+          if ! gh api "/repos/${REPO}/rules/branches/main" --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index("review/final-head") != null' | grep -qx true; then
+            echo "Auto-merge held: review/final-head is not a required check yet; add label queue (it waits for the final-head review)."
+            exit 0
+          fi
           gh pr merge "$PR_NUMBER" --repo "$REPO" --auto --squash --delete-branch
           echo "GitHub will merge only after required checks and branch rules pass."
