@@ -30,6 +30,21 @@ class TeacherBranchControllerTest extends TestCase
         return $raw;
     }
 
+    /** A director managing several campuses; returns [token, userId]. */
+    private function directorTokenMulti(array $campusIds): array
+    {
+        $user = User::create([
+            'LoginName' => 'tb-dirm-' . uniqid() . '@test.com',
+            'Name'      => 'TB DirectorM', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912000013,
+        ]);
+        foreach ($campusIds as $cid) {
+            UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        }
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+        return [$raw, (int) $user->id];
+    }
+
     private function makeTeacher(int $campusId): int
     {
         $user = User::create([
@@ -57,7 +72,8 @@ class TeacherBranchControllerTest extends TestCase
     {
         $campus    = Campus::factory()->create();
         $campus2   = Campus::factory()->create();
-        $token     = $this->directorToken($campus->id);
+        // The director manages both campuses; assigning a teacher to another campus the director manages is allowed.
+        [$token]   = $this->directorTokenMulti([$campus->id, $campus2->id]);
         $teacherId = $this->makeTeacher($campus->id);
 
         $res = $this->withToken($token)->postJson('/api/v1/teacher_branches', [
@@ -82,7 +98,7 @@ class TeacherBranchControllerTest extends TestCase
     {
         $campus    = Campus::factory()->create();
         $campus2   = Campus::factory()->create();
-        $token     = $this->directorToken($campus->id);
+        [$token]   = $this->directorTokenMulti([$campus->id, $campus2->id]);
         $teacherId = $this->makeTeacher($campus->id);
 
         // First assign
