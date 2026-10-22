@@ -34,7 +34,7 @@ final class InappAgentClients
         $client->forceFill([
             'Name' => $name, 'ApiKeyHash' => hash('sha256', $key), 'CampusID' => 0, 'Active' => true,
             'Purpose' => self::PURPOSE, 'Scopes' => self::SCOPES, 'IssuedByUserID' => (int) $issuer->getKey(),
-            'CampusIDs' => array_values($campusIds), 'ExpiresAt' => now()->addDays((int) config('pop_inapp.agent_client_ttl_days')),
+            'CampusIDs' => $campusIds, 'ExpiresAt' => now()->addDays((int) config('pop_inapp.agent_client_ttl_days')),
         ])->save();
 
         return ['key' => $key, 'record' => self::present($client)];

@@ -41,7 +41,7 @@ class PopInappApiClientController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $created = InappAgentClients::issue($user, trim($data['name']), array_map('intval', $data['campus_ids']));
+        $created = InappAgentClients::issue($user, trim($data['name']), array_values(array_map('intval', $data['campus_ids'])));
         $this->audit('pop_inapp_agent.issued', $user, (int) $created['record']['id'], ['campus_count' => count($data['campus_ids'])]);
 
         return response()->json($created, 201)->header('Cache-Control', 'no-store');
