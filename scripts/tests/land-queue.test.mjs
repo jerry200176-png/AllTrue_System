@@ -333,6 +333,53 @@ test('review gate: malformed structured Codex identity vetoes owner fallback', (
   assert.equal(gateOf([codex(clean(OLD)), fallback(H)]).ok, true, 'valid stale identity still allows fallback');
 });
 
+test('review gate: a later stale summary never erases the latest current-head review', () => {
+  const stale = codex(clean(OLD), { updated_at: '2026-10-21T07:00:00Z' });
+  const fresh = codex(clean(), { updated_at: '2026-10-21T06:00:00Z' });
+  for (const state of [clean(H, { status: 'running', has_unresolved_findings: null }), clean(H, { has_unresolved_findings: true })]) {
+    const current = codex(state);
+    for (const native of [[current, stale], [stale, current]]) {
+      assert.equal(gateOf([...native, fallback(H)]).ok, false, state.status);
+      assert.equal(decideWith([...native, fallback(H)]).reason, 'review-pending');
+      assert.deepEqual(gateOf([...native, fresh, fallback(H)]), { ok: true, via: 'codex' }, 'newer current-head clean may supersede an older current review');
+    }
+  }
+  assert.deepEqual(gateOf([fresh, stale, fallback(H)]), { ok: true, via: 'codex' });
+});
+
+test('review gate: later stale summaries cannot hide malformed structured evidence', () => {
+  const stale = codex(clean(OLD), { updated_at: '2026-10-21T07:00:00Z' });
+  const missing = clean(); delete missing.commit_sha;
+  const malformed = [codex(missing), codex([]), codex(clean('not-a-sha')),
+    codex(clean(), { body: '<!-- codex-review-state:v1 {"code_review": {oops -->' }),
+    codex(clean(), { body: '<!-- codex-review-state:v1 {"code_review":' })];
+  for (const bad of malformed) {
+    for (const native of [[bad, stale], [stale, bad]]) {
+      assert.equal(gateOf([...native, fallback(H)]).ok, false);
+      assert.equal(decideWith([...native, fallback(H)]).reason, 'review-pending');
+    }
+  }
+});
+
+test('review gate: ambiguous current summaries and unknown timestamps fail closed regardless of order', () => {
+  const cleanCurrent = codex(clean());
+  const stale = codex(clean(OLD), { updated_at: '2026-10-21T07:00:00Z' });
+  for (const state of [clean(H, { status: 'running' }), clean(H, { has_unresolved_findings: true })]) {
+    const conflicting = codex(state); // same update time as cleanCurrent
+    for (const pair of [[cleanCurrent, conflicting], [conflicting, cleanCurrent]]) {
+      assert.equal(gateOf([...pair, stale, fallback(H)]).ok, false);
+    }
+  }
+  for (const updated_at of [undefined, '', 'invalid', '2026-02-30T05:00:00Z']) {
+    assert.equal(gateOf([codex(clean(), { updated_at }), stale, fallback(H)]).ok, false, String(updated_at));
+  }
+  const duplicate = codex(clean(), { body: cleanCurrent.body + '\n' + stale.body });
+  assert.equal(gateOf([duplicate, fallback(H)]).ok, false, 'multiple markers are ambiguous');
+  assert.deepEqual(gateOf([cleanCurrent, codex(clean()), stale]), { ok: true, via: 'codex' }, 'equivalent duplicate evidence agrees');
+  const created = codex(clean(), { updated_at: undefined, created_at: '2026-10-21T05:00:00Z' });
+  assert.deepEqual(gateOf([created, stale]), { ok: true, via: 'codex' }, 'created_at supplies a known timestamp');
+});
+
 test('guardedSquash: re-reads the final-head review for the exact SHA before squash (serial and batch)', () => {
   for (const [review, did] of [[{ ok: true }, true], [{ ok: false, why: 'Codex review running' }, false], [null, false], [undefined, false]]) {
     const calls = [];

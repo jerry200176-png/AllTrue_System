@@ -15,7 +15,7 @@ import { execFileSync } from 'node:child_process';
 export const REVIEW_CHECK = 'review/final-head';
 export const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
 const SHA40 = /^[0-9a-f]{40}$/;
-const STATE = /<!-- codex-review-state:v1 ([\s\S]*?) -->/;
+const STATE = /<!-- codex-review-state:v1 ([\s\S]*?) -->/g;
 export const reviewMarker = (sha) => `<!-- independent-review:v1 sha=${sha} verdict=pass -->`;
 
 const NAMED = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" };
@@ -28,21 +28,37 @@ export function reviewGate(comments, head, owner) {
   if (!SHA40.test(head || '')) return { ok: false, why: 'PR head SHA unknown' };
   if (!Array.isArray(comments) || !owner) return { ok: false, why: 'PR comments unreadable' };
   const short = head.slice(0, 7);
-  let raw = null;
-  let at = '';
+  const records = [];
   for (const c of comments) {
-    const m = c?.user?.login === CODEX_LOGIN && STATE.exec(c.body || '');
-    const t = c?.updated_at || c?.created_at || '';
-    if (m && t >= at) { raw = m[1]; at = t; }
-  }
-  let cr = null;
-  if (raw !== null) {
-    try { cr = JSON.parse(decodeEntities(raw))?.code_review; } catch { cr = undefined; }
+    if (c?.user?.login !== CODEX_LOGIN) continue;
+    const body = c.body || '';
+    if (!body.includes('<!-- codex-review-state:v1')) continue;
+    const matches = [...body.matchAll(STATE)];
+    if (matches.length !== 1 || body.split('<!-- codex-review-state:v1').length !== 2) return { ok: false, why: 'Codex review state unreadable' };
+    let cr;
+    try { cr = JSON.parse(decodeEntities(matches[0][1]))?.code_review; } catch { cr = undefined; }
     if (!cr || typeof cr !== 'object' || Array.isArray(cr)
         || typeof cr.commit_sha !== 'string' || !SHA40.test(cr.commit_sha)) {
       return { ok: false, why: 'Codex review state unreadable' };
     }
+    const stamp = c.updated_at || c.created_at;
+    const at = typeof stamp === 'string' ? Date.parse(stamp) : NaN;
+    if (typeof stamp !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(stamp)
+        || !Number.isFinite(at) || new Date(at).toISOString().slice(0, 19) !== stamp.slice(0, 19)) {
+      return { ok: false, why: 'Codex review timestamp unreadable' };
+    }
+    records.push({ cr, at });
   }
+  // A late review of another head cannot erase current-head evidence. Validate
+  // every record first; malformed or ambiguous evidence never opens the fallback.
+  records.sort((a, b) => b.at - a.at || a.cr.commit_sha.localeCompare(b.cr.commit_sha));
+  const current = records.filter((r) => r.cr.commit_sha === head);
+  const latest = current[0];
+  if (latest && current.some((r) => r.at === latest.at && (r.cr.status !== latest.cr.status
+      || r.cr.has_unresolved_findings !== latest.cr.has_unresolved_findings))) {
+    return { ok: false, why: 'Codex current-head review state ambiguous' };
+  }
+  const cr = latest?.cr || records[0]?.cr;
   const onHead = cr?.commit_sha === head;
   if (onHead && cr.status === 'completed' && cr.has_unresolved_findings === false) return { ok: true, via: 'codex' };
   if (onHead && (cr.has_unresolved_findings === true || (cr.status === 'completed' && cr.has_unresolved_findings !== false))) return { ok: false, why: `Codex reported unresolved findings on ${short}` };

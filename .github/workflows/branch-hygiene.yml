@@ -98,7 +98,8 @@ jobs:
 
   queue-alarm:
     name: Land queue alarm
-    if: ${{ github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch' }}
+    needs: report
+    if: ${{ always() && !cancelled() && (github.event.schedule == '17 * * * *' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

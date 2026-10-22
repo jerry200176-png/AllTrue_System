@@ -182,6 +182,19 @@ test('labels: provision missing definitions before stale labels and reuse one ho
   assert.equal(alarm.state().calls.filter((c) => c.method === 'POST' && c.path === 'issues').length, 1);
 });
 
+test('manual hygiene: the serialized report and alarm reuse newly created labels', (t) => {
+  const f = fixture(t, {
+    'pulls?state=open&per_page=100': { data: [] },
+    'actions/workflows/land-queue.yml/runs?per_page=30': { data: { workflow_runs: Array(3).fill({ status: 'completed', conclusion: 'failure' }) } },
+  }, []);
+  for (const mode of ['stale', 'queue-alarm']) {
+    const r = f.run(mode); assert.equal(r.status, 0, r.stderr);
+  }
+  assert.equal(f.state().calls.filter((c) => c.method === 'POST' && c.path === 'labels').length, 2);
+  assert.equal(f.state().issues.length, 2, 'weekly report and queue alarm both publish');
+  assert.ok(f.state().issues.some((issue) => issue.title === '[ops] Land queue alarm'));
+});
+
 test('fail closed: failed or malformed activity/labels never close an old draft', (t) => {
   const failures = [
     { 'pulls?state=open&per_page=100': { data: [apiPr({ head: {} })] } },

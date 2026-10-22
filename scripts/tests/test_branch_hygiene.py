@@ -21,6 +21,22 @@ def run_git(cwd: Path, *args: str) -> None:
 
 
 class BranchHygieneTest(unittest.TestCase):
+    def test_alarm_waits_for_report_but_survives_report_skip_or_failure(self):
+        workflow = (ROOT / ".github/workflows/branch-hygiene.yml").read_text()
+        alarm = workflow.split("  queue-alarm:\n", 1)[1]
+        self.assertRegex(alarm, r"(?m)^    needs: report$")
+        condition = re.search(r"^    if: \$\{\{ (.*?) \}\}$", alarm, re.MULTILINE).group(1)
+        self.assertIn("!cancelled()", condition, "status function must override the implicit success() dependency gate")
+        expression = condition.replace("always()", "True").replace("!cancelled()", "not cancelled").replace("&&", "and").replace("||", "or")
+        expression = expression.replace("github.event.schedule", "schedule").replace("github.event_name", "event")
+        # Manual jobs otherwise race ensureLabels; hourly runs have a skipped report.
+        # GitHub waits for needs before evaluating this explicit status condition.
+        for report in ("success", "failure", "skipped"):
+            for cancelled in (False, True):
+                for event, schedule, alarm_event in (("workflow_dispatch", "", True), ("schedule", "17 * * * *", True), ("schedule", "0 0 * * 0", False)):
+                    with self.subTest(report=report, event=event, schedule=schedule, cancelled=cancelled):
+                        self.assertEqual(alarm_event and not cancelled, eval(expression, {"__builtins__": {}}, dict(event=event, schedule=schedule, cancelled=cancelled)))
+
     def test_all_hygiene_writers_share_one_non_cancelling_lock(self):
         workflow = (ROOT / ".github/workflows/branch-hygiene.yml").read_text()
         concurrency = re.search(r"^concurrency:\n((?:  [^\n]*\n)+)", workflow, re.MULTILINE)
