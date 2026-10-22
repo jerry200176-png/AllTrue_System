@@ -2667,6 +2667,14 @@ class StudentClassController extends Controller
         if ($marked = $this->freeGiftMarkedRefusal($studentClass, 'charge_correction_free_gift_locked')) {
             return $marked;
         }
+        // #4017: correcting to NT$0 would rewrite the open bill into an unmarked zero bill, which #3991 forbids.
+        if ((int) $payload['new_charge'] === 0) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_zero_forbidden', 422);
+            return response()->json([
+                'message' => '費用不能更正成 0 元。若這期確定不收費，請先在學生帳務作廢這張帳單，再用「登記收款」選「免費／贈送」。沒有變更任何資料。',
+                'code' => 'charge_correction_zero_forbidden',
+            ], 422);
+        }
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
             $this->auditEditBlocked($studentClass, 'charge_correction_date_mode_only', 422);
             return response()->json([
