@@ -96,10 +96,8 @@ class SecurityEscalationChainTest extends TestCase
 
     public function test_a_teacher_linked_only_through_legacy_teacher_branches_stays_manageable(): void
     {
-        // No migration creates the legacy table, so the CI schema lacks it (same as ChatEnhancementTest FR-001).
-        if (!Schema::hasTable('teacher_branches')) {
-            $this->markTestSkipped('legacy teacher_branches table is not in the test schema');
-        }
+        // The legacy teacher_branches table is created by the test-only fixture migration, so this runs for real.
+        $this->assertTrue(Schema::hasTable('teacher_branches'), 'test fixture must provide teacher_branches');
         $own = CampusFactory::new()->create();
         $this->account('D', [$own->id], 'legacy-dir@example.com');
         $legacy = $this->account('T', [], 'legacy-teacher@example.com');
