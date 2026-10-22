@@ -190,17 +190,8 @@ class BankReconciliationTest extends TestCase
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
-        $user = User::create([
-            'LoginName' => 'dir_bank_' . uniqid() . '@test.com',
-            'Name' => 'Dir', 'PSW' => password_hash('s', PASSWORD_DEFAULT),
-            'type' => 'A', 'phone' => '0900000000',
-        ]);
-        \App\Models\UserCampus::create([
-            'UserID' => $user->id, 'CampusID' => $campus->id, 'Approved' => 1,
-        ]);
-        $tok = bin2hex(random_bytes(16));
-        AuthToken::create(['user_id' => $user->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
-        return [$tok, $campus];
+
+        return [$this->seedUser('A', (int) $campus->id), $campus];
     }
 
     private function seedUser(string $type, ?int $campusId): string
