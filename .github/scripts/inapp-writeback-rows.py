@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
-"""Validate the rows_json batch of an in-app write-back workflow (Founder 2026-10-21).
+"""Validate in-app write-back batches; the batch change note records policy and rationale.
 
 Usage: inapp-writeback-rows.py {phase-a|followup} {preview|write}
-
-Reads the exact `rows_json` string from $GITHUB_EVENT_PATH (never from env: GitHub prints step env
-in the public log header). Every row must pass before anything is printed: one bad row fails the
-whole run (all-or-nothing). Errors name the row index and field, never a value (public repo).
-
-preview: appends a bug_id / issue / status / close / len / sha256 table to $GITHUB_STEP_SUMMARY
-         (never the reply text) and writes ID-only job outputs to $GITHUB_OUTPUT.
-Reply content guard (Founder 2026-10-21): the session that writes these replies also reads untrusted
-in-app reports and can post publicly (the "lethal trifecta": private data + untrusted content + an
-outbound channel). A reply carrying a phone number, national ID, email, credential-like string, or a
-link other than this repo's issues / the production app is rejected (OWASP LLM02 sensitive
-information disclosure, LLM01 prompt-injection exfiltration). Errors name the row and rule only.
-
-write:   prints one space-separated line per row for the SSH writer; every token is validated to a
-         safe charset and the reply is base64, so no reply byte reaches a shell unencoded.
+Read rows_json only from $GITHUB_EVENT_PATH; step env is publicly logged.
+Validate all rows before output; errors name fields/rules, never input values.
+preview emits only IDs/hashes; write emits validated fields and base64 replies.
+Content checks cover known patterns and allowed destinations, not all PII.
 """
 import base64
 import hashlib
