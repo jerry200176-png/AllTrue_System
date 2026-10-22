@@ -28,12 +28,18 @@ class ProfileUpdateTargetTest extends TestCase
             'the director themself' => $director,
             'teacher of another campus' => $this->user('T', [$other->id]),
         ];
+        $snapshot = fn (int $id) => [
+            DB::table('User')->where('id', $id)->first(['PSW', 'LoginName', 'Name', 'status']),
+            DB::table('UserCampus')->where('UserID', $id)->orderBy('CampusID')->get(['CampusID', 'Approved'])->toArray(),
+        ];
         foreach ($targets as $label => $target) {
-            $before = DB::table('User')->where('id', $target->id)->first(['PSW', 'LoginName', 'Name']);
+            $before = $snapshot((int) $target->id);
+            // Every writable field at once, including campus links and status: none of it may land.
             $this->api($token)->putJson("/api/v1/profiles/{$target->id}", [
                 'password' => 'NewPassword123', 'account' => 'changed-' . $target->id . '@example.com', 'name' => 'changed',
+                'status' => 'suspended', 'branch_id' => $other->id, 'multi_branches' => [$campus->id, $other->id],
             ])->assertForbidden();
-            $this->assertEquals($before, DB::table('User')->where('id', $target->id)->first(['PSW', 'LoginName', 'Name']), "{$label} unchanged");
+            $this->assertEquals($before, $snapshot((int) $target->id), "{$label}: account and campus links unchanged");
         }
         $this->assertSame(0, DB::table('UserCampus')->where('UserID', $director->id)->where('CampusID', $other->id)->count());
 
