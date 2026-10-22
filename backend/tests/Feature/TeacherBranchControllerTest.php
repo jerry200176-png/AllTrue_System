@@ -157,6 +157,30 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertDatabaseHas('UserCampus', ['UserID' => $legacy->id, 'CampusID' => $campus->id]);
     }
 
+    /** teacher_id[]=<victim> made (int) check User 1 while the delete matched the victim (security review, 2026-10-22). */
+    public function test_destroy_refuses_a_teacher_id_array_without_deleting_anything(): void
+    {
+        $campus  = Campus::factory()->create();
+        $campus2 = Campus::factory()->create();
+        // The bypass needed User 1 to be a teacher the caller manages; set that up before any other user exists.
+        if (!User::whereKey(1)->exists()) {
+            DB::table('User')->insert(['id' => 1, 'LoginName' => 'tb-decoy-' . uniqid() . '@test.com', 'Name' => 'Decoy', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912000008]);
+        }
+        DB::table('User')->where('id', 1)->update(['type' => 'T']);
+        UserCampus::firstOrCreate(['UserID' => 1, 'CampusID' => $campus->id], ['Admin' => 0, 'Approved' => 1]);
+        $token  = $this->directorToken($campus->id);
+        $victim = User::create(['LoginName' => 'tb-victim-' . uniqid() . '@test.com', 'Name' => 'Victim', 'PSW' => 'secret', 'type' => 'A', 'phone' => 912000009]);
+        UserCampus::create(['CampusID' => $campus2->id, 'UserID' => $victim->id, 'Admin' => 1, 'Approved' => 1]);
+        $rows = fn () => DB::table('UserCampus')->whereIn('UserID', [1, $victim->id])->orderBy('UserID')->orderBy('CampusID')
+            ->get(['UserID', 'CampusID', 'Approved', 'Admin'])->toArray();
+        $before = $rows();
+
+        $this->withToken($token)->deleteJson("/api/v1/teacher_branches?teacher_id[]={$victim->id}")->assertStatus(422);
+        $this->withToken($token)->deleteJson("/api/v1/teacher_branches?teacher_id={$victim->id}x")->assertStatus(422);
+
+        $this->assertEquals($before, $rows(), 'neither the victim nor User 1 lost a campus link');
+    }
+
     public function test_destroy_removes_teacher_branches(): void
     {
         $campus    = Campus::factory()->create();
