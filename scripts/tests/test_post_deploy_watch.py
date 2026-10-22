@@ -344,6 +344,7 @@ class WorkflowWiringTest(unittest.TestCase):
 
     def test_contract_test_runs_this_file(self):
         self.assertIn("python3 scripts/tests/test_post_deploy_watch.py", self.workflow)
+        self.assertIn("python3 scripts/tests/test_post_deploy_watch.py", (WORKFLOW.parent / "ci.yml").read_text())
 
 
 
