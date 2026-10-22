@@ -17,8 +17,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: repo-hygiene-${{ github.event.schedule || github.run_id }}
+  # Manual and scheduled runs across refs write the same report/alarm trackers.
+  # Serialize their read-before-create updates without cancelling an active writer.
+  group: repo-hygiene
   cancel-in-progress: false
+  queue: max
 
 jobs:
   report:

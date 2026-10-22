@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import subprocess
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -20,6 +21,19 @@ def run_git(cwd: Path, *args: str) -> None:
 
 
 class BranchHygieneTest(unittest.TestCase):
+    def test_all_hygiene_writers_share_one_non_cancelling_lock(self):
+        workflow = (ROOT / ".github/workflows/branch-hygiene.yml").read_text()
+        concurrency = re.search(r"^concurrency:\n((?:  [^\n]*\n)+)", workflow, re.MULTILINE)
+        self.assertIsNotNone(concurrency, "manual and scheduled writers need a shared workflow lock")
+        group = re.search(r"^  group:\s*(\S[^\n]*)$", concurrency.group(1), re.MULTILINE)
+        self.assertIsNotNone(group)
+        # All refs and trigger modes update the same report/alarm trackers.
+        # Per-run, per-schedule or per-ref keys permit read-before-create races.
+        for varying_context in ("github.run_id", "github.run_attempt", "github.event", "github.ref", "github.sha"):
+            self.assertNotIn(varying_context, group.group(1))
+        self.assertRegex(concurrency.group(1), r"(?m)^  cancel-in-progress:\s*false\s*$")
+        self.assertRegex(concurrency.group(1), r"(?m)^  queue:\s*max\s*$")
+
     def test_checkout_report_needs_no_credentials_and_failures_stop(self):
         with tempfile.TemporaryDirectory(prefix="branch-hygiene-stub-") as raw_dir:
             root = Path(raw_dir)
