@@ -162,4 +162,29 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
         // Idempotent: a suffix already present is not appended again.
         $this->assertSame('foo; leave', CourseLeaveCascadeService::appendNote('foo; leave', 'leave'));
     }
+
+    /**
+     * #4058: Wed 17:00/19:30 + Sat 10:00. The 19:30 lesson of 07-01 is left after its 17:00 sibling, whose tail
+     * (07-15, hand-edited to 19:30) occupies the next compatible Wednesday. The tail keeps searching Wednesdays
+     * (07-22) instead of falling back to every course weekday, which put a 19:30 lesson onto Saturday 07-18.
+     */
+    public function test_occupied_compatible_tail_date_keeps_the_lessons_weekday(): void
+    {
+        $row = fn (int $id, string $date, string $start, string $end, string $status = 'scheduled', string $note = ''): array =>
+            ['id' => $id, 'date' => $date, 'status' => $status, 'start' => $start . ':00', 'end' => $end . ':00', 'note' => $note];
+        $rows = [
+            $row(1, '2026-07-01', '17:00', '19:00', CourseLeaveCascadeService::NOTE_LEAVE),
+            $row(2, '2026-07-01', '19:30', '21:30'),
+            $row(3, '2026-07-04', '10:00', '12:00'),
+            $row(4, '2026-07-08', '17:00', '19:00'),
+            $row(5, '2026-07-08', '19:30', '21:30'),
+            $row(6, '2026-07-11', '10:00', '12:00'),
+            $row(7, '2026-07-15', '19:30', '21:30', 'scheduled', CourseLeaveCascadeService::NOTE_AUTO_EXTENDED . ':ld=2026-07-01'),
+        ];
+
+        $plan = CourseLeaveCascadeService::computeAppendOnlyPlan($rows, '2026-07-01', [3, 6], 2, 7, ['3|17:00', '3|19:30', '6|10:00']);
+
+        $this->assertSame('2026-07-22', $plan['append']);
+        $this->assertSame(3, (int) Carbon::parse($plan['append'])->dayOfWeekIso);
+    }
 }
