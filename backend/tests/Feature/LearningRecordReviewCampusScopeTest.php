@@ -72,6 +72,22 @@ class LearningRecordReviewCampusScopeTest extends TestCase
         }
         $this->assertSame('pending', (string) $record->fresh()->Status);
         $this->assertSame(0, LearningRecord::whereIn('Status', ['rejected', 'changes_requested'])->count());
+
+        // A batch mixing the director's own record with a foreign one is refused as a whole: the own record is untouched too.
+        $ownStudent = Student::create(['name' => 'Scope own', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $ownCourse = $this->course->replicate();
+        $ownCourse->StudentID = $ownStudent->id;
+        $ownCourse->save();
+        $ownSession = ClassSession::create(['StudentClassID' => $ownCourse->ID, 'SessionDate' => '2026-04-05', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'attended']);
+        $own = LearningRecord::create([
+            'StudentClassID' => $ownCourse->ID, 'ClassSessionID' => $ownSession->id, 'TeacherID' => $this->teacherId, 'Subject' => 'Math',
+            'Content' => '老師實際填寫的評量正文', 'Status' => 'pending', 'SessionDate' => '2026-04-05', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00',
+        ]);
+        foreach (['batch-reject', 'batch-request-changes'] as $action) {
+            $this->api($foreign)->postJson("/api/v1/learning-records/{$action}", ['ids' => [$own->id, $record->id], 'ReviewNote' => 'x'])->assertForbidden();
+        }
+        $this->assertSame('pending', (string) $own->fresh()->Status);
+        $this->assertSame('pending', (string) $record->fresh()->Status);
     }
 
     public function test_a_director_of_another_campus_cannot_backfill_an_approval(): void
