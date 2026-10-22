@@ -1368,7 +1368,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         deploy_start = self.workflow.index("  deploy:\n")
         parent_smoke_start = self.workflow.index("  parent-portal-smoke:\n")
         deploy = self.workflow[deploy_start:parent_smoke_start]
-        self.assertIn("timeout-minutes: 30", deploy)
+        self.assertIn("timeout-minutes: 55", deploy)  # deploy + verify + 20-min post-deploy watch
         for option in (
             "-o BatchMode=yes",
             "-o ConnectTimeout=20",
@@ -1702,7 +1702,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn(self.MIGRATION_START, deploy)
         self.assertNotIn("continue-on-error", deploy)
         self.assertNotIn("set +e", deploy)
-        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  parent-portal-smoke:", 1)[0]
+        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  deploy-incident:", 1)[0]
         steps = after.split("      - name: ")[1:]
         names = [step.split("\n", 1)[0] for step in steps]
         self.assertEqual(
