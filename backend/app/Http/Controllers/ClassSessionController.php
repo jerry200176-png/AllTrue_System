@@ -701,12 +701,13 @@ class ClassSessionController extends Controller
                 }
                 $cur = $parent;
             }
-            // #3970: the row reached at the hop limit gets the same terminal check, as in the backfill resolver.
+            // #3970: a row reached on the last hop gets the same terminal check as inside the loop. A row that
+            // still has a parent is not the root, so a chain longer than the limit keeps no identity (Codex r4347251344).
             if ($cur->original_start_time) {
                 return [$ymd($cur->original_schedule_date), $hm($cur->original_start_time)];
             }
 
-            return $cur === $row ? [null, null] : [$targetDate, $hm($cur->start_time)];
+            return $cur === $row || (int) ($cur->original_schedule_id ?? 0) > 0 ? [null, null] : [$targetDate, $hm($cur->start_time)];
         };
         $scheduleKey = fn (Schedule $r): string => (int) $r->student_course_id . '|' . $hm($r->start_time);
         $extraBudget = [];

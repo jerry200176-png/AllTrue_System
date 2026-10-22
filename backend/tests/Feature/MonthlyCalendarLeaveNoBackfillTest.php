@@ -339,9 +339,41 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->extraSchedule($course, $teacherId, '06:30', 'scheduled', 'normal', ['original_schedule_id' => $prev->id]);
         $this->createSession($course, '2026-10-13', '06:30', '08:30', 'scheduled');
 
+        $this->assertSame(['06:30', '2026-10-13', '18:00'], $this->readerRowAt($course, '06:30'), 'The 40th hop reaches the 18:00 root.');
         $this->readTeacherDay($teacherToken);
 
         $this->assertSame(['06:30 scheduled', '13:00 scheduled'], $this->startsOn($course), 'The 40th hop reaches 18:00; 13:00 must stay.');
+    }
+
+    /** #3970 (Codex r4347251344): past the hop limit the row reached is not the root, so it lends no identity. */
+    public function test_a_reschedule_chain_longer_than_forty_links_keeps_no_identity(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3970-long@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        // 18:00 -> 13:00 -> 39 more moves -> live 06:30: 41 links, and the 40th hop lands on the 13:00 row.
+        $root = $this->extraSchedule($course, $teacherId, '18:00', 'rescheduled', 'normal');
+        $prev = $this->extraSchedule($course, $teacherId, '13:00', 'rescheduled', 'normal', ['original_schedule_id' => $root->id]);
+        for ($i = 1; $i <= 39; $i++) {
+            $prev = $this->extraSchedule($course, $teacherId, sprintf('05:%02d', $i), 'rescheduled', 'normal', ['original_schedule_id' => $prev->id]);
+        }
+        $this->extraSchedule($course, $teacherId, '06:30', 'scheduled', 'normal', ['original_schedule_id' => $prev->id]);
+        $this->createSession($course, '2026-10-13', '06:30', '08:30', 'scheduled');
+
+        $this->assertSame(['06:30', null, null], $this->readerRowAt($course, '06:30'));
+        $this->readTeacherDay($teacherToken);
+
+        $this->assertSame(['06:30 scheduled', '13:00 scheduled'], $this->startsOn($course), 'An intermediate 13:00 row must not hide the 13:00 lesson.');
+    }
+
+    /** @return array{0:string,1:?string,2:?string}|null the same-day reader's row for the lesson now at $start */
+    private function readerRowAt(StudentClass $course, string $start): ?array
+    {
+        $reader = new \ReflectionMethod(\App\Http\Controllers\ClassSessionController::class, 'monthlyLessonRowsByClass');
+        $reader->setAccessible(true);
+        $rows = $reader->invoke(app(\App\Http\Controllers\ClassSessionController::class), [(int) $course->ID], '2026-10-13');
+
+        return collect($rows[(int) $course->ID] ?? [])->first(fn (array $row) => $row[0] === $start);
     }
 
     /** @param array<string, mixed> $identity */
