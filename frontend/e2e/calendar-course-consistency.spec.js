@@ -37,7 +37,8 @@ const LEARNING_PAGE_TITLE = '學習評量表';
 const RETIRED_BILLING_LABELS = ['付款期間待確認', '等你確認收款'];
 // Opening 學習評量表 as a director backfills past records (LearningRecordsPage ensurePastRecords).
 const LEARNING_ENSURE_PAST_PATH = '/api/v1/learning-records/ensure-past';
-// 課程查找 and 學習評量表 ask for session dates with a POST that writes nothing (StudentClassController::sessionDates).
+// 課程查找 and 學習評量表 ask for session dates with a POST that writes nothing (StudentClassController::sessionDates,
+// the same handler as the GET route). Tests count it, still blocked, only when no assertion needs its data.
 const SESSION_DATES_POST_READ = '/api/v1/student-classes/session-dates';
 const DESKTOP = { name: 'desktop', width: 1440, height: 900 };
 const MOBILE = { name: 'mobile', width: 390, height: 844 };
@@ -329,6 +330,8 @@ test.describe('production acceptance — calendar/course parity', () => {
     { name: 'mobile', width: 390, height: 844 },
   ]) {
     test(`director ${viewport.name}: calendar and course management agree`, async ({ page, request }) => {
+      // Ends on 課程查找, whose session-dates POST would otherwise fail the run only when it fires in time.
+      expectAbortedPost(SESSION_DATES_POST_READ);
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
       const token = SESSION.access_token;
@@ -521,6 +524,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     test(`director ${viewport.name}: 課程付款狀態與帳務入口分開且可操作`, async ({ page }) => {
     test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
       'missing controlled production director session');
+    expectAbortedPost(SESSION_DATES_POST_READ);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await primeDirectorSession(page);
     await page.goto('/');
