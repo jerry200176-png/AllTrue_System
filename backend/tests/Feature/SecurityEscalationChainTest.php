@@ -8,6 +8,7 @@ use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -80,22 +81,34 @@ class SecurityEscalationChainTest extends TestCase
         $other = CampusFactory::new()->create();
         $this->account('D', [$own->id], 'ok-dir@example.com');
         $teacher = $this->account('T', [$own->id], 'ok-teacher@example.com');
-        $legacy = $this->account('T', [], 'ok-legacy@example.com');
-        DB::table('teacher_branches')->insert(['teacher_id' => $legacy->id, 'branch_id' => $own->id]);
         $director = $this->account('D', [$other->id], 'ok-other-dir@example.com');
         $token = $this->login('ok-dir@example.com');
 
         $this->api($token)->putJson("/api/v1/profiles/{$teacher->id}", ['name' => '同校老師'])->assertOk();
-        $this->api($token)->putJson("/api/v1/profiles/{$legacy->id}", ['name' => '舊綁定老師'])->assertOk();
-        $this->api($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $legacy->id, 'branch_id' => $own->id]])->assertOk();
         $this->api($token)->postJson('/api/v1/line/settings', ['branch_id' => $own->id, 'liff_id' => 'own-liff'])->assertOk();
         $this->assertSame('同校老師', (string) $teacher->fresh()->Name);
-        $this->assertSame('舊綁定老師', (string) $legacy->fresh()->Name);
 
         $sa = $this->login($this->account('S', [], 'ok-sa@example.com')->LoginName);
         $this->api($sa)->putJson("/api/v1/profiles/{$director->id}", ['name' => '主任新名'])->assertOk();
         $this->api($sa)->postJson('/api/v1/line/settings', ['branch_id' => $other->id, 'liff_id' => 'sa-liff'])->assertOk();
         $this->assertSame('主任新名', (string) $director->fresh()->Name);
+    }
+
+    public function test_a_teacher_linked_only_through_legacy_teacher_branches_stays_manageable(): void
+    {
+        // No migration creates the legacy table, so the CI schema lacks it (same as ChatEnhancementTest FR-001).
+        if (!Schema::hasTable('teacher_branches')) {
+            $this->markTestSkipped('legacy teacher_branches table is not in the test schema');
+        }
+        $own = CampusFactory::new()->create();
+        $this->account('D', [$own->id], 'legacy-dir@example.com');
+        $legacy = $this->account('T', [], 'legacy-teacher@example.com');
+        DB::table('teacher_branches')->insert(['teacher_id' => $legacy->id, 'branch_id' => $own->id]);
+        $token = $this->login('legacy-dir@example.com');
+
+        $this->api($token)->putJson("/api/v1/profiles/{$legacy->id}", ['name' => '舊綁定老師'])->assertOk();
+        $this->api($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $legacy->id, 'branch_id' => $own->id]])->assertOk();
+        $this->assertSame('舊綁定老師', (string) $legacy->fresh()->Name);
     }
 
     /** @param list<int> $campusIds */
