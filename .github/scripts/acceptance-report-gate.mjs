@@ -28,6 +28,16 @@ const expectedTests = (branchId, scope = 'all') => {
     ['calendar-course-consistency.spec.js', 342, 3, 'director: 科目數統計的分校占比與 API、分校及期間切換一致'],
     ['calendar-course-consistency.spec.js', 414, 5, 'director desktop: 課程付款狀態與帳務入口分開且可操作'],
     ['calendar-course-consistency.spec.js', 414, 5, 'director mobile: 課程付款狀態與帳務入口分開且可操作'],
+    // Affected-path evidence for in-app reports already fixed in production (#3903 #3982 #4015 #4059 #4060 #4122 #4166 #4267).
+    ['calendar-course-consistency.spec.js', 614, 3, 'director desktop: in-app 390 側欄入口與面板標題都叫「搜尋」'],
+    ['calendar-course-consistency.spec.js', 634, 3, 'director desktop: in-app 395/403 帳務中心應收分頁用新標籤，不再出現舊字樣'],
+    ['calendar-course-consistency.spec.js', 694, 5, 'director desktop: in-app 396 帳務入口開啟的合約卡被標示、捲到眼前並顯示課程編號'],
+    ['calendar-course-consistency.spec.js', 694, 5, 'director mobile: in-app 396 帳務入口開啟的合約卡被標示、捲到眼前並顯示課程編號'],
+    ['calendar-course-consistency.spec.js', 735, 3, 'director desktop: in-app 404 課程查找帳務資料每份合約顯示期間與付款狀態'],
+    ['calendar-course-consistency.spec.js', 777, 3, 'director desktop: in-app 400 家長 LINE 綁定清單與統計卡和 API 一致'],
+    ['calendar-course-consistency.spec.js', 821, 3, 'director desktop: in-app 411 快速排課老師選單排除停用老師'],
+    ['calendar-course-consistency.spec.js', 874, 5, 'director desktop: in-app 417 學習評量表只在桌面提供「列表」切換'],
+    ['calendar-course-consistency.spec.js', 874, 5, 'director mobile: in-app 417 學習評量表只在桌面提供「列表」切換'],
     ['calendar-print-production.spec.js', 203, 3, 'session branch is authorized'],
     ['calendar-print-production.spec.js', 207, 3, 'director opens week/month print preview without printing or writes'],
     ['tutoring-free-production.spec.js', 68, 3, 'director read-only API and real UI acceptance'],
@@ -113,6 +123,8 @@ export function summarizeReport(report) {
       if (note?.type === 'coverage' && COVERAGE_NOTE.test(description)) lines.push(`  coverage ${description}`);
       if (note?.type === 'not-exercised' && RULE_NOTE.test(description)) lines.push(`  NOT EXERCISED rule=${description}`);
       if (note?.type === 'skip' && NOT_EXERCISED_SKIP.test(description)) lines.push(`  NOT EXERCISED ${description.slice('not-exercised: '.length)}`);
+      // A passing test whose live data lacked one case: that assertion was skipped, not verified.
+      if (note?.type === 'precondition-absent' && RULE_NOTE.test(description)) lines.push(`  PRECONDITION ABSENT ${description}`);
     }
   }
   const count = (status) => collectTests(report).filter((item) => item.status === status).length;
@@ -242,6 +254,15 @@ function selfTest() {
   if (leakySummary.includes('王小明') || !leakySummary.includes('coverage cards_checked=3')) throw new Error('self-test summary leaked or dropped a note');
   for (const scope of ['all', 'calendar']) {
     if (expectedTests(16, scope).some((item) => item.file === 'payment-display-production.spec.js')) throw new Error(`payments leaked into ${scope}`);
+  }
+  // A missing production case is printed as PRECONDITION ABSENT (name only); the test itself still passed.
+  const absent = makeReport(16);
+  absent.suites[0].specs[0].tests[0].annotations = [{ type: 'precondition-absent', description: 'deactivated_teacher' },
+    { type: 'precondition-absent', description: '王小明' }];
+  validateReport(absent, 16);
+  const absentSummary = summarizeReport(absent);
+  if (!absentSummary.includes('  PRECONDITION ABSENT deactivated_teacher') || absentSummary.join('\n').includes('王小明')) {
+    throw new Error('self-test summary dropped or leaked a precondition note');
   }
   // payments: all five not exercised is INCONCLUSIVE (summary says so, gate fails), even with no failure.
   const allSkipped = makeReport(16, 'payments');
