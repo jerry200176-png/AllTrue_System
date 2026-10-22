@@ -5,192 +5,231 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Founder 2026-10-21: Phase-A triage and follow-up replies run as validated batches (<=20 rows)
+// without a per-run Founder approval. Still: dispatch-only, main only, secrets only on the
+// main-only production-ssh environment, one queued write lock, an ID/hash-only preview first.
+const validator = '.github/scripts/inapp-writeback-rows.py';
 const workflows = [
-  '.github/workflows/bug-phase-a-triage.yml',
-  '.github/workflows/bug-followup-comment.yml',
+  ['.github/workflows/bug-phase-a-triage.yml', 'phase-a', 'triage', 'label-logged'],
+  ['.github/workflows/bug-followup-comment.yml', 'followup', 'comment', 'close-shipped-issue'],
 ];
-
-for (const workflow of workflows) {
+const jobBlock = (source, job) => {
+  const m = source.match(new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  (?:# [^\\n]*\\n  )?[a-z-]+:\\n|$)`));
+  assert.ok(m, `job ${job} must exist`);
+  return m[1];
+};
+for (const [workflow, kind, writeJob, nextJob] of workflows) {
   const source = fs.readFileSync(workflow, 'utf8');
-  assert.match(source, /PUBLIC_REPLY_B64="\$\(printf '%s' "\$PUBLIC_REPLY" \| base64 \| tr -d '\\n'\)"/);
-  assert.match(source, /PUBLIC_REPLY_B64='\$PUBLIC_REPLY_B64' bash -s/);
-  assert.match(source, /PUBLIC_REPLY="\$\(printf '%s' "\$PUBLIC_REPLY_B64" \| base64 -d\)"/);
-  assert.ok(
-    source.includes('[[ "$GITHUB_ISSUE_URL" =~ ^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]]'),
-    `${workflow} must strictly validate issue URLs`,
-  );
-  assert.ok(!source.includes('== https://github.com/*/issues/*'), `${workflow} must not use wildcard URL validation`);
-  assert.ok(!source.includes('PUBLIC_REPLY=\\$(printf %q'), `${workflow} must not interpolate raw reply text`);
-}
-
-// Every production write waits for the Founder reviewer on production-activation,
-// after a preview job that shows the exact request. Secrets stay on production-ssh.
-for (const [workflow, writeJob] of [
-  ['.github/workflows/bug-phase-a-triage.yml', 'triage'],
-  ['.github/workflows/bug-followup-comment.yml', 'comment'],
-]) {
-  const source = fs.readFileSync(workflow, 'utf8');
-  assert.match(source, /\n  approve:\n[\s\S]*?    needs: preview\n[\s\S]*?    environment: production-activation\n/,
-    `${workflow} must gate on production-activation after the preview job`);
-  assert.ok(source.includes(`\n  ${writeJob}:\n    needs: approve\n    runs-on: ubuntu-latest\n    environment: production-ssh\n`),
-    `${workflow} write job must need the approval job`);
-  assert.ok(source.includes('group: inapp-production-writeback') && source.includes('cancel-in-progress: false'),
-    `${workflow} must serialize in-app writes`);
-  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/);
-  assert.ok(preview && !/secrets\./.test(preview[1]) && !/environment:/.test(preview[1]),
+  assert.match(source, /\non:\n  workflow_dispatch:\n    inputs:\n      rows_json:\n[\s\S]*?\n\npermissions:/,
+    `${workflow} must be workflow_dispatch-only with a rows_json input`);
+  assert.ok(!/\n  (push|pull_request|schedule|repository_dispatch|workflow_run):/.test(source.split('\njobs:')[0]),
+    `${workflow} must have no other trigger`);
+  assert.ok(!source.includes('production-activation') && !/\n  approve:\n/.test(source),
+    `${workflow} must not wait for a per-run Founder approval (Founder 2026-10-21)`);
+  assert.ok(source.includes('\nconcurrency:\n  group: inapp-production-writeback\n  cancel-in-progress: false\n  queue: max\n'),
+    `${workflow} must queue every in-app write on the shared lock`);
+  const preview = jobBlock(source, 'preview');
+  assert.ok(!/secrets\./.test(preview) && !/\n    environment:/.test(preview),
     `${workflow} preview job must hold no secrets or environment`);
+  assert.ok(preview.includes(`run: python3 ${validator} ${kind} preview`), `${workflow} preview must validate every row`);
+  const write = jobBlock(source, writeJob);
+  assert.ok(write.startsWith('    needs: preview\n    runs-on: ubuntu-latest\n    environment: production-ssh\n'),
+    `${workflow} write job must run after the preview on the main-only production-ssh environment`);
+  assert.ok(write.includes(`ROWS="$(python3 ${validator} ${kind} write)"`), `${workflow} writer must re-validate rows`);
+  assert.ok(write.includes("ROWS_B64='$ROWS_B64' bash -s"), `${workflow} must pass rows only base64-encoded`);
+  assert.ok(write.includes(`PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"`), `${workflow} must decode each reply remotely`);
+  assert.ok(write.includes('[[ "$GITHUB_ISSUE_URL" =~ ^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]]'),
+    `${workflow} must strictly validate issue URLs on the remote too`);
+  assert.ok(write.includes("          ' \\\n          </dev/null\n"), `${workflow} tinker must never read the script's stdin`);
+  assert.ok(write.includes('[[ "$applied" == "$ROW_COUNT" ]]'), `${workflow} must prove every row ran`);
+  assert.ok(jobBlock(source, nextJob).includes(`needs: [preview, ${writeJob}]`), `${nextJob} runs only after every write succeeded`);
+  assert.ok(!source.includes('inputs.public_reply') && !source.includes('inputs.rows_json') && !/^\s+(PUBLIC_REPLY|ROWS_JSON):/m.test(source),
+    `${workflow} must never expose reply text through env or an expression (step env is printed in public logs)`);
+  assert.ok(!source.includes('== https://github.com/*/issues/*') && !source.includes('PUBLIC_REPLY=\\$(printf %q'),
+    `${workflow} must not use wildcard URL validation or interpolate raw reply text`);
   assert.ok(!/`\$[A-Z_]+`/.test(source), `${workflow} must not use backtick command substitution on inputs`);
 }
 
-// #4196 review: queue every in-app write (never drop a pending run), keep the reply text out of
-// the public run summary and step-env log headers, and require the exact main-only policy.
-for (const [workflow, writeJob, nextJob] of [
-  ['.github/workflows/bug-phase-a-triage.yml', 'triage', 'label-logged'],
-  ['.github/workflows/bug-followup-comment.yml', 'comment', 'close-shipped-issue'],
-]) {
-  const source = fs.readFileSync(workflow, 'utf8');
-  assert.ok(
-    source.includes('\nconcurrency:\n  group: inapp-production-writeback\n  cancel-in-progress: false\n  queue: max\n'),
-    `${workflow} workflow-level lock must queue (queue: max) like other production side-effect workflows`,
-  );
-  assert.ok(!source.includes('inputs.public_reply }}'),
-    `${workflow} must never expose public_reply through env or an expression (step env is printed in public logs)`);
-  assert.ok(!/^\s+PUBLIC_REPLY:/m.test(source), `${workflow} must not set PUBLIC_REPLY in a step env block`);
-  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
-  assert.ok(!/(printf|echo|cat|tee)[^\n]*\$\{?PUBLIC_REPLY/.test(preview), `${workflow} preview must not print the reply text`);
-  assert.ok(preview.includes(`jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" | sha256sum`)
-    && preview.includes(`jq -er '.inputs.public_reply | strings | length' "$GITHUB_EVENT_PATH"`),
-    `${workflow} preview must show only the reply length and sha256`);
-  const approve = source.match(/\n  approve:\n([\s\S]*?)\n  [a-z-]+:\n    needs: approve\n/)[1];
-  assert.ok(approve.includes('api(f"{base}/deployment-branch-policies")')
-    && approve.includes('if names != ["main"]:')
-    && approve.includes('policy.get("protected_branches") is not False'),
-    `${workflow} approval gate must verify the exact main-only branch policy like deploy.yml`);
-  const write = source.match(new RegExp(`\\n  ${writeJob}:\\n([\\s\\S]*?)\\n  # [\\s\\S]*?\\n  ${nextJob}:\\n`))[1];
-  assert.ok(write.includes(`PUBLIC_REPLY="$(jq -je '.inputs.public_reply | strings' "$GITHUB_EVENT_PATH" && printf x)"\n          PUBLIC_REPLY="\${PUBLIC_REPLY%x}"`),
-    `${workflow} write job must read the reply from the event payload`);
-
-  // Behaviour: the event-payload read is byte-exact (trailing newline kept) and the preview hash matches.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-reply-event-'));
+// Behaviour: the validator is all-or-nothing, prints only IDs/hashes, and the remote loop applies
+// every row with the exact reply bytes, never executing them.
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-rows-'));
   try {
-    const reply = '第一行 $(touch x) `id`\n second line https://github.com/o/r/issues/1\n';
     const eventPath = path.join(dir, 'event.json');
-    fs.writeFileSync(eventPath, JSON.stringify({ inputs: { public_reply: reply } }));
-    const readLines = write.match(/\n          (PUBLIC_REPLY="\$\(jq [^\n]*)\n          (PUBLIC_REPLY="\$\{PUBLIC_REPLY%x\}")\n/);
-    const out = execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}\n${readLines[2]}\nprintf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\\n'`],
-      { encoding: 'utf8', cwd: dir, env: { ...process.env, GITHUB_EVENT_PATH: eventPath } });
-    assert.equal(Buffer.from(out, 'base64').toString('utf8'), reply, `${workflow} reply must round-trip exactly`);
-    assert.equal(fs.existsSync(path.join(dir, 'x')), false, `${workflow} reply must not execute`);
-    const shaLine = preview.match(/\n          (reply_sha="[^\n]*)\n/)[1];
-    const lenLine = preview.match(/\n          (reply_len="[^\n]*)\n/)[1];
-    const shown = execFileSync('bash', ['-c', `set -euo pipefail\n${shaLine}\n${lenLine}\nprintf '%s %s' "$reply_sha" "$reply_len"`],
-      { encoding: 'utf8', cwd: dir, env: { ...process.env, GITHUB_EVENT_PATH: eventPath } });
-    assert.equal(shown, `${createHash('sha256').update(reply, 'utf8').digest('hex')} ${[...reply].length}`,
-      `${workflow} preview hash/length must match the exact reply`);
-    fs.writeFileSync(eventPath, JSON.stringify({ inputs: {} }));
-    assert.throws(() => execFileSync('bash', ['-c', `set -euo pipefail\n${readLines[1]}`],
-      { stdio: 'ignore', env: { ...process.env, GITHUB_EVENT_PATH: eventPath } }), `${workflow} missing reply must fail closed`);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-// #4196 review round 2: the approval job can read the environment API, and the preview validates
-// every displayed input (read from the event payload, not env) before writing the public summary.
-for (const [workflow, extra] of [
-  ['.github/workflows/bug-phase-a-triage.yml', { disposition: 'bug', close_as_logged: 'false' }],
-  ['.github/workflows/bug-followup-comment.yml', { expected_status: 'resolved', production_revision: '', deploy_run_id: '' }],
-]) {
-  const source = fs.readFileSync(workflow, 'utf8');
-  const approve = source.match(/\n  approve:\n([\s\S]*?)\n    steps:\n/)[1];
-  assert.ok(/\n    permissions:\n      actions: read\n/.test(approve),
-    `${workflow} approval job needs actions: read for the environment API (as deploy.yml)`);
-
-  // The approver must be exactly the Founder: run the extracted gate against fake environment APIs.
-  const gateRun = approve.length && source.match(/\n  approve:\n[\s\S]*?\n          python3 - <<'PY'\n([\s\S]*?)\n          PY\n/)[1]
-    .split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
-  const gateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-gate-'));
-  try {
-    const ghStub = path.join(gateDir, 'gh');
-    fs.writeFileSync(ghStub, '#!/usr/bin/env bash\ncase "$2" in *deployment-branch-policies) cat "$STUB_DIR/policies.json";; *) cat "$STUB_DIR/env.json";; esac\n');
-    fs.chmodSync(ghStub, 0o755);
-    fs.writeFileSync(path.join(gateDir, 'policies.json'), JSON.stringify({ branch_policies: [{ name: 'main' }] }));
-    fs.writeFileSync(path.join(gateDir, 'gate.py'), gateRun);
-    const founder = { type: 'User', reviewer: { login: 'jerry200176-png' } };
-    const gate = (reviewers) => {
-      fs.writeFileSync(path.join(gateDir, 'env.json'), JSON.stringify({
-        can_admins_bypass: false,
-        deployment_branch_policy: { custom_branch_policies: true, protected_branches: false },
-        protection_rules: [{ type: 'required_reviewers', reviewers }],
-      }));
-      try {
-        execFileSync('python3', [path.join(gateDir, 'gate.py')], { stdio: 'ignore',
-          env: { ...process.env, PATH: `${gateDir}:${process.env.PATH}`, STUB_DIR: gateDir, REPO: 'o/r' } });
-        return true;
-      } catch { return false; }
-    };
-    assert.equal(gate([founder]), true, `${workflow} gate must accept the Founder as sole reviewer`);
-    for (const bad of [
-      [],
-      [{ type: 'User', reviewer: { login: 'someone-else' } }],
-      [founder, { type: 'User', reviewer: { login: 'someone-else' } }],
-      [{ type: 'Team', reviewer: { login: 'jerry200176-png' } }],
-    ]) {
-      assert.equal(gate(bad), false, `${workflow} gate must reject reviewers ${JSON.stringify(bad)}`);
-    }
-  } finally {
-    fs.rmSync(gateDir, { recursive: true, force: true });
-  }
-  const preview = source.match(/\n  preview:\n([\s\S]*?)\n  approve:\n/)[1];
-  assert.ok(!preview.includes('${{ inputs.') && !/\n        env:\n/.test(preview),
-    `${workflow} preview must read inputs from the event payload, not env`);
-  const run = preview.split('\n        run: |\n')[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-preview-'));
-  try {
     const summary = path.join(dir, 'summary.md');
-    const eventPath = path.join(dir, 'event.json');
-    const url = 'https://github.com/o/r/issues/7';
-    const reply = `已收到，追蹤：${url}`;
-    const runPreview = (inputs) => {
+    const output = path.join(dir, 'output');
+    const run = (kind, mode, rows, ref = 'refs/heads/main') => {
+      fs.writeFileSync(eventPath, JSON.stringify({ inputs: { rows_json: typeof rows === 'string' ? rows : JSON.stringify(rows) } }));
       fs.writeFileSync(summary, '');
-      fs.writeFileSync(eventPath, JSON.stringify({ inputs }));
+      fs.writeFileSync(output, '');
       try {
-        const out = execFileSync('bash', ['-c', run], { encoding: 'utf8', cwd: dir, stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summary, GITHUB_REPOSITORY: 'o/r' } });
-        return { ok: true, out, summary: fs.readFileSync(summary, 'utf8') };
+        const out = execFileSync('python3', [validator, kind, mode], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: output,
+            GITHUB_REPOSITORY: 'o/r', GITHUB_REF: ref } });
+        return { ok: true, out, summary: fs.readFileSync(summary, 'utf8'), output: fs.readFileSync(output, 'utf8') };
       } catch (e) {
         return { ok: false, out: `${e.stdout}${e.stderr}`, summary: fs.readFileSync(summary, 'utf8') };
       }
     };
-    const good = runPreview({ bug_id: '42', github_issue_url: url, public_reply: reply, ...extra });
-    assert.ok(good.ok, `${workflow} preview must accept a valid request: ${good.out}`);
-    assert.ok(good.summary.includes('- bug_id: 42') && good.summary.includes(createHash('sha256').update(reply, 'utf8').digest('hex')),
-      `${workflow} preview summary must show the id and reply hash`);
-    assert.ok(!good.summary.includes('已收到'), `${workflow} preview summary must not contain reply text`);
+    const url = (n) => `https://github.com/o/r/issues/${n}`;
+    const marker = path.join(dir, 'executed');  // the remote step runs with cwd = dir
+    const tricky = `第一行 $(touch executed) \`id\` 'q' ; ${url(7)}\n second line\n`;
+    const a = [
+      { bug_id: '41', github_issue_url: url(7), public_reply: tricky },
+      { bug_id: 42, github_issue_url: url(8), public_reply: `已記錄 ${url(8)}`, disposition: 'suggestion', close_as_logged: true },
+    ];
+    const good = run('phase-a', 'preview', a);
+    assert.ok(good.ok, `valid batch must pass: ${good.out}`);
+    assert.ok(good.summary.includes(`| 1 | 41 | ${url(7)} | bug | false | ${[...tricky].length} | ${createHash('sha256').update(tricky, 'utf8').digest('hex')} |`)
+      && good.summary.includes(`| 2 | 42 | ${url(8)} | suggestion | true |`), 'preview table must list every row id, issue, disposition, close, len and sha256');
+    assert.ok(!good.summary.includes('第一行') && !good.summary.includes('已記錄') && !good.out.includes('第一行'), 'reply text never reaches the summary or log');
+    assert.equal(good.output, `logged_issues=${JSON.stringify([['42', url(8)]])}\n`);
+    const f = [
+      { bug_id: '50', expected_status: 'resolved', github_issue_url: url(9), public_reply: `更新 ${url(9)}` },
+      { bug_id: '51', expected_status: 'closed', github_issue_url: url(10), public_reply: `上線 ${url(10)}`, production_revision: 'a'.repeat(40), deploy_run_id: '123' },
+    ];
+    const fgood = run('followup', 'preview', f);
+    assert.ok(fgood.ok, `valid follow-up batch must pass: ${fgood.out}`);
+    assert.equal(fgood.output, `shipped=${JSON.stringify([['51', url(10), 'a'.repeat(40)]])}\n`);
     const secret = '王小明 0912345678';
-    for (const bad of [
-      { github_issue_url: secret, public_reply: `回覆 ${secret}` },
-      { bug_id: secret },
-      { github_issue_url: 'https://github.com/other/repo/issues/7', public_reply: 'see https://github.com/other/repo/issues/7' },
-      { public_reply: 'no link here' },
-      ...Object.keys(extra).filter((k) => k !== 'production_revision' && k !== 'deploy_run_id').map((k) => ({ [k]: secret })),
+    const max = `${url(7)}${'字'.repeat(600 - url(7).length)}`;
+    assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: max }]).ok, 'a 600-character reply is allowed');
+
+    // Founder 2026-10-21 reply content guard (OWASP LLM02 / LLM01, "lethal trifecta"): a reply that would
+    // leak personal data or credentials, or link anywhere but this repo's issues / the app, fails the batch.
+    const clean = `您好，已收到並開立追蹤：${url(7)}。上線後可到 https://daan.lifenet.com.tw/admin/bugs 查看，版本 abc1234（2026-10-21）。`;
+    assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: clean }]).ok, 'a clean reply with the issue and app links passes');
+    assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: `${url(7)} https://daan.lifenet.com.tw/learning-records/student-12345/session-67890?tab=open` }]).ok,
+      'an ordinary app deep link with ids and a query passes');
+    assert.ok(run('phase-a', 'preview', [{ ...a[0], public_reply: `${url(7)} 已在 daan.lifenet.com.tw 修正，版本 2026.10.21，下午 3:30，金額 1,200 元，共 8 堂、v1.2.3` }]).ok,
+      'bare allowed hosts, dates, times, amounts and versions pass');
+    for (const [rule, leak] of [
+      ['tw_mobile', '0912345678'], ['tw_mobile', '0912-345-678'], ['tw_mobile', '+886 912 345 678'],
+      ['tw_landline', '02-2345-6789'], ['tw_landline', '(02)23456789'], ['tw_landline', '+886-2-2345-6789'],
+      ['tw_national_id', 'A123456789'], ['email', 'parent.name@example.com'],
+      ['secret_token', 'ghp_abcdefghijklmnop'], ['secret_token', 'github_pat_11AAAAAAAAAA'], ['secret_token', 'sk-abcdefghijkl'],
+      ['secret_token', 'xoxb-123456789012'], ['secret_token', 'AKIAABCDEFGHIJKLMNOP'], ['private_key', '-----BEGIN RSA PRIVATE KEY-----'],
+      ['long_hex', 'a'.repeat(40)], ['long_base64', 'QWxhZGRpbjpvcGVuIHNlc2FtZQ1234567890abcd=='],
+      ['url_not_allowed', 'https://evil.example/x'], ['url_not_allowed', 'https://github.com/o/r/pull/3'],
+      ['url_not_allowed', 'https://github.com/o/other/issues/1'], ['url_not_allowed', 'https://daan.lifenet.com.tw.evil.io/'],
+      ['url_not_allowed', 'www.evil.com'], ['url_not_allowed', 'evil.com/x'],
+      // An allowed link must not smuggle data in its path, query or fragment (#4351 review, P1).
+      ['email', 'https://daan.lifenet.com.tw/?email=alice@example.com'], ['email', 'https://daan.lifenet.com.tw/?e=alice%40example.com'],
+      ['tw_mobile', 'https://daan.lifenet.com.tw/p/0912345678'], ['secret_token', 'https://daan.lifenet.com.tw/?t=ghp_abcdefghijklmnop'],
+      ['tw_national_id', 'https://daan.lifenet.com.tw/?id=A123456789'], ['long_hex', `https://daan.lifenet.com.tw/x#${'a'.repeat(40)}`],
+      // Independent review bypasses (5598196260): NFKC + format-character stripping, loose separators,
+      // obfuscated emails, any foreign/defanged/IP host, and redirect targets on the allowed app host.
+      ['tw_mobile', '0912.345.678'], ['tw_mobile', '09-12345678'], ['tw_mobile', '+886 (0)912 345 678'],
+      ['tw_mobile', '0912\u200b345\u200b678'], ['tw_mobile', '０９１２３４５６７８'], ['tw_landline', '02.2345.6789'],
+      ['tw_national_id', 'Ａ123456789'], ['tw_national_id', 'A 123456789'], ['tw_national_id', 'A123-456-789'],
+      ['email', 'user＠gmail．com'], ['email', 'user@gmail'], ['email', 'user at gmail dot com'],
+      ['email', 'user(at)gmail(dot)com'], ['url_not_allowed', 'evil.ai'], ['url_not_allowed', 'x.tk'],
+      ['url_not_allowed', 'y.site'], ['url_not_allowed', 'xn--80ak6aa92e.xn--p1ai'], ['url_not_allowed', 'ftp://x.ai'],
+      ['url_not_allowed', '1.2.3.4/x'], ['url_not_allowed', 'evil[.]com'], ['url_not_allowed', 'evil(.)com'],
+      ['url_not_allowed', 'https://daan.lifenet.com.tw/redirect?to=evil.ai'], ['url_not_allowed', 'https://daan.lifenet.com.tw/r?to=evil%2Eai'],
     ]) {
-      const r = runPreview({ bug_id: '42', github_issue_url: url, public_reply: reply, ...extra, ...bad });
-      assert.ok(!r.ok, `${workflow} preview must reject ${Object.keys(bad)[0]}`);
-      assert.equal(r.summary, '', `${workflow} rejected preview must write nothing to the summary`);
-      assert.ok(!r.out.includes('王小明'), `${workflow} rejected preview must not echo the value`);
+      const r = run('phase-a', 'preview', [a[1], { ...a[0], public_reply: `${url(7)} ${leak}` }]);
+      assert.ok(!r.ok && r.out.includes(`row 2: public_reply rejected by content rule ${rule}`), `${rule} must reject the batch: ${r.out}`);
+      assert.ok(!r.out.includes(leak) && r.summary === '', `${rule}: the rejected value must not be echoed or summarised`);
     }
+    for (const [label, kind, rows, ref] of [
+      ['non-main ref', 'phase-a', a, 'refs/heads/chore/x'],
+      ['invalid JSON', 'phase-a', `[{"bug_id": "${secret}"`],
+      ['empty batch', 'phase-a', []],
+      ['21 rows', 'phase-a', Array.from({ length: 21 }, (_, i) => ({ bug_id: String(i + 1), github_issue_url: url(7), public_reply: url(7) }))],
+      ['duplicate bug_id', 'phase-a', [a[0], { ...a[1], bug_id: '41' }]],
+      ['bad bug_id', 'phase-a', [a[1], { ...a[0], bug_id: secret }]],
+      ['other repository', 'phase-a', [a[1], { ...a[0], github_issue_url: 'https://github.com/other/repo/issues/7', public_reply: `${secret} https://github.com/other/repo/issues/7` }]],
+      ['reply without the URL', 'phase-a', [a[1], { ...a[0], public_reply: secret }]],
+      ['601-character reply', 'phase-a', [a[1], { ...a[0], public_reply: `${max}字` }]],
+      ['bad disposition', 'phase-a', [a[1], { ...a[0], disposition: secret }]],
+      ['string close_as_logged', 'phase-a', [a[1], { ...a[0], close_as_logged: 'true' }]],
+      ['unknown field', 'phase-a', [a[1], { ...a[0], expected_status: 'resolved' }]],
+      ['bad expected_status', 'followup', [f[0], { ...f[0], bug_id: '52', expected_status: secret }]],
+      ['closed without evidence', 'followup', [f[0], { ...f[1], deploy_run_id: '' }]],
+      ['bad revision', 'followup', [f[0], { ...f[1], production_revision: secret }]],
+    ]) {
+      for (const mode of ['preview', 'write']) {
+        const r = run(kind, mode, rows, ref);
+        assert.ok(!r.ok, `${label} must fail the whole ${mode}`);
+        assert.equal(r.summary, '', `${label}: a rejected batch writes nothing to the summary`);
+        assert.ok(!r.out.includes('王小明') && !r.out.includes('第一行') && !r.out.includes('/issues/'), `${label}: errors must not echo values`);
+      }
+    }
+
+    // Run each writer step end to end: a stub ssh runs the remote command locally, stub php/git stand in
+    // for tinker. Replies must round-trip exactly, and a mid-batch failure publishes only written rows.
+    const stubs = path.join(dir, 'bin');
+    fs.mkdirSync(stubs);
+    fs.writeFileSync(path.join(stubs, 'php'), '#!/usr/bin/env bash\n[[ "$BUG_ID" == "$FAIL_BUG" ]] && exit 1\n{ printf "%s %s %s " "$BUG_ID" "$GITHUB_ISSUE_URL" "${DISPOSITION:-$EXPECTED_STATUS}"; printf "%s" "$PUBLIC_REPLY" | base64 -w0; printf " %s\\n" "$(cat | wc -c)"; } >> "$CALLS"\n');
+    fs.writeFileSync(path.join(stubs, 'git'), '#!/usr/bin/env bash\n[[ "$1" == rev-parse ]] && echo deadbeef; exit 0\n');
+    fs.writeFileSync(path.join(stubs, 'ssh'), '#!/usr/bin/env bash\nexec bash -c "${@: -1}"\n');
+    for (const name of ['php', 'git', 'ssh']) fs.chmodSync(path.join(stubs, name), 0o755);
+    for (const [workflow, kind, rows] of [[workflows[0][0], 'phase-a', a], [workflows[1][0], 'followup', f]]) {
+      const source = fs.readFileSync(workflow, 'utf8');
+      const runBlock = source.match(/\n        run: \|\n          set -euo pipefail\n          ROWS="\$\(python3[\s\S]*?\n          exit "\$rc"\n/)[0];
+      const script = runBlock.split('\n').slice(2).map((l) => l.replace(/^ {10}/, '')).join('\n')
+        .replace('cd /home/admin/backend', 'cd "$BACKEND"');
+      const writeStep = (failBug) => {
+        const calls = path.join(dir, `${kind}-${failBug}.calls`);
+        fs.writeFileSync(calls, '');
+        fs.writeFileSync(output, '');
+        fs.writeFileSync(summary, '');
+        fs.writeFileSync(eventPath, JSON.stringify({ inputs: { rows_json: JSON.stringify(rows) } }));
+        let ok = true;
+        try {
+          execFileSync('bash', ['-c', script], { stdio: 'ignore', env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`,
+            CALLS: calls, BACKEND: dir, RUNNER_TEMP: dir, FAIL_BUG: failBug, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary,
+            GITHUB_EVENT_PATH: eventPath, GITHUB_REPOSITORY: 'o/r', GITHUB_REF: 'refs/heads/main', PI_SSH_USER: 'u', PI_SSH_HOST: 'h' } });
+        } catch { ok = false; }
+        const got = fs.readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map((l) => l.split(' '));
+        return { ok, got, output: fs.readFileSync(output, 'utf8'), summary: fs.readFileSync(summary, 'utf8') };
+      };
+      const all = writeStep('none');
+      assert.ok(all.ok, `${workflow} write step must succeed`);
+      assert.equal(all.got.length, rows.length, `${workflow} must apply every row once, in order`);
+      assert.equal(all.output, `applied=${JSON.stringify(rows.map((r) => String(r.bug_id)))}\n`, `${workflow} must publish every applied bug_id`);
+      assert.ok(all.summary.includes(`${rows.length} of ${rows.length} row(s) applied (exit 0)`), `${workflow} must report the write result`);
+      rows.forEach((row, i) => {
+        assert.equal(all.got[i][0], String(row.bug_id));
+        assert.equal(all.got[i][1], row.github_issue_url);
+        assert.equal(all.got[i][2], row.disposition || row.expected_status || 'bug');
+        assert.equal(Buffer.from(all.got[i][3], 'base64').toString('utf8'), row.public_reply.replace(/\n+$/, ''),
+          `${workflow} reply must reach tinker exactly (command substitution trims trailing newlines, as before)`);
+        assert.equal(all.got[i][4], '0', `${workflow} tinker stdin must be /dev/null, not the remote script`);
+      });
+      const partial = writeStep(String(rows[1].bug_id));
+      assert.ok(!partial.ok, `${workflow} a failing row must fail the job`);
+      assert.equal(partial.output, `applied=${JSON.stringify([String(rows[0].bug_id)])}\n`,
+        `${workflow} must still publish the rows written before the failure`);
+      const downstream = jobBlock(source, workflows.find((w) => w[0] === workflow)[3]);
+      assert.ok(downstream.includes('if: always() && ') && downstream.includes('--argjson a "$APPLIED"'),
+        `${workflow} follow-on job must run for, and only for, applied rows`);
+      assert.ok(downstream.includes('failed=0') && downstream.includes('failed=1;') && downstream.trimEnd().endsWith('exit "$failed"'),
+        `${workflow} follow-on job must attempt every applied row and fail only after the loop`);
+    }
+    assert.ok(!fs.existsSync(marker) && !fs.existsSync('executed'), 'reply metacharacters must never execute');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
+{
+  // The Phase-A "already replied" check must not treat a comment linking issues/123 as the reply for issues/12.
+  const line = phaseASource.match(/\n          (\$issueLinked = static fn \(\$body\) => [^\n]*;)\n/);
+  assert.ok(line && phaseASource.includes('->pluck("body")->contains($issueLinked)'), 'Phase-A duplicate check must use the anchored predicate');
+  const php = `$issueUrl = "https://github.com/o/r/issues/12"; ${line[1]}
+    $cases = [["see https://github.com/o/r/issues/12", true], ["https://github.com/o/r/issues/12。", true],
+      ["https://github.com/o/r/issues/123", false], ["https://github.com/o/r/issues/1", false]];
+    foreach ($cases as [$body, $want]) { if ($issueLinked($body) !== $want) { fwrite(STDERR, $body); exit(1); } }`;
+  execFileSync('php', ['-r', php]);
+}
 assert.ok(
-  phaseASource.includes('DISPOSITION: ${{ inputs.disposition }}')
+  phaseASource.includes('while read -r -u 3 BUG_ID GITHUB_ISSUE_URL DISPOSITION CLOSE_AS_LOGGED PUBLIC_REPLY_B64; do')
     && phaseASource.includes('"disposition" => $disposition')
     && phaseASource.includes('"github_issue_url" => $issueUrl'),
-  'Phase-A must pass the selected disposition and GitHub issue to the existing service',
+  'Phase-A must pass each row\'s disposition and GitHub issue to the existing service',
 );
 assert.match(phaseASource, /\[\[ "\$DISPOSITION" =~ \^\[a-z_\]\+\$ \]\]/,
   'Phase-A must constrain the disposition before passing it through SSH');
@@ -1080,15 +1119,15 @@ assert.match(phaseCSource,
   assert.match(closeJob, /also maps unchecked in-app/, 'issues mapping unchecked reports are never closed');
   assert.ok(closeJob.indexOf('gh issue close') < closeJob.indexOf('gh issue comment'), 'close before comment so retries never duplicate the notice');
   const labelJob = phaseASource.split('\n  label-logged:')[1];
-  assert.ok(labelJob && /needs: triage/.test(labelJob) && /issues: write/.test(labelJob) && /in-app:logged/.test(labelJob),
+  assert.ok(labelJob && /needs: \[preview, triage\]/.test(labelJob) && /issues: write/.test(labelJob) && /in-app:logged/.test(labelJob),
     'close_as_logged labels the backlog issue in-app:logged after triage succeeds');
   const followSource = fs.readFileSync('.github/workflows/bug-followup-comment.yml', 'utf8');
   const shipJob = followSource.split('\n  close-shipped-issue:')[1];
-  assert.ok(shipJob && /needs: comment/.test(shipJob) && /issues: write/.test(shipJob) && /--remove-label in-app:logged/.test(shipJob),
+  assert.ok(shipJob && /needs: \[preview, comment\]/.test(shipJob) && /issues: write/.test(shipJob) && /--remove-label in-app:logged/.test(shipJob),
     'a shipped logged suggestion closes its backlog issue after the notice succeeds');
   assert.ok(/type:epic/.test(shipJob) && /lifecycle:frozen/.test(shipJob) && /also maps in-app/.test(shipJob),
     'the logged ship path uses the same never-close guards as Phase-C');
-  assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
+  assert.match(fs.readFileSync('.github/scripts/inapp-writeback-rows.py', 'utf8'), /must be an issue in this repository/, 'issue URLs from other repositories are rejected before any write');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
   // in-app #389 (2026-10-11): the reply linked a follow-up issue (#3847) before the canonical one, and the
