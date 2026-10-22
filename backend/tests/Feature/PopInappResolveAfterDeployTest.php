@@ -61,7 +61,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $this->reporter = User::create(['LoginName' => 'popResRep@test.com', 'Name' => 'R', 'PSW' => 'x', 'type' => 'T', 'phone' => rand(900000000, 999999999)])->id;
         $this->remote = ['run_path' => '.github/workflows/deploy.yml', 'run_head' => $this->deployed, 'job' => 'success', 'source_ref' => null,
             'pull_request' => false, 'author' => 'github-actions[bot]', 'health' => 200, 'pr_body' => 'Refs #' . self::ISSUE,
-            'smoke' => 'success', 'smoke_at' => '2026-10-22T09:30:00Z'];
+            'smoke' => 'success', 'smoke_at' => '2026-10-22T09:30:00Z', 'smoke_event' => 'workflow_dispatch'];
         Http::fake(fn (Request $request) => $this->respond($request));
     }
 
@@ -124,6 +124,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'fix PR does not reference the issue' => ['pr_unlinked', 'fix_not_linked_to_issue'],
             'smoke failed' => ['smoke_failed', 'smoke_not_passed_after_deploy'],
             'smoke ran before the deploy finished' => ['smoke_early', 'smoke_not_passed_after_deploy'],
+            'smoke run came from a pull request' => ['smoke_pr', 'smoke_not_passed_after_deploy'],
             'SourceRef written by an outsider' => ['outsider', 'issue_source_ref_untrusted'],
             'health not 200' => ['health', 'health_not_ok'],
             'issue names another report' => ['source_ref', 'issue_source_ref_untrusted'],
@@ -160,6 +161,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'pr_unlinked' => $this->remote['pr_body'] = 'Refs #' . (self::ISSUE + 1),
             'smoke_failed' => $this->remote['smoke'] = 'failure',
             'smoke_early' => $this->remote['smoke_at'] = '2026-10-22T08:00:00Z',
+            'smoke_pr' => $this->remote['smoke_event'] = 'pull_request',
             'outsider' => $this->remote['author'] = 'someone-else',
             'health' => $this->remote['health'] = 503,
             'source_ref' => $this->remote['source_ref'] = $bug + 1000,
@@ -339,7 +341,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $bug = $this->remote['source_ref'] ?? (int) BugReport::query()->max('id');
         $url = $request->url();
         $run = fn (string $id, string $path, string $conclusion, string $at) => Http::response(['id' => (int) $id, 'path' => $path,
-            'head_sha' => $this->remote['run_head'], 'head_branch' => 'main', 'conclusion' => $conclusion, 'run_started_at' => $at]);
+            'head_sha' => $this->remote['run_head'], 'head_branch' => 'main', 'event' => $this->remote['smoke_event'], 'conclusion' => $conclusion, 'run_started_at' => $at]);
 
         return match (true) {
             $url === 'https://health.test/api/v1/health' => Http::response(['ok' => true], $this->remote['health']),
@@ -357,6 +359,14 @@ final class PopInappResolveAfterDeployTest extends TestCase
                 + ($this->remote['pull_request'] ? ['pull_request' => ['url' => 'x']] : [])),
             default => Http::response('', 599), // never reach the network
         };
+    }
+
+    private function allowRequester(): void
+    {
+        $this->app->instance(InappRequesterGuard::class, new class extends InappRequesterGuard {
+            public function allows(object $request): bool { return true; }
+            public function attributionUserId(object $request): ?int { return (int) User::query()->where('type', 'S')->value('id'); }
+        });
     }
 
     private function writeManifest(string $sha): void

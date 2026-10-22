@@ -29,7 +29,7 @@ class InappReportResolveEvidence
     public function isAncestor(string $commit, string $of): bool
     {
         if (preg_match(self::SHA, $commit) !== 1 || preg_match(self::SHA, $of) !== 1) return false;
-        $compare = $this->github("compare/{$commit}...{$of}");
+        $compare = $this->github("compare/{$commit}...{$of}", ['per_page' => 1]);
 
         return in_array($compare['status'] ?? null, ['ahead', 'identical'], true) && ($compare['merge_base_commit']['sha'] ?? null) === $commit;
     }
@@ -59,14 +59,22 @@ class InappReportResolveEvidence
         return ['head' => $head, 'completed_at' => $deploy[0]['completed_at']];
     }
 
-    /** True when the run succeeded and started after $after (an ISO time): the smoke ran against that deployment. */
-    public function smokePassedAfter(string $runId, string $after): bool
+    /**
+     * True when a production smoke workflow (config pop_inapp.smoke_workflows) run from main by schedule or dispatch
+     * succeeded and started after $after (an ISO time), and so did the named job if one is given.
+     */
+    public function smokePassedAfter(string $runId, ?string $jobId, string $after): bool
     {
         $run = $this->github("actions/runs/{$runId}");
         $started = strtotime((string) ($run['run_started_at'] ?? ''));
-
-        return (string) ($run['id'] ?? '') === $runId && ($run['conclusion'] ?? null) === 'success'
+        $passed = (string) ($run['id'] ?? '') === $runId && ($run['conclusion'] ?? null) === 'success'
+            && in_array($run['path'] ?? null, (array) config('pop_inapp.smoke_workflows'), true)
+            && in_array($run['event'] ?? null, ['schedule', 'workflow_dispatch'], true) && ($run['head_branch'] ?? null) === 'main'
             && $started !== false && $started >= strtotime($after);
+        if (!$passed || $jobId === null) return $passed;
+        $job = $this->github("actions/jobs/{$jobId}");
+
+        return (string) ($job['run_id'] ?? '') === $runId && ($job['conclusion'] ?? null) === 'success';
     }
 
     /**
@@ -79,8 +87,9 @@ class InappReportResolveEvidence
         $repo = (string) config('pop_inapp.github_repo');
         $issue = $this->github("issues/{$issueNumber}");
         if (!is_array($issue) || isset($issue['pull_request']) || (int) ($issue['number'] ?? 0) !== $issueNumber
-            || !str_ends_with((string) ($issue['repository_url'] ?? ''), '/repos/' . $repo) || ($issue['state_reason'] ?? null) === 'duplicate') return false;
-        $trusted = fn ($author): bool => in_array($author['login'] ?? null, [strtok($repo, '/'), 'github-actions[bot]'], true);
+            || !str_ends_with((string) ($issue['repository_url'] ?? ''), '/repos/' . $repo)
+            || in_array($issue['state_reason'] ?? null, ['duplicate', 'not_planned'], true)) return false;
+        $trusted = fn ($author): bool => in_array($author['login'] ?? null, [explode('/', $repo)[0], 'github-actions[bot]'], true);
         $ref = '/^[ \t>*_#.)0-9`-]*SourceRef\b[^\r\n]*alltrue:bug_report:' . $bugId . '(?!\d)/m';
         foreach ([$issue, ...(array) $this->github("issues/{$issueNumber}/comments", ['per_page' => 100])] as $item) {
             if (is_array($item) && $trusted($item['user'] ?? []) && preg_match($ref, (string) ($item['body'] ?? '')) === 1) return true;

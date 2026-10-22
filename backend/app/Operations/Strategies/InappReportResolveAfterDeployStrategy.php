@@ -41,7 +41,7 @@ final class InappReportResolveAfterDeployStrategy
         if (!is_array($proof) || array_keys($proof) !== ['captured_at', 'proof'] || !is_string($proof['captured_at']) || !is_string($proof['proof'])) $errors[] = 'writeback_proof_invalid';
         if ($errors !== []) return $this->result($errors, $p);
         [$bugId, $fix, $run] = [$p['bug_id'], $p['fix_commit_sha'], $p['deploy_run_id']];
-        preg_match('/(?:^run:|\/runs\/)([1-9][0-9]{0,19})/', $p['smoke_result_ref'], $smoke);
+        preg_match('/(?:^run:|\/runs\/)([1-9][0-9]{0,19})(?:\/job\/([1-9][0-9]{0,19}))?/', $p['smoke_result_ref'], $smoke);
 
         $bug = BugReport::query()->whereKey($bugId)->first();
         if (!$bug) return $this->result(['report_missing'], $p);
@@ -58,7 +58,7 @@ final class InappReportResolveAfterDeployStrategy
         elseif (!in_array($head, $this->evidence->deployedShas(), true)) $errors[] = 'deploy_run_not_in_production';
         elseif (!$this->evidence->isAncestor($fix, $head)) $errors[] = 'fix_not_in_deployed_revision';
         if (!$this->evidence->fixLinkedTo($fix, $issue, $bugId)) $errors[] = 'fix_not_linked_to_issue';
-        if ($deploy !== null && !$this->evidence->smokePassedAfter($smoke[1], $deploy['completed_at'])) $errors[] = 'smoke_not_passed_after_deploy';
+        if ($deploy !== null && !$this->evidence->smokePassedAfter($smoke[1], $smoke[2] ?? null, $deploy['completed_at'])) $errors[] = 'smoke_not_passed_after_deploy';
         if (!$this->evidence->healthOk()) $errors[] = 'health_not_ok';
         // The review proof binds the report, comments, attachments, status logs and evidence as they were read.
         if ($errors === [] && !DB::transaction(fn (): bool => BugReportWritebackEvidence::verify($bug, $proof['captured_at'], $proof['proof']))) {
