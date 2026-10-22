@@ -261,7 +261,9 @@ class LearningRecordController extends Controller
             if (!empty($scIds)) {
                 $query->whereIn('StudentClassID', $scIds);
             }
-        } elseif (!empty($campusIds) && $role !== 'teacher') {
+        }
+        // The campus scope applies with or without a course filter: student_class_ids narrows it, never widens it.
+        if (!empty($campusIds) && $role !== 'teacher') {
             $studentIds = Student::whereIn('CampusID', $campusIds)->pluck('id');
             $classIds = StudentClass::whereIn('StudentID', $studentIds)->pluck('ID');
             if ($classIds->isNotEmpty()) {
