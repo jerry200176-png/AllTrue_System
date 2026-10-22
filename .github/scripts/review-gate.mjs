@@ -38,7 +38,10 @@ export function reviewGate(comments, head, owner) {
   let cr = null;
   if (raw !== null) {
     try { cr = JSON.parse(decodeEntities(raw))?.code_review; } catch { cr = undefined; }
-    if (!cr || typeof cr !== 'object') return { ok: false, why: 'Codex review state unreadable' };
+    if (!cr || typeof cr !== 'object' || Array.isArray(cr)
+        || typeof cr.commit_sha !== 'string' || !SHA40.test(cr.commit_sha)) {
+      return { ok: false, why: 'Codex review state unreadable' };
+    }
   }
   const onHead = cr?.commit_sha === head;
   if (onHead && cr.status === 'completed' && cr.has_unresolved_findings === false) return { ok: true, via: 'codex' };

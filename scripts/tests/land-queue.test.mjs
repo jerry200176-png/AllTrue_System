@@ -319,6 +319,20 @@ test('review gate: malformed / unknown never merges (fail closed)', () => {
   assert.equal(decide(pr({ review: undefined, mergeStateStatus: 'BLOCKED' }), req).reason, undefined);
 });
 
+test('review gate: malformed structured Codex identity vetoes owner fallback', () => {
+  for (const commit_sha of [undefined, null, '', 'not-a-sha', H.slice(0, 7), H.toUpperCase(), 42]) {
+    for (const state of [clean(commit_sha, { status: 'running' }), clean(commit_sha, { has_unresolved_findings: true })]) {
+      // clean() defaults undefined to H; explicitly exercise an absent property.
+      if (commit_sha === undefined) delete state.commit_sha;
+      const comments = [codex(state), fallback(H)];
+      assert.equal(gateOf(comments).ok, false, `invalid native SHA ${String(commit_sha)}`);
+      assert.equal(decideWith(comments).action, 'wait');
+    }
+  }
+  assert.equal(gateOf([codex([]), fallback(H)]).ok, false);
+  assert.equal(gateOf([codex(clean(OLD)), fallback(H)]).ok, true, 'valid stale identity still allows fallback');
+});
+
 test('guardedSquash: re-reads the final-head review for the exact SHA before squash (serial and batch)', () => {
   for (const [review, did] of [[{ ok: true }, true], [{ ok: false, why: 'Codex review running' }, false], [null, false], [undefined, false]]) {
     const calls = [];
