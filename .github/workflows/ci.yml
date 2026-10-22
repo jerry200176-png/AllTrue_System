@@ -83,6 +83,10 @@ jobs:
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
+          node --test scripts/tests/actions-cost-report.test.mjs
+          python3 -m venv "$RUNNER_TEMP/credential-expiry-test-venv"
+          "$RUNNER_TEMP/credential-expiry-test-venv/bin/python" -m pip install --disable-pip-version-check -r scripts/requirements-credential-expiry.txt
+          "$RUNNER_TEMP/credential-expiry-test-venv/bin/python" -m unittest scripts.tests.test_credential_expiry
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/ci/workflow_expression_size.py
           python3 scripts/tests/test_governance_simplification.py
@@ -90,6 +94,7 @@ jobs:
           python3 -m unittest scripts.tests.test_pop_mount_policy_probe
           python3 -m unittest scripts.tests.test_additive_migration_gate
           python3 -m unittest scripts.tests.test_ui_smoke_gate
+          python3 -m unittest scripts.tests.test_monitor_alert_notify
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 -m unittest scripts.tests.test_deploy_activation_state.GhApiRetryTest
           # #4207: keep calendar-course-acceptance workflow_run names coupled to deploy.yml
