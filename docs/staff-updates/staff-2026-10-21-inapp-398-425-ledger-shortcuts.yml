@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-inapp-398-425-ledger-shortcuts
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 登記收款與單據少點幾下
+    summary: 課程查找按「登記繳費回報」直接打開登記表；學生帳務裡也能直接開繳費單和收據。
+    items:
+      - category: improved
+        text: 在課程查找按「登記繳費回報」，會直接打開這門課的登記表；按取消會回到這位學生的帳務。
+      - category: improved
+        text: 學生帳務裡，已確認的收款都有「查看收據」，每張合約卡也有「繳費單」，不用再回帳務中心找。
+    source_refs:
+      - "changelog:2026-10-21:inapp-398-425-ledger-shortcuts"
