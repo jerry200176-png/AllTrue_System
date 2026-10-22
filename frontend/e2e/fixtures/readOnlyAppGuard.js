@@ -2,10 +2,11 @@
 /**
  * Read-only guard for production acceptance specs.
  *
- * Only the app's own origin (the acceptance base URL) is intercepted. Reads
- * pass through, adoption telemetry is answered locally with 204, and every
- * other write to the app origin is aborted and recorded so the spec can fail.
- * Third-party hosts (e.g. Sentry ingest) are never intercepted or recorded.
+ * HTTP reads pass through on every origin. App adoption telemetry is answered
+ * locally with 204; every other HTTP write, including third-party telemetry,
+ * is aborted and recorded so the spec can fail. Blocking the first write hop
+ * prevents redirect chains from carrying a write back to the app: Playwright
+ * routes only the first request in an HTTP redirect chain.
  * Self-tests: readOnlyAppGuard.test.js (unit) and
  * e2e/read-only-app-guard.spec.js (browser, local servers only).
  */
@@ -33,15 +34,25 @@ export function isAppOriginUrl(appOrigin, url) {
   }
 }
 
+function isHttpUrl(url) {
+  try {
+    const protocol = new URL(String(url)).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * What the guard does with a request:
- * 'ignore' (not the app origin), 'allow' (read), 'stub-telemetry', or 'block'.
+ * 'ignore' (not HTTP), 'allow' (read), 'stub-telemetry', or 'block'.
  */
 export function classifyAppRequest(appOrigin, method, url) {
-  if (!isAppOriginUrl(appOrigin, url)) return 'ignore';
+  if (!isHttpUrl(url)) return 'ignore';
   const verb = String(method || '').toUpperCase();
   if (READ_ONLY_METHODS.includes(verb)) return 'allow';
-  if (verb === 'POST' && new URL(String(url)).pathname === ADOPTION_TELEMETRY_PATH) {
+  if (verb === 'POST' && isAppOriginUrl(appOrigin, url)
+      && new URL(String(url)).pathname === ADOPTION_TELEMETRY_PATH) {
     return 'stub-telemetry';
   }
   return 'block';
@@ -53,7 +64,7 @@ export function classifyAppRequest(appOrigin, method, url) {
  */
 export async function installReadOnlyAppGuard(context, appOrigin) {
   const blocked = [];
-  await context.route((url) => isAppOriginUrl(appOrigin, url), async (route) => {
+  await context.route(isHttpUrl, async (route) => {
     const request = route.request();
     const method = request.method().toUpperCase();
     const action = classifyAppRequest(appOrigin, method, request.url());

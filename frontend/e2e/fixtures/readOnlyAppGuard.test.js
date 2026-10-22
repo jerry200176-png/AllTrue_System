@@ -44,21 +44,29 @@ describe('readOnlyAppGuard', () => {
     expect(classifyAppRequest(APP, 'POST', 'https://app.example.test/api/v1/adoption/events')).toBe('stub-telemetry');
   });
 
-  it('(b) ignores Sentry and other third-party writes', () => {
-    expect(classifyAppRequest(APP, 'POST', 'https://o123.ingest.sentry.io/api/456/envelope/')).toBe('ignore');
-    expect(classifyAppRequest(APP, 'POST', 'https://o123.ingest.us.sentry.io/api/456/envelope/')).toBe('ignore');
-    expect(classifyAppRequest(APP, 'POST', 'https://www.google-analytics.com/g/collect')).toBe('ignore');
-    expect(classifyAppRequest(APP, 'DELETE', 'https://cdn.example.com/api/v1/x')).toBe('ignore');
+  it('(b) blocks Sentry and other third-party HTTP writes before redirects', () => {
+    expect(classifyAppRequest(APP, 'POST', 'https://o123.ingest.sentry.io/api/456/envelope/')).toBe('block');
+    expect(classifyAppRequest(APP, 'POST', 'https://o123.ingest.us.sentry.io/api/456/envelope/')).toBe('block');
+    expect(classifyAppRequest(APP, 'POST', 'https://www.google-analytics.com/g/collect')).toBe('block');
+    expect(classifyAppRequest(APP, 'DELETE', 'https://cdn.example.com/api/v1/x')).toBe('block');
+    expect(classifyAppRequest(APP, 'POST', 'https://other.example.test/api/v1/adoption/events')).toBe('block');
+    expect(classifyAppRequest('', 'POST', 'https://other.example.test/api/v1/x')).toBe('block');
+    for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+      expect(classifyAppRequest(APP, method, 'https://other.example.test/read')).toBe('allow');
+    }
+    expect(classifyAppRequest(APP, 'POST', 'data:text/plain,synthetic')).toBe('ignore');
+    expect(classifyAppRequest(APP, 'POST', 'not a url')).toBe('ignore');
   });
 
-  it('records blocked app writes and never routes third-party requests', async () => {
+  it('records blocked HTTP writes from every origin', async () => {
     let predicate;
     let handler;
     const context = { route: async (p, h) => { predicate = p; handler = h; } };
     const blocked = await installReadOnlyAppGuard(context, APP);
 
-    expect(predicate(new URL('https://o123.ingest.sentry.io/api/456/envelope/'))).toBe(false);
+    expect(predicate(new URL('https://o123.ingest.sentry.io/api/456/envelope/'))).toBe(true);
     expect(predicate(new URL('https://app.example.test/api/v1/schedules'))).toBe(true);
+    expect(predicate(new URL('data:text/plain,synthetic'))).toBe(false);
 
     const calls = [];
     const route = (method, url) => ({

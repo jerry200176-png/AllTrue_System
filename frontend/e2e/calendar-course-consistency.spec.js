@@ -229,14 +229,14 @@ async function assertResponsive(page, label) {
 }
 
 // Enforce the read-only contract in the browser, like the other production
-// acceptance specs: no POST/PUT/PATCH/DELETE from any page may reach the app's
-// own origin (the acceptance base URL). See fixtures/readOnlyAppGuard.js:
-// adoption telemetry is answered locally with 204, every other write to the
-// app origin is aborted and fails the test in afterEach, and third-party hosts
-// (e.g. Sentry ingest) are never intercepted. The route is installed on the
+// acceptance specs: no unsafe HTTP method from any page may reach any origin.
+// See fixtures/readOnlyAppGuard.js: app adoption POST telemetry is answered
+// locally with 204. Every other HTTP write, including third-party telemetry,
+// is aborted before its first hop and fails the test in afterEach. Reads on
+// every origin pass through. The route is installed on the
 // browser context so popup pages are guarded too.
 const APP_ORIGIN = appOriginOf(BASE);
-let blockedAppWrites = [];
+let blockedHttpWrites = [];
 
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
@@ -246,11 +246,11 @@ test.describe('production acceptance — calendar/course parity', () => {
   test.use({ serviceWorkers: 'block' });
 
   test.beforeEach(async ({ context }) => {
-    blockedAppWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
+    blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
   });
 
   test.afterEach(async () => {
-    expect(blockedAppWrites, 'read-only acceptance must not send writes to the app origin').toEqual([]);
+    expect(blockedHttpWrites, 'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
   });
 
   for (const viewport of [
