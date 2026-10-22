@@ -58,14 +58,14 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
     const eventPath = path.join(dir, 'event.json');
     const summary = path.join(dir, 'summary.md');
     const output = path.join(dir, 'output');
-    const run = (kind, mode, rows, ref = 'refs/heads/main') => {
+    const run = (kind, mode, rows, ref = 'refs/heads/main', repo = 'o/r') => {
       fs.writeFileSync(eventPath, JSON.stringify({ inputs: { rows_json: typeof rows === 'string' ? rows : JSON.stringify(rows) } }));
       fs.writeFileSync(summary, '');
       fs.writeFileSync(output, '');
       try {
         const out = execFileSync('python3', [validator, kind, mode], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
           env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: output,
-            GITHUB_REPOSITORY: 'o/r', GITHUB_REF: ref } });
+            GITHUB_REPOSITORY: repo, GITHUB_REF: ref } });
         return { ok: true, out, summary: fs.readFileSync(summary, 'utf8'), output: fs.readFileSync(output, 'utf8') };
       } catch (e) {
         return { ok: false, out: `${e.stdout}${e.stderr}`, summary: fs.readFileSync(summary, 'utf8'), output: fs.readFileSync(output, 'utf8') };
@@ -167,6 +167,32 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       deepestPhone = deepestPhone.replaceAll('%', '%25');
     }
     encodedPhones.push(`https://daan.lifenet.com.tw/help?value=${deepestPhone}`);
+    // #4386 r4344834157: URI data must keep literal +, / and padding before decoding/delimiting.
+    const credential = 'QWxhZGRpbjpvcGVu+IHNlc2FtZQ1234567890abcd==';
+    const mixedCredential = credential.replace('+', '+/');
+    const paddedCredential = `${'A'.repeat(29)}1==`;  // padding is needed to reach the existing 32-character rule
+    const credentialUrls = (value) => [
+      `https://daan.lifenet.com.tw/help?value=${value}`,
+      `https://daan.lifenet.com.tw/help?${value}=open`,
+      `https://daan.lifenet.com.tw/#${value}`,
+    ];
+    const credentialAttacks = [
+      ...credentialUrls(credential), ...credentialUrls(credential.replace('+', '/')),
+      ...credentialUrls(mixedCredential), `https://daan.lifenet.com.tw/p/${credential}/Z==`,
+      `https://daan.lifenet.com.tw/help?value=${paddedCredential}`,
+      `https://daan.lifenet.com.tw/#${paddedCredential}`, `https://daan.lifenet.com.tw/p/${paddedCredential}`,
+      `https://daan.lifenet.com.tw/help?${encodeURIComponent(paddedCredential)}=open`,
+    ];
+    for (const depth of [1, 2, 3]) {
+      const encoded = encodeLayers(mixedCredential, depth);
+      credentialAttacks.push(...credentialUrls(encoded), `https://daan.lifenet.com.tw/p/${encoded}`);
+    }
+    for (const depth of [2, 3, 5]) {
+      const slashEncoded = mixedCredential.replace('/', `%${'25'.repeat(depth - 1)}2F`);
+      credentialAttacks.push(...credentialUrls(slashEncoded), `https://daan.lifenet.com.tw/p/${slashEncoded}`);
+      const nestedApp = encodeLayers('https://daan.lifenet.com.tw/help?token=', depth) + slashEncoded;
+      credentialAttacks.push(`https://daan.lifenet.com.tw/help?to=${nestedApp}`);
+    }
     const harmlessLinks = [
       'https://daan.lifenet.com.tw',
       'https://daan.lifenet.com.tw/courses?tab=open#help',
@@ -186,6 +212,9 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       `${url(7)}\r\nhttps://daan.lifenet.com.tw/help`,
       `https://daan.lifenet.com.tw\n${url(7)}`,
       'https://daan.lifenet.com.tw/help//12345/session/67890',
+      'https://daan.lifenet.com.tw/learning-records/student-12345/session-67890?tab=open',
+      'https://daan.lifenet.com.tw/learning-records/student-12345/session-67890?tab=open#details',
+      `https://daan.lifenet.com.tw/help?${paddedCredential}=open`,  // literal first '=' is structure, not key padding
     ];
     for (const kind of ['phase-a', 'followup']) {
       const [candidate, first] = kind === 'phase-a' ? [a[0], a[1]] : [f[0], f[1]];
@@ -202,6 +231,13 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
           assert.ok(run(kind, mode, [{ ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]).ok,
             `${kind}/${mode} preserves harmless allowed link case ${index}`);
         });
+        const actualRepo = 'jerry200176-png/AllTrue_System';
+        const actualIssue = `https://github.com/${actualRepo}/issues/7`;
+        for (const nested of [actualIssue, 'https://daan.lifenet.com.tw/learning-records/student-12345/session-67890?tab=open']) {
+          const result = run(kind, mode, [{ ...candidate, github_issue_url: actualIssue,
+            public_reply: `${actualIssue} https://daan.lifenet.com.tw/help?to=${encodeURIComponent(nested)}` }], 'refs/heads/main', actualRepo);
+          assert.ok(result.ok, `${kind}/${mode} preserves an allowed nested URL with the actual repository and deep-link path`);
+        }
         encodedPhones.forEach((link, index) => {
           const result = run(kind, mode, [first, { ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]);
           assert.ok(!result.ok, `${kind}/${mode} rejects multiply encoded synthetic phone case ${index}`);
@@ -209,6 +245,13 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
             `${kind}/${mode} identifies encoded synthetic phone case ${index} with the original data rule`);
           assert.ok(!result.out.includes(link) && !result.out.includes('/issues/') && result.summary === '' && result.output === '',
             `${kind}/${mode} encoded phone case ${index} emits no reply or partial summary`);
+        });
+        credentialAttacks.forEach((link, index) => {
+          const result = run(kind, mode, [first, { ...candidate, public_reply: `${candidate.github_issue_url} ${link}` }]);
+          assert.ok(!result.ok && result.out.includes('row 2: public_reply rejected by content rule long_base64'),
+            `${kind}/${mode} rejects credential component case ${index} with the original data rule`);
+          assert.ok(!result.out.includes(link) && !result.out.includes('/issues/') && result.summary === '' && result.output === '',
+            `${kind}/${mode} credential component case ${index} emits no reply or partial output`);
         });
       }
     }

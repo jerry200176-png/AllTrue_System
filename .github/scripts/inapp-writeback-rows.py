@@ -25,7 +25,7 @@ import os
 import re
 import sys
 import unicodedata
-from urllib.parse import unquote_plus, urlsplit
+from urllib.parse import unquote, unquote_plus, urlsplit
 
 MAX_ROWS = 20
 MAX_REPLY_CHARS = 600
@@ -134,25 +134,30 @@ def reply_urls(text):
         yield url
 
 
+def decoded_views(text, decode):
+    """Keep all normalized representations until stable, bounded by the reply cap.
+
+    Percent decoding consumes input bytes; form '+' conversion can change once.
+    URI component data uses unquote instead, preserving literal '+'.
+    """
+    views, text = [], normalize(text)
+    for _ in range(MAX_REPLY_CHARS + 1):
+        views.append(text)
+        decoded = normalize(decode(text, errors="strict"))
+        if decoded == text:
+            return views
+        text = decoded
+    raise ValueError("decoding did not stabilize")
+
+
 def reply_violation(reply, repo):
     """Name of the first content rule the reply breaks, or None. Never returns the matched text.
     Personal names are NOT detected: this is a pattern guard, not a PII guarantee."""
     allowed_issue = re.compile(r"https://github\.com/" + re.escape(repo) + r"/issues/[1-9][0-9]*")
     allowed_app = re.compile(re.escape(APP_ORIGIN) + r"(?:[/?#]\S*)?")
-    # Every successful percent decode consumes input bytes; '+' can change once.
-    # Inspect every representation until stable, not a fixed number of layers.
-    # The reply length cap bounds work; malformed UTF-8 or exhaustion fails closed.
-    views, text = [], normalize(reply)
     try:
-        for _ in range(MAX_REPLY_CHARS + 1):
-            views.append(text)
-            decoded = normalize(unquote_plus(text, errors="strict"))
-            if decoded == text:
-                break
-            text = decoded
-        else:
-            return "url_not_allowed"
-    except UnicodeDecodeError:
+        views = decoded_views(reply, unquote_plus)
+    except ValueError:  # malformed UTF-8 or exhausted decoding fails closed
         return "url_not_allowed"
     url_parts, bad_link = [], False
     pending, seen = [url for view in views for url in reply_urls(view)], set()
@@ -169,15 +174,28 @@ def reply_violation(reply, repo):
         if not allowed_app.fullmatch(url):
             bad_link = True
             continue
+        # Split URI structure before decoding data: literal path '/' separates
+        # segments, while encoded slashes, query padding and the fragment stay intact.
+        parsed = urlsplit(url)
+        components = parsed.path.split("/") + [part for field in parsed.query.split("&")
+                                               for part in field.split("=", 1)] + [parsed.fragment]
+        try:
+            for component in components:
+                for data in decoded_views(component, unquote):
+                    # Parse nested URLs as URI structure, not one long credential.
+                    # Queue even component-local views so literal '+' survives deep decoding.
+                    for nested in reply_urls(data):
+                        pending.append(nested)
+                        if allowed_url_authority(nested) and (allowed_issue.fullmatch(nested) or allowed_app.fullmatch(nested)):
+                            data = data.replace(nested, " ")
+                    url_parts.append(data)
+        except ValueError:
+            return "url_not_allowed"
         # An allowed app link can still carry data or a redirect target in its path/query/fragment
         # (?email=..., /0912345678, ?to=evil.ai): scan the decoded components after the host.
         tail = normalize(unquote_plus(url[len(APP_ORIGIN):]))
         bad_link = bad_link or foreign_domain(tail)
         url_parts.append(re.sub(r"[/?&=#;]+", " ", tail))
-        # Redirect targets may contain another encoded URL. Every nested URL must
-        # meet the same authority/destination rules; dedupe avoids repeated work.
-        # Each tail is shorter than its parent URL, and replies are capped at 600 chars.
-        pending.extend(reply_urls(tail))
     rest = " ".join(URL.sub(" ", view) for view in views)
     scanned = " ".join([rest] + url_parts)
     for name, pattern in REPLY_RULES:  # the specific data rules first, so the error names the leak
