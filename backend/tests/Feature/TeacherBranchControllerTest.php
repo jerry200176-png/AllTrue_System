@@ -125,6 +125,18 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertSame([(int) $campus->id], array_map('intval', $listed));
     }
 
+    /** A teacher linked to the director's campus only through legacy teacher_branches is still managed (Codex r4347865989). */
+    public function test_store_accepts_a_teacher_linked_only_through_teacher_branches(): void
+    {
+        $campus = Campus::factory()->create();
+        $token  = $this->directorToken($campus->id);
+        $legacy = User::create(['LoginName' => 'tb-legacy-' . uniqid() . '@test.com', 'Name' => 'Legacy', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912000007]);
+        DB::table('teacher_branches')->insert(['teacher_id' => $legacy->id, 'branch_id' => $campus->id]);
+
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $legacy->id, 'branch_id' => $campus->id]])->assertOk();
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $legacy->id, 'CampusID' => $campus->id]);
+    }
+
     public function test_destroy_removes_teacher_branches(): void
     {
         $campus    = Campus::factory()->create();

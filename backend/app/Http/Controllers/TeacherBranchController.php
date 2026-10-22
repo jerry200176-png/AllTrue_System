@@ -119,7 +119,10 @@ class TeacherBranchController extends Controller
         return array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
     }
 
-    /** super_admin, or the target is a teacher (type T) with a UserCampus row in one of the caller's campuses. */
+    /**
+     * super_admin, or the target is a teacher (type T) linked to one of the caller's campuses through UserCampus or the
+     * legacy teacher_branches table, the same binding ProfileController::canManageTeacher() accepts (Codex r4347865989).
+     */
     private function managesTeacher(Request $request, int $userId): bool
     {
         if ($request->attributes->get('auth_role') === 'super_admin') {
@@ -129,7 +132,11 @@ class TeacherBranchController extends Controller
         if ($campusIds === [] || (string) DB::table('User')->where('id', $userId)->value('type') !== 'T') {
             return false;
         }
+        if (DB::table('UserCampus')->where('UserID', $userId)->whereIn('CampusID', $campusIds)->exists()) {
+            return true;
+        }
 
-        return DB::table('UserCampus')->where('UserID', $userId)->whereIn('CampusID', $campusIds)->exists();
+        return Schema::hasTable('teacher_branches')
+            && DB::table('teacher_branches')->where('teacher_id', $userId)->whereIn('branch_id', $campusIds)->exists();
     }
 }
