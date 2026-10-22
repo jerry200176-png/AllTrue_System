@@ -126,6 +126,22 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertSame([(int) $campus->id], array_map('intval', $listed));
     }
 
+    /** A managed teacher cannot be granted a seat in a campus the director does not manage (independent review F2). */
+    public function test_store_refuses_a_branch_the_director_does_not_manage(): void
+    {
+        $campus  = Campus::factory()->create();
+        $other   = Campus::factory()->create();
+        $token   = $this->directorToken($campus->id);
+        $managed = $this->makeTeacher($campus->id); // teacher the director manages (shares $campus)
+
+        // branch_id is a campus the director does NOT manage -> refused, nothing written.
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $managed, 'branch_id' => $other->id]])->assertForbidden();
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $managed, 'CampusID' => $other->id]);
+
+        // branch_id within the director's campuses still works.
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $managed, 'branch_id' => $campus->id]])->assertOk();
+    }
+
     /** A batch mixing a managed teacher with one the director does not manage is refused as a whole: no row is written. */
     public function test_a_mixed_batch_is_refused_without_partial_writes(): void
     {

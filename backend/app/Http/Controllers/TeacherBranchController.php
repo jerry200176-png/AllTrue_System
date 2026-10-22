@@ -45,10 +45,21 @@ class TeacherBranchController extends Controller
 
         $rows = isset($data[0]) && is_array($data[0]) ? $data : [$data];
         $hasApproved = Schema::hasColumn('UserCampus', 'Approved');
-        // Every target must be a teacher who already shares one of the caller's campuses; checked before any write.
+        $superAdmin = $request->attributes->get('auth_role') === 'super_admin';
+        $callerCampusIds = $this->callerCampusIds($request);
+        // Every target must be a teacher the caller manages, AND the branch must be one the caller manages:
+        // granting a managed teacher a seat in an unmanaged campus is the campus director's decision, not this
+        // caller's (independent review F2). Both checked for all rows before any write.
         foreach ($rows as $row) {
             $userId = (int) ($row['teacher_id'] ?? 0);
-            if ($userId && (int) ($row['branch_id'] ?? 0) && !$this->managesTeacher($request, $userId)) {
+            $branchId = (int) ($row['branch_id'] ?? 0);
+            if (!$userId || !$branchId) {
+                continue;
+            }
+            if (!$this->managesTeacher($request, $userId)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            if (!$superAdmin && !in_array($branchId, $callerCampusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
         }
