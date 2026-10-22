@@ -22,8 +22,8 @@ class AuthToken extends Model
     }
 
     /**
-     * Sign the user out everywhere: delete every bearer token they hold (the same auth_tokens delete the
-     * self-service password change and account deletion perform) and return how many were revoked.
+     * Sign the user out everywhere: delete every bearer token they hold and return how many were revoked.
+     * Same query the self-service password change and account deletion still run inline (not yet moved here).
      * Only this user's rows are touched, so an admin acting on someone else keeps their own session.
      */
     public static function revokeAllForUser(int $userId): int

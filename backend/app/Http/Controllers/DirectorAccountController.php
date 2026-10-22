@@ -250,6 +250,7 @@ class DirectorAccountController extends Controller
             $revoked = AuthToken::revokeAllForUser((int) $user->id);
 
             // #1813: admin-initiated password reset must leave a hashed trail; never log the temp password.
+            // Required (2026-10-22): a failed audit insert rolls back the new password and the sign-out.
             SecurityAuditEvent::append(
                 'director.password.reset',
                 'success',
@@ -265,7 +266,8 @@ class DirectorAccountController extends Controller
                     'method' => 'super_admin',
                     'source' => 'directors.reset-password',
                     'revoked_session_count' => $revoked,
-                ]
+                ],
+                required: true
             );
         });
 

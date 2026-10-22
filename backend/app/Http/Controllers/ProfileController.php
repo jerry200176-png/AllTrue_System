@@ -1133,7 +1133,8 @@ class ProfileController extends Controller
 
     /**
      * Founder 2026-10-22: an admin who sets or resets another user's password signs that user out
-     * everywhere and leaves a PII-minimized audit row. Call inside the transaction that saves the new PSW.
+     * everywhere and leaves a PII-minimized audit row. Call inside the transaction that saves the new PSW:
+     * the audit is required, so a failed audit insert rolls back the password and the sign-out with it.
      * The password, its hash and token values never reach the audit row.
      */
     private function endSessionsAfterAdminPasswordChange(Request $request, User $target, string $reasonCode, string $source): void
@@ -1157,7 +1158,7 @@ class ProfileController extends Controller
             'method' => $role,
             'source' => $source,
             'revoked_session_count' => $revoked,
-        ]);
+        ], required: true);
     }
 
     private function isCaller(Request $request, int $userId): bool

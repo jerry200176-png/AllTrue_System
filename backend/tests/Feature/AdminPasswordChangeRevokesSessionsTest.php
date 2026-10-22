@@ -144,6 +144,43 @@ class AdminPasswordChangeRevokesSessionsTest extends TestCase
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'director.password.reset')->count());
     }
 
+    public function test_a_failed_audit_insert_rolls_back_the_password_and_the_sign_out(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $directorToken = $this->token($this->user('A', [$campus->id]));
+        $superToken = $this->token($this->user('S', []));
+        $teacher = $this->user('T', [$campus->id]);
+        $director = $this->user('D', [$campus->id]);
+        $fail = false;
+        // Same synthetic fault as the billing fail-closed tests: the audit insert runs, then throws inside append().
+        DB::listen(function ($query) use (&$fail) {
+            if ($fail && str_starts_with($query->sql, 'insert into `security_audit_events`')) {
+                $fail = false;
+                throw new \RuntimeException('synthetic audit failure');
+            }
+        });
+        $attempts = [
+            'profiles.update' => [$teacher, fn () => $this->api($directorToken)->putJson("/api/v1/profiles/{$teacher->id}", ['password' => 'NewPassword123'])],
+            'profiles.reset-password' => [$teacher, fn () => $this->api($directorToken)->postJson("/api/v1/profiles/{$teacher->id}/reset-password")],
+            'directors.reset-password' => [$director, fn () => $this->api($superToken)->postJson("/api/v1/directors/{$director->id}/reset-password")],
+        ];
+
+        foreach ($attempts as $label => [$target, $call]) {
+            $targetToken = $this->token($target);
+            $hashBefore = (string) $target->fresh()->PSW;
+            $fail = true;
+            try {
+                $call()->assertStatus(500);
+            } finally {
+                $fail = false;
+            }
+            $this->assertSame($hashBefore, (string) $target->fresh()->PSW, "{$label}: password unchanged");
+            $this->assertSame(1, AuthToken::query()->where('token', $targetToken)->count(), "{$label}: session kept");
+            $this->api($targetToken)->getJson('/api/v1/me')->assertOk();
+        }
+        $this->assertSame(0, DB::table('security_audit_events')->whereIn('event_type', ['staff.password.admin_changed', 'director.password.reset'])->count());
+    }
+
     public function test_super_admin_setting_their_own_password_here_keeps_their_session(): void
     {
         $super = $this->user('S', []);
