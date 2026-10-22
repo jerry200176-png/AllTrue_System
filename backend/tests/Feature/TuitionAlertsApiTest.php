@@ -19,6 +19,16 @@ class TuitionAlertsApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** #4144: branch_id outside the director's campuses is refused, never widened or silently emptied. */
+    public function test_branch_outside_the_directors_campuses_is_forbidden(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-tuition-cross-campus@example.com');
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=2')->assertForbidden();
+        $this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk();
+    }
+
     public function test_tutoring_courses_are_not_tuition_alert_candidates(): void
     {
         $token = $this->createDirectorToken([1], 'director-tuition-tutoring@example.com');
