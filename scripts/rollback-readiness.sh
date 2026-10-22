@@ -28,33 +28,35 @@ note "==================================================================="
 note ""
 note "[CHECK 1] deploy.yml 自動回滾區塊"
 DEPLOY=".github/workflows/deploy.yml"
-if [ ! -f "$DEPLOY" ]; then
-  bad "$DEPLOY 不存在"
+# The Deploy step sends this checked-in script to the Pi (#4051); its rollback lives there.
+EXECUTOR="scripts/production-deploy/pi-remote-deploy.sh"
+if [ ! -f "$DEPLOY" ] || [ ! -f "$EXECUTOR" ]; then
+  bad "$DEPLOY 或 $EXECUTOR 不存在"
 else
-  grep -q 'PREV_COMMIT=$(git rev-parse HEAD)' "$DEPLOY" \
+  grep -q 'PREV_COMMIT=$(git rev-parse HEAD)' "$DEPLOY" "$EXECUTOR" \
     && ok "有捕捉 PREV_COMMIT（回滾錨點）" \
     || bad "缺 PREV_COMMIT 捕捉 → 失敗時無法定位回滾目標"
-  grep -q 'git reset --hard "$PREV_COMMIT"' "$DEPLOY" \
+  grep -q 'git reset --hard "$PREV_COMMIT"' "$DEPLOY" "$EXECUTOR" \
     && ok "有 git reset --hard \$PREV_COMMIT（程式碼回滾）" \
     || bad "缺程式碼回滾步驟"
   # Founder 2026-10-14：跑過 migration 後失敗不得自動回滾 code，也絕不自動 migrate:rollback
   # （schema 回滾走 docs/RUNBOOK_ROLLBACK.md §3 人工流程 + migration 前 mysqldump）。
-  if grep -q '\[ "${MIGRATION_RAN:-0}" -eq 0 \] || {' "$DEPLOY" \
-    && ! grep -q 'php artisan migrate:rollback' "$DEPLOY"; then
+  if grep -q '\[ "${MIGRATION_RAN:-0}" -eq 0 \] || {' "$DEPLOY" "$EXECUTOR" \
+    && ! grep -q 'php artisan migrate:rollback' "$DEPLOY" "$EXECUTOR"; then
     ok "migration 跑過後失敗 → hold（exit 12／13），不自動 migrate:rollback"
   else
     bad "缺 migration hold，或 deploy.yml 仍會自動 migrate:rollback"
   fi
   # 健康檢查必須出現至少兩次（部署後 + 回滾後）
-  HC=$(grep -c '/api/v1/health' "$DEPLOY")
+  HC=$(cat "$DEPLOY" "$EXECUTOR" | grep -c '/api/v1/health')
   if [ "${HC:-0}" -ge 2 ]; then
     ok "部署後 + 回滾後皆有 health check（共 $HC 處）"
   else
     bad "health check 出現 $HC 次（應 ≥2：部署後 + 回滾後）"
   fi
-  if grep -q 'old-credential-probe=AUTH_REJECTED' "$DEPLOY" \
-    && grep -q 'OLD_PROBE_CODE.*1045' "$DEPLOY" \
-    && grep -q 'OLD_PROBE_CODE.*3118' "$DEPLOY"; then
+  if grep -q 'old-credential-probe=AUTH_REJECTED' "$DEPLOY" "$EXECUTOR" \
+    && grep -q 'OLD_PROBE_CODE.*1045' "$DEPLOY" "$EXECUTOR" \
+    && grep -q 'OLD_PROBE_CODE.*3118' "$DEPLOY" "$EXECUTOR"; then
     ok "staged rotation 只接受明確 authentication rejection（1045/3118）"
   else
     bad "staged rotation 缺少明確 1045/3118 authentication rejection gate"

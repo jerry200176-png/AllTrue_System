@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Contract test for scripts/verify-db-backup.sh and its wiring in deploy.yml.
+# Contract test for scripts/verify-db-backup.sh and its wiring in the Pi executor.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 v="$root/scripts/verify-db-backup.sh"
@@ -50,9 +50,9 @@ chmod +x "$d/bin/gunzip"
 ! REAL_GUNZIP="$real_gunzip" PATH="$d/bin:$PATH" bash "$v" "$d/good.sql.gz" >/dev/null 2>&1 \
   || { echo "FAIL second decompression error swallowed"; exit 1; }
 
-# Wiring: deploy.yml must verify the pre-migration backup and abort on failure.
-grep -q 'verify-db-backup.sh "\$BACKUP_FILE" || abort_deploy' "$root/.github/workflows/deploy.yml" \
-  || { echo "FAIL deploy.yml does not fail closed on backup verification"; exit 1; }
+# Wiring: the extracted executor must verify the backup and abort on failure.
+grep -q 'verify-db-backup.sh "\$BACKUP_FILE" || abort_deploy' "$root/scripts/production-deploy/pi-remote-deploy.sh" \
+  || { echo "FAIL Pi executor does not fail closed on backup verification"; exit 1; }
 
 python3 - "$root" <<'PY'
 import re
@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-deploy = (root / ".github/workflows/deploy.yml").read_text()
+deploy = (root / "scripts/production-deploy/pi-remote-deploy.sh").read_text()
 block = deploy.split('BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_', 1)[1].split('echo "=== [3b/7]', 1)[0]
 producer = re.search(r"if ! mysqldump\b(.*?)\| gzip > \"\$BACKUP_FILE\"", block, re.DOTALL)
 assert producer, "missing full-DB pre-migration dump producer"
