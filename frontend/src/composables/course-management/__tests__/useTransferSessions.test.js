@@ -97,7 +97,7 @@ describe('useTransferSessions target full (in-app #379)', () => {
   const full = {
     code: 'target_capacity_exceeded',
     message: '目標課程堂數已滿（8/8）。請先在目標課程加買堂數，再轉課。',
-    next_actions: [{ code: 'open_target_purchase', label: '前往目標課程加購', available: true, student_class_id: 8 }],
+    next_actions: [{ code: 'open_target_purchase', label: '前往目標課程續課', available: true, student_class_id: 8 }],
   };
 
   it('shows the plain message and goToPurchase receives the looked-up target course', async () => {
@@ -119,7 +119,7 @@ describe('useTransferSessions target full (in-app #379)', () => {
     t.showModal.value = true;
     t.openTargetPurchase(99);
     expect(t.showModal.value).toBe(true);
-    expect(t.error.value).toContain('加購');
+    expect(t.error.value).toContain('「續課」');
     expect(goToPurchase).not.toHaveBeenCalled();
   });
 });

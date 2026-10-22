@@ -570,8 +570,14 @@ class EnrollmentService
 
         if ($studentId > 0 && empty($data['force'])) {
             $existingActive = StudentClass::where('StudentID', $studentId)
-                ->where('Stop', 0)
+                ->where(fn ($query) => $query->where('Stop', 0)->orWhereNull('Stop'))
                 ->get();
+            // in-app #427: a Stop=0 course that is already finished or closed under the one 進行中 verdict
+            // (StudentClassActivity, also used by the list and the pre-check prompt) is not a duplicate.
+            $verdicts = app(StudentClassActivity::class)->evaluate($existingActive);
+            $existingActive = $existingActive
+                ->filter(fn ($sc) => $verdicts[(int) $sc->ID]['is_active_course'] ?? true)
+                ->values();
 
             if ($existingActive->isNotEmpty()) {
                 // #805 防再犯：新課程的整體日期範圍（用於偵測「續報新期起始早於舊期結束」的重疊）。
@@ -609,7 +615,7 @@ class EnrollmentService
                                 'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
                                 'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?: 'count')),
-                                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                                'remaining_sessions' => (int) ($verdicts[(int) $sc->ID]['remaining_sessions'] ?? $sc->RemainingSessions ?? 0),
                                 // in-app #382: a manual course with no upcoming lesson needs 「新增下一堂」, not a second course.
                                 'scheduling_policy' => (string) ($sc->scheduling_policy ?: 'auto_recurrence'),
                                 'future_session_count' => $sc->scheduling_policy === 'manual_occurrence'
@@ -637,7 +643,7 @@ class EnrollmentService
                                 'teacher_id' => (int) $sc->TeacherID,
                                 'existing_range' => [$exStart, $exEnd],
                                 'new_range' => [$newStartD, $newEndD],
-                                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                                'remaining_sessions' => (int) ($verdicts[(int) $sc->ID]['remaining_sessions'] ?? $sc->RemainingSessions ?? 0),
                                 // Same facts as duplicate conflicts, so the shared modal can still offer 新增下一堂 (#382).
                                 'class_type' => $sc->ClassType ?? '',
                                 'schedule_mode' => strtolower((string) ($sc->ScheduleMode ?: 'count')),
@@ -652,7 +658,7 @@ class EnrollmentService
 
                 if (!empty($overlaps)) {
                     return response()->json([
-                        'message' => '該學生已有「同科目、同老師、日期區間重疊」的進行中課程。若為續報，請將新課起始日改到舊課結束之後，或改用「加購堂數」延續原課程；重疊會造成同時段重複排課與點名重複。如確定要建立，請勾選強制建立。',
+                        'message' => '該學生已有「同科目、同老師、日期區間重疊」的進行中課程。若為續報，請將新課起始日改到舊課結束之後，或改用「續課」延續原課程；重疊會造成同時段重複排課與點名重複。如確定要建立，請勾選強制建立。',
                         'code' => 'overlapping_active_course',
                         'conflicts' => $overlaps,
                     ], 409);
@@ -660,7 +666,7 @@ class EnrollmentService
 
                 if (!empty($conflicts)) {
                     return response()->json([
-                        'message' => '該學生已有相同科目的進行中課程，建議使用「加購堂數」延續原課程。如確定要建立新課程，請勾選強制建立。',
+                        'message' => '該學生已有相同科目的進行中課程，建議使用「續課」延續原課程。如確定要建立新課程，請勾選強制建立。',
                         'code' => 'duplicate_active_course',
                         'conflicts' => $conflicts,
                     ], 409);
@@ -1168,7 +1174,7 @@ class EnrollmentService
             })->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
             if ($overlap && $base()->where($overlapping)->exists()) {
                 return response()->json([
-                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「加購堂數」。',
+                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「續課」。',
                     'code' => 'renewal_range_overlap',
                 ], 422);
             }
@@ -1397,7 +1403,7 @@ class EnrollmentService
         $calc = new LessonEntitlementCoverageCalculator();
 
         return response()->json([
-            'message' => '目前排程超出已購額度，請先確認超額部分需要續約、加購或後續處理',
+            'message' => '目前排程超出已購額度，請先確認超額部分需要續課或後續處理',
             'code' => 'overage_confirmation_required',
             'errors' => ['overage_confirmed' => ['請勾選確認後再建立課程。']],
             'coverage' => [

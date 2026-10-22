@@ -595,7 +595,7 @@ class NotificationSyncService
                 'Type'       => 'low_sessions',
                 'Severity'   => $severity,
                 'Title'      => "⚠️ {$student->name} {$subject} 剩餘堂數不足",
-                'Body'       => "剩餘 {$remaining} 堂，請盡快安排續課或加購堂數。",
+                'Body'       => "剩餘 {$remaining} 堂，請盡快安排續課。",
                 'SourceType' => 'StudentClass',
                 'SourceID'   => (string) $class->ID,
                 'SourceKey'  => $sourceKey,

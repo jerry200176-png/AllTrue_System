@@ -613,7 +613,7 @@
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" title="在這裡打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 在這裡看帳務</button>
                         <button
-                          v-if="effectiveClosedReason(hc) === 'completed'"
+                          v-if="courseHistoryReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
                           role="menuitem"
                           title="從這期已完課課程建立下一期；既有課程與帳務紀錄不會變更"
@@ -1316,6 +1316,7 @@
     <AccountingLedgerModal
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
+      :initial-action="ledgerInitialAction"
       :branch-id="props.branchId"
       @close="ledgerOpen = false"
       @changed="loadCourses(pagination.page)"
@@ -1441,7 +1442,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -1456,6 +1457,7 @@ import CourseTransferModal from '../components/course-management/CourseTransferM
 import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js';
 import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1556,7 +1558,8 @@ const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'nav
 // a report and voiding all happen inside it.
 const openTuitionLedger = (course) => openLedgerForCourse(course);
 const goToTuitionBilling = openTuitionLedger;
-const onPaymentNextAction = openTuitionLedger;
+// In-app #398: 「登記繳費回報」 opens the entry form for that course, with the ledger behind it.
+const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
@@ -2148,7 +2151,7 @@ function interceptGoToPurchaseCM(conflict) {
     openCommercialPurchaseEntry(target);
     return;
   }
-  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
+  alert('找不到要續課的課程，請重新整理後再從課程列點「續課」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -2643,7 +2646,7 @@ function courseManagerNextSessionLabel(c) {
 function courseManagerOverviewNeeds(c) {
   const needs = [];
   if (isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 99))) {
-    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
+    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續課', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
   if (makeups.length) needs.push({ id: 'makeup', title: `${makeups.length} 堂待補課`, action: 'quick-add', actionLabel: '安排補課' });
@@ -2868,7 +2871,8 @@ async function duplicateCourseForTeacher(course) {
 function purchaseActionLabel(c) {
   if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
-  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? '續報加購' : '加購堂數';
+  // in-app #429: one name for the count-mode extension, low remaining or not (Founder Q8=A).
+  return RENEW_LESSONS_LABEL;
 }
 function purchaseActionIsRenew(c) {
   if (!isSessionMode(c)) return true;
@@ -2876,7 +2880,7 @@ function purchaseActionIsRenew(c) {
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
-  return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
+  return isSessionMode(c) ? '續課（加買堂數）' : '月結課程結算本期並續約下個月';
 }
 
 function openPurchaseModal(course) {
@@ -3051,7 +3055,7 @@ async function submitPurchaseSessions() {
         focusedStudentKey.value = groupKey;
       }
       toastRef.value?.show?.({
-        title: op === 'set' ? '已設定共用方案總堂數' : '已加購共用方案堂數',
+        title: op === 'set' ? '已設定共用方案總堂數' : '已續課：共用方案堂數已增加',
         description: `方案總堂數已由 ${currentTotal} 堂調整為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
         variant: 'success',
         durationMs: 7000,
@@ -3083,7 +3087,7 @@ async function submitPurchaseSessions() {
       const duplicateHint = json?.duplicate_course?.id
         ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
         : '';
-      alert((details || json?.message || '加購失敗') + duplicateHint);
+      alert((details || json?.message || '續課失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -3095,7 +3099,7 @@ async function submitPurchaseSessions() {
       focusedStudentKey.value = groupKey;
     }
     toastRef.value?.show?.({
-      title: '已建立加購批次',
+      title: '已建立續課批次',
       description: formatRenewSuccessMessage({
         kind: 'purchase',
         studentName: course?.student_name || '',
@@ -3108,7 +3112,7 @@ async function submitPurchaseSessions() {
       durationMs: 7000,
     });
   } catch (e) {
-    alert('加購失敗：' + (e?.message || '請稍後再試'));
+    alert('續課失敗：' + (e?.message || '請稍後再試'));
   } finally {
     purchaseSubmitting.value = false;
   }
@@ -4096,8 +4100,8 @@ const toggleStudentGroup = (groupKey) => {
 const groupHasPausedCourse = (group) =>
   (group?.courses || []).some((c) => c.status === 'inactive' && !effectiveClosedReason(c));
 
-const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
-const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
+const activeCourses = (group) => (group?.courses || []).filter(c => !isCourseManagementHistory(c));
+const historyCourses = (group) => (group?.courses || []).filter(c => isCourseManagementHistory(c));
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
 // "進行中" rows fighting over the same teacher slot. Paused rows remain in
@@ -4166,7 +4170,7 @@ function clearCourseFilters() {
 
 const courseLensMetrics = computed(() => {
   const visibleCourses = courses.value;
-  const activeCount = visibleCourses.filter((course) => !isHistoryCourse(course) && course.status !== 'inactive').length;
+  const activeCount = visibleCourses.filter(isActiveCourse).length;
   const attentionCount = visibleCourses.filter((course) => {
     const remaining = displayRemainingSessions(course);
     return isSessionMode(course)
@@ -5027,6 +5031,7 @@ const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
+const ledgerInitialAction = ref(null);
 const studentGroupTabs = ref({});
 const studentBillingState = ref({});
 const paymentSlipOpen = ref(false);
@@ -5148,9 +5153,10 @@ const studentBillingAnchorCourse = (group) => {
     || null;
 };
 
-const openLedgerForCourse = (course) => {
+const openLedgerForCourse = (course, initialAction = null) => {
   if (!course?.id) return;
   ledgerStudentClassId.value = course.id;
+  ledgerInitialAction.value = initialAction;
   ledgerOpen.value = true;
 };
 

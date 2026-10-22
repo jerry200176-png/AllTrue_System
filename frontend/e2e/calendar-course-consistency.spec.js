@@ -4,6 +4,7 @@ import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
+import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -227,9 +228,30 @@ async function assertResponsive(page, label) {
   }
 }
 
+// Enforce the read-only contract in the browser, like the other production
+// acceptance specs: no unsafe HTTP method from any page may reach any origin.
+// See fixtures/readOnlyAppGuard.js: app adoption POST telemetry is answered
+// locally with 204. Every other HTTP write, including third-party telemetry,
+// is aborted before its first hop and fails the test in afterEach. Reads on
+// every origin pass through. The route is installed on the
+// browser context so popup pages are guarded too.
+const APP_ORIGIN = appOriginOf(BASE);
+let blockedHttpWrites = [];
+
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
+
+  // Service workers could send requests that bypass context.route.
+  test.use({ serviceWorkers: 'block' });
+
+  test.beforeEach(async ({ context }) => {
+    blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
+  });
+
+  test.afterEach(async () => {
+    expect(blockedHttpWrites, 'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
+  });
 
   for (const viewport of [
     { name: 'desktop', width: 1440, height: 900 },

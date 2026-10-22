@@ -290,6 +290,23 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertSame(0, $json['remaining']);
     }
 
+    public function test_ledger_course_carries_the_same_pending_confirmation_verdict_as_the_tuition_list(): void
+    {
+        // In-app #425: the ledger card's 繳費單 stays disabled exactly when the tuition list says 金額待確認.
+        $pending = $this->reviewMonthlyCourse();
+        $this->invoice($pending, 4400)->forceFill(['billing_period' => '2026-09'])->save();
+        $this->assertTrue($this->tuitionRow($pending)['amount_pending_confirmation'], 'fixture: the course must be 金額待確認');
+        $course = collect($this->getJson("/api/v1/accounting/ledger?student_class_id={$pending->ID}", $this->headers)
+            ->assertOk()->json('courses'))->firstWhere('id', (int) $pending->ID);
+        $this->assertTrue($course['amount_pending_confirmation']);
+
+        $settled = $this->course(['closed_reason' => 'settled']);
+        $this->invoice($settled, 8800);
+        $course = collect($this->getJson("/api/v1/accounting/ledger?student_class_id={$settled->ID}", $this->headers)
+            ->assertOk()->json('courses'))->firstWhere('id', (int) $settled->ID);
+        $this->assertFalse($course['amount_pending_confirmation']);
+    }
+
     public function test_tuition_slip_still_works_for_a_confirmed_unpaid_stopped_contract(): void
     {
         $c = $this->course(['closed_reason' => 'settled']);

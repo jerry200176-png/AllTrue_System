@@ -104,7 +104,7 @@
           class="text-action"
           data-testid="transfer-open-target-purchase"
           @click="$emit('open-target-purchase', targetPurchaseAction.student_class_id)"
-        >{{ targetPurchaseAction.label || '前往目標課程加購' }}</button>
+        >{{ targetPurchaseAction.label || '前往目標課程續課' }}</button>
       </div>
 
       <div class="actions">

@@ -7,3 +7,5 @@
 
 .github/                            @jerry200176-png
 scripts/governance/                 @jerry200176-png
+scripts/production-deploy/          @jerry200176-png
+scripts/ci/workflow_expression_size.py @jerry200176-png

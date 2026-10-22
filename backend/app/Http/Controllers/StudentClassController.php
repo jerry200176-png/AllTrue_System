@@ -38,6 +38,7 @@ use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
+use App\Services\StudentClassActivity;
 use App\Services\SessionContractRecoveryService;
 use App\Exceptions\SessionContractRecoveryException;
 use App\Services\ScheduleGuardService;
@@ -516,20 +517,13 @@ class StudentClassController extends Controller
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
             $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
-            // 堂數制 Remaining = 購買堂數 − 實際已上；月結 SessionCount 是預排數，不作餘額投影。
-
-            // #613 A1：若課程有「部分時數」事件（RemainingMinutes 非整堂倍數），分鐘為權威，
-            // 不可用 count-based observed 覆寫 recomputeCounters 已寫入的衍生值；否則沿用既有 self-heal。
-            $perSessionMin = max(1, (int) ($class->SessionDuration ?: 60));
+            // 堂數制 Remaining = 購買堂數 − 實際已上；月結與部分時數（#613 A1，分鐘為權威）不覆寫。
             $storedRemainingMinutes = $class->RemainingMinutes;
-            $hasFractionalBalance = $storedRemainingMinutes !== null
-                && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
-
-            if ($class->getAttribute('payment_type') === 'session'
-                && $class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
-                $observedUsedSessions = min($class->getAttribute('sessions_purchased'), $observedUsedSessions);
-                $class->UsedSessions = $observedUsedSessions;
-                $class->RemainingSessions = max(0, $class->getAttribute('sessions_purchased') - $observedUsedSessions);
+            $hasPartialLedger = (bool) ($usageDiagnostic['has_partial'] ?? false);
+            $healedUsage = StudentClassActivity::selfHealedUsage($class, $observedUsedSessions, $hasPartialLedger);
+            if ($healedUsage !== null) {
+                $class->UsedSessions = $healedUsage['used'];
+                $class->RemainingSessions = $healedUsage['remaining'];
             }
             $class->setAttribute('sessions_used', (int) ($class->UsedSessions ?? 0));
             $class->setAttribute('remaining_sessions', (int) ($class->RemainingSessions ?? 0));
@@ -657,6 +651,10 @@ class StudentClassController extends Controller
                 && $class->getAttribute('payment_status') === 'paid' && !isset($paymentEvidence[(int) $class->ID]));
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
+            // in-app #427: the one 進行中／歷史 verdict; 學生管理, 課程管理 and the duplicate prompt all read it.
+            $historyReason = StudentClassActivity::historyReason($class, (int) ($class->RemainingSessions ?? 0), $resolved, $hasPartialLedger);
+            $class->setAttribute('history_reason', $historyReason);
+            $class->setAttribute('is_active_course', StudentClassActivity::isActive($class, $historyReason));
             $class->trial_converted_to_id = $class->trial_converted_to_id
                 ? (int) $class->trial_converted_to_id
                 : null;
@@ -3215,7 +3213,7 @@ class StudentClassController extends Controller
         // in-app #374: mirror purchaseBatch/renewMonthly so preview never advertises an unconfirmable trial renewal.
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
             return response()->json([
-                'message' => '試聽課程不能直接加購或續約，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接續課，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3315,7 +3313,7 @@ class StudentClassController extends Controller
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') === 'count') {
             return response()->json([
-                'message' => '此課程為堂數制，請使用「加購堂數」功能。',
+                'message' => '此課程為堂數制，請使用「續課」功能。',
                 'errors' => ['mode' => ['堂數制課程不支援月結續約，請使用 purchase-batch 端點。']],
             ], 422);
         }
@@ -3518,7 +3516,7 @@ class StudentClassController extends Controller
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial'
             && $request->attributes->get('trial_conversion') !== true) {
             return response()->json([
-                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接續課，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3526,7 +3524,7 @@ class StudentClassController extends Controller
         // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             return response()->json([
-                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援堂數制「續課」。',
                 'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
             ], 422);
         }
@@ -4440,7 +4438,7 @@ class StudentClassController extends Controller
                         'available_sessions' => $available,
                         'next_actions' => [[
                             'code' => 'open_target_purchase',
-                            'label' => '前往目標課程加購',
+                            'label' => '前往目標課程續課',
                             'available' => true,
                             'student_class_id' => (int) $target->ID,
                         ]],
@@ -4884,18 +4882,7 @@ class StudentClassController extends Controller
      */
     private function applyTeacherOrSubstituteStudentClassScope($query, int $teacherId): void
     {
-        $query->where(function ($q) use ($teacherId) {
-            $q->where('TeacherID', $teacherId)
-                ->orWhereExists(function ($sub) use ($teacherId) {
-                    $sub->select(DB::raw(1))
-                        ->from('schedules')
-                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
-                        ->where('schedules.teacher_id', $teacherId)
-                        ->where('schedules.status', 'scheduled')
-                        ->whereNotNull('schedules.original_schedule_id');
-                });
-            SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
-        });
+        (new StudentClass())->scopeVisibleToTeacher($query, $teacherId);
     }
 
     /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */

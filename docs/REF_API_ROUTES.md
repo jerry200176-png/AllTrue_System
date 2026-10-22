@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 523 api/* routes · generated 2026-10-18
+> Source: `php artisan route:list --json` · 524 api/* routes · generated 2026-10-18
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -603,7 +603,7 @@
 | PUT | `api/v1/part-time-rate-cards/{id}` | `PartTimeRateCardController@update` | role+campus+pin |
 | DELETE | `api/v1/part-time-rate-cards/{id}` | `PartTimeRateCardController@destroy` | role+campus+pin |
 
-## /api/v1/payment-reports (8)
+## /api/v1/payment-reports (9)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -611,6 +611,7 @@
 | POST | `api/v1/payment-reports/confirm-batch` | `PaymentReportController@confirmBatch` | role+campus |
 | POST | `api/v1/payment-reports/director-record` | `PaymentReportController@directorRecord` | role+campus |
 | POST | `api/v1/payment-reports/director-record-batch` | `PaymentReportController@directorRecordBatch` | role+campus |
+| POST | `api/v1/payment-reports/legacy-flag-clear` | `PaymentReportController@clearLegacyFlag` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/confirm` | `PaymentReportController@confirm` | role+campus |
 | GET | `api/v1/payment-reports/{id}/receipt` | `PaymentReportController@receipt` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/reject` | `PaymentReportController@reject` | role+campus |

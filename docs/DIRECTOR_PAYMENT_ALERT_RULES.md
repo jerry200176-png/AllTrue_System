@@ -171,3 +171,11 @@ Founder Q3 是本次對 `GET /api/v1/alerts/tuition` 顯示語意的明示同意
 - `payment_status`、列入條件、金額、`outstanding`、對外通知與催繳都**不變**：不算欠款、不進「有未繳」、不催繳；學生清單「沒有未繳」篩選照常包含。
 - 唯讀：不寫帳務、不改 `StudentClass.Paid`／`CoursePackage.paid`、不需 migration。課程管理 `GET /api/v1/student-classes` 的 `paid` 列帶同一欄位。
 - 有繳費日期的試聽不標記（in-app #428／GitHub #4330）：試聽建立時以繳費日期（`PayDate`→`Paid=1`）記錄試聽費，依設計不開帳單，不是需要核對的舊資料；標成「需核對」卻沒有任何可做的動作。判斷唯一來源 `StudentClass::isTrialFeeRecordedByDate()`：課程本身 `Paid=1` 時須 `ClassType = trial` 且有 `PayDate`；已收狀態來自方案時（含以 bind-courses 綁進試聽方案的正式課程）須方案 `class_type = trial`、有 `paid_at`，且方案屬於同一學生、同一分校（`PackageID` 指到別人／別分校的方案不算）。標記已收卻沒有日期的試聽（例如 `PUT /course-packages/{id}` 只設 `paid`）仍標「需核對」。課程管理、學費提醒與帳務面板（`accounting/ledger` 的 `trial_fee_recorded_by_date`，只對課程本身 `Paid=1` 的試聽，卡片顯示繳費日與試聽費）共用同一規則。正式課程同樣形狀仍照上方規則標記。
+
+### 主任處理：補登收款或改成未繳（Founder GO 2026-10-21）
+
+上面的標示本身仍是唯讀；Founder 2026-10-21 另外同意（§變更管制）在學生帳務的合約卡「需核對」下方給主任／超級管理員兩個**明確動作**（有未繳帳單時也顯示；後端以該帳單未收額封頂）。卡片文字：「這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。」
+
+- **適用範圍（兩個動作相同，後端鎖課程列後重查）**：單一堂數制課程（不含月結、共用方案、輔導／0 元、確認不收）、`Paid=1`、`validPaymentEvidence` 沒有淨額 > 0 的收款、沒有 `pending`／`confirmed` 繳費回報；並依學生校區授權（其他校區 403，老師 403）。不符一律 422（中文說明，結尾「沒有變更任何資料。」），不寫任何東西。
+- **已收過，補登收款**：`POST /api/v1/payment-reports/director-record`，`legacy_flag_backfill=true`、必填 `idempotency_key`（UUID）。畫面用同一個「登記收款」表單（`PaymentEntryModal` 的 `legacy-backfill` 模式：繳費日期、繳費方式、帳號後5碼、繳費金額預填合約金額、備註；提示「送出即入帳，不需要再確認」）。後端不另寫收款規則：在同一個 transaction 先建立 director-record 的待核對回報，再呼叫確認入帳（`confirmReport`，只略過這個舊旗標會觸發的「已收齊」防重複檢查）；有未繳清帳單就收在那張（不超過其未收額），沒有帳單就依金額開一張；確認被擋時整筆回滾。卡片可補登時不再顯示「登記這筆」，只有一個收款入口。`Paid` 維持 1，之後有收款紀錄，「需核對」依上方規則自然消失。同一 `idempotency_key` 重送回傳第一次的結果（`replayed=true`）；換新 key 會因為已有收款紀錄被擋。
+- **其實沒收，改成未繳**：`POST /api/v1/payment-reports/legacy-flag-clear`，必填原因。只寫 `Paid=0`、`Pay=0`、`PayDate=null`（`closed_reason=settled` 改回 `settled_pending`，與撤銷收款相同）；**不動任何帳單或收款**。之後依既有規則列為未繳、未收額 = 合約金額。已經是未繳時重送回 200（`replayed=true`）且不重複記錄。`SecurityAuditEvent`（`student_class.legacy_paid_flag_cleared`）只存原因的 SHA-256，不存原文；補登記 `student_class.legacy_paid_flag_backfill`。

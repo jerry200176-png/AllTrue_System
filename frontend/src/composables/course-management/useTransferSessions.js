@@ -68,7 +68,7 @@ export function useTransferSessions({ allSessionUnits, goToBilling, goToPurchase
   function openTargetPurchase(targetId) {
     const target = targetCourses.value.find((c) => Number(c.id) === Number(targetId));
     if (!target || typeof goToPurchase !== 'function') {
-      error.value = '找不到目標課程，請關閉後從課程列點「加購」。';
+      error.value = '找不到目標課程，請關閉後從課程列點「續課」。';
       return;
     }
     showModal.value = false;
