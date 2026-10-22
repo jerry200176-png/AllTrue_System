@@ -155,7 +155,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 | 步驟 | 動作 |
 |------|------|
 | B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
-| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才進 task worktree → regression RED → 改 code → focused tests／review／CI → PR。 |
+| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才依 [WORKTREE_POLICY](governance/WORKTREE_POLICY.md) 在雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才進 task worktree）→ regression RED → 改 code → focused tests／review／CI → PR。 |
 | B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線後由 Phase-C 自動關，F14） |
 | B4 | merge → `deploy.yml` → 核對 deployed SHA、`GET /api/v1/health`／`deployment.json`（前端有改再查 `version.json`）→ 驗證原回報角色、分校與使用者路徑。 |
 

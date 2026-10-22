@@ -122,7 +122,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 | T0 Docs-only | README、FAQ、INDEX、Runbook、規則文件，且不碰 `.github/**` / `scripts/**` | docs batch → `git diff --check` → PR；避免 deployable diff |
 | T1 Low-risk code | 單一 UI 顯示、純 helper、無資料寫入、無權限邊界 | 小 PR → 對應測試/build → REVIEW |
 | T2 Product workflow | 前後端契約、排課、出缺勤、評量、跨分校查詢 | PLAN/ARCH → DEV → TEST → INT → REVIEW |
-| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據，在受保護的合併／正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
+| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據。合併條件見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21 第 2(a) 條；正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
 
 **Definition of Ready（進 DEV 前）**
 - 已定義 product intent、architecture boundary、API/DB/data ownership、錯誤處理、多校區隔離。

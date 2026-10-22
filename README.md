@@ -110,7 +110,7 @@ PR 開啟後，CI 會再跑 PHPStan、建置、Gitleaks 機敏掃描與文件完
 程式撰寫 → 測試通過 → 開 PR → CI 全綠 → 合併 main → 受控部署 → 線上驗證 → 正式驗收
 ```
 
-- 每個任務在獨立的 git worktree 進行，變更可追溯到任務、工作階段與驗證紀錄。
+- 任務隔離與交付證據依 [`WORKTREE_POLICY`](docs/governance/WORKTREE_POLICY.md)：雲端 session 為預設，本機 WSL task worktree 僅供必要的舊路徑使用。
 - `main` 受保護，只能透過 PR 合併。
 - 部署後自動檢查健康端點與版本 SHA，並保有回滾與備份復原程序。
 
