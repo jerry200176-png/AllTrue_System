@@ -38,7 +38,8 @@ final class InappReportResolveAfterDeployStrategy
         if (!is_string($p['public_reply'] ?? null)) $errors[] = 'public_reply_invalid';
         elseif ($issue !== null) array_push($errors, ...InappReportReplyGuard::violations($p['public_reply'], $url, true));
         $proof = $p['writeback_proof'] ?? null;
-        if (!is_array($proof) || array_keys($proof) !== ['captured_at', 'proof'] || !is_string($proof['captured_at']) || !is_string($proof['proof'])) $errors[] = 'writeback_proof_invalid';
+        // Key order is not significant (a JSON column may store {proof, captured_at}); exactly these two string fields are.
+        if (!is_array($proof) || count($proof) !== 2 || !is_string($proof['captured_at'] ?? null) || !is_string($proof['proof'] ?? null)) $errors[] = 'writeback_proof_invalid';
         if ($errors !== []) return $this->result($errors, $p);
         [$bugId, $fix, $run] = [$p['bug_id'], $p['fix_commit_sha'], $p['deploy_run_id']];
         preg_match('/(?:^run:|\/runs\/)([1-9][0-9]{0,19})(?:\/job\/([1-9][0-9]{0,19}))?/', $p['smoke_result_ref'], $smoke);

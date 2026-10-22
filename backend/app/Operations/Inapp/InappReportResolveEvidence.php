@@ -115,7 +115,8 @@ class InappReportResolveEvidence
         if (preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repo) !== 1) return null;
         try {
             $request = Http::timeout(10)->acceptJson();
-            $token = config('pop_inapp.github_token');
+            // Read live, never from config: a cached config must not snapshot the credential (#2833, GitHubIssueController).
+            $token = env('GITHUB_TOKEN');
             if (is_string($token) && $token !== '') $request = $request->withToken($token);
             $response = $request->get("https://api.github.com/repos/{$repo}/{$path}", $query);
             $json = $response->successful() ? $response->json() : null;

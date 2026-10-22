@@ -55,7 +55,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $this->service = new PopOperationService($catalog, null, $this->dir . '/deployment.json');
         $this->policy = new InappStandingPolicy($catalog);
         config(['pop_inapp.standing_policy_enabled' => true, 'pop_inapp.daily_cap' => 20, 'pop_inapp.github_repo' => self::REPO,
-            'pop_inapp.github_token' => null, 'pop_inapp.deployment_manifest' => $this->dir . '/deployment.json',
+            'pop_inapp.deployment_manifest' => $this->dir . '/deployment.json',
             'pop_inapp.health_url' => 'https://health.test/api/v1/health']);
         $this->admin = User::create(['LoginName' => 'popResAdmin@test.com', 'Name' => 'A', 'PSW' => 'x', 'type' => 'S', 'phone' => rand(900000000, 999999999)])->id;
         $this->reporter = User::create(['LoginName' => 'popResRep@test.com', 'Name' => 'R', 'PSW' => 'x', 'type' => 'T', 'phone' => rand(900000000, 999999999)])->id;
@@ -350,7 +350,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
                 ['name' => 'Deploy to Production', 'conclusion' => $this->remote['job'], 'completed_at' => '2026-10-22T09:00:00Z']]]),
             $url === $api . 'actions/runs/' . self::RUN => $run(self::RUN, $this->remote['run_path'], 'success', '2026-10-22T08:40:00Z'),
             $url === $api . 'actions/runs/' . self::SMOKE => $run(self::SMOKE, '.github/workflows/ui-smoke.yml', $this->remote['smoke'], $this->remote['smoke_at']),
-            $url === $api . "compare/{$this->fix}...{$this->deployed}" => Http::response(['status' => 'ahead', 'merge_base_commit' => ['sha' => $this->fix]]),
+            str_starts_with($url, $api . "compare/{$this->fix}...{$this->deployed}") => Http::response(['status' => 'ahead', 'merge_base_commit' => ['sha' => $this->fix]]),
             str_starts_with($url, $api . 'compare/') => Http::response(['status' => 'diverged', 'merge_base_commit' => ['sha' => str_repeat('b', 40)]]),
             str_starts_with($url, $api . 'commits/') => Http::response([['number' => 900, 'merged_at' => '2026-10-22T07:00:00Z', 'title' => 'fix', 'body' => $this->remote['pr_body']]]),
             str_starts_with($url, $api . 'issues/' . self::ISSUE . '/comments') => Http::response([]),
