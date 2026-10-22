@@ -183,16 +183,24 @@ for the detail block.
 ```bash
 ( set -euo pipefail; umask 077
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT   # 0700 dir, deleted when the block ends
-  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
+  # Token in the environment: send it from a 0600 config. No variable: the egress proxy injects it (#4048).
+  AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"; AUTH=(-K "$T/auth.cfg"); fi
   B=https://daan.lifenet.com.tw/api/v1/triage
-  # Full live snapshot = open AND resolved (reporter-confirmation queue). Page each until data is empty.
-  for S in new,triaged,in_progress resolved; do N=0; while :; do
-    P=$(curl -sf -K "$T/auth.cfg" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed ($S since_id=$N)" >&2; exit 1; }
-    L=$(jq -e '.data|length' <<<"$P") || { echo "INCOMPLETE: malformed page ($S since_id=$N)" >&2; exit 1; }
-    [ "$L" = 0 ] && break
-    jq -c '.data[]' <<<"$P"; N=$(jq '.next_since_id' <<<"$P"); done; done > "$T/live-queue.jsonl"
-  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after both groups paged to empty (resolved may legitimately be 0)
-  jq -r '[.id, .status, .campus_id, .title] | @tsv' "$T/live-queue.jsonl"   # the queue itself, read it here before $T is deleted
+  # Full live snapshot = open AND resolved (reporter-confirmation queue) in ONE status filter with ONE cursor, so a
+  # report that changes status mid-scan is neither counted twice nor skipped (#4048). Page until data is empty.
+  S=new,triaged,in_progress,resolved; N=0
+  while :; do
+    P=$(curl -sf --max-redirs 0 "${AUTH[@]}" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed (since_id=$N)" >&2; exit 1; }
+    jq -e '(.data|type) == "array"' <<<"$P" >/dev/null || { echo "INCOMPLETE: malformed page (since_id=$N)" >&2; exit 1; }
+    [ "$(jq '.data|length' <<<"$P")" = 0 ] && break
+    jq -c '.data[]' <<<"$P"
+    NEXT=$(jq -r '.next_since_id // empty' <<<"$P")   # a non-empty page must move the cursor forward
+    if ! [[ "$NEXT" =~ ^[0-9]+$ ]] || (( NEXT <= N )); then echo "INCOMPLETE: next_since_id did not advance (since_id=$N)" >&2; exit 1; fi
+    N=$NEXT
+  done > "$T/live-queue.jsonl"
+  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after paging to an empty page (resolved may legitimately be 0)
+  jq -r '[.id, .status, .campus_id, (.title|tojson)] | @tsv' "$T/live-queue.jsonl"   # read it here before $T is deleted; tojson keeps tabs/newlines in titles from breaking columns
 )
 ```
 
@@ -202,8 +210,9 @@ Then one report: description, comments (incl. internal notes), status logs and
 ```bash
 ( set -euo pipefail; umask 077; ID=<id>
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
-  curl -sf -K "$T/auth.cfg" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/$ID" || { echo "FAILED: detail fetch for $ID" >&2; exit 1; }
+  AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"; AUTH=(-K "$T/auth.cfg"); fi
+  curl -sf --max-redirs 0 "${AUTH[@]}" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/$ID" || { echo "FAILED: detail fetch for $ID" >&2; exit 1; }
 )
 ```
 
@@ -211,17 +220,19 @@ An attachment has to outlive the shell call so you can open it, so it gets its
 own private directory that you delete yourself after viewing:
 
 ```bash
-umask 077; D=$(mktemp -d)
-printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$D/auth.cfg"
-if curl -sf -K "$D/auth.cfg" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>"; then
-  rm -f "$D/auth.cfg"; echo "$D"
+umask 077; D=$(mktemp -d)   # keeps only the downloaded file; the token never lands here (#4048)
+if ( set -euo pipefail; A=$(mktemp -d); trap 'rm -rf "$A"' EXIT INT TERM   # token dir, removed even on Ctrl-C
+     AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+       printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$A/auth.cfg"; AUTH=(-K "$A/auth.cfg"); fi
+     curl -sf --max-redirs 0 "${AUTH[@]}" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>" ); then
+  echo "$D"
 else
-  rc=$?; rm -rf "$D"; echo "FAILED: attachment download (curl exit $rc); the attachment was NOT reviewed" >&2; false
+  rc=$?; rm -rf "$D"; echo "FAILED: attachment download (exit $rc); the attachment was NOT reviewed" >&2; false
 fi
 # view "$D/a.png", then: rm -rf "$D"
 ```
 
-- **Completeness.** Only a run that pages both status groups to an empty page is a
+- **Completeness.** Only a run that pages the combined status filter to an empty page is a
   full snapshot. A single page, or the open statuses alone, is partial: say so, or
   fall back to the queue dump.
 - **Read-only.** Any other route answers 403 to this token, and there is no write
