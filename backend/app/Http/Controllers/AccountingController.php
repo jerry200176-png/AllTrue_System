@@ -673,6 +673,10 @@ class AccountingController extends Controller
                 // #4115: every line belongs to this bill's own course (no multi-course or hand-entered lines).
                 'single_course_items' => $invoice->items->isNotEmpty()
                     && $invoice->items->every(fn ($item) => (int) $item->StudentClassID === (int) $invoice->StudentClassID),
+                // #3912: every course the bill covers (anchor + its lines), the same union BillingController uses.
+                'covered_student_class_ids' => collect([(int) $invoice->StudentClassID])
+                    ->merge($invoice->items->map(fn ($item) => (int) $item->StudentClassID))
+                    ->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
                 // D3 (Founder 2026-10-15): a hand-priced bill is never compared with the contract Charge (see isHandPriced()).
                 'hand_priced' => $this->isHandPriced($invoice),
             ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge

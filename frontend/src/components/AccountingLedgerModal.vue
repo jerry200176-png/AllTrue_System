@@ -545,16 +545,23 @@ function scrollToOpenedContract() {
   card?.scrollIntoView?.({ block: 'start' });
 }
 
+// #3912: a combined bill belongs to every course it has a line for (covered_student_class_ids), not only its anchor.
+const invoiceCoversCourse = (inv, id) => {
+  const covered = Array.isArray(inv?.covered_student_class_ids) && inv.covered_student_class_ids.length
+    ? inv.covered_student_class_ids : [inv?.student_class_id];
+  return covered.some((x) => Number(x) === Number(id));
+};
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  return !!scopeId && Number(inv.student_class_id) !== scopeId;
+  return !!scopeId && !invoiceCoversCourse(inv, scopeId);
 };
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  const inScope = (rows) => (rows || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
-  return !inScope(payload.value?.invoices).length && !inScope(payload.value?.receipts).length;
+  const invoices = (payload.value?.invoices || []).filter((inv) => !scopeId || invoiceCoversCourse(inv, scopeId));
+  const receipts = (payload.value?.receipts || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
+  return !invoices.length && !receipts.length;
 });
 
 const ledgerExceptions = computed(() => {

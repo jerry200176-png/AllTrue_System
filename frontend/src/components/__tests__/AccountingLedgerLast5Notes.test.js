@@ -33,6 +33,16 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
     expect(w.text()).not.toContain('登記並確認入帳');
   });
 
+  it('a combined bill with a line for the opened course is not 其他課程 and the course is not empty (#3912)', async () => {
+    const combined = { id: 9, student_class_id: 2, covered_student_class_ids: [2, 1], total_amount: 100, status: 'unpaid', payments: [] };
+    const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [combined], receipts: [], anomalies: [] });
+    expect(w.find('[data-testid="ledger-other-course"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-target-empty"]').exists()).toBe(false);
+    // Without the field (older payload) the anchor alone decides, as before.
+    const legacy = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [{ ...combined, covered_student_class_ids: undefined }], receipts: [], anomalies: [] });
+    expect(legacy.get('[data-testid="ledger-other-course"]').text()).toBe('其他課程');
+  });
+
   it('judges emptiness for the scoped course, not the whole student', async () => {
     const other = { id: 9, student_class_id: 2, total_amount: 100, status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [other], receipts: [], anomalies: [] });
