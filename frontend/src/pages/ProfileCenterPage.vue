@@ -290,6 +290,7 @@
         </div>
 
         <TriageTokenPanel v-if="isSuperAdmin" v-model:secret="triageSecret" v-model:pending="triagePending" :token="token" />
+        <PopInappAgentKeyPanel v-if="isSuperAdmin" :token="token" @update:pending="popKeyPending = $event" />
       </section>
 
       <section v-if="activeTab === 'notifications'" id="profile-panel-notifications" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-notifications" tabindex="0">
@@ -359,6 +360,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import TriageTokenPanel from '../components/TriageTokenPanel.vue';
+import PopInappAgentKeyPanel from '../components/PopInappAgentKeyPanel.vue';
 import {
   getMe,
   getNotificationPrefs,
@@ -409,6 +411,8 @@ const isSuperAdmin = ref(false);
 // Owned here so the one-time triage token survives a tab switch (TriageTokenPanel unmounts with the tab).
 const triageSecret = ref('');
 const triagePending = ref(false);
+// True while the in-app agent key is being issued, so a tab switch cannot drop the one-time key.
+const popKeyPending = ref(false);
 const teacherUiSfxEnabled = ref(false);
 const teacherStreakDisplayEnabled = ref(false);
 const hasEngagementRankOption = ref(false);
@@ -489,7 +493,7 @@ function defaultPrefs() {
 }
 
 function setActiveTab(tab) {
-  if (triagePending.value && tab !== 'security') return;
+  if ((triagePending.value || popKeyPending.value) && tab !== 'security') return;
   if (props.forcePasswordChange && tab !== 'security') {
     activeTab.value = 'security';
     return;
