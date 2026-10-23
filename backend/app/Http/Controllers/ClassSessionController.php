@@ -24,6 +24,7 @@ use App\Services\EnrollmentService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\OccurrenceAssignmentService;
+use App\Services\PackageDeductionService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
@@ -1119,7 +1120,16 @@ class ClassSessionController extends Controller
                     $sameStatusReason
                 );
             }
-            $this->applyTimeAndNoteUpdates($session, $data);
+            // One transaction: a retimed package lesson's ledger fix commits or rolls back with its new time (#4455). Decide
+            // against the row locked here (lesson first, a locking read), not the model loaded before an overlapping edit.
+            $session = DB::transaction(function () use ($session, $data) {
+                /** @var ClassSession|null $locked */
+                $locked = ClassSession::query()->whereKey($session->id)->lockForUpdate()->first();
+                abort_if($locked === null, 404, '找不到該堂次');
+                $this->applyTimeAndNoteUpdates($locked, $data);
+
+                return $locked;
+            });
             $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
         }
@@ -1528,6 +1538,12 @@ class ClassSessionController extends Controller
         // 保留舊時間以便精準匹配 schedules exception 列（避免多堂同日時誤傷他堂）
         $oldStartHm = substr((string) $session->StartTime, 0, 5);
         $oldEndHm   = substr((string) $session->EndTime, 0, 5);
+        // FR-003 (#4455): a package lesson moving to another start time locks lesson → course → package before any read.
+        $retimed = !empty($data['start_time']) && substr($data['start_time'], 0, 5) !== $oldStartHm;
+        $statusBefore = (string) $session->getOriginal('Status');
+        if ($retimed) {
+            PackageDeductionService::lockForRetime((int) $session->id);
+        }
 
         if (!empty($data['start_time'])) {
             $newStartHm = substr($data['start_time'], 0, 5);
@@ -1555,6 +1571,12 @@ class ClassSessionController extends Controller
         }
 
         $session->save();
+
+        // FR-003: a debited lesson moved to another start time leaves one debit per group slot (#4455).
+        if ($retimed) {
+            $authUser = request()->attributes->get('auth_user');
+            PackageDeductionService::reslotRetimedSession((int) $session->id, $oldStartHm, $statusBefore, (int) ($authUser->id ?? 0) ?: null);
+        }
 
         // ClassSession 是權威來源；同步更新對應 schedules exception 列的時間，
         // 避免「課程管理 18:30，行事曆還顯示 18:00」的顯示漂移。

@@ -470,7 +470,8 @@ class CoursePackageController extends Controller
                         'Status'         => 'attended',
                     ])['session'];
 
-                    PackageDeductionService::deductForSession(
+                    // FR-003: two member subjects sharing a past date and time debit a group package once (#4455).
+                    PackageDeductionService::deductUnderSlotRule(
                         $pkg->id,
                         $sc->ID,
                         $session->id,
