@@ -473,7 +473,7 @@ class SessionDeductionService
     }
 
     /** Net ledger events for one session: deduct(+1) − reverse(−1). */
-    private static function sessionLedgerNet(int $studentClassId, int $classSessionId): int
+    public static function sessionLedgerNet(int $studentClassId, int $classSessionId): int
     {
         return (int) (SessionDeductionLedger::query()
             ->where('student_class_id', $studentClassId)

@@ -24,6 +24,7 @@ use App\Services\EnrollmentService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\OccurrenceAssignmentService;
+use App\Services\PackageDeductionService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
@@ -1552,6 +1553,12 @@ class ClassSessionController extends Controller
         }
 
         $session->save();
+
+        // FR-003: a debited lesson moved to another start time leaves one debit per group slot (#4455).
+        if (isset($newStartHm) && $newStartHm !== $oldStartHm) {
+            $authUser = request()->attributes->get('auth_user');
+            PackageDeductionService::reslotRetimedSession((int) $session->id, (int) ($authUser->id ?? 0) ?: null);
+        }
 
         // ClassSession 是權威來源；同步更新對應 schedules exception 列的時間，
         // 避免「課程管理 18:30，行事曆還顯示 18:00」的顯示漂移。

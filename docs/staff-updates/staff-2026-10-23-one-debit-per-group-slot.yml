@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-23-one-debit-per-group-slot
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 團體課同一時段只扣一堂
+    summary: 共用堂數方案的一對二、一對三等團體課，同一天同一時段不會再重複扣堂。
+    items:
+      - category: fixed
+        text: 建立方案時補登的已上堂，兩科在同一天同一時段只扣一堂。
+      - category: fixed
+        text: 刷卡產生的堂次和排定的堂次在同一時段時，只扣一堂；兩位學生同時點名也只扣一堂。
+      - category: fixed
+        text: 已點名的堂次改到另一個已扣過的時段不會再多扣；改回原時段會恢復扣堂。
+    source_refs:
+      - "changelog:2026-10-23:one-debit-per-group-slot"

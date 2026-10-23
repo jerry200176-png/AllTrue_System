@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\PackageSessionLedger;
 use App\Models\StudentClass;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -115,27 +116,36 @@ class PackageDeductionService
     }
 
     /**
-     * Serialize package ledger writers. Under REPEATABLE READ a caller whose outer transaction already read before
-     * this lock still sees that older snapshot in the plain net reads below (as the course ledger does); see #4454.
+     * Serialize package ledger writers. The ledger reads after it go through currentLedger(), because under
+     * REPEATABLE READ a caller whose outer transaction already read before this lock keeps that older snapshot (#4454).
      */
     private static function lockPackage(int $packageId): void
     {
         CoursePackage::query()->whereKey($packageId)->lockForUpdate()->first();
     }
 
+    /**
+     * The package's ledger rows as last committed, plus this transaction's own writes: a locking read, which InnoDB
+     * answers from the latest rows instead of the caller's snapshot (#4454). Filtered on package_id alone, so the shared
+     * locks cover this package's index range only, never a class_session_id range that other packages' lessons share.
+     * Callers hold the package lock, so no other writer of these rows is in flight.
+     */
+    private static function currentLedger(int $packageId): Collection
+    {
+        return DB::table('package_session_ledger')->where('package_id', $packageId)->sharedLock()
+            ->get(['class_session_id', 'delta', 'reason']);
+    }
+
     /** Package ledger net for one session: negative = debited. */
     private static function sessionNet(int $packageId, int $classSessionId): int
     {
-        return (int) PackageSessionLedger::where('package_id', $packageId)
-            ->where('class_session_id', $classSessionId)
-            ->sum('delta');
+        return (int) self::currentLedger($packageId)->where('class_session_id', $classSessionId)->sum('delta');
     }
 
     /** First unused reason for this session: $reason, then $reason#2, $reason#3, ... */
     private static function cycleReason(int $packageId, int $classSessionId, string $reason): string
     {
-        $used = array_flip(PackageSessionLedger::where('package_id', $packageId)
-            ->where('class_session_id', $classSessionId)
+        $used = array_flip(self::currentLedger($packageId)->where('class_session_id', $classSessionId)
             ->pluck('reason')
             ->map(fn ($r) => (string) $r)
             ->all());
@@ -159,7 +169,7 @@ class PackageDeductionService
                 return;
             }
 
-            $pkg->recomputeCounters();
+            $pkg->recomputeCounters(true); // current ledger read, as above (#4454)
         });
     }
 
@@ -172,12 +182,12 @@ class PackageDeductionService
      * Without dedup, one group lesson attended by 3 students would write 3 ledger -1 rows
      * (over-deduction), draining the shared pool at 3x the correct rate.
      * Strategy (ClassPass / Gympass "1 credit per group session" model):
-     *   A (SessionDate, StartTime) slot is debited once. Deduct skips when the slot's package net
-     *   is already negative (net, so a slot credited back can be debited again, #4275); a reverse
-     *   credits only a session that carries a debit. Reverting the carrier while another member is
-     *   still charged leaves the slot credited, as before; moving the debit needs current reads
-     *   (#4454). Different timeslots on the same day (e.g. Math 16:00 + English 18:00) remain
-     *   independent deductions (risk-3 guard).
+     *   A (SessionDate, HH:MM) slot is debited once (deductUnderSlotRule). Deduct skips when the
+     *   slot's package net is already negative (net, so a slot credited back can be debited again,
+     *   #4275); a reverse credits only a session that carries a debit. Reverting the carrier while
+     *   another member is still charged leaves the slot credited, as before (moving the debit to that
+     *   member is still open, #4454). Different timeslots on the same day (e.g. Math 16:00 + English
+     *   18:00) remain independent deductions (risk-3 guard).
      */
     public static function syncFromStudentClassDeduction(
         int $studentClassId,
@@ -200,10 +210,7 @@ class PackageDeductionService
         DB::transaction(function () use ($packageId, $studentClassId, $classSessionId, $eventType, $source, $createdBy, $note) {
             self::lockPackage($packageId);
             if ($eventType === 'deduct') {
-                $slot = self::groupSlot($packageId, $classSessionId);
-                if ($slot === null || self::slotNet($packageId, $slot) >= 0) {
-                    self::deductForSession($packageId, $studentClassId, $classSessionId, $source, $createdBy, $note);
-                }
+                self::deductUnderSlotRule($packageId, $studentClassId, $classSessionId, $source, $createdBy, $note);
             } elseif ($eventType === 'reverse') {
                 self::reverseForSession($packageId, $studentClassId, $classSessionId, $source, $createdBy, $note);
             }
@@ -213,9 +220,79 @@ class PackageDeductionService
     }
 
     /**
-     * FR-003 — The (SessionDate, StartTime) slot of $classSessionId when the package is a
+     * FR-003 — Debit one charged lesson under the slot rule: a group package debits each (SessionDate, HH:MM) slot
+     * once, so the lesson is skipped while its slot's package net is already negative; other packages debit per lesson.
+     * Attendance (via syncFromStudentClassDeduction) and package creation with past dates both debit through here, so
+     * neither can debit a slot twice (#4455); reslotRetimedSession() applies the same rule after a time change.
+     *
+     * @return bool true if a new row was written
+     */
+    public static function deductUnderSlotRule(
+        int $packageId,
+        int $studentClassId,
+        ?int $classSessionId,
+        string $reason = 'attendance',
+        ?int $recordedBy = null,
+        ?string $note = null,
+        ?string $requestId = null
+    ): bool {
+        return (bool) DB::transaction(function () use ($packageId, $studentClassId, $classSessionId, $reason, $recordedBy, $note, $requestId) {
+            self::lockPackage($packageId);
+            $slot = self::groupSlot($packageId, $classSessionId);
+            if ($slot !== null && self::slotNet($packageId, $slot) < 0) {
+                return false;
+            }
+
+            return self::deductForSession($packageId, $studentClassId, $classSessionId, $reason, $recordedBy, $note, $requestId);
+        });
+    }
+
+    /**
+     * FR-003 after a lesson's start time changed (#4455). Slots come from the lessons' current times, so a debit the
+     * lesson carries has already left its old slot (restoring it) and now counts in the new one. The slot rule is then
+     * applied as if the lesson were reversed at the old time and deducted at the new one: a carried debit that lands in
+     * a slot another lesson already debits is credited back, and a lesson charged on its course without a package debit
+     * (it did not carry its old slot's debit) debits a new slot that has none. Idempotent; 1:1 packages are untouched.
+     *
+     * @return bool true if a new row was written
+     */
+    public static function reslotRetimedSession(int $classSessionId, ?int $recordedBy = null): bool
+    {
+        $lesson = DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
+            ->where('c.id', $classSessionId)->first(['sc.ID as course_id', 'sc.PackageID as package_id']);
+        $packageId = (int) ($lesson->package_id ?? 0);
+        if ($packageId <= 0) {
+            return false;
+        }
+        $courseId = (int) $lesson->course_id;
+
+        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $recordedBy) {
+            self::lockPackage($packageId);
+            $slot = self::groupSlot($packageId, $classSessionId);
+            if ($slot === null) {
+                return false;
+            }
+            $carried = self::sessionNet($packageId, $classSessionId) < 0;
+            $slotDebited = self::slotNet($packageId, $slot, $classSessionId) < 0;
+            $note = '改時段：同一時段只扣一堂（FR-003）';
+            if ($carried && $slotDebited) {
+                $wrote = self::reverseForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
+            } elseif (!$carried && !$slotDebited && SessionDeductionService::sessionLedgerNet($courseId, $classSessionId) > 0) {
+                $wrote = self::deductForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
+            } else {
+                return false;
+            }
+            self::recomputeCounters($packageId);
+
+            return $wrote;
+        });
+    }
+
+    /**
+     * FR-003 — The (SessionDate, HH:MM) slot of $classSessionId when the package is a
      * group class (one_on_two / one_on_three / one_on_many / tutoring); null for 1:1 packages
-     * (per-member deduction) or when the session has no slot.
+     * (per-member deduction) or when the session has no slot. HH:MM (the StartTimeHM column),
+     * because swipe and self-study lessons store seconds in StartTime.
      *
      * @return array{0: string, 1: string}|null
      */
@@ -234,27 +311,36 @@ class PackageDeductionService
             return null;
         }
 
-        $cs = ClassSession::select('SessionDate', 'StartTime')->find($classSessionId);
-        if (!$cs || empty($cs->SessionDate) || empty($cs->StartTime)) {
+        $cs = DB::table('ClassSession')->where('id', $classSessionId)->first(['SessionDate', 'StartTimeHM']);
+        if (!$cs || empty($cs->SessionDate) || empty($cs->StartTimeHM)) {
             return null;
         }
 
-        return [(string) $cs->SessionDate, (string) $cs->StartTime];
+        return [(string) $cs->SessionDate, (string) $cs->StartTimeHM];
     }
 
     /**
-     * Package ledger net of every session in the slot: negative = the slot is debited.
+     * Package ledger net of every session in the slot, optionally leaving one session out: negative = the slot is
+     * debited. Ledger rows are read current; ClassSession rows plainly and never locked, because attendance writers
+     * hold them while they wait for the package lock (#4454).
      *
      * @param array{0: string, 1: string} $slot
      */
-    private static function slotNet(int $packageId, array $slot): int
+    private static function slotNet(int $packageId, array $slot, ?int $exceptSessionId = null): int
     {
-        return (int) DB::table('package_session_ledger as l')
-            ->join('ClassSession as c', 'c.id', '=', 'l.class_session_id')
-            ->where('l.package_id', $packageId)
-            ->where('c.SessionDate', $slot[0])
-            ->where('c.StartTime', $slot[1])
-            ->sum('l.delta');
+        $ledger = self::currentLedger($packageId)->whereNotNull('class_session_id');
+        $ids = $ledger->pluck('class_session_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($ids === []) {
+            return 0;
+        }
+        $inSlot = array_flip(DB::table('ClassSession')->whereIn('id', $ids)
+            ->where('SessionDate', $slot[0])->where('StartTimeHM', $slot[1])
+            ->pluck('id')->map(fn ($id) => (int) $id)->all());
+        if ($exceptSessionId !== null) {
+            unset($inSlot[$exceptSessionId]);
+        }
+
+        return (int) $ledger->filter(fn ($row) => isset($inSlot[(int) $row->class_session_id]))->sum('delta');
     }
 
     /**
