@@ -712,7 +712,8 @@ Route::prefix('v1')->group(function () {
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
         Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
-        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
+        // Restore re-applies the cancelled lesson's deduction; director + super_admin only, as the calendar offers it.
+        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id')->middleware('role:director,super_admin');
         // Move a session to another contract of the same student+subject (director + super_admin, campus-scoped).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])->whereNumber('id')->middleware('role:director,super_admin');
         Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])->whereNumber('id')->middleware('role:director,super_admin');
@@ -908,7 +909,8 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── Director: payment message for LINE copy ──────────────────────────
-    Route::middleware(['role:director', 'require_password_change'])->group(function () {
+    // require_campus: these act on one campus's LINE channel or students, so a director without a campus has nothing here.
+    Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
