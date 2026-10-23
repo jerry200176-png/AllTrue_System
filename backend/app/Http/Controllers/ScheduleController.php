@@ -948,23 +948,7 @@ class ScheduleController extends Controller
 
                 // Record schedules leave entry (created after cascade so the "already cascaded"
                 // detection in applyLeaveCascade doesn't fire on retries)
-                $markerKey = ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave']
-                    + ($this->dateHasTwoLessons($courseId, $sessionDate) ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []); // HH:MM like other producers // #3914 review
-                Schedule::firstOrCreate(
-                    $markerKey,
-                    [
-                        'student_id'  => (int) $course->StudentID,
-                        'day_of_week' => Carbon::parse($sessionDate)->dayOfWeekIso,
-                        'start_time'  => substr((string) $session->StartTime, 0, 5),
-                        'end_time'    => substr((string) $session->EndTime, 0, 5),
-                        'class_type'  => $course->ClassType ?? 'one_on_one',
-                        'type'        => 'normal',
-                        'deduction'   => 0,
-                        'branch_id'   => $studentCampusId,
-                        'teacher_id'  => (int) ($course->TeacherID ?? 0),
-                        'subject'     => $course->SubjectID ?? null,
-                    ]
-                );
+                CourseLeaveCascadeService::recordLeaveMarker($course, $session, $studentCampusId);
 
                 return response()->json([
                     'message'            => strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
@@ -1340,8 +1324,7 @@ class ScheduleController extends Controller
     /** #3914 review: does this course hold two or more (non-cancelled) lessons on the date? */
     private function dateHasTwoLessons(int $courseId, string $date): bool
     {
-        return ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', $date)
-            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
+        return CourseLeaveCascadeService::courseHasTwoLessonsOn($courseId, $date);
     }
 
     /** #3914 review: delete the calendar's leave markers for one course/date; with two lessons that date, only this lesson's. */
