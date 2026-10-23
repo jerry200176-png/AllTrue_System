@@ -1123,8 +1123,11 @@ class ProfileController extends Controller
         if ($role === 'super_admin') {
             return true;
         }
-        // Founder policy 3: a director-grant holder is a director, even as type T; only super_admin manages it.
-        if (app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($teacherUserId)) {
+        // Founder policy 3: a director-grant holder is a director, even as type T; only super_admin manages it (its own
+        // profile stays editable by the holder).
+        $authUser = $request->attributes->get('auth_user');
+        $self = is_object($authUser) && (int) ($authUser->id ?? 0) === $teacherUserId;
+        if (!$self && app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($teacherUserId)) {
             return false;
         }
 

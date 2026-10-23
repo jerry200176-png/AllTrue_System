@@ -34,7 +34,8 @@ class DirectorGrantTargetGuardTest extends TestCase
         $other = CampusFactory::new()->create();
         $token = $this->token($this->user('D', $campus->id));
         $target = $this->user('T', $campus->id);
-        $this->grant($target->id, $campus->id);
+        // The grant is on a campus the director does not manage: any unrevoked director grant counts.
+        $this->grant($target->id, $other->id);
         $state = fn () => [
             DB::table('User')->where('id', $target->id)->first(['PSW', 'LoginName', 'Name', 'status', 'MustChangePassword']),
             DB::table('UserCampus')->where('UserID', $target->id)->orderBy('CampusID')->get(['CampusID', 'Approved', 'Admin'])->toArray(),
@@ -67,10 +68,23 @@ class DirectorGrantTargetGuardTest extends TestCase
         $this->assertSame('主任改名', (string) $target->fresh()->Name);
     }
 
-    private function grant(int $userId, int $campusId): UserCapabilityGrant
+    public function test_a_grant_holder_acting_as_director_still_edits_their_own_profile(): void
+    {
+        Config::set('staff_capabilities.multi_role_v1_enabled', true);
+        $campus = CampusFactory::new()->create();
+        $holder = $this->user('T', $campus->id);
+        $this->grant($holder->id, $campus->id);
+        $this->grant($holder->id, $campus->id, 'teacher');
+
+        $this->api($this->token($holder))->withHeaders(['X-Acting-As' => 'director'])
+            ->putJson("/api/v1/profiles/{$holder->id}", ['name' => '自己改名'])->assertOk();
+        $this->assertSame('自己改名', (string) $holder->fresh()->Name);
+    }
+
+    private function grant(int $userId, int $campusId, string $capability = 'director'): UserCapabilityGrant
     {
         return UserCapabilityGrant::create([
-            'user_id' => $userId, 'capability' => 'director', 'campus_id' => $campusId, 'granted_by' => null, 'granted_at' => now(), 'revoked_at' => null,
+            'user_id' => $userId, 'capability' => $capability, 'campus_id' => $campusId, 'granted_by' => null, 'granted_at' => now(), 'revoked_at' => null,
         ]);
     }
 
