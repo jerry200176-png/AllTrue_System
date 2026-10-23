@@ -76,6 +76,7 @@ use Illuminate\Support\Facades\DB;
  * @property \Carbon\CarbonInterface|null $settlement_locked_at
  * @property string|null $settlement_snapshot
  * @property int|null $trial_converted_to_id
+ * @property string|null $trial_target_class_type Trial courses only: regular class type the trial is for (in-app #426).
  * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
  */
@@ -91,6 +92,9 @@ class StudentClass extends Model
 
     /** Course memo is TEXT; keep a hard cap so paste cannot unbounded-grow the row. */
     public const MEMO_MAX_LENGTH = 8000;
+
+    /** in-app #426: regular class types a trial course may target (trial_target_class_type). */
+    public const TRIAL_TARGET_CLASS_TYPES = ['one_on_one', 'one_on_two', 'one_on_three'];
 
     protected $fillable = [
         'StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1',
@@ -109,6 +113,7 @@ class StudentClass extends Model
         'PackageID', 'PackageTotalSessions', 'PackageName',
         'trial_converted_to_id',
         'purchase_request_key',
+        'trial_target_class_type',
     ];
 
     protected $casts = [
