@@ -188,6 +188,9 @@ final class LearningRecordMutableOwnership
         if (trim((string) ($record->getAttribute('AttachmentUrl') ?? '')) !== '') {
             return true;
         }
+        if ($record->relationLoaded('teacherComment')) {
+            return $record->getRelation('teacherComment') !== null; // #3059: list pages preload it
+        }
         if (Schema::hasTable('learning_record_teacher_comments')
             && DB::table('learning_record_teacher_comments')
                 ->where('learning_record_id', (int) $record->getAttribute('id'))
