@@ -1659,6 +1659,8 @@ class StudentClassController extends Controller
         // a pure removal from a slot that was added or moved: deleting a slot
         // must not validate a retained locked occurrence as a new booking.
         $previousScheduleSlots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
+        // With the pre-edit SessionDuration, so a duration-only edit also counts as a slot change (#4435).
+        $previousRecurringSlots = $this->recurringSlotsFor($previousScheduleSlots, $studentClass);
         if (($rawInput['payment_status'] ?? null) === 'paid'
             && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
             return response()->json([
@@ -1752,12 +1754,12 @@ class StudentClassController extends Controller
             && $this->courseHasPastOrTaughtSessions((int) $studentClass->getKey())
         ) {
             $this->auditEditBlocked($studentClass, 'subject_change_requires_transfer', 422);
-            return response()->json([
+            return $this->withTransferHint(response()->json([
                 'message' => '此課程已有上過的堂次，直接改科目會讓過去的堂次也變成新科目。'
                     . '請改用「轉課／合約拆分」：舊合約保留已上堂次，剩餘堂數轉到新科目的新合約。',
                 'code' => 'subject_change_requires_transfer',
                 'suggested_actions' => ['split_contract'],
-            ], 422);
+            ], 422), $studentClass, $mapped, $scheduleSlotsForRebuild);
         }
         $teacherEffectiveDate = $request->validate([
             'teacher_effective_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
@@ -1782,7 +1784,7 @@ class StudentClassController extends Controller
 
         // RFC non-standard duration: validate + guard the billing contract fields.
         if ($contractError = $this->guardBillingContractUpdate($studentClass, $mapped)) {
-            return $contractError;
+            return $this->withTransferHint($contractError, $studentClass, $mapped, $scheduleSlotsForRebuild);
         }
 
         if (!empty($campusIds) && !empty($mapped['room_id'])) {
@@ -1948,6 +1950,7 @@ class StudentClassController extends Controller
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
+            $previousRecurringSlots,
             $scheduleFieldsPresent,
             $teacherEffectiveDate
         ) {
@@ -2165,13 +2168,22 @@ class StudentClassController extends Controller
                 $sessionSync['reconcile_skipped'] = true;
                 $sessionSync['warning'] = "固定時段已儲存，但仍有 {$unalignedFuture} 筆未來堂次與新時段不同。請在堂次列表確認狀態。";
             } elseif (($sessionSync['reason'] ?? '') === 'history_exists'
-                && (
-                    !array_key_exists('updated_future_sessions', $sessionSync)
-                    || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
+                && !$this->sameRecurringSlots(
+                    $previousRecurringSlots,
+                    $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass)
                 )
             ) {
-                $sessionSync['reconcile_skipped'] = true;
-                $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+                // #4435: zero rows moved is not a lock. Re-sending an unchanged
+                // slot (e.g. a 堂數制→月結 switch) moves nothing and leaves
+                // nothing behind, so it is skipped above. When the slots did
+                // change, warn only for upcoming lessons whose status kept them
+                // off the saved slots.
+                $statusLockedFuture = $this->contractSchedule->countStatusLockedFutureContractSessions($studentClass);
+                if ($statusLockedFuture > 0) {
+                    $sessionSync['status_locked_future_sessions'] = $statusLockedFuture;
+                    $sessionSync['reconcile_skipped'] = true;
+                    $sessionSync['warning'] = "有 {$statusLockedFuture} 筆未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但這些堂次仍為舊時段，請檢查堂次狀態。";
+                }
             }
         } elseif ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
             $this->contractSchedule->reconcileWeekTimeFieldsFromSessions($studentClass);
@@ -2686,6 +2698,14 @@ class StudentClassController extends Controller
 
         if ($marked = $this->freeGiftMarkedRefusal($studentClass, 'charge_correction_free_gift_locked')) {
             return $marked;
+        }
+        // #4017: correcting to NT$0 would rewrite the open bill into an unmarked zero bill, which #3991 forbids.
+        if ((int) $payload['new_charge'] === 0) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_zero_forbidden', 422);
+            return response()->json([
+                'message' => '費用不能更正成 0 元，沒有變更任何資料。這張帳單若不該收，請到學生帳務作廢；有設定費用的課程不能改成「免費／贈送」。',
+                'code' => 'charge_correction_zero_forbidden',
+            ], 422);
         }
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
             $this->auditEditBlocked($studentClass, 'charge_correction_date_mode_only', 422);
@@ -6427,6 +6447,82 @@ class StudentClassController extends Controller
         }
 
         return sprintf('%d.%02d', $whole, $hundredths);
+    }
+
+    /**
+     * in-app #409: a blocked 課程設定 save that also changes subject / teacher / weekly
+     * slots on a count-mode course can be done by 轉課 instead (past lessons stay on the
+     * old contract). Sets `next_step: course_transfer` + the cutover date on the existing
+     * 422 so the client offers it as the refusal's one next step. Read-only hint: the block itself is unchanged.
+     * Locked billing fields (SessionCount etc.) are NOT carried by 轉課: listed in
+     * `not_carried` so the UI states it instead of silently dropping them.
+     *
+     * @param  array<string, mixed>  $mapped
+     * @param  array<int, mixed>  $providedSlots
+     */
+    private function withTransferHint(\Illuminate\Http\JsonResponse $blocked, StudentClass $c, array $mapped, array $providedSlots): \Illuminate\Http\JsonResponse
+    {
+        if ($blocked->getStatusCode() !== 422) {
+            return $blocked;
+        }
+        $cid = (int) $c->getKey();
+        $changes = [];
+        $slotsAfter = [];
+        if (array_key_exists('SubjectID', $mapped) && (int) $mapped['SubjectID'] !== (int) $c->getAttribute('SubjectID')) {
+            $changes[] = 'subject';
+        }
+        if (!empty($mapped['TeacherID']) && (int) $mapped['TeacherID'] !== (int) $c->getAttribute('TeacherID')) {
+            $changes[] = 'teacher';
+        }
+        if (ContractSessionSchedule::scheduleFieldsPresentInMapped($mapped)) {
+            $candidate = clone $c;
+            $candidate->fill($mapped);
+            $before = $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), $c);
+            $slotsAfter = array_map(fn ($x) => $x + ['duration_minutes' => (int) ($candidate->getAttribute('SessionDuration') ?: 120)],
+                ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $providedSlots));
+            if (!$this->sameRecurringSlots($before, $this->recurringSlotsFor($slotsAfter, $candidate))) {
+                $changes[] = 'slots';
+            }
+        }
+        // 轉課 refuses unmarked lessons before the cutover, so start at the first one.
+        $next = ClassSession::query()->where('StudentClassID', $cid)
+            ->where('Status', 'scheduled')->min('SessionDate');
+        if ($changes === [] || $next === null || count($slotsAfter) > 6) {
+            return $blocked;
+        }
+        // An unmarked row before any lesson with history (marked status, sign-in, approved
+        // record, ledger row) would make 轉課 move that history: withhold. Fail closed.
+        $moving = ClassSession::query()->where('StudentClassID', $cid)->whereDate('SessionDate', '>=', $next)
+            ->whereRaw("COALESCE(Status, '') != 'cancelled'")->get(['id', 'Status']);
+        $locked = ContractSessionSchedule::lockedClassSessionIds($cid);
+        if ($moving->contains(fn ($x) => (string) $x->Status !== 'scheduled' || isset($locked[(int) $x->id]))
+            || SessionDeductionLedger::query()->whereIn('class_session_id', $moving->pluck('id')->all())->exists()) {
+            return $blocked;
+        }
+        // Dry-run the 轉課 preview itself (rolled back) so the offered path is one that completes.
+        DB::beginTransaction();
+        try {
+            $this->applyTransfer($c, ['start_date' => $next, 'reason' => 'preview',
+                'subject_id' => in_array('subject', $changes, true) ? (int) $mapped['SubjectID'] : null,
+                'teacher_id' => in_array('teacher', $changes, true) ? (int) $mapped['TeacherID'] : null,
+                'slots' => in_array('slots', $changes, true) ? $slotsAfter : null], true);
+        } catch (\Throwable $notTransferable) {
+            return $blocked;
+        } finally {
+            DB::rollBack();
+        }
+        $data = (array) $blocked->getData(true);
+        // One next step per refusal: the client's editability next-step map reads
+        // `next_step` before the per-code default (courseEditability.js).
+        $data['next_step'] = 'course_transfer';
+        $data['transfer_hint'] = [
+            'start_date' => ContractSessionSchedule::normalizeDateString($next),
+            'changes' => $changes,
+            // 轉課 never applies a locked billing-contract edit; the client must say so.
+            'not_carried' => array_values((array) ($data['locked_fields'] ?? [])),
+        ];
+
+        return $blocked->setData($data);
     }
 
     /**

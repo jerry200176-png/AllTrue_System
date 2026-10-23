@@ -407,6 +407,7 @@
       :conflicts="duplicateConflicts"
       :class-type="String(interceptOriginalPayload?.class_type || '')"
       :can-manual-session="!isTeacher"
+      :can-purchase="!isTeacher"
       :block-create="interceptOriginalPayload?.class_type === 'trial'"
       :submitting="forceSubmitting"
       :subject-label-fn="getSubjectLabel"

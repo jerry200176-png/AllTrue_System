@@ -1409,8 +1409,18 @@ class ScheduleController extends Controller
         }
     }
 
-    public function destroy(Schedule $schedule)
+    public function destroy(Request $request, Schedule $schedule)
     {
+        // Same caller rule as cancelMakeup(): a director of the row's campus (or super_admin), checked before the
+        // assessment is read so another campus learns nothing about it (#3938 item 2).
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'super_admin'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if ($role !== 'super_admin' && !in_array((int) ($schedule->branch_id ?? 0), $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
         // #3824: the pin row of a protected occurrence cannot be deleted (review r4247040009).
         $locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time);
         // A makeup (type=extra) keeps the contract teacher on its row while the assessment records the substitute,
