@@ -29,9 +29,9 @@ class InappPackageLedgerProbeTest extends TestCase
         'same_session_debited_twice' => ['package_id', 'class_session_id', 'net', 'reasons', 'session_date', 'start_time', 'status'],
         'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
-        'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'scheduled_slots'],
+        'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
-        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_untaught_sessions', 'debits_without_session', 'lists_capped'],
+        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'lists_capped'],
     ];
 
     private int $teacherId;
@@ -77,8 +77,8 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame(2, (int) $out['member_lessons'][0]['attended_slots'], 'two lessons taught, three debits');
         $this->assertSame([], $out['same_slot_debited_twice']);
         $this->assertSame([
-            'package_id' => (int) $over->id, 'total_sessions' => 2, 'ledger_used' => 3, 'attended_slots' => 2, 'taught_slots' => 2,
-            'sessions_debited_twice' => 1, 'slots_debited_twice' => 0, 'debits_on_untaught_sessions' => 0, 'debits_without_session' => 0,
+            'package_id' => (int) $over->id, 'total_sessions' => 2, 'ledger_used' => 3, 'attended_slots' => 2, 'taught_slots' => 2, 'absent_slots' => 0,
+            'sessions_debited_twice' => 1, 'slots_debited_twice' => 0, 'debits_on_unchargeable_sessions' => 0, 'debits_without_session' => 0,
             'lists_capped' => false,
         ], $out['summary'][0]);
         $this->assertOnlyAllowedKeys($out);
@@ -114,6 +114,8 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->debit($within, $withinCourse, $this->lesson($withinCourse, '2026-10-02'), 'attendance');
         $cancelled = $this->lesson($withinCourse, '2026-10-09', 'cancelled');
         $this->debit($within, $withinCourse, $cancelled, 'attendance');
+        // A no-show marked absent is charged on purpose (ClassSessionController), so it is not an unexplained debit.
+        $this->debit($within, $withinCourse, $this->lesson($withinCourse, '2026-10-16', 'Absent'), 'attendance');
         [$mislabelled] = $this->pool(3, 16, 1, 1);
         [$elsewhere] = $this->pool(2, 16);
 
@@ -123,9 +125,11 @@ class InappPackageLedgerProbeTest extends TestCase
         $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
         $this->assertSame([(int) $within->id, (int) $mislabelled->id], $out['target_package_ids'], 'every pool of the campus, by campus id or member student, and no other campus');
         $this->assertNotContains((int) $elsewhere->id, $out['target_package_ids']);
-        $this->assertSame(2, $out['summary'][0]['ledger_used']);
+        $this->assertSame(array_keys($out)[5], 'summary', 'the summary comes right after the target list');
+        $this->assertSame(3, $out['summary'][0]['ledger_used']);
         $this->assertSame(1, $out['summary'][0]['attended_slots']);
-        $this->assertSame(1, $out['summary'][0]['debits_on_untaught_sessions'], 'a debit on a cancelled lesson is not explained by the lessons');
+        $this->assertSame(1, $out['summary'][0]['absent_slots']);
+        $this->assertSame(1, $out['summary'][0]['debits_on_unchargeable_sessions'], 'a debit on a cancelled lesson is not explained by the lessons');
         $this->assertTrue($out['all_packages']);
         $this->assertOnlyAllowedKeys($out);
         $this->assertSame([(int) $mislabelled->id], inapp_package_ledger_probe(DB::connection(), 1, (int) $mislabelled->id)['target_package_ids'], 'a named package of a campus student is readable from that campus');
@@ -157,7 +161,7 @@ class InappPackageLedgerProbeTest extends TestCase
     /** @param array<string, mixed> $out */
     private function assertOnlyAllowedKeys(array $out): void
     {
-        $this->assertSame([], array_diff(array_keys($out), ['read_only', 'campus_id', 'package_id', 'target_package_ids', ...array_keys(self::ALLOWED_KEYS)]));
+        $this->assertSame([], array_diff(array_keys($out), ['read_only', 'campus_id', 'package_id', 'all_packages', 'target_package_ids', ...array_keys(self::ALLOWED_KEYS)]));
         foreach (self::ALLOWED_KEYS as $section => $keys) {
             foreach ($out[$section] ?? [] as $row) {
                 $this->assertSame($keys, array_keys($row), $section);

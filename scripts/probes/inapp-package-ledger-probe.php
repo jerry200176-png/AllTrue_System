@@ -82,6 +82,7 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         'SELECT sc.PackageID AS package_id, COUNT(DISTINCT sc.ID) AS member_courses,'
         . " COUNT(DISTINCT CASE WHEN cs.Status = 'attended' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS attended_slots,"
         . " COUNT(DISTINCT CASE WHEN cs.Status IN ('attended', 'completed', 'late') THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS taught_slots,"
+        . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'absent' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS absent_slots,"
         . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'scheduled' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS scheduled_slots"
         . " FROM StudentClass sc LEFT JOIN ClassSession cs ON cs.StudentClassID = sc.ID WHERE sc.PackageID IN ($in)"
         . ' GROUP BY sc.PackageID ORDER BY sc.PackageID',
@@ -95,8 +96,9 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
     );
 
     // One line per package to read the verdict from: what the ledger used against the lessons taught, and the debits
-    // the lessons do not explain. The twice-debited lists stop at 200 rows (`lists_capped`).
-    $taught = ['attended', 'completed', 'late'];
+    // the lessons do not explain. A no-show marked absent is charged too (ClassSessionController), so it is a chargeable
+    // status here. The twice-debited lists stop at 200 rows (`lists_capped`).
+    $chargeable = ['attended', 'completed', 'late', 'absent'];
     $byPackage = fn (string $section): array => array_reduce($result[$section], function (array $carry, array $row): array {
         $carry[(int) $row['package_id']][] = $row;
 
@@ -104,20 +106,25 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
     }, []);
     [$packages, $lessons, $sessionsTwice, $slotsTwice, $byStatus, $byReason] = array_map($byPackage,
         ['packages', 'member_lessons', 'same_session_debited_twice', 'same_slot_debited_twice', 'net_debit_by_session_status', 'by_reason']);
-    $result['summary'] = array_map(fn (int $id): array => [
+    $summary = array_map(fn (int $id): array => [
         'package_id' => $id,
         'total_sessions' => (int) ($packages[$id][0]['total_sessions'] ?? 0),
         'ledger_used' => -(int) ($packages[$id][0]['ledger_net'] ?? 0),
         'attended_slots' => (int) ($lessons[$id][0]['attended_slots'] ?? 0),
         'taught_slots' => (int) ($lessons[$id][0]['taught_slots'] ?? 0),
+        'absent_slots' => (int) ($lessons[$id][0]['absent_slots'] ?? 0),
         'sessions_debited_twice' => count($sessionsTwice[$id] ?? []),
         'slots_debited_twice' => count($slotsTwice[$id] ?? []),
-        'debits_on_untaught_sessions' => array_sum(array_map(fn (array $row): int => in_array($row['status'], $taught, true) ? 0 : -(int) $row['net'], $byStatus[$id] ?? [])),
+        'debits_on_unchargeable_sessions' => array_sum(array_map(
+            fn (array $row): int => in_array(strtolower((string) $row['status']), $chargeable, true) ? 0 : max(0, -(int) $row['net']),
+            $byStatus[$id] ?? []
+        )),
         'debits_without_session' => array_sum(array_map(fn (array $row): int => (int) $row['delta'] < 0 ? (int) $row['rows_without_session'] : 0, $byReason[$id] ?? [])),
         'lists_capped' => count($result['same_session_debited_twice']) >= 200 || count($result['same_slot_debited_twice']) >= 200,
     ], $targets);
 
-    return $result;
+    // The summary first, so a long all-packages output cannot push it out of a truncated job summary.
+    return array_slice($result, 0, 5, true) + ['summary' => $summary] + $result;
 }
 
 if (PHP_SAPI === 'cli' && getenv('INAPP_PACKAGE_LEDGER_PROBE') === '1') {
