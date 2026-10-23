@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -160,6 +161,26 @@ class HarnessStoreOpenTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertTrue(db.is_file())
             self.assertTrue(json.loads(proc.stdout)["synced_programs"])
+
+    def test_uninitialized_or_old_store_is_not_silently_replaced_or_migrated(self):
+        with tempfile.TemporaryDirectory() as td:
+            for kind in ("empty", "not-sqlite", "old", "incomplete"):
+                with self.subTest(kind=kind):
+                    db = Path(td) / f"{kind}.sqlite"
+                    db.write_bytes(b"not a database" if kind == "not-sqlite" else b"")
+                    if kind in {"old", "incomplete"}:
+                        conn = sqlite3.connect(db)
+                        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)",
+                                     ("1" if kind == "old" else "4",))
+                        conn.commit()
+                        conn.close()
+                    before = db.read_bytes()
+                    proc = self.run_cli(db, "resume")
+                    self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+                    self.assertEqual(json.loads(proc.stderr)["reason"], "harness_store_unavailable")
+                    self.assertEqual(db.read_bytes(), before)
+                    self.assertFalse(Path(str(db) + "-wal").exists())
 
 
 if __name__ == "__main__":

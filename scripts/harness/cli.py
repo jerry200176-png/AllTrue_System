@@ -293,7 +293,8 @@ def main(argv: list[str] | None = None) -> int:
             "reason": "harness_store_unavailable",
             "db": str(exc.db_path),
             "next_action": (
-                "Locate the existing authorized task store and verify --db/HARNESS_DB. "
+                "Locate the existing authorized task store; verify --db/HARNESS_DB, access and schema. "
+                "Historical schemas need the existing explicit migrate-schema procedure. "
                 "Do not replace missing operational state by syncing YAML. "
                 "Independent cloud work can continue from GitHub branch/PR/CI evidence."
             ),

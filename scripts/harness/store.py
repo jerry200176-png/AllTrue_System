@@ -10,7 +10,10 @@ from typing import Any, Iterable
 
 from .contracts import Checkpoint, DecisionReceipt, GoalContract
 from .models import Escalation, Program, Task
-from .schema_migrate import TARGET_SCHEMA_VERSION, apply_additive_v4
+from .schema_migrate import (
+    TARGET_SCHEMA_VERSION, V1_TABLES, V4_EXTRA_TABLES, apply_additive_v4,
+    schema_version, table_names,
+)
 from .states import TaskState
 
 DEFAULT_DB = Path("/home/jerry/workspace/state/alltrue/harness.sqlite")
@@ -54,10 +57,22 @@ class HarnessStore:
                 raise HarnessStoreUnavailable(self.db_path) from exc
             raise
         self._conn.row_factory = sqlite3.Row
+        if not create:
+            # File existence alone is not operational state. Never initialize an
+            # empty file or silently migrate a historical store during resume.
+            try:
+                valid = schema_version(self._conn) == SCHEMA_VERSION and set(
+                    V1_TABLES + V4_EXTRA_TABLES
+                ).issubset(table_names(self._conn))
+            except sqlite3.DatabaseError:
+                valid = False
+            if not valid:
+                self._conn.close()
+                raise HarnessStoreUnavailable(self.db_path)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         # For empty/test DBs. Live cutover must use schema_migrate.migrate_* first.
-        if migrate:
+        if migrate and create:
             self._migrate()
 
     def close(self) -> None:
