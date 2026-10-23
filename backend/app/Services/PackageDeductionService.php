@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\PackageSessionLedger;
 use App\Models\StudentClass;
+use App\Support\DeadlockRetry;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -45,7 +46,7 @@ class PackageDeductionService
                 $packageId, $studentClassId, $classSessionId, -1,
                 self::cycleReason($packageId, $classSessionId, $reason), $recordedBy, $note, $requestId
             );
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /**
@@ -77,7 +78,7 @@ class PackageDeductionService
                 $packageId, $studentClassId, $classSessionId, 1,
                 self::cycleReason($packageId, $classSessionId, $reason), $recordedBy, $note, $requestId
             );
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     private static function writeLedgerRow(
@@ -214,7 +215,7 @@ class PackageDeductionService
             }
 
             self::recomputeCounters($packageId);
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /**
@@ -232,7 +233,7 @@ class PackageDeductionService
             }
 
             return self::deductForSession($packageId, $studentClassId, $classSessionId, $reason, $recordedBy, $note, $requestId);
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /**
@@ -271,7 +272,7 @@ class PackageDeductionService
                 }
             } elseif (self::slotNet($packageId, $slot, $classSessionId) >= 0) {
                 $self = self::chargedLessons($packageId, $slot)->firstWhere('id', $classSessionId);
-                if ($self !== null && (in_array(strtolower($statusBefore), ['attended', 'late'], true) || (int) $self->course_net > 0)) {
+                if ($self !== null && (in_array(strtolower($statusBefore), ['attended', 'late'], true) || (int) $self->course_net > 0 || $self->package_debit)) {
                     $wrote = self::deductForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
                 }
             }
@@ -301,6 +302,8 @@ class PackageDeductionService
      * The package's member lessons charged in a slot, oldest first: a course-ledger debit in any status (completed via a
      * learning-record approval, absent after attended), or attended / late (package-only creation seeds). An uncharged
      * completed lesson is not counted (not decided). Read plainly, never locked.
+     * Also counted: a package debit of its own that only retimes moved (a creation seed later marked absent), from the
+     * current ledger read; a never-charged absent lesson is not (Codex on #4467, thread 4362482902).
      *
      * @param array{0: string, 1: string} $slot
      */
@@ -308,11 +311,16 @@ class PackageDeductionService
     {
         $courseNet = "(SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 WHEN l.event_type = 'reverse' THEN -1 ELSE 0 END), 0)"
             . ' FROM session_deduction_ledger l WHERE l.student_class_id = c.StudentClassID AND l.class_session_id = c.id)';
+        $packageNet = self::currentLedger($packageId)->reject(fn ($row) => preg_match('/^retime(#\d+)?$/', (string) $row->reason) === 1)
+            ->groupBy('class_session_id')->map(fn (Collection $rows) => (int) $rows->sum('delta'));
 
         return DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
             ->where('sc.PackageID', $packageId)->where('c.SessionDate', $slot[0])->where('c.StartTimeHM', $slot[1])
             ->orderBy('c.id')->get(['c.id', 'c.StudentClassID', 'c.Status', DB::raw("{$courseNet} AS course_net")])
-            ->filter(fn ($l) => (int) $l->course_net > 0 || in_array(strtolower((string) $l->Status), ['attended', 'late'], true))->values();
+            ->each(function ($l) use ($packageNet) {
+                $l->package_debit = ($packageNet[$l->id] ?? 0) < 0;
+            })
+            ->filter(fn ($l) => (int) $l->course_net > 0 || $l->package_debit || in_array(strtolower((string) $l->Status), ['attended', 'late'], true))->values();
     }
 
     /**

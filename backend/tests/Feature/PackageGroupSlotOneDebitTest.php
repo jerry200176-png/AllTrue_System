@@ -170,7 +170,8 @@ class PackageGroupSlotOneDebitTest extends TestCase
     public static function memberLeftBehind(): array
     {
         return ['completed, charged (learning-record approval)' => ['completed', true, -1],
-            'absent after attended (charge kept)' => ['absent', true, -1], 'completed, never charged' => ['completed', false, 0]];
+            'absent after attended (charge kept)' => ['absent', true, -1], 'completed, never charged' => ['completed', false, 0],
+            'absent, never charged' => ['absent', false, 0]];
     }
 
     /** @dataProvider memberLeftBehind */
@@ -194,7 +195,13 @@ class PackageGroupSlotOneDebitTest extends TestCase
         $this->assertSame(9 + $oldSlotNet, (int) $pkg->fresh()->remaining_sessions);
     }
 
-    public function test_a_lesson_seeded_at_creation_and_merged_by_a_retime_is_debited_again_when_moved_back(): void
+    public static function seededLessonStatus(): array
+    {
+        return ['still attended' => [null], 'marked absent after creation (Codex thread 4362482902)' => ['absent']];
+    }
+
+    /** @dataProvider seededLessonStatus */
+    public function test_a_lesson_seeded_at_creation_and_merged_by_a_retime_is_debited_again_when_moved_back(?string $markedAs): void
     {
         $subject = fn (int $id, string $start) => ['subject_id' => $id, 'teacher_id' => $this->makeTeacher()->id,
             'duration_hours' => 2, 'start_time' => $start, 'confirmed_dates' => ['2026-04-16']];
@@ -208,12 +215,18 @@ class PackageGroupSlotOneDebitTest extends TestCase
             ->where('StartTime', 'like', '16:00%')->firstOrFail();
         $this->assertSame(0, DB::table('session_deduction_ledger')->where('class_session_id', $seeded->id)->count(),
             'precondition: a creation seed debits the package only');
+        if ($markedAs !== null) {
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->patchJson("/api/v1/class-sessions/{$seeded->id}", ['status' => $markedAs])->assertOk();
+            $this->assertSame(-1, $this->slotNet($pkgId, '16:00'), 'precondition: the status swap keeps the package charge');
+        }
 
-        $this->retime($token, $seeded->id, '18:00', '20:00')->assertOk();
+        $this->retime($token, $seeded->id, '18:00', '20:00', $markedAs ?? 'attended')->assertOk();
         $this->assertSame(-1, $this->slotNet($pkgId, '18:00'));
         $this->assertSame(9, (int) CoursePackage::findOrFail($pkgId)->remaining_sessions);
 
-        $this->retime($token, $seeded->id, '16:00', '18:00')->assertOk();
+        $this->retime($token, $seeded->id, '16:00', '18:00', $markedAs ?? 'attended')->assertOk();
+        $this->assertSame($markedAs ?? 'attended', $seeded->fresh()->Status);
         $this->assertSame(-1, $this->slotNet($pkgId, '16:00'));
         $this->assertSame(-1, $this->slotNet($pkgId, '18:00'));
         $this->assertSame(8, (int) CoursePackage::findOrFail($pkgId)->remaining_sessions);
@@ -233,10 +246,10 @@ class PackageGroupSlotOneDebitTest extends TestCase
         $this->assertSame(9, (int) $pkg->fresh()->remaining_sessions);
     }
 
-    private function retime(string $token, int $sessionId, string $start, string $end)
+    private function retime(string $token, int $sessionId, string $start, string $end, string $status = 'attended')
     {
         return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->patchJson("/api/v1/class-sessions/{$sessionId}", ['status' => 'attended', 'start_time' => $start, 'end_time' => $end]);
+            ->patchJson("/api/v1/class-sessions/{$sessionId}", ['status' => $status, 'start_time' => $start, 'end_time' => $end]);
     }
 
     private function sessionNet(int $packageId, int $sessionId): int
