@@ -1529,7 +1529,7 @@ class ClassSessionController extends Controller
         $oldEndHm   = substr((string) $session->EndTime, 0, 5);
         // FR-003 (#4455): a package lesson moving to another start time locks lesson → course → package before any read.
         $retimed = !empty($data['start_time']) && substr($data['start_time'], 0, 5) !== $oldStartHm;
-        $wasTaught = in_array(strtolower((string) $session->getOriginal('Status')), ['attended', 'late'], true);
+        $statusBefore = (string) $session->getOriginal('Status');
         if ($retimed) {
             PackageDeductionService::lockForRetime((int) $session->id);
         }
@@ -1564,7 +1564,7 @@ class ClassSessionController extends Controller
         // FR-003: a debited lesson moved to another start time leaves one debit per group slot (#4455).
         if ($retimed) {
             $authUser = request()->attributes->get('auth_user');
-            PackageDeductionService::reslotRetimedSession((int) $session->id, $oldStartHm, $wasTaught, (int) ($authUser->id ?? 0) ?: null);
+            PackageDeductionService::reslotRetimedSession((int) $session->id, $oldStartHm, $statusBefore, (int) ($authUser->id ?? 0) ?: null);
         }
 
         // ClassSession 是權威來源；同步更新對應 schedules exception 列的時間，

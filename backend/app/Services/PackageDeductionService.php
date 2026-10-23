@@ -250,18 +250,18 @@ class PackageDeductionService
     /**
      * FR-003 after a lesson's start time changed on the same date (#4455). Slots come from the lessons' current times, so a
      * debit the lesson carries has already left $oldStartHm and counts at its new time. Both slots then get the rule again:
-     * - carried: the old slot keeps its one debit on another member lesson still taught there (attended/late), and the
-     *   carried debit is credited if the new slot is already debited;
-     * - not carried: a lesson already taught before this edit (attended/late, $wasTaught) debits the new slot if that slot
-     *   has no debit, so moving a lesson back restores it. A lesson marked attended in the same request is debited by the
-     *   attendance deduction that follows instead.
+     * - carried: the old slot keeps its one debit on another member lesson still charged there (chargedLessons()), and
+     *   the carried debit is credited if the new slot is already debited;
+     * - not carried: a lesson charged before this edit ($statusBefore attended/late, or a course-ledger debit) debits the
+     *   new slot if that slot has no debit, so moving a lesson back restores it. A lesson marked attended in the same
+     *   request is debited by the attendance deduction that follows instead.
      * Idempotent; 1:1 packages are untouched. The caller runs it in the transaction of the time edit after lockForRetime(),
      * so its reads see every member write committed before the package lock, and later member writes apply their own
      * slot rule after it.
      *
      * @return bool true if a ledger row was written
      */
-    public static function reslotRetimedSession(int $classSessionId, string $oldStartHm, bool $wasTaught, ?int $recordedBy = null): bool
+    public static function reslotRetimedSession(int $classSessionId, string $oldStartHm, string $statusBefore, ?int $recordedBy = null): bool
     {
         $lesson = DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
             ->where('c.id', $classSessionId)->first(['sc.ID as course_id', 'sc.PackageID as package_id']);
@@ -271,7 +271,7 @@ class PackageDeductionService
         }
         $courseId = (int) $lesson->course_id;
 
-        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $oldStartHm, $wasTaught, $recordedBy) {
+        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $oldStartHm, $statusBefore, $recordedBy) {
             self::lockPackage($packageId);
             $slot = self::groupSlot($packageId, $classSessionId);
             if ($slot === null || $slot[1] === $oldStartHm) {
@@ -281,16 +281,18 @@ class PackageDeductionService
             $wrote = false;
             if (self::sessionNet($packageId, $classSessionId) < 0) {
                 $oldSlot = [$slot[0], $oldStartHm];
-                $heir = self::slotNet($packageId, $oldSlot) >= 0 ? self::taughtLessons($packageId, $oldSlot)->first() : null;
+                $heir = self::slotNet($packageId, $oldSlot) >= 0 ? self::chargedLessons($packageId, $oldSlot)->first() : null;
                 if ($heir !== null) {
                     $wrote = self::deductForSession($packageId, (int) $heir->StudentClassID, (int) $heir->id, 'retime', $recordedBy, $note);
                 }
                 if (self::slotNet($packageId, $slot, $classSessionId) < 0) {
                     $wrote = self::reverseForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note) || $wrote;
                 }
-            } elseif ($wasTaught && self::slotNet($packageId, $slot, $classSessionId) >= 0
-                && self::taughtLessons($packageId, $slot)->contains('id', $classSessionId)) {
-                $wrote = self::deductForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
+            } elseif (self::slotNet($packageId, $slot, $classSessionId) >= 0) {
+                $self = self::chargedLessons($packageId, $slot)->firstWhere('id', $classSessionId);
+                if ($self !== null && (in_array(strtolower($statusBefore), ['attended', 'late'], true) || (int) $self->course_net > 0)) {
+                    $wrote = self::deductForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
+                }
             }
             if ($wrote) {
                 self::recomputeCounters($packageId);
@@ -315,15 +317,22 @@ class PackageDeductionService
     }
 
     /**
-     * The package's member lessons taught (attended / late) in a slot, oldest first. Read plainly, never locked.
+     * The package's member lessons charged in a slot, oldest first: attended / late, or completed with a course-ledger debit
+     * (a learning-record approval deducts a completed lesson; whether an uncharged completed lesson debits is not decided).
+     * Read plainly, never locked.
      *
      * @param array{0: string, 1: string} $slot
      */
-    private static function taughtLessons(int $packageId, array $slot): Collection
+    private static function chargedLessons(int $packageId, array $slot): Collection
     {
+        $courseNet = "(SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 WHEN l.event_type = 'reverse' THEN -1 ELSE 0 END), 0)"
+            . ' FROM session_deduction_ledger l WHERE l.student_class_id = c.StudentClassID AND l.class_session_id = c.id)';
+
         return DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
             ->where('sc.PackageID', $packageId)->where('c.SessionDate', $slot[0])->where('c.StartTimeHM', $slot[1])
-            ->whereIn('c.Status', ['attended', 'late'])->orderBy('c.id')->get(['c.id', 'c.StudentClassID']);
+            ->whereIn('c.Status', ['attended', 'late', 'completed'])->orderBy('c.id')
+            ->get(['c.id', 'c.StudentClassID', 'c.Status', DB::raw("{$courseNet} AS course_net")])
+            ->filter(fn ($l) => strtolower((string) $l->Status) !== 'completed' || (int) $l->course_net > 0)->values();
     }
 
     /**

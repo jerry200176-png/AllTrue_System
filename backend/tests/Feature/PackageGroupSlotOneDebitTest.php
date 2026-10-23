@@ -139,6 +139,33 @@ class PackageGroupSlotOneDebitTest extends TestCase
         $this->assertSame(8, (int) $pkg->fresh()->remaining_sessions, 'two taught slots, two debits');
     }
 
+    /** @return array<string, array{0: bool, 1: int}> */
+    public static function completedMember(): array
+    {
+        return ['completed and charged (learning-record approval)' => [true, -1], 'completed, never charged' => [false, 0]];
+    }
+
+    /** @dataProvider completedMember */
+    public function test_a_completed_member_keeps_the_old_slot_debited_only_when_it_is_charged(bool $charged, int $oldSlotNet): void
+    {
+        [$pkg, $a, $b, $c] = $this->groupPackage(3);
+        $carrier = $this->makeSession($a->ID, '16:00');
+        $completed = $this->makeSession($b->ID, '16:00', 'completed');
+        $other = $this->makeSession($c->ID, '18:00');
+        SessionDeductionService::deductForSession($a->ID, $carrier->id, 'attendance');
+        SessionDeductionService::deductForSession($c->ID, $other->id, 'attendance');
+        if ($charged) {
+            SessionDeductionService::deductForSession($b->ID, $completed->id, 'attendance');
+        }
+        $this->assertSame(-1, $this->sessionNet($pkg->id, $carrier->id));
+
+        $this->retime($this->directorToken(), $carrier->id, '18:00', '20:00')->assertOk();
+
+        $this->assertSame($oldSlotNet, $this->slotNet($pkg->id, '16:00'));
+        $this->assertSame(-1, $this->slotNet($pkg->id, '18:00'));
+        $this->assertSame(9 + $oldSlotNet, (int) $pkg->fresh()->remaining_sessions);
+    }
+
     public function test_a_lesson_seeded_at_creation_and_merged_by_a_retime_is_debited_again_when_moved_back(): void
     {
         $subject = fn (int $id, string $start) => ['subject_id' => $id, 'teacher_id' => $this->makeTeacher()->id,
@@ -223,12 +250,12 @@ class PackageGroupSlotOneDebitTest extends TestCase
         return [$pkg, ...$courses];
     }
 
-    private function makeSession(int $studentClassId, string $start): ClassSession
+    private function makeSession(int $studentClassId, string $start, string $status = 'attended'): ClassSession
     {
         $end = Carbon::createFromFormat('H:i', substr($start, 0, 5))->addHours(2)->format('H:i');
 
         return ClassSession::create(['StudentClassID' => $studentClassId, 'SessionDate' => '2026-04-16',
-            'StartTime' => $start, 'EndTime' => $end, 'Status' => 'attended']);
+            'StartTime' => $start, 'EndTime' => $end, 'Status' => $status]);
     }
 
     private function makeStudent(): Student
