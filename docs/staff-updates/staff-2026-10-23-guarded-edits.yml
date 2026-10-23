@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-23-guarded-edits
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 兩種會改錯資料的操作改為擋下
+    summary: 把課程金額更正成零元、清空已核准評量，現在會擋下並告訴你該怎麼做。
+    items:
+      - category: fixed
+        text: 合約金額更正不能改成零元；開錯的帳單請到學生帳務作廢後重開。
+      - category: fixed
+        text: 已核准評量的課不能清空評量內容，也不能改課堂類型換老師；要改請先「退回待審」。
+    source_refs:
+      - "changelog:2026-10-22:charge-correction-refuses-zero"
+      - "changelog:2026-10-22:assessment-lock-type-and-content"
