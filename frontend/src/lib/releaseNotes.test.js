@@ -92,6 +92,16 @@ for (const note of staffUpdates) {
   assert.ok(!(note.audiences || []).includes('parent'), note.id);
 }
 
+// A super_admin-only card reaches super admins (and the admin alias), never directors or teachers.
+const superAdminOnly = staffUpdates.filter((note) => note.audiences.length === 1 && note.audiences[0] === 'super_admin');
+assert.ok(superAdminOnly.some((note) => note.id === 'staff-2026-10-23-pop-inapp-agent-key-ui'));
+for (const note of superAdminOnly) {
+  assert.ok(notesForRole('super_admin').some((n) => n.id === note.id), note.id);
+  assert.ok(notesForRole('admin').some((n) => n.id === note.id), note.id);
+  assert.ok(!notesForRole('director').some((n) => n.id === note.id), note.id);
+  assert.ok(!notesForRole('teacher').some((n) => n.id === note.id), note.id);
+}
+
 assert.ok(Array.isArray(changelogDraftNotes));
 assert.ok(!directorNotes.some((n) => n.draft || String(n.title || '').includes('草稿')));
 if (changelogDraftNotes.length >= 2) {
