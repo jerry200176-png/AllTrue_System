@@ -14,19 +14,22 @@
 use Illuminate\Database\ConnectionInterface;
 
 /** @return array<string, mixed> */
-function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int $packageId): array
+function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int $packageId, bool $allPackages = false): array
 {
     $rows = fn (string $sql, array $bindings): array => array_map(fn ($row) => (array) $row, $db->select($sql, $bindings));
-    // The given package if it belongs to the campus; else every campus package with a session total whose ledger has
-    // used more than that total.
+    // A package belongs to the campus by its campus_id or through a member course whose student is in the campus (a
+    // package can carry another campus id). Targets: the given package; else, with $allPackages, every such package;
+    // else those with a session total whose ledger has used more than that total.
     $targets = array_map(fn (array $row): int => (int) $row['id'], $rows(
         'SELECT p.id FROM course_packages p'
         . ' LEFT JOIN (SELECT package_id, SUM(delta) AS net FROM package_session_ledger GROUP BY package_id) l ON l.package_id = p.id'
-        . ' WHERE p.campus_id = ? AND (p.id = ? OR (? = 0 AND p.total_sessions > 0 AND -COALESCE(l.net, 0) > p.total_sessions))'
-        . ' ORDER BY p.id LIMIT 50',
-        [$campusId, $packageId, $packageId]
+        . ' WHERE (p.campus_id = ? OR p.id IN (SELECT sc.PackageID FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID'
+        . ' WHERE s.CampusID = ? AND sc.PackageID IS NOT NULL))'
+        . ' AND (p.id = ? OR (? = 0 AND (? = 1 OR (p.total_sessions > 0 AND -COALESCE(l.net, 0) > p.total_sessions))))'
+        . ' ORDER BY p.id LIMIT 200',
+        [$campusId, $campusId, $packageId, $packageId, $allPackages ? 1 : 0]
     ));
-    $result = ['read_only' => true, 'campus_id' => $campusId, 'package_id' => $packageId, 'target_package_ids' => $targets];
+    $result = ['read_only' => true, 'campus_id' => $campusId, 'package_id' => $packageId, 'all_packages' => $allPackages, 'target_package_ids' => $targets];
     if ($targets === []) {
         return $result;
     }
@@ -79,6 +82,7 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         'SELECT sc.PackageID AS package_id, COUNT(DISTINCT sc.ID) AS member_courses,'
         . " COUNT(DISTINCT CASE WHEN cs.Status = 'attended' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS attended_slots,"
         . " COUNT(DISTINCT CASE WHEN cs.Status IN ('attended', 'completed', 'late') THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS taught_slots,"
+        . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'absent' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS absent_slots,"
         . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'scheduled' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS scheduled_slots"
         . " FROM StudentClass sc LEFT JOIN ClassSession cs ON cs.StudentClassID = sc.ID WHERE sc.PackageID IN ($in)"
         . ' GROUP BY sc.PackageID ORDER BY sc.PackageID',
@@ -91,7 +95,37 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         $targets
     );
 
-    return $result;
+    // One line per package to read the verdict from: what the ledger used against the lessons taught, and the debits
+    // the lessons do not explain. A no-show marked absent is charged too (ClassSessionController), so it is a chargeable
+    // status here. The twice-debited lists stop at 200 rows (`lists_capped`).
+    $chargeable = ['attended', 'completed', 'late', 'absent'];
+    // Rows keyed by their package: `packages` rows carry it as `id`, every other section as `package_id`.
+    $byPackage = fn (string $section): array => array_reduce($result[$section], function (array $carry, array $row): array {
+        $carry[(int) ($row['package_id'] ?? $row['id'])][] = $row;
+
+        return $carry;
+    }, []);
+    [$packages, $lessons, $sessionsTwice, $slotsTwice, $byStatus, $byReason] = array_map($byPackage,
+        ['packages', 'member_lessons', 'same_session_debited_twice', 'same_slot_debited_twice', 'net_debit_by_session_status', 'by_reason']);
+    $summary = array_map(fn (int $id): array => [
+        'package_id' => $id,
+        'total_sessions' => (int) ($packages[$id][0]['total_sessions'] ?? 0),
+        'ledger_used' => -(int) ($packages[$id][0]['ledger_net'] ?? 0),
+        'attended_slots' => (int) ($lessons[$id][0]['attended_slots'] ?? 0),
+        'taught_slots' => (int) ($lessons[$id][0]['taught_slots'] ?? 0),
+        'absent_slots' => (int) ($lessons[$id][0]['absent_slots'] ?? 0),
+        'sessions_debited_twice' => count($sessionsTwice[$id] ?? []),
+        'slots_debited_twice' => count($slotsTwice[$id] ?? []),
+        'debits_on_unchargeable_sessions' => array_sum(array_map(
+            fn (array $row): int => in_array(strtolower((string) $row['status']), $chargeable, true) ? 0 : max(0, -(int) $row['net']),
+            $byStatus[$id] ?? []
+        )),
+        'debits_without_session' => array_sum(array_map(fn (array $row): int => (int) $row['delta'] < 0 ? (int) $row['rows_without_session'] : 0, $byReason[$id] ?? [])),
+        'lists_capped' => count($result['same_session_debited_twice']) >= 200 || count($result['same_slot_debited_twice']) >= 200,
+    ], $targets);
+
+    // The summary first, so a long all-packages output cannot push it out of a truncated job summary.
+    return array_slice($result, 0, 5, true) + ['summary' => $summary] + $result;
 }
 
 if (PHP_SAPI === 'cli' && getenv('INAPP_PACKAGE_LEDGER_PROBE') === '1') {
@@ -127,7 +161,7 @@ if (PHP_SAPI === 'cli' && getenv('INAPP_PACKAGE_LEDGER_PROBE') === '1') {
             if ($sessionReadOnly() !== 1) {
                 throw new RuntimeException('session lost read-only mode');
             }
-            $out = inapp_package_ledger_probe($db, (int) getenv('CAMPUS_ID'), (int) getenv('PACKAGE_ID'));
+            $out = inapp_package_ledger_probe($db, (int) getenv('CAMPUS_ID'), (int) getenv('PACKAGE_ID'), getenv('ALL_PACKAGES') === 'true');
         } finally {
             $db->rollBack();
         }
