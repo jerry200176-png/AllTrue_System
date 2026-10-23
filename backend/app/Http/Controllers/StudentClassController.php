@@ -3119,6 +3119,7 @@ class StudentClassController extends Controller
                 'SessionDuration', 'Rate', 'rate_unit', 'LearnTimeID', 'room_id', 'Memo',
                 'standard_lesson_minutes', 'deduction_basis',
             ]);
+            $payload = array_merge($payload, SessionDeductionService::pilotSafeCopiedContract($source));
             $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?: 120));
             $payload = array_merge($payload, [
                 'ClassType' => 'tutoring', 'ScheduleMode' => $mode, 'StartDate' => $start,
@@ -5284,8 +5285,7 @@ class StudentClassController extends Controller
             'RemainingSessions' => $plan['new_session_count'],
             'ClassType' => $source->getAttribute('ClassType') ?: 'one_on_one',
             'UsedSessions' => 0,
-            'standard_lesson_minutes' => $source->standard_lesson_minutes,
-            'deduction_basis' => $source->deduction_basis,
+            ...SessionDeductionService::pilotSafeCopiedContract($source),
         ];
     }
     /**
@@ -6391,6 +6391,12 @@ class StudentClassController extends Controller
 
         // Lesson equivalents need a per-course standard; without one there is nothing
         // meaningful to divide by, so they stay null rather than assuming a default.
+        if ($standard >= 1 && $class instanceof StudentClass && $class->isActualDurationBasis()
+            && !SessionDeductionService::isActualDurationActive($class)) {
+            // #3834: gated off, the course bills whole lessons and its stored minute fields may still be in
+            // the old unit until the next recompute, so no lesson equivalents are derived from them.
+            $standard = 0;
+        }
         if ($standard >= 1 && $remainingMinutes !== null) {
             $calc = new LessonEntitlementCoverageCalculator();
             $purchasedMinutes = (int) ($class->PurchasedMinutes ?? 0);
@@ -6543,6 +6549,18 @@ class StudentClassController extends Controller
                 return response()->json([
                     'message' => '共用課程包內的課程不可改為依實際時長扣堂（共用池目前只支援整堂扣除）',
                     'errors' => ['deduction_basis' => ['共用課程包不支援依實際時長扣堂。']],
+                ], 422);
+            }
+
+            // #3834 pilot scope: only a NEW opt-in is refused outside the pilot campuses;
+            // editing a course that is already actual_duration is never blocked here.
+            if ($basis === DeductionBasis::ACTUAL_DURATION
+                && !$studentClass->isActualDurationBasis()
+                && !SessionDeductionService::isActualDurationCampusAllowedForCourse($studentClass)
+            ) {
+                return response()->json([
+                    'message' => '依實際時長扣堂目前僅在試辦分校開放',
+                    'errors' => ['deduction_basis' => ['此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。']],
                 ], 422);
             }
         }

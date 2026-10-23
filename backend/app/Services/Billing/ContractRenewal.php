@@ -823,6 +823,7 @@ final class ContractRenewal
             ];
             $newPayload['purchase_request_key'] = $requestKey;
 
+            $newPayload = array_merge($newPayload, SessionDeductionService::pilotSafeCopiedContract($studentClass));
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
 

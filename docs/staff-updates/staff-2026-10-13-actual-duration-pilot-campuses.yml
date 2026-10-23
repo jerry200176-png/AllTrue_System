@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-13-actual-duration-pilot-campuses
+    published_at: "2026-10-13"
+    audiences:
+      - director
+    importance: major
+    title: 新莊兩校試辦按時長扣堂
+    summary: 新莊分校、新莊中平分校建課時可選「依實際上課時長換算」。
+    items:
+      - category: added
+        text: 新莊分校、新莊中平分校建課可選依實際上課時長扣堂，例如一堂兩小時的課上了三小時，扣一堂半。
+      - category: action_required
+        text: 第一次扣堂後，標準一堂時長和扣堂方式就不能再改，建課前請先確認。
+      - category: improved
+        text: 其他分校維持每次上課扣一堂，這次沒有改變。
+    source_refs:
+      - "changelog:2026-10-13:actual-duration-pilot-campuses"

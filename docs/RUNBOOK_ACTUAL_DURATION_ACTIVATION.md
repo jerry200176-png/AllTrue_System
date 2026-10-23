@@ -40,6 +40,7 @@ last_reviewed: 2026-07-31
 | 開關 | 位置 | 意義 | 預設 |
 |---|---|---|---|
 | `PERF_ACTUAL_DURATION_DEDUCTION` | Pi `/home/admin/backend/.env` → `config/perfflags.php` | 這個環境有沒有這個功能 | **false** |
+| `PERF_ACTUAL_DURATION_CAMPUS_IDS` | `config/perfflags.php` → `actual_duration_campus_ids`（可由 `.env` 覆寫） | 哪些分校可以用（試辦名單，#3834） | **`11,13`**（新莊分校、新莊中平分校）；`*`＝全部；空白＝全部不開 |
 | `StudentClass.deduction_basis` | 每門課一列 | 這門課要不要用 | `fixed_session` |
 | `ACTUAL_DURATION_DEDUCTION_ENABLED` | `frontend/src/lib/perfFlags.js`（編譯期） | 建課表單要不要顯示這個選項 | **false** |
 
@@ -127,6 +128,50 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
    - `session_deduction_ledger.minutes` 記到的是分鐘，不是堂數
    - 額度用盡後點名依然成功（D5：超額不擋點名）
    - 扣堂後修改標準堂長回 422（`BillingContractLockGuard`）
+
+---
+
+## 3P. 試辦：只開新莊分校、新莊中平分校（#3834，Founder 2026-10-13 核准）
+
+**範圍怎麼鎖住。** 環境旗標是全站的，`deduction_basis` 是每門課的，兩者都擋不住「別的分校的主任也選了這個選項」。所以加第三道閘：分校名單 `perfflags.actual_duration_campus_ids`。
+- 扣堂：`SessionDeductionService::isActualDurationActive()` = 旗標 **且** 課程是 `actual_duration` **且** 學生所屬分校（`Student.CampusID`）在名單內。任一不成立 → 完全等同 `fixed_session`（fail-safe）。
+- 建課：`POST class-sessions/batch` 對名單外分校的 `actual_duration` 回 422「此分校尚未開放依實際時長扣堂」。
+- 修改課程：`PUT student-classes/{id}` 把名單外分校的課**改成** `actual_duration` 回 422；已經是 `actual_duration` 的課照常可編輯（其餘仍受 `BillingContractLockGuard` 管）。
+- 續課／家教複製：名單外分校複製出來的新課一律是 `fixed_session`，不會在名單外產生新的 `actual_duration` 課。
+- 已知邊角：判斷用的是學生**目前**的 `CampusID`。學生若中途轉到名單外分校，他的 `actual_duration` 課之後會改成整堂扣（與關旗標相同的 fail-safe 方向）；試辦期間轉校請先找 Founder。
+- 前端建課表單仍對所有分校顯示這個選項；名單外分校送出時會看到上述 422 訊息（不會建出半套的課）。
+
+**分校 ID 從哪來（未查正式 DB）。** `frontend/src/lib/useBranches.js`：11＝新莊分校（`xinzhuang`）、13＝新莊中平分校（`xinzhuang_zhongping`）；`docs/LINE_LIFF_CHECKLIST.md` 亦記載「新莊(11)與新莊中平(13)」已實證。下方步驟 3 的驗收建課會再確認一次：ID 若不對，那一校建課會被 422 擋下，不會誤開別校。
+
+**名單的預設值就是試辦名單**，所以本 PR 經 `deploy.yml` 部署後即生效，**不需要改 `.env`、不需要 `enable_backend`**（旗標已是 `true`）。部署對其他分校只會「收窄」（原本可選、現在不可選），對新莊兩校沒有任何改變。
+
+### 步驟（全部由 Founder／部署流程執行，AI 不執行）
+
+0. **部署前（唯讀）**：`Actions → Actual-Duration Billing Activation (Founder-gated) → Run workflow`，`action = verify_backend`（`workflow_dispatch`，不需確認字串）。確認 effective config＝`true`，並看 `deduction_basis` 分布：
+   - `actual_duration` 為 0 → 直接進下一步。
+   - `actual_duration` 不為 0 → 先停。這些課若不在 11／13，部署後會改回整堂扣，需 Founder 先決定。
+1. **合併本 PR → `deploy.yml` 自動部署**（不需 `workflow_dispatch`）。核對 `version.json` 與 health。
+2. **部署後（唯讀）**：再跑一次 `verify_backend`，確認旗標仍為 `true`、`effective-campus-ids=11,13`、分布沒變。名單不是 `11,13`（例如 `.env` 有覆寫或快取未更新）→ 先停，不進驗收。
+3. **驗收一門指定測試課**：`Actions → Actual-Duration Billing Production Acceptance (Founder-gated) → Run workflow`（`workflow_dispatch`）
+   - `student_id`／`teacher_id`：Founder 指定的測試身分（不得是付費家庭的學生），且學生屬於該分校
+   - `branch_id`：`11` 或 `13`
+   - 先 `dry_run = true` 看目標；確認後 `dry_run = false`、`confirm = RUN ACTUAL DURATION ACCEPTANCE WALK`
+   - 需要 `ACCEPTANCE_TEACHER_LOGIN`／`ACCEPTANCE_TEACHER_PASSWORD`（該分校主任權限）
+4. **之後哪些課會用到**：只有新莊兩校主任**新建**課程時自己選「依實際上課時長換算」的課。既有課程一律維持 `fixed_session`，不做任何批次轉換；已有扣堂紀錄的課本來就被契約鎖鎖住。
+
+### 驗收要看什麼
+
+- 測試課：每次點名後 `RemainingMinutes` 減少量＝實際分鐘；`session_deduction_ledger.minutes` 記分鐘；額度用完仍可點名（D5）；扣堂後改標準堂長回 422。
+- 名單外分校（任選一間、用測試身分或不送出）：建課選「依實際上課時長換算」回 422；一般「每次上課扣一堂」照常。
+- 第一週每天看 §6 的訊號；新莊兩校以外不應出現任何 `actual_duration` 課程（`verify_backend` 分布）。
+
+### 回滾
+
+- **全部回滾（主要路徑）**：§4 的 `disable_backend`。旗標一關，所有分校（含新莊兩校）立即回到整堂扣，沒有資料要清。
+- **讀取相容性必須保留**：ledger 已寫入 `_makeup`／`_regular` source 後，關旗標／縮名單須保留本 PR 的相容讀取程式，不能直接 revert 成忽略這些列的舊 reader；若需程式回滾，先準備經審核的相容修正。未標記且無法判定的舊分鐘紀錄保留既有計數、要求人工核對，核對前新增扣堂回 422 且回滾整筆點名；不改寫 ledger、不做歷史資料修復。
+- 注意：不論關旗標或縮名單，已有分鐘制扣堂紀錄的課，下次重算時會改用整堂口徑換算剩餘堂數（ledger 原始分鐘不會被改寫）。這是「回到整堂扣」的預期結果，但家長看到的剩餘堂數可能改變，回滾前先跑 `verify_backend` 看受影響課數。
+- **只收回某一校**：開 PR 修改 `config/perfflags.php` 的預設名單（或改成空白），經 CI → `deploy.yml`。目前沒有改 `PERF_ACTUAL_DURATION_CAMPUS_IDS` 這一行 `.env` 的 workflow，**不得** SSH 手動改 `.env`。
+- **擴大到全部分校**：試辦結束、Founder 核准後，同樣以 PR 把預設改成 `*`。
 
 ---
 

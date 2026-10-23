@@ -34,5 +34,7 @@
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
         <env name="LOG_CHANNEL" value="stack" force="true"/>
+        <!-- #3834: most tests use CampusID 1; pilot-scope tests vary this explicitly. -->
+        <env name="PERF_ACTUAL_DURATION_CAMPUS_IDS" value="*" force="true"/>
     </php>
 </phpunit>
