@@ -471,6 +471,7 @@ class RescheduleSessionService
         $conflicts = $this->scheduleGuardService->validateScheduleOccurrence([
             'teacher_id' => $effectiveTeacherId,
             'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
+            'trial_target_class_type' => $course->trial_target_class_type,
             'room_id' => $course->room_id ?: null,
             'branch_id' => $branchId,
             'schedule_date' => $newDate,

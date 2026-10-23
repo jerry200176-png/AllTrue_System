@@ -362,6 +362,10 @@ class ScheduleController extends Controller
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id'          => $effectiveTeacherId,
                 'class_type'          => $effectiveClassType,
+                // in-app #426: a linked trial course carries its target class type.
+                'trial_target_class_type' => $effectiveClassType === 'trial' && $courseId > 0
+                    ? DB::table('StudentClass')->where('ID', $courseId)->value('trial_target_class_type')
+                    : null,
                 'room_id'             => $effectiveRoomId,
                 'branch_id'           => $branchId,
                 'schedule_date'       => $data['schedule_date'] ?? null,
@@ -1137,7 +1141,8 @@ class ScheduleController extends Controller
         // moving / re-statusing the row would detach its pin too (review r4247039997).
         if ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
             $moves = fn (string $k, int $len) => isset($data[$k]) && strtolower(substr((string) $data[$k], 0, $len)) !== strtolower(substr((string) $schedule->{$k}, 0, $len));
-            if ($moves('schedule_date', 10) || $moves('start_time', 5) || $moves('status', 32)
+            // #3979: a type change moves a makeup row out of the makeup branch, so it detaches the pin too.
+            if ($moves('schedule_date', 10) || $moves('start_time', 5) || $moves('status', 32) || $moves('type', 16)
                 || (isset($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id && (int) $data['teacher_id'] !== (int) $locked->TeacherID)) {
                 return \App\Support\LearningRecordMutableOwnership::lockedResponse();
             }
@@ -1158,7 +1163,7 @@ class ScheduleController extends Controller
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass')
                 ->where('ID', $courseId)
-                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate'])
+                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
                 ->first();
             if ($courseMeta) {
                 if (empty($merged['class_type'])) {
@@ -1194,6 +1199,7 @@ class ScheduleController extends Controller
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id' => $effectiveTeacherId,
                 'class_type' => $effectiveClassType,
+                'trial_target_class_type' => $courseMeta->trial_target_class_type ?? null,
                 'room_id' => $effectiveRoomId,
                 'branch_id' => $branchId,
                 'schedule_date' => $merged['schedule_date'] ?? null,

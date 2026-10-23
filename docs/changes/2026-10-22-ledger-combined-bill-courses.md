@@ -1,0 +1,5 @@
+## 2026-10-22 — Student billing panel: a combined bill is not 「其他課程」 for a course it covers
+<!-- release-notes: silent_ship=silent-2026-10-22-ledger-combined-bill-courses -->
+<!-- silent-reason: label/empty-state correction in the billing panel; amounts unchanged -->
+
+The billing panel compared only a bill's anchor course (`student_class_id`) with the opened course. A combined bill anchored to course A with a line for course B was tagged 「其他課程」 when the panel was opened for B, and the panel could say B had no bill. The ledger API now lists every course a bill covers (`covered_student_class_ids`: the anchor plus each line's course, the same union `BillingController` uses), and the panel's 「其他課程」 tag and empty state use it; an older payload without the field keeps the anchor-only rule. Regressions: `IssuedBillCurrentContractChargeTest::test_a_combined_bill_lists_every_course_it_covers`, `AccountingLedgerLast5Notes.test.js`; the ledger payload snapshot gains the field. Rollback is a normal revert. Refs #3912.
