@@ -1601,8 +1601,11 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 self.assertEqual(applied, snapshot.read_text(encoding="utf-8"), mode)
                 self.assertFalse(frontend.exists(), mode)  # backend only: nothing for Vite
                 restored = backend.read_text(encoding="utf-8")
-                self.assertEqual([x for x in before.splitlines() if x], [x for x in restored.splitlines() if x], mode)
-                self.assertEqual(mode in {"on", "off"}, "standing policy flag restored during rollback" in result.stdout, mode)
+                # A requested off is a kill switch: the rollback keeps it off; everything else restores.
+                expected = applied if mode == "off" else before
+                self.assertEqual([x for x in expected.splitlines() if x], [x for x in restored.splitlines() if x], mode)
+                self.assertEqual(mode == "on", "standing policy flag restored during rollback" in result.stdout, mode)
+                self.assertEqual(mode == "off", "standing policy kept off" in result.stdout, mode)
 
     FLAG_ENVS = ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1", "POP_INAPP_STANDING_POLICY")
     FAKE_GH = textwrap.dedent("""
@@ -1742,7 +1745,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                    "POP_INAPP_STANDING_POLICY=false\n")
     RESTORED_LINES = ["X=1", "ADMISSIONS_FUNNEL_V1=x/y&z", "COURSE_SESSION_CALENDAR_V1=\\1|.*", "POP_INAPP_STANDING_POLICY=1"]
 
-    def _run_flag_restore(self, tail, git_exit=0, composer_exit=0, extra=""):
+    def _run_flag_restore(self, tail, git_exit=0, composer_exit=0, extra="", state=(), env_text=None):
         import shlex
         script = REMOTE_DEPLOY.read_text(encoding="utf-8")
         functions = ("rollback_deploy() {" + script.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
@@ -1755,13 +1758,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
             curl() { printf '{"status":"ok","opcache_cleared":true}'; }
             python3() { if [ "$2" = /tmp/pdv ]; then return 0; fi; command python3 "$@"; }
-        """) + extra + "".join(f"{k}={shlex.quote(v)}\n" for k, v in self.FLAG_STATE.items())
+        """) + extra + "".join(f"{k}={shlex.quote(v)}\n" for k, v in {**self.FLAG_STATE, **dict(state)}.items())
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / "backend.env"
-            env_file.write_text(self.APPLIED_ENV)
+            env_file.write_text(self.APPLIED_ENV if env_text is None else env_text)
             result = subprocess.run(
                 ["bash", "-c", harness + functions.replace("/home/admin/backend/.env", str(env_file)) + tail],
-                text=True, capture_output=True,
+                text=True, capture_output=True, cwd=tmp,
                 env={"PATH": os.environ["PATH"], "GIT_EXIT": str(git_exit), "COMPOSER_EXIT": str(composer_exit)})
             return result, [line for line in env_file.read_text().splitlines() if line]
 
@@ -1801,6 +1804,54 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("rc=1", result.stdout)
         for key in self.FLAG_ENVS:
             self.assertIn(f"❌ {key} restore failed", result.stdout)
+
+    def test_requested_pop_off_is_never_rolled_back_but_a_requested_on_is(self):
+        # Kill switch (LaunchDarkly/Unleash style): a requested off stays off on every failure path,
+        # also when the deploy failed before writing it; a requested on is restored like any flag.
+        others = ["X=1", "ADMISSIONS_FUNNEL_V1=x/y&z", "COURSE_SESSION_CALENDAR_V1=\\1|.*"]
+        off_after = {"STANDING_POLICY_FLAG_MODE": "off", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=true"}
+        off_before = {**off_after, "STANDING_POLICY_FLAG_CHANGED": "0"}
+        applied_on = self.APPLIED_ENV.replace("POP_INAPP_STANDING_POLICY=false", "POP_INAPP_STANDING_POLICY=true")
+        for label, state, env_text, tail, git_exit, rc, line in (
+            ("off, git reset fails", off_after, None, "rollback_deploy\n", 1, 1, "POP_INAPP_STANDING_POLICY=false"),
+            ("off, rollback succeeds", off_after, None, "rollback_deploy\n", 0, 0, "POP_INAPP_STANDING_POLICY=false"),
+            ("off, migration hold", off_after, None, "MIGRATION_RAN=1\nabort_deploy x\n", 0, 13, "POP_INAPP_STANDING_POLICY=false"),
+            ("off, failed before the write", off_before, applied_on, "rollback_deploy\n", 1, 1, "POP_INAPP_STANDING_POLICY=false"),
+            ("on, git reset fails", {"STANDING_POLICY_FLAG_MODE": "on", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=false"},
+             applied_on, "rollback_deploy\n", 1, 1, "POP_INAPP_STANDING_POLICY=false"),
+            ("on, migration hold", {"STANDING_POLICY_FLAG_MODE": "on", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=false"},
+             applied_on, "MIGRATION_RAN=1\nabort_deploy x\n", 0, 13, "POP_INAPP_STANDING_POLICY=false"),
+        ):
+            result, lines = self._run_flag_restore(tail, git_exit, state=state, env_text=env_text)
+            self.assertEqual(rc, result.returncode, label + result.stdout + result.stderr)
+            self.assertEqual(others + [line], lines, label)  # the other flags still restore all-or-nothing
+            kept = "POP in-app standing policy kept off: a requested off is never rolled back"
+            self.assertEqual(label.startswith("off"), kept in result.stdout, label)
+            self.assertEqual(label.startswith("on"), "POP in-app standing policy flag restored during rollback" in result.stdout, label)
+
+    def test_migration_hold_rebuilds_the_config_cache_after_the_flag_restore(self):
+        php = 'php() { echo "PHP $*"; return "$PHP_EXIT"; }\n'
+        hold = "MIGRATION_RAN=1\nabort_deploy x\n"
+        result, lines = self._run_flag_restore(hold, extra=php + "PHP_EXIT=0\n")
+        self.assertEqual(13, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(self.RESTORED_LINES, lines)
+        out = result.stdout
+        self.assertLess(out.index("✅ POP in-app standing policy flag restored during rollback"), out.index("PHP artisan optimize"))
+        self.assertLess(out.index("PHP artisan optimize"), out.index("✅ config cache rebuilt from the restored .env"))
+        self.assertNotIn("GIT_CALLED", out)  # still no code rollback on the hold
+        # The same command family the deploy uses for the cache, and no other artisan command on this path.
+        hold_fn = REMOTE_DEPLOY.read_text(encoding="utf-8").split("hold_feature_flags() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertEqual(["optimize"], re.findall(r"php artisan ([a-z:-]+)", hold_fn))
+        failed, _ = self._run_flag_restore(hold, extra=php + "PHP_EXIT=1\n")
+        self.assertEqual(13, failed.returncode)
+        self.assertIn("::error::Config cache rebuild after the flag restore failed", failed.stdout)
+        self.assertNotIn("✅ config cache rebuilt", failed.stdout)
+        # Nothing restored (no flag requested): the hold leaves the cache alone, as before.
+        idle = {k: "0" for k in self.FLAG_STATE if k.endswith("_CHANGED")}
+        untouched, lines = self._run_flag_restore(hold, extra=php + "PHP_EXIT=0\n", state=idle)
+        self.assertEqual(13, untouched.returncode)
+        self.assertNotIn("PHP artisan", untouched.stdout)
+        self.assertEqual([x for x in self.APPLIED_ENV.splitlines() if x], lines)
 
     def test_pop_standing_policy_effective_config_is_read_back_before_fpm_refresh(self):
         script = REMOTE_DEPLOY.read_text(encoding="utf-8")

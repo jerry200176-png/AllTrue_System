@@ -21,6 +21,7 @@ STANDING_POLICY_FLAG_MODE="@@DEPLOY_POP_INAPP_STANDING_POLICY@@"
 STANDING_POLICY_FLAG_CHANGED=0
 STANDING_POLICY_FLAG_WAS_PRESENT=0
 STANDING_POLICY_FLAG_BACKUP=""
+FLAGS_RESTORED=0
 
 write_deployment_manifest() {
   python3 /home/admin/scripts/write-deployment-manifest.py \
@@ -99,6 +100,7 @@ restore_bool_feature_flag() {
   # Literal: the previous line is appended, never used in a sed pattern; then verified with grep -Fx.
   local prefix="$1" env_file=/home/admin/backend/.env ok=1
   [ "$2" -eq 1 ] || return 0
+  FLAGS_RESTORED=1
   sed -i -E "/^${prefix}/d" "$env_file" || ok=0
   if [ "$3" -eq 1 ]; then
     [ "$ok" -eq 0 ] || printf '\n%s\n' "$4" >> "$env_file" || ok=0
@@ -122,15 +124,33 @@ restore_feature_flags() {
     "${CALENDAR_FLAG_BACKUP:-}" "course session calendar flag restored during rollback" || failed=1
   restore_bool_feature_flag COURSE_MANAGER_V1= "${MANAGER_FLAG_CHANGED:-0}" "${MANAGER_FLAG_WAS_PRESENT:-0}" \
     "${MANAGER_FLAG_BACKUP:-}" "course manager flag restored during rollback" || failed=1
-  restore_bool_feature_flag POP_INAPP_STANDING_POLICY= "${STANDING_POLICY_FLAG_CHANGED:-0}" "${STANDING_POLICY_FLAG_WAS_PRESENT:-0}" \
-    "${STANDING_POLICY_FLAG_BACKUP:-}" "POP in-app standing policy flag restored during rollback" || failed=1
+  if [ "${STANDING_POLICY_FLAG_MODE:-}" = "off" ]; then
+    # Kill switch: a requested off is never undone by a failed deploy, on any path (it is kept off).
+    restore_bool_feature_flag POP_INAPP_STANDING_POLICY= 1 1 "POP_INAPP_STANDING_POLICY=false" \
+      "POP in-app standing policy kept off: a requested off is never rolled back" || failed=1
+  else
+    restore_bool_feature_flag POP_INAPP_STANDING_POLICY= "${STANDING_POLICY_FLAG_CHANGED:-0}" "${STANDING_POLICY_FLAG_WAS_PRESENT:-0}" \
+      "${STANDING_POLICY_FLAG_BACKUP:-}" "POP in-app standing policy flag restored during rollback" || failed=1
+  fi
   return "$failed"
+}
+
+hold_feature_flags() {
+  # Migration hold (no code rollback): restore the flag lines, then rebuild the config cache as [5/7]
+  # does, so the cached config matches .env again. A failed rebuild is reported as an error.
+  restore_feature_flags || echo "::error::Feature-flag .env restore failed; fix it by hand."
+  [ "${FLAGS_RESTORED:-0}" -eq 1 ] || return 0
+  if (cd /home/admin/backend && rm -f bootstrap/cache/packages.php bootstrap/cache/services.php && php artisan optimize); then
+    echo "✅ config cache rebuilt from the restored .env (web workers follow on opcache revalidation or the FPM refresh)"
+  else
+    echo "::error::Config cache rebuild after the flag restore failed; the running config may still hold the requested flag values. Fix it by hand."
+  fi
 }
 
 abort_deploy() {
   echo "❌ $1"
   [ -n "$MIG_HARD" ] || [ "$(python3 -I "$PDV" range-additive "$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0
-  [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; restore_feature_flags || echo "::error::Feature-flag .env restore failed; fix it by hand."; exit 13; }
+  [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; hold_feature_flags; exit 13; }
   if ! rollback_deploy; then
     echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
     exit 11

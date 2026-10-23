@@ -10,3 +10,5 @@
   - Requested changes appear as a run annotation and in the Release state summary. `run-name` is unchanged, because calendar-course acceptance matches the literal deploy run names (#4207).
   - Rollback restores each flag line literally (no regex, so `/`, `&` and `\1` are safe) and checks it with `grep -Fx`; a failed check is reported and fails the rollback. The restore runs first, so it also happens when the code rollback stops early (git reset or composer), and on the migration hold (exit 13).
   - An explicit POP mode is read back from the cached config after `optimize`; a mismatch aborts the deploy.
+  - Kill switch: for `POP_INAPP_STANDING_POLICY` only, a requested `off` is never rolled back. Every failure path keeps it at `false`, even if the deploy failed before writing it. A requested `on`, and the other flags, still restore all-or-nothing.
+  - The migration hold (exit 13) rebuilds the config cache with the same `php artisan optimize` step as `[5/7]` after restoring the flag lines, so the cached config matches `.env`. A failed rebuild is reported as an error.
