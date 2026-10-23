@@ -2,8 +2,8 @@
 
 namespace App\Operations\Strategies;
 
+use App\Models\CoursePackage;
 use App\Models\SecurityAuditEvent;
-use App\Services\PackageDeductionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -170,8 +170,11 @@ final class PackageLedgerNetRepairStrategy
     /** @param array<int, int|string> $packageIds */
     private function recompute(array $packageIds): void
     {
+        // Under the package locks, from a current ledger read: a plain sum would reuse the snapshot taken before the locks.
         foreach ($packageIds as $id) {
-            PackageDeductionService::recomputeCounters((int) $id);
+            /** @var CoursePackage $package */
+            $package = CoursePackage::query()->whereKey((int) $id)->lockForUpdate()->firstOrFail();
+            $package->recomputeCounters(true);
         }
     }
 
