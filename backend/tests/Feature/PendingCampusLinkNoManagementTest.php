@@ -48,11 +48,20 @@ class PendingCampusLinkNoManagementTest extends TestCase
         [$a, $b] = [(int) CampusFactory::new()->create()->id, (int) CampusFactory::new()->create()->id];
         $teacher = $this->teacherRequestingB($a, $b);
         $directorB = $this->token($this->user('A', [$b => 1]));
-        // What POST /profiles/{id}/campus-links/{campusId}/approve (#4457) writes.
-        DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $b)->update(['Approved' => 1]);
+        // B's director decides the request through the #4457 endpoint, which needs no management.
+        $this->api($directorB)->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$b}/approve")->assertOk();
 
         $this->api($directorB)->putJson("/api/v1/profiles/{$teacher->id}", ['name' => '新名字'])->assertOk();
         $this->api($directorB)->postJson("/api/v1/profiles/{$teacher->id}/reset-password")->assertOk();
+
+        // A self-registered teacher (account pending, every link pending) is still approvable by B's director:
+        // 核准 approves B's link first, then the account (Codex r4358525420).
+        $selfRegistered = $this->user('T', [$b => 0], 'pending');
+        DB::table('teacher_branches')->insert(['teacher_id' => $selfRegistered->id, 'branch_id' => $b]);
+        $this->api($directorB)->putJson("/api/v1/profiles/{$selfRegistered->id}", ['status' => 'active'])->assertForbidden();
+        $this->api($directorB)->postJson("/api/v1/profiles/{$selfRegistered->id}/campus-links/{$b}/approve")->assertOk();
+        $this->api($directorB)->putJson("/api/v1/profiles/{$selfRegistered->id}", ['status' => 'active'])->assertOk();
+        $this->assertSame('active', (string) $selfRegistered->fresh()->status);
 
         // A legacy teacher bound to B only through teacher_branches (no UserCampus row at B) is still managed.
         $legacy = $this->user('T', []);
@@ -73,10 +82,10 @@ class PendingCampusLinkNoManagementTest extends TestCase
     }
 
     /** @param array<int, int> $links campus id => Approved */
-    private function user(string $type, array $links): User
+    private function user(string $type, array $links, string $status = 'active'): User
     {
         $user = User::create([
-            'LoginName' => strtolower($type) . '-' . uniqid() . '@example.com', 'Name' => 'u', 'type' => $type, 'status' => 'active',
+            'LoginName' => strtolower($type) . '-' . uniqid() . '@example.com', 'Name' => 'u', 'type' => $type, 'status' => $status,
             'PSW' => password_hash('Password123', PASSWORD_DEFAULT), 'phone' => '09' . random_int(10000000, 99999999),
         ]);
         foreach ($links as $campusId => $approved) {
