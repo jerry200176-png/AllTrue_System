@@ -17,6 +17,11 @@ MANAGER_FLAG_MODE="@@DEPLOY_COURSE_MANAGER_V1@@"
 MANAGER_FLAG_CHANGED=0
 MANAGER_FLAG_WAS_PRESENT=0
 MANAGER_FLAG_BACKUP=""
+STANDING_POLICY_FLAG_MODE="@@DEPLOY_POP_INAPP_STANDING_POLICY@@"
+STANDING_POLICY_FLAG_CHANGED=0
+STANDING_POLICY_FLAG_WAS_PRESENT=0
+STANDING_POLICY_FLAG_BACKUP=""
+FLAGS_RESTORED=0
 
 write_deployment_manifest() {
   python3 /home/admin/scripts/write-deployment-manifest.py \
@@ -31,6 +36,9 @@ rollback_deploy() {
 
   echo "=== [7/7] ❌ Deployment failed, starting automatic rollback ==="
   echo "回滾到 $PREV_COMMIT ..."
+
+  # Feature-flag .env lines first, independent of the code rollback: the early returns below keep them.
+  restore_feature_flags || rollback_failed=1
 
   cd /home/admin
   if ! git reset --hard "$PREV_COMMIT"; then
@@ -56,33 +64,6 @@ rollback_deploy() {
   if ! write_deployment_manifest "$PREV_COMMIT"; then
     echo "⚠️ rollback deployment manifest 寫入失敗"
     rollback_failed=1
-  fi
-
-  if [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]; then
-    if [ "$ADMISSIONS_FLAG_WAS_PRESENT" -eq 1 ]; then
-      sed -i -E "s/^ADMISSIONS_FUNNEL_V1=.*/$ADMISSIONS_FLAG_BACKUP/" /home/admin/backend/.env
-    else
-      sed -i -E '/^ADMISSIONS_FUNNEL_V1=/d' /home/admin/backend/.env
-    fi
-    echo "✅ admissions flag restored during rollback"
-  fi
-
-  if [ "$CALENDAR_FLAG_CHANGED" -eq 1 ]; then
-    if [ "$CALENDAR_FLAG_WAS_PRESENT" -eq 1 ]; then
-      sed -i -E "s/^COURSE_SESSION_CALENDAR_V1=.*/$CALENDAR_FLAG_BACKUP/" /home/admin/backend/.env
-    else
-      sed -i -E '/^COURSE_SESSION_CALENDAR_V1=/d' /home/admin/backend/.env
-    fi
-    echo "✅ course session calendar flag restored during rollback"
-  fi
-
-  if [ "$MANAGER_FLAG_CHANGED" -eq 1 ]; then
-    if [ "$MANAGER_FLAG_WAS_PRESENT" -eq 1 ]; then
-      sed -i -E "s/^COURSE_MANAGER_V1=.*/$MANAGER_FLAG_BACKUP/" /home/admin/backend/.env
-    else
-      sed -i -E '/^COURSE_MANAGER_V1=/d' /home/admin/backend/.env
-    fi
-    echo "✅ course manager flag restored during rollback"
   fi
 
   if ! (cd /home/admin/backend && php artisan optimize); then
@@ -114,10 +95,62 @@ rollback_deploy() {
   echo "✅ Rollback 成功，系統已恢復到 $PREV_COMMIT"
 }
 
+restore_bool_feature_flag() {
+  # $1 .env line prefix (KEY=), $2 changed, $3 was-present, $4 previous line, $5 success message.
+  # Literal: the previous line is appended, never used in a sed pattern; then verified with grep -Fx.
+  local prefix="$1" env_file=/home/admin/backend/.env ok=1
+  [ "$2" -eq 1 ] || return 0
+  FLAGS_RESTORED=1
+  sed -i -E "/^${prefix}/d" "$env_file" || ok=0
+  if [ "$3" -eq 1 ]; then
+    [ "$ok" -eq 0 ] || printf '\n%s\n' "$4" >> "$env_file" || ok=0
+    { grep -Fxq -- "$4" "$env_file" && [ "$(grep -c "^${prefix}" "$env_file")" -eq 1 ]; } || ok=0
+  else
+    ! grep -q "^${prefix}" "$env_file" || ok=0
+  fi
+  if [ "$ok" -eq 1 ]; then
+    echo "✅ $5"
+    return 0
+  fi
+  echo "❌ ${prefix%=} restore failed: backend .env does not hold its previous value; fix it by hand"
+  return 1
+}
+
+restore_feature_flags() {
+  local failed=0
+  restore_bool_feature_flag ADMISSIONS_FUNNEL_V1= "${ADMISSIONS_FLAG_CHANGED:-0}" "${ADMISSIONS_FLAG_WAS_PRESENT:-0}" \
+    "${ADMISSIONS_FLAG_BACKUP:-}" "admissions flag restored during rollback" || failed=1
+  restore_bool_feature_flag COURSE_SESSION_CALENDAR_V1= "${CALENDAR_FLAG_CHANGED:-0}" "${CALENDAR_FLAG_WAS_PRESENT:-0}" \
+    "${CALENDAR_FLAG_BACKUP:-}" "course session calendar flag restored during rollback" || failed=1
+  restore_bool_feature_flag COURSE_MANAGER_V1= "${MANAGER_FLAG_CHANGED:-0}" "${MANAGER_FLAG_WAS_PRESENT:-0}" \
+    "${MANAGER_FLAG_BACKUP:-}" "course manager flag restored during rollback" || failed=1
+  if [ "${STANDING_POLICY_FLAG_MODE:-}" = "off" ]; then
+    # Kill switch: a requested off is never undone by a failed deploy, on any path (it is kept off).
+    restore_bool_feature_flag POP_INAPP_STANDING_POLICY= 1 1 "POP_INAPP_STANDING_POLICY=false" \
+      "POP in-app standing policy kept off: a requested off is never rolled back" || failed=1
+  else
+    restore_bool_feature_flag POP_INAPP_STANDING_POLICY= "${STANDING_POLICY_FLAG_CHANGED:-0}" "${STANDING_POLICY_FLAG_WAS_PRESENT:-0}" \
+      "${STANDING_POLICY_FLAG_BACKUP:-}" "POP in-app standing policy flag restored during rollback" || failed=1
+  fi
+  return "$failed"
+}
+
+hold_feature_flags() {
+  # Migration hold (no code rollback): restore the flag lines, then rebuild the config cache as [5/7]
+  # does, so the cached config matches .env again. A failed rebuild is reported as an error.
+  restore_feature_flags || echo "::error::Feature-flag .env restore failed; fix it by hand."
+  [ "${FLAGS_RESTORED:-0}" -eq 1 ] || return 0
+  if (cd /home/admin/backend && rm -f bootstrap/cache/packages.php bootstrap/cache/services.php && php artisan optimize); then
+    echo "✅ config cache rebuilt from the restored .env (web workers follow on opcache revalidation or the FPM refresh)"
+  else
+    echo "::error::Config cache rebuild after the flag restore failed; the running config may still hold the requested flag values. Fix it by hand."
+  fi
+}
+
 abort_deploy() {
   echo "❌ $1"
   [ -n "$MIG_HARD" ] || [ "$(python3 -I "$PDV" range-additive "$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0
-  [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
+  [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; hold_feature_flags; exit 13; }
   if ! rollback_deploy; then
     echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
     exit 11
@@ -279,7 +312,7 @@ if ! echo "VITE_SENTRY_DSN=@@DEPLOY_SENTRY_DSN@@" > /home/admin/frontend/.env.pr
   abort_deploy "frontend temporary environment 寫入失敗"
 fi
 apply_bool_feature_flag() {
-  # $1 mode var, $2 backend key, $3 vite key, $4 changed-var name, $5 present-var, $6 backup-var
+  # $1 mode var, $2 backend key, $3 vite key ("" = backend only), $4 changed-var name, $5 present-var, $6 backup-var
   local mode="$1" key="$2" vite_key="$3"
   local value=false changed=0 present=0 backup=""
   if [ "$mode" = "on" ] || [ "$mode" = "off" ]; then
@@ -298,7 +331,7 @@ apply_bool_feature_flag() {
     fi
     case "$value" in true|false) ;; *) value=false ;; esac
   fi
-  printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
+  [ -z "$vite_key" ] || printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
   echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
   eval "$4=$changed"
   eval "$5=$present"
@@ -307,6 +340,8 @@ apply_bool_feature_flag() {
 apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
 apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP
 apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1 VITE_COURSE_MANAGER_V1 MANAGER_FLAG_CHANGED MANAGER_FLAG_WAS_PRESENT MANAGER_FLAG_BACKUP
+# Backend only (config/pop_inapp.php); [5/7] php artisan optimize caches it. No frontend rebuild.
+apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE" POP_INAPP_STANDING_POLICY "" STANDING_POLICY_FLAG_CHANGED STANDING_POLICY_FLAG_WAS_PRESENT STANDING_POLICY_FLAG_BACKUP
 echo "✅ frontend .env.production.local 已寫入"
 
 echo "=== [4/7] 前端變動偵測 ==="
@@ -372,6 +407,15 @@ try {
 else
   echo "❌ Laravel DB probe failed (password redacted): $DB_PROBE_OUTPUT"
   abort_deploy "Laravel DB probe 失敗"
+fi
+# An explicit POP standing-policy mode must be what the cached config now holds (e.g. an earlier
+# "POP_INAPP_STANDING_POLICY = ..." line that the ^KEY= rewrite missed would win in dotenv).
+if [ "$STANDING_POLICY_FLAG_MODE" = "on" ] || [ "$STANDING_POLICY_FLAG_MODE" = "off" ]; then
+  STANDING_POLICY_EXPECTED=$([ "$STANDING_POLICY_FLAG_MODE" = "on" ] && echo true || echo false)
+  STANDING_POLICY_EFFECTIVE=$(php artisan tinker --execute='echo var_export(config("pop_inapp.standing_policy_enabled"), true);' 2>/dev/null | tail -n 1)
+  [ "$STANDING_POLICY_EFFECTIVE" = "$STANDING_POLICY_EXPECTED" ] \
+    || abort_deploy "POP_INAPP_STANDING_POLICY effective config is '${STANDING_POLICY_EFFECTIVE}', expected ${STANDING_POLICY_EXPECTED}"
+  echo "✅ POP_INAPP_STANDING_POLICY effective config = ${STANDING_POLICY_EFFECTIVE}"
 fi
 # ✅ 清除 OPcache（mod_php 架構，用自製 artisan 指令，不需 sudo）
 cd /home/admin/backend && php artisan opcache:reset 2>/dev/null \
