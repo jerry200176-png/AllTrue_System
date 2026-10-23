@@ -1769,6 +1769,19 @@ class StudentClassController extends Controller
             unset($mapped['RemainingSessions']);
         }
 
+        // in-app #426: a trial target class type is accepted only on a trial course.
+        $resultingClassType = (string) ($mapped['ClassType'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
+        $trialTarget = $mapped['trial_target_class_type'] ?? null;
+        if ($trialTarget !== null && ($resultingClassType !== 'trial' || !in_array($trialTarget, StudentClass::TRIAL_TARGET_CLASS_TYPES, true))) {
+            return response()->json([
+                'message' => '試聽班型只能用於試聽課程，且須為一對一、一對二或一對三。',
+                'code' => 'invalid_trial_target_class_type',
+            ], 422);
+        }
+        if ($resultingClassType !== 'trial' && $studentClass->getAttribute('trial_target_class_type') !== null) {
+            $mapped['trial_target_class_type'] = null;
+        }
+
         // RFC non-standard duration: validate + guard the billing contract fields.
         if ($contractError = $this->guardBillingContractUpdate($studentClass, $mapped)) {
             return $this->withTransferHint($contractError, $studentClass, $mapped, $scheduleSlotsForRebuild);
@@ -1808,8 +1821,13 @@ class StudentClassController extends Controller
             : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null);
         $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
 
+        // in-app #426: a trial's target class type decides its slot rule, so changing it re-checks capacity.
+        $oldTrialTarget = $studentClass->getAttribute('trial_target_class_type');
+        $newTrialTarget = array_key_exists('trial_target_class_type', $mapped) ? $mapped['trial_target_class_type'] : $oldTrialTarget;
+        $trialTargetChanged = $newClassType === 'trial' && $newTrialTarget !== $oldTrialTarget;
+
         if ($newTeacherId > 0 && $studentCampusId > 0) {
-            if ($scheduleFieldsPresent) {
+            if ($scheduleFieldsPresent || $trialTargetChanged) {
                 $candidate = clone $studentClass;
                 $candidate->fill($mapped);
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $scheduleSlotsForRebuild);
@@ -1844,6 +1862,7 @@ class StudentClassController extends Controller
                 $oldHoldsSeat = (int) ($studentClass->getAttribute('Stop') ?? 0) === 0
                     && ($oldMode === null || $oldMode !== 'count' || $oldRemaining === null || (int) $oldRemaining > 0);
                 $addsNoLoad = $oldHoldsSeat
+                    && !$trialTargetChanged
                     && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
@@ -1855,6 +1874,7 @@ class StudentClassController extends Controller
                 $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
                     'class_type' => $newClassType,
+                    'trial_target_class_type' => $newTrialTarget,
                     'room_id' => $newRoomId,
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,
@@ -5679,6 +5699,9 @@ class StudentClassController extends Controller
         if (isset($input['teacher_id'])) $mappedData['TeacherID'] = $input['teacher_id'];
         if (isset($input['subject'])) $mappedData['SubjectID'] = $subjectId;
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
+        if (array_key_exists('trial_target_class_type', $input)) {
+            $mappedData['trial_target_class_type'] = $input['trial_target_class_type'] === '' ? null : $input['trial_target_class_type'];
+        }
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
         if (array_key_exists('scheduling_policy', $input)) {
             $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];
