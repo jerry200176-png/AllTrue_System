@@ -206,6 +206,10 @@
           <button type="button" class="small" @click="editTeacher(teacher)">編輯</button>
           <button type="button" class="small warning" @click="resetTeacherPassword(teacher)">重設密碼</button>
           <button v-if="teacher.status === 'pending'" type="button" class="small primary" @click="approveTeacher(teacher)">核准</button>
+          <template v-for="cid in approvableCampusIds(teacher)" :key="'link-' + teacher.id + '-' + cid">
+            <button v-if="teacher.status !== 'pending'" type="button" class="small primary tpc-link-approve" @click="decideCampusLink(teacher, cid, 'approve')">核准加入{{ shortBranchName(cid) }}</button>
+            <button type="button" class="small ghost tpc-link-reject" @click="decideCampusLink(teacher, cid, 'reject')">拒絕加入{{ shortBranchName(cid) }}</button>
+          </template>
           <button type="button" class="small ghost" @click="navigateToSchedule(teacher.id, 'course-mgmt')">課程</button>
           <button type="button" class="small ghost" @click="navigateToSchedule(teacher.id, 'calendar')">日曆</button>
           <button type="button" class="small danger" @click="deleteTeacher(teacher)">刪除</button>
@@ -490,6 +494,24 @@
         </div>
       </div>
     </div>
+
+    <AtDialog
+      :open="Boolean(linkDecision)"
+      :title="linkDecision?.action === 'approve' ? '核准加入分校' : '拒絕加入分校'"
+      title-id="teacher-link-dialog-title"
+      size="sm"
+      :close-on-backdrop="!linkDecisionSaving"
+      @close="closeLinkDecision"
+    >
+      <p>{{ linkDecisionText }}</p>
+      <div v-if="linkDecisionError" class="form-error" role="alert">{{ linkDecisionError }}</div>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" :disabled="linkDecisionSaving" @click="closeLinkDecision">取消</AtButton>
+        <AtButton shape="rect" class="teacher-link-confirm" :variant="linkDecision?.action === 'approve' ? 'primary' : 'danger'" :loading="linkDecisionSaving" @click="submitLinkDecision">
+          {{ linkDecision?.action === 'approve' ? '核准' : '拒絕' }}
+        </AtButton>
+      </template>
+    </AtDialog>
   </div>
   </div>
 </template>
@@ -500,13 +522,16 @@ import { supabase } from '../supabase';
 import { branches as BRANCHES, getBranchName as _getBranchName } from '../lib/useBranches';
 import RocRankBadge from '../components/RocRankBadge.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { isCurrentListRequest, shouldShowInitialListSkeleton } from '../lib/listRefreshState.js';
+import { useToast } from '../composables/useToast';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
+const toast = useToast();
 
 const props = defineProps({ branchId: [String, Number] });
 const emit = defineEmits(['navigate-to-schedule']);
@@ -992,7 +1017,7 @@ const filteredTeachers = computed(() => {
     } else if (tab.value === 'active') {
       list = teachers.value.filter(t => t.status === 'active');
     } else {
-      list = teachers.value.filter(t => t.status === 'pending');
+      list = teachers.value.filter(isPendingForViewer);
     }
 
     if (selectedTeacherIds.value.length > 0) {
@@ -1019,9 +1044,19 @@ const hasTeacherFilters = computed(() => Boolean(
   || tab.value !== 'active'
 ));
 
-const pendingCount = computed(() => teachers.value.filter(t => t.status === 'pending').length);
+const pendingCount = computed(() => teachers.value.filter(isPendingForViewer).length);
 const activeTeachersCount = computed(() => teachers.value.filter(t => t.status === 'active').length);
 const suspendedCount = computed(() => teachers.value.filter(t => t.status === 'suspended').length);
+
+// #4433：待審核＝帳號待審核，或有加入「你的分校」的申請（後端 approvable_branch_ids，與側欄 pending_teachers 同定義）。
+// 已在職的老師核准一個分校後仍是在職；別校的申請只顯示「待審核」，由該分校主任決定。
+function approvableCampusIds(teacher) {
+  return (teacher?.approvable_branch_ids || []).map(Number);
+}
+
+function isPendingForViewer(teacher) {
+  return teacher.status === 'pending' || approvableCampusIds(teacher).length > 0;
+}
 
 function getBranchName(bid) {
   const numericId = Number(bid);
@@ -1029,11 +1064,16 @@ function getBranchName(bid) {
   return found?.name || _getBranchName(bid);
 }
 
+function shortBranchName(bid) {
+  return getBranchName(bid).split('(')[0].trim();
+}
+
 function getMultiBranchList(teacher) {
   const ids = teacher.branch_ids || [];
+  const pending = new Set((teacher.pending_branch_ids || []).map(Number));
   const mainId = teacher.branch_id != null ? Number(teacher.branch_id) : null;
   const others = mainId != null ? ids.filter(b => Number(b) !== mainId) : ids;
-  return others.map(bid => getBranchName(bid).split('(')[0].trim());
+  return others.map(bid => shortBranchName(bid) + (pending.has(Number(bid)) ? '（待審核）' : ''));
 }
 
 async function getAuthHeaders() {
@@ -1215,15 +1255,18 @@ const approveTeacher = async (teacher) => {
   if (!confirm('確認核准此老師？核准後將成為正式老師，可進行排課。')) return;
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/profiles/${teacher.id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ status: 'active' })
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      alert('核准失敗：' + (j?.message || res.statusText));
-      return;
+    // #4433：先核准加入你分校的申請（管理權只來自已核准的分校），再把帳號改為在職。
+    const steps = [
+      ...approvableCampusIds(teacher).map((cid) => [`profiles/${teacher.id}/campus-links/${cid}/approve`, { method: 'POST', headers }]),
+      [`profiles/${teacher.id}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'active' }) }],
+    ];
+    for (const [path, init] of steps) {
+      const res = await fetch(`${API_BASE}/${path}`, init);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert('核准失敗：' + (j?.message || res.statusText));
+        return;
+      }
     }
     tab.value = 'active';
     await loadTeachers();
@@ -1232,6 +1275,54 @@ const approveTeacher = async (teacher) => {
     alert('核准失敗，請稍後再試');
   }
 };
+
+// #4433：只決定這一個分校的加入申請；老師的帳號狀態與其他分校不變。
+const linkDecision = ref(null); // { teacher, campusId, action: 'approve' | 'reject' }
+const linkDecisionSaving = ref(false);
+const linkDecisionError = ref('');
+const linkDecisionText = computed(() => {
+  const d = linkDecision.value;
+  if (!d) return '';
+  const name = d.teacher?.username || '老師';
+  const campus = shortBranchName(d.campusId);
+  return d.action === 'approve'
+    ? `核准「${name}」加入${campus}？核准後可在${campus}排課；其他分校不受影響。`
+    : `拒絕「${name}」加入${campus}？只會移除這個分校的申請，其他分校不受影響。`;
+});
+
+function decideCampusLink(teacher, campusId, action) {
+  linkDecisionError.value = '';
+  linkDecision.value = { teacher, campusId, action };
+}
+
+function closeLinkDecision() {
+  if (!linkDecisionSaving.value) linkDecision.value = null;
+}
+
+async function submitLinkDecision() {
+  const d = linkDecision.value;
+  if (!d || linkDecisionSaving.value) return;
+  const verb = d.action === 'approve' ? '核准' : '拒絕';
+  linkDecisionSaving.value = true;
+  linkDecisionError.value = '';
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/profiles/${d.teacher.id}/campus-links/${d.campusId}/${d.action}`, { method: 'POST', headers });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      linkDecisionError.value = `${verb}失敗：${j?.message || res.statusText}`;
+      return;
+    }
+    linkDecision.value = null;
+    toast.success(j?.message || `已${verb}`);
+    await loadTeachers();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
+  } catch {
+    linkDecisionError.value = `${verb}失敗，請稍後再試`;
+  } finally {
+    linkDecisionSaving.value = false;
+  }
+}
 
 function navigateToSchedule(teacherId, target) {
   emit('navigate-to-schedule', { teacherId, target: target || 'course-mgmt' });
