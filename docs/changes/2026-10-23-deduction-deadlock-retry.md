@@ -1,0 +1,13 @@
+## 2026-10-23 — Deductions run again when InnoDB rolls them back as a deadlock victim; a package-seeded absent lesson keeps its slot debit across retimes
+<!-- release-notes: silent_ship=silent-2026-10-23-deduction-deadlock-retry -->
+<!-- silent-reason: concurrency fix; a rare simultaneous attendance no longer fails, nothing on screen changes -->
+
+Since #4467 the package ledger is read with locking reads by `package_id`. Under REPEATABLE READ a package with no ledger rows locks the index gap where its first row will go, and another new package can share that gap: two first debits at once then wait for each other's insert, and InnoDB rolls one back with a deadlock (1213). Nothing ran it again. Worse, `deductOnAttendance()` caught it: inside a caller's transaction the server had already rolled that transaction back, so the caller's later statements committed one by one and the request then failed on commit (#4470).
+
+- `deductOnAttendance()` lets a concurrency error through when it runs inside a caller's transaction. Other failures are still logged and reported as not deducted.
+- The outermost transaction runs again on a deadlock, at most `DeadlockRetry::ATTEMPTS` (3) times, through Laravel's `DB::transaction($callback, $attempts)`, which re-runs only at transaction level 1: calendar status changes and time edits, 復原, manual attendance (batch marking per item), RFID swipe, package creation, single-to-shared conversion, and the deduction services when nothing wraps them.
+- Not run again, because their closures save a model loaded before the transaction (a second run would skip that save): learning-record approve, rollback and batch approve; `POST attendance/swipe`; attendance void and self-study conversion; adding a session; enrollment. A deadlock there now rolls the whole request back (500) instead of committing part of it.
+
+Also, a #4467 retime gap. Package creation debits a past lesson on the package only. If that lesson is then marked absent, merged by a retime into a debited slot (credited) and moved back, its original slot stayed without a debit, because the slot rule counted only a course-ledger debit or attended/late. A lesson whose own package debit only retimes moved is now counted as charged too. A never-charged absent or completed lesson still is not (Codex on #4467, thread 4362482902).
+
+Tests: `PackageSlotCurrentReadTest` (a real deadlock between two connections on two packages without ledger rows, through the service and through the calendar request), `DeductionDeadlockPropagationTest` and `PackageGroupSlotOneDebitTest` (creation → absent → merge → move back; never-charged absent control). No migration. Rollback is a normal revert.
