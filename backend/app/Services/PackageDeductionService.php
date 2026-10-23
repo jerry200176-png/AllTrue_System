@@ -298,9 +298,9 @@ class PackageDeductionService
     }
 
     /**
-     * The package's member lessons charged in a slot, oldest first: attended / late, or completed with a course-ledger debit
-     * (a learning-record approval deducts a completed lesson; whether an uncharged completed lesson debits is not decided).
-     * Read plainly, never locked.
+     * The package's member lessons charged in a slot, oldest first: a course-ledger debit in any status (completed via a
+     * learning-record approval, absent after attended), or attended / late (package-only creation seeds). An uncharged
+     * completed lesson is not counted (not decided). Read plainly, never locked.
      *
      * @param array{0: string, 1: string} $slot
      */
@@ -311,9 +311,8 @@ class PackageDeductionService
 
         return DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
             ->where('sc.PackageID', $packageId)->where('c.SessionDate', $slot[0])->where('c.StartTimeHM', $slot[1])
-            ->whereIn('c.Status', ['attended', 'late', 'completed'])->orderBy('c.id')
-            ->get(['c.id', 'c.StudentClassID', 'c.Status', DB::raw("{$courseNet} AS course_net")])
-            ->filter(fn ($l) => strtolower((string) $l->Status) !== 'completed' || (int) $l->course_net > 0)->values();
+            ->orderBy('c.id')->get(['c.id', 'c.StudentClassID', 'c.Status', DB::raw("{$courseNet} AS course_net")])
+            ->filter(fn ($l) => (int) $l->course_net > 0 || in_array(strtolower((string) $l->Status), ['attended', 'late'], true))->values();
     }
 
     /**
