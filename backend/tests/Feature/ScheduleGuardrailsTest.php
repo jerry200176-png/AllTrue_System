@@ -1155,7 +1155,7 @@ class ScheduleGuardrailsTest extends TestCase
         $res->assertCreated();
     }
 
-    public function test_two_trial_students_same_slot_are_blocked(): void
+    public function test_two_trial_students_same_slot_without_one_on_three_are_blocked(): void
     {
         $token = $this->createDirectorToken([1], 'director-guard-trial-b@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-guard-trial-b@example.com');
@@ -1205,6 +1205,244 @@ class ScheduleGuardrailsTest extends TestCase
 
         $res->assertStatus(409)
             ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+    }
+
+    private function insertGuardSlotRow(int $studentId, int $teacherId, string $classType, string $date, ?int $courseId = null): void
+    {
+        DB::table('schedules')->insert([
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 3,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => $classType,
+            'status' => 'scheduled',
+            'type' => $classType === 'trial' ? 'trial' : 'normal',
+            'deduction' => $classType === 'trial' ? 0 : 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'student_course_id' => $courseId,
+            'original_schedule_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * Seeds the Wednesday 2026-04-15 15:00-17:00 slot with the given class types
+     * (one new student each), then posts one more row of $incomingType.
+     *
+     * @param  array<int, string>  $existingTypes
+     * @return \Illuminate\Testing\TestResponse
+     */
+    private function postIntoSeededSlot(string $tag, array $existingTypes, string $incomingType)
+    {
+        $token = $this->createDirectorToken([1], "director-guard-{$tag}@example.com");
+        $teacherId = $this->createTeacher(1, "teacher-guard-{$tag}@example.com");
+        $date = '2026-04-15';
+
+        foreach ($existingTypes as $i => $type) {
+            $this->insertGuardSlotRow($this->createStudent(1, "既有生{$i}")->id, $teacherId, $type, $date);
+        }
+
+        return $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $this->createStudent(1, '新加入生')->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 3,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => $incomingType,
+            'status' => 'scheduled',
+            'type' => $incomingType === 'trial' ? 'trial' : 'normal',
+            'deduction' => $incomingType === 'trial' ? 0 : 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+        ]);
+    }
+
+    /** in-app #426 / Founder 1a: a 1v3 slot accepts more than one trial while total <= 3. */
+    public function test_one_on_three_slot_allows_second_trial(): void
+    {
+        $this->postIntoSeededSlot('1v3-t2', ['one_on_three', 'trial'], 'trial')->assertCreated();
+    }
+
+    /** Founder 1a: 2 regular + 1 trial is allowed in a 1v3 slot. */
+    public function test_one_on_three_slot_two_regular_plus_trial_is_allowed(): void
+    {
+        $this->postIntoSeededSlot('1v3-r2t1', ['one_on_three', 'one_on_three'], 'trial')->assertCreated();
+    }
+
+    /** Founder 1a: trials take real seats, so 2 regular + 1 trial is full for a third regular. */
+    public function test_one_on_three_slot_trial_takes_a_seat_for_regular(): void
+    {
+        $this->postIntoSeededSlot('1v3-r2t1-r', ['one_on_three', 'one_on_three', 'trial'], 'one_on_three')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonPath('conflicts.0.current_students', 3);
+    }
+
+    /** Founder 1a: a 4th trial in a full 1v3 slot (1 regular + 2 trials) is blocked. */
+    public function test_one_on_three_slot_fourth_trial_is_blocked(): void
+    {
+        $this->postIntoSeededSlot('1v3-r1t2-t', ['one_on_three', 'trial', 'trial'], 'trial')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonPath('conflicts.0.current_students', 3);
+    }
+
+    /** Founder 1a: a trial no longer audits on top of a full 1v3 slot (3 regular). */
+    public function test_one_on_three_slot_full_of_regulars_blocks_trial(): void
+    {
+        $this->postIntoSeededSlot('1v3-r3-t', ['one_on_three', 'one_on_three', 'one_on_three'], 'trial')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonPath('conflicts.0.current_students', 3);
+    }
+
+    /** Blast radius: a 1v2 slot keeps the one-trial-per-slot rule. */
+    public function test_one_on_two_slot_still_blocks_second_trial(): void
+    {
+        $this->postIntoSeededSlot('1v2-t2', ['one_on_two', 'trial'], 'trial')
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+    }
+
+    /** Trial course (no weekly template) with an optional trial target class type. */
+    private function insertTrialCourse(int $studentId, int $teacherId, ?string $target): int
+    {
+        return (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentId, 'TeacherID' => $teacherId,
+            'GradeID' => 1, 'SubjectID' => 1, 'ClassType' => 'trial', 'trial_target_class_type' => $target,
+            'by1' => 0, 'TotalHours' => 2, 'MDate' => now(),
+            'SessionDuration' => 120, 'Stop' => 0, 'RemainingSessions' => 1,
+            'SessionCount' => 1, 'UsedSessions' => 0, 'Rate' => 0, 'Charge' => 0, 'Paid' => 0,
+            'StartDate' => '2026-04-15',
+        ]);
+    }
+
+    /**
+     * Seeds trial bookings (each with its own trial course and target) plus regular rows
+     * in the Wednesday 2026-04-15 15:00-17:00 slot, then asks the guard about one more.
+     *
+     * @param  array<int, string|null>  $trialTargets
+     * @param  array<int, string>  $regularTypes
+     * @return array<int, array<string, mixed>>
+     */
+    private function guardWithTrials(string $tag, array $trialTargets, array $regularTypes, string $incomingType, ?string $incomingTarget = null): array
+    {
+        $teacherId = $this->createTeacher(1, "teacher-guard-{$tag}@example.com");
+        $date = '2026-04-15';
+        foreach ($trialTargets as $i => $target) {
+            $studentId = $this->createStudent(1, "試聽生{$i}")->id;
+            $this->insertGuardSlotRow($studentId, $teacherId, 'trial', $date, $this->insertTrialCourse($studentId, $teacherId, $target));
+        }
+        foreach ($regularTypes as $i => $type) {
+            $this->insertGuardSlotRow($this->createStudent(1, "正式生{$i}")->id, $teacherId, $type, $date);
+        }
+
+        return app(\App\Services\ScheduleGuardService::class)->validateScheduleOccurrence([
+            'teacher_id' => $teacherId,
+            'class_type' => $incomingType,
+            'trial_target_class_type' => $incomingTarget,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'exclude_student_id' => $this->createStudent(1, '新加入生')->id,
+        ]);
+    }
+
+    /** in-app #426: three trials for a 1v3 class with no regular student yet are allowed. */
+    public function test_three_one_on_three_target_trials_without_regular_are_allowed(): void
+    {
+        $this->assertSame([], $this->guardWithTrials('tt-3', ['one_on_three', 'one_on_three'], [], 'trial', 'one_on_three'));
+    }
+
+    public function test_fourth_booking_after_three_one_on_three_target_trials_is_blocked(): void
+    {
+        $conflicts = $this->guardWithTrials('tt-4', ['one_on_three', 'one_on_three', 'one_on_three'], [], 'trial', 'one_on_three');
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+        $this->assertSame(3, $conflicts[0]['current_students'] ?? null);
+    }
+
+    public function test_two_one_on_three_target_trials_plus_regular_is_allowed(): void
+    {
+        $this->assertSame([], $this->guardWithTrials('tt-2r', ['one_on_three', 'one_on_three'], [], 'one_on_three'));
+    }
+
+    /** The existing trials' stored target alone marks the slot (incoming trial has none). */
+    public function test_stored_one_on_three_target_marks_slot_for_untargeted_incoming_trial(): void
+    {
+        $this->assertSame([], $this->guardWithTrials('tt-stored', ['one_on_three'], [], 'trial'));
+    }
+
+    /** Trials without a target keep the one-trial-per-slot rule. */
+    public function test_untargeted_trials_still_one_per_slot(): void
+    {
+        $conflicts = $this->guardWithTrials('tt-null', [null], [], 'trial');
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+        $this->assertSame(1, $conflicts[0]['allowed_students'] ?? null);
+    }
+
+    public function test_one_on_two_target_trials_still_one_per_slot(): void
+    {
+        $conflicts = $this->guardWithTrials('tt-1v2', ['one_on_two'], [], 'trial', 'one_on_two');
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+    }
+
+    /** Codex #4342: a 1v3 class covering only part of the request does not lift the one-trial rule where it is absent. */
+    public function test_partial_one_on_three_overlap_keeps_one_trial_rule(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-tt-partial@example.com');
+        $regular = $this->createStudent(1, '正式生P')->id;
+        $this->insertGuardSlotRow($regular, $teacherId, 'one_on_three', '2026-04-15');
+        $trial = $this->createStudent(1, '試聽生P')->id;
+        $this->insertGuardSlotRow($trial, $teacherId, 'trial', '2026-04-15', $this->insertTrialCourse($trial, $teacherId, null));
+        DB::table('schedules')->where('student_id', $regular)->update(['end_time' => '16:00', 'duration_hours' => 1]);
+        DB::table('schedules')->where('student_id', $trial)->update(['start_time' => '16:00', 'duration_hours' => 1]);
+
+        $conflicts = app(\App\Services\ScheduleGuardService::class)->validateScheduleOccurrence([
+            'teacher_id' => $teacherId, 'class_type' => 'trial', 'branch_id' => 1, 'schedule_date' => '2026-04-15',
+            'start_time' => '15:30', 'end_time' => '16:30', 'exclude_student_id' => $this->createStudent(1, '新加入生P')->id,
+        ]);
+        $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
+        $this->assertSame(1, $conflicts[0]['allowed_students'] ?? null);
+    }
+
+    public function test_trial_target_class_type_requires_trial_course_on_create(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-tt-validate@example.com');
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', [
+            'class_type' => 'one_on_one', 'trial_target_class_type' => 'one_on_three',
+        ])->assertStatus(422)->assertJsonValidationErrors(['trial_target_class_type']);
+
+        $this->withHeaders($headers)->postJson('/api/v1/class-sessions/batch', [
+            'class_type' => 'trial', 'trial_target_class_type' => 'one_on_three',
+        ])->assertStatus(422)->assertJsonMissingValidationErrors(['trial_target_class_type']);
+    }
+
+    public function test_trial_target_class_type_rejected_on_non_trial_course_edit(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-tt-edit@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-tt-edit@example.com');
+        $studentId = $this->createStudent(1, '編輯生')->id;
+        $courseId = $this->insertTrialCourse($studentId, $teacherId, null);
+        DB::table('StudentClass')->where('ID', $courseId)->update(['ClassType' => 'one_on_one']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson('/api/v1/student-classes/' . $courseId, ['trial_target_class_type' => 'one_on_three'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'invalid_trial_target_class_type');
+        $this->assertNull(DB::table('StudentClass')->where('ID', $courseId)->value('trial_target_class_type'));
     }
 
     /**
