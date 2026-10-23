@@ -22,6 +22,17 @@ class InappPackageLedgerProbeTest extends TestCase
 
     private const PROBE = __DIR__ . '/../../../scripts/probes/inapp-package-ledger-probe.php';
 
+    /** Every output key the probe may print (public log): a new column must be added here on purpose. */
+    private const ALLOWED_KEYS = [
+        'packages' => ['id', 'campus_id', 'billing_mode', 'class_type', 'total_sessions', 'used_sessions', 'remaining_sessions', 'stop', 'ledger_net', 'ledger_rows', 'debits', 'credits'],
+        'by_reason' => ['package_id', 'reason', 'delta', 'ledger_rows', 'sessions', 'rows_without_session'],
+        'same_session_debited_twice' => ['package_id', 'class_session_id', 'net', 'reasons', 'session_date', 'start_time', 'status'],
+        'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
+        'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
+        'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'scheduled_slots'],
+        'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
+    ];
+
     private int $teacherId;
 
     protected function setUp(): void
@@ -64,12 +75,11 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame('conversion_seed:-1,attendance:-1', $twice['reasons']);
         $this->assertSame(2, (int) $out['member_lessons'][0]['attended_slots'], 'two lessons taught, three debits');
         $this->assertSame([], $out['same_slot_debited_twice']);
-        foreach (['packages', 'members'] as $section) {
-            $this->assertEmpty(array_intersect(['name', 'rate', 'note', 'request_id'], array_keys($out[$section][0])), $section);
-        }
+        $this->assertOnlyAllowedKeys($out);
         $this->assertNotEmpty($statements);
         foreach ($statements as $sql) {
             $this->assertMatchesRegularExpression('/^\s*select\b/i', $sql);
+            $this->assertDoesNotMatchRegularExpression('/\bfor\s+update\b|\binto\s+(out|dump)file\b|\block\s+in\s+share\s+mode\b/i', $sql);
         }
     }
 
@@ -86,6 +96,7 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame(2, (int) $out['same_slot_debited_twice'][0]['sessions']);
         $this->assertSame(1, (int) $out['member_lessons'][0]['attended_slots']);
         $this->assertCount(2, $out['members']);
+        $this->assertOnlyAllowedKeys($out);
 
         $this->assertSame([], inapp_package_ledger_probe(DB::connection(), 1, (int) $otherCampus->id)['target_package_ids'], 'another campus package is never read');
         $this->assertSame([], inapp_package_ledger_probe(DB::connection(), 3, 0)['target_package_ids']);
@@ -98,9 +109,31 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertStringContainsString("statement('SET SESSION TRANSACTION READ ONLY')", $source);
         $this->assertStringContainsString('refusing to run: the session is not read-only', $source);
         $this->assertStringContainsString('->rollBack()', $source);
-        $this->assertDoesNotMatchRegularExpression('/\b(INSERT|UPDATE|DELETE|REPLACE|ALTER|DROP|CREATE|TRUNCATE|GRANT)\b/', $source);
-        $this->assertDoesNotMatchRegularExpression('/->(insert|update|delete|save|create|commit)\s*\(/', $source);
+        $this->assertStringContainsString("fwrite(STDERR, 'probe_failed: ' . get_class(\$e)", $source, 'failures print the class only');
+        // The only statements allowed are the session settings; everything else goes through select().
+        preg_match_all('/->statement\(\'([^\']*)\'\)/', $source, $statements);
+        $this->assertSame(
+            ['SET SESSION TRANSACTION READ ONLY', 'SET SESSION MAX_EXECUTION_TIME = 30000', 'SET SESSION max_statement_time = 30'],
+            $statements[1]
+        );
+        $this->assertSame(3, substr_count($source, '->statement('));
+        $this->assertDoesNotMatchRegularExpression(
+            '/\b(insert|update|delete|replace|alter|drop|create|truncate|grant|commit|outfile|dumpfile)\b|read\s+write|for\s+update|lock\s+in\s+share/i',
+            $source
+        );
+        $this->assertDoesNotMatchRegularExpression('/->(unprepared|getPdo|exec|insert|update|delete|save|create|commit)\s*\(/i', $source);
         $this->assertDoesNotMatchRegularExpression('/\.env\b/', $source);
+    }
+
+    /** @param array<string, mixed> $out */
+    private function assertOnlyAllowedKeys(array $out): void
+    {
+        $this->assertSame([], array_diff(array_keys($out), ['read_only', 'campus_id', 'package_id', 'target_package_ids', ...array_keys(self::ALLOWED_KEYS)]));
+        foreach (self::ALLOWED_KEYS as $section => $keys) {
+            foreach ($out[$section] ?? [] as $row) {
+                $this->assertSame($keys, array_keys($row), $section);
+            }
+        }
     }
 
     /** @return array{0: CoursePackage, 1: list<StudentClass>} */

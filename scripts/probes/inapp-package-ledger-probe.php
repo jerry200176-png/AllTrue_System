@@ -95,26 +95,45 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
 }
 
 if (PHP_SAPI === 'cli' && getenv('INAPP_PACKAGE_LEDGER_PROBE') === '1') {
-    $root = (string) getenv('APP_ROOT');
-    require $root . '/vendor/autoload.php';
-    $app = require $root . '/bootstrap/app.php';
-    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-    $db = Illuminate\Support\Facades\DB::connection();
-    $db->statement('SET SESSION TRANSACTION READ ONLY');
+    // Any failure prints the exception class only: a message can carry SQL or connection details, and the log is public.
+    // Catching here also keeps Laravel's handler from writing a log file or a Sentry event for it.
     try {
-        $readOnly = (int) ($db->selectOne('SELECT @@SESSION.transaction_read_only AS ro')->ro ?? 0);
-    } catch (Throwable) { // MariaDB before 11.1 names it tx_read_only
-        $readOnly = (int) ($db->selectOne('SELECT @@SESSION.tx_read_only AS ro')->ro ?? 0);
+        $root = (string) getenv('APP_ROOT');
+        require $root . '/vendor/autoload.php';
+        $app = require $root . '/bootstrap/app.php';
+        $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+        $db = Illuminate\Support\Facades\DB::connection();
+        $db->statement('SET SESSION TRANSACTION READ ONLY');
+        try {
+            $db->statement('SET SESSION MAX_EXECUTION_TIME = 30000'); // MySQL: a SELECT stops after 30 s
+        } catch (Throwable) {
+            $db->statement('SET SESSION max_statement_time = 30'); // MariaDB
+        }
+        // Read through the write PDO: that is the session the queries run on (a DB_READ_HOST would be another one).
+        $sessionReadOnly = function () use ($db): int {
+            try {
+                return (int) ($db->selectOne('SELECT @@SESSION.transaction_read_only AS ro', [], false)->ro ?? 0);
+            } catch (Throwable) { // MariaDB before 11.1 names it tx_read_only
+                return (int) ($db->selectOne('SELECT @@SESSION.tx_read_only AS ro', [], false)->ro ?? 0);
+            }
+        };
+        if ($sessionReadOnly() !== 1) {
+            fwrite(STDERR, "refusing to run: the session is not read-only\n");
+            exit(1);
+        }
+        $db->beginTransaction();
+        try {
+            // Checked again inside the transaction: a reconnect would have opened a new session without the mode.
+            if ($sessionReadOnly() !== 1) {
+                throw new RuntimeException('session lost read-only mode');
+            }
+            $out = inapp_package_ledger_probe($db, (int) getenv('CAMPUS_ID'), (int) getenv('PACKAGE_ID'));
+        } finally {
+            $db->rollBack();
+        }
+    } catch (Throwable $e) {
+        fwrite(STDERR, 'probe_failed: ' . get_class($e) . "\n");
+        exit(2);
     }
-    if ($readOnly !== 1) {
-        fwrite(STDERR, "refusing to run: the session is not read-only\n");
-        exit(1);
-    }
-    $db->beginTransaction();
-    try {
-        $out = inapp_package_ledger_probe($db, (int) getenv('CAMPUS_ID'), (int) getenv('PACKAGE_ID'));
-    } finally {
-        $db->rollBack();
-    }
-    echo json_encode($out + ['session_read_only' => $readOnly], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), PHP_EOL;
+    echo json_encode($out + ['session_read_only' => 1], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), PHP_EOL;
 }
