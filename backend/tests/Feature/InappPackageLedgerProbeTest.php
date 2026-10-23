@@ -30,7 +30,7 @@ class InappPackageLedgerProbeTest extends TestCase
         'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
         'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots'],
-        'charged_slots_not_debited' => ['package_id', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_slot_net', 'charged_before_package'],
+        'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
         'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'charged_since_package_not_debited', 'lists_capped'],
     ];
@@ -155,27 +155,33 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->debit($pool, $course, $reverted, 'attendance');
         $this->credit($pool, $course, $reverted, 'status_adjust');
         // A group slot debited once through another member's lesson is not a gap.
-        [$group, [$math, $english]] = $this->pool(1, 10, 2);
+        [$group, [$math, $english]] = $this->pool(1, 10, 2, null, 'one_on_two');
         $mathLesson = $this->lesson($math, '2026-10-07');
         $englishLesson = $this->lesson($english, '2026-10-07');
         $this->charge($math, $mathLesson, ['deduct']);
         $this->charge($english, $englishLesson, ['deduct']);
         $this->debit($group, $math, $mathLesson, 'attendance');
+        // A one-on-one package debits each lesson: two member lessons in one slot need two debits.
+        [$solo, [$first, $second]] = $this->pool(1, 10, 2);
+        $firstLesson = $this->lesson($first, '2026-10-08');
+        $secondLesson = $this->lesson($second, '2026-10-08');
+        $this->charge($first, $firstLesson, ['deduct']);
+        $this->charge($second, $secondLesson, ['deduct']);
+        $this->debit($solo, $first, $firstLesson, 'attendance');
 
         $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
 
         $this->assertSame([[
-            'package_id' => (int) $pool->id, 'session_date' => '2026-09-01', 'start_time' => '16:00',
-            'charged_session_ids' => (string) $beforePool->id, 'statuses' => 'attended', 'package_slot_net' => 0, 'charged_before_package' => 1,
+            'package_id' => (int) $pool->id, 'scope' => 'lesson', 'session_date' => '2026-09-01', 'start_time' => '16:00',
+            'charged_session_ids' => (string) $beforePool->id, 'statuses' => 'attended', 'package_net' => 0, 'charged_before_package' => 1,
         ], [
-            'package_id' => (int) $pool->id, 'session_date' => '2026-10-06', 'start_time' => '16:00',
-            'charged_session_ids' => (string) $reattended->id, 'statuses' => 'attended', 'package_slot_net' => 0, 'charged_before_package' => 0,
-        ]], array_map(fn (array $row): array => array_merge($row, [
-            'package_id' => (int) $row['package_id'], 'package_slot_net' => (int) $row['package_slot_net'],
-            'charged_before_package' => (int) $row['charged_before_package'],
-        ]), $out['charged_slots_not_debited']));
-        $this->assertSame(1, $out['summary'][0]['charged_since_package_not_debited']);
-        $this->assertSame(0, $out['summary'][1]['charged_since_package_not_debited']);
+            'package_id' => (int) $pool->id, 'scope' => 'lesson', 'session_date' => '2026-10-06', 'start_time' => '16:00',
+            'charged_session_ids' => (string) $reattended->id, 'statuses' => 'attended', 'package_net' => 0, 'charged_before_package' => 0,
+        ], [
+            'package_id' => (int) $solo->id, 'scope' => 'lesson', 'session_date' => '2026-10-08', 'start_time' => '16:00',
+            'charged_session_ids' => (string) $secondLesson->id, 'statuses' => 'attended', 'package_net' => 0, 'charged_before_package' => 0,
+        ]], $out['charged_slots_not_debited']);
+        $this->assertSame([1, 0, 1], array_column($out['summary'], 'charged_since_package_not_debited'));
         $this->assertOnlyAllowedKeys($out);
     }
 
@@ -214,14 +220,14 @@ class InappPackageLedgerProbeTest extends TestCase
     }
 
     /** @return array{0: CoursePackage, 1: list<StudentClass>} */
-    private function pool(int $campusId, int $total, int $members = 1, ?int $studentCampusId = null): array
+    private function pool(int $campusId, int $total, int $members = 1, ?int $studentCampusId = null, string $classType = 'one_on_one'): array
     {
         $student = Student::create([
             'name' => '合成學生' . uniqid(), 'CampusID' => $studentCampusId ?? $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
         $package = CoursePackage::create([
             'student_id' => $student->id, 'campus_id' => $campusId, 'name' => '合成方案', 'total_sessions' => $total,
-            'remaining_sessions' => $total, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'remaining_sessions' => $total, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session', 'class_type' => $classType,
             'paid' => false, 'stop' => false, 'enabled' => true,
         ]);
         $courses = [];
