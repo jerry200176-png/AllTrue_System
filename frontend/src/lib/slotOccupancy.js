@@ -62,7 +62,8 @@ export function occupancyBadge({ courses = [] } = {}) {
     };
   }
   const types = courses.map((course) => String(course.class_type || ''));
-  const max = displayMaxForClassTypes(types);
+  // in-app #426: a trial targeting one_on_three makes the slot one-on-three, same as the guard.
+  const max = isOneOnThreeSlot(courses) ? TEACHER_SLOT_ABSOLUTE_MAX : displayMaxForClassTypes(types);
   const remaining = Math.max(0, max - count);
   const full = count >= max;
   const color = full ? '#ef4444' : remaining === 1 ? '#f59e0b' : '#10b981';
@@ -75,22 +76,55 @@ export function occupancyBadge({ courses = [] } = {}) {
     parts.push(rem === 0 ? `${label}已滿` : `${label}可再收 ${rem}`);
   }
   const detail = parts.length ? `：${parts.join('，')}` : '';
+  // in-app #426 (Founder 1a): trials are seats; say how many of the total are trials.
+  const trialCount = uniqueStudentCount(courses.filter((course) => String(course.class_type || '') === 'trial'));
+  const trialNote = trialCount > 0 ? `（含試聽 ${trialCount} 位）` : '';
   return {
     count,
     max,
     color,
     label: `${count}/${max}`,
-    tooltip: `本分校 ${count} 位（上限 ${max} 位，${status}）${detail}`,
+    tooltip: `本分校 ${count} 位${trialNote}（上限 ${max} 位，${status}）${detail}`,
     remaining,
   };
 }
 
-export function incomingClassConflict({ incomingType, overlappingCourses = [] } = {}) {
+/**
+ * in-app #426: a slot is one-on-three when a booking is a one_on_three course or a trial
+ * whose trial_target_class_type is one_on_three, and no booking is one_on_one.
+ * Mirrors ScheduleGuardService::isOneOnThreeSlot().
+ */
+export function isOneOnThreeSlot(bookings = []) {
+  let oneOnThree = false;
+  for (const booking of bookings || []) {
+    const type = String(booking?.class_type || '');
+    if (type === 'one_on_one') return false;
+    if (type === 'one_on_three'
+      || (type === 'trial' && String(booking?.trial_target_class_type || '') === 'one_on_three')) {
+      oneOnThree = true;
+    }
+  }
+  return oneOnThree;
+}
+
+export function incomingClassConflict({ incomingType, incomingTrialTarget = null, overlappingCourses = [] } = {}) {
   const unique = uniqueStudentCount(overlappingCourses);
   const types = overlappingCourses.map((course) => String(course.class_type || ''));
   const newMax = Math.min(capacityForClassType(incomingType), TEACHER_SLOT_ABSOLUTE_MAX);
 
   if (incomingType === 'trial') {
+    // in-app #426 (Founder 1a + trial target): in a one-on-three slot trials take real
+    // seats and several may join while the total stays within 3. Mirrors ScheduleGuardService.
+    const incoming = { class_type: 'trial', trial_target_class_type: incomingTrialTarget };
+    if (isOneOnThreeSlot([...overlappingCourses, incoming])) {
+      const full = unique >= TEACHER_SLOT_ABSOLUTE_MAX;
+      return {
+        blocked: full,
+        reason: full ? 'absolute' : '',
+        unique,
+        newMax: TEACHER_SLOT_ABSOLUTE_MAX,
+      };
+    }
     const trialCount = uniqueStudentCount(
       overlappingCourses.filter((course) => String(course.class_type || '') === 'trial'),
     );

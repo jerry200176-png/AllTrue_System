@@ -37,6 +37,7 @@ class ScheduleGuardService
         }
 
         $classType = (string) ($payload['class_type'] ?? 'one_on_one');
+        $trialTarget = $this->trialTargetFrom($payload);
         $roomId = isset($payload['room_id']) && $payload['room_id'] ? (int) $payload['room_id'] : null;
         $excludeStudentClassId = isset($payload['exclude_student_class_id']) && $payload['exclude_student_class_id']
             ? (int) $payload['exclude_student_class_id']
@@ -97,7 +98,7 @@ class ScheduleGuardService
             $roomConflict = null;
             foreach ($byDate ?: [[]] as $dateOverlaps) {
                 $overlaps = array_merge($recurringOverlaps, $dateOverlaps);
-                $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
+                $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps, $trialTarget);
                 if ($tc && (!$teacherConflict || ($tc['current_students'] ?? 0) > ($teacherConflict['current_students'] ?? 0))) {
                     $teacherConflict = $tc;
                 }
@@ -191,7 +192,7 @@ class ScheduleGuardService
 
         $conflicts = [];
 
-        $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
+        $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps, $this->trialTargetFrom($payload));
         if ($teacherConflict) {
             $conflicts[] = $teacherConflict;
         }
@@ -221,6 +222,7 @@ class ScheduleGuardService
      */
     public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime, bool $lock = false, ?array $sourceOccurrence = null): array
     {
+        $trialTarget = $course->getAttribute('trial_target_class_type');
         if ($lock && $course->exists) {
             // Protect proposed metadata keys; defer clustered X until after shared occupancy.
             $currentQuery = \App\Models\StudentClass::query()->whereKey($course->getKey());
@@ -245,6 +247,7 @@ class ScheduleGuardService
         $conflicts = $this->validateScheduleOccurrence([
             'teacher_id' => $teacherId,
             'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
+            'trial_target_class_type' => $trialTarget,
             'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
             'branch_id' => $branchId,
             'schedule_date' => $date,
@@ -320,6 +323,18 @@ class ScheduleGuardService
         }
 
         return $out;
+    }
+
+    /**
+     * in-app #426: the incoming trial's target class type; only meaningful for trials.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function trialTargetFrom(array $payload): ?string
+    {
+        $target = (string) ($payload['trial_target_class_type'] ?? '');
+
+        return ($payload['class_type'] ?? '') === 'trial' && $target !== '' ? $target : null;
     }
 
     private function capacityForClassType(?string $classType): int
@@ -892,6 +907,7 @@ class ScheduleGuardService
                 'teacher_occupancy' => ($scheduleTeachers[SubstituteScheduleService::occurrenceKey($courseId, $scheduleDate, (string) $row->start_time)] ?? $teacherId) === $teacherId,
                 'source' => 'schedule',
                 'source_id' => (int) ($row->id ?? 0),
+                'course_id' => $courseId,
                 'student_id' => (int) ($row->student_id ?? 0),
                 'class_type' => (string) ($row->class_type ?? 'one_on_one'),
                 'room_id' => null,
@@ -949,9 +965,9 @@ class ScheduleGuardService
      * @param  array<int, array<string, mixed>>  $overlaps
      * @return array<string, mixed>|null
      */
-    private function buildTeacherCapacityConflict(string $newClassType, array $slot, array $overlaps): ?array
+    private function buildTeacherCapacityConflict(string $newClassType, array $slot, array $overlaps, ?string $newTrialTarget = null): ?array
     {
-        $overlaps = array_values(array_filter($overlaps, fn ($entry) => $entry['teacher_occupancy'] ?? true));
+        $overlaps = $this->withTrialTargets(array_values(array_filter($overlaps, fn ($entry) => $entry['teacher_occupancy'] ?? true)));
         $existingCount = $this->countDistinctStudents($overlaps);
         $newCapacity = $this->capacityForClassType($newClassType);
 
@@ -960,6 +976,31 @@ class ScheduleGuardService
         // and the existing-type capacity check, but we still enforce at most
         // one trial student per teacher slot (FR-002).
         if ($newClassType === 'trial') {
+            // in-app #426 (Founder decision 1a + trial target, 2026-10-21): in a one-on-three
+            // slot trial students take real seats and several may join, as long as the slot
+            // total (regular + trial) stays within 3. Other slots, and trials without a
+            // target in them, keep the one-trial-per-slot rule below.
+            $incoming = ['class_type' => 'trial', 'trial_target_class_type' => $newTrialTarget] + $slot;
+            if ($this->isOneOnThreeSlot([...$overlaps, $incoming], $slot)) {
+                if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
+                    return $this->finalizeCapacityConflict([
+                        'type' => 'teacher_capacity',
+                        'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
+                        'start_time' => (string) ($slot['start_time'] ?? ''),
+                        'end_time' => (string) ($slot['end_time'] ?? ''),
+                        'current_students' => $existingCount,
+                        'allowed_students' => self::TEACHER_SLOT_ABSOLUTE_MAX,
+                        'message' => sprintf(
+                            '老師此一對三時段本分校已有 %d 位學生（含試聽），上限為 %d 位學生。',
+                            $existingCount,
+                            self::TEACHER_SLOT_ABSOLUTE_MAX
+                        ),
+                        ...$this->overlapPayload($overlaps),
+                    ]);
+                }
+                return null;
+            }
+
             $trialOverlaps = array_values(array_filter($overlaps, function ($entry) {
                 return (string) ($entry['class_type'] ?? '') === 'trial';
             }));
@@ -1154,6 +1195,70 @@ class ScheduleGuardService
     {
         [$h, $m] = array_map('intval', explode(':', $time));
         return $h * 60 + $m;
+    }
+
+    /**
+     * in-app #426: a slot is one-on-three when a booking is a one_on_three course or a
+     * trial whose trial_target_class_type is one_on_three, and no booking is one_on_one.
+     * Mirrors frontend slotOccupancy.js isOneOnThreeSlot(). With $span, only a one-on-three booking
+     * covering the whole span counts, so a partial overlap cannot lift the one-trial rule elsewhere.
+     *
+     * @param  array<int, array<string, mixed>>  $entries
+     * @param  array<string, mixed>|null  $span
+     */
+    private function isOneOnThreeSlot(array $entries, ?array $span = null): bool
+    {
+        $covers = fn (array $e): bool => $span === null || (isset($e['start_time'], $e['end_time'], $span['start_time'], $span['end_time'])
+            && $this->minutesOfDay((string) $e['start_time']) <= $this->minutesOfDay((string) $span['start_time'])
+            && $this->minutesOfDay((string) $e['end_time']) >= $this->minutesOfDay((string) $span['end_time']));
+        $isOneOnThree = false;
+        foreach ($entries as $entry) {
+            $type = (string) ($entry['class_type'] ?? '');
+            if ($type === 'one_on_one') {
+                return false;
+            }
+            if (($type === 'one_on_three'
+                || ($type === 'trial' && (string) ($entry['trial_target_class_type'] ?? '') === 'one_on_three')) && $covers($entry)) {
+                $isOneOnThree = true;
+            }
+        }
+
+        return $isOneOnThree;
+    }
+
+    /** @var array<int, string|null> StudentClass ID => trial_target_class_type */
+    private array $trialTargetCache = [];
+
+    /**
+     * Attach trial_target_class_type to trial overlap entries (one query per new course set).
+     *
+     * @param  array<int, array<string, mixed>>  $entries
+     * @return array<int, array<string, mixed>>
+     */
+    private function withTrialTargets(array $entries): array
+    {
+        $courseIdOf = static fn (array $entry): int => (int) ($entry['course_id']
+            ?? (in_array($entry['source'] ?? '', ['student_class', 'class_session'], true) ? ($entry['source_id'] ?? 0) : 0));
+        $missing = [];
+        foreach ($entries as $entry) {
+            $id = $courseIdOf($entry);
+            if (($entry['class_type'] ?? '') === 'trial' && $id > 0 && !array_key_exists($id, $this->trialTargetCache)) {
+                $missing[$id] = $id;
+            }
+        }
+        if ($missing !== []) {
+            $found = DB::table('StudentClass')->whereIn('ID', array_values($missing))->pluck('trial_target_class_type', 'ID')->all();
+            foreach ($missing as $id) {
+                $this->trialTargetCache[$id] = isset($found[$id]) ? (string) $found[$id] : null;
+            }
+        }
+
+        return array_map(function (array $entry) use ($courseIdOf) {
+            if (($entry['class_type'] ?? '') === 'trial' && !array_key_exists('trial_target_class_type', $entry)) {
+                $entry['trial_target_class_type'] = $this->trialTargetCache[$courseIdOf($entry)] ?? null;
+            }
+            return $entry;
+        }, $entries);
     }
 
     /**
