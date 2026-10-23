@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
 use App\Services\StaffCapabilityAuthorizer;
 use Illuminate\Http\Request;
@@ -72,11 +73,11 @@ class TeacherBranchController extends Controller
                 if (!$userId || !$campusId) {
                     continue;
                 }
-                $exists = DB::table('UserCampus')
+                $existing = DB::table('UserCampus')
                     ->where('UserID', $userId)
                     ->where('CampusID', $campusId)
-                    ->exists();
-                if ($exists) {
+                    ->first();
+                if ($existing) {
                     $update = ['Admin' => 0];
                     if ($hasApproved) {
                         $update['Approved'] = true;
@@ -85,6 +86,13 @@ class TeacherBranchController extends Controller
                         ->where('UserID', $userId)
                         ->where('CampusID', $campusId)
                         ->update($update);
+                    if ($hasApproved && isset($existing->Approved) && !(bool) $existing->Approved) {
+                        // #4433: this releases a pending request (the caller manages $campusId, checked above).
+                        SecurityAuditEvent::append('staff.campus_link.approved', 'success', [
+                            'actor_type' => 'user', 'actor_id' => $request->attributes->get('auth_user')?->id,
+                            'subject_type' => 'user', 'subject_id' => $userId, 'campus_id' => $campusId,
+                        ], ['method' => (string) $request->attributes->get('auth_role'), 'source' => 'teacher_branches.store', 'row_count' => 1]);
+                    }
                 } else {
                     $insert = [
                         'UserID' => $userId,

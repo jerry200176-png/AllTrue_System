@@ -178,6 +178,18 @@ class LearningRecordController extends Controller
     }
 
     /**
+     * The reviewer recorded on a review action (ApprovedBy, CreatedByUserID, the approval sign-in and ledger actor)
+     * is the server-verified login (Founder 2026-10-22). The client-sent DirectorID is still accepted for older
+     * clients but never read: it let a caller record another user as the approver.
+     */
+    private function reviewerUserId(Request $request): ?int
+    {
+        $id = (int) ($request->attributes->get('auth_user')->id ?? 0);
+
+        return $id > 0 ? $id : null;
+    }
+
+    /**
      * Bug #495 / in-app #125：cascade-void 復原 helper。
      *
      * 條件已在呼叫端經 LearningRecordResurrectionPolicy::isEligibleForResurrect() 確認。
@@ -1311,6 +1323,8 @@ class LearningRecordController extends Controller
             return $timeGateResponse;
         }
 
+        // #3979: protection comes from the assessment text, so an approved record may not be edited down to no content.
+        $wasProtected = LearningRecordMutableOwnership::isFilledAndApproved($learningRecord);
         $learningRecord->Content = $data['Content'] ?? $learningRecord->Content;
         $learningRecord->AttachmentUrl = $data['AttachmentUrl'] ?? null;
         // SessionDate/StartTime/EndTime are derived from ClassSession and are intentionally
@@ -1319,6 +1333,13 @@ class LearningRecordController extends Controller
             if (array_key_exists($key, $data)) {
                 $learningRecord->$key = $data[$key];
             }
+        }
+        // Checked before the mirror sync below, which saves the record when it heals a mirror (Codex r4347282693).
+        if ($wasProtected && !LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
+            return response()->json([
+                'message' => '已核准的評量至少要保留一項內容。若要清空，請先按「退回待審」再修改。沒有變更任何資料。',
+                'code' => 'approved_assessment_content_required',
+            ], 422);
         }
 
         $this->syncRecordWithClassSession($learningRecord);
@@ -1477,15 +1498,16 @@ class LearningRecordController extends Controller
 
     public function approve(Request $request, LearningRecord $learningRecord)
     {
-        $data = $request->validate([
-            'DirectorID' => 'nullable|integer',
+        $request->validate([
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
         ]);
         $campusId = $this->campusIdForLearningRecord($learningRecord);
         if ($refusal = $this->campusRefusal($request, $campusId)) {
             return $refusal;
         }
+        $reviewerId = $this->reviewerUserId($request);
 
-        $response = DB::transaction(function () use ($learningRecord, $data) {
+        $response = DB::transaction(function () use ($learningRecord, $reviewerId) {
             if ($learningRecord->Status === 'approved') {
                 return response()->json(['message' => 'Already approved'], 409);
             }
@@ -1495,7 +1517,7 @@ class LearningRecordController extends Controller
             }
 
             $learningRecord->Status = 'approved';
-            $learningRecord->ApprovedBy = $data['DirectorID'] ?? null;
+            $learningRecord->ApprovedBy = $reviewerId;
             $learningRecord->ApprovedAt = now();
             $learningRecord->ReviewNote = null;
             $learningRecord->save();
@@ -1505,7 +1527,7 @@ class LearningRecordController extends Controller
 
             $sc = StudentClass::find($learningRecord->StudentClassID);
             if ($sc) {
-                ApprovalSessionSyncService::syncOnApprove($learningRecord, $sc, (int) ($data['DirectorID'] ?? 0));
+                ApprovalSessionSyncService::syncOnApprove($learningRecord, $sc, (int) ($reviewerId ?? 0));
             }
 
             app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($learningRecord->fresh());
@@ -1524,14 +1546,15 @@ class LearningRecordController extends Controller
     public function rollbackApproval(Request $request, LearningRecord $learningRecord)
     {
         $data = $request->validate([
-            'DirectorID' => 'nullable|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
             'ReviewNote' => 'nullable|string|max:255',
         ]);
         if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
             return $refusal;
         }
+        $reviewerId = $this->reviewerUserId($request);
 
-        return DB::transaction(function () use ($learningRecord, $data) {
+        return DB::transaction(function () use ($learningRecord, $data, $reviewerId) {
             if ($learningRecord->Status !== 'approved') {
                 return response()->json(['message' => 'Only approved records can be rolled back'], 409);
             }
@@ -1555,7 +1578,7 @@ class LearningRecordController extends Controller
                 ->decrement('TeachingSessionCount');
 
             if ($sc) {
-                ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($data['DirectorID'] ?? 0));
+                ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($reviewerId ?? 0));
             }
 
             return response()->json($learningRecord);
@@ -1571,7 +1594,7 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'ids' => 'required|array|min:1',
             'ids.*' => 'integer|distinct',
-            'DirectorID' => 'required|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
             'branch_id' => 'nullable|integer',
             'teacher_id' => 'nullable|integer',
         ]);
@@ -1642,14 +1665,14 @@ class LearningRecordController extends Controller
                 'approved' => 0,
             ], 422);
         }
-        $directorId = (int) $data['DirectorID'];
+        $reviewerId = $this->reviewerUserId($request);
         $approved = 0;
         $syncCampusIds = !empty($campusIds) ? array_values(array_unique(array_map('intval', $campusIds))) : [];
 
-        $response = DB::transaction(function () use ($records, $directorId, &$approved) {
+        $response = DB::transaction(function () use ($records, $reviewerId, &$approved) {
             foreach ($records as $learningRecord) {
                 $learningRecord->Status = 'approved';
-                $learningRecord->ApprovedBy = $directorId;
+                $learningRecord->ApprovedBy = $reviewerId;
                 $learningRecord->ApprovedAt = now();
                 $learningRecord->ReviewNote = null;
                 $learningRecord->save();
@@ -1658,7 +1681,7 @@ class LearningRecordController extends Controller
 
                 $sc = StudentClass::find($learningRecord->StudentClassID);
                 if ($sc) {
-                    ApprovalSessionSyncService::syncOnApprove($learningRecord, $sc, $directorId);
+                    ApprovalSessionSyncService::syncOnApprove($learningRecord, $sc, (int) ($reviewerId ?? 0));
                 }
 
                 app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($learningRecord->fresh());
@@ -1686,7 +1709,7 @@ class LearningRecordController extends Controller
             'ids' => 'required|array|min:1',
             'ids.*' => 'integer',
             'ReviewNote' => 'nullable|string|max:255',
-            'DirectorID' => 'nullable|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
         ]);
 
         $role = $request->attributes->get('auth_role');
@@ -1696,6 +1719,7 @@ class LearningRecordController extends Controller
         if ($refusal = $this->batchCampusRefusal($request, $data['ids'])) {
             return $refusal;
         }
+        $reviewerId = $this->reviewerUserId($request);
 
         $records = LearningRecord::active()
             ->whereIn('id', $data['ids'])
@@ -1703,11 +1727,11 @@ class LearningRecordController extends Controller
             ->get();
 
         $rejected = 0;
-        DB::transaction(function () use ($records, $data, &$rejected) {
+        DB::transaction(function () use ($records, $data, $reviewerId, &$rejected) {
             foreach ($records as $record) {
                 $record->Status = 'rejected';
                 $record->ReviewNote = $data['ReviewNote'] ?? '';
-                $record->ApprovedBy = $data['DirectorID'] ?? null;
+                $record->ApprovedBy = $reviewerId;
                 $record->ApprovedAt = null;
                 $record->save();
                 $rejected++;
@@ -1723,7 +1747,7 @@ class LearningRecordController extends Controller
             'ids' => 'required|array|min:1',
             'ids.*' => 'integer',
             'ReviewNote' => 'nullable|string|max:255',
-            'DirectorID' => 'nullable|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
         ]);
 
         $role = $request->attributes->get('auth_role');
@@ -1733,6 +1757,7 @@ class LearningRecordController extends Controller
         if ($refusal = $this->batchCampusRefusal($request, $data['ids'])) {
             return $refusal;
         }
+        $reviewerId = $this->reviewerUserId($request);
 
         $records = LearningRecord::active()
             ->whereIn('id', $data['ids'])
@@ -1740,11 +1765,11 @@ class LearningRecordController extends Controller
             ->get();
 
         $changed = 0;
-        DB::transaction(function () use ($records, $data, &$changed) {
+        DB::transaction(function () use ($records, $data, $reviewerId, &$changed) {
             foreach ($records as $record) {
                 $record->Status = 'changes_requested';
                 $record->ReviewNote = $data['ReviewNote'] ?? '';
-                $record->ApprovedBy = $data['DirectorID'] ?? null;
+                $record->ApprovedBy = $reviewerId;
                 $record->ApprovedAt = null;
                 $record->save();
                 $changed++;
@@ -1759,7 +1784,7 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'StudentClassID' => 'required|integer',
             'TeacherID' => 'required|integer',
-            'DirectorID' => 'required|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
             'SessionDate' => 'required|date'
         ]);
         // A missing course keeps its 422 below; an existing course is checked, and fails closed without a student.
@@ -1771,8 +1796,9 @@ class LearningRecordController extends Controller
         if ($data['SessionDate'] > $today) {
             return response()->json(['message' => '補登僅限今天或已過的日期，今天以後的課尚不需補登'], 422);
         }
+        $reviewerId = $this->reviewerUserId($request);
 
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $reviewerId) {
             $studentClass = StudentClass::find($data['StudentClassID']);
             if (!$studentClass) {
                 return response()->json(['message' => '找不到學生課程'], 422);
@@ -1801,7 +1827,7 @@ class LearningRecordController extends Controller
             if ($existing) {
                 if ($existing->Status !== 'approved') {
                     $existing->Status = 'approved';
-                    $existing->ApprovedBy = $data['DirectorID'];
+                    $existing->ApprovedBy = $reviewerId;
                     $existing->ApprovedAt = now();
                     $existing->TeacherID = (int) ($data['TeacherID'] ?? $existing->TeacherID);
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
@@ -1818,14 +1844,14 @@ class LearningRecordController extends Controller
                 'StudentClassID' => $studentClass->ID,
                 'ClassSessionID' => $classSession->id,
                 'TeacherID' => $data['TeacherID'],
-                'CreatedByUserID' => $data['DirectorID'],
+                'CreatedByUserID' => $reviewerId,
                 'Content' => '（系統補登/扣除堂數）',
                 'Subject' => $studentClass->Subject ?? '系統扣堂',
                 'SessionDate' => $this->normalizeDateValue($classSession->SessionDate),
                 'StartTime' => $this->normalizeTimeValue($classSession->StartTime),
                 'EndTime' => $this->normalizeTimeValue($classSession->EndTime),
                 'Status' => 'approved',
-                'ApprovedBy' => $data['DirectorID'],
+                'ApprovedBy' => $reviewerId,
                 'ApprovedAt' => now(),
             ];
             // Some deployments may not have this optional column yet.
@@ -1853,7 +1879,7 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'StudentClassID' => 'required|integer',
             'TeacherID' => 'required|integer',
-            'DirectorID' => 'required|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
             'session_dates' => 'required|array',
             'session_dates.*' => 'required|date',
             'teacher_per_date' => 'nullable|array',
@@ -1890,8 +1916,10 @@ class LearningRecordController extends Controller
         $skippedDates = [];
         $projectionAnchorDate = null;
         $expectedDateSet = $this->buildBackfillExpectedDateSet($studentClass);
+        $reviewerId = $this->reviewerUserId($request);
         return DB::transaction(function () use (
             $data,
+            $reviewerId,
             $studentClass,
             $subjectName,
             $sessionDates,
@@ -1939,7 +1967,7 @@ class LearningRecordController extends Controller
                         continue;
                     }
                     $record->Status = 'approved';
-                    $record->ApprovedBy = $data['DirectorID'];
+                    $record->ApprovedBy = $reviewerId;
                     $record->ApprovedAt = now();
                     if ($teacherId && $record->TeacherID != $teacherId) {
                         $record->TeacherID = $teacherId;
@@ -1954,14 +1982,14 @@ class LearningRecordController extends Controller
                     'StudentClassID' => $studentClass->ID,
                     'ClassSessionID' => $classSession->id,
                     'TeacherID' => $teacherId,
-                    'CreatedByUserID' => $data['DirectorID'],
+                    'CreatedByUserID' => $reviewerId,
                     'Content' => '（系統補登）',
                     'Subject' => $subjectName,
                     'SessionDate' => $this->normalizeDateValue($classSession->SessionDate),
                     'StartTime' => $this->normalizeTimeValue($classSession->StartTime),
                     'EndTime' => $this->normalizeTimeValue($classSession->EndTime),
                     'Status' => 'approved',
-                    'ApprovedBy' => $data['DirectorID'],
+                    'ApprovedBy' => $reviewerId,
                     'ApprovedAt' => now(),
                 ]);
                 $created++;
@@ -2079,7 +2107,7 @@ class LearningRecordController extends Controller
     public function requestChanges(Request $request, LearningRecord $learningRecord)
     {
         $data = $request->validate([
-            'DirectorID' => 'nullable|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
             'ReviewNote' => 'nullable|string|max:255',
         ]);
         if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
@@ -2092,7 +2120,7 @@ class LearningRecordController extends Controller
 
         $learningRecord->Status = 'changes_requested';
         $learningRecord->ReviewNote = $data['ReviewNote'] ?? '';
-        $learningRecord->ApprovedBy = $data['DirectorID'] ?? null;
+        $learningRecord->ApprovedBy = $this->reviewerUserId($request);
         $learningRecord->ApprovedAt = null;
         $learningRecord->save();
 
@@ -2102,7 +2130,7 @@ class LearningRecordController extends Controller
     public function reject(Request $request, LearningRecord $learningRecord)
     {
         $data = $request->validate([
-            'DirectorID' => 'nullable|integer',
+            'DirectorID' => 'nullable|integer', // accepted for older clients, never read (reviewerUserId)
             'ReviewNote' => 'nullable|string|max:255',
         ]);
         if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
@@ -2115,7 +2143,7 @@ class LearningRecordController extends Controller
 
         $learningRecord->Status = 'rejected';
         $learningRecord->ReviewNote = $data['ReviewNote'] ?? '';
-        $learningRecord->ApprovedBy = $data['DirectorID'] ?? null;
+        $learningRecord->ApprovedBy = $this->reviewerUserId($request);
         $learningRecord->ApprovedAt = null;
         $learningRecord->save();
 
