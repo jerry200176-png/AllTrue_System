@@ -196,10 +196,22 @@ class BankReconciliationController extends Controller
             return response()->json(['message' => '此筆已勾稽'], 422);
         }
 
+        // The target course must exist and be at the transaction's campus (a course's campus is its student's
+        // CampusID, the rule suggestMatches() filters on), so it is also within the caller's campuses.
+        /** @var StudentClass|null $course */
+        $course = StudentClass::query()->with('student:id,CampusID')->whereKey((int) $request->input('student_class_id'))->first();
+        if (!$course) {
+            return response()->json(['message' => '找不到此課程', 'code' => 'course_not_found'], 422);
+        }
+        $courseCampusId = (int) $course->student?->CampusID;
+        if ($courseCampusId <= 0 || $courseCampusId !== (int) $txn->campus_id) {
+            return response()->json(['message' => 'Forbidden', 'code' => 'course_campus_mismatch'], 403);
+        }
+
         $user = $request->attributes->get('auth_user');
 
         $txn->update([
-            'matched_payment_id' => (int) $request->input('student_class_id'),
+            'matched_payment_id' => (int) $course->ID,
             'reconciled_at' => now(),
             'reconciled_by' => (int) $user->id,
             'status' => 'reconciled',
