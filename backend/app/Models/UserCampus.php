@@ -16,4 +16,10 @@ class UserCampus extends Model
         'Approved',
         'RFID',
     ];
+
+    /** A link counts as approved unless it is explicitly 0/false: legacy rows carry NULL (StaffCapabilityAuthorizer::legacyCampusIds). */
+    public static function isApproved(mixed $approved): bool
+    {
+        return $approved === null || (bool) $approved;
+    }
 }
