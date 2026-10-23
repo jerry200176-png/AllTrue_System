@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,11 +17,15 @@ from .project_state import write_projection
 from .reconcile import resume_from_checkpoint
 from .schema_migrate import migrate_copy, migrate_live_explicit
 from .states import ACTIVE_MUTATING
-from .store import HarnessStore
+from .store import HarnessStore, HarnessStoreUnavailable
 
 
 def _store(args: argparse.Namespace) -> HarnessStore:
-    return HarnessStore(Path(args.db) if args.db else None)
+    # Only explicit sync bootstraps a store. Inspection/resume must not turn a
+    # missing mounted/host-local authority into a successful empty task list.
+    return HarnessStore(
+        Path(args.db) if args.db else None, create=args.command == "sync",
+    )
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -280,4 +285,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except HarnessStoreUnavailable as exc:
+        print(json.dumps({
+            "ok": False,
+            "reason": "harness_store_unavailable",
+            "db": str(exc.db_path),
+            "next_action": (
+                "Locate the existing authorized task store; verify --db/HARNESS_DB, access and schema. "
+                "Historical schemas need the existing explicit migrate-schema procedure. "
+                "Do not replace missing operational state by syncing YAML. "
+                "Independent cloud work can continue from GitHub branch/PR/CI evidence."
+            ),
+            "continue_independent_work": True,
+        }, indent=2), file=sys.stderr)
+        return 2
