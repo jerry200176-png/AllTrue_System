@@ -40,6 +40,25 @@ class LearningRecordsPerformanceTest extends TestCase
         $this->assertCount(5, $data);
     }
 
+    /** #3059: the list reads teacher-comment presence for the ownership check in one query, not one exists() per record. */
+    public function test_list_does_not_check_teacher_comments_once_per_record(): void
+    {
+        [$token] = $this->createTeacherWithRecords(5);
+        $perRecord = 0;
+        DB::listen(function ($query) use (&$perRecord): void {
+            if (preg_match('/^select exists\s*\(select \* from [`"]?learning_record_teacher_comments/i', $query->sql)) {
+                $perRecord++;
+            }
+        });
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/learning-records?per_page=20')
+            ->assertOk()
+            ->assertJsonCount(5, 'data')
+            ->assertJsonPath('data.0.teacher_comment', null);
+        $this->assertSame(0, $perRecord);
+    }
+
     public function test_filters_records_by_status_correctly(): void
     {
         [$token, $setup] = $this->createTeacherWithRecords(5);
