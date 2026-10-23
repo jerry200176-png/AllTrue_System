@@ -55,8 +55,9 @@ final class PackageLedgerNetRepairStrategy
             throw new RuntimeException('package_ledger_plan_not_ready');
         }
 
-        return DB::transaction(function () use ($requestId): array {
-            $this->lockPackages();
+        $members = $this->memberCourseIds(); // read before the transaction: its first statement must be a lock (REPEATABLE READ)
+        return DB::transaction(function () use ($requestId, $members): array {
+            $this->lockPackages($members);
             $live = $this->inspect(true);
             $errors = array_merge(...array_values($this->rowErrors($live)));
             if ($errors !== []) {
@@ -119,8 +120,9 @@ final class PackageLedgerNetRepairStrategy
             throw new RuntimeException('package_ledger_rollback_snapshot_invalid');
         }
 
-        return DB::transaction(function () use ($ids): array {
-            $this->lockPackages();
+        $members = $this->memberCourseIds();
+        return DB::transaction(function () use ($ids, $members): array {
+            $this->lockPackages($members);
             $live = $this->inspect(true);
             $skipped = $touched = [];
             foreach ($ids as $key => $id) {
@@ -158,13 +160,21 @@ final class PackageLedgerNetRepairStrategy
      * Serialises with the deduction path, which locks the course (StudentClass) and then its package: lock every member
      * course of the manifest packages, then the packages, in id order, so no attendance write on them runs meanwhile.
      */
-    private function lockPackages(): void
+    /** @param list<int|string> $members read before the transaction; locked by primary key in id order (no gap locks) */
+    private function lockPackages(array $members): void
     {
-        $ids = array_values(array_unique(array_column(PackageLedgerNetRepairManifest::rows(), 'package_id')));
-        // Lock by primary key in id order (a PackageID range lock would follow index order and take gap locks).
-        $members = DB::table('StudentClass')->whereIn('PackageID', $ids)->pluck('ID')->all();
         DB::table('StudentClass')->whereIn('ID', $members)->orderBy('ID')->lockForUpdate()->pluck('ID');
-        DB::table('course_packages')->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->pluck('id');
+        DB::table('course_packages')->whereIn('id', $this->packageIds())->orderBy('id')->lockForUpdate()->pluck('id');
+    }
+
+    private function memberCourseIds(): array
+    {
+        return DB::table('StudentClass')->whereIn('PackageID', $this->packageIds())->pluck('ID')->all();
+    }
+
+    private function packageIds(): array
+    {
+        return array_values(array_unique(array_column(PackageLedgerNetRepairManifest::rows(), 'package_id')));
     }
 
     /** @param array<int, int|string> $packageIds */
