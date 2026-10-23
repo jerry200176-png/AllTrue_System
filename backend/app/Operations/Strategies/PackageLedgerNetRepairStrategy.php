@@ -161,7 +161,9 @@ final class PackageLedgerNetRepairStrategy
     private function lockPackages(): void
     {
         $ids = array_values(array_unique(array_column(PackageLedgerNetRepairManifest::rows(), 'package_id')));
-        DB::table('StudentClass')->whereIn('PackageID', $ids)->orderBy('ID')->lockForUpdate()->pluck('ID');
+        // Lock by primary key in id order (a PackageID range lock would follow index order and take gap locks).
+        $members = DB::table('StudentClass')->whereIn('PackageID', $ids)->pluck('ID')->all();
+        DB::table('StudentClass')->whereIn('ID', $members)->orderBy('ID')->lockForUpdate()->pluck('ID');
         DB::table('course_packages')->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->pluck('id');
     }
 

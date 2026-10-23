@@ -15,7 +15,7 @@ recomputed. No course ledger, session, invoice or payment write.
   exactly two rows, `attended` -1 and `attendance` -1. The ClassSession row is not required.
 
 A row that already has a `repair_4455` row is `done` and skipped. Any other mismatch blocks the whole plan (codes carry
-the session id: `a_package_net_`, `a_status_`, `a_course_net_`, `a_scope_`, `a_package_`, `a_session_missing_`,
+the session id: `a_package_net_`, `a_session_net_`, `a_status_`, `a_course_net_`, `a_scope_`, `a_package_`, `a_session_missing_`,
 `a_slot_twice_`, `b_net_`, `b_rows_`, `package_missing_`). Execute locks the 16 package rows and re-runs every check.
 
 Dry-run: a super_admin drafts with `{"decision_reference": "repair-package-ledger-net-4455"}` and dry-runs through the POP
