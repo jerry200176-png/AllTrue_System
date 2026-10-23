@@ -72,6 +72,11 @@ class LeaveSuccessorShiftTest extends TestCase
 
         $applied = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
         $applied->assertJsonPath('applied', true);
+        foreach (array_slice($moves, 1) as $move) { // #4210 P2-1: the provenance Q9 undo reads
+            $this->assertStringContainsString('successor-shift-after-leave:ls=' . $leaveId . ':from=' . $move['from']['date'] . 'T' . $move['from']['start'] . ':end=' . $move['from']['end'],
+                (string) DB::table('ClassSession')->where('id', $move['session_id'])->value('Note'));
+        }
+        $this->assertTrue(DB::table('ClassSession')->where('StudentClassID', $this->old)->where('Note', 'like', '%:ls=' . $leaveId . ':succ=' . $this->renewal . ':n=4%')->exists());
 
         $this->assertSame('leave', DB::table('ClassSession')->where('id', $leaveId)->value('Status'));
         $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
@@ -182,8 +187,10 @@ class LeaveSuccessorShiftTest extends TestCase
         $leaveId = $this->sessions['2026-11-17'];
         $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
         $before = $this->fingerprint();
-        // The renewal rows move first; the tail write then fails.
+        $beforeArtifacts = $this->undoSnapshot();
+        // The renewal rows move first; the tail write then fails. The planner's own student guard stays real.
         $this->mock(ClassSessionMaterializationService::class, function ($mock) {
+            $mock->makePartial();
             $mock->shouldReceive('assertStudentSlotAvailableForSession')->andReturnNull();
             $mock->shouldReceive('upsertSlot')->andThrow(new \RuntimeException('simulated failure'));
         });
@@ -196,6 +203,7 @@ class LeaveSuccessorShiftTest extends TestCase
         }
 
         $this->assertSame($before, $this->fingerprint());
+        $this->assertSame($beforeArtifacts, $this->undoSnapshot(), 'the leave marker rolls back too');
         $this->assertSame(0, DB::table('StudentSingIn')->count());
     }
 
@@ -331,6 +339,7 @@ class LeaveSuccessorShiftTest extends TestCase
                 $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id');
                 DB::table('schedule_audit_logs')->whereIn('session_id', $sessionIds)->delete();
                 DB::table('StudentSingIn')->whereIn('StudentClassID', $courseIds)->delete();
+                DB::table('schedules')->whereIn('student_course_id', $courseIds)->delete(); // the committed leave marker
                 DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
                 DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
                 DB::table('auth_tokens')->where('user_id', $userId)->delete();
@@ -612,6 +621,306 @@ class LeaveSuccessorShiftTest extends TestCase
     }
 
     public static function lateTeacherOccupancySources(): array { return [['session'], ['schedule']]; }
+
+    /** #4152: after the shift, no two of the student's lessons share a slot across the old contract and its renewal. */
+    public function test_applied_shift_never_double_books_the_student_across_contracts(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+        $slots = DB::table('ClassSession')->whereIn('StudentClassID', [$this->old, $this->renewal])->where('Status', 'scheduled')->get()
+            ->map(fn ($s) => substr((string) $s->SessionDate, 0, 10) . ' ' . $s->StartTime . '-' . $s->EndTime)->all();
+        $this->assertCount(8, $slots);
+        $this->assertCount(8, array_unique($slots), 'the old tail and the renewal lessons never share a slot');
+    }
+
+    /** #4152: the last renewal lesson must not run into a following renewal contract either; that blocks the whole shift. */
+    public function test_a_following_renewal_contract_blocks_instead_of_being_double_booked(): void
+    {
+        $this->lesson($this->course(self::STUDENT, '2026-12-29', '2027-01-19'), '2026-12-29');
+        $this->assertBlockedWithoutWrites('student', $this->sessions['2026-12-22']);
+    }
+
+    /** #4210 review: the plan's own destinations are compared with each other, not only with existing lessons. @dataProvider sameDayRenewalTails */
+    public function test_planned_destinations_cannot_overlap_each_other(string $leaveEnd, bool $overlaps): void
+    {
+        // The renewal opens with two back-to-back lessons on 12-01: the tail takes 19:00, the first renewal lesson moves to 20:00.
+        DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['EndTime' => '20:00:00']);
+        DB::table('ClassSession')->where('id', $this->lesson($this->renewal, '2026-12-01'))->update(['StartTime' => '20:00:00', 'EndTime' => '21:00:00']);
+        $leaveId = $this->sessions['2026-11-17'];
+        DB::table('ClassSession')->where('id', $leaveId)->update(['EndTime' => $leaveEnd]);
+        $before = $this->undoSnapshot();
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', !$overlaps);
+        $this->assertSame(['date' => '2026-12-01', 'start' => '20:00:00', 'end' => '21:00:00'], $preview->json('moves.1.to'));
+        $this->assertSame($before, $this->undoSnapshot(), 'preview must not write');
+        $apply = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')]);
+        if ($overlaps) {
+            $this->assertSame(['student'], array_values(array_unique(array_column($preview->json('blockers'), 'type'))));
+            $apply->assertStatus(422);
+            $this->assertSame($before, $this->undoSnapshot());
+        } else {
+            $apply->assertOk()->assertJsonPath('applied', true);
+        }
+    }
+
+    public static function sameDayRenewalTails(): array
+    {
+        return ['two-hour tail overlaps the moved lesson' => ['21:00:00', true], 'one-hour tail ends as it starts' => ['20:00:00', false]];
+    }
+
+    /** The canonical student guard skips a course's own rows, so the old contract's staying lessons are compared here too. */
+    public function test_tail_cannot_overlap_a_staying_lesson_of_the_old_contract(): void
+    {
+        DB::table('StudentClass')->where('ID', $this->old)->update(['SessionCount' => 5, 'RemainingSessions' => 5]);
+        DB::table('ClassSession')->where('id', $this->sessions['2026-12-01'])->update(['EndTime' => '20:00:00']);
+        DB::table('ClassSession')->where('id', $this->lesson($this->old, '2026-12-01'))->update(['StartTime' => '20:00:00']);
+        $preview = $this->shift('preview', ['class_session_id' => $this->sessions['2026-11-17']])->assertOk()->assertJsonPath('eligible', false);
+        $this->assertSame([['student', $this->old, null]], array_map(fn ($b) => [$b['type'], $b['course_id'], $b['session_id']], $preview->json('blockers')));
+    }
+
+    /** #4210 review: apply's current locking read judges the renewal by preview's own rule, count mode included. */
+    public function test_apply_refuses_a_renewal_switched_to_date_mode_after_its_snapshot(): void
+    {
+        $original = DB::getDefaultConnection();
+        $this->assertSame('mysql', DB::connection()->getDriverName());
+        $this->assertSame(1, DB::transactionLevel());
+        $userId = AuthToken::query()->where('token', $this->token)->value('user_id');
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
+        DB::commit();
+        config(['database.connections.shift_mode_current' => config('database.connections.' . $original)]);
+        $apply = DB::connection('shift_mode_current');
+        try {
+            $apply->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $apply->beginTransaction();
+            $mode = fn () => $apply->table('StudentClass')->where('ID', $this->renewal)->value('ScheduleMode');
+            $this->assertSame('count', $mode());
+            DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => 'date']); // committed independently
+            $this->assertSame('count', $mode(), 'prove that the apply snapshot is stale');
+            $before = $this->undoSnapshot();
+            DB::setDefaultConnection('shift_mode_current');
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
+                ->assertStatus(422)->assertJsonPath('plan.applicable', false);
+            DB::setDefaultConnection($original);
+            $this->assertSame($before, $this->undoSnapshot(), 'a renewal that left count mode is never shifted');
+        } finally {
+            DB::setDefaultConnection($original);
+            while ($apply->transactionLevel() > 0) {
+                $apply->rollBack();
+            }
+            DB::purge('shift_mode_current');
+            DB::transaction(function () use ($userId) {
+                $courseIds = [$this->old, $this->renewal];
+                DB::table('schedule_audit_logs')->whereIn('session_id', DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id'))->delete();
+                DB::table('schedules')->whereIn('student_course_id', $courseIds)->delete();
+                DB::table('StudentSingIn')->whereIn('StudentClassID', $courseIds)->delete();
+                DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
+                DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
+                DB::table('auth_tokens')->where('user_id', $userId)->delete();
+                DB::table('UserCampus')->where('UserID', $userId)->delete();
+                DB::table('User')->where('id', $userId)->delete();
+                DB::table('Student')->where('id', self::STUDENT)->delete();
+            });
+            DB::beginTransaction(); // Keep RefreshDatabase's teardown transaction balanced.
+        }
+    }
+
+    /** Legacy blank modes are count mode in preview and apply alike. */
+    public function test_a_legacy_blank_mode_renewal_is_still_shifted(): void
+    {
+        DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => '']);
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true)->json('preview_token');
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+        $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
+    }
+
+    /** #4210 P2-3 / P3-3: evidence on the leave lesson, or a settled old contract, refuses and names the old course. @dataProvider leaveLessonEvidence */
+    public function test_leave_lesson_evidence_refuses_without_writes(string $kind, bool $afterPreview): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        if (!$afterPreview) {
+            $this->seedLeaveEvidence($leaveId, $kind);
+        }
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', $afterPreview);
+        if ($afterPreview) {
+            $this->seedLeaveEvidence($leaveId, $kind); // apply must re-check, not trust the preview
+        } else {
+            $preview->assertJsonPath('blockers.0.course_id', $this->old)->assertJsonPath('blockers.0.session_id', $leaveId);
+        }
+        $before = $this->undoSnapshot();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
+            ->assertStatus(422)->assertJsonPath('plan.blockers.0.course_id', $this->old)->assertJsonPath('plan.blockers.0.session_id', $leaveId);
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function leaveLessonEvidence(): array
+    {
+        // A voided sign-in also refuses: the closed leave sign-in needs the lesson's ClassSessionID, unique in migrated schemas.
+        return ['live attendance' => ['live', false], 'voided attendance history' => ['voided', false], 'deduction' => ['ledger', false],
+            'settled old contract' => ['settled', false], 'attendance after preview' => ['live', true], 'deduction after preview' => ['ledger', true]];
+    }
+
+    /** #4210 P2-3: the shift writes the same calendar leave marker as an ordinary leave, once. */
+    public function test_apply_writes_the_ordinary_leave_marker_once(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk()->assertJsonPath('already_applied', true);
+        $markers = DB::table('schedules')->where('student_course_id', $this->old)->where('status', 'leave')->get();
+        $this->assertCount(1, $markers);
+        $this->assertSame(['2026-11-17', '19:00', '21:00', 1, self::TEACHER], [substr((string) $markers[0]->schedule_date, 0, 10),
+            substr((string) $markers[0]->start_time, 0, 5), substr((string) $markers[0]->end_time, 0, 5), (int) $markers[0]->branch_id, (int) $markers[0]->teacher_id]);
+    }
+
+    /** #4210 P3-1: apply locks like leaveBySession, the selected ClassSession before its StudentClass. */
+    public function test_apply_locks_the_selected_lesson_before_its_course(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+            $locks = array_values(array_filter(DB::getQueryLog(), fn ($q) => str_ends_with(strtolower(trim($q['query'])), 'for update')));
+            $this->assertNotEmpty($locks);
+            $this->assertStringContainsString('from `ClassSession`', $locks[0]['query']);
+            $this->assertContains($leaveId, $locks[0]['bindings']);
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+    }
+
+    /** #4210 r4296589495: an EndDate edited after preview is never overwritten by that preview's apply. @dataProvider editedBoundaries */
+    public function test_an_end_date_edited_after_preview_needs_a_fresh_preview(string $which, string $endDate): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        DB::table('StudentClass')->where('ID', $which === 'old' ? $this->old : $this->renewal)->update(['EndDate' => $endDate]);
+        $before = $this->undoSnapshot();
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertStatus(409);
+        $this->assertSame($before, $this->undoSnapshot());
+        $fresh = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('current_end_dates.' . $which, $endDate);
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $fresh->json('preview_token')])->assertOk();
+    }
+
+    public static function editedBoundaries(): array
+    {
+        return ['old contract' => ['old', '2026-11-25'], 'renewal' => ['successor', '2026-12-23']];
+    }
+
+    /** #4210 P3-4: the tail keeps the leave lesson's exact length; there is no 30-minute floor (G-011). */
+    public function test_old_tail_keeps_the_exact_leave_length(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        DB::table('ClassSession')->where('id', $leaveId)->update(['EndTime' => '19:20:00']);
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', true);
+        $this->assertSame(['date' => '2026-12-01', 'start' => '19:00:00', 'end' => '19:20:00'], $preview->json('moves.0.to'));
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk();
+        $this->assertSame('19:20:00', DB::table('ClassSession')->where('StudentClassID', $this->old)->whereDate('SessionDate', '2026-12-01')->value('EndTime'));
+    }
+
+    /** An inverted leave interval, or a tail that would cross midnight, refuses before any write. @dataProvider unsafeTailIntervals */
+    public function test_unsafe_tail_interval_is_refused_without_writes(string $lesson, array $times, string $message): void
+    {
+        DB::table('ClassSession')->where('id', $this->sessions[$lesson])->update($times);
+        $before = $this->undoSnapshot();
+        foreach (['preview', 'apply'] as $action) {
+            $this->shift($action, ['class_session_id' => $this->sessions['2026-11-17'], 'preview_token' => str_repeat('a', 64)])
+                ->assertStatus(422)->assertJsonPath('message', $message);
+        }
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function unsafeTailIntervals(): array
+    {
+        return [
+            'tail would cross midnight' => ['2026-12-01', ['StartTime' => '23:00:00', 'EndTime' => '23:30:00'], '跨日補堂需先核對，無法自動順延'],
+            'inverted leave interval' => ['2026-11-17', ['StartTime' => '21:00:00', 'EndTime' => '19:00:00'], '堂次時間無效，無法自動順延'],
+        ];
+    }
+
+    /** #4210 review: a schedule-only booking of the student blocks the destination, as the write-time guard would. */
+    public function test_schedule_only_student_booking_blocks_the_destination(): void
+    {
+        $other = $this->course(self::STUDENT, '2026-12-29', '2026-12-29', ['SubjectID' => 2, 'TeacherID' => 7999]);
+        DB::table('schedules')->insert(['student_id' => self::STUDENT, 'student_course_id' => $other, 'teacher_id' => 7999,
+            'branch_id' => 1, 'day_of_week' => 2, 'schedule_date' => '2026-12-29', 'start_time' => '19:00', 'end_time' => '21:00',
+            'status' => 'scheduled', 'type' => 'normal']);
+        $this->assertBlockedWithoutWrites('student', $this->sessions['2026-12-22']);
+    }
+
+    /**
+     * #4210 r4359415468: a dated row of the moving first renewal lesson (the ExceptionWorkflow makeup shape) is no student
+     * conflict, but the shift refuses to orphan it; a genuine schedule-only booking of another course there still blocks.
+     * @dataProvider firstSlotScheduleRows
+     */
+    public function test_a_schedule_row_on_the_first_renewal_slot(bool $ownProjection): void
+    {
+        $course = $ownProjection ? $this->renewal : $this->course(self::STUDENT, '2026-12-01', '2026-12-01', ['SubjectID' => 2, 'TeacherID' => 7999]);
+        DB::table('schedules')->insert(['student_id' => self::STUDENT, 'student_course_id' => $course, 'teacher_id' => $ownProjection ? self::TEACHER : 7999,
+            'branch_id' => 1, 'day_of_week' => 2, 'schedule_date' => '2026-12-01', 'start_time' => '19:00', 'end_time' => '21:00',
+            'status' => 'scheduled', 'type' => 'extra', 'original_schedule_id' => null]);
+        $leaveId = $this->sessions['2026-11-17'];
+        $before = $this->undoSnapshot();
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', false);
+        $expected = $ownProjection ? ['ineligible', $this->renewal, $this->sessions['2026-12-01']] : ['student', $this->old, null];
+        $this->assertSame([$expected], array_map(fn ($b) => [$b['type'], $b['course_id'], $b['session_id']], $preview->json('blockers')));
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertStatus(422);
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function firstSlotScheduleRows(): array
+    {
+        return ['projection of the moving first lesson' => [true], 'schedule-only booking of another course' => [false]];
+    }
+
+    /** #4210: a teacher blocker never repeats the guard's occupant details, such as another student's name. */
+    public function test_teacher_blocker_does_not_name_the_occupying_student(): void
+    {
+        $this->student(88411);
+        $this->lesson($this->course(88411, '2026-12-29', '2026-12-29'), '2026-12-29');
+        $preview = $this->shift('preview', ['class_session_id' => $this->sessions['2026-11-17']])->assertOk()->assertJsonPath('eligible', false);
+        $this->assertSame('授課老師在此時段已有其他課程，請先核對課表', collect($preview->json('blockers'))->firstWhere('type', 'teacher')['message'] ?? null);
+        $this->assertStringNotContainsString('S88411', $preview->getContent());
+    }
+
+    /** #4210 P2-1: a teacher, or a director of another campus, gets 403 and nothing changes. @dataProvider outsiders */
+    public function test_outsiders_cannot_preview_or_apply(string $kind): void
+    {
+        $userId = (int) AuthToken::query()->where('token', $this->token)->value('user_id');
+        if ($kind === 'teacher') {
+            User::query()->whereKey($userId)->update(['type' => 'T']);
+            UserCampus::query()->where('UserID', $userId)->update(['Admin' => 0]);
+        } else {
+            UserCampus::query()->where('UserID', $userId)->update(['CampusID' => 2]);
+        }
+        $before = $this->undoSnapshot();
+        foreach (['preview', 'apply'] as $action) {
+            $this->shift($action, ['class_session_id' => $this->sessions['2026-11-17'], 'preview_token' => str_repeat('a', 64)])->assertStatus(403);
+        }
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function outsiders(): array
+    {
+        return ['teacher' => ['teacher'], 'director of another campus' => ['other_campus']];
+    }
+
+    private function seedLeaveEvidence(int $sessionId, string $kind): void
+    {
+        match ($kind) {
+            'ledger' => SessionDeductionLedger::create(['student_class_id' => $this->old, 'class_session_id' => $sessionId,
+                'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]),
+            'settled' => DB::table('StudentClass')->where('ID', $this->old)->update(['settlement_locked_at' => now()]),
+            default => DB::table('StudentSingIn')->insert(['StudentClassID' => $this->old, 'ClassSessionID' => $sessionId,
+                'StudentID' => self::STUDENT, 'TeacherID' => self::TEACHER, 'CampusID' => 1, 'PersonType' => 'student',
+                'Status' => 'present', 'SessionDeducted' => false, 'SignInDT' => '2026-11-17 19:00:00', 'SignOutDT' => '2026-11-17 21:00:00',
+                'MDT' => now(), 'VoidedAt' => $kind === 'voided' ? '2026-10-31 18:00:00' : null, 'VoidReason' => $kind === 'voided' ? 'historical correction' : null]),
+        };
+    }
 
     private function undoSnapshot(): string
     {
