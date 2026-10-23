@@ -89,6 +89,22 @@ class StaffCapabilityAuthorizer
         $map = $this->capabilityCampusMap($user);
         return in_array($campusId, $map[$capability] ?? [], true);
     }
+
+    /**
+     * Founder policy 3 (2026-10-22): an unrevoked director grant makes the account a director for account management,
+     * whatever User.type says (a merged staff identity stays type T). Checked whether or not STAFF_MULTI_ROLE_V1 is on, so
+     * turning the flag on later cannot leave such an account editable by another director.
+     */
+    public function holdsDirectorGrant(int $userId): bool
+    {
+        return Schema::hasTable('user_capability_grants')
+            && UserCapabilityGrant::query()
+                ->where('user_id', $userId)
+                ->where('capability', self::CAP_DIRECTOR)
+                ->whereNull('revoked_at')
+                ->exists();
+    }
+
     /**
      * @return array<string, list<int>>
      */
