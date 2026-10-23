@@ -31,6 +31,7 @@ use App\Services\SessionProjectionReadService;
 use App\Services\SubstituteService;
 use App\Support\TeacherProfileDirectory;
 use App\Support\AttendanceStatus;
+use App\Support\DeadlockRetry;
 use App\Support\LearningRecordMutableOwnership;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -1129,7 +1130,7 @@ class ClassSessionController extends Controller
                 $this->applyTimeAndNoteUpdates($locked, $data);
 
                 return $locked;
-            });
+            }, DeadlockRetry::ATTEMPTS);
             $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
         }
@@ -1296,7 +1297,7 @@ class ClassSessionController extends Controller
                     }
                 }
                 return $this->sessionUpdateResponse($session, $msg);
-            });
+            }, DeadlockRetry::ATTEMPTS); // a deadlocked deduction re-runs the whole status change (#4470)
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -1393,7 +1394,7 @@ class ClassSessionController extends Controller
                 'message' => '已復原取消前狀態，排課與堂數已重新計算。',
                 'session' => $this->sessionPayload($session),
             ]);
-        }, 3);
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /** @return array{0: ClassSession, 1: StudentClass}|\Symfony\Component\HttpFoundation\Response */
