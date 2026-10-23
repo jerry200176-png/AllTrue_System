@@ -28,6 +28,7 @@ use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
+use App\Services\Scheduling\ClassSessionDeleteGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\OccurrenceAssignmentService;
 use App\Services\SubstituteScheduleService;
@@ -5990,8 +5991,9 @@ class StudentClassController extends Controller
             $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
             $classId = (int) $studentClass->ID;
 
-            // If immutable history exists, do a safe partial sync (times only).
-            if (ContractSessionSchedule::hasImmutableSessionHistory($classId) || ContractSessionSchedule::hasAttendanceMarkedSessions($classId)) {
+            // If immutable history exists (sign-in, approved record, attendance mark or a ledger
+            // debit, #4455), do a safe partial sync (times only).
+            if (ClassSessionDeleteGuard::courseHasProtectedHistory($classId)) {
                 $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
@@ -6138,7 +6140,7 @@ class StudentClassController extends Controller
             // StartDate. That mismatch concerns the start-date rebuild only;
             // letting it bypass this branch left the new contract beside old
             // future times (and made the UI issue a second, non-atomic PUT).
-            if ($scheduleUpdated && (!$startDateMismatch || ContractSessionSchedule::hasImmutableSessionHistory((int) $studentClass->getKey()))) {
+            if ($scheduleUpdated && (!$startDateMismatch || ClassSessionDeleteGuard::courseHasProtectedHistory((int) $studentClass->getKey()))) {
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
@@ -6160,8 +6162,12 @@ class StudentClassController extends Controller
             }
         }
 
-        if (ContractSessionSchedule::hasImmutableSessionHistory((int) $studentClass->ID)) {
-            // 開課日有變更：嘗試安全部分重建（只動未鎖定的未來堂次，保留已點名/已核准）
+        // #4455: a lesson already debited on the course or package ledger, or marked by a person, is
+        // history even without a sign-in or an approved record (calendar attendance and package
+        // creation write the ledger alone). Keep it, as the slot-only edit does: deleting it would
+        // strand its ledger rows and the re-created date would come back undebited.
+        if (ClassSessionDeleteGuard::courseHasProtectedHistory((int) $studentClass->ID)) {
+            // 開課日有變更：嘗試安全部分重建（只動未鎖定的未來堂次，保留已點名/已核准/已扣堂）
             if ($startDateChanged) {
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {

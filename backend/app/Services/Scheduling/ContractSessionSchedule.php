@@ -950,12 +950,15 @@ class ContractSessionSchedule
         return false;
     }
 
+    /** Statuses a person marked; shared with ClassSessionDeleteGuard. */
+    public const ATTENDANCE_MARKED_STATUSES = ['attended', 'late', 'leave', 'excused', 'absent'];
+
     /** Attendance-marked sessions are history: a slot-only edit must never delete-and-rebuild them. */
     public static function hasAttendanceMarkedSessions(int $studentClassId): bool
     {
         return DB::table('ClassSession')
             ->where('StudentClassID', $studentClassId)
-            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'absent'])
+            ->whereIn('Status', self::ATTENDANCE_MARKED_STATUSES)
             ->exists();
     }
 
