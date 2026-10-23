@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuthToken;
 use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
 use App\Models\User;
@@ -245,8 +246,11 @@ class DirectorAccountController extends Controller
                 $user->PasswordSetByUserID = $operator?->id;
             }
             $user->save();
+            // Founder 2026-10-22: the director is signed out on every device; the caller's own session is untouched.
+            $revoked = AuthToken::revokeAllForUser((int) $user->id);
 
             // #1813: admin-initiated password reset must leave a hashed trail; never log the temp password.
+            // Required (2026-10-22): a failed audit insert rolls back the new password and the sign-out.
             SecurityAuditEvent::append(
                 'director.password.reset',
                 'success',
@@ -261,7 +265,9 @@ class DirectorAccountController extends Controller
                     'reason_code' => 'admin_reset',
                     'method' => 'super_admin',
                     'source' => 'directors.reset-password',
-                ]
+                    'revoked_session_count' => $revoked,
+                ],
+                required: true
             );
         });
 

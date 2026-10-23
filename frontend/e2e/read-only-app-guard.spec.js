@@ -78,7 +78,7 @@ test.describe('read-only acceptance guard self-test', () => {
     });
 
     expect(outcome).toBe('failed');
-    expect(blocked).toEqual([{ method: 'PATCH', path: '/api/v1/schedules/9' }]);
+    expect(blocked).toEqual([{ method: 'PATCH', origin: app.base, path: '/api/v1/schedules/9' }]);
     expect(app.received.filter((r) => r.method !== 'GET')).toEqual([]);
     // The acceptance spec's afterEach makes exactly this assertion, so the run fails.
     expect(() => expect(blocked).toEqual([])).toThrow();
@@ -115,7 +115,7 @@ test.describe('read-only acceptance guard self-test', () => {
     }
 
     expect(blocked).toEqual(['POST', 'PUT', 'PATCH', 'DELETE'].map((method) => (
-      { method, path: '/api/4500000/envelope/' }
+      { method, origin: third.base, path: '/api/4500000/envelope/' }
     )));
     expect(third.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
     expect(app.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
@@ -135,7 +135,7 @@ test.describe('read-only acceptance guard self-test', () => {
     }, `${third.base}/api/v1/adoption/events`);
 
     expect(outcome).toBe('failed');
-    expect(blocked).toEqual([{ method: 'POST', path: '/api/v1/adoption/events' }]);
+    expect(blocked).toEqual([{ method: 'POST', origin: third.base, path: '/api/v1/adoption/events' }]);
     expect(third.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
   });
 
@@ -161,7 +161,7 @@ test.describe('read-only acceptance guard self-test', () => {
       }, `${third.base}/redirect`);
 
       expect(outcome).toBe('failed');
-      expect(blocked).toEqual([{ method: 'POST', path: '/redirect' }]);
+      expect(blocked).toEqual([{ method: 'POST', origin: third.base, path: '/redirect' }]);
       for (const server of [app, third, middle]) {
         expect(server.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
       }
@@ -199,7 +199,7 @@ test.describe('read-only acceptance guard self-test', () => {
     await popup.waitForLoadState();
     await popup.evaluate(() => fetch('/api/v1/students/1', { method: 'DELETE' }).catch(() => null));
 
-    expect(blocked).toEqual([{ method: 'DELETE', path: '/api/v1/students/1' }]);
+    expect(blocked).toEqual([{ method: 'DELETE', origin: app.base, path: '/api/v1/students/1' }]);
     expect(app.received.filter((r) => r.method === 'DELETE')).toEqual([]);
   });
 

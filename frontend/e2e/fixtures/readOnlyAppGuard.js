@@ -13,6 +13,13 @@
 
 export const READ_ONLY_METHODS = Object.freeze(['GET', 'HEAD', 'OPTIONS']);
 export const ADOPTION_TELEMETRY_PATH = '/api/v1/adoption/events';
+/**
+ * Reads the app sends as POST, with the query in the body; the server writes
+ * nothing (StudentClassController::sessionDates also serves the GET route).
+ * The guard still aborts them like any write. A spec may count such a blocked
+ * read (isKnownPostRead) instead of failing on it.
+ */
+export const KNOWN_POST_READ_PATHS = Object.freeze(['/api/v1/student-classes/session-dates']);
 
 /** Origin of an http(s) base URL, or '' when it is missing or not http(s). */
 export function appOriginOf(baseUrl) {
@@ -58,9 +65,15 @@ export function classifyAppRequest(appOrigin, method, url) {
   return 'block';
 }
 
+/** True when a blocked request { method, origin, path } is a known POST read to the app origin. */
+export function isKnownPostRead(appOrigin, blocked) {
+  return Boolean(appOrigin) && blocked?.method === 'POST' && blocked.origin === appOrigin
+    && KNOWN_POST_READ_PATHS.includes(blocked.path);
+}
+
 /**
  * Install the guard on a browser context (covers popups). Returns the list
- * that collects blocked writes as { method, path }.
+ * that collects blocked writes as { method, origin, path }.
  */
 export async function installReadOnlyAppGuard(context, appOrigin) {
   const blocked = [];
@@ -69,7 +82,8 @@ export async function installReadOnlyAppGuard(context, appOrigin) {
     const method = request.method().toUpperCase();
     const action = classifyAppRequest(appOrigin, method, request.url());
     if (action === 'block') {
-      blocked.push({ method, path: new URL(request.url()).pathname });
+      const url = new URL(request.url());
+      blocked.push({ method, origin: url.origin, path: url.pathname });
       await route.abort('blockedbyclient');
     } else if (action === 'stub-telemetry') {
       await route.fulfill({ status: 204, body: '' });

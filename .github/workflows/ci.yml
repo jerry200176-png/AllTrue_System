@@ -204,6 +204,9 @@ jobs:
               - 'frontend/src/pages/TeacherEligibilityPage.vue'
               - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
               - 'frontend/e2e/teacher-eligibility-playwright.config.js'
+              # 科目設定 (subject-settings-clarity.spec.js runs in the ui-foundation suite)
+              - 'frontend/src/pages/SubjectSettingsPage.vue'
+              - 'frontend/e2e/subject-settings-clarity.spec.js'
               # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
               - 'frontend/e2e/tuition-*-clarity.spec.js'
               - 'frontend/src/{pages/TuitionCollectionPage.vue,components/TuitionDocActions.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
