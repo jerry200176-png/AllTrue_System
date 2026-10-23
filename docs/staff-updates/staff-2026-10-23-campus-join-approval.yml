@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-23-campus-join-approval
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 加入分校由該校主任核准
+    summary: 老師申請加入你的分校時，會出現在「待審核」，由你核准或拒絕。
+    items:
+      - category: improved
+        text: 已在職的老師申請加入你的分校，現在會出現在老師管理的「待審核」，可以直接核准或拒絕。
+      - category: fixed
+        text: 核准老師時只會通過你自己分校的申請，其他分校的申請留給那間分校的主任決定。
+      - category: improved
+        text: 編輯老師時加入你沒有管理的分校，會送出申請，等那間分校的主任核准。
+    source_refs:
+      - "changelog:2026-10-23:campus-join-approval-scope"

@@ -62,6 +62,17 @@ const expectedTests = (branchId, scope = 'all') => {
   return selected.map(([file, line, column, title]) => ({ file, line, column, title, project: 'chromium' }));
 };
 
+// Where a non-passing attempt failed, as `spec.js:line`: the file basename and line number only, never the error text.
+// A flaky first attempt is otherwise invisible in the public log (the report is encrypted), so it cannot be root-caused.
+const failureLocation = (result) => {
+  if (result?.status === 'passed' || result?.status === 'skipped') return null;
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  const location = errors.find((error) => error?.location)?.location ?? result?.error?.location;
+  const file = path.basename(String(location?.file || ''));
+  const line = Number(location?.line);
+  return /^[\w.-]+\.m?[jt]s$/.test(file) && Number.isInteger(line) && line > 0 ? `${file}:${line}` : 'unknown';
+};
+
 const collectTests = (report) => {
   const collected = [];
   const visit = (suite) => {
@@ -75,6 +86,7 @@ const collectTests = (report) => {
           project: test.projectName,
           status: test.status,
           resultStatuses: (test.results || []).map((result) => result.status),
+          failureLocations: (test.results || []).map(failureLocation),
           // The JSON reporter repeats runtime annotations on the test and on each result; keep one of each.
           annotations: [...new Map([...(test.annotations || []), ...(test.results || []).flatMap((result) => result.annotations || [])]
             .map((note) => [`${note?.type}\u0000${note?.description}`, note])).values()],
@@ -118,6 +130,9 @@ export function summarizeReport(report) {
   const lines = [];
   for (const item of collectTests(report)) {
     lines.push(`acceptance-result status=${item.status} results=${item.resultStatuses.join(',') || 'none'} file=${item.file} title=${item.title}`);
+    item.failureLocations.forEach((at, attempt) => {
+      if (at) lines.push(`  failed-attempt=${attempt + 1} status=${item.resultStatuses[attempt]} at=${at}`);
+    });
     for (const note of item.annotations) {
       const description = String(note?.description || '');
       if (note?.type === 'coverage' && COVERAGE_NOTE.test(description)) lines.push(`  coverage ${description}`);
@@ -311,6 +326,42 @@ function selfTest() {
   const skippedClaim = JSON.parse(JSON.stringify(ordinary));
   skippedClaim.suites[0].specs[2].tests[0].annotations[0].description = 'waived=5';
   expectReject('coverage claimed by a skipped test', () => validateReport(skippedClaim, 16, 'payments'));
+  // A flaky attempt is printed as file:line only; the error text (which may hold page text) never is.
+  const flaky = makeReport(16);
+  flaky.suites[0].specs[0].tests[0].status = 'flaky';
+  flaky.suites[0].specs[0].tests[0].results = [
+    { status: 'failed', errors: [{ message: 'expect(locator).toHaveText(expected)\nReceived: 合成學生', location: { file: '/w/frontend/e2e/calendar-course-consistency.spec.js', line: 784, column: 7 } }] },
+    { status: 'passed' },
+  ];
+  flaky.suites[0].specs[1].tests[0].status = 'unexpected';
+  flaky.suites[0].specs[1].tests[0].results = [{ status: 'timedOut', error: { message: 'Test timeout of 90000ms exceeded.' } }];
+  const flakySummary = summarizeReport(flaky).join('\n');
+  if (!flakySummary.includes('  failed-attempt=1 status=failed at=calendar-course-consistency.spec.js:784')
+    || !flakySummary.includes('  failed-attempt=1 status=timedOut at=unknown')
+    || flakySummary.includes('合成學生') || flakySummary.includes('Received') || flakySummary.includes('/w/frontend')) {
+    throw new Error('self-test failure locations are wrong or leak error text');
+  }
+  expectReject('flaky test', () => validateReport(flaky, 16));
+  // Only an ASCII script basename and a positive line pass; anything else is `unknown`, never echoed.
+  const oddLocation = (location) => {
+    const report = makeReport(16);
+    report.suites[0].specs[0].tests[0].status = 'unexpected';
+    report.suites[0].specs[0].tests[0].results = [{ status: 'failed', errors: [{ location }] }];
+    return summarizeReport(report).find((line) => line.startsWith('  failed-attempt='));
+  };
+  for (const location of [
+    { file: '/w/e2e/a b.spec.js', line: 3 }, { file: '/w/e2e/合成.spec.js', line: 3 }, { file: 'https://x/a.js?name=合成學生', line: 3 },
+    { file: 'calendar.spec.js', line: -1 }, { file: 'calendar.spec.js', line: 0 }, { file: 'calendar.spec.js' }, { file: 'notes.txt', line: 3 },
+  ]) {
+    if (oddLocation(location) !== '  failed-attempt=1 status=failed at=unknown') {
+      throw new Error(`self-test printed an unchecked location: ${JSON.stringify(location)}`);
+    }
+  }
+  const notAList = makeReport(16);
+  notAList.suites[0].specs[0].tests[0].results = [{ status: 'failed', errors: 'not a list' }];
+  if (!summarizeReport(notAList).includes('  failed-attempt=1 status=failed at=unknown')) {
+    throw new Error('self-test: a malformed errors field must not break the summary');
+  }
   console.log('acceptance-report-gate self-test: ok');
 }
 

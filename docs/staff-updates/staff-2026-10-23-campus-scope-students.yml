@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-10-23-campus-scope-students
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 只能處理自己分校的學生
+    summary: 收款回報、學習紀錄審核和繳費通知只限你分校的學生；同分校的操作和畫面都不變。
+    items:
+      - category: improved
+        text: 收款回報的登記、確認、退回，學習紀錄的查看與審核，以及複製繳費通知，只限你分校的學生。
+      - category: action_required
+        text: 若出現「沒有權限」，代表這位學生不屬於你的分校或還沒設定分校，請找該分校主任或超級管理員。
+    source_refs:
+      - "changelog:2026-10-22:payment-report-campus-scope"
+      - "changelog:2026-10-22:learning-record-index-campus-scope"
+      - "changelog:2026-10-22:learning-record-review-campus-scope"
+      - "changelog:2026-10-22:line-settings-campus-required"
