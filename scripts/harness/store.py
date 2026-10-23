@@ -22,17 +22,37 @@ def default_db_path() -> Path:
     return Path(env) if env else DEFAULT_DB
 
 
+class HarnessStoreUnavailable(RuntimeError):
+    """An existing task store could not be opened; never replace it with an empty DB."""
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        super().__init__(f"Cannot open existing harness store: {db_path}")
+
+
 class HarnessStore:
     def __init__(
         self,
         db_path: Path | str | None = None,
         *,
         migrate: bool = True,
+        create: bool = True,
     ) -> None:
         self.db_path = Path(db_path) if db_path else default_db_path()
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if create:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # mode=rw atomically requires an existing file, including after a race
+        # with a disconnected/moved store. as_uri escapes literal ?, # and spaces.
+        target = str(self.db_path) if create else self.db_path.resolve().as_uri() + "?mode=rw"
         # isolation_level=None enables explicit BEGIN IMMEDIATE for lease CAS.
-        self._conn = sqlite3.connect(str(self.db_path), timeout=30, isolation_level=None)
+        try:
+            self._conn = sqlite3.connect(
+                target, uri=not create, timeout=30, isolation_level=None,
+            )
+        except sqlite3.OperationalError as exc:
+            if not create:
+                raise HarnessStoreUnavailable(self.db_path) from exc
+            raise
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
