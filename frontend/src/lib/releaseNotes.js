@@ -14,6 +14,7 @@ export const allParentUpdates = parentUpdates;
 /**
  * Elevated campus roles should see whatever we ship to directors/teachers — they do not maintain
  * a separate curated list in `audience` today (super_admin would otherwise see zero notes).
+ * A `super_admin` audience marks a super-admin-only screen: elevated roles see it, directors/teachers do not.
  */
 function roleMatchesNoteAudience(note, role) {
   if (role === 'parent') {
@@ -28,7 +29,7 @@ function roleMatchesNoteAudience(note, role) {
   }
   const elevatedCampusStaff = ['super_admin', 'admin'];
   if (elevatedCampusStaff.includes(role)) {
-    return audiences.some((a) => a === 'director' || a === 'teacher');
+    return audiences.some((a) => a === 'director' || a === 'teacher' || a === 'super_admin');
   }
   return false;
 }
