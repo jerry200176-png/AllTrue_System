@@ -520,7 +520,7 @@ class AuthController extends Controller
                         ->unique(fn ($row) => (int) $row->CampusID)
                         ->keyBy(fn ($row) => (int) $row->CampusID);
                     // Every new campus starts pending, so dropping the last approved one would lock the teacher out.
-                    $approvedNow = $existingLinks->filter(fn ($row) => !$hasApprovedColumn || (int) $row->Approved === 1)->keys()->all();
+                    $approvedNow = $existingLinks->filter(fn ($row) => !$hasApprovedColumn || UserCampus::isApproved($row->Approved))->keys()->all();
                     if ($approvedNow !== [] && array_intersect($approvedNow, $allBranchIds) === []) {
                         return response()->json(['message' => '請至少保留一個已核准的分校：新加入的分校要等該分校主任核准後才會生效。'], 422);
                     }
