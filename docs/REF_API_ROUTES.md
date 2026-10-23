@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 526 api/* routes · generated 2026-10-18
+> Source: `php artisan route:list --json` · 529 api/* routes · generated 2026-10-18
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -43,7 +43,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (27)
+## /api/v1/admin (30)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -56,6 +56,9 @@
 | DELETE | `api/v1/admin/campuses/{id}` | `AdminCampusController@destroy` | role |
 | GET | `api/v1/admin/duplicate-sessions/p2-review` | `AdminDuplicateSessionController@p2Review` | role+campus |
 | PATCH | `api/v1/admin/duplicate-sessions/p2-review/{groupId}` | `AdminDuplicateSessionController@patchP2Review` | role+campus |
+| GET | `api/v1/admin/pop-inapp-agent-clients` | `PopInappApiClientController@index` | role |
+| POST | `api/v1/admin/pop-inapp-agent-clients` | `PopInappApiClientController@store` | role |
+| DELETE | `api/v1/admin/pop-inapp-agent-clients/{id}` | `PopInappApiClientController@destroy` | role |
 | POST | `api/v1/admin/qa/parent-fixture` | `ParentPortalTestFixtureController@ensure` | role |
 | POST | `api/v1/admin/qa/parent-fixture/session` | `ParentPortalTestFixtureController@session` | role |
 | GET | `api/v1/admin/reconcile` | `AdminReconcileController@index` | role |
