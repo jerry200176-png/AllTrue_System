@@ -1,34 +1,11 @@
 // Super-admin management of read-only AI triage tokens (backend: TriageTokenController).
-const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
+import { adminKeyRequest, BAD_RESPONSE_MESSAGE } from './adminKeyApi';
 
-async function request(token, method, path, body) {
-  const res = await fetch(`${API_BASE}/admin/triage-tokens${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  let json = null;
-  try {
-    json = await res.json();
-  } catch {
-    json = null;
-  }
-  if (!res.ok) {
-    const first = json?.errors ? Object.values(json.errors).flat().find(Boolean) : '';
-    throw new Error(first || json?.message || `請求失敗 (${res.status})`);
-  }
-  // A 2xx with an unreadable body must not look like success (#4045 item 6).
-  if (!json || typeof json !== 'object') throw new Error('伺服器回應格式錯誤，請重新整理後再試。');
-  return json;
-}
+const request = (token, method, path, body) => adminKeyRequest('triage-tokens', token, method, path, body);
 
 export async function listTriageTokens(token) {
   const json = await request(token, 'GET', '');
-  if (!Array.isArray(json.data)) throw new Error('伺服器回應格式錯誤，請重新整理後再試。');
+  if (!Array.isArray(json.data)) throw new Error(BAD_RESPONSE_MESSAGE);
   return json;
 }
 
