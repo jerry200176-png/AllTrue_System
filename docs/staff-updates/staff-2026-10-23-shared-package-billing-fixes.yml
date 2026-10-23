@@ -1,0 +1,19 @@
+updates:
+  - id: staff-2026-10-23-shared-package-billing-fixes
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: major
+    title: 共用方案扣堂與收款修正
+    summary: 共用方案重新點名會再扣堂，收款入口不再落在輔導課；以前少扣的堂數會另外處理。
+    items:
+      - category: fixed
+        text: 共用方案的一堂課改回未上課、再改成已上課，現在會再扣一堂；以前少扣的堂數還沒補扣，會另外處理。
+      - category: action_required
+        text: 課程還有待核對的付款回報時，不能標記「免費／贈送」，請先確認或退回那筆回報。
+      - category: fixed
+        text: 學生帳務裡，共用方案有輔導課時，「登記這筆」會放在需要繳費的課程卡上，不會再被拒絕。
+    source_refs:
+      - "changelog:2026-10-23:package-ledger-net-idempotency"
+      - "changelog:2026-10-22:free-gift-refuses-pending-report"
+      - "changelog:2026-10-22:package-lead-skips-tutoring"
