@@ -38,8 +38,10 @@ for (const [wf, names] of Object.entries(jobNames)) {
 
 test('presubmit reads PR number and runs the declaration gate under dispatch', () => {
   const y = read('.github/workflows/presubmit.yml');
-  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 4);
+  // concurrency + declaration body + CHECK 0d + CHECK 4A (labels for release-note-none) + CHECK 4B
+  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 5);
   assert.match(y, /workflow_dispatch' && inputs\.pr_number != ''/);
+  assert.match(y, /PR_LABELS="\$\(gh api "repos\/\$\{REPO\}\/pulls\/\$\{PR_NUMBER\}" --jq '\.labels\[\]\.name'\)"\n\s+fi\n\s+export PR_LABELS\n\s+node scripts\/check-release-notes-coverage\.mjs --base origin\/main --head HEAD/);
 });
 
 test('queue dispatches CI on main once after a merge', () => {
