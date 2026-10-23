@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Support\DeadlockRetry;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -418,7 +419,7 @@ class SessionDeductionService
             );
 
             return true;
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /**
@@ -469,7 +470,7 @@ class SessionDeductionService
             );
 
             return true;
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /** Net ledger events for one session: deduct(+1) − reverse(−1). */
@@ -667,11 +668,14 @@ class SessionDeductionService
                 }
 
                 $deducted = $wrote;
-            });
+            }, DeadlockRetry::ATTEMPTS);
 
             self::recomputeCounters($sc->ID);
             return $deducted;
         } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0 && DeadlockRetry::causedBy($e)) {
+                throw $e; // the server already rolled back the caller's transaction: let it roll back and re-run (#4470)
+            }
             // Callers record attendance even when the debit fails (the swipe paths then raise a staff
             // alert), so this does not rethrow; it must not be silent either: log with context and report.
             \Illuminate\Support\Facades\Log::error('session_deduct_on_attendance_failed', [

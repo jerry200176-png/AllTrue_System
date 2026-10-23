@@ -15,6 +15,7 @@ use App\Services\PackageDeductionService;
 use App\Services\SessionDeductionService;
 use App\Services\SharedPackagePlanningService;
 use App\Models\UserCampus;
+use App\Support\DeadlockRetry;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -470,7 +471,8 @@ class CoursePackageController extends Controller
                         'Status'         => 'attended',
                     ])['session'];
 
-                    PackageDeductionService::deductForSession(
+                    // FR-003: two member subjects sharing a past date and time debit a group package once (#4455).
+                    PackageDeductionService::deductUnderSlotRule(
                         $pkg->id,
                         $sc->ID,
                         $session->id,
@@ -576,7 +578,7 @@ class CoursePackageController extends Controller
                 'members_scheduled' => $membersScheduled,
                 'planning'          => $planning,
             ], 201);
-        });
+        }, DeadlockRetry::ATTEMPTS); // a new package's first debits are the empty-ledger gap-lock case (#4470)
     }
 
     /**
@@ -818,7 +820,7 @@ class CoursePackageController extends Controller
                     'by_user' => $operatorId,
                 ]);
                 return ['package' => $package->fresh(), 'member' => $member, 'idempotent' => false];
-            });
+            }, DeadlockRetry::ATTEMPTS);
         } catch (\Throwable $e) {
             if ($e instanceof \InvalidArgumentException) {
                 return response()->json(['message' => $e->getMessage()], 422);
