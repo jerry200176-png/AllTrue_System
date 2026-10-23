@@ -6,6 +6,7 @@ import {
 } from '../src/lib/courseMoneyState.js';
 import { formatCourseRef } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { KNOWN_POST_READ_PATHS } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * Read-only production acceptance for the #4150 payment-display fixes (#4201, #4204, #4205).
@@ -29,9 +30,8 @@ const REQUESTED_BRANCH_RAW = process.env.SMOKE_BRANCH_ID || '';
 const REQUESTED_BRANCH_ID = /^\d+$/.test(REQUESTED_BRANCH_RAW) ? Number(REQUESTED_BRANCH_RAW) : 0;
 const RELEASE = latestReleaseVersionForRole('director');
 const TELEMETRY_PATH = '/api/v1/adoption/events';
-// Reads the app sends as POST (query in the body; StudentClassController::sessionDates writes nothing). They are
-// still aborted, so no non-GET leaves the browser, but counted as blocked reads rather than write attempts.
-const POST_READ_PATHS = ['/api/v1/student-classes/session-dates'];
+// Reads the app sends as POST to its own origin (KNOWN_POST_READ_PATHS). They are still aborted, so no
+// non-GET leaves the browser, but counted as blocked reads rather than write attempts.
 const PROBE_PATH = '/api/v1/__acceptance_write_probe';
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const UNPAID_LABEL = TUITION_STATUS_CONFIG.unpaid.label;
@@ -217,7 +217,8 @@ async function openReadOnly(page) {
       && new URL(url, window.location.href).origin === window.location.origin
       && new URL(url, window.location.href).pathname === telemetryPath;
     const reject = (method, url) => {
-      if (method === 'POST' && postReadPaths.includes(new URL(String(url || ''), window.location.href).pathname)) {
+      const target = new URL(String(url || ''), window.location.href);
+      if (method === 'POST' && target.origin === window.location.origin && postReadPaths.includes(target.pathname)) {
         window.__blockedPostReads += 1;
         throw new Error('payment acceptance blocked a POST read');
       }
@@ -258,7 +259,7 @@ async function openReadOnly(page) {
       return nativeBeacon ? nativeBeacon(url, data) : false;
     };
     window.print = () => reject('PRINT', '');
-  }, { session: SESSION, branch: BRANCH_ID, release: RELEASE, telemetryPath: TELEMETRY_PATH, postReadPaths: POST_READ_PATHS });
+  }, { session: SESSION, branch: BRANCH_ID, release: RELEASE, telemetryPath: TELEMETRY_PATH, postReadPaths: [...KNOWN_POST_READ_PATHS] });
   // Network layer: nothing but reads leaves the browser. Telemetry is answered locally and never reaches production.
   await page.route('**/*', async (route) => {
     const req = route.request();

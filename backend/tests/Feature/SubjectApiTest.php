@@ -176,6 +176,23 @@ class SubjectApiTest extends TestCase
         $this->assertDatabaseHas('Subject', ['id' => $id]);
     }
 
+    /** Founder policy 5: a shared subject is listed by every campus, so only super_admin can rename it. */
+    public function test_only_super_admin_can_rename_a_shared_subject(): void
+    {
+        $id = DB::table('Subject')->insertGetId([
+            'School_id' => 0, 'Grade_no' => 0, 'Subject_Name' => '共用舊名', 'CampusID' => null,
+        ]);
+        [, $dirTok] = $this->makeDirector(1);
+        [, $saTok] = $this->makeSuperAdmin();
+
+        $this->withHeaders($this->auth($dirTok))->putJson("/api/v1/subjects/{$id}", ['name' => '主任改名'])->assertStatus(403);
+        $this->assertDatabaseHas('Subject', ['id' => $id, 'Subject_Name' => '共用舊名']);
+
+        $this->withHeaders($this->auth($saTok))->putJson("/api/v1/subjects/{$id}", ['name' => '共用新名'])
+            ->assertOk()->assertJsonPath('name', '共用新名');
+        $this->assertDatabaseHas('Subject', ['id' => $id, 'Subject_Name' => '共用新名']);
+    }
+
     public function test_super_admin_can_delete_shared_subject(): void
     {
         [$sa, $tok] = $this->makeSuperAdmin();
@@ -227,6 +244,18 @@ class SubjectApiTest extends TestCase
         $res->assertOk();
         $names = collect($res->json())->pluck('name')->all();
         $this->assertContains('公開科', $names);
+    }
+
+    public function test_a_director_cannot_create_rename_or_delete_another_campus_subject(): void
+    {
+        [$dir, $tok] = $this->makeDirector(1);
+        $id = DB::table('Subject')->insertGetId(['School_id' => 0, 'Grade_no' => 0, 'Subject_Name' => '他校科目', 'CampusID' => 2]);
+
+        $this->withHeaders($this->auth($tok))->putJson("/api/v1/subjects/{$id}", ['name' => '改名'])->assertForbidden();
+        $this->withHeaders($this->auth($tok))->deleteJson("/api/v1/subjects/{$id}")->assertForbidden();
+        $this->assertDatabaseHas('Subject', ['id' => $id, 'Subject_Name' => '他校科目']);
+        $this->withHeaders($this->auth($tok))->postJson('/api/v1/subjects', ['name' => '跨校新科目', 'branch_id' => 2])->assertForbidden();
+        $this->assertDatabaseMissing('Subject', ['Subject_Name' => '跨校新科目']);
     }
 
     public function test_director_can_delete_campus_subject(): void
