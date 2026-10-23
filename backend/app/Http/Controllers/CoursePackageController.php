@@ -190,10 +190,10 @@ class CoursePackageController extends Controller
         }
 
         $members = StudentClass::where('PackageID', $pkg->id)->get();
+        // Net per member (debits minus credits): a reverted and re-attended lesson writes −1, +1, −1 (#4275).
         $perSubjectUsed = PackageSessionLedger::where('package_id', $pkg->id)
-            ->where('delta', -1)
             ->groupBy('student_class_id')
-            ->selectRaw('student_class_id, COUNT(*) as used')
+            ->selectRaw('student_class_id, -SUM(delta) as used')
             ->pluck('used', 'student_class_id');
         $planning = app(SharedPackagePlanningService::class)->summarize($pkg);
 
@@ -205,7 +205,7 @@ class CoursePackageController extends Controller
                 'teacher_name'       => DB::table('User')->where('id', (int) $m->TeacherID)->value('Name') ?? '',
                 'class_type'         => $m->ClassType,
                 'stop'               => (bool) $m->Stop,
-                'subject_used'       => (int) ($perSubjectUsed[$m->ID] ?? 0),
+                'subject_used'       => max(0, (int) ($perSubjectUsed[$m->ID] ?? 0)),
             ];
         });
 
