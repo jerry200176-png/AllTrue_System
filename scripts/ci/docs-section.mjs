@@ -1,6 +1,7 @@
 // Exact source reader, not a router, summary, index or permission gate.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
@@ -65,4 +66,13 @@ export function readSection(root, args) {
 export function writeSection(root, args) {
   // process.exit() in the CLI must not drop the tail of an asynchronous write.
   fs.writeFileSync(process.stdout.fd, readSection(root, args));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  try { writeSection(root, process.argv.slice(2)); }
+  catch (error) {
+    console.error(`docs-section: ${error.message}; fall back to rg + direct source reading`);
+    process.exitCode = 1;
+  }
 }

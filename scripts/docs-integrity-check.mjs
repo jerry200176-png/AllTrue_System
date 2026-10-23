@@ -7,18 +7,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const strictMode = process.argv.includes('--strict');
 
-// Optional source navigation; normal CI validation below is unchanged.
-if (process.argv.includes('--section') || process.argv.includes('--outline')) {
-  try {
-    const { writeSection } = await import('./docs-section.mjs');
-    writeSection(root, process.argv.slice(2));
-  } catch (error) {
-    console.error(`docs-section: ${error.message}; fall back to rg + direct source reading`);
-    process.exit(1);
-  }
-  process.exit(0);
-}
-
 const requiredFiles = [
   'docs/INDEX.md',
   'README.md',

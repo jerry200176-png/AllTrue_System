@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { headings, section, readSection } from '../docs-section.mjs';
+import { headings, section, readSection } from '../ci/docs-section.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 test('whole applicable section includes nested exceptions and references, not a summary', () => {
@@ -26,7 +26,7 @@ test('CLI output through a pipe retains long source sections in full', () => {
     execFileSync('git', ['init', '-q', dir]);
     execFileSync('git', ['add', 'docs/long.md'], { cwd: dir });
     execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], { cwd: dir });
-    const script = `import { writeSection } from ${JSON.stringify(new URL('../docs-section.mjs', import.meta.url).href)}; writeSection(process.argv[1], ['--section', 'docs/long.md', 'Rule']); process.exit(0);`;
+    const script = `import { writeSection } from ${JSON.stringify(new URL('../ci/docs-section.mjs', import.meta.url).href)}; writeSection(process.argv[1], ['--section', 'docs/long.md', 'Rule']); process.exit(0);`;
     const actual = execFileSync('node', ['--input-type=module', '-e', script, dir], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
     assert.equal(actual, readSection(dir, ['--section', 'docs/long.md', 'Rule']));
     assert.ok(Buffer.byteLength(actual) > 65536, 'exercise a source larger than a pipe buffer');

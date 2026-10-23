@@ -29,8 +29,8 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 | 文件／控制面 | 受影響政策、adapter 與執行機制；純導航不用讀完整治理目錄 |
 
 按段工具（可選；不產生索引、不摘要、不截斷）：
-`node scripts/docs-integrity-check.mjs --section docs/INDEX.md 'Start here (task navigation)'`。
-其他節可用 `--outline docs/INDEX.md` 定位；輸出含 path、行範圍、HEAD 與內容 SHA-256。
+`node scripts/ci/docs-section.mjs --section docs/INDEX.md 'Start here (task navigation)'`。
+其他節可用 `node scripts/ci/docs-section.mjs --outline docs/INDEX.md` 定位；輸出含 path、行範圍、HEAD 與內容 SHA-256。
 舊摘要須對照來源版本；來源不符直接重讀。工具／章節失效時以 `rg -n '^#{1,6} ' <file>`
 定位後讀完整適用章節（含子節、例外及引用），不要把缺資料當允許或自行省略規則。
 搜尋含 `.agents/skills`、`.claude/skills`、`.cursor/rules`、`.cursor/skills`、`.github` 與
