@@ -65,8 +65,10 @@ class AuthRegisterMultiBranchesTest extends TestCase
             ->assertJsonFragment(['message' => '跨校分校不存在']);
     }
 
-    public function test_director_register_ignores_multi_branches(): void
+    // Founder policy 2026-10-22: role=director is a pending director application (type U) on one campus.
+    public function test_director_register_is_a_pending_application_that_ignores_multi_branches(): void
     {
+        config(['app.director_registration_token' => null]);
         $a = CampusFactory::new()->create();
         $b = CampusFactory::new()->create();
 
@@ -80,10 +82,12 @@ class AuthRegisterMultiBranchesTest extends TestCase
         ])->assertStatus(201);
 
         $userId = DB::table('User')->where('LoginName', 'dironly@example.com')->value('id');
+        $this->assertSame('U', DB::table('User')->where('id', $userId)->value('type'));
 
         $this->assertDatabaseHas('UserCampus', [
             'UserID' => $userId,
             'CampusID' => $a->id,
+            'Approved' => 0,
         ]);
         $this->assertDatabaseMissing('UserCampus', [
             'UserID' => $userId,
