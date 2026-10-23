@@ -12,7 +12,8 @@ The first implementation covers:
 - `notification.delivery`: learning-feedback and tuition-reminder delivery outcomes per verified binding.
 - `pii.export.students`: director/super_admin student Excel export (`ExportController::students`, #1812) with row/campus scope counts only.
 - `student_class.session_balance_adjust`: director manual `SessionCount` / `RemainingSessions` edits (`StudentClassController::update`, #1811) with old→new counts only.
-- `director.password.reset`: super_admin resetting a director password (`DirectorAccountController::resetPassword`, #1813); hashed actor/subject only — temporary password never stored.
+- `director.password.reset`: super_admin resetting a director password (`DirectorAccountController::resetPassword`, #1813); hashed actor/subject only — temporary password never stored. Since 2026-10-22 the director's sessions are ended in the same transaction, `revoked_session_count` is recorded, and the event is required (fail-closed).
+- `staff.password.admin_changed`: a director or super_admin setting (`admin_password_set`, `PUT /profiles/{id}`) or resetting (`admin_password_reset`, `POST /profiles/{id}/reset-password`) another user's password (Founder 2026-10-22). Every session of the target ends in the same transaction; metadata holds `reason_code`, `method` (caller role), `source` and `revoked_session_count` — never the password, its hash or a token. Required (fail-closed). The AI triage read-only keys (Sanctum `personal_access_tokens`, super_admin only) are not ended by a password change; they are revoked separately in 個人資料 → 安全性.
 - `director.account.approved` / `director.account.rejected`: super_admin director application decisions (`DirectorAccountController`, #1810) with hashed actor/subject and old→new `User.type` codes only.
 
 Each event includes an event type, outcome, correlation UUID, optional campus, hashed actor/subject/binding references, allow-listed metadata, and a `retention_until` timestamp. The default retention window is 180 days and can only be changed through reviewed configuration/migration work.
@@ -21,7 +22,7 @@ Each event includes an event type, outcome, correlation UUID, optional campus, h
 
 - `SecurityAuditEvent::ref()` uses an application-key HMAC; raw identifiers never enter the table.
 - Metadata is allow-listed. Unknown keys, names, phones, LINE IDs, tokens, and message content are discarded.
-- The event writer is best-effort: a missing/unavailable evidence table cannot turn an authentication or notification path into a 500.
+- The event writer is best-effort: a missing/unavailable evidence table cannot turn an authentication or notification path into a 500. Exception: admin password changes (`staff.password.admin_changed`, `director.password.reset`) pass `required: true`, so a failed audit insert rolls back the password change and the sign-out (500), as billing writes do.
 - Query access remains restricted to authorized operational/security roles; no public API exposes this table.
 
 ## Verification and rollout
