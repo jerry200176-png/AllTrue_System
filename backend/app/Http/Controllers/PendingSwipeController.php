@@ -85,8 +85,9 @@ class PendingSwipeController extends Controller
             if (!PendingSwipe::query()->whereKey($pendingSwipe->getKey())->lockForUpdate()->first()) {
                 return response()->json(['message' => 'Swipe already matched'], 409);
             }
-            $studentClass = StudentClass::query()->whereKey((int) $data['StudentClassID'])->lockForUpdate()->firstOrFail();
+            StudentClass::query()->whereKey((int) $data['StudentClassID'])->lockForUpdate()->first();
             $authUser = request()->attributes->get('auth_user');
+            $studentClass = StudentClass::findOrFail($data['StudentClassID']);
             if ((int) $studentClass->StudentID !== (int) $pendingSwipe->StudentID) {
                 return response()->json(['message' => 'Class does not match student'], 422);
             }
