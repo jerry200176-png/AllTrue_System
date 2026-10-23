@@ -48,7 +48,7 @@ AI 不得把未核准草稿寫進 YAML 並宣稱已發布。
 
 ## Schema
 
-必填：`id`、`published_at`、`audiences`（director|teacher）、`importance`（digest|major|action_required）、`title`（≤18）、`summary`（≤45）、`items`（1–3；`category`+`text`≤60）。  
+必填：`id`、`published_at`、`audiences`（director|teacher|super_admin；`super_admin` = 只有超級管理員看得到的畫面，主任與老師的版本更新不會出現）、`importance`（digest|major|action_required）、`title`（≤18）、`summary`（≤45）、`items`（1–3；`category`+`text`≤60）。  
 可選：`effective_at`、`source_refs`。  
 `category`：added|fixed|improved|action_required → UI：你現在可以／我們修好了／操作更順手／需要你注意。
 
