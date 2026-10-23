@@ -1,4 +1,4 @@
-## 🗺️ 第一步（任何任務開始前）：讀 `docs/INDEX.md` — 30 秒確認導航，再動手。省 token 的正確方式：只讀 INDEX 指向的對應章節，不要全讀文件。
+## 🗺️ 第一步（任何任務開始前）：讀 `docs/INDEX.md` 的 Start here 與任務對應節 — 確認導航，再動手。省 token 的正確方式：只讀 INDEX 指向的對應章節，不要全讀文件。
 
 ---
 
@@ -198,7 +198,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 
 ### [DOCS] Technical Writer
 - **CANNOT DO**：不可只改操作手冊而忘記 `docs/AI_REGRESSION_LESSONS.md`
-- **必須更新**：`docs/CHANGELOG.md`（本次異動）+ `AI_REGRESSION_LESSONS.md`（若涉及高風險邏輯）
+- **必須更新**：依 `AGENTS.md` §公司治理記錄原則選發布來源；`AI_REGRESSION_LESSONS.md`（若涉及高風險邏輯）
 - **Exit**：文件清單 + commit 列表 → 功能發布完成
 
 ### [OPS] DevOps Engineer
