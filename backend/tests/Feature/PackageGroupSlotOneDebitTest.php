@@ -92,7 +92,51 @@ class PackageGroupSlotOneDebitTest extends TestCase
         $this->assertSame(-1, $this->slotNet($pkg->id, '16:00'));
         $this->assertSame(-1, $this->slotNet($pkg->id, '18:00'));
         $this->assertSame(8, (int) $pkg->fresh()->remaining_sessions);
-        $this->assertSame(1, SessionDeductionService::sessionLedgerNet($first->ID, $moving->id), 'the course ledger is untouched');
+        $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', $moving->id)->count(),
+            'the course ledger is untouched');
+    }
+
+    public function test_moving_the_carrier_away_keeps_the_old_slot_debited_for_a_member_still_there(): void
+    {
+        [$pkg, $a, $b, $c] = $this->groupPackage(3);
+        [$carrier, $stays, $other] = [$this->makeSession($a->ID, '16:00'), $this->makeSession($b->ID, '16:00'), $this->makeSession($c->ID, '18:00')];
+        foreach ([[$a, $carrier], [$b, $stays], [$c, $other]] as [$course, $lesson]) {
+            SessionDeductionService::deductForSession($course->ID, $lesson->id, 'attendance');
+        }
+        $this->assertSame(-1, $this->sessionNet($pkg->id, $carrier->id), 'precondition: the first member carries 16:00');
+        $this->assertSame(8, (int) $pkg->fresh()->remaining_sessions);
+
+        $this->retime($this->directorToken(), $carrier->id, '18:00', '20:00')->assertOk();
+
+        $this->assertSame(-1, $this->slotNet($pkg->id, '16:00'), 'the member still taught at 16:00 keeps that slot debited');
+        $this->assertSame(-1, $this->sessionNet($pkg->id, $stays->id));
+        $this->assertSame(-1, $this->slotNet($pkg->id, '18:00'));
+        $this->assertSame(8, (int) $pkg->fresh()->remaining_sessions, 'two taught slots, two debits');
+    }
+
+    public function test_a_lesson_seeded_at_creation_and_merged_by_a_retime_is_debited_again_when_moved_back(): void
+    {
+        $subject = fn (int $id, string $start) => ['subject_id' => $id, 'teacher_id' => $this->makeTeacher()->id,
+            'duration_hours' => 2, 'start_time' => $start, 'confirmed_dates' => ['2026-04-16']];
+        $token = $this->directorToken();
+        $pkgId = (int) $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/course-packages/create-multi-subject', [
+                'student_id' => $this->makeStudent()->id, 'branch_id' => 1, 'name' => '建立補登', 'total_sessions' => 10,
+                'rate' => 500, 'class_type' => 'one_on_three', 'subjects' => [$subject(1, '16:00'), $subject(2, '18:00')],
+            ])->assertStatus(201)->json('package_id');
+        $seeded = ClassSession::whereIn('StudentClassID', StudentClass::where('PackageID', $pkgId)->pluck('ID'))
+            ->where('StartTime', 'like', '16:00%')->firstOrFail();
+        $this->assertSame(0, DB::table('session_deduction_ledger')->where('class_session_id', $seeded->id)->count(),
+            'precondition: a creation seed debits the package only');
+
+        $this->retime($token, $seeded->id, '18:00', '20:00')->assertOk();
+        $this->assertSame(-1, $this->slotNet($pkgId, '18:00'));
+        $this->assertSame(9, (int) CoursePackage::findOrFail($pkgId)->remaining_sessions);
+
+        $this->retime($token, $seeded->id, '16:00', '18:00')->assertOk();
+        $this->assertSame(-1, $this->slotNet($pkgId, '16:00'));
+        $this->assertSame(-1, $this->slotNet($pkgId, '18:00'));
+        $this->assertSame(8, (int) CoursePackage::findOrFail($pkgId)->remaining_sessions);
     }
 
     public function test_retiming_a_debited_lesson_into_a_free_slot_moves_its_debit(): void
@@ -115,6 +159,11 @@ class PackageGroupSlotOneDebitTest extends TestCase
             ->patchJson("/api/v1/class-sessions/{$sessionId}", ['status' => 'attended', 'start_time' => $start, 'end_time' => $end]);
     }
 
+    private function sessionNet(int $packageId, int $sessionId): int
+    {
+        return (int) PackageSessionLedger::where('package_id', $packageId)->where('class_session_id', $sessionId)->sum('delta');
+    }
+
     private function slotNet(int $packageId, string $startHm): int
     {
         return (int) DB::table('package_session_ledger as l')->join('ClassSession as c', 'c.id', '=', 'l.class_session_id')
@@ -122,8 +171,8 @@ class PackageGroupSlotOneDebitTest extends TestCase
             ->whereRaw('SUBSTRING(c.StartTime, 1, 5) = ?', [$startHm])->sum('l.delta');
     }
 
-    /** @return array{0: CoursePackage, 1: StudentClass, 2: StudentClass} */
-    private function groupPackage(): array
+    /** @return array<int, CoursePackage|StudentClass> the package, then one member course per student */
+    private function groupPackage(int $members = 2): array
     {
         $owner = $this->makeStudent();
         $pkg = CoursePackage::create([
@@ -141,7 +190,12 @@ class PackageGroupSlotOneDebitTest extends TestCase
             'PackageID' => $pkg->id, 'PackageTotalSessions' => 10, 'PackageName' => $pkg->name,
         ]);
 
-        return [$pkg, $member($owner->id), $member($this->makeStudent()->id)];
+        $courses = [$member($owner->id)];
+        for ($i = 1; $i < $members; $i++) {
+            $courses[] = $member($this->makeStudent()->id);
+        }
+
+        return [$pkg, ...$courses];
     }
 
     private function makeSession(int $studentClassId, string $start): ClassSession

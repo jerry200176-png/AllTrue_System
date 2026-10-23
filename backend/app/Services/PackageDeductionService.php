@@ -248,15 +248,17 @@ class PackageDeductionService
     }
 
     /**
-     * FR-003 after a lesson's start time changed (#4455). Slots come from the lessons' current times, so a debit the
-     * lesson carries has already left its old slot (restoring it) and now counts in the new one. The slot rule is then
-     * applied as if the lesson were reversed at the old time and deducted at the new one: a carried debit that lands in
-     * a slot another lesson already debits is credited back, and a lesson charged on its course without a package debit
-     * (it did not carry its old slot's debit) debits a new slot that has none. Idempotent; 1:1 packages are untouched.
+     * FR-003 after a lesson's start time changed on the same date (#4455). Slots come from the lessons' current times, so a
+     * debit the lesson carries has already left $oldStartHm and counts at its new time. Both slots then get the rule again:
+     * - carried: the old slot keeps its one debit on another member lesson still taught there (attended/late), and the
+     *   carried debit is credited if the new slot is already debited;
+     * - not carried: a taught lesson debits the new slot if that slot has no debit (so moving a lesson back restores it).
+     * Idempotent; 1:1 packages are untouched. Called outside any transaction on the plain time edit, so its reads after the
+     * package lock see every member write committed before it, and later member writes run their own slot rule after it.
      *
-     * @return bool true if a new row was written
+     * @return bool true if a ledger row was written
      */
-    public static function reslotRetimedSession(int $classSessionId, ?int $recordedBy = null): bool
+    public static function reslotRetimedSession(int $classSessionId, string $oldStartHm, ?int $recordedBy = null): bool
     {
         $lesson = DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
             ->where('c.id', $classSessionId)->first(['sc.ID as course_id', 'sc.PackageID as package_id']);
@@ -266,26 +268,45 @@ class PackageDeductionService
         }
         $courseId = (int) $lesson->course_id;
 
-        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $recordedBy) {
+        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $oldStartHm, $recordedBy) {
             self::lockPackage($packageId);
             $slot = self::groupSlot($packageId, $classSessionId);
-            if ($slot === null) {
+            if ($slot === null || $slot[1] === $oldStartHm) {
                 return false;
             }
-            $carried = self::sessionNet($packageId, $classSessionId) < 0;
-            $slotDebited = self::slotNet($packageId, $slot, $classSessionId) < 0;
             $note = '改時段：同一時段只扣一堂（FR-003）';
-            if ($carried && $slotDebited) {
-                $wrote = self::reverseForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
-            } elseif (!$carried && !$slotDebited && SessionDeductionService::sessionLedgerNet($courseId, $classSessionId) > 0) {
+            $wrote = false;
+            if (self::sessionNet($packageId, $classSessionId) < 0) {
+                $oldSlot = [$slot[0], $oldStartHm];
+                $heir = self::slotNet($packageId, $oldSlot) >= 0 ? self::taughtLessons($packageId, $oldSlot)->first() : null;
+                if ($heir !== null) {
+                    $wrote = self::deductForSession($packageId, (int) $heir->StudentClassID, (int) $heir->id, 'retime', $recordedBy, $note);
+                }
+                if (self::slotNet($packageId, $slot, $classSessionId) < 0) {
+                    $wrote = self::reverseForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note) || $wrote;
+                }
+            } elseif (self::slotNet($packageId, $slot, $classSessionId) >= 0
+                && self::taughtLessons($packageId, $slot)->contains('id', $classSessionId)) {
                 $wrote = self::deductForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
-            } else {
-                return false;
             }
-            self::recomputeCounters($packageId);
+            if ($wrote) {
+                self::recomputeCounters($packageId);
+            }
 
             return $wrote;
         });
+    }
+
+    /**
+     * The package's member lessons taught (attended / late) in a slot, oldest first. Read plainly, never locked.
+     *
+     * @param array{0: string, 1: string} $slot
+     */
+    private static function taughtLessons(int $packageId, array $slot): Collection
+    {
+        return DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
+            ->where('sc.PackageID', $packageId)->where('c.SessionDate', $slot[0])->where('c.StartTimeHM', $slot[1])
+            ->whereIn('c.Status', ['attended', 'late'])->orderBy('c.id')->get(['c.id', 'c.StudentClassID']);
     }
 
     /**

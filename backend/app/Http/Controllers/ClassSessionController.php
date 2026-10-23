@@ -1557,7 +1557,7 @@ class ClassSessionController extends Controller
         // FR-003: a debited lesson moved to another start time leaves one debit per group slot (#4455).
         if (isset($newStartHm) && $newStartHm !== $oldStartHm) {
             $authUser = request()->attributes->get('auth_user');
-            PackageDeductionService::reslotRetimedSession((int) $session->id, (int) ($authUser->id ?? 0) ?: null);
+            PackageDeductionService::reslotRetimedSession((int) $session->id, $oldStartHm, (int) ($authUser->id ?? 0) ?: null);
         }
 
         // ClassSession 是權威來源；同步更新對應 schedules exception 列的時間，
