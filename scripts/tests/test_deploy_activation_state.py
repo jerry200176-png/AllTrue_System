@@ -1544,7 +1544,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE" POP_INAPP_STANDING_POLICY ""', self.workflow)
         self.assertIn("STANDING_POLICY_FLAG_CHANGED=0", self.workflow)
         self.assertIn("POP in-app standing policy flag restored during rollback", self.workflow)
-        self.assertIn('[ "$STANDING_POLICY_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn('restore_bool_feature_flag POP_INAPP_STANDING_POLICY= "${STANDING_POLICY_FLAG_CHANGED:-0}"', self.workflow)
         self.assertIn("POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}", self.workflow)
         self.assertIn('"$FLAG_MANAGER" "$FLAG_POP_INAPP"; do', self.workflow)
         self.assertIn("ADR-POP-015: the Founder turns it on only after the dry-run phase", self.workflow)
@@ -1603,6 +1603,226 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 restored = backend.read_text(encoding="utf-8")
                 self.assertEqual([x for x in before.splitlines() if x], [x for x in restored.splitlines() if x], mode)
                 self.assertEqual(mode in {"on", "off"}, "standing policy flag restored during rollback" in result.stdout, mode)
+
+    FLAG_ENVS = ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1", "POP_INAPP_STANDING_POLICY")
+    FAKE_GH = textwrap.dedent("""
+        import json, os, sys
+        state = json.load(open(os.environ["FAKE_STATE"]))
+        path = sys.argv[2] if len(sys.argv) > 2 else ""
+        if "/compare/" in path:
+            print(json.dumps(state["compare"]))
+        elif "/actions/workflows/deploy.yml/runs" in path:
+            hit = "head_sha=" + state["deployed"] in path
+            run = {"id": 7, "conclusion": "success", "head_sha": state["deployed"], "created_at": "t"}
+            print(json.dumps({"workflow_runs": [run] if hit else []}))
+        elif path.endswith("/runs/7/jobs?per_page=100"):
+            print(json.dumps({"jobs": [{"name": "Deploy to Production", "conclusion": "success"}]}))
+        else:
+            sys.exit(f"unexpected gh call {sys.argv[1:]}")
+    """)
+
+    @staticmethod
+    def _step_script(name):
+        """The committed run: block of a deploy.yml step, as GitHub hands it to bash."""
+        run = WORKFLOW.read_text(encoding="utf-8").split(f"      - name: {name}\n", 1)[1].split("        run: |\n", 1)[1]
+        block = []
+        for line in run.splitlines(True):
+            if line.strip() and not line.startswith("          "):
+                break
+            block.append(line)
+        return textwrap.dedent("".join(block))
+
+    def _detect_then_classify(self, files, flags, current):
+        import json
+        deployed = "a" * 40
+        head = deployed if current else "b" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "bin").mkdir()
+            (tmp / "state.json").write_text(json.dumps({"deployed": deployed, "compare": {
+                "status": "identical" if current else "ahead", "files": [{"filename": f} for f in files]}}))
+            (tmp / "manifest.json").write_text(json.dumps({"backend_sha": deployed, "source": "github-actions:deploy.yml"}))
+            (tmp / "bin" / "gh").write_text(f"#!{sys.executable}\n{self.FAKE_GH}")
+            (tmp / "bin" / "curl").write_text('#!/bin/sh\ncat "$FAKE_MANIFEST"\n')
+            for fake in ("gh", "curl"):
+                (tmp / "bin" / fake).chmod(0o755)
+            base = {"PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "FAKE_STATE": str(tmp / "state.json"),
+                    "FAKE_MANIFEST": str(tmp / "manifest.json"), "REPO": "o/r", "GH_TOKEN": "x"}
+            outputs = {}
+            for step, env in (
+                ("Check changed files", {"HEAD_SHA": head, "PHASE": "application-deploy",
+                                         "PRODUCTION_URL": "https://prod.test", **flags}),
+                ("Classify activation policy", {"EVENT_NAME": "workflow_dispatch", "PHASE": "application-deploy",
+                                                "TARGET_SHA": head}),
+            ):
+                if step.startswith("Classify"):
+                    env.update(DEPLOYABLE=outputs["deployable"], RUNTIME_BASE_SHA=outputs["runtime_base_sha"],
+                               RUNTIME_STATE=outputs["runtime_state"])
+                out = tmp / "out"
+                out.write_text("")
+                result = subprocess.run(["bash", "-e", "-c", self._step_script(step)], cwd=ROOT, text=True,
+                                        capture_output=True, env={**base, **env, "GITHUB_OUTPUT": str(out)})
+                self.assertEqual(0, result.returncode, step + result.stdout + result.stderr)
+                outputs.update(line.split("=", 1) for line in out.read_text().splitlines())
+            return outputs
+
+    def test_manual_flag_dispatch_always_reaches_the_deploy_step(self):
+        # A flag on/off reaches .env only in the Deploy step: on a current tip and on a lag with no
+        # application files, a manual dispatch must classify as manual (Founder gate, then Deploy).
+        for label, files, current, idle_mode in (
+            ("current tip", [], True, "no-op"),
+            ("control-plane-only lag", [".github/workflows/ci.yml"], False, "control-plane-verified"),
+            ("docs-only lag", ["docs/x.md"], False, "no-op"),
+        ):
+            idle = self._detect_then_classify(files, {}, current)
+            self.assertEqual(("false", idle_mode), (idle["deployable"], idle["mode"]), label)
+            for flag, mode in [(name, "off") for name in self.FLAG_ENVS] + [("POP_INAPP_STANDING_POLICY", "on")]:
+                got = self._detect_then_classify(files, {flag: mode}, current)
+                self.assertEqual("true", got["deployable"], (label, flag, mode, got))
+                self.assertEqual("manual", got["mode"], (label, flag, mode, got))
+                self.assertEqual("current" if current else "normal-version-lag", got["runtime_state"], label)
+        self.assertEqual("true", self._detect_then_classify(["backend/app/X.php"], {}, False)["deployable"])
+
+    def test_resolve_target_accepts_only_unchanged_on_off_and_reports_requested_flags(self):
+        run = self._step_script("Validate target SHA and CI evidence")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            env = {"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(out), "EVENT_NAME": "workflow_dispatch",
+                   "PHASE": "application-deploy", "TARGET_SHA_INPUT": "not-a-sha", "WORKFLOW_REF": "refs/heads/main",
+                   "FLAG_ADMISSIONS": "unchanged", "FLAG_CALENDAR": "", "FLAG_MANAGER": "off", "FLAG_POP_INAPP": "on"}
+            result = subprocess.run(["bash", "-e", "-c", run], env=env, text=True, capture_output=True)
+            self.assertIn("Activation requires a full 40-character commit SHA", result.stdout)  # got past the flags
+            self.assertIn("flag_changes=course_manager_v1=off, pop_inapp_standing_policy=on\n", out.read_text())
+            self.assertIn("::warning title=Feature-flag change requested::course_manager_v1=off, pop_inapp_standing_policy=on",
+                          result.stdout)
+            out.write_text("")
+            idle = {**env, "FLAG_ADMISSIONS": "", "FLAG_MANAGER": "", "FLAG_POP_INAPP": ""}  # automatic runs
+            result = subprocess.run(["bash", "-e", "-c", run], env=idle, text=True, capture_output=True)
+            self.assertIn("flag_changes=none\n", out.read_text())
+            self.assertNotIn("::warning", result.stdout)
+            for name, var in (("admissions_funnel_v1", "FLAG_ADMISSIONS"), ("course_session_calendar_v1", "FLAG_CALENDAR"),
+                              ("course_manager_v1", "FLAG_MANAGER"), ("pop_inapp_standing_policy", "FLAG_POP_INAPP")):
+                for bad in ("ON", "true", "1", 'on"; touch x; "'):
+                    out.write_text("")
+                    result = subprocess.run(["bash", "-e", "-c", run], env={**env, var: bad}, text=True, capture_output=True)
+                    self.assertEqual(1, result.returncode, bad)
+                    self.assertIn(f"::error::{name} accepts only unchanged, on or off", result.stdout)
+                    self.assertEqual("", out.read_text())
+        self.assertIn("FLAG_CHANGES: ${{ needs.resolve-target.outputs.flag_changes }}", self.workflow)
+        self.assertIn('echo "Requested feature-flag changes: ${FLAG_CHANGES:-none}"', self.workflow)
+
+    def test_renderer_refuses_any_flag_value_other_than_unchanged_on_off(self):
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        modes = set(re.findall(r'^[A-Z_]+_FLAG_MODE="@@DEPLOY_([A-Z0-9_]+)@@"$', script, re.M))
+        self.assertEqual(modes, set(renderer.FLAG_PLACEHOLDERS))
+        for name in renderer.FLAG_PLACEHOLDERS:
+            for good in ("", "unchanged", "on", "off"):
+                self.assertIn(f'_FLAG_MODE="{good}"', renderer.render(script, {f"DEPLOY_{name}": good}))
+            for bad in ("ON", "true", "1", " on", "off\n", 'on"; touch x; "'):
+                with self.assertRaises(ValueError):
+                    renderer.render(script, {f"DEPLOY_{name}": bad})
+        out = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(REMOTE_DEPLOY)], capture_output=True,
+                             env={**os.environ, "DEPLOY_POP_INAPP_STANDING_POLICY": "ON"})
+        self.assertEqual(1, out.returncode)
+        self.assertEqual(b"", out.stdout)
+
+    FLAG_STATE = {
+        "ADMISSIONS_FLAG_CHANGED": "1", "ADMISSIONS_FLAG_WAS_PRESENT": "1", "ADMISSIONS_FLAG_BACKUP": "ADMISSIONS_FUNNEL_V1=x/y&z",
+        "CALENDAR_FLAG_CHANGED": "1", "CALENDAR_FLAG_WAS_PRESENT": "1", "CALENDAR_FLAG_BACKUP": "COURSE_SESSION_CALENDAR_V1=\\1|.*",
+        "MANAGER_FLAG_CHANGED": "1", "MANAGER_FLAG_WAS_PRESENT": "0", "MANAGER_FLAG_BACKUP": "",
+        "STANDING_POLICY_FLAG_CHANGED": "1", "STANDING_POLICY_FLAG_WAS_PRESENT": "1",
+        "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=1",
+    }
+    APPLIED_ENV = ("X=1\nADMISSIONS_FUNNEL_V1=true\nCOURSE_SESSION_CALENDAR_V1=false\nCOURSE_MANAGER_V1=true\n"
+                   "POP_INAPP_STANDING_POLICY=false\n")
+    RESTORED_LINES = ["X=1", "ADMISSIONS_FUNNEL_V1=x/y&z", "COURSE_SESSION_CALENDAR_V1=\\1|.*", "POP_INAPP_STANDING_POLICY=1"]
+
+    def _run_flag_restore(self, tail, git_exit=0, composer_exit=0, extra=""):
+        import shlex
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        functions = ("rollback_deploy() {" + script.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+                     + "abort_deploy() {" + script.split("abort_deploy() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n")
+        harness = textwrap.dedent(r"""
+            set -u
+            PREV_COMMIT=old; TARGET_SHA=new; FRONTEND_CHANGED=0; PDV=/tmp/pdv; MIG_HARD=hard; MIGRATION_RAN=0
+            cd() { :; }; git() { echo GIT_CALLED; return "$GIT_EXIT"; }; composer() { return "$COMPOSER_EXIT"; }
+            write_deployment_manifest() { :; }; php() { :; }
+            grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
+            curl() { printf '{"status":"ok","opcache_cleared":true}'; }
+            python3() { if [ "$2" = /tmp/pdv ]; then return 0; fi; command python3 "$@"; }
+        """) + extra + "".join(f"{k}={shlex.quote(v)}\n" for k, v in self.FLAG_STATE.items())
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / "backend.env"
+            env_file.write_text(self.APPLIED_ENV)
+            result = subprocess.run(
+                ["bash", "-c", harness + functions.replace("/home/admin/backend/.env", str(env_file)) + tail],
+                text=True, capture_output=True,
+                env={"PATH": os.environ["PATH"], "GIT_EXIT": str(git_exit), "COMPOSER_EXIT": str(composer_exit)})
+            return result, [line for line in env_file.read_text().splitlines() if line]
+
+    def test_flag_restore_is_literal_and_runs_on_every_failure_path(self):
+        # Previous lines with / & \1 survive literally, for all four flags, even when the code rollback
+        # stops early (git reset or composer failure) and on the migration hold (exit 13, no rollback).
+        for label, tail, git_exit, composer_exit, rc in (
+            ("rollback succeeds", "rollback_deploy\n", 0, 0, 0),
+            ("git reset fails", "rollback_deploy\n", 1, 0, 1),
+            ("composer fails", "rollback_deploy\n", 0, 1, 1),
+            ("migration hold", "MIGRATION_RAN=1\nabort_deploy x\n", 0, 0, 13),
+        ):
+            result, lines = self._run_flag_restore(tail, git_exit, composer_exit)
+            self.assertEqual(rc, result.returncode, label + result.stdout + result.stderr)
+            self.assertEqual(self.RESTORED_LINES, lines, label)
+            for message in ("admissions flag", "course session calendar flag", "course manager flag",
+                            "POP in-app standing policy flag"):
+                self.assertIn(f"✅ {message} restored during rollback", result.stdout, label)
+            self.assertEqual(label != "migration hold", "GIT_CALLED" in result.stdout, label)
+        # A restore that cannot be verified is loud and fails the rollback, never a silent ✅.
+        result, lines = self._run_flag_restore("rollback_deploy\n", extra="sed() { return 1; }\n")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertNotIn("restored during rollback", result.stdout)
+        for key in self.FLAG_ENVS:
+            self.assertIn(f"❌ {key} restore failed", result.stdout)
+        self.assertIn("Rollback 未完成", result.stdout)
+        result, _ = self._run_flag_restore("MIGRATION_RAN=1\nabort_deploy x\n", extra="sed() { return 1; }\n")
+        self.assertEqual(13, result.returncode)
+        self.assertIn("::error::Feature-flag .env restore failed; fix it by hand.", result.stdout)
+        # The grep -Fx check, not the write's exit code, decides: a silently lost append still fails.
+        result, lines = self._run_flag_restore('restore_feature_flags; echo "rc=$?"\n', extra="printf() { :; }\n")
+        self.assertIn("rc=1", result.stdout)
+        for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "POP_INAPP_STANDING_POLICY"):
+            self.assertIn(f"❌ {key} restore failed", result.stdout)
+        self.assertIn("✅ course manager flag restored during rollback", result.stdout)  # absent: delete verified
+        result, _ = self._run_flag_restore('restore_feature_flags; echo "rc=$?"\n', extra="sed() { :; }\n")  # no-op "success"
+        self.assertIn("rc=1", result.stdout)
+        for key in self.FLAG_ENVS:
+            self.assertIn(f"❌ {key} restore failed", result.stdout)
+
+    def test_pop_standing_policy_effective_config_is_read_back_before_fpm_refresh(self):
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        start = script.index('if [ "$STANDING_POLICY_FLAG_MODE" = "on" ] || [ "$STANDING_POLICY_FLAG_MODE" = "off" ]; then')
+        self.assertLess(script.index("if ! php artisan optimize; then"), start)
+        self.assertLess(start, script.index("for attempt in $(seq 1 16); do"))
+        block = script[start:].split("\nfi\n", 1)[0] + "\nfi\n"
+        harness = ('php() { echo "$*" >> "$TRACE"; printf "noise\\n%s" "$EFFECTIVE"; }\n'
+                   'abort_deploy() { echo "ABORT $1"; exit 1; }\n')
+        for mode, effective, aborts, reads in (
+            ("on", "true", False, True), ("on", "false", True, True), ("on", "", True, True),
+            ("off", "false", False, True), ("off", "true", True, True), ("unchanged", "x", False, False), ("", "x", False, False),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                trace = Path(tmp) / "trace"
+                trace.write_text("")
+                result = subprocess.run(["bash", "-c", harness + block], text=True, capture_output=True,
+                                        env={"PATH": os.environ["PATH"], "TRACE": str(trace), "EFFECTIVE": effective,
+                                             "STANDING_POLICY_FLAG_MODE": mode})
+                self.assertEqual(aborts, "ABORT POP_INAPP_STANDING_POLICY effective config" in result.stdout, (mode, effective))
+                self.assertEqual(int(aborts), result.returncode, (mode, effective))
+                self.assertEqual(reads, 'pop_inapp.standing_policy_enabled' in trace.read_text(), mode)
 
 
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):

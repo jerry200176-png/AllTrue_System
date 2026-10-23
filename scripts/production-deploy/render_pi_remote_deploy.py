@@ -23,12 +23,18 @@ PLACEHOLDERS = (
     "SMOKE_BRANCH_ID",
 )
 PATTERN = re.compile(r"@@DEPLOY_([A-Z0-9_]+)@@")
+# Feature-flag modes are pasted into the script's *_FLAG_MODE="..." lines: only these values may be.
+FLAG_PLACEHOLDERS = ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1", "POP_INAPP_STANDING_POLICY")
+FLAG_VALUES = ("", "unchanged", "on", "off")
 
 
 def render(template, environ):
     unknown = sorted({name for name in PATTERN.findall(template) if name not in PLACEHOLDERS})
     if unknown:
         raise ValueError(f"unknown placeholder(s): {', '.join(unknown)}")
+    invalid = [name for name in FLAG_PLACEHOLDERS if environ.get(f"DEPLOY_{name}", "") not in FLAG_VALUES]
+    if invalid:
+        raise ValueError(f"feature-flag value not unchanged/on/off: {', '.join(invalid)}")
     return PATTERN.sub(lambda m: environ.get(f"DEPLOY_{m.group(1)}", ""), template)
 
 
