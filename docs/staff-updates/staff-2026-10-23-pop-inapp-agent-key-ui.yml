@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-23-pop-inapp-agent-key-ui
+    published_at: "2026-10-23"
+    audiences:
+      - super_admin
+    importance: digest
+    title: AI 回報處理金鑰設定
+    summary: 超級管理員可以在個人資料的安全性分頁，建立、查看和撤銷 AI 回報處理申請金鑰。
+    items:
+      - category: added
+        text: 建立時要勾選金鑰可以處理的分校，也可以一次全選；金鑰只顯示一次，可以直接複製。
+      - category: added
+        text: 列表會列出每把金鑰的分校、到期日和狀態；撤銷時會一起取消它送出但還沒執行的申請。
+    source_refs:
+      - "changelog:2026-10-23:pop-inapp-agent-key-ui"
