@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-23-combined-bill-courses
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 合併帳單在每門課都看得到
+    summary: 一張帳單含多門課時，從其中任一門課打開帳務，都會顯示這張帳單。
+    items:
+      - category: fixed
+        text: 合併開立的帳單不再被標成「其他課程」，也不會誤顯示這門課沒有帳單；金額不變。
+    source_refs:
+      - "changelog:2026-10-22:ledger-combined-bill-courses"
