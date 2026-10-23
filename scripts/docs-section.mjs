@@ -61,3 +61,8 @@ export function readSection(root, args) {
   const s = section(source, title);
   return `${notice}${provenance} lines=${s.start}-${s.end}\n${s.text}\n`;
 }
+
+export function writeSection(root, args) {
+  // process.exit() in the CLI must not drop the tail of an asynchronous write.
+  fs.writeFileSync(process.stdout.fd, readSection(root, args));
+}

@@ -10,8 +10,8 @@ const strictMode = process.argv.includes('--strict');
 // Optional source navigation; normal CI validation below is unchanged.
 if (process.argv.includes('--section') || process.argv.includes('--outline')) {
   try {
-    const { readSection } = await import('./docs-section.mjs');
-    process.stdout.write(readSection(root, process.argv.slice(2)));
+    const { writeSection } = await import('./docs-section.mjs');
+    writeSection(root, process.argv.slice(2));
   } catch (error) {
     console.error(`docs-section: ${error.message}; fall back to rg + direct source reading`);
     process.exit(1);

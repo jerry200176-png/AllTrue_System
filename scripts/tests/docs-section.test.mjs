@@ -18,6 +18,20 @@ test('code fences cannot terminate a required section', () => {
   assert.deepEqual(headings(source).map(h => h.title), ['Rule', 'Exception', 'Next']);
   assert.match(section(source, 'Rule').text, /still required/);
 });
+test('CLI output through a pipe retains long source sections in full', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-docs-long-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'docs'));
+    fs.writeFileSync(path.join(dir, 'docs/long.md'), '# Rule\n' + 'retained\n'.repeat(20000));
+    execFileSync('git', ['init', '-q', dir]);
+    execFileSync('git', ['add', 'docs/long.md'], { cwd: dir });
+    execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], { cwd: dir });
+    const script = `import { writeSection } from ${JSON.stringify(new URL('../docs-section.mjs', import.meta.url).href)}; writeSection(process.argv[1], ['--section', 'docs/long.md', 'Rule']); process.exit(0);`;
+    const actual = execFileSync('node', ['--input-type=module', '-e', script, dir], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+    assert.equal(actual, readSection(dir, ['--section', 'docs/long.md', 'Rule']));
+    assert.ok(Buffer.byteLength(actual) > 65536, 'exercise a source larger than a pipe buffer');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 test('current source wins over a stale reference; provenance is explicit', () => {
   const output = readSection(root, ['--section', 'docs/INDEX.md', '前端開發', 'old-hash']);
   assert.match(output, /^STALE source reference:/);
