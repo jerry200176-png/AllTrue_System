@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -85,6 +89,98 @@ class HarnessH1Test(unittest.TestCase):
             goal="g", canonical_status_source="docs/x.md", blockers=["x"],
         ))
         self.assertEqual(self.store.list_tasks("empty"), [])
+
+
+class HarnessStoreOpenTest(unittest.TestCase):
+    def run_cli(self, db: Path, *args: str, use_env: bool = False):
+        env = {**os.environ, "HARNESS_DB": str(db)}
+        command = [sys.executable, "-m", "scripts.harness"]
+        if not use_env:
+            command += ["--db", str(db)]
+        return subprocess.run(
+            command + list(args), cwd=ROOT, env=env,
+            capture_output=True, text=True, timeout=20,
+        )
+
+    def test_missing_store_is_not_an_empty_success_or_projection(self):
+        commands = [
+            ("status",), ("status", "--sync"), ("resume",),
+            ("resume", "--sync"), ("resume", "--checkpoint", "old-summary"),
+            ("plan",), ("plan", "--sync"), ("graph",), ("founder-inbox",),
+            ("dispatch", "--apply", "--spawn-exec"), ("project-state",),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            for n, args in enumerate(commands):
+                with self.subTest(command=args):
+                    db = Path(td) / str(n) / "missing.sqlite"
+                    out = Path(td) / str(n) / "CURRENT_STATE.json"
+                    if args[0] == "project-state":
+                        args += ("--out", str(out))
+                    proc = self.run_cli(db, *args, use_env=n % 2 == 0)
+                    self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+                    self.assertEqual(proc.stdout, "")
+                    error = json.loads(proc.stderr)
+                    self.assertFalse(error["ok"])
+                    self.assertEqual(error["reason"], "harness_store_unavailable")
+                    self.assertEqual(error["db"], str(db))
+                    self.assertTrue(error["continue_independent_work"])
+                    self.assertFalse(db.parent.exists())
+                    self.assertFalse(out.exists())
+
+    def test_restarted_cli_uses_existing_work_and_preserves_partial_block(self):
+        with tempfile.TemporaryDirectory() as td:
+            # Include URI metacharacters: an existing path must remain literal.
+            db = Path(td) / "task state?#.sqlite"
+            store = HarnessStore(db)
+            store.upsert_program(Program(
+                program_id="resume-case", name="Resume", owner="test", repository="fixture",
+                goal="Continue independent work", canonical_status_source="fixture",
+            ))
+            for task_id, state in [("protected", TaskState.FOUNDER_REQUIRED),
+                                   ("independent", TaskState.EXECUTING)]:
+                store.upsert_task(Task(
+                    task_id=task_id, program_id="resume-case", outcome=task_id, status=state,
+                ))
+            store.close()
+            for _ in range(2):
+                proc = self.run_cli(db, "resume")
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                resumed = json.loads(proc.stdout)
+                self.assertEqual([x["task"] for x in resumed["running"]], ["independent"])
+                self.assertEqual([x["task"] for x in resumed["founder_required"]], ["protected"])
+            store = HarnessStore(db)
+            self.assertEqual(len(store.list_tasks()), 2)
+            self.assertEqual(store.get_task("independent").status, TaskState.EXECUTING)
+            self.assertEqual(store.get_task("protected").status, TaskState.FOUNDER_REQUIRED)
+            store.close()
+
+    def test_explicit_sync_can_still_initialize_an_isolated_store(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "fixture" / "state.sqlite"
+            proc = self.run_cli(db, "sync")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertTrue(db.is_file())
+            self.assertTrue(json.loads(proc.stdout)["synced_programs"])
+
+    def test_uninitialized_or_old_store_is_not_silently_replaced_or_migrated(self):
+        with tempfile.TemporaryDirectory() as td:
+            for kind in ("empty", "not-sqlite", "old", "incomplete"):
+                with self.subTest(kind=kind):
+                    db = Path(td) / f"{kind}.sqlite"
+                    db.write_bytes(b"not a database" if kind == "not-sqlite" else b"")
+                    if kind in {"old", "incomplete"}:
+                        conn = sqlite3.connect(db)
+                        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                        conn.execute("INSERT INTO meta VALUES ('schema_version', ?)",
+                                     ("1" if kind == "old" else "4",))
+                        conn.commit()
+                        conn.close()
+                    before = db.read_bytes()
+                    proc = self.run_cli(db, "resume")
+                    self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+                    self.assertEqual(json.loads(proc.stderr)["reason"], "harness_store_unavailable")
+                    self.assertEqual(db.read_bytes(), before)
+                    self.assertFalse(Path(str(db) + "-wal").exists())
 
 
 if __name__ == "__main__":
