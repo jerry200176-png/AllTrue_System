@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\PendingSwipe;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -78,14 +79,18 @@ class PendingSwipeController extends Controller
         }
 
         return DB::transaction(function () use ($pendingSwipe, $data) {
-            // Locking reads first, before any plain read fixes this transaction's REPEATABLE READ snapshot:
-            // the swipe row stops a double submit, and the course row (the lock every ledger writer takes)
-            // serializes two swipes matched to one lesson, so the sign-in and ledger reads below see the
-            // other match once it commits (#4454). Keep these two statements first.
+            // Locking reads first, before any plain read fixes this transaction's REPEATABLE READ snapshot
+            // (#4454): the swipe row stops a double submit; the course row, then its shared package row (the
+            // locks the ledger writers take, in their order) serialize two swipes matched to one lesson or to
+            // one group-package slot, so the sign-in, ledger and slot reads below see the other match once it
+            // commits. Keep these statements first.
             if (!PendingSwipe::query()->whereKey($pendingSwipe->getKey())->lockForUpdate()->first()) {
                 return response()->json(['message' => 'Swipe already matched'], 409);
             }
-            StudentClass::query()->whereKey((int) $data['StudentClassID'])->lockForUpdate()->first();
+            $packageId = (int) StudentClass::query()->whereKey((int) $data['StudentClassID'])->lockForUpdate()->value('PackageID');
+            if ($packageId > 0) {
+                CoursePackage::query()->whereKey($packageId)->lockForUpdate()->first();
+            }
             $authUser = request()->attributes->get('auth_user');
             $studentClass = StudentClass::findOrFail($data['StudentClassID']);
             if ((int) $studentClass->StudentID !== (int) $pendingSwipe->StudentID) {

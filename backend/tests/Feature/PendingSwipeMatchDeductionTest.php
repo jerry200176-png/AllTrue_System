@@ -70,11 +70,12 @@ class PendingSwipeMatchDeductionTest extends TestCase
     }
 
     /**
-     * Two different swipes matched to one lesson at once: under REPEATABLE READ each transaction must take the
-     * swipe and course locks before its first plain read, or both pass the sign-in check on a stale snapshot
-     * and the non-unique course ledger gets two debits. One connection cannot race, so lock the order.
+     * Two swipes matched at once to one lesson, or to two members of one group-package slot: under REPEATABLE
+     * READ each transaction must take the swipe, course and package locks before its first plain read, or both
+     * pass the sign-in / slot checks on a stale snapshot and debit twice. One connection cannot race, so pin
+     * the order instead.
      */
-    public function test_match_takes_the_swipe_and_course_locks_before_any_plain_read(): void
+    public function test_match_takes_the_swipe_course_and_package_locks_before_any_plain_read(): void
     {
         [, $course, $lesson] = $this->packageLesson('scheduled');
         $swipe = $this->pendingSwipe($course);
@@ -96,6 +97,22 @@ class PendingSwipeMatchDeductionTest extends TestCase
         $this->assertNotNull($swipeLock, 'the match locks its pending swipe');
         $this->assertStringContainsString('from `studentclass`', $sql[$swipeLock + 1] ?? '');
         $this->assertStringContainsString('for update', $sql[$swipeLock + 1] ?? '', 'the course lock is the next statement');
+        $this->assertStringContainsString('from `course_packages`', $sql[$swipeLock + 2] ?? '');
+        $this->assertStringContainsString('for update', $sql[$swipeLock + 2] ?? '', 'then the shared package lock');
+    }
+
+    public function test_matching_two_members_of_a_group_slot_debits_the_package_once(): void
+    {
+        [$pkg, $first, $firstLesson] = $this->packageLesson('scheduled', 'one_on_two');
+        [, $second, $secondLesson] = $this->packageLesson('scheduled', 'one_on_two', $pkg);
+
+        $this->match($this->pendingSwipe($first), $first, $firstLesson)->assertCreated();
+        $this->match($this->pendingSwipe($second), $second, $secondLesson)->assertCreated();
+
+        $this->assertSame(1, SessionDeductionLedger::where('class_session_id', $firstLesson->id)->count());
+        $this->assertSame(1, SessionDeductionLedger::where('class_session_id', $secondLesson->id)->count());
+        $this->assertSame(-1, PackageSessionLedger::netDelta($pkg->id), 'one group lesson = one pool slot');
+        $this->assertSame(9, (int) $pkg->refresh()->remaining_sessions);
     }
 
     public function test_matching_a_lesson_already_debited_by_calendar_attendance_does_not_debit_again(): void
@@ -140,16 +157,16 @@ class PendingSwipeMatchDeductionTest extends TestCase
     }
 
     /** @return array{0: CoursePackage, 1: StudentClass, 2: ClassSession} */
-    private function packageLesson(string $status): array
+    private function packageLesson(string $status, string $classType = 'one_on_one', ?CoursePackage $pkg = null): array
     {
         $student = Student::create([
             'name' => '刷卡配對學生' . uniqid(), 'CampusID' => 1, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
-        $pkg = CoursePackage::create([
+        $pkg ??= CoursePackage::create([
             'student_id' => $student->id, 'campus_id' => 1, 'name' => '刷卡配對方案',
             'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0,
-            'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'rate' => 500, 'rate_unit' => 'session', 'class_type' => $classType,
             'paid' => false, 'stop' => false, 'enabled' => true,
         ]);
         $course = StudentClass::create([
@@ -158,7 +175,7 @@ class PendingSwipeMatchDeductionTest extends TestCase
             'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 500, 'rate_unit' => 'session',
             'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
             'SessionCount' => 10, 'SessionDuration' => 120, 'RemainingSessions' => 10, 'UsedSessions' => 0,
-            'ClassType' => 'one_on_one', 'week' => 4, 'time' => '16:00:00',
+            'ClassType' => $classType, 'week' => 4, 'time' => '16:00:00',
             'PackageID' => $pkg->id, 'PackageTotalSessions' => 10, 'PackageName' => $pkg->name,
         ]);
         $lesson = ClassSession::create([
