@@ -1074,6 +1074,7 @@ import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
+import { trialTargetPayload } from '../lib/trialTarget.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -2068,6 +2069,7 @@ const loadStudentCourses = async (studentId) => {
           branch_name: c.branch_name,
           room_name: c.room_name,
           room_id: c.room_id,
+          trial_target_class_type: c.trial_target_class_type ?? null,
           settlement_day: c.settlement_day,
           monthly_sessions: c.monthly_sessions,
           memo: c.memo ?? c.Memo,
@@ -2156,6 +2158,7 @@ const loadAllStudentCourses = async () => {
             branch_name: c.branch_name,
             room_name: c.room_name,
             room_id: c.room_id,
+            trial_target_class_type: c.trial_target_class_type ?? null,
             settlement_day: c.settlement_day,
             monthly_sessions: c.monthly_sessions,
             memo: c.memo ?? c.Memo,
@@ -2923,6 +2926,7 @@ const editCourse = (course) => {
     subject: course.subject,
     teacher_id: course.teacher_id || '',
     class_type: course.class_type,
+    trial_target_class_type: course.trial_target_class_type ?? null,
     rate_per_30min: course.rate_per_30min,
     duration_hours: course.duration_hours,
     payment_type: course.payment_type || 'session',
@@ -3204,6 +3208,7 @@ const submitCourse = async () => {
           force_rebuild_if_mismatch: true,
         } : {}),
         room_id: form.room_id || null,
+        ...trialTargetPayload(form),
         settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
@@ -3280,6 +3285,7 @@ const submitCourse = async () => {
     subject: form.subject,
     teacher_id: form.teacher_id || null,
     class_type: form.class_type,
+    ...trialTargetPayload(form),
     rate_per_30min: form.rate_per_30min,
     duration_hours: form.duration_hours,
     payment_type: form.payment_type,
