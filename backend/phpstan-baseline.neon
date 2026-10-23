@@ -421,18 +421,6 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ApiClient\:\:\$Active\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ApiClientController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\ApiClient\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ApiClientController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\ApiClient\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
