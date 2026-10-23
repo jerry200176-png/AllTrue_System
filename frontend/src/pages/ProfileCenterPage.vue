@@ -131,7 +131,7 @@
           <div class="form-group">
             <label for="pf-branch">主分校</label>
             <select id="pf-branch" v-model.number="teachingForm.branch_id">
-              <option v-for="b in branchOptions" :key="'tb-main-'+b.id" :value="b.id">{{ b.name }}</option>
+              <option v-for="b in branchOptions" :key="'tb-main-'+b.id" :value="b.id">{{ b.name }}{{ isPendingBranch(b.id) ? '（待審核）' : '' }}</option>
             </select>
           </div>
 
@@ -149,9 +149,12 @@
                   v-model="teachingForm.multi_branches"
                   :disabled="Number(teachingForm.branch_id) === Number(b.id)"
                 />
-                <span>{{ b.name }}</span>
+                <span>{{ b.name }}{{ isPendingBranch(b.id) ? '（待審核）' : '' }}</span>
               </label>
             </div>
+            <p class="muted" style="margin-top: 0.35rem; line-height: var(--ds-line-base)">
+              新加入的分校要等該分校主任核准後才會生效，核准前會標示「待審核」。
+            </p>
           </div>
 
           <div class="form-group">
@@ -468,6 +471,9 @@ const teachingForm = ref({
   subject_ids: [],
   subject_level_scopes: [],
 });
+// Campuses the teacher added that still wait for that campus's director.
+const pendingBranchIds = ref([]);
+const isPendingBranch = (id) => pendingBranchIds.value.includes(Number(id));
 
 const selectedTeachingSubjects = computed(() =>
   subjects.value.filter((s) => teachingForm.value.subject_ids.includes(s.id))
@@ -586,6 +592,9 @@ async function loadData() {
 function hydrateTeachingConfig(config) {
   const branchId = Number(config?.branch_id);
   const branchIds = Array.isArray(config?.branch_ids) ? config.branch_ids.map((id) => Number(id)) : [];
+  pendingBranchIds.value = Array.isArray(config?.pending_branch_ids)
+    ? config.pending_branch_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+    : [];
   teachingForm.value = {
     branch_id: Number.isFinite(branchId) && branchId > 0 ? branchId : null,
     multi_branches: branchIds.filter((id) => id !== branchId),
@@ -758,7 +767,12 @@ async function submitTeaching() {
     };
     const data = await updateMe(props.token, payload);
     hydrateTeachingConfig(data?.teacher_config || payload);
-    teachingMsg.value = { type: 'success', text: '教學設定已更新。' };
+    teachingMsg.value = {
+      type: 'success',
+      text: pendingBranchIds.value.length
+        ? '教學設定已更新。標示「待審核」的分校，要等該分校主任核准後才會生效。'
+        : '教學設定已更新。',
+    };
   } catch (error) {
     teachingMsg.value = { type: 'error', text: error.message || '教學設定更新失敗。' };
   } finally {
