@@ -61,6 +61,8 @@ class ClassSessionController extends Controller
             'teacher_id' => 'required|integer|exists:User,id',
             'subject' => 'required|string|max:64',
             'class_type' => 'required|in:one_on_one,one_on_two,one_on_three,tutoring,trial',
+            // in-app #426: which regular class type a trial is for (trial only).
+            'trial_target_class_type' => 'nullable|in:' . implode(',', StudentClass::TRIAL_TARGET_CLASS_TYPES) . '|prohibited_unless:class_type,trial',
             'total_classes' => 'nullable|integer|min:1|max:500',
             'confirmed_dates' => 'present|array|max:500',
             'confirmed_dates.*' => 'date',
@@ -2622,6 +2624,7 @@ class ClassSessionController extends Controller
             $conflicts = $guard->validateScheduleOccurrence([
                 'teacher_id' => $newTeacherId,
                 'class_type' => $classType,
+                'trial_target_class_type' => $studentClass->trial_target_class_type,
                 'room_id' => $roomId,
                 'branch_id' => $campusId,
                 'schedule_date' => $sessionDate,

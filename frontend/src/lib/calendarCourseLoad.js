@@ -11,6 +11,7 @@ export function mapCalendarCourse(c) {
     teacher_id: c.teacher_id,
     subject: c.subject,
     class_type: c.class_type,
+    trial_target_class_type: c.trial_target_class_type ?? null,
     rate_per_30min: c.rate_per_30min,
     rate_unit: c.rate_unit || 'session',
     duration_hours: c.duration_hours ?? 2,
