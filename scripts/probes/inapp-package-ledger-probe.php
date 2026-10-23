@@ -88,24 +88,32 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         . ' GROUP BY sc.PackageID ORDER BY sc.PackageID',
         $targets
     );
-    // Repair targets for #4275: a lesson slot (date + start) where a member lesson is still charged on its course ledger
+    // Repair candidates for #4275: a lesson slot (date + start) where a member lesson is still charged on its course ledger
     // (deduct minus reverse > 0) but the package ledger over every session of that slot is not negative. The package
-    // ledger used to skip a lesson reverted and then attended again.
+    // ledger used to skip a lesson reverted and then attended again. Not every row is a gap: `charged_before_package` = 1
+    // marks a lesson last charged before the package was made (a single-to-shared conversion seeds only attended, completed
+    // and late lessons per session; the rest become session-less `conversion_seed_orphan` rows, see `debits_without_session`),
+    // and a status that is not chargeable is a course-ledger question, not a pool gap.
     $result['charged_slots_not_debited'] = $rows(
         'SELECT sc.PackageID AS package_id, cs.SessionDate AS session_date, SUBSTRING(cs.StartTime, 1, 5) AS start_time,'
         . " GROUP_CONCAT(DISTINCT cs.id ORDER BY cs.id SEPARATOR ',') AS charged_session_ids,"
         . " GROUP_CONCAT(DISTINCT cs.Status ORDER BY cs.Status SEPARATOR ',') AS statuses,"
-        . ' (SELECT COALESCE(SUM(l.delta), 0) FROM package_session_ledger l JOIN ClassSession c2 ON c2.id = l.class_session_id'
-        . ' WHERE l.package_id = sc.PackageID AND c2.SessionDate = cs.SessionDate AND c2.StartTime = cs.StartTime) AS package_slot_net'
-        . ' FROM StudentClass sc JOIN ClassSession cs ON cs.StudentClassID = sc.ID'
+        . ' COALESCE(MAX(ps.net), 0) AS package_slot_net,'
+        . ' CASE WHEN MAX(d.last_deduct_at) < MAX(p.created_at) THEN 1 ELSE 0 END AS charged_before_package'
+        . ' FROM StudentClass sc JOIN course_packages p ON p.id = sc.PackageID JOIN ClassSession cs ON cs.StudentClassID = sc.ID'
         . " JOIN (SELECT student_class_id, class_session_id, SUM(CASE WHEN event_type = 'deduct' THEN 1"
-        . " WHEN event_type = 'reverse' THEN -1 ELSE 0 END) AS net FROM session_deduction_ledger"
+        . " WHEN event_type = 'reverse' THEN -1 ELSE 0 END) AS net, MAX(CASE WHEN event_type = 'deduct' THEN created_at END) AS last_deduct_at"
+        . ' FROM session_deduction_ledger'
         . " WHERE student_class_id IN (SELECT ID FROM StudentClass WHERE PackageID IN ($in)) AND class_session_id IS NOT NULL"
         . ' GROUP BY student_class_id, class_session_id) d ON d.student_class_id = sc.ID AND d.class_session_id = cs.id AND d.net > 0'
+        . ' LEFT JOIN (SELECT l.package_id, c2.SessionDate, c2.StartTime, SUM(l.delta) AS net'
+        . ' FROM package_session_ledger l JOIN ClassSession c2 ON c2.id = l.class_session_id'
+        . " WHERE l.package_id IN ($in) GROUP BY l.package_id, c2.SessionDate, c2.StartTime) ps"
+        . ' ON ps.package_id = sc.PackageID AND ps.SessionDate = cs.SessionDate AND ps.StartTime = cs.StartTime'
         . " WHERE sc.PackageID IN ($in)"
         . ' GROUP BY sc.PackageID, cs.SessionDate, cs.StartTime HAVING package_slot_net >= 0'
         . ' ORDER BY sc.PackageID, cs.SessionDate, cs.StartTime LIMIT 200',
-        [...$targets, ...$targets]
+        [...$targets, ...$targets, ...$targets]
     );
     $result['members'] = $rows(
         'SELECT sc.PackageID AS package_id, sc.ID AS student_class_id, sc.StudentID AS student_id, sc.SubjectID AS subject_id,'
@@ -116,7 +124,8 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
 
     // One line per package to read the verdict from: what the ledger used against the lessons taught, and the debits
     // the lessons do not explain. A no-show marked absent is charged too (ClassSessionController), so it is a chargeable
-    // status here. The twice-debited lists stop at 200 rows (`lists_capped`).
+    // status here. The twice-debited and charged-not-debited lists stop at 200 rows (`lists_capped`); a package past the
+    // cap counts 0 there.
     $chargeable = ['attended', 'completed', 'late', 'absent'];
     // Rows keyed by their package: `packages` rows carry it as `id`, every other section as `package_id`.
     $byPackage = fn (string $section): array => array_reduce($result[$section], function (array $carry, array $row): array {
@@ -141,7 +150,8 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
             $byStatus[$id] ?? []
         )),
         'debits_without_session' => array_sum(array_map(fn (array $row): int => (int) $row['delta'] < 0 ? (int) $row['rows_without_session'] : 0, $byReason[$id] ?? [])),
-        'charged_slots_not_debited' => count($notDebited[$id] ?? []),
+        // Gaps since the package was made; rows flagged `charged_before_package` are listed but not counted.
+        'charged_since_package_not_debited' => count(array_filter($notDebited[$id] ?? [], fn (array $row): bool => (int) $row['charged_before_package'] === 0)),
         'lists_capped' => count($result['same_session_debited_twice']) >= 200 || count($result['same_slot_debited_twice']) >= 200
             || count($result['charged_slots_not_debited']) >= 200,
     ], $targets);
