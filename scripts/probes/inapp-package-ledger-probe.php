@@ -99,8 +99,9 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
     // the lessons do not explain. A no-show marked absent is charged too (ClassSessionController), so it is a chargeable
     // status here. The twice-debited lists stop at 200 rows (`lists_capped`).
     $chargeable = ['attended', 'completed', 'late', 'absent'];
+    // Rows keyed by their package: `packages` rows carry it as `id`, every other section as `package_id`.
     $byPackage = fn (string $section): array => array_reduce($result[$section], function (array $carry, array $row): array {
-        $carry[(int) $row['package_id']][] = $row;
+        $carry[(int) ($row['package_id'] ?? $row['id'])][] = $row;
 
         return $carry;
     }, []);
