@@ -172,7 +172,7 @@
     </section>
 
     <!-- Course Table -->
-    <div class="card table-card" data-guide="course-mgmt-table">
+    <div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">
       <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
@@ -793,7 +793,7 @@
 
     <CourseManager
       v-if="courseManagerOpen && courseManagerCourse"
-      :course="courseManagerCourse" :tab="courseManagerTab"
+      :course="courseManagerCourse" :tab="courseManagerTab" :focus-fallback="focusCourseListAfterDrawerClose"
       :student-name="courseManagerCourse.student_name || ''"
       :subject-label="getSubjectLabel(courseManagerCourse.subject)"
       :class-type-label="classTypeLabel(courseManagerCourse.class_type)"
@@ -2682,6 +2682,13 @@ async function leaveCourseManagerSettings() {
     } catch (_) { /* keep current form if snapshot corrupt */ }
   }
   courseManagerTab.value = 'overview';
+}
+// #4178: a drawer close that removed its own opener (course closed under 「進行中」) lands on the student's group, else the list.
+const courseTableCard = ref(null);
+function focusCourseListAfterDrawerClose(course) {
+  const sid = course?.student_id ?? course?.StudentID;
+  const toggle = sid != null && sid !== '' ? document.getElementById(studentGroupToggleId(`sid:${sid}`)) : null;
+  (toggle || courseTableCard.value)?.focus();
 }
 function syncCourseManagerCourseFromList() {
   if (!courseManagerOpen.value || !courseManagerCourse.value) return;
