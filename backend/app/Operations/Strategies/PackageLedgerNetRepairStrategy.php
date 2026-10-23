@@ -172,8 +172,11 @@ final class PackageLedgerNetRepairStrategy
     {
         // Under the package locks, from a current ledger read: a plain sum would reuse the snapshot taken before the locks.
         foreach ($packageIds as $id) {
-            /** @var CoursePackage $package */
-            $package = CoursePackage::query()->whereKey((int) $id)->lockForUpdate()->firstOrFail();
+            /** @var CoursePackage|null $package */
+            $package = CoursePackage::query()->whereKey((int) $id)->lockForUpdate()->first();
+            if ($package === null) {
+                throw new RuntimeException("package_ledger_package_missing_{$id}");
+            }
             $package->recomputeCounters(true);
         }
     }
