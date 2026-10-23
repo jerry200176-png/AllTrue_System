@@ -142,11 +142,10 @@ class SubjectController extends Controller
         if (!$subject) {
             return response()->json(['message' => '科目不存在'], 404);
         }
-        if ($subject->CampusID === null) {
-            if ($request->attributes->get('auth_role') !== 'super_admin') {
-                return response()->json(['message' => '共用科目僅 super_admin 可更名'], 403);
-            }
-        } elseif (!$this->campusAllowed($request, (int) $subject->CampusID)) {
+        if ($subject->CampusID === null && $request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => '共用科目僅 super_admin 可更名'], 403);
+        }
+        if ($subject->CampusID !== null && !$this->campusAllowed($request, (int) $subject->CampusID)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
