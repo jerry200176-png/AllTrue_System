@@ -13,13 +13,7 @@ import {
 } from './fixtures/coursePaymentEntry.js';
 import { recordLatestGetJson } from './fixtures/latestGetJson.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
-import {
-  appOriginOf,
-  blockedWriteAnnotations,
-  describeBlockedWrite,
-  installReadOnlyAppGuard,
-  isKnownPostRead,
-} from './fixtures/readOnlyAppGuard.js';
+import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -353,12 +347,8 @@ test.describe('production acceptance — calendar/course parity', () => {
   test.afterEach(async () => {
     const expected = blockedHttpWrites.filter(isExpectedAbort);
     if (expected.length > 0) noteCoverage('expected_aborted_posts', expected.length);
-    const unexpected = blockedHttpWrites.filter((write) => !expected.includes(write));
-    // Name each unexpected write (METHOD host /path, ids and query dropped) so a flaky attempt can be
-    // root-caused: the gate prints these annotations next to the failed attempt (public repo, no bodies).
-    test.info().annotations.push(...blockedWriteAnnotations(unexpected));
-    expect(unexpected,
-      `read-only acceptance must not send HTTP writes to any origin: ${unexpected.map(describeBlockedWrite).join('; ')}`).toEqual([]);
+    expect(blockedHttpWrites.filter((write) => !expected.includes(write)),
+      'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
   });
 
   for (const viewport of [

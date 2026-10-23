@@ -73,17 +73,38 @@ const failureLocation = (result) => {
   return /^[\w.-]+\.m?[jt]s$/.test(file) && Number.isInteger(line) && line > 0 ? `${file}:${line}` : 'unknown';
 };
 
-// The read-only guard names each blocked HTTP write as `METHOD host /path` (readOnlyAppGuard describeBlockedWrite):
-// plain lowercase route words, `vN` and `:id` only, no query string. This is the redaction boundary: a note that is
-// not exactly that shape is never printed, only counted.
-const BLOCKED_WRITE_NOTE = /^[A-Z]{3,10} [a-z0-9][a-z0-9.-]{0,98}(?::\d{1,5})? (?:\/|(?:\/(?![^/ ]{33})(?::id|v\d{1,3}|[a-z]+(?:[-_][a-z]+)*)){1,12})(?: x\d{1,3})?$/;
-const isSafeBlockedWrite = (description) => String(description).length <= 200 && BLOCKED_WRITE_NOTE.test(String(description));
-// Blocked writes noted by one attempt: the safe ones to print, and how many were withheld.
+// The read-only guard's afterEach (calendar-course-consistency.spec.js) fails with expect(blockedWrites, READ_ONLY_FAILURE)
+// .toEqual([]); the diff in the error text lists each blocked write as { method, origin, path } (readOnlyAppGuard.js).
+// Only those three fields are read, and each write is rebuilt as `METHOD host /path`: no query string, body, header or
+// other error text, and every path segment that is not a plain lowercase route word or `vN` becomes `:id`.
+const READ_ONLY_FAILURE = 'read-only acceptance must not send HTTP writes to any origin';
+const ANSI_COLOR = /\u001b\[[0-9;]*m/g;
+const BLOCKED_WRITE_FIELDS = /"method": "([^"\n]{1,16})"[\s+,]*"origin": "([^"\n]{1,200})"[\s+,]*"path": "([^"\n]{0,500})"/g;
+const ROUTE_SEGMENT = /^(?:v\d{1,3}|[a-z]+(?:[-_][a-z]+)*)$/;
+const MAX_BLOCKED_WRITES_PRINTED = 10;
+
+export function describeBlockedWrite(method, origin, pathname) {
+  if (!/^[A-Z]{3,10}$/.test(method)) return null;
+  let url;
+  try { url = new URL(origin); } catch { return null; }
+  if (!/^https?:$/.test(url.protocol) || !/^[a-z0-9][a-z0-9.-]{0,98}(?::\d{1,5})?$/.test(url.host)) return null;
+  const segments = pathname.split(/[?#]/)[0].split('/').filter(Boolean).slice(0, 12)
+    .map((segment) => (segment.length <= 32 && ROUTE_SEGMENT.test(segment) ? segment : ':id'));
+  return `${method} ${url.host} /${segments.join('/')}`;
+}
+
+// Blocked writes named by one attempt's read-only failure: the printable ones with repeat counts, and how many were withheld.
 const blockedWrites = (result) => {
-  const notes = (Array.isArray(result?.annotations) ? result.annotations : [])
-    .filter((note) => note?.type === 'blocked-write').map((note) => String(note.description ?? ''));
-  const safe = notes.filter(isSafeBlockedWrite);
-  return { safe: [...new Set(safe)], withheld: notes.length - safe.length };
+  const printable = new Map();
+  let withheld = 0;
+  for (const error of Array.isArray(result?.errors) ? result.errors : []) {
+    const text = String(error?.message ?? '').replace(ANSI_COLOR, '');
+    if (!text.includes(READ_ONLY_FAILURE)) continue;
+    const named = [...text.matchAll(BLOCKED_WRITE_FIELDS)].map(([, method, origin, pathname]) => describeBlockedWrite(method, origin, pathname));
+    withheld += Math.max(0, (text.match(/"method":/g) || []).length - named.filter(Boolean).length);
+    for (const label of named.filter(Boolean)) printable.set(label, (printable.get(label) || 0) + 1);
+  }
+  return { printable: [...printable], withheld };
 };
 
 const collectTests = (report) => {
@@ -147,9 +168,12 @@ export function summarizeReport(report) {
     item.failureLocations.forEach((at, attempt) => {
       if (!at) return;
       lines.push(`  failed-attempt=${attempt + 1} status=${item.resultStatuses[attempt]} at=${at}`);
-      const { safe, withheld } = item.blockedWrites[attempt];
-      for (const write of safe) lines.push(`    blocked-write attempt=${attempt + 1} ${write}`);
-      if (withheld > 0) lines.push(`    blocked-write attempt=${attempt + 1} withheld=${withheld} (not a METHOD host /path note)`);
+      const { printable, withheld } = item.blockedWrites[attempt];
+      for (const [label, count] of printable.slice(0, MAX_BLOCKED_WRITES_PRINTED)) {
+        lines.push(`    blocked-write attempt=${attempt + 1} ${label}${count > 1 ? ` x${count}` : ''}`);
+      }
+      if (printable.length > MAX_BLOCKED_WRITES_PRINTED) lines.push(`    blocked-write attempt=${attempt + 1} more=${printable.length - MAX_BLOCKED_WRITES_PRINTED}`);
+      if (withheld > 0) lines.push(`    blocked-write attempt=${attempt + 1} withheld=${withheld}`);
     });
     for (const note of item.annotations) {
       const description = String(note?.description || '');
@@ -380,41 +404,64 @@ function selfTest() {
   if (!summarizeReport(notAList).includes('  failed-attempt=1 status=failed at=unknown')) {
     throw new Error('self-test: a malformed errors field must not break the summary');
   }
-  // A failed attempt names its blocked writes (METHOD host /path, ids dropped by the guard); a note of any other shape is
-  // withheld and counted, never echoed, and a passing attempt prints none.
-  const blocked = makeReport(16);
-  blocked.suites[0].specs[0].tests[0].status = 'flaky';
-  blocked.suites[0].specs[0].tests[0].results = [
-    { status: 'failed', errors: [{ location: { file: '/w/frontend/e2e/calendar-course-consistency.spec.js', line: 351 } }],
-      annotations: [
-        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/student-classes/:id/payments' },
-        { type: 'blocked-write', description: 'POST o123.ingest.sentry.io /api/:id/envelope x3' },
-        { type: 'blocked-write', description: 'DELETE app.example.test:8443 /' },
-        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students/王小明' },
-        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students/123' },
-        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students?token=abc' },
-        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students/Wang' },
-        { type: 'blocked-write', description: `POST daan.lifenet.com.tw /${'a'.repeat(33)}` },
-        { type: 'blocked-write', description: 'post daan.lifenet.com.tw /api' },
-        { type: 'blocked-write', description: '{"name":"王小明"}' },
-        { type: 'coverage', description: 'cards_checked=3' },
-      ] },
-    { status: 'passed', annotations: [{ type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/after-retry' }] },
-  ];
-  const blockedSummary = summarizeReport(blocked).join('\n');
+  // The read-only afterEach failure names each blocked write as `METHOD host /path` (ids and query dropped). The sample is
+  // Playwright's own error text: colour codes, the expect() diff, then the source frame.
+  const esc = String.fromCharCode(27);
+  const readOnlyFailure = (...writes) => [
+    `Error: ${READ_ONLY_FAILURE}`, '', `${esc}[2mexpect(${esc}[22m${esc}[31mreceived${esc}[39m${esc}[2m).${esc}[22mtoEqual // deep equality${esc}[22m`, '',
+    `${esc}[32m- Expected  -  1${esc}[39m`, `${esc}[31m+ Received  + ${writes.length * 6 + 2}${esc}[39m`, '', `${esc}[32m- Array []${esc}[39m`, `${esc}[31m+ Array [${esc}[39m`,
+    ...writes.flatMap(([method, origin, pathname]) => [`${esc}[31m+   Object {${esc}[39m`, `${esc}[31m+     "method": "${method}",${esc}[39m`,
+      `${esc}[31m+     "origin": "${origin}",${esc}[39m`, `${esc}[31m+     "path": "${pathname}",${esc}[39m`, `${esc}[31m+   },${esc}[39m`]),
+    `${esc}[31m+ ]${esc}[39m`, '', '   at /w/frontend/e2e/calendar-course-consistency.spec.js:351:3',
+  ].join('\n');
+  const failedWith = (message) => {
+    const report = makeReport(16);
+    report.suites[0].specs[0].tests[0].status = 'flaky';
+    report.suites[0].specs[0].tests[0].results = [
+      { status: 'failed', errors: [{ message, location: { file: '/w/frontend/e2e/calendar-course-consistency.spec.js', line: 351 } }] },
+      { status: 'passed' },
+    ];
+    return report;
+  };
+  const sentry = ['POST', 'https://o4500000000000000.ingest.us.sentry.io', '/api/4500000000000001/envelope/'];
+  const named = summarizeReport(failedWith(readOnlyFailure(sentry, sentry,
+    ['PATCH', 'https://daan.example.test', '/api/v1/student-classes/123/payments?token=secret#frag'],
+    ['POST', 'https://daan.example.test', '/api/v1/students/王小明/3f2a9c1e-5b7d-4e21-9a0c-1d2e3f4a5b6c/Wang/a1b2'],
+    ['PUT', 'https://daan.example.test', `/api/${'a'.repeat(33)}/${'b'.repeat(32)}`],
+    ['DELETE', 'http://localhost:8443', '/'])));
   for (const line of [
     '  failed-attempt=1 status=failed at=calendar-course-consistency.spec.js:351',
-    '    blocked-write attempt=1 POST daan.lifenet.com.tw /api/v1/student-classes/:id/payments',
-    '    blocked-write attempt=1 POST o123.ingest.sentry.io /api/:id/envelope x3',
-    '    blocked-write attempt=1 DELETE app.example.test:8443 /',
-    '    blocked-write attempt=1 withheld=7 (not a METHOD host /path note)',
+    '    blocked-write attempt=1 POST o4500000000000000.ingest.us.sentry.io /api/:id/envelope x2',
+    '    blocked-write attempt=1 PATCH daan.example.test /api/v1/student-classes/:id/payments',
+    '    blocked-write attempt=1 POST daan.example.test /api/v1/students/:id/:id/:id/:id',
+    `    blocked-write attempt=1 PUT daan.example.test /api/:id/${'b'.repeat(32)}`,
+    '    blocked-write attempt=1 DELETE localhost:8443 /',
   ]) {
-    if (!blockedSummary.includes(line)) throw new Error(`self-test summary is missing: ${line}`);
+    if (!named.includes(line)) throw new Error(`self-test summary is missing: ${line}`);
   }
-  if (/王小明|students|token|Wang|after-retry|aaaa/.test(blockedSummary) || blockedSummary.split('blocked-write attempt=').length !== 5) {
-    throw new Error('self-test summary leaked or over-printed a blocked-write note');
+  if (named.some((line) => /王小明|token|secret|frag|3f2a9c1e|Wang|a1b2|4500000000000001|Received|Expected/.test(line))) {
+    throw new Error('self-test summary leaked part of a blocked write or the error text');
   }
-  expectReject('flaky test with blocked writes', () => validateReport(blocked, 16));
+  // Not the read-only failure: nothing is read. An unusable method or origin: counted as withheld, never echoed.
+  const otherFailure = summarizeReport(failedWith(readOnlyFailure(sentry).replace(READ_ONLY_FAILURE, 'expect(locator).toBeVisible()')));
+  if (otherFailure.some((line) => line.includes('blocked-write'))) throw new Error('self-test printed writes from an unrelated failure');
+  const odd = summarizeReport(failedWith(readOnlyFailure(['post', 'https://daan.example.test', '/api'], ['POST', 'ftp://daan.example.test', '/api'],
+    ['POST', 'not a url', '/api'], ['POST', 'https://DAAN EXAMPLE.test', '/api'])));
+  if (odd.some((line) => /blocked-write attempt=1 (?!withheld)/.test(line)) || !odd.includes('    blocked-write attempt=1 withheld=4')) {
+    throw new Error('self-test did not withhold unusable blocked writes');
+  }
+  const many = summarizeReport(failedWith(readOnlyFailure(...Array.from({ length: 12 }, (_, index) => ['POST', 'https://daan.example.test', `/api/v1/route${'-x'.repeat(index + 1)}`]))));
+  if (many.filter((line) => line.startsWith('    blocked-write attempt=1 POST')).length !== 10 || !many.includes('    blocked-write attempt=1 more=2')) {
+    throw new Error('self-test did not cap the printed blocked writes');
+  }
+  // A passing attempt, a malformed errors field and an error without text print nothing and break nothing.
+  const quiet = failedWith(readOnlyFailure(sentry));
+  quiet.suites[0].specs[0].tests[0].results[1].errors = [{ message: readOnlyFailure(sentry) }];
+  if (summarizeReport(quiet).filter((line) => line.includes('blocked-write')).length !== 1) throw new Error('self-test printed writes for a passing attempt');
+  const brokenErrors = failedWith('x');
+  brokenErrors.suites[0].specs[0].tests[0].results[0].errors = [null, {}, { message: 7 }];
+  summarizeReport(brokenErrors);
+  expectReject('flaky test with blocked writes', () => validateReport(failedWith(readOnlyFailure(sentry)), 16));
   console.log('acceptance-report-gate self-test: ok');
 }
 
