@@ -7,6 +7,8 @@
  * is aborted and recorded so the spec can fail. Blocking the first write hop
  * prevents redirect chains from carrying a write back to the app: Playwright
  * routes only the first request in an HTTP redirect chain.
+ * describeBlockedWrite / blockedWriteAnnotations name a blocked write for the
+ * public CI log (METHOD host /path, ids dropped; acceptance-report-gate.mjs prints them).
  * Self-tests: readOnlyAppGuard.test.js (unit) and
  * e2e/read-only-app-guard.spec.js (browser, local servers only).
  */
@@ -69,6 +71,44 @@ export function classifyAppRequest(appOrigin, method, url) {
 export function isKnownPostRead(appOrigin, blocked) {
   return Boolean(appOrigin) && blocked?.method === 'POST' && blocked.origin === appOrigin
     && KNOWN_POST_READ_PATHS.includes(blocked.path);
+}
+
+export const BLOCKED_WRITE_ANNOTATION = 'blocked-write';
+const MAX_ANNOTATED_WRITES = 10;
+const MAX_PATH_SEGMENTS = 12;
+// Only plain route words and API versions survive; ids, tokens, hashes and anything with digits,
+// capitals or non-ASCII text become `:id`. The acceptance gate re-checks this shape before it prints.
+const ROUTE_WORD = /^(?:v\d{1,3}|[a-z]+(?:[-_][a-z]+)*)$/;
+
+/**
+ * Public-log-safe name of a blocked write, `METHOD host /path`: the host, no query string or
+ * fragment, and every path segment that is not a plain route word replaced by `:id`.
+ * The repository is public, so no body, header or id may reach a job log.
+ */
+export function describeBlockedWrite(write) {
+  const method = /^[A-Z]{3,10}$/.test(String(write?.method)) ? write.method : 'UNKNOWN';
+  let host = 'unknown-host';
+  try { host = new URL(String(write?.origin)).host || host; } catch { /* keep the placeholder */ }
+  const segments = String(write?.path || '').split('?')[0].split('#')[0].split('/').filter(Boolean)
+    .slice(0, MAX_PATH_SEGMENTS)
+    .map((segment) => (segment.length <= 32 && ROUTE_WORD.test(segment) ? segment : ':id'));
+  return `${method} ${host} /${segments.join('/')}`;
+}
+
+/**
+ * One `blocked-write` test annotation per distinct sanitized write (repeats become ` xN`),
+ * for the spec to push on testInfo before its read-only assertion fails.
+ */
+export function blockedWriteAnnotations(writes) {
+  const counts = new Map();
+  for (const write of writes) {
+    const label = describeBlockedWrite(write);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  return [...counts].slice(0, MAX_ANNOTATED_WRITES).map(([label, count]) => ({
+    type: BLOCKED_WRITE_ANNOTATION,
+    description: count > 1 ? `${label} x${count}` : label,
+  }));
 }
 
 /**

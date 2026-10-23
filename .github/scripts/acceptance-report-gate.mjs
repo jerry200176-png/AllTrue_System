@@ -73,6 +73,19 @@ const failureLocation = (result) => {
   return /^[\w.-]+\.m?[jt]s$/.test(file) && Number.isInteger(line) && line > 0 ? `${file}:${line}` : 'unknown';
 };
 
+// The read-only guard names each blocked HTTP write as `METHOD host /path` (readOnlyAppGuard describeBlockedWrite):
+// plain lowercase route words, `vN` and `:id` only, no query string. This is the redaction boundary: a note that is
+// not exactly that shape is never printed, only counted.
+const BLOCKED_WRITE_NOTE = /^[A-Z]{3,10} [a-z0-9][a-z0-9.-]{0,98}(?::\d{1,5})? (?:\/|(?:\/(?![^/ ]{33})(?::id|v\d{1,3}|[a-z]+(?:[-_][a-z]+)*)){1,12})(?: x\d{1,3})?$/;
+const isSafeBlockedWrite = (description) => String(description).length <= 200 && BLOCKED_WRITE_NOTE.test(String(description));
+// Blocked writes noted by one attempt: the safe ones to print, and how many were withheld.
+const blockedWrites = (result) => {
+  const notes = (Array.isArray(result?.annotations) ? result.annotations : [])
+    .filter((note) => note?.type === 'blocked-write').map((note) => String(note.description ?? ''));
+  const safe = notes.filter(isSafeBlockedWrite);
+  return { safe: [...new Set(safe)], withheld: notes.length - safe.length };
+};
+
 const collectTests = (report) => {
   const collected = [];
   const visit = (suite) => {
@@ -87,6 +100,7 @@ const collectTests = (report) => {
           status: test.status,
           resultStatuses: (test.results || []).map((result) => result.status),
           failureLocations: (test.results || []).map(failureLocation),
+          blockedWrites: (test.results || []).map(blockedWrites),
           // The JSON reporter repeats runtime annotations on the test and on each result; keep one of each.
           annotations: [...new Map([...(test.annotations || []), ...(test.results || []).flatMap((result) => result.annotations || [])]
             .map((note) => [`${note?.type}\u0000${note?.description}`, note])).values()],
@@ -131,7 +145,11 @@ export function summarizeReport(report) {
   for (const item of collectTests(report)) {
     lines.push(`acceptance-result status=${item.status} results=${item.resultStatuses.join(',') || 'none'} file=${item.file} title=${item.title}`);
     item.failureLocations.forEach((at, attempt) => {
-      if (at) lines.push(`  failed-attempt=${attempt + 1} status=${item.resultStatuses[attempt]} at=${at}`);
+      if (!at) return;
+      lines.push(`  failed-attempt=${attempt + 1} status=${item.resultStatuses[attempt]} at=${at}`);
+      const { safe, withheld } = item.blockedWrites[attempt];
+      for (const write of safe) lines.push(`    blocked-write attempt=${attempt + 1} ${write}`);
+      if (withheld > 0) lines.push(`    blocked-write attempt=${attempt + 1} withheld=${withheld} (not a METHOD host /path note)`);
     });
     for (const note of item.annotations) {
       const description = String(note?.description || '');
@@ -362,6 +380,41 @@ function selfTest() {
   if (!summarizeReport(notAList).includes('  failed-attempt=1 status=failed at=unknown')) {
     throw new Error('self-test: a malformed errors field must not break the summary');
   }
+  // A failed attempt names its blocked writes (METHOD host /path, ids dropped by the guard); a note of any other shape is
+  // withheld and counted, never echoed, and a passing attempt prints none.
+  const blocked = makeReport(16);
+  blocked.suites[0].specs[0].tests[0].status = 'flaky';
+  blocked.suites[0].specs[0].tests[0].results = [
+    { status: 'failed', errors: [{ location: { file: '/w/frontend/e2e/calendar-course-consistency.spec.js', line: 351 } }],
+      annotations: [
+        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/student-classes/:id/payments' },
+        { type: 'blocked-write', description: 'POST o123.ingest.sentry.io /api/:id/envelope x3' },
+        { type: 'blocked-write', description: 'DELETE app.example.test:8443 /' },
+        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students/王小明' },
+        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students/123' },
+        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students?token=abc' },
+        { type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/students/Wang' },
+        { type: 'blocked-write', description: `POST daan.lifenet.com.tw /${'a'.repeat(33)}` },
+        { type: 'blocked-write', description: 'post daan.lifenet.com.tw /api' },
+        { type: 'blocked-write', description: '{"name":"王小明"}' },
+        { type: 'coverage', description: 'cards_checked=3' },
+      ] },
+    { status: 'passed', annotations: [{ type: 'blocked-write', description: 'POST daan.lifenet.com.tw /api/v1/after-retry' }] },
+  ];
+  const blockedSummary = summarizeReport(blocked).join('\n');
+  for (const line of [
+    '  failed-attempt=1 status=failed at=calendar-course-consistency.spec.js:351',
+    '    blocked-write attempt=1 POST daan.lifenet.com.tw /api/v1/student-classes/:id/payments',
+    '    blocked-write attempt=1 POST o123.ingest.sentry.io /api/:id/envelope x3',
+    '    blocked-write attempt=1 DELETE app.example.test:8443 /',
+    '    blocked-write attempt=1 withheld=7 (not a METHOD host /path note)',
+  ]) {
+    if (!blockedSummary.includes(line)) throw new Error(`self-test summary is missing: ${line}`);
+  }
+  if (/王小明|students|token|Wang|after-retry|aaaa/.test(blockedSummary) || blockedSummary.split('blocked-write attempt=').length !== 5) {
+    throw new Error('self-test summary leaked or over-printed a blocked-write note');
+  }
+  expectReject('flaky test with blocked writes', () => validateReport(blocked, 16));
   console.log('acceptance-report-gate self-test: ok');
 }
 
