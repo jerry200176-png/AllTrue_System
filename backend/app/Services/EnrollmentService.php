@@ -708,6 +708,7 @@ class EnrollmentService
             $capacityConflicts = array_merge($capacityConflicts, app(ScheduleGuardService::class)->validateOccurrences([
                 'teacher_id' => $this->teacherFromGroupKey($groupKey, $globalTeacherId),
                 'class_type' => $classType,
+                'trial_target_class_type' => $data['trial_target_class_type'] ?? null,
                 'room_id' => $roomId,
                 'branch_id' => $targetCampusId,
                 'exclude_student_id' => $studentId > 0 ? $studentId : null,
@@ -924,6 +925,8 @@ class EnrollmentService
                     'TeacherID' => $effectiveTeacherId,
                     'SubjectID' => $subjectId,
                     'ClassType' => (string) $data['class_type'],
+                    // in-app #426: only a trial records which regular class type it is for.
+                    'trial_target_class_type' => $data['class_type'] === 'trial' ? ($data['trial_target_class_type'] ?? null) : null,
                     'by1' => $by1Map[$data['class_type']] ?? 1,
                     'Rate' => $isTutoring ? 0 : $price,
                     'rate_unit' => $rateUnit,
