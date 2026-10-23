@@ -252,13 +252,16 @@ class PackageDeductionService
      * debit the lesson carries has already left $oldStartHm and counts at its new time. Both slots then get the rule again:
      * - carried: the old slot keeps its one debit on another member lesson still taught there (attended/late), and the
      *   carried debit is credited if the new slot is already debited;
-     * - not carried: a taught lesson debits the new slot if that slot has no debit (so moving a lesson back restores it).
-     * Idempotent; 1:1 packages are untouched. Called outside any transaction on the plain time edit, so its reads after the
-     * package lock see every member write committed before it, and later member writes run their own slot rule after it.
+     * - not carried: a lesson already taught before this edit (attended/late, $wasTaught) debits the new slot if that slot
+     *   has no debit, so moving a lesson back restores it. A lesson marked attended in the same request is debited by the
+     *   attendance deduction that follows instead.
+     * Idempotent; 1:1 packages are untouched. The caller runs it in the transaction of the time edit after lockForRetime(),
+     * so its reads see every member write committed before the package lock, and later member writes apply their own
+     * slot rule after it.
      *
      * @return bool true if a ledger row was written
      */
-    public static function reslotRetimedSession(int $classSessionId, string $oldStartHm, ?int $recordedBy = null): bool
+    public static function reslotRetimedSession(int $classSessionId, string $oldStartHm, bool $wasTaught, ?int $recordedBy = null): bool
     {
         $lesson = DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
             ->where('c.id', $classSessionId)->first(['sc.ID as course_id', 'sc.PackageID as package_id']);
@@ -268,7 +271,7 @@ class PackageDeductionService
         }
         $courseId = (int) $lesson->course_id;
 
-        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $oldStartHm, $recordedBy) {
+        return (bool) DB::transaction(function () use ($packageId, $courseId, $classSessionId, $oldStartHm, $wasTaught, $recordedBy) {
             self::lockPackage($packageId);
             $slot = self::groupSlot($packageId, $classSessionId);
             if ($slot === null || $slot[1] === $oldStartHm) {
@@ -285,7 +288,7 @@ class PackageDeductionService
                 if (self::slotNet($packageId, $slot, $classSessionId) < 0) {
                     $wrote = self::reverseForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note) || $wrote;
                 }
-            } elseif (self::slotNet($packageId, $slot, $classSessionId) >= 0
+            } elseif ($wasTaught && self::slotNet($packageId, $slot, $classSessionId) >= 0
                 && self::taughtLessons($packageId, $slot)->contains('id', $classSessionId)) {
                 $wrote = self::deductForSession($packageId, $courseId, $classSessionId, 'retime', $recordedBy, $note);
             }
@@ -295,6 +298,20 @@ class PackageDeductionService
 
             return $wrote;
         });
+    }
+
+    /**
+     * Before a lesson's start time changes: lock the lesson, its course and then its package (the attendance order), with
+     * locking reads only. Called before the transaction's first plain read, so the snapshot those reads take is newer than
+     * the package lock (#4454) and the time edit commits together with reslotRetimedSession().
+     */
+    public static function lockForRetime(int $classSessionId): void
+    {
+        $packageId = (int) DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
+            ->where('c.id', $classSessionId)->lockForUpdate()->value('sc.PackageID');
+        if ($packageId > 0) {
+            self::lockPackage($packageId);
+        }
     }
 
     /**

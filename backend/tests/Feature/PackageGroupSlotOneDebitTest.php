@@ -96,6 +96,31 @@ class PackageGroupSlotOneDebitTest extends TestCase
             'the course ledger is untouched');
     }
 
+    public function test_a_failed_reconciliation_rolls_the_time_edit_back_so_a_retry_repairs_it(): void
+    {
+        [$pkg, $first, $second] = $this->groupPackage();
+        $moving = $this->makeSession($first->ID, '16:00');
+        $other = $this->makeSession($second->ID, '18:00');
+        SessionDeductionService::deductForSession($first->ID, $moving->id, 'attendance');
+        SessionDeductionService::deductForSession($second->ID, $other->id, 'attendance');
+        $token = $this->directorToken();
+        $fail = true;
+        DB::connection()->beforeExecuting(function (string $sql) use (&$fail) {
+            if ($fail && str_contains(strtolower($sql), 'insert into `package_session_ledger`')) {
+                throw new \RuntimeException('synthetic ledger failure');
+            }
+        });
+
+        $this->retime($token, $moving->id, '18:00', '20:00')->assertStatus(500);
+        $this->assertSame('16:00', substr((string) $moving->fresh()->StartTime, 0, 5), 'the new time rolled back with the ledger fix');
+        $this->assertSame(2, PackageSessionLedger::where('package_id', $pkg->id)->count());
+
+        $fail = false;
+        $this->retime($token, $moving->id, '18:00', '20:00')->assertOk();
+        $this->assertSame(-1, $this->slotNet($pkg->id, '18:00'), 'retrying the same edit repairs the slot');
+        $this->assertSame(9, (int) $pkg->fresh()->remaining_sessions);
+    }
+
     public function test_moving_the_carrier_away_keeps_the_old_slot_debited_for_a_member_still_there(): void
     {
         [$pkg, $a, $b, $c] = $this->groupPackage(3);
