@@ -89,3 +89,28 @@ it('In-App #419: a pool whose ledger used more than its total says how many sess
     wrapper.unmount();
   }
 });
+
+it('In-App #419 review: a monthly package (total 0) with ledger rows never shows the overuse line', async () => {
+  const courses = [{
+    id: 7001, subject: 'English', subject_name: '英文', payment_type: 'monthly', status: 'active', class_type: 'one_on_one',
+    payment_status: 'paid', PackageID: 9000, package_total_sessions: 0, package_remaining_sessions: 0, package_used_sessions: 5,
+  }];
+  vi.stubGlobal('fetch', vi.fn(async (input) => {
+    const url = String(input);
+    const body = url.includes('/student-classes') ? { data: courses }
+      : url.includes('/students?') ? { data: [{ id: 2001, name: '合成學生', status: 'active' }], total: 1 }
+        : { data: [] };
+    return { ok: true, json: async () => body };
+  }));
+  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
+  try {
+    await flushPromises();
+    await wrapper.find('.student-row').trigger('click');
+    await flushPromises();
+    const pool = wrapper.find('.student-package-summary');
+    expect(pool.exists()).toBe(true);
+    expect(pool.find('[data-testid="package-overused"]').exists()).toBe(false);
+  } finally {
+    wrapper.unmount();
+  }
+});

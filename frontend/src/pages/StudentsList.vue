@@ -273,7 +273,7 @@
                         <div><dt>方案剩餘堂數</dt><dd data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
                       </dl>
                       <p v-if="poolOverusedSessions(pool) > 0" class="student-package-summary__overused" data-testid="package-overused">
-                        已使用超出方案 {{ poolOverusedSessions(pool) }} 堂。堂數用完不會擋點名，請核對點名紀錄；確實超上請安排續約。
+                        已使用超出方案 {{ poolOverusedSessions(pool) }} 堂。請核對點名與扣堂紀錄；確實超上請安排續約。
                       </p>
                     </section>
                     <div class="student-course-picker" role="list" aria-label="進行中的課程">

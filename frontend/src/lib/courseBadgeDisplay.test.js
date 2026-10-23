@@ -26,3 +26,5 @@ assert.equal(poolOverusedSessions(sharedPackageSummaries([member])[0]), 0);
 assert.equal(poolOverusedSessions(sharedPackageSummaries([{ ...member, package_used_sessions: 25 }])[0]), 0);
 assert.equal(poolOverusedSessions(sharedPackageSummaries([{ ...member, package_used_sessions: null }])[0]), 0);
 assert.equal(poolOverusedSessions(sharedPackageSummaries([member, { ...member, package_used_sessions: 30 }])[0]), 0);
+// Monthly packages have total_sessions 0 but still write ledger rows: never "over".
+assert.equal(poolOverusedSessions(sharedPackageSummaries([{ ...member, package_total_sessions: 0, package_remaining_sessions: 0, package_used_sessions: 5 }])[0]), 0);
