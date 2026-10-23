@@ -12,7 +12,7 @@
 | 即時唯讀（金鑰） | 無 workflow：`GET /api/v1/triage/bug-reports…`，帶 `ALLTRUE_TRIAGE_TOKEN`（見下方「Reading reports with `ALLTRUE_TRIAGE_TOKEN`」） | 直接 HTTPS | 可以：已設定金鑰且網路允許正式站 host 時，讀全文、留言、附件；不能寫 |
 | Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only、main-only**；#4386 已合併，preview → write（既有決定） | 備齊證據可直接 dispatch；`rows_json` 每筆準備 `bug_id`、`github_issue_url`、含 issue URL 且 ≤600 字元的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged: true`（預設是 `bug`／`false`）；一次 ≤20 筆 |
 | 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only、main-only**；#4386 已合併，preview → write（既有決定） | 同上；`rows_json` 每筆準備 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
-| Phase C 上線後回寫 | **SSH allowlist path retired 2026-10-19（ADR-POP-015 / #4289）**：`bug-phase-c-allowlist.yml` 遠端步驟在任何 `BugReportService` 寫入前拋 `legacy_ssh_phase_c_retired`；`bug-phase-c-autodispatch.yml` 對新增 allowlist ID **fail closed**。**目前可跑的替代路徑只有** `bug-followup-comment.yml`（#4386 已安裝：preview→write；只留言、不改狀態）。ADR-POP-015 規劃的 Pi-local `inapp-report-resolve-after-deploy` **尚未**寫入 `operations/catalog.yaml`／standing policy（現有 in-app lifecycle 僅 `inapp-report-reporter-timeout`），不得當成已可執行。Allowlist 檔保留供契約測試 | 勿再靠 allowlist PR／request-file 期望寫入；用 follow-up | follow-up：可提交 preview；勿假設未 catalog 的 resolve 操作可跑 |
+| Phase C 上線後回寫 | **SSH allowlist path retired 2026-10-19（ADR-POP-015 / #4289）**：`bug-phase-c-allowlist.yml` 遠端步驟在任何 `BugReportService` 寫入前拋 `legacy_ssh_phase_c_retired`；`bug-phase-c-autodispatch.yml` 對新增 allowlist ID **fail closed**。**目前可跑的替代路徑只有** `bug-followup-comment.yml`（#4386 已安裝：preview→write；只留言、不改狀態）。Pi-local `inapp-report-resolve-after-deploy`（ADR-POP-015 b）已寫入 `operations/catalog.yaml` 與 standing policy v2。每項證據都是硬性檢查，super_admin 人工核准也不能略過：修正 commit 是 Pi 部署版本的祖先；`deploy.yml`「Deploy to Production」成功且目標就是 Pi 現在的版本；健康 200；issue SourceRef 指向該回報；回覆含 issue 連結與「確認已修好」「問題仍存在」，且無個資／外部連結；15 分鐘審閱證明在列鎖下仍相符。要求端憑證（ADR-POP-015 第二部分）上線且 Founder 開 `POP_INAPP_STANDING_POLICY` 之前，常設政策一律不核准，只能由 super_admin 在 POP 草擬、核准後由 Pi 本機執行。Allowlist 檔保留供契約測試 | 勿再靠 allowlist PR／request-file 期望寫入；結案走 POP resolve 操作，其餘用 follow-up | follow-up：可提交 preview；resolve：備齊參數（含 triage 詳細 API 的 `writeback_evidence`）交 super_admin 在 POP 草擬／核准；憑證與旗標就緒前不會自動執行 |
 | `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
 | 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
 
@@ -183,16 +183,24 @@ for the detail block.
 ```bash
 ( set -euo pipefail; umask 077
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT   # 0700 dir, deleted when the block ends
-  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
+  # Token in the environment: send it from a 0600 config. No variable: the egress proxy injects it (#4048).
+  AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"; AUTH=(-K "$T/auth.cfg"); fi
   B=https://daan.lifenet.com.tw/api/v1/triage
-  # Full live snapshot = open AND resolved (reporter-confirmation queue). Page each until data is empty.
-  for S in new,triaged,in_progress resolved; do N=0; while :; do
-    P=$(curl -sf -K "$T/auth.cfg" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed ($S since_id=$N)" >&2; exit 1; }
-    L=$(jq -e '.data|length' <<<"$P") || { echo "INCOMPLETE: malformed page ($S since_id=$N)" >&2; exit 1; }
-    [ "$L" = 0 ] && break
-    jq -c '.data[]' <<<"$P"; N=$(jq '.next_since_id' <<<"$P"); done; done > "$T/live-queue.jsonl"
-  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after both groups paged to empty (resolved may legitimately be 0)
-  jq -r '[.id, .status, .campus_id, .title] | @tsv' "$T/live-queue.jsonl"   # the queue itself, read it here before $T is deleted
+  # Full live snapshot = open AND resolved (reporter-confirmation queue) in ONE status filter with ONE cursor, so a
+  # report that changes status mid-scan is neither counted twice nor skipped (#4048). Page until data is empty.
+  S=new,triaged,in_progress,resolved; N=0
+  while :; do
+    P=$(curl -sf --max-redirs 0 "${AUTH[@]}" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed (since_id=$N)" >&2; exit 1; }
+    jq -e '(.data|type) == "array"' <<<"$P" >/dev/null || { echo "INCOMPLETE: malformed page (since_id=$N)" >&2; exit 1; }
+    [ "$(jq '.data|length' <<<"$P")" = 0 ] && break
+    jq -c '.data[]' <<<"$P"
+    NEXT=$(jq -r '.next_since_id // empty' <<<"$P")   # a non-empty page must move the cursor forward
+    if ! [[ "$NEXT" =~ ^[0-9]+$ ]] || (( NEXT <= N )); then echo "INCOMPLETE: next_since_id did not advance (since_id=$N)" >&2; exit 1; fi
+    N=$NEXT
+  done > "$T/live-queue.jsonl"
+  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after paging to an empty page (resolved may legitimately be 0)
+  jq -r '[.id, .status, .campus_id, (.title|tojson)] | @tsv' "$T/live-queue.jsonl"   # read it here before $T is deleted; tojson keeps tabs/newlines in titles from breaking columns
 )
 ```
 
@@ -202,8 +210,9 @@ Then one report: description, comments (incl. internal notes), status logs and
 ```bash
 ( set -euo pipefail; umask 077; ID=<id>
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
-  curl -sf -K "$T/auth.cfg" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/$ID" || { echo "FAILED: detail fetch for $ID" >&2; exit 1; }
+  AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"; AUTH=(-K "$T/auth.cfg"); fi
+  curl -sf --max-redirs 0 "${AUTH[@]}" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/$ID" || { echo "FAILED: detail fetch for $ID" >&2; exit 1; }
 )
 ```
 
@@ -211,17 +220,19 @@ An attachment has to outlive the shell call so you can open it, so it gets its
 own private directory that you delete yourself after viewing:
 
 ```bash
-umask 077; D=$(mktemp -d)
-printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$D/auth.cfg"
-if curl -sf -K "$D/auth.cfg" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>"; then
-  rm -f "$D/auth.cfg"; echo "$D"
+umask 077; D=$(mktemp -d)   # keeps only the downloaded file; the token never lands here (#4048)
+if ( set -euo pipefail; A=$(mktemp -d); trap 'rm -rf "$A"' EXIT INT TERM   # token dir, removed even on Ctrl-C
+     AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+       printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$A/auth.cfg"; AUTH=(-K "$A/auth.cfg"); fi
+     curl -sf --max-redirs 0 "${AUTH[@]}" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>" ); then
+  echo "$D"
 else
-  rc=$?; rm -rf "$D"; echo "FAILED: attachment download (curl exit $rc); the attachment was NOT reviewed" >&2; false
+  rc=$?; rm -rf "$D"; echo "FAILED: attachment download (exit $rc); the attachment was NOT reviewed" >&2; false
 fi
 # view "$D/a.png", then: rm -rf "$D"
 ```
 
-- **Completeness.** Only a run that pages both status groups to an empty page is a
+- **Completeness.** Only a run that pages the combined status filter to an empty page is a
   full snapshot. A single page, or the open statuses alone, is partial: say so, or
   fall back to the queue dump.
 - **Read-only.** Any other route answers 403 to this token, and there is no write

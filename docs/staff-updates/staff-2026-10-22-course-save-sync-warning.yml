@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-22-course-save-sync-warning
+    published_at: "2026-10-22"
+    audiences:
+      - director
+    importance: digest
+    title: 改繳費方式不再誤報未同步
+    summary: 只改繳費方式等、堂次都已在原時段時，儲存後顯示「已儲存」，不再跳「部分堂次未同步」。
+    items:
+      - category: fixed
+        text: 堂數制改月結這類不動時段的儲存，堂次本來就對齊時，不再出現「部分堂次未同步」提示。
+      - category: improved
+        text: 真的有堂次因已點名或請假待審而留在舊時段時，提示會寫出有幾筆，請到堂次列表確認。
+    source_refs:
+      - "changelog:2026-10-22:course-save-sync-warning"

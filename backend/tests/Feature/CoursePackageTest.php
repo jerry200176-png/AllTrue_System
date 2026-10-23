@@ -469,6 +469,31 @@ class CoursePackageTest extends TestCase
         $this->assertEquals(1, $sc2Used);
     }
 
+    public function test_package_detail_counts_a_reverted_and_reattended_lesson_once_per_subject(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $pkg = $this->makePackage($student->id, 1, 24);
+        $sc = $this->makePackageMember($pkg, $student->id, $this->makeTeacher()->id, 1);
+        $reattended = $this->makeSession($sc->ID, '2026-04-16', 'attended');
+        $other = $this->makeSession($sc->ID, '2026-04-17', 'attended');
+
+        // #4275: attended, reverted, attended again writes −1, +1, −1 for the same lesson.
+        PackageDeductionService::deductForSession($pkg->id, $sc->ID, $reattended->id, 'attendance');
+        PackageDeductionService::reverseForSession($pkg->id, $sc->ID, $reattended->id, 'status_adjust');
+        PackageDeductionService::deductForSession($pkg->id, $sc->ID, $reattended->id, 'attendance');
+        PackageDeductionService::deductForSession($pkg->id, $sc->ID, $other->id, 'attendance');
+        PackageDeductionService::recomputeCounters($pkg->id);
+
+        $json = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->getJson("/api/v1/course-packages/{$pkg->id}")->assertOk()->json();
+
+        $this->assertEquals(2, $json['used_sessions']);
+        $this->assertEquals(2, collect($json['members'])->firstWhere('student_class_id', $sc->ID)['subject_used']);
+    }
+
     // ─── Test: Recompute API ─────────────────────────────
 
     public function test_recompute_fixes_stale_remaining(): void

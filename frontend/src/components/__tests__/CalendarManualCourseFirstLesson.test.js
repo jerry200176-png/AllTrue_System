@@ -47,6 +47,36 @@ describe('manual course → first lesson (in-app #382)', () => {
     expect(w.findAll('button').some((b) => b.text() === '延續輔導課（不收費）')).toBe(true);
   });
 
+  it('teachers get no 續課 (no students page for them) and the calendar passes that capability (#3965)', () => {
+    const regular = { existing_course_id: 51, subject: 'Math', class_type: 'one_on_one', remaining_sessions: 4, schedule_mode: 'count' };
+    const teacher = mount(EnrollmentConflictDecisionModal, {
+      props: { show: true, conflicts: [regular], classType: 'one_on_one', canPurchase: false, canManualSession: false },
+    });
+    expect(teacher.findAll('button').some((b) => b.text() === '續課')).toBe(false);
+    expect(teacher.findAll('th').map((th) => th.text())).not.toContain('操作');
+    expect(teacher.text()).not.toContain('從既有課程延續');
+    const director = mount(EnrollmentConflictDecisionModal, {
+      props: { show: true, conflicts: [regular], classType: 'one_on_one' },
+    });
+    expect(director.findAll('button').some((b) => b.text() === '續課')).toBe(true);
+    expect(director.text()).toContain('從既有課程延續');
+    expect(calendar).toContain(':can-purchase="!isTeacher"');
+  });
+
+  it('an overlapping date range does not offer 建立下一期續報, which the server always refuses (#3965)', () => {
+    const base = { existing_course_id: 52, subject: 'Math', class_type: 'one_on_one', remaining_sessions: 4, schedule_mode: 'count' };
+    const overlap = mount(EnrollmentConflictDecisionModal, {
+      props: { show: true, classType: 'one_on_one', attemptedPaymentType: 'session',
+        conflicts: [{ ...base, existing_range: ['2026-10-01', '2026-12-31'], new_range: ['2026-11-01', '2027-01-31'] }] },
+    });
+    expect(overlap.text()).not.toContain('建立下一期續報');
+    expect(overlap.text()).toContain('建立獨立課程');
+    const duplicate = mount(EnrollmentConflictDecisionModal, {
+      props: { show: true, classType: 'one_on_one', attemptedPaymentType: 'session', conflicts: [base] },
+    });
+    expect(duplicate.text()).toContain('建立下一期續報');
+  });
+
   it('pages keep the server fields through the shared mapper, so the modal can still decide', () => {
     // Raw 409 conflict as EnrollmentService returns it; every page maps it with normalizeDuplicateConflicts.
     const [mapped] = normalizeDuplicateConflicts([{ existing_course_id: 4296, subject: 'Math', class_type: 'tutoring',
