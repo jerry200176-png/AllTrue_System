@@ -50,6 +50,7 @@ use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
 use App\Http\Controllers\TriageContractLinkController;
 use App\Http\Controllers\TriageTokenController;
+use App\Http\Controllers\PopInappApiClientController;
 use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
@@ -989,6 +990,10 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
         Route::post('admin/triage-tokens', [TriageTokenController::class, 'store']);
         Route::delete('admin/triage-tokens/{id}', [TriageTokenController::class, 'destroy'])->whereNumber('id');
+        // ADR-POP-015 §3: pop_inapp_agent POP requester credential (draft + dry-run of in-app operations only).
+        Route::get('admin/pop-inapp-agent-clients', [PopInappApiClientController::class, 'index']);
+        Route::post('admin/pop-inapp-agent-clients', [PopInappApiClientController::class, 'store']);
+        Route::delete('admin/pop-inapp-agent-clients/{id}', [PopInappApiClientController::class, 'destroy'])->whereNumber('id');
         // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
         Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
         Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');
