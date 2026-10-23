@@ -16,6 +16,7 @@ use App\Models\UserCampus;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -66,6 +67,35 @@ class PendingSwipeMatchDeductionTest extends TestCase
         $this->assertSame(1, SessionDeductionLedger::where('class_session_id', $lesson->id)->count());
         $this->assertSame(1, PackageSessionLedger::where('class_session_id', $lesson->id)->count());
         $this->assertSame(9, (int) $pkg->refresh()->remaining_sessions);
+    }
+
+    /**
+     * Two different swipes matched to one lesson at once: under REPEATABLE READ each transaction must take the
+     * swipe and course locks before its first plain read, or both pass the sign-in check on a stale snapshot
+     * and the non-unique course ledger gets two debits. One connection cannot race, so lock the order.
+     */
+    public function test_match_takes_the_swipe_and_course_locks_before_any_plain_read(): void
+    {
+        [, $course, $lesson] = $this->packageLesson('scheduled');
+        $swipe = $this->pendingSwipe($course);
+        $token = $this->directorToken();
+        $sql = [];
+        DB::listen(function ($query) use (&$sql) {
+            $sql[] = strtolower($query->sql);
+        });
+
+        $this->match($swipe, $course, $lesson, $token)->assertCreated();
+
+        $swipeLock = null;
+        foreach ($sql as $i => $statement) {
+            if (str_contains($statement, 'from `pendingswipe`') && str_contains($statement, 'for update')) {
+                $swipeLock = $i;
+                break;
+            }
+        }
+        $this->assertNotNull($swipeLock, 'the match locks its pending swipe');
+        $this->assertStringContainsString('from `studentclass`', $sql[$swipeLock + 1] ?? '');
+        $this->assertStringContainsString('for update', $sql[$swipeLock + 1] ?? '', 'the course lock is the next statement');
     }
 
     public function test_matching_a_lesson_already_debited_by_calendar_attendance_does_not_debit_again(): void
@@ -157,10 +187,10 @@ class PendingSwipeMatchDeductionTest extends TestCase
         ]);
     }
 
-    private function match(PendingSwipe $swipe, StudentClass $course, ClassSession $lesson)
+    private function match(PendingSwipe $swipe, StudentClass $course, ClassSession $lesson, ?string $token = null)
     {
         return $this->withHeaders([
-            'Authorization' => 'Bearer ' . $this->directorToken(),
+            'Authorization' => 'Bearer ' . ($token ?? $this->directorToken()),
             'Accept' => 'application/json',
         ])->postJson("/api/v1/pending-swipes/{$swipe->id}/match", [
             'StudentClassID' => $course->ID,

@@ -78,13 +78,15 @@ class PendingSwipeController extends Controller
         }
 
         return DB::transaction(function () use ($pendingSwipe, $data) {
-            // Serialize matches of one swipe (and read after the lock): a double submit must not record
-            // and debit it twice.
+            // Locking reads first, before any plain read fixes this transaction's REPEATABLE READ snapshot:
+            // the swipe row stops a double submit, and the course row (the lock every ledger writer takes)
+            // serializes two swipes matched to one lesson, so the sign-in and ledger reads below see the
+            // other match once it commits (#4454). Keep these two statements first.
             if (!PendingSwipe::query()->whereKey($pendingSwipe->getKey())->lockForUpdate()->first()) {
                 return response()->json(['message' => 'Swipe already matched'], 409);
             }
+            $studentClass = StudentClass::query()->whereKey((int) $data['StudentClassID'])->lockForUpdate()->firstOrFail();
             $authUser = request()->attributes->get('auth_user');
-            $studentClass = StudentClass::findOrFail($data['StudentClassID']);
             if ((int) $studentClass->StudentID !== (int) $pendingSwipe->StudentID) {
                 return response()->json(['message' => 'Class does not match student'], 422);
             }
