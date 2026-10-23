@@ -33,6 +33,8 @@ class TeacherCampusLinkApprovalTest extends TestCase
         $rowForA = $this->teacherRow($this->token($directorA), $teacher->id);
         $this->assertSame([$b], $rowForA['pending_branch_ids'], 'campus A sees the request as pending');
         $this->assertSame([], $rowForA['approvable_branch_ids'], 'but not as its own');
+        $rowForColleague = $this->teacherRow($this->token($this->user('T', [$b => 1])), $teacher->id);
+        $this->assertSame([], $rowForColleague['approvable_branch_ids'], 'a teacher reading the list decides nothing');
 
         $this->api($this->token($directorB))->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$b}/approve")
             ->assertOk()->assertJsonPath('decision', 'approved');

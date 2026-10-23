@@ -125,8 +125,13 @@ class ProfileController extends Controller
 
         $isSingle = $request->boolean('single');
         $perPage  = $request->input('per_page');
-        // #4433: campuses whose pending links the caller may approve or reject (null = every campus, super_admin).
-        $reviewScope = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        // #4433: campuses whose pending links the caller may approve or reject (null = every campus, super_admin). The
+        // decide endpoints are director-only, so any other role (a teacher reading this list) gets none.
+        $reviewScope = match ($role) {
+            'super_admin' => null,
+            'director' => array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])),
+            default => [],
+        };
 
         // Pre-load branch assignments for all users
         $allCampusRows = DB::table('UserCampus')->get()->groupBy('UserID');
@@ -345,8 +350,8 @@ class ProfileController extends Controller
      * #4433: pending campus links are the rows the pending_teachers badge counts (UserCampus.Approved = 0; a legacy NULL
      * counts as approved). approvable_branch_ids is the subset in the caller's campuses: that campus's director decides it.
      *
-     * @param list<int>|null $scope null = super_admin (every campus)
-     * @return array{pending_branch_ids: list<int>, approvable_branch_ids: list<int>}
+     * @param array<int>|null $scope null = super_admin (every campus)
+     * @return array<string, array<int, int>> pending_branch_ids, approvable_branch_ids
      */
     private static function campusLinkReview(\Illuminate\Support\Collection $campusRows, ?array $scope): array
     {
