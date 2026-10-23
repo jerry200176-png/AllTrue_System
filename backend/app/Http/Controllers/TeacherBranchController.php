@@ -138,8 +138,8 @@ class TeacherBranchController extends Controller
     }
 
     /**
-     * super_admin, or the target is a teacher (type T) linked to one of the caller's campuses through UserCampus or the
-     * legacy teacher_branches table, the same binding ProfileController::canManageTeacher() accepts (Codex r4347865989).
+     * super_admin, or the target is a teacher (type T) with an approved link to one of the caller's campuses
+     * (StaffCapabilityAuthorizer::hasApprovedCampusLink, shared with ProfileController::canManageTeacher()).
      * A director-grant holder is a director even as type T (Founder policy 3): only super_admin manages it.
      */
     private function managesTeacher(Request $request, int $userId): bool
@@ -148,15 +148,13 @@ class TeacherBranchController extends Controller
             return true;
         }
         $campusIds = $this->callerCampusIds($request);
+        $authorizer = app(StaffCapabilityAuthorizer::class);
         if ($campusIds === [] || (string) DB::table('User')->where('id', $userId)->value('type') !== 'T'
-            || app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($userId)) {
+            || $authorizer->holdsDirectorGrant($userId)) {
             return false;
         }
-        if (DB::table('UserCampus')->where('UserID', $userId)->whereIn('CampusID', $campusIds)->exists()) {
-            return true;
-        }
 
-        return Schema::hasTable('teacher_branches')
-            && DB::table('teacher_branches')->where('teacher_id', $userId)->whereIn('branch_id', $campusIds)->exists();
+        // #4433: only an approved link counts; a pending request to the caller's campus grants no management.
+        return $authorizer->hasApprovedCampusLink($userId, $campusIds);
     }
 }
