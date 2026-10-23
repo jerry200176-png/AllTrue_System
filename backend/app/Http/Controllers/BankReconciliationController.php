@@ -25,6 +25,9 @@ class BankReconciliationController extends Controller
 
         $query = BankTransaction::query()->orderByDesc('transaction_date');
 
+        if ($request->filled('branch_id') && !$this->campusAllowed($request, (int) $request->input('branch_id'))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         if ($request->filled('branch_id')) {
             $query->where('campus_id', (int) $request->input('branch_id'));
         } elseif (!empty($campusIds)) {
@@ -84,6 +87,9 @@ class BankReconciliationController extends Controller
         ]);
 
         $campusId = (int) $request->input('campus_id');
+        if (!$this->campusAllowed($request, $campusId)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         $imported = 0;
         $skipped = 0;
 
@@ -183,6 +189,9 @@ class BankReconciliationController extends Controller
         ]);
 
         $txn = BankTransaction::findOrFail($id);
+        if (!$this->campusAllowed($request, (int) $txn->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         if ($txn->status === 'reconciled') {
             return response()->json(['message' => '此筆已勾稽'], 422);
         }
@@ -197,5 +206,12 @@ class BankReconciliationController extends Controller
         ]);
 
         return response()->json(['message' => '勾稽成功']);
+    }
+
+    /** Same rule as suggestMatches(): super_admin sees every campus, others only their own. */
+    private function campusAllowed(Request $request, int $campusId): bool
+    {
+        return $request->attributes->get('auth_role') === 'super_admin'
+            || ($campusId > 0 && in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
     }
 }

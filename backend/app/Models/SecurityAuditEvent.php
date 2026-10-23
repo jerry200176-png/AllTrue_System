@@ -26,6 +26,8 @@ final class SecurityAuditEvent
         'verification_method',
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
         'acting_as', 'capability_campus_count', 'outstanding_amount',
+        // Admin password change: how many of the target's sessions were ended (a count, never token values).
+        'revoked_session_count',
         // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
         'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
     ];
