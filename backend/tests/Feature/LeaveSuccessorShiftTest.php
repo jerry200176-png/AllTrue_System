@@ -852,6 +852,31 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertBlockedWithoutWrites('student', $this->sessions['2026-12-22']);
     }
 
+    /**
+     * #4210 r4359415468: a dated row of the moving first renewal lesson (the ExceptionWorkflow makeup shape) is no student
+     * conflict, but the shift refuses to orphan it; a genuine schedule-only booking of another course there still blocks.
+     * @dataProvider firstSlotScheduleRows
+     */
+    public function test_a_schedule_row_on_the_first_renewal_slot(bool $ownProjection): void
+    {
+        $course = $ownProjection ? $this->renewal : $this->course(self::STUDENT, '2026-12-01', '2026-12-01', ['SubjectID' => 2, 'TeacherID' => 7999]);
+        DB::table('schedules')->insert(['student_id' => self::STUDENT, 'student_course_id' => $course, 'teacher_id' => $ownProjection ? self::TEACHER : 7999,
+            'branch_id' => 1, 'day_of_week' => 2, 'schedule_date' => '2026-12-01', 'start_time' => '19:00', 'end_time' => '21:00',
+            'status' => 'scheduled', 'type' => 'extra', 'original_schedule_id' => null]);
+        $leaveId = $this->sessions['2026-11-17'];
+        $before = $this->undoSnapshot();
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', false);
+        $expected = $ownProjection ? ['ineligible', $this->renewal, $this->sessions['2026-12-01']] : ['student', $this->old, null];
+        $this->assertSame([$expected], array_map(fn ($b) => [$b['type'], $b['course_id'], $b['session_id']], $preview->json('blockers')));
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertStatus(422);
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    public static function firstSlotScheduleRows(): array
+    {
+        return ['projection of the moving first lesson' => [true], 'schedule-only booking of another course' => [false]];
+    }
+
     /** #4210: a teacher blocker never repeats the guard's occupant details, such as another student's name. */
     public function test_teacher_blocker_does_not_name_the_occupying_student(): void
     {

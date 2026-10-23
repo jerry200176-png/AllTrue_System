@@ -332,6 +332,15 @@ class ClassSessionMaterializationService
             ->orderBy('s.id')
             ->when($lock, fn ($query) => $query->lockForUpdate())
             ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']);
+        // A plan's moving lesson leaves its slot: a dated row of that lesson (same course, date and start, e.g. a
+        // makeup row) is not a separate booking (#4210 r4359415468). Genuine schedule-only rows still count.
+        if ($excludeSessionIds !== [] && $scheduleConflicts->isNotEmpty()) {
+            $moving = ClassSession::query()->whereKey($excludeSessionIds)->whereDate('SessionDate', $sessionDate)
+                ->when($lock, fn ($query) => $query->lockForUpdate())->get(['StudentClassID', 'StartTime'])
+                ->map(fn ($s) => (int) $s->StudentClassID . '|' . substr((string) $s->StartTime, 0, 5))->all();
+            $scheduleConflicts = $scheduleConflicts->reject(fn ($row) => in_array(
+                (int) $row->student_course_id . '|' . substr((string) $row->start_time, 0, 5), $moving, true))->values();
+        }
 
         // Match availability's source-of-truth rule: a scheduled exception
         // backed only by cancelled/leave ClassSessions is stale and cannot

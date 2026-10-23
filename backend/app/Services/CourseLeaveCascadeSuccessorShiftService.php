@@ -275,6 +275,17 @@ class CourseLeaveCascadeSuccessorShiftService
                 $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => (int) $row->id, 'date' => Carbon::parse($row->SessionDate)->toDateString(), 'message' => $reason];
             }
         }
+        // #4210 r4359415468: the conflict checks ignore a dated row of a moving lesson, but the old tail takes the
+        // renewal's first slot, so a renewal row there (makeup, single-lesson booking or substitute) would be left
+        // without its lesson (a makeup row also decides how that lesson is billed). Refuse instead of orphaning it.
+        $opening = $chain->first();
+        if (DB::table('schedules')->where('student_course_id', (int) $successor->ID)->where('status', 'scheduled')
+            ->whereDate('schedule_date', Carbon::parse($opening->SessionDate)->toDateString())
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) $opening->StartTime, 0, 5)])
+            ->when($lock, fn ($q) => $q->lockForUpdate())->value('id') !== null) {
+            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => (int) $opening->id,
+                'date' => Carbon::parse($opening->SessionDate)->toDateString(), 'message' => '續約第一堂在原時段有單堂排課紀錄（補課、單堂或代課），順延會讓它失去對應堂次，請先核對該堂'];
+        }
 
         $slots = $chain->map(fn ($s) => $this->slot($s->SessionDate, $s->StartTime, $s->EndTime))->values()->all();
         // #4210 P3-4: the tail keeps the leave lesson's exact length (no 30-minute floor; lesson length is per course, G-011).
