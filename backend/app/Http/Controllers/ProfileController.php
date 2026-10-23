@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\SecurityAuditEvent;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\StaffCapabilityAuthorizer;
 use App\Services\TeacherScopeService;
 use App\Support\PinGate;
 use App\Support\Utf8mb3SearchSanitizer;
@@ -793,8 +796,10 @@ class ProfileController extends Controller
         if (!empty($input['name'])) {
             $user->Name = $input['name'];
         }
+        $endTargetSessions = false;
         if (!empty($input['password'])) {
             $user->PSW = password_hash($input['password'], PASSWORD_DEFAULT);
+            $endTargetSessions = !$this->isCaller($request, (int) $user->id);
         }
         if (isset($input['employment_type']) && Schema::hasColumn('User', 'employment_type')) {
             $user->employment_type = $input['employment_type'];
@@ -815,7 +820,12 @@ class ProfileController extends Controller
             $lineId = trim((string) ($input['line_id'] ?? ''));
             $user->LineID = $lineId !== '' ? $lineId : null;
         }
-        $user->save();
+        DB::transaction(function () use ($request, $user, $endTargetSessions) {
+            $user->save();
+            if ($endTargetSessions) {
+                $this->endSessionsAfterAdminPasswordChange($request, $user, 'admin_password_set', 'profiles.update');
+            }
+        });
 
         // 通知中心側欄 pending_teachers 依 UserCampus.Approved；老師管理「核准」只送 status=active 時也要釋出分校綁定。
         if (
@@ -925,7 +935,13 @@ class ProfileController extends Controller
             $operator = $request->attributes->get('auth_user');
             $user->PasswordSetByUserID = $operator?->id;
         }
-        $user->save();
+        $endTargetSessions = !$this->isCaller($request, (int) $user->id);
+        DB::transaction(function () use ($request, $user, $endTargetSessions) {
+            $user->save();
+            if ($endTargetSessions) {
+                $this->endSessionsAfterAdminPasswordChange($request, $user, 'admin_password_reset', 'profiles.reset-password');
+            }
+        });
 
         return response()->json([
             'message' => '密碼已重設',
@@ -1116,11 +1132,55 @@ class ProfileController extends Controller
         return $counts;
     }
 
+    /**
+     * Founder 2026-10-22: an admin who sets or resets another user's password signs that user out
+     * everywhere and leaves a PII-minimized audit row. Call inside the transaction that saves the new PSW:
+     * the audit is required, so a failed audit insert rolls back the password and the sign-out with it.
+     * The password, its hash and token values never reach the audit row.
+     */
+    private function endSessionsAfterAdminPasswordChange(Request $request, User $target, string $reasonCode, string $source): void
+    {
+        $revoked = AuthToken::revokeAllForUser((int) $target->id);
+        $role = (string) $request->attributes->get('auth_role');
+        $campusQuery = DB::table('UserCampus')->where('UserID', $target->id)->orderBy('CampusID');
+        if ($role !== 'super_admin') {
+            $campusQuery->whereIn('CampusID', array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])));
+        }
+        $campusId = $campusQuery->value('CampusID');
+
+        SecurityAuditEvent::append('staff.password.admin_changed', 'success', [
+            'actor_type' => 'user',
+            'actor_id' => $request->attributes->get('auth_user')?->id,
+            'subject_type' => 'user',
+            'subject_id' => (int) $target->id,
+            'campus_id' => $campusId !== null ? (int) $campusId : null,
+        ], [
+            'reason_code' => $reasonCode,
+            'method' => $role,
+            'source' => $source,
+            'revoked_session_count' => $revoked,
+        ], required: true);
+    }
+
+    private function isCaller(Request $request, int $userId): bool
+    {
+        $caller = $request->attributes->get('auth_user');
+
+        return $caller !== null && (int) $caller->id === $userId;
+    }
+
     private function canManageTeacher(Request $request, int $teacherUserId): bool
     {
         $role = (string) ($request->attributes->get('auth_role') ?? '');
         if ($role === 'super_admin') {
             return true;
+        }
+        // Founder policy 3: a director-grant holder is a director, even as type T; only super_admin manages it (its own
+        // profile stays editable by the holder).
+        $authUser = $request->attributes->get('auth_user');
+        $self = is_object($authUser) && (int) ($authUser->id ?? 0) === $teacherUserId;
+        if (!$self && app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($teacherUserId)) {
+            return false;
         }
 
         $campusIds = array_values(array_unique(array_map(

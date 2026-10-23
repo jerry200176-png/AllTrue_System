@@ -5,6 +5,7 @@ import {
   isAppOriginUrl,
   classifyAppRequest,
   installReadOnlyAppGuard,
+  isKnownPostRead,
 } from './readOnlyAppGuard.js';
 
 const APP = appOriginOf('https://app.example.test/some/path?x=1');
@@ -58,6 +59,15 @@ describe('readOnlyAppGuard', () => {
     expect(classifyAppRequest(APP, 'POST', 'not a url')).toBe('ignore');
   });
 
+  it('knows a POST read only by exact method, app origin and path', () => {
+    const read = { method: 'POST', origin: APP, path: '/api/v1/student-classes/session-dates' };
+    expect(isKnownPostRead(APP, read)).toBe(true);
+    expect(isKnownPostRead(APP, { ...read, method: 'PUT' })).toBe(false);
+    expect(isKnownPostRead(APP, { ...read, origin: 'https://other.example.test' })).toBe(false);
+    expect(isKnownPostRead(APP, { ...read, path: '/api/v1/student-classes/session-dates/1' })).toBe(false);
+    expect(isKnownPostRead('', read)).toBe(false);
+  });
+
   it('records blocked HTTP writes from every origin', async () => {
     let predicate;
     let handler;
@@ -78,9 +88,15 @@ describe('readOnlyAppGuard', () => {
     await handler(route('GET', 'https://app.example.test/api/v1/schedules'));
     await handler(route('POST', 'https://app.example.test/api/v1/adoption/events'));
     await handler(route('PATCH', 'https://app.example.test/api/v1/schedules/9'));
+    await handler(route('POST', 'https://app.example.test/api/v1/student-classes/session-dates?branch_id=1'));
 
-    expect(calls).toEqual([['continue'], ['fulfill', 204], ['abort', 'blockedbyclient']]);
-    expect(blocked).toEqual([{ method: 'PATCH', path: '/api/v1/schedules/9' }]);
+    expect(calls).toEqual([['continue'], ['fulfill', 204], ['abort', 'blockedbyclient'], ['abort', 'blockedbyclient']]);
+    expect(blocked).toEqual([
+      { method: 'PATCH', origin: APP, path: '/api/v1/schedules/9' },
+      { method: 'POST', origin: APP, path: '/api/v1/student-classes/session-dates' },
+    ]);
+    // A known POST read is still aborted; only a spec that opts in may count it.
+    expect(blocked.map((entry) => isKnownPostRead(APP, entry))).toEqual([false, true]);
     // This is the afterEach assertion the acceptance spec uses; a write fails it.
     expect(() => expect(blocked).toEqual([])).toThrow();
   });

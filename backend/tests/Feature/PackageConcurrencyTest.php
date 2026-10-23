@@ -133,6 +133,8 @@ class PackageConcurrencyTest extends TestCase
     }
 
     // ─── Deduction then reverse then re-deduct yields correct balance ──
+    // #4275: a re-attended lesson is taught again, so it must debit again (net-based, like
+    // the course ledger since #1338). The old row/reason rule left the pool one lesson short.
 
     public function test_deduct_reverse_rededuct_sequence(): void
     {
@@ -147,12 +149,20 @@ class PackageConcurrencyTest extends TestCase
         PackageDeductionService::deductForSession($pkg->id, $sc->ID, $session->id, 'attendance');
         PackageDeductionService::reverseForSession($pkg->id, $sc->ID, $session->id, 'retro_leave');
 
-        $wrote = PackageDeductionService::deductForSession($pkg->id, $sc->ID, $session->id, 'attendance');
-        $this->assertFalse($wrote, 'Same session+reason should be idempotent even after reverse');
-
         PackageDeductionService::recomputeCounters($pkg->id);
         $pkg->refresh();
         $this->assertEquals(10, $pkg->remaining_sessions, 'After deduct + reverse, balance should be restored');
+
+        $wrote = PackageDeductionService::deductForSession($pkg->id, $sc->ID, $session->id, 'attendance');
+        $this->assertTrue($wrote, 'Re-deduct after a matching reverse must debit again');
+        $this->assertFalse(
+            PackageDeductionService::deductForSession($pkg->id, $sc->ID, $session->id, 'attendance'),
+            'Still idempotent while the session is debited'
+        );
+
+        PackageDeductionService::recomputeCounters($pkg->id);
+        $pkg->refresh();
+        $this->assertEquals(9, $pkg->remaining_sessions, 'One debit for the re-attended lesson');
     }
 
     // ─── SessionDeductionService integration: non-package courses unaffected ──

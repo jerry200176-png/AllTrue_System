@@ -34,6 +34,7 @@ Pulled from the live codebase (`grep` over `backend/app/Http/Controllers`, `back
 | PII export (students.xlsx) | ✅ Yes (#1812) | `SecurityAuditEvent` `pii.export.students` on `GET /api/v1/students/export` (hashed actor, row/campus scope counts; no names/phones) |
 | StudentClass SessionCount / RemainingSessions manual edit | ✅ Yes (#1811) | `SecurityAuditEvent` `student_class.session_balance_adjust` on `StudentClassController::update` when counts change (old→new ints only) |
 | super_admin director password reset | ✅ Yes (#1813) | `SecurityAuditEvent` `director.password.reset` on `DirectorAccountController::resetPassword` (hashed actor/subject; temp password never in metadata) |
+| director/super_admin sets or resets another staff password | ✅ Yes (2026-10-22) | `SecurityAuditEvent` `staff.password.admin_changed` on `ProfileController::update` / `resetPassword`; the target's sessions are revoked in the same transaction (`revoked_session_count`) |
 | Sensitive admin session/impersonation (if any exists) | ⚠️ **Not verified this pass** | Out of scope for this grep pass |
 
 ## Critical gaps → tracked as follow-up
