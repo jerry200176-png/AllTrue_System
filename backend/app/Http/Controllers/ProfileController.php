@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\StaffCapabilityAuthorizer;
 use App\Services\TeacherScopeService;
 use App\Support\PinGate;
 use App\Support\Utf8mb3SearchSanitizer;
@@ -1121,6 +1122,10 @@ class ProfileController extends Controller
         $role = (string) ($request->attributes->get('auth_role') ?? '');
         if ($role === 'super_admin') {
             return true;
+        }
+        // Founder policy 3: a director-grant holder is a director, even as type T; only super_admin manages it.
+        if (app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($teacherUserId)) {
+            return false;
         }
 
         $campusIds = array_values(array_unique(array_map(
