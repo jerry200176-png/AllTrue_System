@@ -638,4 +638,4 @@ operations:
     strategy_class: App\Operations\Strategies\PackageLedgerNetRepairStrategy
     parameter_keys: [decision_reference]
     tags: [repair, billing, package, in-app-419]
-    notes: Exact manifest of GitHub #4455 (17 missing debits, 37 double debits). Inserts one repair_4455 row per applicable session and recomputes the package counters; any other drift fails the whole plan. No course ledger, session, invoice or payment write. Pi-local POP only.
+    notes: Exact manifest of GitHub #4455 (15 missing debits, 37 double debits; two class A rows deferred to #4470). Inserts one repair_4455 row per applicable session and recomputes the package counters; any other drift fails the whole plan. No course ledger, session, invoice or payment write. Pi-local POP only.
