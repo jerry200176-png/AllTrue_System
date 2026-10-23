@@ -5,10 +5,14 @@ namespace App\Operations\Strategies;
 /** Closed allowlist for the #4455 shared package ledger repair (read-only scan in GitHub #4455). Ids only. */
 final class PackageLedgerNetRepairManifest
 {
-    /** Class A, missing debit (17): package id => class session ids, one -1 row each. */
+    /**
+     * Class A, missing debit (15): package id => class session ids, one -1 row each. 28718 (package 160) and 36716
+     * (package 176) were dropped after the production dry-run blocked them with a_session_net (the slot nets 0 over a
+     * debit already on the lesson); they go to the #4470 follow-up repair.
+     */
     private const MISSING_DEBIT = [
         61 => [11611], 122 => [37034], 123 => [30244], 124 => [30359], 134 => [27764, 35603], 137 => [30969],
-        143 => [30516], 156 => [30981, 31146, 31208], 160 => [30934, 28710, 28718], 167 => [30135, 31012], 176 => [36716],
+        143 => [30516], 156 => [30981, 31146, 31208], 160 => [30934, 28710], 167 => [30135, 31012],
     ];
 
     /** Class A packages reconciled per lesson (one_on_one); the other class A packages are group types, reconciled per slot. */
