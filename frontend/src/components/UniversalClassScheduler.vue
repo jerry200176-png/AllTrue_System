@@ -404,6 +404,14 @@
                 </select>
               </div>
 
+              <div v-if="form.class_type === 'trial'" class="form-group">
+                <label for="ucs-trial-target">試聽班型</label>
+                <select id="ucs-trial-target" v-model="form.trial_target_class_type">
+                  <option :value="null">未指定（每時段最多 1 位試聽）</option>
+                  <option v-for="opt in TRIAL_TARGET_CLASS_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </div>
+
               <div v-if="!isTutoring" class="form-group">
                 <label>{{ hasPerDayDuration ? '每小時費用 *' : '單堂費用 *' }}</label>
                 <input v-model.number="form.price_per_session" type="number" min="0" step="50" />
@@ -886,6 +894,7 @@ import {
   sessionCountForYmd as countSessionsOnYmd,
 } from '../lib/schedulerSessionExpand';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
+import { TRIAL_TARGET_CLASS_TYPE_OPTIONS, trialTargetPayload } from '../lib/trialTarget.js';
 import SearchableSelect from './SearchableSelect.vue';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
@@ -976,6 +985,7 @@ const form = reactive({
   teacher_id: props.initialTeacherId ? Number(props.initialTeacherId) : '',
   subject: 'Math',
   class_type: 'one_on_one',
+  trial_target_class_type: null,
   confirmed_dates: [],
   excluded_dates: [],
   total_classes: 8,
@@ -1089,6 +1099,7 @@ function resetForm() {
   form.teacher_id = props.initialTeacherId ? Number(props.initialTeacherId) : '';
   form.subject = 'Math';
   form.class_type = 'one_on_one';
+  form.trial_target_class_type = null;
   form.confirmed_dates = [];
   form.excluded_dates = [];
   form.total_classes = 8;
@@ -2385,6 +2396,7 @@ async function submit() {
         teacher_id: Number(form.teacher_id),
         subject: form.subject,
         class_type: form.class_type,
+        ...trialTargetPayload(form),
         confirmed_dates: [],
         future_dates: [],
         session_plan: [],
@@ -2577,6 +2589,7 @@ async function submit() {
       teacher_id: globalTeacherId,
       subject: form.subject,
       class_type: form.class_type,
+      ...trialTargetPayload(form),
       confirmed_dates: [],
       future_dates: [],
       session_plan: useMonthlyRecurring ? [] : sessionPlan,
