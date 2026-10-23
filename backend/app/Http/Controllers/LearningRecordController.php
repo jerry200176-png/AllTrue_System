@@ -960,9 +960,15 @@ class LearningRecordController extends Controller
             : collect();
 
         $teacherIds = $collection->pluck('TeacherID')->filter()->unique()->values();
+        $teacherComments = LearningRecordTeacherComment::whereIn('learning_record_id', $collection->pluck('id'))
+            ->get()
+            ->keyBy('learning_record_id');
         $effTidByRecordId = [];
         foreach ($collection as $r) {
+            // #3059: hand the ownership check the comment we already loaded instead of one exists() per record.
+            $r->setRelation('teacherComment', $teacherComments->get((int) $r->id));
             $effTidByRecordId[(int) $r->id] = $this->resolveEffectiveInstructorUserId($r);
+            $r->unsetRelation('teacherComment'); // the response carries the formatted teacher_comment attribute instead
         }
         $effectiveIds = collect($effTidByRecordId)->filter(fn ($id) => $id > 0)->values();
         $allNameIds = $teacherIds->merge($effectiveIds)->unique()->values();
@@ -984,9 +990,6 @@ class LearningRecordController extends Controller
         $replyAuthorNames = $replyAuthorIds->isNotEmpty()
             ? DB::table('User')->whereIn('id', $replyAuthorIds)->pluck('Name', 'id')->toArray()
             : [];
-        $teacherComments = LearningRecordTeacherComment::whereIn('learning_record_id', $collection->pluck('id'))
-            ->get()
-            ->keyBy('learning_record_id');
         $authorIds = $teacherComments->pluck('author_user_id')->filter()->unique()->values();
         $authorNameMap = $authorIds->isNotEmpty()
             ? DB::table('User')->whereIn('id', $authorIds)->pluck('Name', 'id')->toArray()
