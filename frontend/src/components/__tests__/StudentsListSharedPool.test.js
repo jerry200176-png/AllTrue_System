@@ -46,6 +46,7 @@ it('In-App #367: shows shared balance once at package level, never on member car
     expect(pools[0].text()).toContain('共用方案');
     expect(pools[0].find('[data-testid="package-remaining"]').text()).toBe('17');
     expect(pools[0].find('[data-testid="package-total"]').text()).toBe('25');
+    expect(pools[0].find('[data-testid="package-overused"]').exists()).toBe(false);
     for (const card of cards.slice(0, 2)) {
       expect(card.find('.student-course-card__progress').exists()).toBe(false);
       expect(card.find('[role="progressbar"]').exists()).toBe(false);
@@ -56,6 +57,34 @@ it('In-App #367: shows shared balance once at package level, never on member car
     expect(cards[2].find('.student-course-card__progress-head').text()).toBe('課程進度3 / 8 堂剩餘');
     expect(cards[2].text()).not.toContain('各科共用同一堂數池');
     expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+  } finally {
+    wrapper.unmount();
+  }
+});
+
+it('In-App #419: a pool whose ledger used more than its total says how many sessions over, not just 17 / 16', async () => {
+  const courses = ['English', 'Science'].map((subject, index) => ({
+    id: 7001 + index, subject, subject_name: index ? '自然' : '英文',
+    payment_type: 'session', status: 'active', class_type: 'one_on_one',
+    payment_status: 'paid', PackageID: 9000, package_total_sessions: 16,
+    package_remaining_sessions: 0, package_used_sessions: 17,
+  }));
+  vi.stubGlobal('fetch', vi.fn(async (input) => {
+    const url = String(input);
+    const body = url.includes('/student-classes') ? { data: courses }
+      : url.includes('/students?') ? { data: [{ id: 2001, name: '合成學生', status: 'active' }], total: 1 }
+        : { data: [] };
+    return { ok: true, json: async () => body };
+  }));
+  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
+  try {
+    await flushPromises();
+    await wrapper.find('.student-row').trigger('click');
+    await flushPromises();
+    const pool = wrapper.find('.student-package-summary');
+    expect(pool.find('[data-testid="package-used"]').text()).toBe('17');
+    expect(pool.find('[data-testid="package-total"]').text()).toBe('16');
+    expect(pool.find('[data-testid="package-overused"]').text()).toContain('已使用超出方案 1 堂');
   } finally {
     wrapper.unmount();
   }

@@ -54,3 +54,13 @@ export function sharedPackageSummaries(courses) {
   }
   return [...packages.values()];
 }
+
+/**
+ * In-app #419: sessions the pool ledger used beyond the package total (attendance is never blocked by balance, G-011),
+ * 0 when either number is unknown. The shared pool's remaining is floored at 0, so without this the summary reads
+ * "used 17 / total 16 / remaining 0" with no explanation.
+ */
+export function poolOverusedSessions(pool) {
+  const { total, used } = pool ?? {};
+  return Number.isFinite(total) && Number.isFinite(used) && used > total ? used - total : 0;
+}

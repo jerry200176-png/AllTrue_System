@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-23-shared-pool-overuse-label
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 共用方案超用會標示超出幾堂
+    summary: 學生列表的共用方案已使用多於總堂數時，直接說明超出幾堂。
+    items:
+      - category: improved
+        text: 摘要下方直接寫出超出方案幾堂，提醒核對點名紀錄；確實超上請安排續約。
+    source_refs:
+      - "changelog:2026-10-23:shared-pool-overuse-label"

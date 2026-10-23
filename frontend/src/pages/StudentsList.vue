@@ -272,6 +272,9 @@
                         <div><dt>方案已使用</dt><dd data-testid="package-used">{{ pool.used ?? '待確認' }}</dd></div>
                         <div><dt>方案剩餘堂數</dt><dd data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
                       </dl>
+                      <p v-if="poolOverusedSessions(pool) > 0" class="student-package-summary__overused" data-testid="package-overused">
+                        已使用超出方案 {{ poolOverusedSessions(pool) }} 堂。堂數用完不會擋點名，請核對點名紀錄；確實超上請安排續約。
+                      </p>
                     </section>
                     <div class="student-course-picker" role="list" aria-label="進行中的課程">
                       <div
@@ -1034,7 +1037,7 @@ import {
   gradePromotionSuccessMessage,
   toggleGradePromotionExclude,
 } from '../lib/gradePromotionUi.js';
-import { courseBadgeSessionLabel, sharedPackageSummaries } from '../lib/courseBadgeDisplay.js';
+import { courseBadgeSessionLabel, poolOverusedSessions, sharedPackageSummaries } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { fetchClassSessions } from '../lib/classSessionsApi.js';
 import {
@@ -4193,6 +4196,16 @@ table th { font-size: 12.5px; }
   font-size: 12px;
   line-height: 1.5;
   text-align: right;
+}
+.student-package-summary__overused {
+  background: var(--ds-warning-wash);
+  border: 1px solid var(--ds-warning-border);
+  border-radius: var(--ds-radius-lg);
+  color: var(--ds-warning-ink);
+  font-size: var(--ds-font-size-md);
+  line-height: 1.5;
+  margin: 8px 0 0;
+  padding: 8px 10px;
 }
 .student-course-overview__metrics {
   border-bottom: 1px solid var(--ds-hairline);
