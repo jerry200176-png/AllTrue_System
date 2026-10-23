@@ -23,11 +23,7 @@ class PackageSlotCurrentReadTest extends TestCase
 
     private string $originalConnection;
     private int $lockTimeout;
-    private array $initialSubjectIds = [];
-    private array $seededSubjectIds = [];
-    private array $ownedStudentIds = [];
-    private array $ownedCourseIds = [];
-    private array $ownedPackageIds = [];
+    private array $initialSubjectIds = [], $seededSubjectIds = [], $ownedStudentIds = [], $ownedCourseIds = [], $ownedPackageIds = [];
 
     protected function afterRefreshingDatabase(): void
     {
@@ -46,9 +42,7 @@ class PackageSlotCurrentReadTest extends TestCase
     protected function tearDown(): void
     {
         $reader = DB::connection('package_current');
-        while ($reader->transactionLevel() > 0) {
-            $reader->rollBack();
-        }
+        while ($reader->transactionLevel() > 0) $reader->rollBack();
         DB::purge('package_current');
         DB::setDefaultConnection($this->originalConnection);
         DB::statement('SET SESSION innodb_lock_wait_timeout = ' . $this->lockTimeout);
@@ -133,23 +127,14 @@ class PackageSlotCurrentReadTest extends TestCase
 
     private function makePackage(): int
     {
-        $pkg = CoursePackage::create([
-            'student_id' => $this->makeStudent(), 'campus_id' => 1, 'name' => '並發時段方案',
-            'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0,
-            'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_two',
-            'paid' => false, 'stop' => false, 'enabled' => true,
-        ]);
-        $this->ownedPackageIds[] = $pkg->id;
-
-        return (int) $pkg->id;
+        return $this->ownedPackageIds[] = (int) CoursePackage::create(['student_id' => $this->makeStudent(), 'campus_id' => 1,
+            'name' => '並發時段方案', 'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0, 'rate' => 500,
+            'rate_unit' => 'session', 'class_type' => 'one_on_two', 'paid' => false, 'stop' => false, 'enabled' => true])->id;
     }
 
     private function makeStudent(): int
     {
-        $student = Student::factory()->create(['CampusID' => 1]);
-        $this->ownedStudentIds[] = $student->id;
-
-        return (int) $student->id;
+        return $this->ownedStudentIds[] = (int) Student::factory()->create(['CampusID' => 1])->id;
     }
 
     private function makeMember(int $packageId): int
@@ -162,8 +147,7 @@ class PackageSlotCurrentReadTest extends TestCase
             'Rate' => 500, 'rate_unit' => 'session', 'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Stop' => 0,
             'PackageID' => $pkg->id, 'PackageTotalSessions' => 10, 'PackageName' => $pkg->name,
         ]);
-        $this->ownedCourseIds[] = (int) $course->ID;
 
-        return (int) $course->ID;
+        return $this->ownedCourseIds[] = (int) $course->ID;
     }
 }

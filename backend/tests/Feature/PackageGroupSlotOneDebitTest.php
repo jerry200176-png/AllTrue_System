@@ -121,6 +121,33 @@ class PackageGroupSlotOneDebitTest extends TestCase
         $this->assertSame(9, (int) $pkg->fresh()->remaining_sessions);
     }
 
+    public function test_an_overlapping_edit_loaded_before_another_retime_reconciles_against_the_locked_row(): void
+    {
+        [$pkg, $first, $second] = $this->groupPackage();
+        $moving = $this->makeSession($first->ID, '16:00');
+        SessionDeductionService::deductForSession($first->ID, $moving->id, 'attendance');
+        SessionDeductionService::deductForSession($second->ID, $this->makeSession($second->ID, '18:00')->id, 'attendance');
+        $token = $this->directorToken();
+        $this->retime($token, $moving->id, '18:00', '20:00')->assertOk(); // request 1 merges A into 18:00
+        $this->assertSame(0, $this->slotNet($pkg->id, '16:00'));
+
+        // Request 2 loaded A before request 1 committed, so its first read still says 16:00.
+        $stale = true;
+        ClassSession::retrieved(function (ClassSession $s) use (&$stale, $moving) {
+            if ($stale && (int) $s->id === (int) $moving->id) {
+                $stale = false;
+                $s->setRawAttributes(array_replace($s->getAttributes(), ['StartTime' => '16:00:00', 'EndTime' => '18:00:00']), true);
+            }
+        });
+        $this->retime($token, $moving->id, '16:00', '18:00')->assertOk();
+
+        $this->assertFalse($stale, 'precondition: request 2 started from the stale row');
+        $this->assertSame('16:00', substr((string) $moving->fresh()->StartTime, 0, 5));
+        $this->assertSame(-1, $this->slotNet($pkg->id, '16:00'), 'A is back at 16:00 and debits it again');
+        $this->assertSame(-1, $this->slotNet($pkg->id, '18:00'));
+        $this->assertSame(8, (int) $pkg->fresh()->remaining_sessions);
+    }
+
     public function test_moving_the_carrier_away_keeps_the_old_slot_debited_for_a_member_still_there(): void
     {
         [$pkg, $a, $b, $c] = $this->groupPackage(3);
@@ -227,12 +254,9 @@ class PackageGroupSlotOneDebitTest extends TestCase
     private function groupPackage(int $members = 2): array
     {
         $owner = $this->makeStudent();
-        $pkg = CoursePackage::create([
-            'student_id' => $owner->id, 'campus_id' => 1, 'name' => '一對二時段方案',
-            'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0,
-            'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_two',
-            'paid' => false, 'stop' => false, 'enabled' => true,
-        ]);
+        $pkg = CoursePackage::create(['student_id' => $owner->id, 'campus_id' => 1, 'name' => '一對二時段方案',
+            'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_two', 'paid' => false, 'stop' => false, 'enabled' => true]);
         $teacherId = $this->makeTeacher()->id;
         $member = fn (int $studentId) => StudentClass::create([
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId, 'by1' => 1, 'Period' => 4,
@@ -242,12 +266,7 @@ class PackageGroupSlotOneDebitTest extends TestCase
             'PackageID' => $pkg->id, 'PackageTotalSessions' => 10, 'PackageName' => $pkg->name,
         ]);
 
-        $courses = [$member($owner->id)];
-        for ($i = 1; $i < $members; $i++) {
-            $courses[] = $member($this->makeStudent()->id);
-        }
-
-        return [$pkg, ...$courses];
+        return [$pkg, ...array_map(fn (int $i) => $member($i === 0 ? $owner->id : $this->makeStudent()->id), range(0, $members - 1))];
     }
 
     private function makeSession(int $studentClassId, string $start, string $status = 'attended'): ClassSession

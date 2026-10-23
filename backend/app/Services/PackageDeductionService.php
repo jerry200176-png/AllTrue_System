@@ -125,10 +125,8 @@ class PackageDeductionService
     }
 
     /**
-     * The package's ledger rows as last committed, plus this transaction's own writes: a locking read, which InnoDB
-     * answers from the latest rows instead of the caller's snapshot (#4454). Filtered on package_id alone, so the shared
-     * locks cover this package's index range only, never a class_session_id range that other packages' lessons share.
-     * Callers hold the package lock, so no other writer of these rows is in flight.
+     * The package's ledger rows as last committed (plus own writes): a locking read, not the caller's snapshot (#4454). On
+     * package_id alone, so it locks this package's index range, never a class_session_id range other packages share.
      */
     private static function currentLedger(int $packageId): Collection
     {
@@ -220,22 +218,12 @@ class PackageDeductionService
     }
 
     /**
-     * FR-003 — Debit one charged lesson under the slot rule: a group package debits each (SessionDate, HH:MM) slot
-     * once, so the lesson is skipped while its slot's package net is already negative; other packages debit per lesson.
-     * Attendance (via syncFromStudentClassDeduction) and package creation with past dates both debit through here, so
-     * neither can debit a slot twice (#4455); reslotRetimedSession() applies the same rule after a time change.
-     *
-     * @return bool true if a new row was written
+     * FR-003: debit one charged lesson unless its group slot (SessionDate, HH:MM) is already debited; other packages debit
+     * per lesson. Attendance and package creation both debit through here, so neither debits a slot twice (#4455).
      */
-    public static function deductUnderSlotRule(
-        int $packageId,
-        int $studentClassId,
-        ?int $classSessionId,
-        string $reason = 'attendance',
-        ?int $recordedBy = null,
-        ?string $note = null,
-        ?string $requestId = null
-    ): bool {
+    public static function deductUnderSlotRule(int $packageId, int $studentClassId, ?int $classSessionId, string $reason = 'attendance',
+        ?int $recordedBy = null, ?string $note = null, ?string $requestId = null): bool
+    {
         return (bool) DB::transaction(function () use ($packageId, $studentClassId, $classSessionId, $reason, $recordedBy, $note, $requestId) {
             self::lockPackage($packageId);
             $slot = self::groupSlot($packageId, $classSessionId);
@@ -248,18 +236,11 @@ class PackageDeductionService
     }
 
     /**
-     * FR-003 after a lesson's start time changed on the same date (#4455). Slots come from the lessons' current times, so a
-     * debit the lesson carries has already left $oldStartHm and counts at its new time. Both slots then get the rule again:
-     * - carried: the old slot keeps its one debit on another member lesson still charged there (chargedLessons()), and
-     *   the carried debit is credited if the new slot is already debited;
-     * - not carried: a lesson charged before this edit ($statusBefore attended/late, or a course-ledger debit) debits the
-     *   new slot if that slot has no debit, so moving a lesson back restores it. A lesson marked attended in the same
-     *   request is debited by the attendance deduction that follows instead.
-     * Idempotent; 1:1 packages are untouched. The caller runs it in the transaction of the time edit after lockForRetime(),
-     * so its reads see every member write committed before the package lock, and later member writes apply their own
-     * slot rule after it.
-     *
-     * @return bool true if a ledger row was written
+     * FR-003 after a lesson moved from $oldStartHm on the same date (#4455); slots follow current times, so a carried debit
+     * already counts at the new time. Carried: the old slot keeps one debit on a member still charged there, and the
+     * carried debit is credited if the new slot is debited. Not carried: a lesson charged before this edit debits a new
+     * slot without a debit (a lesson marked attended in this request is left to its attendance deduction). Idempotent.
+     * Runs in the time edit's transaction after lockForRetime(), so its reads are newer than the package lock.
      */
     public static function reslotRetimedSession(int $classSessionId, string $oldStartHm, string $statusBefore, ?int $recordedBy = null): bool
     {

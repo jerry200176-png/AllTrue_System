@@ -1117,8 +1117,14 @@ class ClassSessionController extends Controller
                     $sameStatusReason
                 );
             }
-            // One transaction: a retimed package lesson's ledger fix commits or rolls back with its new time (#4455).
-            DB::transaction(fn () => $this->applyTimeAndNoteUpdates($session, $data));
+            // One transaction: a retimed package lesson's ledger fix commits or rolls back with its new time (#4455). Decide
+            // against the row locked here (lesson first, a locking read), not the model loaded before an overlapping edit.
+            $session = DB::transaction(function () use ($session, $data) {
+                $locked = ClassSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
+                $this->applyTimeAndNoteUpdates($locked, $data);
+
+                return $locked;
+            });
             $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
         }
