@@ -1719,11 +1719,8 @@ class ParentPortalController extends Controller
 
         $role = (string) $request->attributes->get('auth_role', '');
         $campusIds = array_map('intval', $request->attributes->get('auth_campus_ids', []));
-        if ($role !== 'super_admin' && !empty($campusIds)) {
-            $studentCampusId = (int) ($student->CampusID ?? 0);
-            if ($studentCampusId > 0 && !in_array($studentCampusId, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
+        if ($role !== 'super_admin' && !in_array((int) ($student->CampusID ?? 0), $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $classes = StudentClass::where('StudentID', $student->id)

@@ -38,7 +38,14 @@
                 </span>
               </td>
               <td data-label="操作" class="subject-row-actions">
-                <AtButton shape="rect" size="sm" variant="secondary" @click="openEdit(s)">更名</AtButton>
+                <AtButton
+                  shape="rect"
+                  size="sm"
+                  variant="secondary"
+                  :disabled="!s.campus_id && !isSuperAdmin"
+                  :title="!s.campus_id && !isSuperAdmin ? '共用科目僅超級管理員可更名' : ''"
+                  @click="openEdit(s)"
+                >更名</AtButton>
                 <AtButton
                   shape="rect"
                   size="sm"
