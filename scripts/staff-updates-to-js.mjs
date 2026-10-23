@@ -8,7 +8,8 @@ import { assertUserFacingCopy, countChars } from './lib/userFacingCopyGate.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outPath = path.join(root, 'frontend', 'src', 'lib', 'staffUpdates.generated.js');
 
-const ALLOWED_AUDIENCES = new Set(['director', 'teacher']);
+// super_admin: a screen only super admins see (frontend releaseNotes.js hides it from directors/teachers).
+const ALLOWED_AUDIENCES = new Set(['director', 'teacher', 'super_admin']);
 const ALLOWED_IMPORTANCE = new Set(['digest', 'major', 'action_required']);
 const ALLOWED_CATEGORY = new Set(['added', 'fixed', 'improved', 'action_required']);
 const IMPORTANCE_RANK = { action_required: 3, major: 2, digest: 1 };
