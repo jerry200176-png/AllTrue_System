@@ -1,0 +1,5 @@
+## 2026-10-23 — ops: #4455 repair manifest drops the two rows the production dry-run blocked
+<!-- release-notes: silent_ship=silent-2026-10-23-package-ledger-repair-drop-two -->
+<!-- silent-reason: internal ops repair manifest; nothing changes for staff until the Founder-approved repair runs -->
+
+The first production dry-run of `package-ledger-net-repair-4455` (run 39982586468, deployed `8cde8445`) blocked the whole plan on `a_session_net_28718` and `a_session_net_36716`: each slot nets 0 while the lesson's own package net is not 0 (the case this check exists for: a debit already sits on the lesson and a sibling lesson carries the offsetting row), so a -1 on that lesson could double-debit it. The other 52 rows passed. The manifest now holds those 52 rows over 15 packages (package 176 had only 36716); the two slots go to the #4470 follow-up repair, which needs the sibling rows to decide which lesson gets the correction. No strategy logic changes; every precondition still blocks the whole plan. Rollback is a normal revert.
