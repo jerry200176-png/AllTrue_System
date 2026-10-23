@@ -39,9 +39,10 @@ class AuthDuplicateEmailRoleTest extends TestCase
             'LoginName' => $email,
             'type' => 'T',
         ]);
+        // A public director sign-up is a pending application (type U) until a super_admin approves it.
         $this->assertDatabaseHas('User', [
             'LoginName' => $email,
-            'type' => 'D',
+            'type' => 'U',
         ]);
         $this->assertSame(2, User::where('LoginName', $email)->count());
     }
