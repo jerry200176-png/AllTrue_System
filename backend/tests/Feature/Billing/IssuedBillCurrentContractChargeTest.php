@@ -87,6 +87,24 @@ class IssuedBillCurrentContractChargeTest extends TestCase
         $this->assertFalse($bill['single_course_items']);
     }
 
+    /** #3912: a combined bill names every course it covers (anchor + lines), so the panel can tell it is not 「其他課程」. */
+    public function test_a_combined_bill_lists_every_course_it_covers(): void
+    {
+        $token = $this->directorToken();
+        $student = $this->student();
+        $course = $this->course($student);
+        $other = $this->course($student);
+        $invoiceId = $this->unpaidInvoice($course, 8800);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $invoiceId, 'StudentClassID' => $other->ID, 'Description' => 'other', 'Amount' => 1600]);
+        $single = $this->unpaidInvoice($course, 8800);
+
+        $bills = collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_class_id=' . $course->ID)
+            ->assertOk()->json('invoices'))->keyBy('id');
+
+        $this->assertSame([(int) $course->ID, (int) $other->ID], $bills[$invoiceId]['covered_student_class_ids']);
+        $this->assertSame([(int) $course->ID], $bills[$single]['covered_student_class_ids']);
+    }
+
     /** D3 (Founder 2026-10-15): a bill priced by a person is never flagged against the contract Charge. */
     public function test_hand_priced_bills_are_marked_so_the_amount_difference_is_not_flagged(): void
     {
