@@ -23,6 +23,12 @@ last_reviewed: 2026-09-05
 - **強制規則**：長腳本放進 checked-in 檔案（Deploy 的遠端腳本在 `scripts/production-deploy/pi-remote-deploy.sh`，原 `${{ }}` 值由 step `env:` 傳入、以 `render_pi_remote_deploy.py` 純文字代換，Pi 收到的位元組不變）。`scripts/ci/workflow_expression_size.py` 在每個 PR（Control Plane Contract Lint）量所有 workflow，含 `${{ }}` 的區塊達 18,000 位元組即失敗；它無法精確量的寫法（anchor／alias／tag、`|2` 這類明確縮排）一律 fail closed。不含 `${{ }}` 的區塊不是運算式、不受此限（但加一個 `${{ }}` 就會被量到）。
 - **測試必補**：`test_deploy_activation_state.py` 的 expression-size、`fails_over_the_limit_and_on_unmeasurable_forms`、`sends_the_checked_in_remote_script_without_expressions`、`renders_like_github_text_substitution` 與 runner 區塊 rc 測試。
 
+### R159. 「authorization hardening」不是 silent ship 的理由：改到 UI／API 的變更要發教職員卡（2026-10-23）
+
+- **現象**：2026-10-22／23 上線的權限、帳務與畫面變更（老師管理、科目更名按鈕變灰、共用方案扣堂、重複課程提示等）都標成 `silent_ship`（多半寫「authorization hardening」），App 內「版本更新」一張都沒有。
+- **根因**：CHECK 4A（`scripts/check-release-notes-coverage.mjs`）只檢查「有沒有決策」，任何 `silent-reason` 都能過，不看 PR 是否改到 UI／API。
+- **防護**：CHECK 4A 新規則：PR 新增的 `silent_ship` fragment 若同 PR 改到 `frontend/src`（非測試）、`backend/app/Http/Controllers`、`backend/routes`，須貼 label `release-note-none`＋PR body 一行原因，否則失敗（self-test 涵蓋前端、測試檔、Controllers、label、staff_update 五種情況）。漏掉的卡由 #4462 補發。
+
 ### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
 
 - **現象**：100% 或等於原價的固定折扣讓續約產生 NT$0 帳單，但沒有任何流程能把它記成已結清：帳單維持未繳、課程卡一直提示「登記這筆」；而且這筆課有費用，所以「免費／贈送」也被拒絕（#4018）。
