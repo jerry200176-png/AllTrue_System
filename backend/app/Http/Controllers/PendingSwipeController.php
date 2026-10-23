@@ -9,6 +9,8 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\AttendanceEffectsService;
+use App\Services\SessionDeductionService;
+use App\Services\StudentPresenceBackfillService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -76,6 +78,11 @@ class PendingSwipeController extends Controller
         }
 
         return DB::transaction(function () use ($pendingSwipe, $data) {
+            // Serialize matches of one swipe (and read after the lock): a double submit must not record
+            // and debit it twice.
+            if (!PendingSwipe::query()->whereKey($pendingSwipe->getKey())->lockForUpdate()->first()) {
+                return response()->json(['message' => 'Swipe already matched'], 409);
+            }
             $authUser = request()->attributes->get('auth_user');
             $studentClass = StudentClass::findOrFail($data['StudentClassID']);
             if ((int) $studentClass->StudentID !== (int) $pendingSwipe->StudentID) {
@@ -126,6 +133,17 @@ class PendingSwipeController extends Controller
             ]);
 
             AttendanceEffectsService::applySessionStatus($session, $status === 'late' ? 'late' : 'present');
+
+            // #4455 class D: a matched swipe is attendance, so it debits through the same entry point as
+            // calendar attendance and the RFID swipe (course ledger, then the package ledger), net-idempotent.
+            // Only a lesson that is now attended/late debits, as in calendar attendance; a `completed` or
+            // other lesson keeps today's behaviour (whether `completed` debits is a pending billing decision).
+            if (in_array(strtolower((string) $session->Status), ['attended', 'late'], true)) {
+                SessionDeductionService::deductOnAttendance($studentClass, $signIn);
+                $campusId = (int) ($pendingSwipe->CampusID
+                    ?? Student::query()->whereKey((int) $pendingSwipe->StudentID)->value('CampusID') ?? 0);
+                StudentPresenceBackfillService::alertIfNotDeducted($signIn, $campusId);
+            }
 
             $pendingSwipe->delete();
 

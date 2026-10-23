@@ -637,7 +637,11 @@ class SessionDeductionService
     {
         try {
             $resolvedClassSessionId = $classSessionId ?: (int) ($signIn->ClassSessionID ?? 0);
-            if ($signIn && $signIn->SessionDeducted) {
+            // #4455: the sign-in flag is a cache of the ledger. Trust it only when the lesson really carries
+            // a debit; a flagged sign-in whose lesson has a ledger net of 0 (stale flag) is debited below.
+            // A sign-in without a lesson has no per-lesson net, so its flag still decides.
+            if ($signIn && $signIn->SessionDeducted
+                && ($resolvedClassSessionId <= 0 || self::sessionLedgerNet((int) $sc->ID, $resolvedClassSessionId) > 0)) {
                 self::syncCounters($sc);
                 return false;
             }
@@ -668,12 +672,16 @@ class SessionDeductionService
             self::recomputeCounters($sc->ID);
             return $deducted;
         } catch (\Throwable $e) {
+            // Callers record attendance even when the debit fails (the swipe paths then raise a staff
+            // alert), so this does not rethrow; it must not be silent either: log with context and report.
             \Illuminate\Support\Facades\Log::error('session_deduct_on_attendance_failed', [
                 'student_class_id' => $sc->ID,
                 'sign_in_id'       => $signIn?->id,
                 'class_session_id' => $classSessionId ?: ($signIn->ClassSessionID ?? null),
+                'exception'        => get_class($e),
                 'error'            => $e->getMessage(),
             ]);
+            report($e);
             return false;
         }
     }
