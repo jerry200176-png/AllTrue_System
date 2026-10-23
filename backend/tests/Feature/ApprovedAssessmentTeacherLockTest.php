@@ -223,6 +223,21 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo")->assertStatus(409);
     }
 
+    /** #3938 item 3: an approval landing after the batch precheck rolls the batch back with the domain 409, not a 500. */
+    public function test_batch_substitute_race_after_precheck_returns_409(): void
+    {
+        $s = $this->mkSession('scheduled');
+        $lr = $this->lr($s, 'pending', true);
+        \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, function () use ($lr) {
+            \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: ' . LearningRecord::class);
+            DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'approved', 'ApprovedAt' => now(), 'ApprovedBy' => 1]);
+        });
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
+            'assignments' => [['class_session_id' => $s->id, 'substitute_teacher_id' => $this->bId]],
+        ])->assertStatus(409)->assertJsonPath('rolled_back', true);
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+    }
+
     // ---- Codex review r4247039986 / 997 / 4247040009 / 020 / 032 / 043 / 049 ----------------------------------
 
     public function test_legacy_schedule_writers_without_teacher_id_or_deleting_the_pin_are_refused(): void
