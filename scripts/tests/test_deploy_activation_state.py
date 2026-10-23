@@ -1538,6 +1538,73 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
 
 
+    def test_pop_inapp_standing_policy_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("pop_inapp_standing_policy:", self.workflow)
+        self.assertIn('STANDING_POLICY_FLAG_MODE="${{ inputs.pop_inapp_standing_policy }}"', self.workflow)
+        self.assertIn('apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE" POP_INAPP_STANDING_POLICY ""', self.workflow)
+        self.assertIn("STANDING_POLICY_FLAG_CHANGED=0", self.workflow)
+        self.assertIn("POP in-app standing policy flag restored during rollback", self.workflow)
+        self.assertIn('[ "$STANDING_POLICY_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}", self.workflow)
+        self.assertIn('"$FLAG_MANAGER" "$FLAG_POP_INAPP"; do', self.workflow)
+        self.assertIn("ADR-POP-015: the Founder turns it on only after the dry-run phase", self.workflow)
+        # The key written is the one backend/config/pop_inapp.php reads.
+        config = (ROOT / "backend" / "config" / "pop_inapp.php").read_text(encoding="utf-8")
+        key = re.search(r"'standing_policy_enabled' => \(bool\) env\('([A-Z0-9_]+)', false\)", config).group(1)
+        self.assertIn(f"apply_bool_feature_flag \"$STANDING_POLICY_FLAG_MODE\" {key} \"\"", self.workflow)
+        # Backend only: no Vite key, and a change does not force a frontend rebuild.
+        self.assertNotIn(f"VITE_{key}", self.workflow)
+        rebuild = next(line for line in self.workflow.splitlines() if 'if [ "$FRONTEND_CHANGED" -gt 0 ]' in line)
+        self.assertNotIn("STANDING_POLICY", rebuild)
+
+    def test_pop_inapp_standing_policy_modes_write_backend_env_and_rollback_restores_it(self):
+        # Run the committed flag function, call line and rollback against a sandbox .env.
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        harness = textwrap.dedent(r"""
+            set -u
+            PREV_COMMIT=old; FRONTEND_CHANGED=0; PDV=/tmp/pdv
+            ADMISSIONS_FLAG_CHANGED=0; CALENDAR_FLAG_CHANGED=0; MANAGER_FLAG_CHANGED=0
+            cd() { :; }; git() { :; }; composer() { :; }; write_deployment_manifest() { :; }; php() { :; }
+            grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
+            curl() { printf '{"status":"ok","opcache_cleared":true}'; }
+            python3() { if [ "$2" = /tmp/pdv ]; then return 0; fi; command python3 "$@"; }
+        """)
+        cases = (
+            ("on", "A=1\n", "A=1\n\nPOP_INAPP_STANDING_POLICY=true\n"),
+            ("on", "A=1\nPOP_INAPP_STANDING_POLICY=0\n", "A=1\nPOP_INAPP_STANDING_POLICY=true\n"),
+            ("off", "A=1\nPOP_INAPP_STANDING_POLICY=true\n", "A=1\nPOP_INAPP_STANDING_POLICY=false\n"),
+            ("unchanged", "A=1\nPOP_INAPP_STANDING_POLICY=1\n", "A=1\nPOP_INAPP_STANDING_POLICY=1\n"),
+            ("", "A=1\n", "A=1\n"),  # workflow_run / repository_dispatch: no input
+        )
+        for mode, before, applied in cases:
+            rendered = renderer.render(REMOTE_DEPLOY.read_text(encoding="utf-8"),
+                                       {"DEPLOY_POP_INAPP_STANDING_POLICY": mode})
+            lines = rendered.splitlines()
+            state = "\n".join(line for line in lines if line.startswith("STANDING_POLICY_FLAG_"))
+            call = next(line for line in lines if line.startswith('apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE"'))
+            apply = "apply_bool_feature_flag() {" + rendered.split("apply_bool_feature_flag() {", 1)[1].split("\n}\n", 1)[0]
+            rollback = "rollback_deploy() {" + rendered.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+            with tempfile.TemporaryDirectory() as tmp:
+                backend, frontend, snapshot = Path(tmp) / "backend.env", Path(tmp) / "frontend.env", Path(tmp) / "applied"
+                backend.write_text(before, encoding="utf-8")
+                body = (apply + "\n}\n" + rollback).replace("/home/admin/backend/.env", str(backend))
+                body = body.replace("/home/admin/frontend/.env.production.local", str(frontend))
+                script = (harness + state + "\n" + body + "\n" + call
+                          + f'\ncp "{backend}" "{snapshot}"\nrollback_deploy\n')
+                result = subprocess.run(["bash", "-c", script], text=True, capture_output=True,
+                                        env={"PATH": os.environ["PATH"]})
+                self.assertEqual(0, result.returncode, mode + result.stdout + result.stderr)
+                self.assertEqual(applied, snapshot.read_text(encoding="utf-8"), mode)
+                self.assertFalse(frontend.exists(), mode)  # backend only: nothing for Vite
+                restored = backend.read_text(encoding="utf-8")
+                self.assertEqual([x for x in before.splitlines() if x], [x for x in restored.splitlines() if x], mode)
+                self.assertEqual(mode in {"on", "off"}, "standing policy flag restored during rollback" in result.stdout, mode)
+
+
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)
         self.assertIn("abort_deploy()", self.workflow)
@@ -1576,6 +1643,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 ADMISSIONS_FLAG_CHANGED=0
                 CALENDAR_FLAG_CHANGED=0
                 MANAGER_FLAG_CHANGED=0
+                STANDING_POLICY_FLAG_CHANGED=0
                 MIGRATION_RAN=0
                 cd() { builtin cd "$SANDBOX"; }
                 git() { echo git >> "$TRACE"; return "$GIT_EXIT"; }
@@ -1682,7 +1750,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         expr = lambda source, names: {f"DEPLOY_{n.upper()}": f"${{{{ {source}.{n} }}}}" for n in names}
         self.assertEqual(expr("secrets", ("PI_SSH_USER", "PI_SSH_HOST", "SENTRY_DSN", "SMOKE_TEACHER_LOGIN",
                                           "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID"))
-                         | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1"))
+                         | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1",
+                                           "pop_inapp_standing_policy"))
                          | expr("needs.resolve-target.outputs", ("target_sha", "release_train")), env)
 
     def test_remote_script_renders_like_github_text_substitution(self):
@@ -2583,7 +2652,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         harness = textwrap.dedent(r"""
             set -u
             PREV_COMMIT=old; FRONTEND_CHANGED=0; MIGRATION_RAN=0; PDV=/tmp/pdv
-            ADMISSIONS_FLAG_CHANGED=0; CALENDAR_FLAG_CHANGED=0; MANAGER_FLAG_CHANGED=0
+            ADMISSIONS_FLAG_CHANGED=0; CALENDAR_FLAG_CHANGED=0; MANAGER_FLAG_CHANGED=0; STANDING_POLICY_FLAG_CHANGED=0
             cd() { :; }; git() { :; }; composer() { :; }; write_deployment_manifest() { :; }
             php() { :; }
             grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }

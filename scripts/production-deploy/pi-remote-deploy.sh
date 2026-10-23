@@ -17,6 +17,10 @@ MANAGER_FLAG_MODE="@@DEPLOY_COURSE_MANAGER_V1@@"
 MANAGER_FLAG_CHANGED=0
 MANAGER_FLAG_WAS_PRESENT=0
 MANAGER_FLAG_BACKUP=""
+STANDING_POLICY_FLAG_MODE="@@DEPLOY_POP_INAPP_STANDING_POLICY@@"
+STANDING_POLICY_FLAG_CHANGED=0
+STANDING_POLICY_FLAG_WAS_PRESENT=0
+STANDING_POLICY_FLAG_BACKUP=""
 
 write_deployment_manifest() {
   python3 /home/admin/scripts/write-deployment-manifest.py \
@@ -83,6 +87,15 @@ rollback_deploy() {
       sed -i -E '/^COURSE_MANAGER_V1=/d' /home/admin/backend/.env
     fi
     echo "✅ course manager flag restored during rollback"
+  fi
+
+  if [ "$STANDING_POLICY_FLAG_CHANGED" -eq 1 ]; then
+    if [ "$STANDING_POLICY_FLAG_WAS_PRESENT" -eq 1 ]; then
+      sed -i -E "s/^POP_INAPP_STANDING_POLICY=.*/$STANDING_POLICY_FLAG_BACKUP/" /home/admin/backend/.env
+    else
+      sed -i -E '/^POP_INAPP_STANDING_POLICY=/d' /home/admin/backend/.env
+    fi
+    echo "✅ POP in-app standing policy flag restored during rollback"
   fi
 
   if ! (cd /home/admin/backend && php artisan optimize); then
@@ -279,7 +292,7 @@ if ! echo "VITE_SENTRY_DSN=@@DEPLOY_SENTRY_DSN@@" > /home/admin/frontend/.env.pr
   abort_deploy "frontend temporary environment 寫入失敗"
 fi
 apply_bool_feature_flag() {
-  # $1 mode var, $2 backend key, $3 vite key, $4 changed-var name, $5 present-var, $6 backup-var
+  # $1 mode var, $2 backend key, $3 vite key ("" = backend only), $4 changed-var name, $5 present-var, $6 backup-var
   local mode="$1" key="$2" vite_key="$3"
   local value=false changed=0 present=0 backup=""
   if [ "$mode" = "on" ] || [ "$mode" = "off" ]; then
@@ -298,7 +311,7 @@ apply_bool_feature_flag() {
     fi
     case "$value" in true|false) ;; *) value=false ;; esac
   fi
-  printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
+  [ -z "$vite_key" ] || printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
   echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
   eval "$4=$changed"
   eval "$5=$present"
@@ -307,6 +320,8 @@ apply_bool_feature_flag() {
 apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
 apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP
 apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1 VITE_COURSE_MANAGER_V1 MANAGER_FLAG_CHANGED MANAGER_FLAG_WAS_PRESENT MANAGER_FLAG_BACKUP
+# Backend only (config/pop_inapp.php); [5/7] php artisan optimize caches it. No frontend rebuild.
+apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE" POP_INAPP_STANDING_POLICY "" STANDING_POLICY_FLAG_CHANGED STANDING_POLICY_FLAG_WAS_PRESENT STANDING_POLICY_FLAG_BACKUP
 echo "✅ frontend .env.production.local 已寫入"
 
 echo "=== [4/7] 前端變動偵測 ==="
