@@ -5,10 +5,10 @@ updates:
       - director
     importance: major
     title: 共用方案扣堂與收款修正
-    summary: 共用方案重新點名會再扣堂，收款入口不再落在輔導課；以前少扣的堂數會另外處理。
+    summary: 共用方案重新點名會再扣堂，收款入口不再落在輔導課；以前算錯的堂數會另外更正。
     items:
       - category: fixed
-        text: 共用方案的一堂課改回未上課、再改成已上課，現在會再扣一堂；以前少扣的堂數還沒補扣，會另外處理。
+        text: 共用方案的一堂課改回未上課、再改成已上課，現在會再扣一堂；以前少扣、多扣的堂數會另外更正。
       - category: action_required
         text: 課程還有待核對的付款回報時，不能標記「免費／贈送」，請先確認或退回那筆回報。
       - category: fixed
