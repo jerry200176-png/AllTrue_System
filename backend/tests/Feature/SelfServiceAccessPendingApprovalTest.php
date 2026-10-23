@@ -189,12 +189,12 @@ class SelfServiceAccessPendingApprovalTest extends TestCase
         $this->assertArrayNotHasKey('pending_teachers', (array) $badges);
 
         // Another campus's director cannot approve it.
-        $this->putJson("/api/v1/profiles/{$teacher->id}", ['status' => 'active'], $this->bearer($unrelatedToken))
+        $this->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$joined->id}/approve", [], $this->bearer($unrelatedToken))
             ->assertForbidden();
         $this->assertSame(0, $this->approvedFlag((int) $teacher->id, (int) $joined->id));
 
-        // The joined campus's director approves it with the existing teacher-management action.
-        $this->putJson("/api/v1/profiles/{$teacher->id}", ['status' => 'active'], $this->bearer($this->token($joinedDirector)))
+        // The joined campus's director approves it through the campus-link approval endpoint (#4457).
+        $this->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$joined->id}/approve", [], $this->bearer($this->token($joinedDirector)))
             ->assertOk();
         $this->assertSame(1, $this->approvedFlag((int) $teacher->id, (int) $joined->id));
         $campuses = $this->getJson('/api/v1/me', $this->bearer($teacherToken))->assertOk()->json('campuses');
