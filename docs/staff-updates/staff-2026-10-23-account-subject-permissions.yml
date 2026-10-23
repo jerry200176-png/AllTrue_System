@@ -1,0 +1,21 @@
+updates:
+  - id: staff-2026-10-23-account-subject-permissions
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: major
+    title: 部分帳號與科目改由超級管理員管理
+    summary: 新增主任帳號、管理有主任身分的帳號、共用科目更名，都改由超級管理員處理。
+    items:
+      - category: action_required
+        text: 在「老師管理」新增老師時，主分校和跨校支援只能選你負責的分校；主任帳號請找超級管理員建立。
+      - category: action_required
+        text: 同時有主任身分的帳號，修改資料、重設密碼和刪除都改由超級管理員處理。
+      - category: improved
+        text: 「科目」頁的共用科目，更名按鈕會變灰並說明原因；各分校自己的科目照常由該分校管理。
+    source_refs:
+      - "changelog:2026-10-22:profile-store-scope"
+      - "changelog:2026-10-22:profile-update-target-check"
+      - "changelog:2026-10-23:director-grant-target-guard"
+      - "changelog:2026-10-23:shared-subject-rename-super-admin"
+      - "changelog:2026-10-22:subject-campus-scope"
