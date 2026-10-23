@@ -103,6 +103,9 @@ class SubjectController extends Controller
         $campusId = null;
         if ($request->filled('branch_id')) {
             $campusId = (int) $request->input('branch_id');
+            if (!$this->campusAllowed($request, $campusId)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
         }
 
         $query = DB::table('Subject')->whereRaw('LOWER(Subject_Name) = LOWER(?)', [$display]);
@@ -137,6 +140,9 @@ class SubjectController extends Controller
         $subject = DB::table('Subject')->where('id', '=', (int) $id)->first();
         if (!$subject) {
             return response()->json(['message' => '科目不存在'], 404);
+        }
+        if ($subject->CampusID !== null && !$this->campusAllowed($request, (int) $subject->CampusID)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $name = trim((string) ($request->input('name') ?? ''));
@@ -192,6 +198,8 @@ class SubjectController extends Controller
             if ($role !== 'super_admin') {
                 return response()->json(['message' => '共用科目僅 super_admin 可刪除'], 403);
             }
+        } elseif (!$this->campusAllowed($request, (int) $subject->CampusID)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $inUse = DB::table('StudentClass')->where('SubjectID', (int) $id)->exists();
@@ -231,5 +239,12 @@ class SubjectController extends Controller
             ->sortBy('name')
             ->values()
             ->all();
+    }
+
+    /** Campus-specific subjects belong to their campus: super_admin manages all, others only their own (as index() lists). */
+    private function campusAllowed(Request $request, int $campusId): bool
+    {
+        return $request->attributes->get('auth_role') === 'super_admin'
+            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
     }
 }
