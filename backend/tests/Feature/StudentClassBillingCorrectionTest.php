@@ -653,6 +653,32 @@ class StudentClassBillingCorrectionTest extends TestCase
         ];
     }
 
+    /** #4017: a charge correction to NT$0 is refused; the open bill and the course stay as they were. */
+    public function test_charge_correction_to_zero_is_refused_and_leaves_the_bill_unchanged(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, [
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0, 'UsedSessions' => 2,
+            'Charge' => 4400, 'Rate' => 1100,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-25',
+            'TotalAmount' => 4400, 'PaidAmount' => 0, 'Status' => 'unpaid',
+        ]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '數學 8 月', 'Amount' => 4400]);
+
+        $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/charge-correction",
+            ['new_charge' => 0, 'reason' => '主任確認本期不收費']
+        )->assertStatus(422)->assertJsonPath('code', 'charge_correction_zero_forbidden');
+
+        $this->assertSame(4400, (int) $course->fresh()->Charge);
+        $this->assertSame(4400, (int) $invoice->fresh()->TotalAmount);
+        $this->assertSame(4400, (int) InvoiceItem::query()->where('InvoiceID', $invoice->id)->sum('Amount'));
+        $this->assertNull($invoice->fresh()->zero_amount_reason);
+    }
+
     public function test_director_can_correct_unpaid_date_mode_charge_without_touching_entitlement(): void
     {
         [$token, $userId] = $this->director();
