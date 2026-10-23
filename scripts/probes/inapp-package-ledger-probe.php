@@ -88,6 +88,25 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         . ' GROUP BY sc.PackageID ORDER BY sc.PackageID',
         $targets
     );
+    // Repair targets for #4275: a lesson slot (date + start) where a member lesson is still charged on its course ledger
+    // (deduct minus reverse > 0) but the package ledger over every session of that slot is not negative. The package
+    // ledger used to skip a lesson reverted and then attended again.
+    $result['charged_slots_not_debited'] = $rows(
+        'SELECT sc.PackageID AS package_id, cs.SessionDate AS session_date, SUBSTRING(cs.StartTime, 1, 5) AS start_time,'
+        . " GROUP_CONCAT(DISTINCT cs.id ORDER BY cs.id SEPARATOR ',') AS charged_session_ids,"
+        . " GROUP_CONCAT(DISTINCT cs.Status ORDER BY cs.Status SEPARATOR ',') AS statuses,"
+        . ' (SELECT COALESCE(SUM(l.delta), 0) FROM package_session_ledger l JOIN ClassSession c2 ON c2.id = l.class_session_id'
+        . ' WHERE l.package_id = sc.PackageID AND c2.SessionDate = cs.SessionDate AND c2.StartTime = cs.StartTime) AS package_slot_net'
+        . ' FROM StudentClass sc JOIN ClassSession cs ON cs.StudentClassID = sc.ID'
+        . " JOIN (SELECT student_class_id, class_session_id, SUM(CASE WHEN event_type = 'deduct' THEN 1"
+        . " WHEN event_type = 'reverse' THEN -1 ELSE 0 END) AS net FROM session_deduction_ledger"
+        . " WHERE student_class_id IN (SELECT ID FROM StudentClass WHERE PackageID IN ($in)) AND class_session_id IS NOT NULL"
+        . ' GROUP BY student_class_id, class_session_id) d ON d.student_class_id = sc.ID AND d.class_session_id = cs.id AND d.net > 0'
+        . " WHERE sc.PackageID IN ($in)"
+        . ' GROUP BY sc.PackageID, cs.SessionDate, cs.StartTime HAVING package_slot_net >= 0'
+        . ' ORDER BY sc.PackageID, cs.SessionDate, cs.StartTime LIMIT 200',
+        [...$targets, ...$targets]
+    );
     $result['members'] = $rows(
         'SELECT sc.PackageID AS package_id, sc.ID AS student_class_id, sc.StudentID AS student_id, sc.SubjectID AS subject_id,'
         . " sc.Stop AS stop, sc.ScheduleMode AS schedule_mode FROM StudentClass sc WHERE sc.PackageID IN ($in)"
@@ -105,8 +124,9 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
 
         return $carry;
     }, []);
-    [$packages, $lessons, $sessionsTwice, $slotsTwice, $byStatus, $byReason] = array_map($byPackage,
-        ['packages', 'member_lessons', 'same_session_debited_twice', 'same_slot_debited_twice', 'net_debit_by_session_status', 'by_reason']);
+    [$packages, $lessons, $sessionsTwice, $slotsTwice, $byStatus, $byReason, $notDebited] = array_map($byPackage,
+        ['packages', 'member_lessons', 'same_session_debited_twice', 'same_slot_debited_twice', 'net_debit_by_session_status', 'by_reason',
+            'charged_slots_not_debited']);
     $summary = array_map(fn (int $id): array => [
         'package_id' => $id,
         'total_sessions' => (int) ($packages[$id][0]['total_sessions'] ?? 0),
@@ -121,7 +141,9 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
             $byStatus[$id] ?? []
         )),
         'debits_without_session' => array_sum(array_map(fn (array $row): int => (int) $row['delta'] < 0 ? (int) $row['rows_without_session'] : 0, $byReason[$id] ?? [])),
-        'lists_capped' => count($result['same_session_debited_twice']) >= 200 || count($result['same_slot_debited_twice']) >= 200,
+        'charged_slots_not_debited' => count($notDebited[$id] ?? []),
+        'lists_capped' => count($result['same_session_debited_twice']) >= 200 || count($result['same_slot_debited_twice']) >= 200
+            || count($result['charged_slots_not_debited']) >= 200,
     ], $targets);
 
     // The summary first, so a long all-packages output cannot push it out of a truncated job summary.

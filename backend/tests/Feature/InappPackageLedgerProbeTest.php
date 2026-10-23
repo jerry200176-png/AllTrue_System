@@ -30,8 +30,9 @@ class InappPackageLedgerProbeTest extends TestCase
         'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
         'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots'],
+        'charged_slots_not_debited' => ['package_id', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_slot_net'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
-        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'lists_capped'],
+        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'charged_slots_not_debited', 'lists_capped'],
     ];
 
     private int $teacherId;
@@ -79,7 +80,7 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame([
             'package_id' => (int) $over->id, 'total_sessions' => 2, 'ledger_used' => 3, 'attended_slots' => 2, 'taught_slots' => 2, 'absent_slots' => 0,
             'sessions_debited_twice' => 1, 'slots_debited_twice' => 0, 'debits_on_unchargeable_sessions' => 0, 'debits_without_session' => 0,
-            'lists_capped' => false,
+            'charged_slots_not_debited' => 0, 'lists_capped' => false,
         ], $out['summary'][0]);
         $this->assertOnlyAllowedKeys($out);
         $this->assertNotEmpty($statements);
@@ -133,6 +134,41 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertTrue($out['all_packages']);
         $this->assertOnlyAllowedKeys($out);
         $this->assertSame([(int) $mislabelled->id], inapp_package_ledger_probe(DB::connection(), 1, (int) $mislabelled->id)['target_package_ids'], 'a named package of a campus student is readable from that campus');
+    }
+
+    public function test_a_lesson_charged_on_its_course_but_not_debited_on_the_pool_is_listed_with_its_session(): void
+    {
+        // #4275: attended, reverted, attended again. The course ledger charges it once; the package ledger nets to zero.
+        [$pool, [$course]] = $this->pool(1, 56);
+        $reattended = $this->lesson($course, '2026-10-06');
+        $this->charge($course, $reattended, ['deduct', 'reverse', 'deduct']);
+        $this->debit($pool, $course, $reattended, 'attendance');
+        $this->credit($pool, $course, $reattended, 'status_adjust');
+        $settled = $this->lesson($course, '2026-10-13');
+        $this->charge($course, $settled, ['deduct']);
+        $this->debit($pool, $course, $settled, 'attendance');
+        $reverted = $this->lesson($course, '2026-10-20', 'scheduled');
+        $this->charge($course, $reverted, ['deduct', 'reverse']);
+        $this->debit($pool, $course, $reverted, 'attendance');
+        $this->credit($pool, $course, $reverted, 'status_adjust');
+        // A group slot debited once through another member's lesson is not a gap.
+        [$group, [$math, $english]] = $this->pool(1, 10, 2);
+        $mathLesson = $this->lesson($math, '2026-10-07');
+        $englishLesson = $this->lesson($english, '2026-10-07');
+        $this->charge($math, $mathLesson, ['deduct']);
+        $this->charge($english, $englishLesson, ['deduct']);
+        $this->debit($group, $math, $mathLesson, 'attendance');
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
+
+        $this->assertSame([[
+            'package_id' => (int) $pool->id, 'session_date' => '2026-10-06', 'start_time' => '16:00',
+            'charged_session_ids' => (string) $reattended->id, 'statuses' => 'attended', 'package_slot_net' => 0,
+        ]], array_map(fn (array $row): array => array_merge($row, ['package_id' => (int) $row['package_id'], 'package_slot_net' => (int) $row['package_slot_net']]),
+            $out['charged_slots_not_debited']));
+        $this->assertSame(1, $out['summary'][0]['charged_slots_not_debited']);
+        $this->assertSame(0, $out['summary'][1]['charged_slots_not_debited']);
+        $this->assertOnlyAllowedKeys($out);
     }
 
     public function test_the_production_entry_point_runs_in_a_read_only_transaction_and_writes_nothing(): void
@@ -201,11 +237,27 @@ class InappPackageLedgerProbeTest extends TestCase
         ]);
     }
 
-    private function debit(CoursePackage $package, StudentClass $course, ClassSession $lesson, string $reason): void
+    private function debit(CoursePackage $package, StudentClass $course, ClassSession $lesson, string $reason, int $delta = -1): void
     {
         DB::table('package_session_ledger')->insert([
             'package_id' => $package->id, 'student_class_id' => $course->ID, 'class_session_id' => $lesson->id,
-            'delta' => -1, 'reason' => $reason, 'created_at' => now(), 'updated_at' => now(),
+            'delta' => $delta, 'reason' => $reason, 'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    private function credit(CoursePackage $package, StudentClass $course, ClassSession $lesson, string $reason): void
+    {
+        $this->debit($package, $course, $lesson, $reason, 1);
+    }
+
+    /** @param list<string> $events course ledger events for the lesson, in order */
+    private function charge(StudentClass $course, ClassSession $lesson, array $events): void
+    {
+        foreach ($events as $event) {
+            DB::table('session_deduction_ledger')->insert([
+                'student_class_id' => $course->ID, 'class_session_id' => $lesson->id, 'event_type' => $event,
+                'source' => 'attendance', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
     }
 }
