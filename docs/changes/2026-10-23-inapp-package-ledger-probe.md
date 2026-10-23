@@ -1,0 +1,5 @@
+## 2026-10-23 — Read-only shared-package ledger probe (in-app #419)
+<!-- release-notes: silent_ship=silent-2026-10-23-inapp-package-ledger-probe -->
+<!-- silent-reason: operator diagnostic workflow; no product code or data change -->
+
+`inapp-package-ledger-probe.yml` (manual dispatch from main) runs `scripts/probes/inapp-package-ledger-probe.php` against production to tell a real shared-package overage from a lesson debited twice: it lists a campus's packages whose ledger used more than the package total (or one named package), ledger rows per reason, sessions and lesson slots with a net debit of more than one, net debit by the session's current status, and taught slots. It uses the deployed app's own DB connection in a MySQL READ ONLY session inside a rolled-back transaction (it stops if the session is not read-only), issues SELECTs only (`InappPackageLedgerProbeTest`) and prints ids, counts, dates, statuses and reason codes, never names, amounts or notes. Founder allowed safe read-only production access for in-app cases on 2026-10-23. Refs #4275.

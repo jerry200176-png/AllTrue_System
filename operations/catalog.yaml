@@ -610,3 +610,32 @@ operations:
     parameter_keys: [student_id, course_id, campus_id, invoice_id, expected_invoice_total, expected_charge, decision_reference, expected_state_hash]
     tags: [repair, billing, reviewed-case]
     notes: Active after catalog v15 deployment; every request requires a mounted, expiring Founder tuple binding operation, full parameters hash, idempotency key, requester and approver before Pi-local execution. No payment/report/course write, receipt confirmation or refund.
+
+  package-ledger-net-repair-4455:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-package-ledger-net-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-PACKAGE-LEDGER-NET-REPAIR-4455.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: exact_manifest_package_ledger_rows_insert_only
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\PackageLedgerNetRepairStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, package, in-app-419]
+    notes: Exact manifest of GitHub #4455 (17 missing debits, 37 double debits). Inserts one repair_4455 row per applicable session and recomputes the package counters; any other drift fails the whole plan. No course ledger, session, invoice or payment write. Pi-local POP only.
