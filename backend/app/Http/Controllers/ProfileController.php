@@ -1313,29 +1313,9 @@ class ProfileController extends Controller
             'intval',
             (array) ($request->attributes->get('auth_campus_ids', []))
         )));
-        if (empty($campusIds)) {
-            return false;
-        }
 
-        $hasUserCampus = DB::table('UserCampus')
-            ->where('UserID', $teacherUserId)
-            ->whereIn('CampusID', $campusIds)
-            ->exists();
-        if ($hasUserCampus) {
-            return true;
-        }
-
-        if (Schema::hasTable('teacher_branches')) {
-            $hasTeacherBranch = DB::table('teacher_branches')
-                ->where('teacher_id', $teacherUserId)
-                ->whereIn('branch_id', $campusIds)
-                ->exists();
-            if ($hasTeacherBranch) {
-                return true;
-            }
-        }
-
-        return false;
+        // #4433: a pending request to the caller's campus (Approved = 0) is decided by that director, not managed.
+        return app(StaffCapabilityAuthorizer::class)->hasApprovedCampusLink($teacherUserId, $campusIds);
     }
 
     private function conflictingTypesForLoginName(string $type): array
