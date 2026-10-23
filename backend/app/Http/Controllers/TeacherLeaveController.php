@@ -278,8 +278,10 @@ class TeacherLeaveController extends Controller
         if (OccurrenceAssignmentService::enabledFor($campusId) && OccurrenceAssignmentService::onLeave($session)) {
             return ['ok' => false, 'error' => '此堂已請假，無法代課', 'class_session_id' => $classSessionId];
         }
-        if (\App\Support\LearningRecordMutableOwnership::protectedRecordForSession($classSessionId)) {
-            return ['ok' => false, 'error' => '此堂評量已填寫並核准，不能更改授課老師', 'class_session_id' => $classSessionId]; // #3824
+        // #3824/#3966: refuse only a real reassignment; re-asserting the assessment's own teacher is a safe repair, as in single substitute.
+        $protectedLr = \App\Support\LearningRecordMutableOwnership::protectedRecordForSession($classSessionId);
+        if ($protectedLr && (int) $protectedLr->TeacherID !== $teacherId) {
+            return ['ok' => false, 'error' => '此堂評量已填寫並核准，不能更改授課老師', 'class_session_id' => $classSessionId];
         }
         if (!$svc->teacherBoundToAny($teacherId, $managedCampusIds)) {
             return ['ok' => false, 'error' => '代課老師未綁定任一您管理的分校', 'class_session_id' => $classSessionId];
