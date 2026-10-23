@@ -140,6 +140,34 @@ class SelfServiceAccessPendingApprovalTest extends TestCase
         $this->assertEqualsCanonicalizing([(int) $home->id, (int) $second->id], $campuses);
     }
 
+    public function test_saving_campuses_reads_the_links_under_lock_inside_the_write(): void
+    {
+        // Codex r4361992358: a director approving a pending link between a plain read and the rewrite was undone by the
+        // stale snapshot. The links are read FOR UPDATE inside the save transaction, so an approval either commits first
+        // and is read back, or waits for the save and then lands on the rewritten pending row.
+        $home = CampusFactory::new()->create();
+        $joined = CampusFactory::new()->create();
+        $teacher = $this->teacher();
+        UserCampus::create(['UserID' => $teacher->id, 'CampusID' => $home->id, 'Admin' => 0, 'Approved' => 1]);
+        UserCampus::create(['UserID' => $teacher->id, 'CampusID' => $joined->id, 'Admin' => 0, 'Approved' => 0]);
+        $baseline = DB::transactionLevel();
+        $lockedReads = [];
+        DB::listen(function ($query) use (&$lockedReads, $baseline) {
+            $sql = strtolower($query->sql);
+            if (str_starts_with(ltrim($sql), 'select') && str_contains($sql, 'usercampus') && str_contains($sql, 'for update')) {
+                $lockedReads[] = DB::transactionLevel() > $baseline;
+            }
+        });
+
+        $this->putJson('/api/v1/me', ['branch_id' => $home->id, 'multi_branches' => [$joined->id]], $this->bearer($this->token($teacher)))
+            ->assertOk();
+        $this->assertContains(true, $lockedReads, 'the links are read FOR UPDATE inside the save transaction');
+
+        $this->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$joined->id}/approve", [], $this->bearer($this->token($this->director($joined->id))))
+            ->assertOk();
+        $this->assertSame(1, $this->approvedFlag((int) $teacher->id, (int) $joined->id));
+    }
+
     public function test_teacher_cannot_approve_a_pending_link_by_saving_the_profile(): void
     {
         $home = CampusFactory::new()->create();

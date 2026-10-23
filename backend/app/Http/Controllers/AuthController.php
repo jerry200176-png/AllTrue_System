@@ -514,17 +514,19 @@ class AuthController extends Controller
                         return response()->json(['message' => '部分分校不存在'], 422);
                     }
                     $hasApprovedColumn = Schema::hasColumn('UserCampus', 'Approved');
-                    // Duplicate rows for one campus collapse to the approved one, then to the one carrying the most data (e.g. an RFID card).
-                    $existingLinks = DB::table('UserCampus')->where('UserID', $user->id)->get()
-                        ->sortByDesc(fn ($row) => [(int) ($row->Approved ?? 1), count(array_filter((array) $row, fn ($v) => $v !== null))])
-                        ->unique(fn ($row) => (int) $row->CampusID)
-                        ->keyBy(fn ($row) => (int) $row->CampusID);
-                    // Every new campus starts pending, so dropping the last approved one would lock the teacher out.
-                    $approvedNow = $existingLinks->filter(fn ($row) => !$hasApprovedColumn || UserCampus::isApproved($row->Approved))->keys()->all();
-                    if ($approvedNow !== [] && array_intersect($approvedNow, $allBranchIds) === []) {
-                        return response()->json(['message' => '請至少保留一個已核准的分校：新加入的分校要等該分校主任核准後才會生效。'], 422);
-                    }
-                    DB::transaction(function () use ($user, $allBranchIds, $hasApprovedColumn, $existingLinks) {
+                    $saved = DB::transaction(function () use ($user, $allBranchIds, $hasApprovedColumn) {
+                        // Read and lock the links inside the write: a director approving a pending link
+                        // (ProfileController::decideCampusLink) after a plain read would be undone by the stale snapshot below.
+                        // Duplicate rows for one campus collapse to the approved one, then to the one carrying the most data (e.g. an RFID card).
+                        $existingLinks = DB::table('UserCampus')->where('UserID', $user->id)->lockForUpdate()->get()
+                            ->sortByDesc(fn ($row) => [(int) ($row->Approved ?? 1), count(array_filter((array) $row, fn ($v) => $v !== null))])
+                            ->unique(fn ($row) => (int) $row->CampusID)
+                            ->keyBy(fn ($row) => (int) $row->CampusID);
+                        // Every new campus starts pending, so dropping the last approved one would lock the teacher out.
+                        $approvedNow = $existingLinks->filter(fn ($row) => !$hasApprovedColumn || UserCampus::isApproved($row->Approved))->keys()->all();
+                        if ($approvedNow !== [] && array_intersect($approvedNow, $allBranchIds) === []) {
+                            return false;
+                        }
                         // Rewritten in submitted order so branch_id stays the first (main) link.
                         DB::table('UserCampus')->where('UserID', $user->id)->delete();
                         foreach ($allBranchIds as $campusId) {
@@ -551,7 +553,12 @@ class AuthController extends Controller
                                 ]);
                             }
                         }
+
+                        return true;
                     });
+                    if ($saved === false) {
+                        return response()->json(['message' => '請至少保留一個已核准的分校：新加入的分校要等該分校主任核准後才會生效。'], 422);
+                    }
                 }
             }
 
