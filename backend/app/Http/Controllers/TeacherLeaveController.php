@@ -222,10 +222,12 @@ class TeacherLeaveController extends Controller
                 'count' => count($assignments),
             ]);
 
+            $status = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getStatusCode() < 500 ? $e->getStatusCode() : 500;
+
             return response()->json([
                 'message' => '批次代課失敗，整批已回滾：'.$e->getMessage(),
                 'rolled_back' => true,
-            ], 500);
+            ], $status);
         }
 
         $successCount = collect($results)->where('ok', true)->count();
@@ -332,6 +334,10 @@ class TeacherLeaveController extends Controller
         $response = $sub->substitute($inner, $classSessionId);
         $status = $response->getStatusCode();
         $json = json_decode((string) $response->getContent(), true) ?: [];
+        if ($status >= 400 && $status < 500) {
+            // #3938: keep the substitute's own refusal status (e.g. 409 when the assessment was approved after the precheck).
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException($status, $json['message'] ?? '代課失敗');
+        }
         if ($status < 200 || $status >= 300) {
             throw new \RuntimeException($json['message'] ?? '代課失敗');
         }
