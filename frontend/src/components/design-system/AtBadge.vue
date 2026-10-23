@@ -53,17 +53,17 @@ const classes = computed(() => ['at-badge', `at-badge--${props.tone}`]);
   border-color: transparent;
 }
 .at-badge--success {
-  color: var(--ds-success);
+  color: var(--ds-success-text);
   background: var(--ds-success-wash);
   border-color: transparent;
 }
 .at-badge--warning {
-  color: var(--ds-warning);
+  color: var(--ds-warning-text);
   background: var(--ds-warning-wash);
   border-color: transparent;
 }
 .at-badge--danger {
-  color: var(--ds-danger);
+  color: var(--ds-danger-text);
   background: var(--ds-danger-wash);
   border-color: transparent;
 }
