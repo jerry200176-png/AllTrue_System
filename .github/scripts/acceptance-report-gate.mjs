@@ -66,7 +66,8 @@ const expectedTests = (branchId, scope = 'all') => {
 // A flaky first attempt is otherwise invisible in the public log (the report is encrypted), so it cannot be root-caused.
 const failureLocation = (result) => {
   if (result?.status === 'passed' || result?.status === 'skipped') return null;
-  const location = result?.errors?.find((error) => error?.location)?.location ?? result?.error?.location;
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  const location = errors.find((error) => error?.location)?.location ?? result?.error?.location;
   const file = path.basename(String(location?.file || ''));
   const line = Number(location?.line);
   return /^[\w.-]+\.m?[jt]s$/.test(file) && Number.isInteger(line) && line > 0 ? `${file}:${line}` : 'unknown';
@@ -341,6 +342,26 @@ function selfTest() {
     throw new Error('self-test failure locations are wrong or leak error text');
   }
   expectReject('flaky test', () => validateReport(flaky, 16));
+  // Only an ASCII script basename and a positive line pass; anything else is `unknown`, never echoed.
+  const oddLocation = (location) => {
+    const report = makeReport(16);
+    report.suites[0].specs[0].tests[0].status = 'unexpected';
+    report.suites[0].specs[0].tests[0].results = [{ status: 'failed', errors: [{ location }] }];
+    return summarizeReport(report).find((line) => line.startsWith('  failed-attempt='));
+  };
+  for (const location of [
+    { file: '/w/e2e/a b.spec.js', line: 3 }, { file: '/w/e2e/合成.spec.js', line: 3 }, { file: 'https://x/a.js?name=合成學生', line: 3 },
+    { file: 'calendar.spec.js', line: -1 }, { file: 'calendar.spec.js', line: 0 }, { file: 'calendar.spec.js' }, { file: 'notes.txt', line: 3 },
+  ]) {
+    if (oddLocation(location) !== '  failed-attempt=1 status=failed at=unknown') {
+      throw new Error(`self-test printed an unchecked location: ${JSON.stringify(location)}`);
+    }
+  }
+  const notAList = makeReport(16);
+  notAList.suites[0].specs[0].tests[0].results = [{ status: 'failed', errors: 'not a list' }];
+  if (!summarizeReport(notAList).includes('  failed-attempt=1 status=failed at=unknown')) {
+    throw new Error('self-test: a malformed errors field must not break the summary');
+  }
   console.log('acceptance-report-gate self-test: ok');
 }
 
