@@ -144,6 +144,40 @@ class LearningRecordController extends Controller
     }
 
     /**
+     * Review actions (approve, reject, roll back, delete, backfill) stay within the caller's campuses, like update()
+     * and updateTeacher(); super_admin sees all. Fails closed when the record has no campus.
+     */
+    private function campusRefusal(Request $request, int $campusId): ?\Illuminate\Http\JsonResponse
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $allowed = $campusId > 0 && in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
+
+        return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
+    }
+
+    /** Batch review: the whole batch is refused when any requested record is outside the caller's campuses. */
+    private function batchCampusRefusal(Request $request, array $ids): ?\Illuminate\Http\JsonResponse
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $campuses = DB::table('LearningRecord as lr')
+            ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->whereIn('lr.id', array_map('intval', $ids))
+            ->pluck('st.CampusID');
+        foreach ($campuses as $campusId) {
+            if ($refusal = $this->campusRefusal($request, (int) ($campusId ?? 0))) {
+                return $refusal;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Bug #495 / in-app #125：cascade-void 復原 helper。
      *
      * 條件已在呼叫端經 LearningRecordResurrectionPolicy::isEligibleForResurrect() 確認。
@@ -261,7 +295,9 @@ class LearningRecordController extends Controller
             if (!empty($scIds)) {
                 $query->whereIn('StudentClassID', $scIds);
             }
-        } elseif (!empty($campusIds) && $role !== 'teacher') {
+        }
+        // The campus scope applies with or without a course filter: student_class_ids narrows it, never widens it.
+        if (!empty($campusIds) && $role !== 'teacher') {
             $studentIds = Student::whereIn('CampusID', $campusIds)->pluck('id');
             $classIds = StudentClass::whereIn('StudentID', $studentIds)->pluck('ID');
             if ($classIds->isNotEmpty()) {
@@ -1428,6 +1464,9 @@ class LearningRecordController extends Controller
         if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
         if (LearningRecordMutableOwnership::isFilledAndApproved($learningRecord)) {
             // #3824: deleting would unprotect the occurrence without rolling back the teacher's count or audit.
             return response()->json(['message' => '這堂評量已填寫並核准，不能刪除。請先退回核准再處理。', 'code' => 'approved_assessment_teacher_locked'], 409);
@@ -1441,8 +1480,10 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'DirectorID' => 'nullable|integer',
         ]);
-
         $campusId = $this->campusIdForLearningRecord($learningRecord);
+        if ($refusal = $this->campusRefusal($request, $campusId)) {
+            return $refusal;
+        }
 
         $response = DB::transaction(function () use ($learningRecord, $data) {
             if ($learningRecord->Status === 'approved') {
@@ -1486,6 +1527,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
             'ReviewNote' => 'nullable|string|max:255',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         return DB::transaction(function () use ($learningRecord, $data) {
             if ($learningRecord->Status !== 'approved') {
@@ -1649,6 +1693,9 @@ class LearningRecordController extends Controller
         if ($role === 'teacher') {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($refusal = $this->batchCampusRefusal($request, $data['ids'])) {
+            return $refusal;
+        }
 
         $records = LearningRecord::active()
             ->whereIn('id', $data['ids'])
@@ -1683,6 +1730,9 @@ class LearningRecordController extends Controller
         if ($role === 'teacher') {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($refusal = $this->batchCampusRefusal($request, $data['ids'])) {
+            return $refusal;
+        }
 
         $records = LearningRecord::active()
             ->whereIn('id', $data['ids'])
@@ -1712,6 +1762,11 @@ class LearningRecordController extends Controller
             'DirectorID' => 'required|integer',
             'SessionDate' => 'required|date'
         ]);
+        // A missing course keeps its 422 below; an existing course is checked, and fails closed without a student.
+        $course = DB::table('StudentClass')->where('ID', (int) $data['StudentClassID'])->first(['StudentID']);
+        if ($course !== null && ($refusal = $this->campusRefusal($request, (int) (DB::table('Student')->where('id', (int) ($course->StudentID ?? 0))->value('CampusID') ?? 0)))) {
+            return $refusal;
+        }
         $today = now()->toDateString();
         if ($data['SessionDate'] > $today) {
             return response()->json(['message' => '補登僅限今天或已過的日期，今天以後的課尚不需補登'], 422);
@@ -2027,6 +2082,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
             'ReviewNote' => 'nullable|string|max:255',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         if ($learningRecord->Status === 'approved') {
             return response()->json(['message' => 'Record already approved'], 409);
@@ -2047,6 +2105,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
             'ReviewNote' => 'nullable|string|max:255',
         ]);
+        if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+            return $refusal;
+        }
 
         if ($learningRecord->Status === 'approved') {
             return response()->json(['message' => 'Record already approved'], 409);

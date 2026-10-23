@@ -229,6 +229,18 @@ class SubjectApiTest extends TestCase
         $this->assertContains('公開科', $names);
     }
 
+    public function test_a_director_cannot_create_rename_or_delete_another_campus_subject(): void
+    {
+        [$dir, $tok] = $this->makeDirector(1);
+        $id = DB::table('Subject')->insertGetId(['School_id' => 0, 'Grade_no' => 0, 'Subject_Name' => '他校科目', 'CampusID' => 2]);
+
+        $this->withHeaders($this->auth($tok))->putJson("/api/v1/subjects/{$id}", ['name' => '改名'])->assertForbidden();
+        $this->withHeaders($this->auth($tok))->deleteJson("/api/v1/subjects/{$id}")->assertForbidden();
+        $this->assertDatabaseHas('Subject', ['id' => $id, 'Subject_Name' => '他校科目']);
+        $this->withHeaders($this->auth($tok))->postJson('/api/v1/subjects', ['name' => '跨校新科目', 'branch_id' => 2])->assertForbidden();
+        $this->assertDatabaseMissing('Subject', ['Subject_Name' => '跨校新科目']);
+    }
+
     public function test_director_can_delete_campus_subject(): void
     {
         [$dir, $tok] = $this->makeDirector(1);
