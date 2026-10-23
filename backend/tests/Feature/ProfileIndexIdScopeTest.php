@@ -55,7 +55,8 @@ class ProfileIndexIdScopeTest extends TestCase
             $api->getJson("/api/v1/profiles?id={$teacherA->id}&single=1")->assertOk()->assertJsonPath('id', $teacherA->id);
             $api->getJson("/api/v1/profiles?id={$legacyTeacher->id}&single=1")->assertOk()->assertJsonPath('id', $legacyTeacher->id);
         }
-        $this->api($this->token($this->user('S', [])))->getJson("/api/v1/profiles?id={$this->user('T', [$b => 1])->id}&single=1")->assertOk();
+        $teacherB = $this->user('T', [$b => 1]);
+        $this->api($this->token($this->user('S', [])))->getJson("/api/v1/profiles?id={$teacherB->id}&single=1")->assertOk();
     }
 
     public function test_the_caller_always_reads_their_own_profile(): void
@@ -71,7 +72,8 @@ class ProfileIndexIdScopeTest extends TestCase
         $actingDirector = $this->api($this->token($teacher))->withHeaders(['X-Acting-As' => 'director']);
         $actingDirector->getJson("/api/v1/profiles?id={$teacher->id}&single=1")->assertOk()->assertJsonPath('id', $teacher->id);
         // The exemption is only for the caller: another A teacher is outside the acting scope.
-        $actingDirector->getJson("/api/v1/profiles?id={$this->user('T', [$a => 1])->id}&single=1")->assertNotFound();
+        $colleagueA = $this->user('T', [$a => 1]);
+        $actingDirector->getJson("/api/v1/profiles?id={$colleagueA->id}&single=1")->assertNotFound();
     }
 
     public function test_a_pending_request_to_the_callers_campus_is_readable_as_in_the_list(): void
