@@ -134,6 +134,7 @@ class SubjectController extends Controller
 
     /**
      * Rename a subject. Director only.
+     * Shared subjects (CampusID IS NULL) can only be renamed by super_admin: every campus lists them (Founder policy 5).
      */
     public function update(Request $request, $id)
     {
@@ -141,7 +142,11 @@ class SubjectController extends Controller
         if (!$subject) {
             return response()->json(['message' => '科目不存在'], 404);
         }
-        if ($subject->CampusID !== null && !$this->campusAllowed($request, (int) $subject->CampusID)) {
+        if ($subject->CampusID === null) {
+            if ($request->attributes->get('auth_role') !== 'super_admin') {
+                return response()->json(['message' => '共用科目僅 super_admin 可更名'], 403);
+            }
+        } elseif (!$this->campusAllowed($request, (int) $subject->CampusID)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
