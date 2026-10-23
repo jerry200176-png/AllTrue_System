@@ -66,14 +66,21 @@ export function readSection(root, args) {
   return `${notice}${provenance} lines=${s.start}-${s.end}\n${s.text}\n`;
 }
 
-export function writeSection(root, args) {
-  // process.exit() in the CLI must not drop the tail of an asynchronous write.
-  fs.writeFileSync(process.stdout.fd, readSection(root, args));
+export async function writeSection(root, args) {
+  const text = readSection(root, args);
+  // Await the stream callback: inherited pipes may be nonblocking and full.
+  await new Promise((resolve, reject) => {
+    process.stdout.once('error', reject);
+    process.stdout.write(text, error => {
+      if (error) reject(error);
+      else { process.stdout.off('error', reject); resolve(); }
+    });
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-  try { writeSection(root, process.argv.slice(2)); }
+  try { await writeSection(root, process.argv.slice(2)); }
   catch (error) {
     console.error(`docs-section: ${error.message}; fall back to rg + direct source reading`);
     process.exitCode = 1;
