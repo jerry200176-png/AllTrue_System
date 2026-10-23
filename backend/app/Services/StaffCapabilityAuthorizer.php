@@ -106,6 +106,29 @@ class StaffCapabilityAuthorizer
     }
 
     /**
+     * #4433: the account is linked to one of these campuses through an approved UserCampus row (Approved = 1, or a legacy
+     * NULL as in legacyCampusIds()), or through a legacy teacher_branches row at a campus where it has no UserCampus row.
+     * A pending request (Approved = 0) is not a link, so it gives that campus's director no management.
+     *
+     * @param array<int> $campusIds
+     */
+    public function hasApprovedCampusLink(int $userId, array $campusIds): bool
+    {
+        if ($campusIds === []) {
+            return false;
+        }
+        $approved = UserCampus::query()->where('UserID', $userId)->whereIn('CampusID', $campusIds)
+            ->where(fn ($q) => $q->where('Approved', true)->orWhereNull('Approved'))->exists();
+
+        return $approved || (Schema::hasTable('teacher_branches') && DB::table('teacher_branches')
+            ->where('teacher_id', $userId)->whereIn('branch_id', $campusIds)
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('UserCampus')
+                ->whereColumn('UserCampus.UserID', 'teacher_branches.teacher_id')
+                ->whereColumn('UserCampus.CampusID', 'teacher_branches.branch_id'))
+            ->exists());
+    }
+
+    /**
      * @return array<string, list<int>>
      */
     public function capabilityCampusMap(User $user): array
