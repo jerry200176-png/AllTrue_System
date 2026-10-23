@@ -11,8 +11,10 @@ use App\Models\StudentClass;
 use App\Models\StudentClassPricingAmendment;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\BillingPayableResolver;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -239,6 +241,30 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame('free', $row['payment_status']);
         $this->assertIsArray($row['monthly_payment']);
         $this->assertFalse($row['legacy_paid_flag_only']);
+    }
+
+    /** #4017 item 1: the resolver reads a course's fee evidence once, however many marked terms it has. */
+    public function test_fee_evidence_is_read_once_per_course_across_marked_terms(): void
+    {
+        $course = $this->monthlyCourse($this->student());
+        foreach (['2026-08', '2026-09', '2026-10'] as $period) {
+            Invoice::create([
+                'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => "{$period}-01",
+                'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => $period,
+                'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
+            ]);
+        }
+        $amendmentChecks = 0;
+        DB::listen(function ($query) use (&$amendmentChecks): void {
+            if (preg_match('/^select exists\s*\(select \* from [`"]?student_class_pricing_amendments/i', $query->sql)) {
+                $amendmentChecks++;
+            }
+        });
+
+        $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $course->ID]);
+
+        $this->assertSame('free', $statuses[(int) $course->ID]['status']);
+        $this->assertSame(1, $amendmentChecks, 'one fee-evidence check for the course, not one per marked term');
     }
 
     /** @param array<string, mixed> $over @return array<string, mixed> */
