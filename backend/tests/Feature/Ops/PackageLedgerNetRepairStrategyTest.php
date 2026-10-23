@@ -155,7 +155,7 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
     {
         PackageLedgerNetRepairManifest::useRowsForTesting(null);
         $rows = PackageLedgerNetRepairManifest::rows();
-        self::assertSame([54, 17, 37, 54, 16], [count($rows), count(array_filter($rows, fn (array $r): bool => $r['class'] === 'A')),
+        self::assertSame([52, 15, 37, 52, 15], [count($rows), count(array_filter($rows, fn (array $r): bool => $r['class'] === 'A')),
             count(array_filter($rows, fn (array $r): bool => $r['class'] === 'B')), count(array_unique(array_column($rows, 'class_session_id'))),
             count(array_unique(array_column($rows, 'package_id')))]);
     }
