@@ -139,6 +139,27 @@ final class PopOperationCatalogTest extends TestCase
         $method->invoke($service, $entry);
     }
 
+    public function test_package_ledger_net_repair_requires_founder_approval_and_exact_pop_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $roles = new ReflectionMethod($service, 'approvalRoles');
+        $founder = new ReflectionMethod($service, 'assertFounderApprovalReference');
+        $entry = $catalog->operation('package-ledger-net-repair-4455');
+        self::assertSame([true, 'pop-pi-local', ['decision_reference']],
+            [$entry['founder_approval_required'], $entry['execution_authority'], $entry['parameter_keys']]);
+        self::assertSame(['super_admin'], $roles->invoke($service, $entry));
+        $founder->invoke($service, $entry, 'founder-go-package-ledger-net-repair-4455');
+        try {
+            $founder->invoke($service, $entry, 'director-approval-4455');
+            self::fail('a non founder-go reference must be rejected');
+        } catch (RuntimeException) {
+        }
+        $entry['founder_approval_required'] = false;
+        $this->expectException(RuntimeException::class);
+        $roles->invoke($service, $entry);
+    }
+
     public function test_founder_scoped_policy_is_supported_only_for_the_safe_course_repair_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');

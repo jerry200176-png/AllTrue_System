@@ -181,6 +181,7 @@ final class PopOperationService
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
+            && !$this->isExactPackageLedgerNetRepair($entry)
             && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
@@ -824,6 +825,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactPackageLedgerNetRepair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'exact_manifest_package_ledger_rows_insert_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactPastScheduledCancel($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1037,6 +1053,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'invoice1997-stale-values-20261008'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\Invoice1997StaleValuesStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice1997-stale-values'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (GitHub #4455, shared package ledger rows). */
+    private function isExactPackageLedgerNetRepair(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'package-ledger-net-repair-4455'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\PackageLedgerNetRepairStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-package-ledger-net-repair'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 
