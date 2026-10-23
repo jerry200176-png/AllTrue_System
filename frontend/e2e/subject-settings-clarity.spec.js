@@ -132,5 +132,7 @@ test('subject settings keeps long Chinese names inside the mobile card layout', 
   await expect(page.getByText('英文進階長內容驗證科目名稱', { exact: true })).toBeVisible({ timeout: 10_000 });
   const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
-  await expect(page.getByRole('button', { name: '更名', exact: true }).first()).toBeEnabled();
+  // The first (shared) row is renamed by super_admin only; the campus row stays renameable for a director.
+  await expect(page.getByRole('button', { name: '更名', exact: true }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: '更名', exact: true }).nth(1)).toBeEnabled();
 });
