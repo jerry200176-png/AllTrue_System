@@ -43,6 +43,8 @@ class TeacherCampusLinkApprovalTest extends TestCase
         $this->assertSame('active', (string) $teacher->fresh()->status);
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'staff.campus_link.approved')->where('campus_id', $b)->count());
         $this->api($this->token($directorB))->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$b}/approve")->assertNotFound();
+        // Approved, the link is B's: its director now manages the teacher.
+        $this->api($this->token($directorB))->putJson("/api/v1/profiles/{$teacher->id}", ['name' => '新名字'])->assertOk();
     }
 
     public function test_a_director_of_another_campus_cannot_approve_or_reject_it(): void
@@ -91,41 +93,69 @@ class TeacherCampusLinkApprovalTest extends TestCase
         $this->assertSame([$a => 1, $c => 0], $this->links($teacher->id));
     }
 
-    public function test_edit_save_with_status_active_approves_only_the_editors_campuses(): void
+    public function test_account_approval_releases_only_the_approvers_campuses(): void
     {
-        [$a, $b] = $this->campuses(2);
-        // B is the first row, so the form's branch_id is B: an unchanged campus must keep its pending state.
-        $teacher = $this->user('T', [$b => 0, $a => 0], 'pending');
-        $directorA = $this->token($this->user('A', [$a => 1]));
+        [$a, $a2, $b] = $this->campuses(3);
+        $teacher = $this->user('T', [$a => 1, $a2 => 0, $b => 0], 'pending');
+        $directorA = $this->token($this->user('A', [$a => 1, $a2 => 1]));
 
-        $this->api($directorA)->putJson("/api/v1/profiles/{$teacher->id}", [
-            'username' => '老師', 'status' => 'active', 'branch_id' => $b, 'multi_branches' => [$a],
-        ])->assertOk();
+        $this->api($directorA)->putJson("/api/v1/profiles/{$teacher->id}", ['status' => 'active'])->assertOk();
+        $this->assertSame([$a => 1, $a2 => 1, $b => 0], $this->links($teacher->id));
+        $this->assertSame('active', (string) $teacher->fresh()->status);
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'staff.campus_link.approved')->where('campus_id', $a2)->count());
 
-        $this->assertSame([$a => 1, $b => 0], $this->links($teacher->id));
-        $this->assertSame('active', (string) $teacher->fresh()->status, 'the account approval itself is unchanged');
+        $other = $this->user('T', [$a => 0, $b => 0], 'pending');
+        $this->api($this->token($this->user('S', [])))->putJson("/api/v1/profiles/{$other->id}", ['status' => 'active'])->assertOk();
+        $this->assertSame([$a => 1, $b => 1], $this->links($other->id), 'super_admin releases every campus');
+    }
 
-        $this->api($this->token($this->user('S', [])))->putJson("/api/v1/profiles/{$teacher->id}", ['status' => 'active'])->assertOk();
-        $this->assertSame([$a => 1, $b => 1], $this->links($teacher->id), 'super_admin releases every campus');
+    public function test_saving_an_active_teacher_approves_nothing_and_keeps_each_campus_link(): void
+    {
+        [$a, $a2, $b] = $this->campuses(3);
+        $directorA = $this->token($this->user('A', [$a => 1, $a2 => 1]));
+        // The edit form resends status=active: an already-active teacher's pending link stays pending.
+        $teacher = $this->user('T', [$a => 1, $a2 => 0]);
+        $this->api($directorA)->putJson("/api/v1/profiles/{$teacher->id}", ['username' => '老師', 'status' => 'active', 'multi_branches' => [$a, $a2]])->assertOk();
+        $this->assertSame([$a => 1, $a2 => 0], $this->links($teacher->id));
+
+        // #4457 review P1-2: making A the main campus while keeping B must not demote B, whichever row the table returns first.
+        $moved = $this->user('T', [$b => 1, $a => 1]);
+        DB::table('UserCampus')->where('UserID', $moved->id)->where('CampusID', $b)->update(['RFID' => 'CARD-B']);
+        $this->api($directorA)->putJson("/api/v1/profiles/{$moved->id}", ['status' => 'active', 'branch_id' => $a, 'multi_branches' => [$b]])->assertOk();
+        $this->assertSame([$a => 1, $b => 1], $this->links($moved->id));
+        $this->assertSame(['CARD-B'], DB::table('UserCampus')->where('UserID', $moved->id)->where('CampusID', $b)->pluck('RFID')->all());
     }
 
     public function test_edit_save_adding_an_unmanaged_campus_creates_a_pending_link_for_that_director(): void
     {
         [$a, $b, $c] = $this->campuses(3);
-        $teacher = $this->user('T', [$a => 1]);
         $directorA = $this->token($this->user('A', [$a => 1]));
+        $teacher = $this->user('T', [$a => 1]);
 
-        $this->api($directorA)->putJson("/api/v1/profiles/{$teacher->id}", [
-            'status' => 'active', 'branch_id' => $a, 'multi_branches' => [$b],
-        ])->assertOk();
+        $this->api($directorA)->putJson("/api/v1/profiles/{$teacher->id}", ['status' => 'active', 'branch_id' => $a, 'multi_branches' => [$b]])->assertOk();
         $this->assertSame([$a => 1, $b => 0], $this->links($teacher->id));
-
-        // Moving the main link to an unmanaged campus is also a request, not a grant.
-        $this->api($directorA)->putJson("/api/v1/profiles/{$teacher->id}", ['branch_id' => $c, 'multi_branches' => [$a, $b]])->assertOk();
-        $this->assertSame([$a => 1, $b => 0, $c => 0], $this->links($teacher->id));
-
         $this->api($this->token($this->user('A', [$b => 1])))->postJson("/api/v1/profiles/{$teacher->id}/campus-links/{$b}/approve")->assertOk();
-        $this->assertSame([$a => 1, $b => 1, $c => 0], $this->links($teacher->id));
+        $this->assertSame([$a => 1, $b => 1], $this->links($teacher->id));
+
+        // Moving a one-link teacher's main campus to an unmanaged campus is also a request, not a grant.
+        $single = $this->user('T', [$a => 1]);
+        $this->api($directorA)->putJson("/api/v1/profiles/{$single->id}", ['branch_id' => $c])->assertOk();
+        $this->assertSame([$c => 0], $this->links($single->id));
+    }
+
+    public function test_approvable_links_skip_what_the_decide_endpoint_refuses(): void
+    {
+        [$b, $c] = $this->campuses(2);
+        $directorB = $this->token($this->user('A', [$b => 1]));
+        $holder = $this->user('T', [$b => 0]);
+        UserCapabilityGrant::create(['user_id' => $holder->id, 'capability' => 'director', 'campus_id' => $c, 'granted_at' => now()]);
+        $applicant = $this->user('D', [$b => 0]);
+
+        $rows = collect($this->api($directorB)->getJson('/api/v1/profiles?per_page=all')->assertOk()->json())->keyBy('id');
+        $this->assertSame([$b], $rows[$holder->id]['pending_branch_ids']);
+        $this->assertSame([], $rows[$holder->id]['approvable_branch_ids'], 'a director-grant holder is decided by super_admin');
+        $this->assertSame([], $rows[$applicant->id]['approvable_branch_ids'], 'a director account is not a teacher link');
+        $this->api($directorB)->postJson("/api/v1/profiles/{$holder->id}/campus-links/{$b}/approve")->assertForbidden();
     }
 
     public function test_a_director_without_an_approved_campus_fails_closed(): void
@@ -139,17 +169,23 @@ class TeacherCampusLinkApprovalTest extends TestCase
         $this->assertSame([$a => 0], $this->links($teacher->id));
     }
 
-    public function test_a_dual_role_director_cannot_approve_their_own_link(): void
+    public function test_a_dual_role_director_approves_none_of_their_own_links(): void
     {
         Config::set('staff_capabilities.multi_role_v1_enabled', true);
-        [$a] = $this->campuses(1);
-        $self = $this->user('T', [$a => 0]);
-        UserCapabilityGrant::create(['user_id' => $self->id, 'capability' => 'director', 'campus_id' => $a, 'granted_at' => now()]);
+        [$a, $a2, $a3] = $this->campuses(3);
+        $self = $this->user('T', [$a2 => 1, $a => 0], 'pending');
+        foreach ([$a, $a2, $a3] as $campusId) {
+            UserCapabilityGrant::create(['user_id' => $self->id, 'capability' => 'director', 'campus_id' => $campusId, 'granted_at' => now()]);
+        }
+        $api = $this->withHeaders(['Authorization' => 'Bearer ' . $this->token($self), 'Accept' => 'application/json', 'X-Acting-As' => 'director']);
 
-        $this->withHeaders(['Authorization' => 'Bearer ' . $this->token($self), 'Accept' => 'application/json', 'X-Acting-As' => 'director'])
-            ->postJson("/api/v1/profiles/{$self->id}/campus-links/{$a}/approve")
+        $api->postJson("/api/v1/profiles/{$self->id}/campus-links/{$a}/approve")
             ->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
-        $this->assertSame([$a => 0], $this->links($self->id));
+        $ownRow = collect($api->getJson('/api/v1/teachers?per_page=all')->assertOk()->json())->firstWhere('id', $self->id);
+        $this->assertSame([], $ownRow['approvable_branch_ids'], 'no buttons on the caller\'s own row');
+        // #4457 review P2: PUT is consistent. The account approval releases none of their links; an added campus is pending.
+        $api->putJson("/api/v1/profiles/{$self->id}", ['status' => 'active', 'multi_branches' => [$a, $a2, $a3]])->assertOk();
+        $this->assertSame([$a => 0, $a2 => 1, $a3 => 0], $this->links($self->id));
     }
 
     /** @return list<int> */

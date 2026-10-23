@@ -14,6 +14,7 @@ const teachers = [
   { id: 3001, username: '甲老師', status: 'active', branch_id: 1, branch_ids: [1, 2], pending_branch_ids: [2], approvable_branch_ids: [2] },
   { id: 3002, username: '乙老師', status: 'active', branch_id: 2, branch_ids: [2, 3], pending_branch_ids: [3], approvable_branch_ids: [] },
   { id: 3003, username: '丙老師', status: 'active', branch_id: 2, branch_ids: [2], pending_branch_ids: [], approvable_branch_ids: [] },
+  { id: 3004, username: '丁老師', status: 'pending', branch_id: 2, branch_ids: [2], pending_branch_ids: [2], approvable_branch_ids: [2] },
 ];
 const branches = [{ id: 1, name: '總校' }, { id: 2, name: '新莊分校' }, { id: 3, name: '板橋分校' }];
 
@@ -45,11 +46,11 @@ describe('TeachersList pending campus links (#4433)', () => {
     const wrapper = mountTeachers();
     await flushPromises();
 
-    expect(wrapper.find('#teachers-tab-pending .badge--pending').text()).toBe('1');
+    expect(wrapper.find('#teachers-tab-pending .badge--pending').text()).toBe('2');
     await wrapper.find('#teachers-tab-pending').trigger('click');
 
     const names = wrapper.findAll('.teacher-profile-card .tpc-name-text').map((n) => n.text());
-    expect(names).toEqual(['甲老師']);
+    expect(names).toEqual(['甲老師', '丁老師']);
     const card = cardFor(wrapper, '甲老師');
     expect(card.find('.tpc-status').text()).toBe('在職');
     expect(card.find('.tpc-link-approve').text()).toBe('核准加入新莊分校');
@@ -63,6 +64,39 @@ describe('TeachersList pending campus links (#4433)', () => {
     const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/campus-links/'));
     expect(String(call[0])).toMatch(/\/profiles\/3001\/campus-links\/2\/approve$/);
     expect(call[1].method).toBe('POST');
+    wrapper.unmount();
+  });
+
+  it('rejects only that campus link after the dialog confirm', async () => {
+    const wrapper = mountTeachers();
+    await flushPromises();
+    await wrapper.find('#teachers-tab-pending').trigger('click');
+
+    await cardFor(wrapper, '甲老師').find('.tpc-link-reject').trigger('click');
+    expect(wrapper.find('[role="dialog"]').text()).toContain('拒絕「甲老師」加入新莊分校');
+    await wrapper.find('.teacher-link-confirm').trigger('click');
+    await flushPromises();
+    const urls = fetchMock.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('/campus-links/'));
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toMatch(/\/profiles\/3001\/campus-links\/2\/reject$/);
+    wrapper.unmount();
+  });
+
+  it('keeps an account-pending teacher in 待審核 and approves the campus link before the account', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = mountTeachers();
+    await flushPromises();
+    await wrapper.find('#teachers-tab-pending').trigger('click');
+
+    const card = cardFor(wrapper, '丁老師');
+    expect(card.find('.tpc-status').text()).toBe('待審核');
+    expect(card.find('.tpc-link-approve').exists()).toBe(false);
+    expect(card.find('.tpc-link-reject').text()).toBe('拒絕加入新莊分校');
+    await card.findAll('button').find((b) => b.text() === '核准').trigger('click');
+    await flushPromises();
+    const writes = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/profiles/') && init?.method)
+      .map(([url, init]) => `${init.method} ${String(url).replace(/^.*\/v1\//, '')}`);
+    expect(writes).toEqual(['POST profiles/3004/campus-links/2/approve', 'PUT profiles/3004']);
     wrapper.unmount();
   });
 

@@ -1255,15 +1255,18 @@ const approveTeacher = async (teacher) => {
   if (!confirm('確認核准此老師？核准後將成為正式老師，可進行排課。')) return;
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/profiles/${teacher.id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ status: 'active' })
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      alert('核准失敗：' + (j?.message || res.statusText));
-      return;
+    // #4433：先核准加入你分校的申請（管理權只來自已核准的分校），再把帳號改為在職。
+    const steps = [
+      ...approvableCampusIds(teacher).map((cid) => [`profiles/${teacher.id}/campus-links/${cid}/approve`, { method: 'POST', headers }]),
+      [`profiles/${teacher.id}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'active' }) }],
+    ];
+    for (const [path, init] of steps) {
+      const res = await fetch(`${API_BASE}/${path}`, init);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert('核准失敗：' + (j?.message || res.statusText));
+        return;
+      }
     }
     tab.value = 'active';
     await loadTeachers();
