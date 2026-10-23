@@ -215,6 +215,7 @@ jobs:
               - 'frontend/e2e/fixtures/openPageFromSidebarSearch.js'
               - 'frontend/src/pages/CourseManagement.vue'
               - 'frontend/e2e/fixtures/coursePaymentEntry.js'
+              - 'frontend/e2e/fixtures/{dismissOverlays,latestGetJson}.js'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
