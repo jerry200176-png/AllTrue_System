@@ -24,6 +24,7 @@ inapp-289-course-2817-restore.yml
 inapp-289-learningrecord-preflight.yml
 inapp-289-preincident-target-manifest.yml
 inapp-289-schema-preflight.yml
+inapp-package-ledger-probe.yml
 learning-records-void-stale-leave-manual.yml
 leave-makeup-evidence-closeout.yml
 lr-missing-diagnose.yml
