@@ -1,0 +1,5 @@
+## 2026-10-22 — Approved assessment lock: schedule type change and emptying the assessment
+<!-- release-notes: silent_ship=silent-2026-10-22-assessment-lock-type-and-content -->
+<!-- silent-reason: closes two rare bypasses of the existing #3824 lock; the refusal messages explain the existing correction path -->
+
+Two pre-#3895 ways to move an approved assessment's teacher are closed. `PUT /schedules/{id}` now treats a `type` change on a protected occurrence as a detaching mutation (409, same as date/start/status), so a makeup row can no longer leave the makeup branch and hand calendar/payroll ownership back to the contract teacher. `LearningRecordController::update()` now refuses (422 `approved_assessment_content_required`) a director edit that would leave an approved, protected assessment with no substantive content, because the lock is derived from that content; the message points to 「退回待審」 first. Edits that keep content stay approved as before. Regressions in `ApprovedAssessmentTeacherLockTest`. Rollback is a normal revert. Refs #3979.
