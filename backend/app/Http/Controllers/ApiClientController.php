@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ApiClient;
 use App\Models\Campus;
+use App\Operations\Inapp\InappAgentClients;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -81,7 +82,11 @@ class ApiClientController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $apiClient->Active = 0;
+        if ($apiClient->Purpose === InappAgentClients::PURPOSE) {
+            InappAgentClients::revoke((int) $apiClient->id); // ADR-POP-015 §4: also cancels its policy-approved requests
+            return response()->json(['status' => 'revoked']);
+        }
+        $apiClient->Active = false;
         $apiClient->save();
 
         return response()->json(['status' => 'revoked']);
