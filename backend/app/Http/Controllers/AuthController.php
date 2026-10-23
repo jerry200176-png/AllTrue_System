@@ -241,6 +241,17 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
+        // Founder policy 2026-10-22: a public director sign-up is a director application, never an active
+        // account. It takes the /directors/register path (invite-token gate, type U with one unapproved
+        // campus, super_admin approval list) and gets no director capability until approved.
+        if ($request->input('role') === 'director') {
+            if (!$request->filled('campus_id') && $request->filled('branch_id')) {
+                $request->merge(['campus_id' => $request->input('branch_id')]);
+            }
+
+            return app(DirectorAccountController::class)->register($request);
+        }
+
         $data = $request->validate([
             'name'      => 'required|string|max:64',
             'account'   => 'nullable|string|max:128|required_without:email',
@@ -278,10 +289,8 @@ class AuthController extends Controller
             }
         }
 
-        $type = match ($data['role'] ?? 'teacher') {
-            'director' => 'D',
-            default    => 'T',
-        };
+        // role=director returned above, so this path only creates (pending) teachers.
+        $type = 'T';
 
         $existingSameRole = User::where('LoginName', $loginName)->first();
         if ($existingSameRole) {
@@ -301,7 +310,7 @@ class AuthController extends Controller
 
         $normalizedPhone = $this->normalizePhone($data['phone'] ?? null);
 
-        $initialStatus = $type === 'T' ? 'pending' : 'active';
+        $initialStatus = 'pending';
 
         $user = DB::transaction(function () use ($data, $type, $normalizedPhone, $branchId, $loginName, $initialStatus, $multiBranchIds) {
             $user = User::create([
@@ -317,11 +326,9 @@ class AuthController extends Controller
             if ($branchId !== null) {
                 $allBranches[] = (int) $branchId;
             }
-            if ($type === 'T') {
-                foreach ($multiBranchIds as $extraId) {
-                    if (!in_array($extraId, $allBranches, true)) {
-                        $allBranches[] = $extraId;
-                    }
+            foreach ($multiBranchIds as $extraId) {
+                if (!in_array($extraId, $allBranches, true)) {
+                    $allBranches[] = $extraId;
                 }
             }
 
@@ -334,28 +341,26 @@ class AuthController extends Controller
                 ]);
             }
 
-            if ($type === 'T') {
-                if (Schema::hasTable('teacher_branches') && !empty($allBranches)) {
-                    foreach ($allBranches as $campusId) {
-                        DB::table('teacher_branches')->insertOrIgnore([
+            if (Schema::hasTable('teacher_branches') && !empty($allBranches)) {
+                foreach ($allBranches as $campusId) {
+                    DB::table('teacher_branches')->insertOrIgnore([
+                        'teacher_id' => $user->id,
+                        'branch_id' => $campusId,
+                    ]);
+                }
+            }
+            if (Schema::hasTable('teacher_subjects')) {
+                foreach (array_values(array_unique(array_map('intval', (array) ($data['subject_ids'] ?? [])))) as $subjectId) {
+                    if ($subjectId > 0) {
+                        DB::table('teacher_subjects')->insertOrIgnore([
                             'teacher_id' => $user->id,
-                            'branch_id' => $campusId,
+                            'subject_id' => $subjectId,
                         ]);
                     }
                 }
-                if (Schema::hasTable('teacher_subjects')) {
-                    foreach (array_values(array_unique(array_map('intval', (array) ($data['subject_ids'] ?? [])))) as $subjectId) {
-                        if ($subjectId > 0) {
-                            DB::table('teacher_subjects')->insertOrIgnore([
-                                'teacher_id' => $user->id,
-                                'subject_id' => $subjectId,
-                            ]);
-                        }
-                    }
-                }
-                if (array_key_exists('subject_level_scopes', $data)) {
-                    TeacherScopeService::replaceScopes($user->id, (array) ($data['subject_level_scopes'] ?? []));
-                }
+            }
+            if (array_key_exists('subject_level_scopes', $data)) {
+                TeacherScopeService::replaceScopes($user->id, (array) ($data['subject_level_scopes'] ?? []));
             }
 
             return $user;
@@ -508,22 +513,51 @@ class AuthController extends Controller
                     if (!empty($missing)) {
                         return response()->json(['message' => '部分分校不存在'], 422);
                     }
-                    DB::table('UserCampus')->where('UserID', $user->id)->delete();
-                    foreach ($allBranchIds as $campusId) {
-                        $insert = ['UserID' => $user->id, 'CampusID' => $campusId];
-                        if (Schema::hasColumn('UserCampus', 'Approved')) {
-                            $insert['Approved'] = true;
+                    $hasApprovedColumn = Schema::hasColumn('UserCampus', 'Approved');
+                    $saved = DB::transaction(function () use ($user, $allBranchIds, $hasApprovedColumn) {
+                        // Read and lock the links inside the write: a director approving a pending link
+                        // (ProfileController::decideCampusLink) after a plain read would be undone by the stale snapshot below.
+                        // Duplicate rows for one campus collapse to the approved one, then to the one carrying the most data (e.g. an RFID card).
+                        $existingLinks = DB::table('UserCampus')->where('UserID', $user->id)->lockForUpdate()->get()
+                            ->sortByDesc(fn ($row) => [(int) ($row->Approved ?? 1), count(array_filter((array) $row, fn ($v) => $v !== null))])
+                            ->unique(fn ($row) => (int) $row->CampusID)
+                            ->keyBy(fn ($row) => (int) $row->CampusID);
+                        // Every new campus starts pending, so dropping the last approved one would lock the teacher out.
+                        $approvedNow = $existingLinks->filter(fn ($row) => !$hasApprovedColumn || UserCampus::isApproved($row->Approved))->keys()->all();
+                        if ($approvedNow !== [] && array_intersect($approvedNow, $allBranchIds) === []) {
+                            return false;
                         }
-                        DB::table('UserCampus')->insert($insert);
-                    }
-                    if (Schema::hasTable('teacher_branches')) {
-                        DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
+                        // Rewritten in submitted order so branch_id stays the first (main) link.
+                        DB::table('UserCampus')->where('UserID', $user->id)->delete();
                         foreach ($allBranchIds as $campusId) {
-                            DB::table('teacher_branches')->insertOrIgnore([
-                                'teacher_id' => $user->id,
-                                'branch_id' => $campusId,
-                            ]);
+                            $kept = $existingLinks->get($campusId);
+                            if ($kept !== null) {
+                                // A campus the teacher already has keeps its row as is (approval state, RFID).
+                                DB::table('UserCampus')->insert((array) $kept);
+                                continue;
+                            }
+                            $insert = ['UserID' => $user->id, 'CampusID' => $campusId];
+                            if ($hasApprovedColumn) {
+                                // Founder policy 2026-10-22: a campus a teacher adds to themselves stays
+                                // pending until that campus's director approves it.
+                                $insert['Approved'] = false;
+                            }
+                            DB::table('UserCampus')->insert($insert);
                         }
+                        if (Schema::hasTable('teacher_branches')) {
+                            DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
+                            foreach ($allBranchIds as $campusId) {
+                                DB::table('teacher_branches')->insertOrIgnore([
+                                    'teacher_id' => $user->id,
+                                    'branch_id' => $campusId,
+                                ]);
+                            }
+                        }
+
+                        return true;
+                    });
+                    if ($saved === false) {
+                        return response()->json(['message' => '請至少保留一個已核准的分校：新加入的分校要等該分校主任核准後才會生效。'], 422);
                     }
                 }
             }
@@ -939,6 +973,10 @@ class AuthController extends Controller
         $campusRows = DB::table('UserCampus')->where('UserID', $user->id)->get();
         $branchIds = $campusRows->pluck('CampusID')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $branchId = !empty($branchIds) ? (int) ($branchIds[0] ?? 0) : null;
+        // Campuses still waiting for that campus's director (Approved=0; NULL/legacy counts as approved).
+        $pendingBranchIds = $campusRows
+            ->filter(fn ($row) => isset($row->Approved) && !$row->Approved)
+            ->pluck('CampusID')->map(fn ($id) => (int) $id)->unique()->values()->all();
 
         $subjectIds = [];
         $subjectNames = [];
@@ -963,6 +1001,7 @@ class AuthController extends Controller
         return [
             'branch_id' => $branchId,
             'branch_ids' => $branchIds,
+            'pending_branch_ids' => $pendingBranchIds,
             'subject_ids' => $subjectIds,
             'subject_names' => array_values(array_map(fn ($sid) => $subjectNames[$sid] ?? (string) $sid, $subjectIds)),
             'subject_level_scopes' => $scopes[$user->id] ?? [],
