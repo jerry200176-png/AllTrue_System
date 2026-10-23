@@ -18,8 +18,7 @@ use Tests\TestCase;
  * #4275 / in-app 419: a lesson marked attended, reverted, then marked attended again was
  * debited once on the course ledger (net-based since #1338) but not on the shared package
  * ledger (row/reason-based), so the pool showed one lesson fewer than was taught.
- * The package ledger now follows the same net rule; group slots stay debited once while any
- * member's lesson in the slot is charged.
+ * The package ledger now follows the same net rule; a group slot is debited once.
  */
 class PackageLedgerNetIdempotencyTest extends TestCase
 {
@@ -181,7 +180,7 @@ class PackageLedgerNetIdempotencyTest extends TestCase
         $this->assertSame(55, (int) $pkg->remaining_sessions);
     }
 
-    public function test_group_slot_debit_moves_to_a_member_still_charged_and_never_over_credits(): void
+    public function test_group_slot_reverse_credits_only_the_member_carrying_the_debit(): void
     {
         $teacherId = $this->makeTeacher()->id;
         $owner = $this->makeStudent();
@@ -200,18 +199,15 @@ class PackageLedgerNetIdempotencyTest extends TestCase
         SessionDeductionService::reverseForSession($second->ID, $secondSession->id, 'status_adjust');
         $pkg->refresh();
         $this->assertSame(9, (int) $pkg->remaining_sessions);
-        $this->assertSame(0, $this->sessionNet($pkg->id, $secondSession->id));
+        $this->assertSame(0, PackageSessionLedger::where('package_id', $pkg->id)->where('class_session_id', $secondSession->id)->count());
 
-        // Re-attend, then revert the carrier while the other member is still charged.
-        SessionDeductionService::deductForSession($second->ID, $secondSession->id, 'attendance');
+        // Reverting the carrier credits the slot (unchanged; moving the debit is #4454), and re-attending debits it again.
         SessionDeductionService::reverseForSession($first->ID, $firstSession->id, 'status_adjust');
         $pkg->refresh();
-        $this->assertSame(9, (int) $pkg->remaining_sessions, 'slot stays debited while a member lesson in it is charged');
-        $this->assertSame(0, $this->sessionNet($pkg->id, $firstSession->id));
-        $this->assertSame(-1, $this->sessionNet($pkg->id, $secondSession->id));
-
-        SessionDeductionService::reverseForSession($second->ID, $secondSession->id, 'status_adjust');
+        $this->assertSame(10, (int) $pkg->remaining_sessions);
+        SessionDeductionService::deductForSession($first->ID, $firstSession->id, 'attendance');
         $pkg->refresh();
-        $this->assertSame(10, (int) $pkg->remaining_sessions, 'no member charged: the slot is free again');
+        $this->assertSame(9, (int) $pkg->remaining_sessions);
+        $this->assertSame(-1, $this->sessionNet($pkg->id, $firstSession->id));
     }
 }

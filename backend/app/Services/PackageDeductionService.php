@@ -172,11 +172,12 @@ class PackageDeductionService
      * Without dedup, one group lesson attended by 3 students would write 3 ledger -1 rows
      * (over-deduction), draining the shared pool at 3x the correct rate.
      * Strategy (ClassPass / Gympass "1 credit per group session" model):
-     *   A (SessionDate, StartTime) slot is debited once while any member's lesson in it is
-     *   still charged. Deduct skips when the slot's package net is already negative; reversing
-     *   the session that carries the slot debit moves it to another member's still-charged
-     *   session in the slot (#4275). Different timeslots on the same day (e.g. Math 16:00 +
-     *   English 18:00) remain independent deductions (risk-3 guard).
+     *   A (SessionDate, StartTime) slot is debited once. Deduct skips when the slot's package net
+     *   is already negative (net, so a slot credited back can be debited again, #4275); a reverse
+     *   credits only a session that carries a debit. Reverting the carrier while another member is
+     *   still charged leaves the slot credited, as before; moving the debit needs current reads
+     *   (#4454). Different timeslots on the same day (e.g. Math 16:00 + English 18:00) remain
+     *   independent deductions (risk-3 guard).
      */
     public static function syncFromStudentClassDeduction(
         int $studentClassId,
@@ -198,17 +199,13 @@ class PackageDeductionService
 
         DB::transaction(function () use ($packageId, $studentClassId, $classSessionId, $eventType, $source, $createdBy, $note) {
             self::lockPackage($packageId);
-            $slot = self::groupSlot($packageId, $classSessionId);
-
             if ($eventType === 'deduct') {
+                $slot = self::groupSlot($packageId, $classSessionId);
                 if ($slot === null || self::slotNet($packageId, $slot) >= 0) {
                     self::deductForSession($packageId, $studentClassId, $classSessionId, $source, $createdBy, $note);
                 }
             } elseif ($eventType === 'reverse') {
-                $reversed = self::reverseForSession($packageId, $studentClassId, $classSessionId, $source, $createdBy, $note);
-                if ($reversed && $slot !== null && self::slotNet($packageId, $slot) >= 0) {
-                    self::carryGroupSlotDebit($packageId, (int) $classSessionId, $slot, $createdBy, $note);
-                }
+                self::reverseForSession($packageId, $studentClassId, $classSessionId, $source, $createdBy, $note);
             }
 
             self::recomputeCounters($packageId);
@@ -258,43 +255,6 @@ class PackageDeductionService
             ->where('c.SessionDate', $slot[0])
             ->where('c.StartTime', $slot[1])
             ->sum('l.delta');
-    }
-
-    /**
-     * After the session carrying a group slot's debit is reversed, debit another member's
-     * session in the same slot that is still charged on its course ledger (net deduct > 0),
-     * so the slot stays debited once while anyone's lesson in it is charged.
-     *
-     * @param array{0: string, 1: string} $slot
-     */
-    private static function carryGroupSlotDebit(int $packageId, int $classSessionId, array $slot, ?int $recordedBy, ?string $note): void
-    {
-        $candidates = DB::table('ClassSession as c')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
-            ->where('sc.PackageID', $packageId)
-            ->where('c.SessionDate', $slot[0])
-            ->where('c.StartTime', $slot[1])
-            ->where('c.id', '!=', $classSessionId)
-            ->orderBy('c.id')
-            ->get(['c.id', 'c.StudentClassID']);
-
-        foreach ($candidates as $candidate) {
-            $courseNet = (int) (DB::table('session_deduction_ledger')
-                ->where('student_class_id', (int) $candidate->StudentClassID)
-                ->where('class_session_id', (int) $candidate->id)
-                ->selectRaw(
-                    "COALESCE(SUM(CASE WHEN event_type='deduct' THEN 1 "
-                    . "WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net"
-                )
-                ->value('net') ?? 0);
-            $moved = $courseNet > 0 && self::deductForSession(
-                $packageId, (int) $candidate->StudentClassID, (int) $candidate->id,
-                'group_slot_carry', $recordedBy, 'group slot debit moved from class_session ' . $classSessionId
-            );
-            if ($moved) {
-                return;
-            }
-        }
     }
 
     /**
