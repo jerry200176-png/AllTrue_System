@@ -2,8 +2,8 @@
 
 namespace App\Operations\Strategies;
 
-use App\Models\CoursePackage;
 use App\Models\SecurityAuditEvent;
+use App\Services\PackageDeductionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -35,8 +35,9 @@ final class PackageLedgerNetRepairStrategy
         }
         $packages = [];
         foreach ($live['packages'] as $id => $p) {
-            $packages[$id] = $p === null ? null
-                : ['remaining_before' => $p['remaining'], 'remaining_after' => max(0, $p['total'] + $p['net'] + $delta[$id])];
+            // The ledger net too: a pool already used up shows remaining 0 before and after (counters clamp at 0).
+            $packages[$id] = $p === null ? null : ['remaining_before' => $p['remaining'], 'remaining_after' => max(0, $p['total'] + $p['net'] + $delta[$id]),
+                'ledger_net_before' => $p['net'], 'ledger_net_after' => $p['net'] + $delta[$id]];
         }
         $n = array_count_values($states) + ['insert' => 0, 'done' => 0, 'blocked' => 0];
         $out = ['rows' => $states, 'packages' => $packages];
@@ -56,7 +57,7 @@ final class PackageLedgerNetRepairStrategy
 
         return DB::transaction(function () use ($requestId): array {
             $this->lockPackages();
-            $live = $this->inspect();
+            $live = $this->inspect(true);
             $errors = array_merge(...array_values($this->rowErrors($live)));
             if ($errors !== []) {
                 throw new RuntimeException('package_ledger_drift:' . implode(',', array_slice($errors, 0, 20)));
@@ -120,7 +121,7 @@ final class PackageLedgerNetRepairStrategy
 
         return DB::transaction(function () use ($ids): array {
             $this->lockPackages();
-            $live = $this->inspect();
+            $live = $this->inspect(true);
             $skipped = $touched = [];
             foreach ($ids as $key => $id) {
                 $r = $live['rows'][$key];
@@ -153,64 +154,74 @@ final class PackageLedgerNetRepairStrategy
         }
     }
 
-    /** Serialises with PackageDeductionService writers, which lock the same package rows. */
+    /**
+     * Serialises with the deduction path, which locks the course (StudentClass) and then its package: lock every member
+     * course of the manifest packages, then the packages, in id order, so no attendance write on them runs meanwhile.
+     */
     private function lockPackages(): void
     {
         $ids = array_values(array_unique(array_column(PackageLedgerNetRepairManifest::rows(), 'package_id')));
+        DB::table('StudentClass')->whereIn('PackageID', $ids)->orderBy('ID')->lockForUpdate()->pluck('ID');
         DB::table('course_packages')->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->pluck('id');
     }
 
     /** @param array<int, int|string> $packageIds */
     private function recompute(array $packageIds): void
     {
-        foreach ($packageIds as $id) CoursePackage::query()->whereKey($id)->firstOrFail()->recomputeCounters();
+        foreach ($packageIds as $id) {
+            PackageDeductionService::recomputeCounters((int) $id);
+        }
     }
 
     /**
      * Live state per manifest row (`A|B:package:session`) and package. `net` is the ledger net the repair targets: a group
-     * package's class A slot (PackageDeductionService::slotNet()), else the session.
+     * package's class A slot (PackageDeductionService::slotNet()), else the session. `$current` (execute, rollback): the
+     * ledgers are read with shared locks, so a snapshot taken by the POP transaction before the row locks cannot hide a
+     * write committed meanwhile (#4454); ClassSession rows are never locked.
      * @return array{rows: array<string, array<string, mixed>>, packages: array<int, array{group: bool, total: int, remaining: int, used: int, net: int}|null>}
      */
-    private function inspect(): array
+    private function inspect(bool $current = false): array
     {
+        $read = fn ($query) => $current ? $query->sharedLock() : $query;
         $manifest = PackageLedgerNetRepairManifest::rows();
         $packages = [];
         foreach (array_unique(array_column($manifest, 'package_id')) as $id) {
             $p = DB::table('course_packages')->where('id', $id)->first(['class_type', 'total_sessions', 'remaining_sessions', 'used_sessions']);
             $packages[(int) $id] = $p === null ? null : [
-                'group' => in_array(strtolower(trim((string) $p->class_type)), self::GROUP_TYPES, true),
+                'group' => in_array((string) $p->class_type, self::GROUP_TYPES, true),
                 'total' => (int) $p->total_sessions, 'remaining' => (int) $p->remaining_sessions, 'used' => (int) $p->used_sessions,
-                'net' => (int) DB::table('package_session_ledger')->where('package_id', $id)->sum('delta'),
+                'net' => (int) $read(DB::table('package_session_ledger')->where('package_id', $id))->sum('delta'),
             ];
         }
         $rows = [];
         foreach ($manifest as $m) {
             [$pkg, $cs] = [(int) $m['package_id'], (int) $m['class_session_id']];
-            $ledger = DB::table('package_session_ledger')->where('package_id', $pkg)->where('class_session_id', $cs)
+            $ledger = $read(DB::table('package_session_ledger')->where('package_id', $pkg)->where('class_session_id', $cs))
                 ->orderBy('id')->get(['id', 'student_class_id', 'reason', 'delta', 'request_id']);
             $repair = $ledger->firstWhere('reason', self::REASON);
             $r = ['class' => $m['class'], 'package_id' => $pkg, 'class_session_id' => $cs, 'expected_scope' => $m['scope'],
                 'delta' => $m['class'] === 'A' ? -1 : 1, 'repair_id' => $repair ? (int) $repair->id : null,
-                'repair_request_id' => $repair ? (string) $repair->request_id : null, 'net' => (int) $ledger->sum('delta'), 'scope' => 'session'];
+                'repair_request_id' => $repair ? (string) $repair->request_id : null, 'net' => (int) $ledger->sum('delta'), 'scope' => 'session',
+                'session_net' => (int) $ledger->sum('delta')];
             if ($m['class'] === 'B') {
                 // The ClassSession row may be gone; the two ledger rows themselves are the precondition.
                 $r['others'] = $ledger->where('reason', '!=', self::REASON)
                     ->map(fn ($l): string => $l->reason . ':' . (int) $l->delta)->sort()->values()->all();
-                $r['student_class_id'] = (int) ($ledger->firstWhere('reason', 'attendance')?->student_class_id ?? 0);
+                $r['student_class_id'] = (int) ($ledger->firstWhere('reason', 'attendance')->student_class_id ?? 0);
             } else {
                 $s = DB::table('ClassSession')->where('id', $cs)->first(['StudentClassID', 'SessionDate', 'StartTime', 'Status']);
                 $sc = $s ? (int) $s->StudentClassID : 0;
-                $count = fn (string $type): int => DB::table('session_deduction_ledger')->where('student_class_id', $sc)
-                    ->where('class_session_id', $cs)->where('event_type', $type)->count();
+                $count = fn (string $type): int => $read(DB::table('session_deduction_ledger')->where('student_class_id', $sc)
+                    ->where('class_session_id', $cs)->where('event_type', $type))->count();
                 $r += ['session' => $s !== null, 'student_class_id' => $sc, 'status' => $s ? strtolower(trim((string) $s->Status)) : null,
                     'course_package_id' => (int) DB::table('StudentClass')->where('ID', $sc)->value('PackageID'),
                     'course_net' => $s ? $count('deduct') - $count('reverse') : 0, 'slot' => null];
                 if ($s && ($packages[$pkg]['group'] ?? false) && !empty($s->SessionDate) && !empty($s->StartTime)) {
                     $r['scope'] = 'slot';
                     $r['slot'] = "{$pkg}|{$s->SessionDate} {$s->StartTime}";
-                    $r['net'] = (int) DB::table('package_session_ledger as l')->join('ClassSession as c', 'c.id', '=', 'l.class_session_id')
-                        ->where('l.package_id', $pkg)->where('c.SessionDate', $s->SessionDate)->where('c.StartTime', $s->StartTime)
-                        ->sum('l.delta');
+                    $slotSessions = DB::table('ClassSession')->where('SessionDate', $s->SessionDate)->where('StartTime', $s->StartTime)->pluck('id');
+                    $r['net'] = (int) $read(DB::table('package_session_ledger')->where('package_id', $pkg)
+                        ->whereIn('class_session_id', $slotSessions))->sum('delta');
                 }
             }
             $rows["{$m['class']}:{$pkg}:{$cs}"] = $r;
@@ -241,6 +252,7 @@ final class PackageLedgerNetRepairStrategy
                 if ($r['scope'] !== $r['expected_scope']) $e[] = "a_scope_{$cs}";
                 if ($r['course_net'] <= 0) $e[] = "a_course_net_{$cs}";
                 if ($r['net'] !== 0) $e[] = "a_package_net_{$cs}";
+                if ($r['session_net'] !== 0) $e[] = "a_session_net_{$cs}"; // the slot could net 0 over a +1 on a sibling session
                 if ($r['slot'] !== null && isset($slots[$r['slot']])) $e[] = "a_slot_twice_{$cs}"; // would debit one slot twice
                 if ($r['slot'] !== null) $slots[$r['slot']] = true;
             }

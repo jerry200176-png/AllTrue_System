@@ -81,9 +81,9 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
             "B:{$this->twice->id}:{$this->twiceLesson}", "B:{$this->twice->id}:" . self::GONE,
         ], 'insert'), $plan['rows']);
         self::assertSame([
-            (int) $this->group->id => ['remaining_before' => 10, 'remaining_after' => 9],
-            (int) $this->solo->id => ['remaining_before' => 10, 'remaining_after' => 9],
-            (int) $this->twice->id => ['remaining_before' => 6, 'remaining_after' => 8],
+            (int) $this->group->id => ['remaining_before' => 10, 'remaining_after' => 9, 'ledger_net_before' => 0, 'ledger_net_after' => -1],
+            (int) $this->solo->id => ['remaining_before' => 10, 'remaining_after' => 9, 'ledger_net_before' => 0, 'ledger_net_after' => -1],
+            (int) $this->twice->id => ['remaining_before' => 6, 'remaining_after' => 8, 'ledger_net_before' => -4, 'ledger_net_after' => -2],
         ], $plan['packages']);
         self::assertSame(['case_parameters_mismatch'], $s->plan([])['errors']);
         self::assertSame(0, $this->repairRows()->count());
@@ -127,8 +127,8 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
 
         $plan = $s->plan(self::PARAMS);
         self::assertFalse($plan['ok']);
-        self::assertSame(["a_package_net_{$this->groupLesson}", "a_status_{$this->soloLesson}", "a_course_net_{$this->soloLesson}",
-            'b_net_' . self::GONE, 'b_rows_' . self::GONE], $plan['errors']);
+        self::assertSame(["a_package_net_{$this->groupLesson}", "a_session_net_{$this->groupLesson}", "a_status_{$this->soloLesson}",
+            "a_course_net_{$this->soloLesson}", 'b_net_' . self::GONE, 'b_rows_' . self::GONE], $plan['errors']);
         self::assertSame(['blocked', 'blocked', 'insert', 'blocked'], array_values($plan['rows']));
         try {
             $s->execute($stale, ['operation_id' => 'req-4455']);
@@ -137,6 +137,27 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
             self::assertStringStartsWith('package_ledger_drift:', $e->getMessage());
         }
         self::assertSame([0, [[10, 0], [10, 0], [6, 4]]], [$this->repairRows()->count(), $this->allCounters()]);
+    }
+
+    public function test_a_slot_netting_zero_over_a_sibling_credit_is_not_debited_again(): void
+    {
+        // The target already carries a debit; a +1 on another member's lesson in the same slot brings the slot net to 0.
+        $this->ledger($this->group, $this->groupCourse, $this->groupLesson, 'attendance#2', -1);
+        [, $sibling] = $this->pool('one_on_two', 10);
+        DB::table('StudentClass')->where('ID', $sibling->ID)->update(['PackageID' => $this->group->id]);
+        $this->ledger($this->group, $sibling, $this->lesson($sibling, '2026-10-06'), 'status_adjust', 1);
+
+        $plan = (new PackageLedgerNetRepairStrategy())->plan(self::PARAMS);
+        self::assertSame(["a_session_net_{$this->groupLesson}"], $plan['errors'], 'the slot nets 0 but the lesson is already debited');
+    }
+
+    public function test_the_committed_manifest_is_the_scanned_case(): void
+    {
+        PackageLedgerNetRepairManifest::useRowsForTesting(null);
+        $rows = PackageLedgerNetRepairManifest::rows();
+        self::assertSame([54, 17, 37, 54, 16], [count($rows), count(array_filter($rows, fn (array $r): bool => $r['class'] === 'A')),
+            count(array_filter($rows, fn (array $r): bool => $r['class'] === 'B')), count(array_unique(array_column($rows, 'class_session_id'))),
+            count(array_unique(array_column($rows, 'package_id')))]);
     }
 
     public function test_rollback_restores_the_exact_prior_state_and_leaves_a_row_that_moved_on(): void
@@ -155,7 +176,7 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
             [$partial['ok'], $partial['partial'], $partial['deleted'], $partial['skipped']]);
 
         $this->expectException(RuntimeException::class);
-        $s->rollback(['rows' => ['A:1:1' => 5]], []);
+        $s->rollback(['rows' => ['Z:0:0' => 5]], []);
     }
 
     /** @return array{0: PackageLedgerNetRepairStrategy, 1: array, 2: array} */
@@ -170,7 +191,7 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
 
     private function repairRows(): \Illuminate\Support\Collection
     {
-        return DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON)->orderBy('class_session_id')->get();
+        return DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON)->orderBy('id')->get();
     }
 
     /** @return list<array{0: int, 1: int}> remaining, used of the group, solo and twice packages */

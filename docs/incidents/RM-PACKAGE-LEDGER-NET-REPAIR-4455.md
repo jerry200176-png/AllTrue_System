@@ -20,7 +20,7 @@ the session id: `a_package_net_`, `a_status_`, `a_course_net_`, `a_scope_`, `a_p
 
 Dry-run: a super_admin drafts with `{"decision_reference": "repair-package-ledger-net-4455"}` and dry-runs through the POP
 API. Expect `ok=true state=before`, counts `rows=54 to_insert=54 done=0 blocked=0 packages=16`, per-package
-`remaining_before/after` and the digest. Approve: super_admin, `founder-go-` reference, `commit_sha` = deployed backend SHA.
+`remaining_before/after` and `ledger_net_before/after` (remaining clamps at 0; packages 134, 137, 143, 156 and 167 are already used up, so read the ledger net) and the digest. Approve: super_admin, `founder-go-` reference, `commit_sha` = deployed backend SHA.
 The Pi scheduler (`pop:execute-approved`, every minute) runs execute, then verify: each row's target net is -1 with its
 repair row present, and each package's counters equal its ledger.
 
