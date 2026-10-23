@@ -127,6 +127,25 @@ class PendingSwipeMatchDeductionTest extends TestCase
         $this->assertSame(9, (int) $pkg->refresh()->remaining_sessions);
     }
 
+    public function test_a_match_on_a_date_without_a_lesson_debits_nothing(): void
+    {
+        // RFC_RFID_CAMPUS_PRESENCE_V1 §0: a swipe without a real lesson is self-study, no deduction.
+        [$pkg, $course, $lesson] = $this->packageLesson('scheduled');
+        ClassSession::whereKey($lesson->id)->update(['SessionDate' => '2026-08-13']);
+
+        $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->directorToken(),
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/pending-swipes/{$this->pendingSwipe($course)->id}/match", [
+            'StudentClassID' => $course->ID,
+        ])->assertCreated();
+
+        $this->assertSame(0, SessionDeductionLedger::where('student_class_id', $course->ID)->count());
+        $this->assertSame(0, PackageSessionLedger::where('package_id', $pkg->id)->count());
+        $this->assertSame(10, (int) $pkg->refresh()->remaining_sessions);
+        $this->assertFalse((bool) StudentSignIn::where('StudentClassID', $course->ID)->value('SessionDeducted'));
+    }
+
     public function test_matching_a_completed_lesson_keeps_todays_behaviour(): void
     {
         // Whether a `completed` lesson debits is a pending billing decision; the match must not decide it.

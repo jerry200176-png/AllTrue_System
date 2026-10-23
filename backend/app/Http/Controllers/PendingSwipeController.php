@@ -99,6 +99,7 @@ class PendingSwipeController extends Controller
 
             $swipeAt = Carbon::parse($pendingSwipe->SwipeAt);
             $session = null;
+            $createdFromSwipe = false;
 
             if (!empty($data['ClassSessionID'])) {
                 $session = ClassSession::findOrFail($data['ClassSessionID']);
@@ -113,6 +114,7 @@ class PendingSwipeController extends Controller
 
                 if (!$session) {
                     $session = $this->createSessionFromSwipe($studentClass, $swipeAt);
+                    $createdFromSwipe = true;
                 }
             }
 
@@ -146,7 +148,10 @@ class PendingSwipeController extends Controller
             // calendar attendance and the RFID swipe (course ledger, then the package ledger), net-idempotent.
             // Only a lesson that is now attended/late debits, as in calendar attendance; a `completed` or
             // other lesson keeps today's behaviour (whether `completed` debits is a pending billing decision).
-            if (in_array(strtolower((string) $session->Status), ['attended', 'late'], true)) {
+            // Only a real lesson debits: one passed in or found on that date for this course. A session
+            // createSessionFromSwipe() just made up is not a lesson (RFC_RFID_CAMPUS_PRESENCE_V1 §0: an
+            // unmatched swipe is self-study, no deduction).
+            if (!$createdFromSwipe && in_array(strtolower((string) $session->Status), ['attended', 'late'], true)) {
                 SessionDeductionService::deductOnAttendance($studentClass, $signIn);
                 $campusId = (int) ($pendingSwipe->CampusID
                     ?? Student::query()->whereKey((int) $pendingSwipe->StudentID)->value('CampusID') ?? 0);
