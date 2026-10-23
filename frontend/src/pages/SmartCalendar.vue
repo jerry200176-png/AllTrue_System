@@ -1967,6 +1967,7 @@ const checkConflict = () => {
 
   const verdict = incomingClassConflict({
     incomingType: modalForm.value.class_type,
+    incomingTrialTarget: modalForm.value.trial_target_class_type ?? null,
     overlappingCourses: overlapping,
   });
   if (verdict.blocked) {
@@ -2178,6 +2179,7 @@ const onCourseClick = (course, fullDateStr) => {
     // in-app #376: who teaches this occurrence (a substitute differs from the contract teacher above).
     occurrence_teacher_id: course.teacher_id || '',
     class_type: baseCourse.class_type || course.class_type,
+    trial_target_class_type: baseCourse.trial_target_class_type ?? null,
     weeks: baseCourse.weeks || [1, 2, 3, 4, 5],
     day_of_week: course.day_of_week,
     days_of_week: (baseCourse.days_of_week && baseCourse.days_of_week.length)
