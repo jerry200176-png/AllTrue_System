@@ -102,6 +102,10 @@ class PackageDeductionService
             ]);
         } catch (\Illuminate\Database\QueryException $e) {
             if (str_contains($e->getMessage(), 'Duplicate entry') || str_contains($e->getMessage(), 'UNIQUE constraint')) {
+                // Per-cycle reasons make a duplicate unexpected: a concurrent write saw the same net. Leave a trace.
+                Log::warning('PackageLedger duplicate write skipped', [
+                    'package_id' => $packageId, 'class_session_id' => $classSessionId, 'delta' => $delta, 'reason' => $reason,
+                ]);
                 return false;
             }
             throw $e;
@@ -110,7 +114,10 @@ class PackageDeductionService
         return true;
     }
 
-    /** Serialize package ledger writes so the net read and the insert see the same state. */
+    /**
+     * Serialize package ledger writers. Under REPEATABLE READ a caller whose outer transaction already read before
+     * this lock still sees that older snapshot in the plain net reads below (as the course ledger does); see #4454.
+     */
     private static function lockPackage(int $packageId): void
     {
         CoursePackage::query()->whereKey($packageId)->lockForUpdate()->first();
@@ -280,11 +287,11 @@ class PackageDeductionService
                     . "WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net"
                 )
                 ->value('net') ?? 0);
-            if ($courseNet > 0) {
-                self::deductForSession(
-                    $packageId, (int) $candidate->StudentClassID, (int) $candidate->id,
-                    'group_slot_carry', $recordedBy, $note
-                );
+            $moved = $courseNet > 0 && self::deductForSession(
+                $packageId, (int) $candidate->StudentClassID, (int) $candidate->id,
+                'group_slot_carry', $recordedBy, 'group slot debit moved from class_session ' . $classSessionId
+            );
+            if ($moved) {
                 return;
             }
         }
