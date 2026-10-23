@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 export function headings(text) {
   const result = [];
   let fence = null;
+  let comment = false;
   for (const [i, line] of text.split('\n').entries()) {
     const f = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (f) {
@@ -16,6 +17,8 @@ export function headings(text) {
       continue;
     }
     if (fence) continue;
+    if (comment) { if (line.includes('-->')) comment = false; continue; }
+    if (line.trimStart().startsWith('<!--')) { comment = !line.includes('-->'); continue; }
     const h = line.match(/^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
     if (h) result.push({ line: i + 1, level: h[1].length, title: h[2] });
   }
@@ -41,7 +44,7 @@ export function readSection(root, args) {
   }
   // Read only tracked instruction/docs sources. Never walk the machine or .local.
   const allowed = /^(AGENTS\.md|CLAUDE\.md|\.cursorrules|(?:docs|governance|\.cursor\/rules|\.(?:agents|claude|cursor)\/skills)\/.+\.(?:md|mdc))$/;
-  if (!allowed.test(file) || file.split('/').some(p => p === '..' || p === '.local' || /^(?:\.env|secrets?$)/i.test(p))) {
+  if (!allowed.test(file) || file.split('/').some(p => p === '..' || p === '.local' || /^\.env|^secrets?$/i.test(p))) {
     throw new Error('Only tracked, public instruction/docs paths are supported; read authorized sources directly');
   }
   execFileSync('git', ['ls-files', '--error-unmatch', '--', file], { cwd: root, stdio: 'pipe' });

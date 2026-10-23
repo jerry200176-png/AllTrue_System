@@ -18,6 +18,11 @@ test('code fences cannot terminate a required section', () => {
   assert.deepEqual(headings(source).map(h => h.title), ['Rule', 'Exception', 'Next']);
   assert.match(section(source, 'Rule').text, /still required/);
 });
+test('commented headings cannot hide a required exception', () => {
+  const source = '# Rule\n<!--\n# Fake\n-->\n## Exception\nrequired\n# Next';
+  assert.deepEqual(headings(source).map(h => h.title), ['Rule', 'Exception', 'Next']);
+  assert.match(section(source, 'Rule').text, /required/);
+});
 test('CLI output through a pipe retains long source sections in full', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-docs-long-'));
   try {
@@ -42,7 +47,7 @@ test('current source wins over a stale reference; provenance is explicit', () =>
 });
 test('hidden canonical rules work; secrets, untracked files and symlinks do not', () => {
   assert.match(readSection(root, ['--outline', '.cursor/rules/p0-gate.mdc']), /p0-gate/);
-  for (const file of ['../AGENTS.md', '.env', '.cursor/.local/test-credentials.md', 'docs/../.env', 'docs/untracked-missing.md']) {
+  for (const file of ['../AGENTS.md', '.env', 'docs/.env.private.md', '.cursor/.local/test-credentials.md', 'docs/../.env', 'docs/untracked-missing.md']) {
     assert.throws(() => readSection(root, ['--outline', file]));
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-docs-section-'));
