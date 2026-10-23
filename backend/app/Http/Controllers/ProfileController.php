@@ -34,13 +34,17 @@ class ProfileController extends Controller
 
         $query = User::query()->whereIn('type', ['T', 'D', 'S']);
 
-        // Filter by single id (used by App.vue fetchProfile)
-        if ($request->filled('id')) {
-            $query->where('id', (int) $request->input('id'));
+        // Filter by single id.
+        $requestedId = $request->filled('id') ? (int) $request->input('id') : null;
+        if ($requestedId !== null) {
+            $query->where('id', $requestedId);
         }
+        $readsSelf = $requestedId !== null && $this->isCaller($request, $requestedId);
 
-        // Filter by campus: show users linked via UserCampus or (for teachers) teacher_branches
-        if (!empty($campusIds) && !$request->filled('id')) {
+        // Filter by campus: show users linked via UserCampus or (for teachers) teacher_branches.
+        // #4460: ?id= gets the same scope as the list (only the caller's own profile is exempt), so below super_admin an id
+        // outside the caller's campuses finds nothing, like an id that does not exist. An empty scope matches no one.
+        if ($role !== 'super_admin' && !$readsSelf) {
             $query->where(function ($q) use ($campusIds, $request) {
                 $q->whereIn('id', function ($sub) use ($campusIds) {
                     $sub->select('UserID')
