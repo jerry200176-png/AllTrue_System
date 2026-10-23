@@ -113,6 +113,7 @@ class OccurrenceAssignmentService
         return app(ScheduleGuardService::class)->validateScheduleOccurrence([
             'teacher_id' => $teacherId,
             'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
+            'trial_target_class_type' => $course->trial_target_class_type,
             'room_id' => (int) ($course->room_id ?? 0) > 0 ? (int) $course->room_id : null,
             'branch_id' => (int) Student::query()->where('id', $course->StudentID)->value('CampusID'),
             'schedule_date' => $date,
