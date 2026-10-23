@@ -4138,7 +4138,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\PackageSessionLedger\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Services/PackageDeductionService.php
 
 		-

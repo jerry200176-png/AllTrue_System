@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-07-24
+last_reviewed: 2026-10-23
 ---
 
 # AllTrue Design System
@@ -157,30 +157,30 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 
 | 層級 | 主題 | Issue | 狀態 |
 |---|---|---|---|
-| 基礎建設 | 共用元件 AtButton/AtCard/AtEmpty/AtMetric | [#688](https://github.com/jerry200176-png/AllTrue_System/issues/688) | Open |
+| 基礎建設 | 共用元件 AtButton/AtCard/AtEmpty/AtMetric | [#688](https://github.com/jerry200176-png/AllTrue_System/issues/688) | **Done** 2026-06-06 |
 | 基礎建設 | CI lint：擋新增 raw hex | [#689](https://github.com/jerry200176-png/AllTrue_System/issues/689) | **Done** |
 | 基礎建設 | UI 文案規範 `GUIDE_UI_COPY.md` | [#690](https://github.com/jerry200176-png/AllTrue_System/issues/690) | **Done** |
-| 基礎建設 | 表單欄位標準化 AtInput/Select/Textarea | [#702](https://github.com/jerry200176-png/AllTrue_System/issues/702) | Open |
-| 基礎建設 | Toast / 通知樣式統一 | [#708](https://github.com/jerry200176-png/AllTrue_System/issues/708) | Open |
+| 基礎建設 | 表單欄位標準化 AtInput/Select/Textarea | [#702](https://github.com/jerry200176-png/AllTrue_System/issues/702) | **Done** 2026-06-14 |
+| 基礎建設 | Toast / 通知樣式統一 | [#708](https://github.com/jerry200176-png/AllTrue_System/issues/708) | **Done** 2026-06-14 |
 | 外殼 | App 側欄 / Topbar / FAB / loading | [#698](https://github.com/jerry200176-png/AllTrue_System/issues/698) | **Done** |
 | Wave 1 輕量 | DirectorDashboard/TeacherHome/LearningRecords/SmartCalendar | PR [#686](https://github.com/jerry200176-png/AllTrue_System/pull/686) | **Done** |
-| Wave 1 補完 | DirectorDashboard / TeacherHome / LearningRecords 深度 | [#699](https://github.com/jerry200176-png/AllTrue_System/issues/699) | Open |
-| Wave 1 補完 | SmartCalendar 深度（G-007 回歸必測）| [#700](https://github.com/jerry200176-png/AllTrue_System/issues/700) | Open |
+| Wave 1 補完 | DirectorDashboard / TeacherHome / LearningRecords 深度 | [#699](https://github.com/jerry200176-png/AllTrue_System/issues/699) | **Done** 2026-06-13 |
+| Wave 1 補完 | SmartCalendar 深度（G-007 回歸必測）| [#700](https://github.com/jerry200176-png/AllTrue_System/issues/700) | **Done** 2026-06-13 |
 | Wave 2 頁面 | CourseManagement + modals | [#691](https://github.com/jerry200176-png/AllTrue_System/issues/691) | **Done** |
 | Wave 2 頁面 | StudentsList | [#692](https://github.com/jerry200176-png/AllTrue_System/issues/692) | **Done** |
-| Wave 2 頁面 | TeachersList | [#693](https://github.com/jerry200176-png/AllTrue_System/issues/693) | Open |
-| Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | Open |
-| Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | Open |
-| Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | Open |
+| Wave 2 頁面 | TeachersList | [#693](https://github.com/jerry200176-png/AllTrue_System/issues/693) | **Done** 2026-06-13 |
+| Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | **Done** 2026-06-13 |
+| Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | **Done** 2026-06-13 |
+| Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | **Done** 2026-06-13 |
 | Wave 3 頁面 | Login.vue DS polish（pilot） | [#1386](https://github.com/jerry200176-png/AllTrue_System/pull/1386) | **Reverted** by [#1412](https://github.com/jerry200176-png/AllTrue_System/pull/1412)（氣氛不可為 hex 犧牲） |
 | 流程 | 品牌表面品味閘門（Login/Auth） | `.cursor/rules/frontend-brand-taste.mdc` | **Done** 2026-07-24 |
-| 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | Open |
-| UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | Open |
-| 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **待 CEO 決策** |
+| 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | **Done** 2026-06-14 |
+| UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | **Done** 2026-06-13 |
+| 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **Closed** 2026-06-14 |
 | 流程 | PR Design Review Gate（PR template checklist）| [#697](https://github.com/jerry200176-png/AllTrue_System/issues/697) | **Done** |
 | 流程 | QA smoke 手冊 `GUIDE_DESIGN_QA_SMOKE.md` | [#705](https://github.com/jerry200176-png/AllTrue_System/issues/705) | **Done** |
 | 流程 | hex baseline KPI 腳本 | [#706](https://github.com/jerry200176-png/AllTrue_System/issues/706) | **Done** |
-| 流程 | in-app #154 回報者驗收結案流程 | [#707](https://github.com/jerry200176-png/AllTrue_System/issues/707) | Open |
+| 流程 | in-app #154 回報者驗收結案流程 | [#707](https://github.com/jerry200176-png/AllTrue_System/issues/707) | **Done** 2026-06-06 |
 | 文件 | RULE_DESIGN_SYSTEM rollout tracker | [#709](https://github.com/jerry200176-png/AllTrue_System/issues/709) | **Done** |
 
 > **Baseline（2026-06-06）**：pages 2966 hex、components 834 hex、grand total 3800。  
@@ -213,4 +213,4 @@ cd frontend && npm run lint:design
 bash scripts/design-hex-count.sh > docs/design-hex-baseline.json
 ```
 
-> Phase 2b（後續）：穩定後可把 `continue-on-error` 移除，將 guard 升為 blocking required check。
+> Phase 2b 已完成（#737）：guard 在 `ci.yml`「Design raw-hex guard (blocking)」為 blocking；只有 PR 的 hex 計數註記仍是 `continue-on-error`。
