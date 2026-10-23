@@ -20,6 +20,11 @@ on:
         required: false
         default: ""
         type: string
+      all_packages:
+        description: "With no package id: list every shared package of the campus (max 200), not only over-used ones"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: inapp-package-ledger-probe
@@ -76,19 +81,21 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CAMPUS_ID: ${{ inputs.campus_id }}
           PACKAGE_ID: ${{ inputs.package_id }}
+          ALL_PACKAGES: ${{ inputs.all_packages && 'true' || 'false' }}
         run: |
           set -euo pipefail
           mkdir -p out
+          [[ "$ALL_PACKAGES" == true || "$ALL_PACKAGES" == false ]] || { echo 'all_packages must be true or false'; exit 1; }
           PROBE_B64=$(base64 -w0 scripts/probes/inapp-package-ledger-probe.php)
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "PROBE_B64='${PROBE_B64}' CAMPUS_ID='${CAMPUS_ID}' PACKAGE_ID='${PACKAGE_ID}' bash -s" <<'ENDSSH' | tee out/package-ledger-probe.json
+            "PROBE_B64='${PROBE_B64}' CAMPUS_ID='${CAMPUS_ID}' PACKAGE_ID='${PACKAGE_ID}' ALL_PACKAGES='${ALL_PACKAGES}' bash -s" <<'ENDSSH' | tee out/package-ledger-probe.json
           set -euo pipefail
           PROBE=$(mktemp /tmp/inapp-package-ledger-probe.XXXXXX.php)
           trap 'rm -f "$PROBE"' EXIT
           printf '%s' "$PROBE_B64" | base64 -d > "$PROBE"
           cd /home/admin/backend
-          INAPP_PACKAGE_LEDGER_PROBE=1 APP_ROOT=/home/admin/backend CAMPUS_ID="$CAMPUS_ID" PACKAGE_ID="$PACKAGE_ID" php "$PROBE"
+          INAPP_PACKAGE_LEDGER_PROBE=1 APP_ROOT=/home/admin/backend CAMPUS_ID="$CAMPUS_ID" PACKAGE_ID="$PACKAGE_ID" ALL_PACKAGES="$ALL_PACKAGES" php "$PROBE"
           ENDSSH
           grep -q '"read_only": true' out/package-ledger-probe.json
           grep -q '"session_read_only": 1' out/package-ledger-probe.json

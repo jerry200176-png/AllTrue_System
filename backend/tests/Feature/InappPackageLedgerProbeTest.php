@@ -31,6 +31,7 @@ class InappPackageLedgerProbeTest extends TestCase
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
         'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'scheduled_slots'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
+        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_untaught_sessions', 'debits_without_session', 'lists_capped'],
     ];
 
     private int $teacherId;
@@ -75,6 +76,11 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame('conversion_seed:-1,attendance:-1', $twice['reasons']);
         $this->assertSame(2, (int) $out['member_lessons'][0]['attended_slots'], 'two lessons taught, three debits');
         $this->assertSame([], $out['same_slot_debited_twice']);
+        $this->assertSame([
+            'package_id' => (int) $over->id, 'total_sessions' => 2, 'ledger_used' => 3, 'attended_slots' => 2, 'taught_slots' => 2,
+            'sessions_debited_twice' => 1, 'slots_debited_twice' => 0, 'debits_on_untaught_sessions' => 0, 'debits_without_session' => 0,
+            'lists_capped' => false,
+        ], $out['summary'][0]);
         $this->assertOnlyAllowedKeys($out);
         $this->assertNotEmpty($statements);
         foreach ($statements as $sql) {
@@ -100,6 +106,29 @@ class InappPackageLedgerProbeTest extends TestCase
 
         $this->assertSame([], inapp_package_ledger_probe(DB::connection(), 1, (int) $otherCampus->id)['target_package_ids'], 'another campus package is never read');
         $this->assertSame([], inapp_package_ledger_probe(DB::connection(), 3, 0)['target_package_ids']);
+    }
+
+    public function test_all_packages_lists_every_campus_pool_including_one_carrying_another_campus_id(): void
+    {
+        [$within, [$withinCourse]] = $this->pool(1, 16);
+        $this->debit($within, $withinCourse, $this->lesson($withinCourse, '2026-10-02'), 'attendance');
+        $cancelled = $this->lesson($withinCourse, '2026-10-09', 'cancelled');
+        $this->debit($within, $withinCourse, $cancelled, 'attendance');
+        [$mislabelled] = $this->pool(3, 16, 1, 1);
+        [$elsewhere] = $this->pool(2, 16);
+
+        $over = inapp_package_ledger_probe(DB::connection(), 1, 0);
+        $this->assertSame([], $over['target_package_ids'], 'by default only over-used pools are listed');
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
+        $this->assertSame([(int) $within->id, (int) $mislabelled->id], $out['target_package_ids'], 'every pool of the campus, by campus id or member student, and no other campus');
+        $this->assertNotContains((int) $elsewhere->id, $out['target_package_ids']);
+        $this->assertSame(2, $out['summary'][0]['ledger_used']);
+        $this->assertSame(1, $out['summary'][0]['attended_slots']);
+        $this->assertSame(1, $out['summary'][0]['debits_on_untaught_sessions'], 'a debit on a cancelled lesson is not explained by the lessons');
+        $this->assertTrue($out['all_packages']);
+        $this->assertOnlyAllowedKeys($out);
+        $this->assertSame([(int) $mislabelled->id], inapp_package_ledger_probe(DB::connection(), 1, (int) $mislabelled->id)['target_package_ids'], 'a named package of a campus student is readable from that campus');
     }
 
     public function test_the_production_entry_point_runs_in_a_read_only_transaction_and_writes_nothing(): void
@@ -137,10 +166,10 @@ class InappPackageLedgerProbeTest extends TestCase
     }
 
     /** @return array{0: CoursePackage, 1: list<StudentClass>} */
-    private function pool(int $campusId, int $total, int $members = 1): array
+    private function pool(int $campusId, int $total, int $members = 1, ?int $studentCampusId = null): array
     {
         $student = Student::create([
-            'name' => '合成學生' . uniqid(), 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+            'name' => '合成學生' . uniqid(), 'CampusID' => $studentCampusId ?? $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
         $package = CoursePackage::create([
             'student_id' => $student->id, 'campus_id' => $campusId, 'name' => '合成方案', 'total_sessions' => $total,
@@ -161,10 +190,10 @@ class InappPackageLedgerProbeTest extends TestCase
         return [$package, $courses];
     }
 
-    private function lesson(StudentClass $course, string $date): ClassSession
+    private function lesson(StudentClass $course, string $date, string $status = 'attended'): ClassSession
     {
         return ClassSession::create([
-            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'attended',
+            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => $status,
         ]);
     }
 
