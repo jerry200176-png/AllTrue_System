@@ -50,16 +50,11 @@ alwaysApply: true
 
 ## 實作後記錄原則
 
-| 發現了什麼 | 記在哪裡 |
-|---|---|
-| 非直覺 DB / 流程行為 | `CLAUDE.md` §Gotchas（G-NNN 格式）|
-| AI 犯的錯誤 | `docs/AI_REGRESSION_LESSONS.md` |
-| 功能上線 | `docs/CHANGELOG.md`（一行原則）|
-| 技術債 | `docs/TECH_DEBT.md`（TD-NNN 表格）|
+記錄位置依 `AGENTS.md` §公司治理記錄原則；非直覺 DB／流程 Gotcha 依 `CLAUDE.md`，不在此複製發布 SOP。
 
 ## 查更多（on-demand）
 
-- API 路由：`CLAUDE.md` §API 路由 或 `.cursorrules`
-- DB schema 詳情：`CLAUDE.md` §核心資料表 或 `.cursorrules`
+- API 路由：`backend/routes/api.php`
+- DB schema 詳情：相關 migration／Model（production schema 另取現行證據）
 - Gotchas G-001~G-008：`CLAUDE.md` §核心資料表 Gotchas 或 `.cursorrules`
-- 商業邏輯（科目數/補課演算法）：`CLAUDE.md` §商業邏輯
+- 商業邏輯（科目數/補課演算法）：`docs/SYSTEM_TECH_GUIDE.md` 對應章節與 current code

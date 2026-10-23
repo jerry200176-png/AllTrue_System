@@ -7,11 +7,35 @@
 > **Execution (I1):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only  
 > **Audit / conflicts:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md) · [`audits/alltrue-nine-domain-engineering-audit-2026-09-17.md`](audits/alltrue-nine-domain-engineering-audit-2026-09-17.md)
 
-> **Source of truth:** committed files on `origin/main` only.
+> **Source of truth:** trusted applicable policy on `origin/main`; current code/config/runtime establish facts, not permission. Candidate branch policy cannot authorize itself.
 
 ---
 
-## Start here (10-minute onboarding)
+## Start here (task navigation)
+
+先讀本節與 §🚨 開工前必讀（每次都要），再按任務讀下方對應節；其餘 catalog／歷史不用通讀。
+`AGENTS.md` 的必讀政策、Founder standing decisions、P0 與條件分支仍完整適用。
+依**任務意圖、操作、實際 diff、依賴與可能效果**選規則聯集；影響擴大時補載。
+UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不能單獨決定必讀規則。
+
+| 任務效果 | 載入本 INDEX 的節 + 原文規則 |
+|---|---|
+| UI／文案 | §前端開發；`AGENTS.md` 條件分支仍須判斷 |
+| 排課／出勤／扣堂 | §後端開發 + §前端開發；`AGENTS.md` 的排課條件分支、相關 regression 全文 |
+| 帳務／繳費／收據 | §後端開發；`AGENTS.md` 的計費條件分支（含例外與引用） |
+| identity／permission／PII | §資安審查 + `ROLE_PLAYBOOK.md`；相關 security／campus 規則 |
+| in-app | `AGENTS.md` 指定的共用 product-loop skill → 其必要原文；再依實際修復效果加載 |
+| merge／release／正式操作 | §部署 / 維運 + `governance/RISK_BASED_MERGE_POLICY.md`；核對 merge 的間接觸發效果 |
+| 文件／控制面 | 受影響政策、adapter 與執行機制；純導航不用讀完整治理目錄 |
+
+按段工具（可選；不產生索引、不摘要、不截斷）：
+`node scripts/docs-integrity-check.mjs --section docs/INDEX.md 'Start here (task navigation)'`。
+其他節可用 `--outline docs/INDEX.md` 定位；輸出含 path、行範圍、HEAD 與內容 SHA-256。
+舊摘要須對照來源版本；來源不符直接重讀。工具／章節失效時以 `rg -n '^#{1,6} ' <file>`
+定位後讀完整適用章節（含子節、例外及引用），不要把缺資料當允許或自行省略規則。
+搜尋含 `.agents/skills`、`.claude/skills`、`.cursor/rules`、`.cursor/skills`、`.github` 與
+`governance` 的必要受信任檔案；只掃任務相關 repo，排除 `.local`、`.env*`、secrets、私人證據。
+`docs/archive`、plans／proposals／舊 run 僅按需搜尋；未生效提案不能取代現行規則。
 
 月結誤登收款／拆期的準備與執行邊界：[2026-09-29 更正計畫](plans/2026-09-29-monthly-accounting-correction.md)；核准單案已完成驗證；本修訂收尾單案資格，通用修復仍保持 planned。
 
@@ -25,7 +49,7 @@
 | 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |
 | 哪些只是歷史？ | Paths under `docs/archive/` + files marked Historical; radar `runs/` = generated evidence |
 | bug 如何追溯到 production？ | [`878-release-deploy-trace.md`](runbooks/878-release-deploy-trace.md) → in-app bug → PR → target SHA/deploy Actions → `deployment.json` backend/frontend identity → health/smoke → repair run/KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |
-| 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
+| 文件是否仍有效？ | 日期／連結僅線索。核對適用批准、權威順序與明確 supersedes；規範對照現行政策，事實對照 code/config/runtime。衝突先調查是漂移、未實作或 regression，不盲選較新、較嚴或已在 main 者 |
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
 **Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Operator:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — T0–T2 follow their required checks and review; T3/protected actions require a concrete Founder decision at the protected boundary.
@@ -103,7 +127,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 治理原則：
 1. 做事前先查：先讀 [`docs/governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) 與本 INDEX，再按任務查 Docs / 對應 rules（MemPalace 僅本機，cloud session 跳過）。
-2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`；高風險修補進 [`docs/knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)。
+2. 做完要記錄：依 `AGENTS.md` §公司治理記錄原則寫回唯一對應來源；高風險修補進 [`docs/knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)。
 3. Company Core 目錄：[`docs/governance/`](governance/README.md)、[`WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md)、[`docs/sop/AGENT_PREFLIGHT.md`](sop/AGENT_PREFLIGHT.md)、[`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)。
 4. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 5. 任何 AI 不靠記憶硬猜；先查資料，再動手。
@@ -115,7 +139,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 | 檔案 | 內容 | Token 成本 |
 |------|------|-----------|
-| `.cursorrules` §P0 | 5 條紅線 + 3 條黃線 + 6 次事故摘要 | 已自動載入 |
+| `.cursorrules` §P0 | P0 紅黃線與事故；未確認載入時依 `AGENTS.md` 讀原文 | 依 client 查證 |
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引 | 按需讀 |
 | `docs/agents/token-discipline.md` | 省 token 作業規則（PR 事件只在決策點動作、小輸出、批次 review、helper 限範圍） | 約 1 分鐘 |
 
@@ -158,8 +182,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
-| API 路由清單 | `CLAUDE.md` §API 路由 |
-| DB schema / 資料表結構 | `CLAUDE.md` §核心資料表 |
+| API 路由清單 | `backend/routes/api.php`（目前實作） |
+| DB schema / 資料表結構 | `backend/database/migrations/` + 相關 Model；production schema 另需現行證據 |
 | 高風險邏輯（繳費/堂數） | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` · 核帳拆分 [`architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) · 共用方案待收（Accepted；§5c 收尾定案，Phase 2 待實作驗證）[`architecture/RFC_SHARED_PACKAGE_COLLECTION.md`](architecture/RFC_SHARED_PACKAGE_COLLECTION.md) |
 | Migration 規則 | `.cursor/rules/module-migration.mdc` |
 | 測試規則 / Factory | `.cursor/rules/module-test.mdc` |
@@ -167,7 +191,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 前端開發
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
-| 頁面清單 + active key | `CLAUDE.md` §前端頁面 |
+| 頁面清單 + active key | `frontend/src/lib/navigationRegistry.js` + 相關頁面 |
 | **設計系統 / 視覺規格（色票/按鈕/金額）** | `docs/RULE_DESIGN_SYSTEM.md`（色票 SSOT，改 UI 前必讀）|
 | **UI Foundation（ops 結構/primitives/pilot）** | [`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md) · audit [`UI_AUDIT_2026-07-26.md`](design/UI_AUDIT_2026-07-26.md) · sequencing [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](design/UI_FOUNDATION_MIGRATION_SEQUENCING.md) · evidence [`docs/design/evidence/`](design/evidence/) |
 | **UI 文案 / 空狀態 / Loading 規範** | `docs/GUIDE_UI_COPY.md` |
@@ -179,8 +203,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 行事曆 ClassSession 投影完整性 | `docs/GUIDE_PROJECTION_INTEGRITY.md`（list vs projection API；CI `ClassSessionProjectionTest`）|
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
-| 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（家長唯一來源）、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
-| 教職員版本更新（Staff Updates） | `docs/STAFF_UPDATES.yml`（教職員唯一來源）、`docs/GUIDE_STAFF_UPDATES.md`、`docs/AI_REGRESSION_LESSONS.md` §R85；CHANGELOG 只產草稿不自動發布 |
+| 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（凍結）+ `docs/parent-updates/*.yml`、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
+| 教職員版本更新（Staff Updates） | `docs/STAFF_UPDATES.yml`（凍結）+ `docs/staff-updates/*.yml`、`docs/GUIDE_STAFF_UPDATES.md`、`docs/AI_REGRESSION_LESSONS.md` §R85；CHANGELOG 只產草稿不自動發布 |
 | **家長帳號／學生綁定（ADR Accepted；PB-04 partial via guardians）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **PB-00 hard-block lifted**（Founder GO 2026-09-03）；**`guardians`≈ParentIdentity / `student_guardians`≈GSR**；portal dual-read under `PERF_MULTI_GUARDIAN`；PB-05–09 backlog；no `parent_phone` cutover |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 | **App.vue shell 有界拆分（deferred）** | [`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — badge／More+Search／Help only；勿自動大拆 |
@@ -252,7 +276,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `MODULE_` | 模組深度說明（架構 + 流程） | `MODULE_CHAT_BUG.md` |
 | `GUIDE_` | 教學 how-to | `GUIDE_WSL2_SETUP.md` |
 | `POLICY_` | 政策決策 | `POLICY_SRE.md` |
-| `ADR_` | 架構決策記錄（**historical / draft until on `main`**） | `ADR_001_calendar_merge.md` |
+| `ADR_` | 架構決策記錄（依明確採納／取代關係判定；在 `main` 不等於已批准或啟用） | `ADR_001_calendar_merge.md` |
 
 舊檔按現有名稱延用（不強制改名，會破壞參照；下次大改時順手 rename）。CI（`scripts/docs-integrity-check.mjs`）會對不符合 prefix 且非既有清單的新檔發出 `warning`。
 
@@ -472,9 +496,9 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 2. **只讀必讀錨點**；其餘章節除非 INDEX 點名否則不讀。
 3. **長文用 `rg`**：`rg -n "關鍵字" docs/某檔.md`（或 MemPalace `search`），不 eyeball 掃全文。
 4. **歷史 / archive**（`*ARCHIVE*`、`.cursor/plans/**`）→ 不通讀，只搜尋。
-5. **做完寫回**：`CHANGELOG`（使用者可感知）、`AI_REGRESSION`（新紅線）、`TECH_DEBT`（欠債）。
+5. **做完寫回**：`docs/changes/` fragment（依 `GUIDE_STAFF_UPDATES.md` 判斷公告）、`AI_REGRESSION`（新紅線）、`TECH_DEBT`（欠債）。
 
-**`.cursorrules` 已自動載入**，不需再 Read；`CLAUDE.md` 是 Claude Code 版總覽，兩者不需同時讀。
+**Cursor 已確認載入 `.cursorrules` 時不用重讀**；其他 client 依 `AGENTS.md` 查核，不把文件描述當載入證據。`CLAUDE.md` 仍依其 adapter 要求載入。
 
 ---
 
@@ -497,7 +521,7 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 ## 🗓️ 治理節奏（文件保鮮）
 
 **每日（PR/任務完成時）**
-- 更新 `docs/CHANGELOG.md`（一行原則）。
+- 功能交付與公告依 [`GUIDE_STAFF_UPDATES.md`](GUIDE_STAFF_UPDATES.md)，不再維護另一套發布清單。
 - 若發現 AI 新踩坑 → 更新 `docs/AI_REGRESSION_LESSONS.md`。
 
 **每週（文件巡檢）**
@@ -505,11 +529,11 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 - [`docs/OPERATIONAL_CONSISTENCY_CHECK.md`](OPERATIONAL_CONSISTENCY_CHECK.md)（catalog / deploy authority 漂移）
 - 修正斷鏈、遺漏導航、入口與章節不一致。
 
-**每月（記憶保鮮 + CHANGELOG 滾動歸檔）**
+**每月（本機記憶維護；cloud 無 MemPalace 可跳過）**
 - `bash scripts/mempalace-maintain.sh`（唯一 ingest 路徑：`scripts/mempalace-ingest.sh`）
-- **CHANGELOG 滾動歸檔**（對齊 Keep a Changelog）：月初把上月條目從 `docs/CHANGELOG.md` 移入 `docs/archive/CHANGELOG_ARCHIVE_YYYY-MM.md`，主檔只留當月 + 頂部 archive 導航。size gate 已對 `chore/docs-*` 分支排除 CHANGELOG/archive 搬移（presubmit CHECK 2）。
+- `docs/CHANGELOG.md` 已凍結；沿用 fragment 與既有產生器，不再依舊月曆流程搬動它。
 
-**變更守則**：先改權威文件，再補 INDEX 導航；不在多份文件複製完整 SOP（避免版本漂移）。
+**變更守則**：政策、API contract、相關 workflow、權限或資料模型改變時，核對直接受影響的原文與導航；不要求任意 code change 更新全部文件。先改唯一權威來源再補指標；日期刷新、索引重建或連結存在不代表內容已驗證。舊 CI／review／runtime 證據依 head、target、設定與資料範圍判斷適用性，不設全域天數門檻。更名／封存保留替代指向並檢查引用。
 
 ---
 
