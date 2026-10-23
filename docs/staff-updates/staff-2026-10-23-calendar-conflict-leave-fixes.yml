@@ -1,0 +1,19 @@
+updates:
+  - id: staff-2026-10-23-calendar-conflict-leave-fixes
+    published_at: "2026-10-23"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 重複課程提示與請假補課修正
+    summary: 「此學生已有進行中的課程」只留走得通的選項；請假補課不會跑到別的星期幾。
+    items:
+      - category: improved
+        text: 老師在行事曆看到「此學生已有進行中的課程」時，不再出現按了只會到空白畫面的「續課」。
+      - category: improved
+        text: 新課日期和進行中的課程重疊時，不再提供一定失敗的「建立下一期續報」，可建立獨立課程或改起始日。
+      - category: fixed
+        text: 一週上多天的課，同一天兩堂都請假時，補到課程尾端的那一堂會留在原本的星期幾。
+    source_refs:
+      - "changelog:2026-10-22:conflict-modal-dead-ends"
+      - "changelog:2026-10-22:leave-tail-keeps-weekday"
