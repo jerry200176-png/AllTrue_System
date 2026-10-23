@@ -857,6 +857,9 @@ Route::prefix('v1')->group(function () {
         Route::post('profiles/{id}/reset-password', [ProfileController::class, 'resetPassword']);
         Route::put('profiles/{id}', [ProfileController::class, 'update']);
         Route::delete('profiles/{id}', [ProfileController::class, 'destroy']);
+        // #4433: a pending campus link is decided by that campus's director (or super_admin).
+        Route::post('profiles/{id}/campus-links/{campusId}/approve', [ProfileController::class, 'approveCampusLink'])->whereNumber('id')->whereNumber('campusId');
+        Route::post('profiles/{id}/campus-links/{campusId}/reject', [ProfileController::class, 'rejectCampusLink'])->whereNumber('id')->whereNumber('campusId');
 
         Route::get('teacher_branches', [TeacherBranchController::class, 'index']);
         Route::post('teacher_branches', [TeacherBranchController::class, 'store']);

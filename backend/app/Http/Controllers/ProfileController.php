@@ -125,6 +125,8 @@ class ProfileController extends Controller
 
         $isSingle = $request->boolean('single');
         $perPage  = $request->input('per_page');
+        // #4433: campuses whose pending links the caller may approve or reject (null = every campus, super_admin).
+        $reviewScope = $role === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
 
         // Pre-load branch assignments for all users
         $allCampusRows = DB::table('UserCampus')->get()->groupBy('UserID');
@@ -254,7 +256,7 @@ class ProfileController extends Controller
         if ($perPage === 'all') {
             $users = $query->get();
             $teacherExtras = $buildTeacherExtras($users);
-            $users->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked) {
+            $users->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked, $reviewScope) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
@@ -268,7 +270,7 @@ class ProfileController extends Controller
                     'employment_type' => $user->employment_type ?? 'full_time',
                     'phone'           => $user->phone,
                     'teaching_session_count' => $user->TeachingSessionCount ?? 0,
-                ];
+                ] + self::campusLinkReview($campusRows, $reviewScope);
                 if ($user->type === 'T' && isset($teacherExtras[$user->id])) {
                     $out['phone'] = $teacherExtras[$user->id]['phone'] ?: $user->phone;
                     $out['line_id'] = $teacherExtras[$user->id]['line_id'] ?? '';
@@ -283,7 +285,7 @@ class ProfileController extends Controller
         } else {
             $users = $query->paginate(min((int) ($perPage ?? 50), 200));
             $teacherExtras = $buildTeacherExtras($users->getCollection());
-            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked) {
+            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked, $reviewScope) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
@@ -297,7 +299,7 @@ class ProfileController extends Controller
                     'employment_type' => $user->employment_type ?? 'full_time',
                     'phone'           => $user->phone,
                     'teaching_session_count' => $user->TeachingSessionCount ?? 0,
-                ];
+                ] + self::campusLinkReview($campusRows, $reviewScope);
                 if ($user->type === 'T' && isset($teacherExtras[$user->id])) {
                     $out['phone'] = $teacherExtras[$user->id]['phone'] ?: $user->phone;
                     $out['line_id'] = $teacherExtras[$user->id]['line_id'] ?? '';
@@ -337,6 +339,25 @@ class ProfileController extends Controller
             $out['rfid_by_branch'] = [];
         }
         return $out;
+    }
+
+    /**
+     * #4433: pending campus links are the rows the pending_teachers badge counts (UserCampus.Approved = 0; a legacy NULL
+     * counts as approved). approvable_branch_ids is the subset in the caller's campuses: that campus's director decides it.
+     *
+     * @param list<int>|null $scope null = super_admin (every campus)
+     * @return array{pending_branch_ids: list<int>, approvable_branch_ids: list<int>}
+     */
+    private static function campusLinkReview(\Illuminate\Support\Collection $campusRows, ?array $scope): array
+    {
+        $pending = $campusRows
+            ->filter(fn ($row) => isset($row->Approved) && !(bool) $row->Approved)
+            ->map(fn ($row) => (int) $row->CampusID)->unique()->values()->all();
+
+        return [
+            'pending_branch_ids' => $pending,
+            'approvable_branch_ids' => $scope === null ? $pending : array_values(array_intersect($pending, $scope)),
+        ];
     }
 
     private function getTeacherExtra(int $userId): array
@@ -827,35 +848,40 @@ class ProfileController extends Controller
             }
         });
 
-        // 通知中心側欄 pending_teachers 依 UserCampus.Approved；老師管理「核准」只送 status=active 時也要釋出分校綁定。
-        if (
-            isset($input['status'])
-            && $input['status'] === 'active'
-            && (string) $user->type === 'T'
-            && Schema::hasColumn('UserCampus', 'Approved')
-        ) {
-            DB::table('UserCampus')->where('UserID', $user->id)->update(['Approved' => true]);
+        // #4433 (Founder policy 1): a campus link is approved only by that campus's director; super_admin approves any.
+        // A link this caller adds to another campus is created pending (Approved = 0) for that campus's director.
+        $hasApproved = Schema::hasColumn('UserCampus', 'Approved');
+        $superAdmin = (string) $request->attributes->get('auth_role') === 'super_admin';
+        $callerCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $mayApprove = fn (int $campusId): bool => $superAdmin || in_array($campusId, $callerCampusIds, true);
+
+        // 通知中心側欄 pending_teachers 依 UserCampus.Approved；老師管理「核准」只送 status=active 時也要釋出分校綁定（只限自己的分校）。
+        if (isset($input['status']) && $input['status'] === 'active' && (string) $user->type === 'T' && $hasApproved) {
+            $release = DB::table('UserCampus')->where('UserID', $user->id)->where('Approved', false);
+            if (!$superAdmin) {
+                $release->whereIn('CampusID', $callerCampusIds);
+            }
+            $release->update(['Approved' => true]);
         }
 
         if (isset($input['branch_id'])) {
             $existing = UserCampus::where('UserID', $user->id)->first();
-            $approvedAttr = Schema::hasColumn('UserCampus', 'Approved') ? ['Approved' => true] : [];
+            $newCampusId = (int) $input['branch_id'];
             if ($existing) {
-                $newCampusId = (int) $input['branch_id'];
                 $updateData = ['CampusID' => $newCampusId];
-                if (Schema::hasColumn('UserCampus', 'Approved')) {
-                    $updateData['Approved'] = true;
+                // Same campus: the link keeps its approval state. Moved: it is a new link at the new campus.
+                if ($hasApproved && (int) $existing->CampusID !== $newCampusId) {
+                    $updateData['Approved'] = $mayApprove($newCampusId);
                 }
                 DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $existing->CampusID)->update($updateData);
             } else {
-                UserCampus::create(array_merge(['UserID' => $user->id, 'CampusID' => (int) $input['branch_id']], $approvedAttr));
+                UserCampus::create(['UserID' => $user->id, 'CampusID' => $newCampusId] + ($hasApproved ? ['Approved' => $mayApprove($newCampusId)] : []));
             }
         }
 
         if (isset($input['multi_branches']) && is_array($input['multi_branches'])) {
             $mainBranch = $input['branch_id'] ?? UserCampus::where('UserID', $user->id)->value('CampusID');
             $allBranches = array_values(array_unique(array_filter(array_map('intval', array_merge([$mainBranch], $input['multi_branches'])))));
-            $approvedAttr = Schema::hasColumn('UserCampus', 'Approved') ? ['Approved' => true] : [];
             if (Schema::hasTable('teacher_branches')) {
                 DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
             }
@@ -865,7 +891,8 @@ class ProfileController extends Controller
                     if (Schema::hasTable('teacher_branches')) {
                         DB::table('teacher_branches')->insertOrIgnore(['teacher_id' => $user->id, 'branch_id' => (int) $bid]);
                     }
-                    UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], $approvedAttr);
+                    // An existing link keeps its row (and its approval state); only a new one is created.
+                    UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], $hasApproved ? ['Approved' => $mayApprove((int) $bid)] : []);
                 }
             }
         }
@@ -910,6 +937,71 @@ class ProfileController extends Controller
             $out['subject_level_scopes'] = $extra['subject_level_scopes'] ?? [];
         }
         return response()->json($out);
+    }
+
+    /**
+     * POST /api/v1/profiles/{id}/campus-links/{campusId}/approve — #4433, Founder policy 1: the pending link to this campus
+     * is approved by this campus's director (or super_admin). Other links and User.status are not touched.
+     */
+    public function approveCampusLink(Request $request, $id, $campusId)
+    {
+        return $this->decideCampusLink($request, (int) $id, (int) $campusId, 'approved');
+    }
+
+    /**
+     * POST /api/v1/profiles/{id}/campus-links/{campusId}/reject — removes only this campus's pending link (and its legacy
+     * teacher_branches mirror), as DirectorAccountController::reject() removes a pending director link.
+     */
+    public function rejectCampusLink(Request $request, $id, $campusId)
+    {
+        return $this->decideCampusLink($request, (int) $id, (int) $campusId, 'rejected');
+    }
+
+    private function decideCampusLink(Request $request, int $teacherId, int $campusId, string $decision)
+    {
+        $type = DB::table('User')->where('id', $teacherId)->value('type');
+        if ($type === null) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ((string) $type !== 'T') {
+            return response()->json(['message' => '僅支援審核老師的分校加入申請'], 422);
+        }
+        if ($this->isCaller($request, $teacherId)) {
+            return response()->json(['message' => '不能審核自己的分校加入申請', 'code' => 'self_approval_forbidden'], 422);
+        }
+        $superAdmin = (string) $request->attributes->get('auth_role') === 'super_admin';
+        $callerCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if (!$superAdmin && (!in_array($campusId, $callerCampusIds, true) || !$this->canManageTeacher($request, $teacherId))) {
+            return response()->json(['message' => '只能審核自己分校的加入申請'], 403);
+        }
+
+        $decided = Schema::hasColumn('UserCampus', 'Approved') && DB::transaction(function () use ($request, $teacherId, $campusId, $decision) {
+            $pending = DB::table('UserCampus')->where('UserID', $teacherId)->where('CampusID', $campusId)->where('Approved', false);
+            $count = $decision === 'approved' ? $pending->update(['Approved' => true]) : $pending->delete();
+            if ($count === 0) {
+                return false;
+            }
+            if ($decision === 'rejected' && Schema::hasTable('teacher_branches')
+                && !DB::table('UserCampus')->where('UserID', $teacherId)->where('CampusID', $campusId)->exists()) {
+                DB::table('teacher_branches')->where('teacher_id', $teacherId)->where('branch_id', $campusId)->delete();
+            }
+            SecurityAuditEvent::append("staff.campus_link.{$decision}", 'success', [
+                'actor_type' => 'user', 'actor_id' => $request->attributes->get('auth_user')?->id,
+                'subject_type' => 'user', 'subject_id' => $teacherId, 'campus_id' => $campusId,
+            ], ['method' => (string) $request->attributes->get('auth_role'), 'source' => 'profiles.campus-link', 'row_count' => $count]);
+
+            return true;
+        });
+        if (!$decided) {
+            return response()->json(['message' => '找不到此分校待審核的加入申請'], 404);
+        }
+
+        return response()->json([
+            'message' => $decision === 'approved' ? '已核准加入分校' : '已拒絕加入分校',
+            'teacher_id' => $teacherId,
+            'campus_id' => $campusId,
+            'decision' => $decision,
+        ]);
     }
 
     public function resetPassword(Request $request, $id)
