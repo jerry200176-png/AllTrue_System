@@ -6,13 +6,18 @@ import { describe, expect, it } from 'vitest';
 // WCAG AA text-contrast guard for design tokens. Values are read from styles.css, not hardcoded.
 const css = readFileSync('src/styles.css', 'utf8');
 
-function tokens(selector) {
+function tokens(selector, inherited = {}) {
   const start = css.indexOf(`${selector} {`);
   const body = css.slice(start, css.indexOf('\n}', start));
-  return Object.fromEntries([...body.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{3,8})\b/g)].map((m) => [m[1], m[2]]));
+  const own = Object.fromEntries([...body.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{3,8}\b|var\(--[\w-]+\))/g)].map((m) => [m[1], m[2]]));
+  const all = { ...inherited, ...own };
+  // Resolve one-level aliases such as `--ds-warning-text: var(--ds-warning)`.
+  const resolved = Object.entries(all).map(([k, v]) => [k, v.startsWith('var(') ? all[v.slice(6, -1)] : v]);
+  return Object.fromEntries(resolved.filter(([, v]) => typeof v === 'string' && v.startsWith('#')));
 }
 
-const themes = { light: tokens(':root'), dark: tokens('[data-theme="dark"]') };
+const light = tokens(':root');
+const themes = { light, dark: tokens('[data-theme="dark"]', light) };
 // [foreground token, background token]
 const TEXT_PAIRS = [
   ['ds-ink', 'ds-canvas'],
@@ -26,6 +31,10 @@ const TEXT_PAIRS = [
   ['ds-info', 'ds-canvas'],
   ['ds-info', 'ds-canvas-soft'],
   ['ds-on-brand', 'ds-primary-soft'],
+  // #3931: status text on its own wash (badges, inline alerts)
+  ['ds-success-text', 'ds-success-wash'],
+  ['ds-warning-text', 'ds-warning-wash'],
+  ['ds-danger-text', 'ds-danger-wash'],
 ];
 
 describe('design token text contrast >= 4.5 (WCAG AA)', () => {
