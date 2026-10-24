@@ -530,7 +530,7 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 - 修正斷鏈、遺漏導航、入口與章節不一致。
 
 **每月（本機記憶維護；cloud 無 MemPalace 可跳過）**
-- Cloud 亦適用：依[參考索引每月方案](architecture/STARRED_REPOSITORY_REFERENCE_INDEX.md#monthly-low-cost-refresh-proposal-not-activated)做低成本清單／證據刷新；復用既有 Portfolio 程序，不自行新增或啟用 Actions。
+- 每月刷新提案（未啟用）：見[參考索引每月方案](architecture/STARRED_REPOSITORY_REFERENCE_INDEX.md#monthly-low-cost-refresh-proposal-not-activated)；方案另行採用後再納入維護節奏。
 - `bash scripts/mempalace-maintain.sh`（唯一 ingest 路徑：`scripts/mempalace-ingest.sh`）
 - `docs/CHANGELOG.md` 已凍結；沿用 fragment 與既有產生器，不再依舊月曆流程搬動它。
 

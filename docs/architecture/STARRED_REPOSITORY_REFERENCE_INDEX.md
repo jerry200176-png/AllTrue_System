@@ -58,9 +58,11 @@ research but are no longer starred.
   Existing AllTrue policy precedence, including explicitly adopted canonical
   Portfolio governance, is unchanged. Do not run upstream installers or import
   agent rules. Failed access is `UNKNOWN`, never proof of an empty/dead repo.
-- Stop the affected part with **Founder Decision Required** for new sensitive
-  access, permission expansion, private-to-public disclosure, paid services,
-  cross-repository writes or production activation. Continue independent work.
+- Stop the affected part with **Founder Decision Required** when proposed
+  sensitive access, permission expansion, private-to-public disclosure, paid
+  services, cross-repository writes or production activation cross a protected
+  boundary or exceed existing scoped authorization. Follow the canonical policy
+  and approval continuity; continue independent authorized work.
 
 ### Portfolio snapshot freshness
 
