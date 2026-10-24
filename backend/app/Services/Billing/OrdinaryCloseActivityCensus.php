@@ -2,8 +2,10 @@
 
 namespace App\Services\Billing;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PDOException;
 use RuntimeException;
 
 /** A bounded, read-only census of attendance, schedule and continuation facts. */
@@ -18,6 +20,17 @@ final class OrdinaryCloseActivityCensus
 
     /** Caller must be in the close transaction. Parameters are routing hints only. */
     public function captureLocked(int $courseId, int $studentId, int $remainingFactBudget = 1000): array
+    {
+        try {
+            return $this->captureLockedUnsafe($courseId, $studentId, $remainingFactBudget);
+        } catch (QueryException $e) {
+            throw new RuntimeException('Ordinary-close activity source unavailable.');
+        } catch (PDOException $e) {
+            throw new RuntimeException('Ordinary-close activity source unavailable.');
+        }
+    }
+
+    private function captureLockedUnsafe(int $courseId, int $studentId, int $remainingFactBudget): array
     {
         if (DB::transactionLevel() < 1 || $courseId < 1 || $studentId < 1
             || $remainingFactBudget < 0 || $remainingFactBudget > 1000) {
@@ -54,8 +67,8 @@ final class OrdinaryCloseActivityCensus
         $this->captureRows('StudentClass', 'successor_courses', 'ID', $successors);
 
         $this->requireColumns('ClassSession', ['id', 'StudentClassID']);
-        $sessions = $this->bounded(DB::table('ClassSession')->where('StudentClassID', $courseId)
-            ->orderBy('id')->lockForUpdate(), 'ClassSession');
+        $sessions = $this->boundedContext(DB::table('ClassSession')->where('StudentClassID', $courseId)
+            ->orderBy('id')->lockForUpdate());
         $sessionIds = [];
         foreach ($sessions as $session) {
             if ((int) $session->StudentClassID !== $courseId || (int) $session->id < 1) {
@@ -71,27 +84,29 @@ final class OrdinaryCloseActivityCensus
         }
         $this->captureRows('session_deduction_ledger', 'deduction_events', 'id', $ledger);
 
+        $this->requireColumns('StudentSingIn', ['StudentID', 'CampusID']);
         $signins = $this->selectOwned('StudentSingIn', 'id', 'StudentClassID', $courseId, 'ClassSessionID', $sessionIds);
         foreach ($signins as $row) {
             $this->positiveLink($row->StudentClassID ?? null, $courseId, 'StudentSingIn');
-            if ((int) $row->StudentID !== $studentId || ((int) ($row->CampusID ?? $campusId) !== $campusId)) {
+            if ((int) $row->StudentID !== $studentId || ($row->CampusID !== null && (int) $row->CampusID !== $campusId)) {
                 throw new RuntimeException('Ordinary-close activity attendance binding changed.');
             }
             $this->sessionLink($row->ClassSessionID ?? null, $sessionIds, 'StudentSingIn');
         }
         $this->captureRows('StudentSingIn', 'sign_ins', 'id', $signins);
 
+        $this->requireColumns('LearningRecord', ['StudentID']);
         $records = $this->selectOwned('LearningRecord', 'id', 'StudentClassID', $courseId, 'ClassSessionID', $sessionIds);
         foreach ($records as $row) {
             $this->positiveLink($row->StudentClassID ?? null, $courseId, 'LearningRecord');
-            if (isset($row->StudentID) && (int) $row->StudentID > 0 && (int) $row->StudentID !== $studentId) {
+            if ((int) $row->StudentID > 0 && (int) $row->StudentID !== $studentId) {
                 throw new RuntimeException('Ordinary-close activity learning binding changed.');
             }
             $this->sessionLink($row->ClassSessionID ?? null, $sessionIds, 'LearningRecord');
         }
-        $recordIds = array_map(static fn ($row) => (int) $row->id, $records);
         $this->captureRows('LearningRecord', 'learning_records', 'id', $records);
 
+        $this->requireColumns('schedules', ['id', 'student_course_id', 'student_id', 'branch_id', 'original_schedule_id']);
         $schedules = $this->bounded(DB::table('schedules')->where('student_course_id', $courseId)
             ->orderBy('id')->lockForUpdate(), 'schedules');
         $scheduleIds = array_map(static fn ($row) => (int) $row->id, $schedules);
@@ -124,32 +139,38 @@ final class OrdinaryCloseActivityCensus
         }
         $this->captureRows('schedules', 'schedules', 'id', $schedules);
 
-        $this->requireColumns('session_corrections', ['id', 'session_id', 'replaced_by_session_id']);
+        $this->requireColumns('session_corrections', [
+            'id', 'session_id', 'replaced_by_session_id', 'preserved_learning_record_id', 'keeper_learning_record_id',
+        ]);
         $corrections = $sessionIds === [] ? [] : $this->bounded(DB::table('session_corrections')
             ->where(function ($q) use ($sessionIds) {
                 $q->whereIn('session_id', $sessionIds)->orWhereIn('replaced_by_session_id', $sessionIds);
             })->orderBy('id')->lockForUpdate(), 'session_corrections');
         // The OR predicate retains both superseded-source and keeper-side history.
+        $recordsById = [];
+        foreach ($records as $record) $recordsById[(int) $record->id] = $record;
         foreach ($corrections as $row) {
+            if ((int) $row->session_id < 1) throw new RuntimeException('Ordinary-close activity correction link unsupported.');
             $this->sessionLink($row->session_id ?? null, $sessionIds, 'session_corrections');
             $this->sessionLink($row->replaced_by_session_id ?? null, $sessionIds, 'session_corrections');
-            foreach (['preserved_learning_record_id', 'keeper_learning_record_id'] as $field) {
+            foreach ([
+                'preserved_learning_record_id' => (int) $row->session_id,
+                'keeper_learning_record_id' => (int) ($row->replaced_by_session_id ?? 0),
+            ] as $field => $expectedSessionId) {
                 $lrId = (int) ($row->{$field} ?? 0);
-                if ($lrId > 0 && !in_array($lrId, $recordIds, true)) {
-                    $lr = DB::table('LearningRecord')->select(['id', 'StudentClassID', 'ClassSessionID', 'StudentID'])
-                        ->where('id', $lrId)->lockForUpdate()->first();
-                    if (!$lr || !in_array((int) $lr->ClassSessionID, $sessionIds, true)) {
-                        throw new RuntimeException('Ordinary-close activity correction link unsupported.');
-                    }
-                    throw new RuntimeException('Ordinary-close activity correction link incomplete.');
+                if ($lrId > 0 && ($expectedSessionId < 1 || !isset($recordsById[$lrId])
+                    || (int) $recordsById[$lrId]->ClassSessionID !== $expectedSessionId)) {
+                    throw new RuntimeException('Ordinary-close activity correction learning binding unsupported.');
                 }
             }
         }
         $this->captureRows('session_corrections', 'session_corrections', 'id', $corrections);
 
+        $this->requireColumns('course_contract_group_members', ['id', 'group_id', 'student_class_id']);
         $memberRows = $this->bounded(DB::table('course_contract_group_members')
             ->whereIn('student_class_id', array_merge([$courseId], $successorIds))->orderBy('id')->lockForUpdate(), 'course_contract_group_members');
         $groupIds = array_values(array_unique(array_map(static fn ($row) => (int) $row->group_id, $memberRows)));
+        $this->requireColumns('course_contract_groups', ['id', 'student_id', 'campus_id']);
         $groups = $groupIds === [] ? [] : $this->bounded(DB::table('course_contract_groups')->whereIn('id', $groupIds)->orderBy('id')->lockForUpdate(), 'course_contract_groups');
         if (count($groups) !== count($groupIds)) throw new RuntimeException('Ordinary-close activity group link unsupported.');
         foreach ($groups as $group) {
@@ -161,16 +182,13 @@ final class OrdinaryCloseActivityCensus
         $allMembers = $groupIds === [] ? [] : $this->bounded(DB::table('course_contract_group_members')->whereIn('group_id', $groupIds)->orderBy('id')->lockForUpdate(), 'course_contract_group_members');
         foreach ($allMembers as $member) {
             if (!in_array((int) $member->student_class_id, $parentIds, true)) {
-                $linked = DB::table('StudentClass')->select(['ID', 'StudentID'])
-                    ->where('ID', $member->student_class_id)->lockForUpdate()->first();
-                if (!$linked || (int) $linked->StudentID !== $studentId) throw new RuntimeException('Ordinary-close activity group member unsupported.');
-                throw new RuntimeException('Ordinary-close activity successor cohort incomplete.');
+                throw new RuntimeException('Ordinary-close activity group member unsupported.');
             }
         }
         $this->captureRows('course_contract_group_members', 'group_memberships', 'id', $allMembers);
         $this->captureRows('course_contract_groups', 'contract_groups', 'id', $groups);
 
-        $this->validateContinuationPointers($parents, $studentId);
+        $this->validateContinuationPointers($parents);
         return [
             'manifest_scope' => 'partial_activity',
             'owner_binding' => ['course_id' => $courseId, 'student_id' => $studentId, 'campus_id' => $campusId],
@@ -192,6 +210,12 @@ final class OrdinaryCloseActivityCensus
     {
         $rows = $query->limit($this->budget + 1)->get()->all();
         if (count($rows) > $this->budget) throw new RuntimeException('Ordinary-close activity fact budget exceeded.');
+        return $rows;
+    }
+    private function boundedContext($query): array
+    {
+        $rows = $query->limit(1001)->get()->all();
+        if (count($rows) > 1000) throw new RuntimeException('Ordinary-close activity context limit exceeded.');
         return $rows;
     }
     private function selectOwned(string $table, string $pk, string $ownerColumn, ?int $owner, string $sessionColumn, array $sessionIds): array
@@ -238,17 +262,14 @@ final class OrdinaryCloseActivityCensus
     { if ((int) ($value ?? 0) > 0 && (int) $value !== $expected) throw new RuntimeException('Ordinary-close activity owner link unsupported.'); }
     private function sessionLink($value, array $sessionIds, string $source): void
     { if ((int) ($value ?? 0) > 0 && !in_array((int) $value, $sessionIds, true)) throw new RuntimeException('Ordinary-close activity session link unsupported.'); }
-    private function validateContinuationPointers(array $parents, int $studentId): void
+    private function validateContinuationPointers(array $parents): void
     {
         $ids = array_fill_keys(array_map(static fn ($row) => (int) $row->ID, $parents), true);
         $edges = [];
         foreach ($parents as $row) {
             $to = (int) ($row->trial_converted_to_id ?? 0);
             if ($to > 0 && !isset($ids[$to])) {
-                $target = DB::table('StudentClass')->select(['ID', 'StudentID'])
-                    ->where('ID', $to)->lockForUpdate()->first();
-                if (!$target || (int) $target->StudentID !== $studentId) throw new RuntimeException('Ordinary-close activity continuation unsupported.');
-                throw new RuntimeException('Ordinary-close activity continuation cohort incomplete.');
+                throw new RuntimeException('Ordinary-close activity continuation unsupported.');
             }
             if ($to > 0) $edges[(int) $row->ID] = $to;
         }

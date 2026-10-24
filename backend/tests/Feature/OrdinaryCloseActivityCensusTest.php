@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Services\Billing\OrdinaryCloseActivityCensus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use PDOException;
 use Tests\TestCase;
 
 class OrdinaryCloseActivityCensusTest extends TestCase
@@ -118,6 +120,16 @@ class OrdinaryCloseActivityCensusTest extends TestCase
             DB::rollBack();
             throw $e;
         }
+        DB::table('session_corrections')->where('id', $correction)
+            ->update(['keeper_learning_record_id' => $preservedRecord]);
+        try {
+            $this->capture($course, $student);
+            $this->fail('same-course learning record on the wrong endpoint was accepted');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Ordinary-close activity correction learning binding unsupported.', $e->getMessage());
+        }
+        DB::table('session_corrections')->where('id', $correction)
+            ->update(['keeper_learning_record_id' => $keeperRecord]);
         $scheduleDigest = $result['table_digests']['schedules'];
         DB::table('schedules')->where('id', $scheduleChild)->update(['original_schedule_id' => null]);
         $changedSchedule = $this->capture($course, $student);
@@ -274,6 +286,30 @@ class OrdinaryCloseActivityCensusTest extends TestCase
         } catch (\RuntimeException $e) {
             $this->assertSame('Ordinary-close activity census unavailable.', $e->getMessage());
         }
+    }
+
+    public function test_database_query_failure_is_rethrown_without_sql_details(): void
+    {
+        [$student, $course] = $this->owner();
+        DB::shouldReceive('transactionLevel')->once()->andThrow(
+            new QueryException('select * from Student where Phone = ?', ['PRIVATE_PHONE'], new PDOException('PRIVATE_SQL_DETAIL'))
+        );
+        try {
+            app(OrdinaryCloseActivityCensus::class)->captureLocked($course, $student);
+            $this->fail('schema failure was accepted');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Ordinary-close activity source unavailable.', $e->getMessage());
+            $this->assertStringNotContainsString('PRIVATE_', $e->getMessage());
+        }
+    }
+
+    public function test_core_owned_session_context_does_not_spend_activity_fact_budget(): void
+    {
+        [$student, $course] = $this->owner();
+        $session = $this->makeLessonSession($course);
+        $result = $this->capture($course, $student, 0);
+        $this->assertSame([$session], $result['context_ids']['session_ids']);
+        $this->assertSame(0, $result['fact_count']);
     }
 
     public function test_unrelated_student_activity_is_not_in_the_manifest(): void
