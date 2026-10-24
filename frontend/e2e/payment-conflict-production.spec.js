@@ -26,6 +26,51 @@ const unexpected = (receipt, method, path) => {
 const bodyKeys = ['amount','invoice_id','payment_date','payment_method','student_class_id'];
 const noCache = { headers: { 'cache-control': 'no-cache' } };
 
+function installAppAssetInventory(context, origin) {
+  const entries = [];
+  const byRequest = new WeakMap();
+  context.on('request', (request) => {
+    const previous = request.redirectedFrom();
+    const inherited = previous && byRequest.get(previous);
+    if (inherited) { byRequest.set(request, inherited); inherited.current = request; return; }
+    const url = new URL(request.url());
+    if (url.origin !== origin || !['document', 'script', 'stylesheet'].includes(request.resourceType())) return;
+    const entry = { initial_url: `${url.origin}${url.pathname}`, resource: request.resourceType(), current: request,
+      finished: false, failed: false, response: null, responsePromise: null, error: '' };
+    entries.push(entry); byRequest.set(request, entry);
+  });
+  context.on('requestfinished', (request) => {
+    const entry = byRequest.get(request);
+    if (entry?.current === request) entry.finished = true;
+  });
+  context.on('requestfailed', (request) => {
+    const entry = byRequest.get(request);
+    if (entry) { entry.failed = true; entry.error = 'app_asset_request_failed'; }
+  });
+  context.on('response', (response) => {
+    const request = response.request(); const entry = byRequest.get(request);
+    if (!entry || request.redirectedTo()) return;
+    const url = new URL(response.url());
+    entry.responsePromise = (async () => {
+      if (url.origin !== origin) throw new Error('app_asset_final_origin_mismatch');
+      if (!response.ok()) throw new Error('app_asset_response_not_ok');
+      const bytes = await response.body();
+      entry.response = { final_url: `${url.origin}${url.pathname}`, origin: url.origin,
+        status: response.status(), content_type: response.headers()['content-type'] || '',
+        sha256: createHash('sha256').update(bytes).digest('hex') };
+    })().catch(() => { entry.error ||= 'app_asset_response_or_body_failed'; });
+  });
+  return { entries, async assertComplete() {
+    await Promise.all(entries.map((entry) => entry.responsePromise).filter(Boolean));
+    const incomplete = entries.filter((entry) => !entry.finished || entry.failed || !entry.response || entry.error);
+    if (!entries.some((entry) => entry.resource === 'document') || !entries.some((entry) => entry.resource === 'script')
+      || !entries.some((entry) => entry.resource === 'stylesheet') || incomplete.length) {
+      throw new Error(`asset proof failed: ${JSON.stringify(incomplete.map((entry) => entry.error || 'app_asset_incomplete'))}`);
+    }
+    return entries.map(({ initial_url, resource, response }) => ({ initial_url, resource, ...response }));
+  } };
+}
+
 async function identity(request) {
   const [v, d] = await Promise.all([
     request.get(`${BASE}/version.json`, noCache), request.get(`${BASE}/deployment.json`, noCache),
@@ -52,8 +97,7 @@ async function app(page, request, kind) {
   Object.assign(receipt, before);
   const origin = appOriginOf(BASE);
   const blocked = await installReadOnlyAppGuard(page.context(), origin, { allowTransactionTelemetry: true });
-  const assetReads = [];
-  const assetErrors = [];
+  const assetInventory = installAppAssetInventory(page.context(), origin);
   const state = { pending: false, calls: [] };
   const exactGet = new Map();
   const register = (path, value, predicate = () => true) => exactGet.set(path, { value, predicate });
@@ -118,18 +162,6 @@ async function app(page, request, kind) {
     localStorage.setItem('app_branch', '16'); localStorage.setItem('alltrue_release_notes_seen', '1');
   });
   page.on('pageerror', () => set(receipt, 'page_errors'));
-  page.on('response', (res) => {
-    const resource = res.request().resourceType();
-    if (!['document','script','stylesheet'].includes(resource)) return;
-    const task = (async () => {
-      const u = new URL(res.url());
-      if (u.origin !== origin) { assetErrors.push('asset_final_origin_mismatch'); return; }
-      if (!res.ok()) { assetErrors.push('asset_response_not_ok'); return; }
-      const bytes = await res.body();
-      receipt.assets.push({ origin: u.origin, path: u.pathname, type: res.headers()['content-type'] || '', sha256: createHash('sha256').update(bytes).digest('hex') });
-    })();
-    assetReads.push(task);
-  });
   await page.goto(`${BASE}/?app_page=tuition-collect`);
   browserPaymentDate = await page.evaluate(() => new Date().toISOString().slice(0, 10));
   await page.getByRole('button', { name: /待處理清單/ }).click();
@@ -139,7 +171,7 @@ async function app(page, request, kind) {
   } else {
     await expect(page.getByRole('button', { name: '登記已回報' })).toBeVisible({ timeout: 15000 });
   }
-  return { receipt, blocked, state, before, assetReads, assetErrors };
+  return { receipt, blocked, state, before, assetInventory };
 }
 
 async function enter(page, nested = false) {
@@ -153,18 +185,17 @@ async function enter(page, nested = false) {
   await expect(modal.locator('[role=alert]')).toBeVisible();
   return modal;
 }
-async function finish(page, x, kind) {
-  await Promise.all(x.assetReads);
-  expect(x.assetErrors).toEqual([]);
+async function finish(x, kind) {
+  x.receipt.assets = await x.assetInventory.assertComplete();
   expect(x.receipt.local_refusals).toBe(1); expect(x.receipt.unexpected_business_requests, JSON.stringify(x.receipt.unexpected_routes || [])).toBe(0);
   expect(x.receipt.business_post_upstream).toBe(0); expect(x.receipt.confirm_reject_void_batch_attempts).toBe(0);
   expect(x.receipt.page_errors).toBe(0); expect(x.blocked).toEqual([]);
   expect(x.blocked.telemetryCounts.error + x.blocked.telemetryCounts.mixed + x.blocked.telemetryCounts.unknown + x.blocked.telemetryCounts.malformed + x.blocked.telemetryCounts.oversize).toBe(0);
   x.receipt.telemetry_counts = { ...x.blocked.telemetryCounts };
-  expect(x.receipt.assets.some((a) => a.type.includes('javascript'))).toBeTruthy();
-  expect(x.receipt.assets.some((a) => a.type.includes('text/css'))).toBeTruthy();
+  expect(x.receipt.assets.some((a) => a.content_type.includes('javascript'))).toBeTruthy();
+  expect(x.receipt.assets.some((a) => a.content_type.includes('text/css'))).toBeTruthy();
   const after = await identity(x.request); expect(after).toEqual(x.before);
-  x.receipt.assets.sort((a,b) => a.path.localeCompare(b.path));
+  x.receipt.assets.sort((a,b) => a.initial_url.localeCompare(b.initial_url));
   await test.info().attach('payment-conflict-safe-receipt.json', { body: JSON.stringify({ ...x.receipt,
     case: kind === '7600' ? 'synthetic_expected_amount7600' : kind === 'zero' ? 'synthetic_expected_amount0' : kind }), contentType: 'application/json' });
 }
@@ -198,7 +229,7 @@ for (const [kind, title] of [['pending','pending report conflict refreshes the c
     x.receipt.ledger_owner_refreshes = x.receipt.ledger_gets - baseline.ledger;
     if (kind === 'nested') await page.getByRole('button', { name: '關閉學生帳務' }).click();
     if (kind === 'pending' || kind === 'nested') await expect(page.locator('button[title="確認入帳"]')).toBeVisible();
-    await finish(page, x, kind);
+    await finish(x, kind);
   });
 }
 
@@ -207,6 +238,12 @@ test('local guard: fixture refusal is upstream-free and unexpected writes remain
   const server = http.createServer((req, res) => {
     if (req.url.startsWith('/api/')) upstreamApi += 1;
     if (req.method !== 'GET') upstreamWrites += 1;
+    if (req.url === '/asset-control.html') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<!doctype html><link rel="stylesheet" href="/broken.css"><script src="/ok.js"></script>'); return;
+    }
+    if (req.url === '/ok.js') { res.writeHead(200, { 'content-type': 'application/javascript' }); res.end('window.assetControlLoaded=true;'); return; }
+    if (req.url === '/broken.css') { res.writeHead(200, { 'content-type': 'text/css' }); res.end('body{color:black}'); return; }
     res.writeHead(200, { 'content-type': 'text/html' }); res.end('<button id="send">send</button>');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -247,6 +284,12 @@ test('local guard: fixture refusal is upstream-free and unexpected writes remain
     expect(unexpectedGets).toEqual(['GET /api/v1/unknown']);
     expect(intendedStatus).toBe(422); expect(upstreamApi).toBe(0); expect(upstreamWrites).toBe(0);
     expect(blocked).toEqual([{ method: 'POST', origin: base, path: '/api/v1/payment-reports/confirm/903' }]);
+
+    const inventory = installAppAssetInventory(context, base);
+    await context.route('**/broken.css', (route) => route.abort());
+    const control = await context.newPage(); await control.goto(`${base}/asset-control.html`);
+    await expect.poll(() => control.evaluate(() => window.assetControlLoaded)).toBe(true);
+    await expect(inventory.assertComplete()).rejects.toThrow('asset proof failed');
   } finally {
     await context.close(); await new Promise((resolve) => server.close(resolve));
   }

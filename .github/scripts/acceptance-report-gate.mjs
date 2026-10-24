@@ -12,11 +12,11 @@ const paymentTests = [
   ['payment-display-production.spec.js', 541, 3, '帳務: payments that net to zero show no 繳費日'],
 ];
 const paymentConflictTests = [
-  ['payment-conflict-production.spec.js', 173, 3, 'production UI: pending report conflict refreshes the collection owner'],
-  ['payment-conflict-production.spec.js', 173, 3, 'production UI: pending report conflict refreshes ledger and collection owners'],
-  ['payment-conflict-production.spec.js', 173, 3, 'production UI: synthetic expected_amount7600 refusal preserves entered amount'],
-  ['payment-conflict-production.spec.js', 173, 3, 'production UI: synthetic expected_amount0 refusal preserves entered amount'],
-  ['payment-conflict-production.spec.js', 205, 1, 'local guard: fixture refusal is upstream-free and unexpected writes remain blocked'],
+  ['payment-conflict-production.spec.js', 204, 3, 'production UI: pending report conflict refreshes the collection owner'],
+  ['payment-conflict-production.spec.js', 204, 3, 'production UI: pending report conflict refreshes ledger and collection owners'],
+  ['payment-conflict-production.spec.js', 204, 3, 'production UI: synthetic expected_amount7600 refusal preserves entered amount'],
+  ['payment-conflict-production.spec.js', 204, 3, 'production UI: synthetic expected_amount0 refusal preserves entered amount'],
+  ['payment-conflict-production.spec.js', 236, 1, 'local guard: fixture refusal is upstream-free and unexpected writes remain blocked'],
 ];
 // #4150 review: a payments run is conclusive only when at least one target rule (one per #4150 display fix) checked
 // at least one live case in a passing test. Ordinary rows alone exercise none of the fixes.
