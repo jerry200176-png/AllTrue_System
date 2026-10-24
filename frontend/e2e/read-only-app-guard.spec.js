@@ -98,6 +98,29 @@ test.describe('read-only acceptance guard self-test', () => {
     expect(app.received.map((r) => r.path)).not.toContain('/api/v1/adoption/events');
   });
 
+  test('opted-in Sentry transaction is fulfilled locally while error telemetry stays blocked', async ({ page, context }) => {
+    const blocked = await installReadOnlyAppGuard(context, appOriginOf(app.base), { allowTransactionTelemetry: true });
+    await page.goto(`${app.base}/`);
+    const result = await page.evaluate(async () => {
+      const send = async (body) => {
+        try {
+          return (await fetch('https://o123.ingest.us.sentry.io/api/456/envelope/', {
+            method: 'POST', body,
+          })).status;
+        } catch { return 'blocked'; }
+      };
+      return [
+        await send('{}\n{"type":"transaction"}\n{"type":"transaction","transaction":"synthetic"}\n'),
+        await send('{}\n{"type":"event"}\n{"exception":{"values":[]}}\n'),
+      ];
+    });
+    expect(result).toEqual([204, 'blocked']);
+    expect(blocked.telemetryCounts).toMatchObject({ transaction: 1, error: 1 });
+    expect(blocked).toEqual([{ method: 'POST', origin: 'https://o123.ingest.us.sentry.io', path: '/api/456/envelope/' }]);
+    expect([app, third, middle].flatMap((server) => server.received)
+      .filter((entry) => !['GET', 'HEAD', 'OPTIONS'].includes(entry.method))).toEqual([]);
+  });
+
   test('(b) third-party HTTP writes are blocked before their first hop', async ({ page, context }) => {
     const blocked = await installReadOnlyAppGuard(context, appOriginOf(app.base));
     await page.goto(`${app.base}/`);
