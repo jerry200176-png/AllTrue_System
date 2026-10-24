@@ -271,6 +271,18 @@ class CloseEvidenceTest extends TestCase
         $this->assertSame(0, DB::table('security_audit_events')->count());
     }
 
+    public function test_history_categories_preserve_same_numeric_id_from_distinct_tables(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $payload = $this->payload();
+        $payload['guard_fact_ids']['entitlement_changes'] = [7];
+        $payload['guard_fact_ids']['session_reassignments'] = [7];
+        $id = $this->appendEvidence($service, $payload);
+        $read = $service->read($id, 34, 12);
+        $this->assertSame([7], $read['guard_fact_ids']['entitlement_changes']);
+        $this->assertSame([7], $read['guard_fact_ids']['session_reassignments']);
+    }
+
     private function payload(): array
     {
         return [
@@ -289,7 +301,7 @@ class CloseEvidenceTest extends TestCase
                 'invoices' => [], 'invoice_items' => [], 'payments' => [], 'payment_reports' => [],
                 'deduction_events' => [], 'sign_ins' => [], 'learning_records' => [],
                 'entitlement_changes' => [], 'pricing_amendments' => [], 'group_memberships' => [],
-                'sessions' => [], 'schedules' => [], 'successor_courses' => [],
+                'sessions' => [], 'schedules' => [], 'successor_courses' => [], 'session_reassignments' => [],
             ],
         ];
     }
