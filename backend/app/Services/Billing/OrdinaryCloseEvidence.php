@@ -23,7 +23,7 @@ final class OrdinaryCloseEvidence
     private const GUARD_FACT_CATEGORIES = [
         'invoices', 'invoice_items', 'payments', 'payment_reports', 'deduction_events',
         'sign_ins', 'learning_records', 'entitlement_changes', 'pricing_amendments',
-        'group_memberships', 'sessions', 'schedules', 'successor_courses',
+        'group_memberships', 'sessions', 'schedules', 'successor_courses', 'session_reassignments',
     ];
 
     /** Payload is kept separate from generic metadata to preserve the complete typed snapshot. */
