@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import argparse
+import json
 import os
 import subprocess
 import tempfile
@@ -19,6 +20,28 @@ RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 ROOT = Path(__file__).parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+REMOTE_DEPLOY = ROOT / "scripts" / "production-deploy" / "pi-remote-deploy.sh"
+REMOTE_RENDERER = ROOT / "scripts" / "production-deploy" / "render_pi_remote_deploy.py"
+SSH_LINE = '"${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" < "$remote_script" || rc=$?\n'
+
+
+def deploy_step_env(workflow_text):
+    """The Deploy step's env: entries, {name: value}."""
+    step = workflow_text.split("      - name: Deploy\n", 1)[1].split("        run: |\n", 1)[0]
+    env = step.split("        env:\n", 1)[1]
+    return dict(re.findall(r"^          ([A-Z0-9_]+): (.+)$", env, re.M))
+
+
+def read_deploy_workflow():
+    """deploy.yml with pi-remote-deploy.sh inlined at the Deploy step (#4051); each placeholder is
+    shown as the ${{ }} expression its step env: DEPLOY_<NAME> carries."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    env = deploy_step_env(workflow)
+    script = re.sub(r"@@(DEPLOY_[A-Z0-9_]+)@@", lambda m: env[m.group(1)], REMOTE_DEPLOY.read_text(encoding="utf-8"))
+    inline = "".join(("          " + line) if line.strip() else line for line in script.splitlines(True))
+    assert workflow.count(SSH_LINE) == 1, "Deploy step ssh line changed"
+    return workflow.replace(SSH_LINE, SSH_LINE + inline + "          ENDSSH\n")
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
     aggregate_landed_pr_effects,
@@ -706,7 +729,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         ]))
 
     def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         self.assertIn("/deployment.json", workflow)
         self.assertIn("compare/{deployed}...{head}", workflow)
         self.assertIn("runtime_base_sha", workflow)
@@ -714,7 +737,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertNotIn('base = parents[0]["sha"]', workflow)
 
     def test_superseded_ci_run_skips_before_founder_approval(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         resolve = workflow[workflow.index("  resolve-target:"):workflow.index("  detect-deployable:")]
         detect = workflow[workflow.index("  detect-deployable:"):workflow.index("  classify-activation:")]
         self.assertIn('if [[ "$EVENT_NAME" == "workflow_run" ]]; then', resolve)
@@ -724,7 +747,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertIn("needs.resolve-target.outputs.superseded != 'true'", detect)
 
     def test_manual_activation_holds_unknown_runtime_identity(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         classify = workflow[workflow.index("  classify-activation:"):]
         pop_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]')
         manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" != "release-train" ]]; then')
@@ -994,7 +1017,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
                 ))
 
     def test_environment_logs_match_self_review_policy(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         self.assertIn("review boundary verified: required reviewer, self-review allowed", workflow)
         self.assertNotIn("review boundary verified: required reviewer, prevent self-review", workflow)
 
@@ -1002,7 +1025,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
 class DeployActivationWorkflowContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.workflow = read_deploy_workflow()
 
     def test_release_train_schedule_and_dispatch_are_wired(self):
         # Founder 2026-10-14 (batch approvals, 1-2 trains a day): windows at 12:17 and 18:17
@@ -1515,6 +1538,344 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
 
 
+    def test_pop_inapp_standing_policy_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("pop_inapp_standing_policy:", self.workflow)
+        self.assertIn('STANDING_POLICY_FLAG_MODE="${{ inputs.pop_inapp_standing_policy }}"', self.workflow)
+        self.assertIn('apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE" POP_INAPP_STANDING_POLICY ""', self.workflow)
+        self.assertIn("STANDING_POLICY_FLAG_CHANGED=0", self.workflow)
+        self.assertIn("POP in-app standing policy flag restored during rollback", self.workflow)
+        self.assertIn('restore_bool_feature_flag POP_INAPP_STANDING_POLICY= "${STANDING_POLICY_FLAG_CHANGED:-0}"', self.workflow)
+        self.assertIn("POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}", self.workflow)
+        self.assertIn('"$FLAG_MANAGER" "$FLAG_POP_INAPP"; do', self.workflow)
+        self.assertIn("ADR-POP-015: the Founder turns it on only after the dry-run phase", self.workflow)
+        # The key written is the one backend/config/pop_inapp.php reads.
+        config = (ROOT / "backend" / "config" / "pop_inapp.php").read_text(encoding="utf-8")
+        key = re.search(r"'standing_policy_enabled' => \(bool\) env\('([A-Z0-9_]+)', false\)", config).group(1)
+        self.assertIn(f"apply_bool_feature_flag \"$STANDING_POLICY_FLAG_MODE\" {key} \"\"", self.workflow)
+        # Backend only: no Vite key, and a change does not force a frontend rebuild.
+        self.assertNotIn(f"VITE_{key}", self.workflow)
+        rebuild = next(line for line in self.workflow.splitlines() if 'if [ "$FRONTEND_CHANGED" -gt 0 ]' in line)
+        self.assertNotIn("STANDING_POLICY", rebuild)
+
+    def test_pop_inapp_standing_policy_modes_write_backend_env_and_rollback_restores_it(self):
+        # Run the committed flag function, call line and rollback against a sandbox .env.
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        harness = textwrap.dedent(r"""
+            set -u
+            PREV_COMMIT=old; FRONTEND_CHANGED=0; PDV=/tmp/pdv
+            ADMISSIONS_FLAG_CHANGED=0; CALENDAR_FLAG_CHANGED=0; MANAGER_FLAG_CHANGED=0
+            cd() { :; }; git() { :; }; composer() { :; }; write_deployment_manifest() { :; }; php() { :; }
+            grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
+            curl() { printf '{"status":"ok","opcache_cleared":true}'; }
+            python3() { if [ "$2" = /tmp/pdv ]; then return 0; fi; command python3 "$@"; }
+        """)
+        cases = (
+            ("on", "A=1\n", "A=1\n\nPOP_INAPP_STANDING_POLICY=true\n"),
+            ("on", "A=1\nPOP_INAPP_STANDING_POLICY=0\n", "A=1\nPOP_INAPP_STANDING_POLICY=true\n"),
+            ("off", "A=1\nPOP_INAPP_STANDING_POLICY=true\n", "A=1\nPOP_INAPP_STANDING_POLICY=false\n"),
+            ("unchanged", "A=1\nPOP_INAPP_STANDING_POLICY=1\n", "A=1\nPOP_INAPP_STANDING_POLICY=1\n"),
+            ("", "A=1\n", "A=1\n"),  # workflow_run / repository_dispatch: no input
+        )
+        for mode, before, applied in cases:
+            rendered = renderer.render(REMOTE_DEPLOY.read_text(encoding="utf-8"),
+                                       {"DEPLOY_POP_INAPP_STANDING_POLICY": mode})
+            lines = rendered.splitlines()
+            state = "\n".join(line for line in lines if line.startswith("STANDING_POLICY_FLAG_"))
+            call = next(line for line in lines if line.startswith('apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE"'))
+            apply = "apply_bool_feature_flag() {" + rendered.split("apply_bool_feature_flag() {", 1)[1].split("\n}\n", 1)[0]
+            rollback = "rollback_deploy() {" + rendered.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+            with tempfile.TemporaryDirectory() as tmp:
+                backend, frontend, snapshot = Path(tmp) / "backend.env", Path(tmp) / "frontend.env", Path(tmp) / "applied"
+                backend.write_text(before, encoding="utf-8")
+                body = (apply + "\n}\n" + rollback).replace("/home/admin/backend/.env", str(backend))
+                body = body.replace("/home/admin/frontend/.env.production.local", str(frontend))
+                script = (harness + state + "\n" + body + "\n" + call
+                          + f'\ncp "{backend}" "{snapshot}"\nrollback_deploy\n')
+                result = subprocess.run(["bash", "-c", script], text=True, capture_output=True,
+                                        env={"PATH": os.environ["PATH"]})
+                self.assertEqual(0, result.returncode, mode + result.stdout + result.stderr)
+                self.assertEqual(applied, snapshot.read_text(encoding="utf-8"), mode)
+                self.assertFalse(frontend.exists(), mode)  # backend only: nothing for Vite
+                restored = backend.read_text(encoding="utf-8")
+                # A requested off is a kill switch: the rollback keeps it off; everything else restores.
+                expected = applied if mode == "off" else before
+                self.assertEqual([x for x in expected.splitlines() if x], [x for x in restored.splitlines() if x], mode)
+                self.assertEqual(mode == "on", "standing policy flag restored during rollback" in result.stdout, mode)
+                self.assertEqual(mode == "off", "standing policy kept off" in result.stdout, mode)
+
+    FLAG_ENVS = ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1", "POP_INAPP_STANDING_POLICY")
+    FAKE_GH = textwrap.dedent("""
+        import json, os, sys
+        state = json.load(open(os.environ["FAKE_STATE"]))
+        path = sys.argv[2] if len(sys.argv) > 2 else ""
+        if "/compare/" in path:
+            print(json.dumps(state["compare"]))
+        elif "/actions/workflows/deploy.yml/runs" in path:
+            hit = "head_sha=" + state["deployed"] in path
+            run = {"id": 7, "conclusion": "success", "head_sha": state["deployed"], "created_at": "t"}
+            print(json.dumps({"workflow_runs": [run] if hit else []}))
+        elif path.endswith("/runs/7/jobs?per_page=100"):
+            print(json.dumps({"jobs": [{"name": "Deploy to Production", "conclusion": "success"}]}))
+        else:
+            sys.exit(f"unexpected gh call {sys.argv[1:]}")
+    """)
+
+    @staticmethod
+    def _step_script(name):
+        """The committed run: block of a deploy.yml step, as GitHub hands it to bash."""
+        run = WORKFLOW.read_text(encoding="utf-8").split(f"      - name: {name}\n", 1)[1].split("        run: |\n", 1)[1]
+        block = []
+        for line in run.splitlines(True):
+            if line.strip() and not line.startswith("          "):
+                break
+            block.append(line)
+        return textwrap.dedent("".join(block))
+
+    def _detect_then_classify(self, files, flags, current):
+        import json
+        deployed = "a" * 40
+        head = deployed if current else "b" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "bin").mkdir()
+            (tmp / "state.json").write_text(json.dumps({"deployed": deployed, "compare": {
+                "status": "identical" if current else "ahead", "files": [{"filename": f} for f in files]}}))
+            (tmp / "manifest.json").write_text(json.dumps({"backend_sha": deployed, "source": "github-actions:deploy.yml"}))
+            (tmp / "bin" / "gh").write_text(f"#!{sys.executable}\n{self.FAKE_GH}")
+            (tmp / "bin" / "curl").write_text('#!/bin/sh\ncat "$FAKE_MANIFEST"\n')
+            for fake in ("gh", "curl"):
+                (tmp / "bin" / fake).chmod(0o755)
+            base = {"PATH": f"{tmp / 'bin'}:{os.environ['PATH']}", "FAKE_STATE": str(tmp / "state.json"),
+                    "FAKE_MANIFEST": str(tmp / "manifest.json"), "REPO": "o/r", "GH_TOKEN": "x"}
+            outputs = {}
+            for step, env in (
+                ("Check changed files", {"HEAD_SHA": head, "PHASE": "application-deploy",
+                                         "PRODUCTION_URL": "https://prod.test", **flags}),
+                ("Classify activation policy", {"EVENT_NAME": "workflow_dispatch", "PHASE": "application-deploy",
+                                                "TARGET_SHA": head}),
+            ):
+                if step.startswith("Classify"):
+                    env.update(DEPLOYABLE=outputs["deployable"], RUNTIME_BASE_SHA=outputs["runtime_base_sha"],
+                               RUNTIME_STATE=outputs["runtime_state"])
+                out = tmp / "out"
+                out.write_text("")
+                result = subprocess.run(["bash", "-e", "-c", self._step_script(step)], cwd=ROOT, text=True,
+                                        capture_output=True, env={**base, **env, "GITHUB_OUTPUT": str(out)})
+                self.assertEqual(0, result.returncode, step + result.stdout + result.stderr)
+                outputs.update(line.split("=", 1) for line in out.read_text().splitlines())
+            return outputs
+
+    def test_manual_flag_dispatch_always_reaches_the_deploy_step(self):
+        # A flag on/off reaches .env only in the Deploy step: on a current tip and on a lag with no
+        # application files, a manual dispatch must classify as manual (Founder gate, then Deploy).
+        for label, files, current, idle_mode in (
+            ("current tip", [], True, "no-op"),
+            ("control-plane-only lag", [".github/workflows/ci.yml"], False, "control-plane-verified"),
+            ("docs-only lag", ["docs/x.md"], False, "no-op"),
+        ):
+            idle = self._detect_then_classify(files, {}, current)
+            self.assertEqual(("false", idle_mode), (idle["deployable"], idle["mode"]), label)
+            for flag, mode in [(name, "off") for name in self.FLAG_ENVS] + [("POP_INAPP_STANDING_POLICY", "on")]:
+                got = self._detect_then_classify(files, {flag: mode}, current)
+                self.assertEqual("true", got["deployable"], (label, flag, mode, got))
+                self.assertEqual("manual", got["mode"], (label, flag, mode, got))
+                self.assertEqual("current" if current else "normal-version-lag", got["runtime_state"], label)
+        self.assertEqual("true", self._detect_then_classify(["backend/app/X.php"], {}, False)["deployable"])
+
+    def test_resolve_target_accepts_only_unchanged_on_off_and_reports_requested_flags(self):
+        run = self._step_script("Validate target SHA and CI evidence")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            env = {"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(out), "EVENT_NAME": "workflow_dispatch",
+                   "PHASE": "application-deploy", "TARGET_SHA_INPUT": "not-a-sha", "WORKFLOW_REF": "refs/heads/main",
+                   "FLAG_ADMISSIONS": "unchanged", "FLAG_CALENDAR": "", "FLAG_MANAGER": "off", "FLAG_POP_INAPP": "on"}
+            result = subprocess.run(["bash", "-e", "-c", run], env=env, text=True, capture_output=True)
+            self.assertIn("Activation requires a full 40-character commit SHA", result.stdout)  # got past the flags
+            self.assertIn("flag_changes=course_manager_v1=off, pop_inapp_standing_policy=on\n", out.read_text())
+            self.assertIn("::warning title=Feature-flag change requested::course_manager_v1=off, pop_inapp_standing_policy=on",
+                          result.stdout)
+            out.write_text("")
+            idle = {**env, "FLAG_ADMISSIONS": "", "FLAG_MANAGER": "", "FLAG_POP_INAPP": ""}  # automatic runs
+            result = subprocess.run(["bash", "-e", "-c", run], env=idle, text=True, capture_output=True)
+            self.assertIn("flag_changes=none\n", out.read_text())
+            self.assertNotIn("::warning", result.stdout)
+            for name, var in (("admissions_funnel_v1", "FLAG_ADMISSIONS"), ("course_session_calendar_v1", "FLAG_CALENDAR"),
+                              ("course_manager_v1", "FLAG_MANAGER"), ("pop_inapp_standing_policy", "FLAG_POP_INAPP")):
+                for bad in ("ON", "true", "1", 'on"; touch x; "'):
+                    out.write_text("")
+                    result = subprocess.run(["bash", "-e", "-c", run], env={**env, var: bad}, text=True, capture_output=True)
+                    self.assertEqual(1, result.returncode, bad)
+                    self.assertIn(f"::error::{name} accepts only unchanged, on or off", result.stdout)
+                    self.assertEqual("", out.read_text())
+        self.assertIn("FLAG_CHANGES: ${{ needs.resolve-target.outputs.flag_changes }}", self.workflow)
+        self.assertIn('echo "Requested feature-flag changes: ${FLAG_CHANGES:-none}"', self.workflow)
+
+    def test_renderer_refuses_any_flag_value_other_than_unchanged_on_off(self):
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        modes = set(re.findall(r'^[A-Z_]+_FLAG_MODE="@@DEPLOY_([A-Z0-9_]+)@@"$', script, re.M))
+        self.assertEqual(modes, set(renderer.FLAG_PLACEHOLDERS))
+        for name in renderer.FLAG_PLACEHOLDERS:
+            for good in ("", "unchanged", "on", "off"):
+                self.assertIn(f'_FLAG_MODE="{good}"', renderer.render(script, {f"DEPLOY_{name}": good}))
+            for bad in ("ON", "true", "1", " on", "off\n", 'on"; touch x; "'):
+                with self.assertRaises(ValueError):
+                    renderer.render(script, {f"DEPLOY_{name}": bad})
+        out = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(REMOTE_DEPLOY)], capture_output=True,
+                             env={**os.environ, "DEPLOY_POP_INAPP_STANDING_POLICY": "ON"})
+        self.assertEqual(1, out.returncode)
+        self.assertEqual(b"", out.stdout)
+
+    FLAG_STATE = {
+        "ADMISSIONS_FLAG_CHANGED": "1", "ADMISSIONS_FLAG_WAS_PRESENT": "1", "ADMISSIONS_FLAG_BACKUP": "ADMISSIONS_FUNNEL_V1=x/y&z",
+        "CALENDAR_FLAG_CHANGED": "1", "CALENDAR_FLAG_WAS_PRESENT": "1", "CALENDAR_FLAG_BACKUP": "COURSE_SESSION_CALENDAR_V1=\\1|.*",
+        "MANAGER_FLAG_CHANGED": "1", "MANAGER_FLAG_WAS_PRESENT": "0", "MANAGER_FLAG_BACKUP": "",
+        "STANDING_POLICY_FLAG_CHANGED": "1", "STANDING_POLICY_FLAG_WAS_PRESENT": "1",
+        "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=1",
+    }
+    APPLIED_ENV = ("X=1\nADMISSIONS_FUNNEL_V1=true\nCOURSE_SESSION_CALENDAR_V1=false\nCOURSE_MANAGER_V1=true\n"
+                   "POP_INAPP_STANDING_POLICY=false\n")
+    RESTORED_LINES = ["X=1", "ADMISSIONS_FUNNEL_V1=x/y&z", "COURSE_SESSION_CALENDAR_V1=\\1|.*", "POP_INAPP_STANDING_POLICY=1"]
+
+    def _run_flag_restore(self, tail, git_exit=0, composer_exit=0, extra="", state=(), env_text=None):
+        import shlex
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        functions = ("rollback_deploy() {" + script.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+                     + "abort_deploy() {" + script.split("abort_deploy() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n")
+        harness = textwrap.dedent(r"""
+            set -u
+            PREV_COMMIT=old; TARGET_SHA=new; FRONTEND_CHANGED=0; PDV=/tmp/pdv; MIG_HARD=hard; MIGRATION_RAN=0
+            cd() { :; }; git() { echo GIT_CALLED; return "$GIT_EXIT"; }; composer() { return "$COMPOSER_EXIT"; }
+            write_deployment_manifest() { :; }; php() { :; }
+            grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
+            curl() { printf '{"status":"ok","opcache_cleared":true}'; }
+            python3() { if [ "$2" = /tmp/pdv ]; then return 0; fi; command python3 "$@"; }
+        """) + extra + "".join(f"{k}={shlex.quote(v)}\n" for k, v in {**self.FLAG_STATE, **dict(state)}.items())
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / "backend.env"
+            env_file.write_text(self.APPLIED_ENV if env_text is None else env_text)
+            result = subprocess.run(
+                ["bash", "-c", harness + functions.replace("/home/admin/backend/.env", str(env_file)) + tail],
+                text=True, capture_output=True, cwd=tmp,
+                env={"PATH": os.environ["PATH"], "GIT_EXIT": str(git_exit), "COMPOSER_EXIT": str(composer_exit)})
+            return result, [line for line in env_file.read_text().splitlines() if line]
+
+    def test_flag_restore_is_literal_and_runs_on_every_failure_path(self):
+        # Previous lines with / & \1 survive literally, for all four flags, even when the code rollback
+        # stops early (git reset or composer failure) and on the migration hold (exit 13, no rollback).
+        for label, tail, git_exit, composer_exit, rc in (
+            ("rollback succeeds", "rollback_deploy\n", 0, 0, 0),
+            ("git reset fails", "rollback_deploy\n", 1, 0, 1),
+            ("composer fails", "rollback_deploy\n", 0, 1, 1),
+            ("migration hold", "MIGRATION_RAN=1\nabort_deploy x\n", 0, 0, 13),
+        ):
+            result, lines = self._run_flag_restore(tail, git_exit, composer_exit)
+            self.assertEqual(rc, result.returncode, label + result.stdout + result.stderr)
+            self.assertEqual(self.RESTORED_LINES, lines, label)
+            for message in ("admissions flag", "course session calendar flag", "course manager flag",
+                            "POP in-app standing policy flag"):
+                self.assertIn(f"✅ {message} restored during rollback", result.stdout, label)
+            self.assertEqual(label != "migration hold", "GIT_CALLED" in result.stdout, label)
+        # A restore that cannot be verified is loud and fails the rollback, never a silent ✅.
+        result, lines = self._run_flag_restore("rollback_deploy\n", extra="sed() { return 1; }\n")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertNotIn("restored during rollback", result.stdout)
+        for key in self.FLAG_ENVS:
+            self.assertIn(f"❌ {key} restore failed", result.stdout)
+        self.assertIn("Rollback 未完成", result.stdout)
+        result, _ = self._run_flag_restore("MIGRATION_RAN=1\nabort_deploy x\n", extra="sed() { return 1; }\n")
+        self.assertEqual(13, result.returncode)
+        self.assertIn("::error::Feature-flag .env restore failed; fix it by hand.", result.stdout)
+        # The grep -Fx check, not the write's exit code, decides: a silently lost append still fails.
+        result, lines = self._run_flag_restore('restore_feature_flags; echo "rc=$?"\n', extra="printf() { :; }\n")
+        self.assertIn("rc=1", result.stdout)
+        for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "POP_INAPP_STANDING_POLICY"):
+            self.assertIn(f"❌ {key} restore failed", result.stdout)
+        self.assertIn("✅ course manager flag restored during rollback", result.stdout)  # absent: delete verified
+        result, _ = self._run_flag_restore('restore_feature_flags; echo "rc=$?"\n', extra="sed() { :; }\n")  # no-op "success"
+        self.assertIn("rc=1", result.stdout)
+        for key in self.FLAG_ENVS:
+            self.assertIn(f"❌ {key} restore failed", result.stdout)
+
+    def test_requested_pop_off_is_never_rolled_back_but_a_requested_on_is(self):
+        # Kill switch (LaunchDarkly/Unleash style): a requested off stays off on every failure path,
+        # also when the deploy failed before writing it; a requested on is restored like any flag.
+        others = ["X=1", "ADMISSIONS_FUNNEL_V1=x/y&z", "COURSE_SESSION_CALENDAR_V1=\\1|.*"]
+        off_after = {"STANDING_POLICY_FLAG_MODE": "off", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=true"}
+        off_before = {**off_after, "STANDING_POLICY_FLAG_CHANGED": "0"}
+        applied_on = self.APPLIED_ENV.replace("POP_INAPP_STANDING_POLICY=false", "POP_INAPP_STANDING_POLICY=true")
+        for label, state, env_text, tail, git_exit, rc, line in (
+            ("off, git reset fails", off_after, None, "rollback_deploy\n", 1, 1, "POP_INAPP_STANDING_POLICY=false"),
+            ("off, rollback succeeds", off_after, None, "rollback_deploy\n", 0, 0, "POP_INAPP_STANDING_POLICY=false"),
+            ("off, migration hold", off_after, None, "MIGRATION_RAN=1\nabort_deploy x\n", 0, 13, "POP_INAPP_STANDING_POLICY=false"),
+            ("off, failed before the write", off_before, applied_on, "rollback_deploy\n", 1, 1, "POP_INAPP_STANDING_POLICY=false"),
+            ("on, git reset fails", {"STANDING_POLICY_FLAG_MODE": "on", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=false"},
+             applied_on, "rollback_deploy\n", 1, 1, "POP_INAPP_STANDING_POLICY=false"),
+            ("on, migration hold", {"STANDING_POLICY_FLAG_MODE": "on", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=false"},
+             applied_on, "MIGRATION_RAN=1\nabort_deploy x\n", 0, 13, "POP_INAPP_STANDING_POLICY=false"),
+        ):
+            result, lines = self._run_flag_restore(tail, git_exit, state=state, env_text=env_text)
+            self.assertEqual(rc, result.returncode, label + result.stdout + result.stderr)
+            self.assertEqual(others + [line], lines, label)  # the other flags still restore all-or-nothing
+            kept = "POP in-app standing policy kept off: a requested off is never rolled back"
+            self.assertEqual(label.startswith("off"), kept in result.stdout, label)
+            self.assertEqual(label.startswith("on"), "POP in-app standing policy flag restored during rollback" in result.stdout, label)
+
+    def test_migration_hold_rebuilds_the_config_cache_after_the_flag_restore(self):
+        php = 'php() { echo "PHP $*"; return "$PHP_EXIT"; }\n'
+        hold = "MIGRATION_RAN=1\nabort_deploy x\n"
+        result, lines = self._run_flag_restore(hold, extra=php + "PHP_EXIT=0\n")
+        self.assertEqual(13, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(self.RESTORED_LINES, lines)
+        out = result.stdout
+        self.assertLess(out.index("✅ POP in-app standing policy flag restored during rollback"), out.index("PHP artisan optimize"))
+        self.assertLess(out.index("PHP artisan optimize"), out.index("✅ config cache rebuilt from the restored .env"))
+        self.assertNotIn("GIT_CALLED", out)  # still no code rollback on the hold
+        # The same command family the deploy uses for the cache, and no other artisan command on this path.
+        hold_fn = REMOTE_DEPLOY.read_text(encoding="utf-8").split("hold_feature_flags() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertEqual(["optimize"], re.findall(r"php artisan ([a-z:-]+)", hold_fn))
+        failed, _ = self._run_flag_restore(hold, extra=php + "PHP_EXIT=1\n")
+        self.assertEqual(13, failed.returncode)
+        self.assertIn("::error::Config cache rebuild after the flag restore failed", failed.stdout)
+        self.assertNotIn("✅ config cache rebuilt", failed.stdout)
+        # Nothing restored (no flag requested): the hold leaves the cache alone, as before.
+        idle = {k: "0" for k in self.FLAG_STATE if k.endswith("_CHANGED")}
+        untouched, lines = self._run_flag_restore(hold, extra=php + "PHP_EXIT=0\n", state=idle)
+        self.assertEqual(13, untouched.returncode)
+        self.assertNotIn("PHP artisan", untouched.stdout)
+        self.assertEqual([x for x in self.APPLIED_ENV.splitlines() if x], lines)
+
+    def test_pop_standing_policy_effective_config_is_read_back_before_fpm_refresh(self):
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        start = script.index('if [ "$STANDING_POLICY_FLAG_MODE" = "on" ] || [ "$STANDING_POLICY_FLAG_MODE" = "off" ]; then')
+        self.assertLess(script.index("if ! php artisan optimize; then"), start)
+        self.assertLess(start, script.index("for attempt in $(seq 1 16); do"))
+        block = script[start:].split("\nfi\n", 1)[0] + "\nfi\n"
+        harness = ('php() { echo "$*" >> "$TRACE"; printf "noise\\n%s" "$EFFECTIVE"; }\n'
+                   'abort_deploy() { echo "ABORT $1"; exit 1; }\n')
+        for mode, effective, aborts, reads in (
+            ("on", "true", False, True), ("on", "false", True, True), ("on", "", True, True),
+            ("off", "false", False, True), ("off", "true", True, True), ("unchanged", "x", False, False), ("", "x", False, False),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                trace = Path(tmp) / "trace"
+                trace.write_text("")
+                result = subprocess.run(["bash", "-c", harness + block], text=True, capture_output=True,
+                                        env={"PATH": os.environ["PATH"], "TRACE": str(trace), "EFFECTIVE": effective,
+                                             "STANDING_POLICY_FLAG_MODE": mode})
+                self.assertEqual(aborts, "ABORT POP_INAPP_STANDING_POLICY effective config" in result.stdout, (mode, effective))
+                self.assertEqual(int(aborts), result.returncode, (mode, effective))
+                self.assertEqual(reads, 'pop_inapp.standing_policy_enabled' in trace.read_text(), mode)
+
+
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)
         self.assertIn("abort_deploy()", self.workflow)
@@ -1553,6 +1914,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 ADMISSIONS_FLAG_CHANGED=0
                 CALENDAR_FLAG_CHANGED=0
                 MANAGER_FLAG_CHANGED=0
+                STANDING_POLICY_FLAG_CHANGED=0
                 MIGRATION_RAN=0
                 cd() { builtin cd "$SANDBOX"; }
                 git() { echo git >> "$TRACE"; return "$GIT_EXIT"; }
@@ -1593,35 +1955,99 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_expression_bearing_run_scripts_stay_under_the_github_limit(self):
         # GitHub evaluates a run script that contains ${{ }} as one expression and rejects the whole
-        # workflow (a 0-job failed run) when it exceeds 21,000 UTF-8 bytes. Stdlib only: this test
-        # gates every deployment (contract-test job), which installs no Python packages.
-        lines = self.workflow.split("\n")
-        checked = 0
-        for i, line in enumerate(lines):
-            m = re.match(r"^(\s*)(?:- )?run: [|>][-+]?\s*$", line)
-            if not m:
-                continue
-            key_indent, body = len(m.group(1)), []
-            for nxt in lines[i + 1:]:
-                if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) <= key_indent:
-                    break
-                body.append(nxt)
-            indents = [len(x) - len(x.lstrip(" ")) for x in body if x.strip()]
-            script = "\n".join(x[min(indents):] for x in body) if indents else ""
-            if "${{" in script:
-                checked += 1
-                # Measure what GitHub evaluates: format('<template>', expr, ...), where the
-                # template doubles every ' { } and each ${{ }} becomes a {N} placeholder.
-                exprs = re.findall(r"\$\{\{(.*?)\}\}", script, re.S)
-                template = re.sub(r"\$\{\{.*?\}\}", "\0", script, flags=re.S)
-                template = template.replace("'", "''").replace("{", "{{").replace("}", "}}")
-                parts = template.split("\0")
-                template = "".join(p + (f"{{{n}}}" if n < len(exprs) else "") for n, p in enumerate(parts))
-                expression = f"format('{template}', " + ", ".join(e.strip() for e in exprs) + ")"
-                # Hard limit 21,000; keep >=200 bytes of margin so an edit cannot silently
-                # stop GitHub parsing deploy.yml (a 0-job run on every push).
-                self.assertLess(len(expression.encode("utf-8")), 20_800, f"run block at line {i + 1}")
-        self.assertGreater(checked, 0)
+        # workflow (a 0-job failed run) above 21,000 UTF-8 bytes. The guard also runs on every PR in
+        # Control Plane Contract Lint; stdlib only, because the contract-test job installs nothing.
+        from scripts.ci import workflow_expression_size as guard
+
+        self.assertEqual(18_000, guard.DEFAULT_LIMIT)
+        self.assertEqual(0, guard.main([]))
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertGreater(len(guard.run_blocks(workflow)), 20)
+        sizes = guard.run_block_expression_sizes(workflow)
+        self.assertLess(max([size for _, size in sizes] or [0]), guard.DEFAULT_LIMIT)
+        # Pin the measurement: format('<template>', expr...) doubles ' { } and numbers each ${{ }}.
+        text = "    steps:\n      - run: |\n          echo '{x}' ${{ a }}\n          b ${{ c }}\n"
+        expected = "format('echo ''{{x}}'' {0}\nb {1}\n', a, c)"
+        self.assertEqual([(2, len(expected))], guard.run_block_expression_sizes(text))
+        self.assertEqual([], guard.run_block_expression_sizes("      - run: echo plain\n"))
+
+    def test_expression_size_guard_fails_over_the_limit_and_on_unmeasurable_forms(self):
+        from scripts.ci import workflow_expression_size as guard
+
+        with tempfile.TemporaryDirectory() as tmp:
+            big = Path(tmp) / "big.yml"
+            for key in ("run:", "run :", " run:"):
+                big.write_text(f"      - {key} |\n" + "          echo ${{ x }}\n" * 1500, encoding="utf-8")
+                self.assertEqual(1, guard.main([str(big)]), key)
+            self.assertEqual(0, guard.main(["--limit", "100000", str(big)]))
+            # A plain block (no ${{ }}) is not an expression; it is reported but never fails.
+            plain = Path(tmp) / "plain.yml"
+            plain.write_text("      - run: |\n" + "          echo x\n" * 5000, encoding="utf-8")
+            self.assertEqual(0, guard.main([str(plain)]))
+            # #4085 and #4066 review: anchors, aliases, tags and |N cannot be sized line by line: fail closed.
+            for head in ("run: &script |", "run: *script", "run: !!str |", "run: |2", "run: >-4", "run: |2-",
+                         '"run": |', "'run': |", "{name: x, run: echo}"):
+                odd = Path(tmp) / "odd.yml"
+                odd.write_text(f"      - {head}\n          echo ${{{{ x }}}}\n", encoding="utf-8")
+                self.assertEqual(1, guard.main([str(odd)]), head)
+                with self.assertRaises(guard.UnmeasurableRunBlock):
+                    guard.run_blocks(odd.read_text(encoding="utf-8"))
+
+    def test_deploy_step_sends_the_checked_in_remote_script_without_expressions(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        step = workflow.split("      - name: Deploy\n", 1)[1].split("\n      - name: ", 1)[0]
+        run = step.split("        run: |\n", 1)[1]
+        self.assertNotIn("${{", run)
+        self.assertNotIn("ENDSSH", workflow)
+        self.assertIn("python3 -I scripts/production-deploy/render_pi_remote_deploy.py", run)
+        self.assertIn("      - 'scripts/production-deploy/**'\n",
+                      (WORKFLOW.parent / "rollback-readiness.yml").read_text(encoding="utf-8"))
+        # Same commit as this workflow file: the job's default-ref checkout carries both files.
+        checkout = workflow.split("  deploy:\n", 1)[1].split("      - name: Checkout pinned SSH trust helper\n", 1)[1]
+        checkout = checkout.split("\n      - name: ", 1)[0]
+        self.assertNotIn("ref:", checkout)
+        self.assertIn("            scripts/production-deploy/pi-remote-deploy.sh\n", checkout)
+        self.assertIn("            scripts/production-deploy/render_pi_remote_deploy.py\n", checkout)
+        # Every placeholder is fed by exactly one step env value, and the renderer allows exactly these.
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        env = deploy_step_env(workflow)
+        placeholders = set(re.findall(r"@@DEPLOY_([A-Z0-9_]+)@@", REMOTE_DEPLOY.read_text(encoding="utf-8")))
+        self.assertEqual(placeholders, set(renderer.PLACEHOLDERS))
+        self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
+        expr = lambda source, names: {f"DEPLOY_{n.upper()}": f"${{{{ {source}.{n} }}}}" for n in names}
+        self.assertEqual(expr("secrets", ("PI_SSH_USER", "PI_SSH_HOST", "SENTRY_DSN", "SMOKE_TEACHER_LOGIN",
+                                          "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID"))
+                         | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1",
+                                           "pop_inapp_standing_policy"))
+                         | expr("needs.resolve-target.outputs", ("target_sha", "release_train")), env)
+
+    def test_remote_script_renders_like_github_text_substitution(self):
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        template = 'A="@@DEPLOY_TARGET_SHA@@"\nB="@@DEPLOY_SENTRY_DSN@@" @@DEPLOY_SMOKE_BRANCH_ID@@\n'
+        tricky = 'x$y"`z`\\ 中 @@DEPLOY_TARGET_SHA@@'
+        environ = {"DEPLOY_TARGET_SHA": "abc", "DEPLOY_SENTRY_DSN": tricky}
+        # Plain text, one pass (a value that looks like a placeholder stays literal), unset renders "".
+        self.assertEqual(f'A="abc"\nB="{tricky}" \n', renderer.render(template, environ))
+        with self.assertRaises(ValueError):
+            renderer.render("@@DEPLOY_NOT_ALLOWED@@", environ)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.sh"
+            path.write_bytes(template.encode("utf-8"))
+            cmd = [sys.executable, str(REMOTE_RENDERER), str(path)]
+            out = subprocess.run(cmd, capture_output=True, env={**os.environ, **environ})
+            self.assertEqual(0, out.returncode)
+            self.assertEqual(renderer.render(template, environ).encode("utf-8"), out.stdout)
+            missing = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(Path(tmp) / "none")], capture_output=True)
+            self.assertEqual(1, missing.returncode)
+            self.assertEqual(b"", missing.stdout)
 
     def test_rollback_refreshes_fpm_workers_before_health(self):
         function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
@@ -1641,17 +2067,23 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(1, self.workflow.count(self.MIGRATION_START))
         return self.MIGRATION_START + self.workflow.split(self.MIGRATION_START, 1)[1].split(self.MIGRATION_END, 1)[0]
 
-    def _execute_isolated_migration(self, status_output, status_exit=0, migrate_exit=0):
+    def _execute_isolated_migration(self, status_output, status_exit=0, migrate_exit=0, backup_output=None):
         with tempfile.TemporaryDirectory(prefix="alltrue-migration-contract-") as sandbox:
             (Path(sandbox) / "backend").mkdir()
             (Path(sandbox) / "backend" / ".env").write_text("DB_USERNAME=u\nDB_PASSWORD=p\n")
+            (Path(sandbox) / "scripts").mkdir()
+            (Path(sandbox) / "scripts" / "verify-db-backup.sh").write_text(
+                (ROOT / "scripts" / "verify-db-backup.sh").read_text()
+            )
+            if backup_output is None:
+                backup_output = "CREATE TABLE `fixture` (id int);\n-- Dump completed on 2026-10-22 04:30:00"
             trace = Path(sandbox) / "trace"
             block = self._migration_block().replace("/home/admin", sandbox)
             harness = textwrap.dedent(r"""
                 set -uo pipefail
                 MIGRATION_RAN=0
                 abort_deploy() { echo "abort" >> "$TRACE"; exit 1; }
-                mysqldump() { echo dump; }
+                mysqldump() { printf '%s\n' "$BACKUP_OUTPUT"; }
                 php() {
                     case "$2" in
                         migrate:status) printf '%s\n' "$STATUS_OUTPUT"; return "$STATUS_EXIT" ;;
@@ -1665,7 +2097,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                 ["bash", "-c", harness + block + tail],
                 cwd=sandbox, text=True, capture_output=True,
                 env={"PATH": os.environ["PATH"], "TRACE": str(trace), "STATUS_OUTPUT": status_output,
-                     "STATUS_EXIT": str(status_exit), "MIGRATE_EXIT": str(migrate_exit)},
+                     "STATUS_EXIT": str(status_exit), "MIGRATE_EXIT": str(migrate_exit),
+                     "BACKUP_OUTPUT": backup_output},
             )
             calls = trace.read_text().splitlines() if trace.exists() else []
             return result, calls
@@ -1674,6 +2107,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         result, calls = self._execute_isolated_migration("| No | 2026_10_13_x |", migrate_exit=1)
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(["migrate", "abort"], calls)
+
+    def test_backup_completion_failure_aborts_before_migration(self):
+        result, calls = self._execute_isolated_migration(
+            "| No | 2026_10_13_x |", backup_output="CREATE TABLE `fixture` (id int);"
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["abort"], calls)
 
     def test_failed_migration_status_aborts_instead_of_skipping(self):
         result, calls = self._execute_isolated_migration("", status_exit=1)
@@ -1906,6 +2346,38 @@ class FounderGoAutoActivationTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             evaluate_founder_go_range(**dict(self._api(comparison, protected, good), api=boom))
 
+    def test_deploy_executor_change_is_classified_exactly_like_a_deploy_yml_change(self):
+        # #4051 moved the Pi executor out of deploy.yml. A change touching only it must keep every
+        # protection a deploy.yml change has, including the reviewer-required Founder GO range check.
+        import scripts.governance.autonomy_gate as gate
+
+        executor = sorted(gate._DEPLOY_EXECUTOR_PATHS)
+        self.assertEqual({"scripts/production-deploy/pi-remote-deploy.sh",
+                          "scripts/production-deploy/render_pi_remote_deploy.py"}, set(executor))
+        deploy = ".github/workflows/deploy.yml"
+        patch = lambda path: f"diff --git a/{path} b/{path}\n@@ -1 +1 @@\n-echo old\n+echo new\n"
+        for path in executor:
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file())
+                self.assertIn(path, gate._GATE_POLICY_PATHS)
+                for check in (is_control_plane_path, is_deployable_path, is_application_runtime_path,
+                              is_production_activation_sensitive_path):
+                    self.assertEqual(check(deploy), check(path), check.__name__)
+                self.assertEqual(is_control_plane_only_paths([deploy]), is_control_plane_only_paths([path]))
+                for classify in (classify_scope, classify_activation_scope):
+                    expected = json.dumps(classify([deploy], patch(deploy)), sort_keys=True, default=str)
+                    actual = json.dumps(classify([path], patch(path)), sort_keys=True, default=str)
+                    self.assertEqual(expected, actual.replace(path, deploy), classify.__name__)
+                self.assertEqual({k: v for k, v in machine_declaration([deploy]).items() if k != "reasons"},
+                                 {k: v for k, v in machine_declaration([path]).items() if k != "reasons"})
+                comparison = dict(self._range(11), status="ahead")
+                good = self._pr(11, self.body3())
+                for changed in (deploy, path):
+                    detail = {"files": [{"filename": changed, "status": "modified", "sha": "b" * 40, "patch": "@@ -1 +1 @@\n+x"}]}
+                    result = evaluate_founder_go_range(**self._api(comparison, detail, good))
+                    self.assertFalse(result["ok"], changed)
+                    self.assertIn("reviewer required", result["reason"], changed)
+
     def test_auto_environment_requires_verified_evidence_and_main_only(self):
         ok = dict(event_name="workflow_run", phase="", mode="auto-founder-go", go_evidence="verified", branch_names=["main"])
         self.assertTrue(auto_environment_is_valid(**ok))
@@ -1919,7 +2391,7 @@ class FounderGoAutoActivationTest(unittest.TestCase):
                 self.assertFalse(auto_environment_is_valid(**dict(ok, **bad)))
 
     def test_workflow_wiring_fails_closed_and_rechecks_before_side_effects(self):
-        workflow = WORKFLOW.read_text(encoding="utf-8")
+        workflow = read_deploy_workflow()
         classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
         self.assertIn("ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}\n          path: trusted-policy", classify)
         self.assertIn("for gate in (trusted, target_gate)", classify)
@@ -1996,7 +2468,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.pdv = _load_post_deploy_verify()
-        cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.workflow = read_deploy_workflow()
 
     def fake_fetch(self, responses):
         calls = []
@@ -2451,7 +2923,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         harness = textwrap.dedent(r"""
             set -u
             PREV_COMMIT=old; FRONTEND_CHANGED=0; MIGRATION_RAN=0; PDV=/tmp/pdv
-            ADMISSIONS_FLAG_CHANGED=0; CALENDAR_FLAG_CHANGED=0; MANAGER_FLAG_CHANGED=0
+            ADMISSIONS_FLAG_CHANGED=0; CALENDAR_FLAG_CHANGED=0; MANAGER_FLAG_CHANGED=0; STANDING_POLICY_FLAG_CHANGED=0
             cd() { :; }; git() { :; }; composer() { :; }; write_deployment_manifest() { :; }
             php() { :; }
             grep() { if [ "$1" = '^DEPLOY_SECRET=' ]; then echo s; else command grep "$@"; fi; }
@@ -2483,12 +2955,43 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             self.assertIn("smoke scripts/post-merge-smoke.sh expect=old strict=", result.stdout)
 
     def test_runner_step_records_rc_and_summarizes_failures(self):
-        self.assertIn("<< 'ENDSSH' || rc=$?", self.workflow)
+        self.assertIn('"${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" < "$remote_script" || rc=$?', self.workflow)
         self.assertIn('echo "rc=$rc" >> "$GITHUB_OUTPUT"\n          exit "$rc"', self.workflow)
+        self._run_runner_step()
         self.assertIn("RC: ${{ steps.deploy.outputs.rc }}", self.workflow)
         self.assertIn('--rc "${RC:-1}"', self.workflow)
         self.assertIn('--expect-backend-sha "$TARGET_SHA" --attempts 12 --interval 5', self.workflow)
         self.assertNotIn("artisan", (ROOT / "scripts" / "post-deploy-verify.py").read_text())  # never migrate:rollback
+
+    def _run_runner_step(self):
+        # Run the real runner block under GitHub's `bash -e` with ssh stubbed: the Pi receives the
+        # rendered script on stdin, ssh's exit code is the step's rc output and exit code, and a
+        # render failure stops before ssh.
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        run = workflow.split("      - name: Deploy\n", 1)[1].split("        run: |\n", 1)[1].split("\n      - name: ", 1)[0]
+        run = textwrap.dedent(run)
+        for ssh_rc in (0, 10, 12, 255):
+            with tempfile.TemporaryDirectory() as tmp:
+                out, received = Path(tmp) / "out", Path(tmp) / "received"
+                stub = f'ssh() {{ cat > "{received}"; echo "$@" > "{received}.args"; return {ssh_rc}; }}\n'
+                env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": tmp, "GITHUB_OUTPUT": str(out),
+                       "DEPLOY_PI_SSH_USER": "admin", "DEPLOY_PI_SSH_HOST": "pi.test", "DEPLOY_TARGET_SHA": self.TARGET}
+                result = subprocess.run(["bash", "-e", "-c", stub + run], cwd=ROOT, env=env, text=True, capture_output=True)
+                self.assertEqual(ssh_rc, result.returncode, result.stderr)
+                self.assertEqual(f"rc={ssh_rc}\n", out.read_text())
+                sent = received.read_text(encoding="utf-8")
+                self.assertIn(f'TARGET_SHA="{self.TARGET}"', sent)
+                self.assertNotIn("@@DEPLOY_", sent)
+                self.assertTrue(received.with_suffix(".args").read_text().rstrip().endswith("admin@pi.test"))
+                self.assertEqual([], list(Path(tmp).glob("pi-remote-deploy.*")))  # removed on exit
+        broken = run.replace("scripts/production-deploy/pi-remote-deploy.sh >", "scripts/production-deploy/missing.sh >")
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = 'ssh() { echo SSH_CALLED; }\n'
+            env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": tmp, "GITHUB_OUTPUT": str(Path(tmp) / "out")}
+            result = subprocess.run(["bash", "-e", "-c", stub + broken], cwd=ROOT, env=env, text=True, capture_output=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertNotIn("SSH_CALLED", result.stdout)
+
 
 
 def json_bytes(value):

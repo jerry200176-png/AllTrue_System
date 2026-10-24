@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property int $student_id
  * @property int $campus_id
+ * @property string|null $class_type
+ * @property bool $paid
+ * @property string|null $paid_at
  */
 class CoursePackage extends Model
 {
@@ -41,6 +44,14 @@ class CoursePackage extends Model
         'enabled' => 'boolean',
     ];
 
+    /** in-app #428: a paid trial package (create-multi-subject) records its fee by paid_at alone; see StudentClass::isTrialFeeRecordedByDate. */
+    public function isTrialFeeRecordedByDate(): bool
+    {
+        return (bool) $this->paid
+            && strtolower(trim((string) ($this->class_type ?? ''))) === 'trial'
+            && trim((string) ($this->paid_at ?? '')) !== '';
+    }
+
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');
@@ -64,18 +75,20 @@ class CoursePackage extends Model
     /**
      * Net remaining from ledger (authoritative).
      */
-    public function computeRemainingFromLedger(): int
+    public function computeRemainingFromLedger(bool $current = false): int
     {
-        $netDelta = (int) ($this->ledgerEntries()->sum('delta') ?? 0);
+        // $current: a shared-locked read, for callers whose transaction may hold an older snapshot (#4456).
+        $entries = $this->ledgerEntries();
+        $netDelta = (int) (($current ? $entries->sharedLock() : $entries)->sum('delta') ?? 0);
         return max(0, $this->total_sessions + $netDelta);
     }
 
     /**
      * Recompute and persist remaining/used from ledger.
      */
-    public function recomputeCounters(): void
+    public function recomputeCounters(bool $current = false): void
     {
-        $remaining = $this->computeRemainingFromLedger();
+        $remaining = $this->computeRemainingFromLedger($current);
         $this->remaining_sessions = $remaining;
         $this->used_sessions = max(0, $this->total_sessions - $remaining);
         $this->save();

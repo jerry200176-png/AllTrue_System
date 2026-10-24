@@ -331,18 +331,6 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Http/Controllers/AlertController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/AlertController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$settlement_day\.$#'
 			identifier: property.notFound
 			count: 1
@@ -431,18 +419,6 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: app/Http/Controllers/AlertController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\ApiClient\:\:\$Active\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ApiClientController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\ApiClient\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ApiClientController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\ApiClient\:\:create\(\)\.$#'
@@ -1006,12 +982,6 @@ parameters:
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$class_type\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$closed_reason\.$#'
 			identifier: property.notFound
 			count: 1
@@ -1031,18 +1001,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/CoursePackageController.php
@@ -2370,27 +2328,15 @@ parameters:
 			path: app/Http/Controllers/PasswordResetRequestController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 8
+			count: 6
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -2444,7 +2390,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$student\.$#'
 			identifier: property.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -2715,12 +2661,6 @@ parameters:
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 3
-			path: app/Http/Controllers/ScheduleController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:firstOrCreate\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
 			path: app/Http/Controllers/ScheduleController.php
 
 		-
@@ -3105,7 +3045,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/StudentController.php
 
 		-
@@ -4166,12 +4106,6 @@ parameters:
 			path: app/Services/OccurrenceAssignmentService.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:select\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/PackageDeductionService.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -4192,13 +4126,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\PackageSessionLedger\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Services/PackageDeductionService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\PackageSessionLedger\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 4
 			path: app/Services/PackageDeductionService.php
 
 		-

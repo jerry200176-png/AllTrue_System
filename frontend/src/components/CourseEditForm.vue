@@ -8,7 +8,7 @@
         <strong>{{ packageInfo.name || '共用方案' }}</strong>
         <span class="package-info-pool">方案池剩餘 {{ packageInfo.remaining_sessions ?? 0 }} / {{ packageInfo.total_sessions ?? 0 }} 堂</span>
         <span v-if="packageInfo.renewal_warning" class="package-info-warning" role="alert">
-          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續約或加購` }}
+          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續課` }}
         </span>
       </div>
     </div>
@@ -71,6 +71,14 @@
             <option value="one_on_three">一對三</option>
             <option value="tutoring">輔導</option>
             <option value="trial">試聽</option>
+          </select>
+        </div>
+
+        <div v-if="form.class_type === 'trial'" class="form-group">
+          <label for="cef-trial-target">試聽班型</label>
+          <select id="cef-trial-target" v-model="form.trial_target_class_type">
+            <option :value="null">未指定（每時段最多 1 位試聽）</option>
+            <option v-for="opt in TRIAL_TARGET_CLASS_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
 
@@ -153,7 +161,7 @@
             placeholder="8"
             :disabled="!!packageInfo || lockedFields.has('sessions_purchased')"
           />
-          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「加購／設定總堂數」調整（會同步方案所有科目）</span>
+          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「續課／設定總堂數」調整（會同步方案所有科目）</span>
           <span v-else-if="lockedFields.has('sessions_purchased')" class="field-hint field-hint--warning">已有扣堂紀錄，堂數改少請用「合約／堂次調整」；要加堂請用「續課」。</span>
         </div>
 
@@ -310,6 +318,7 @@ import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
 import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
+import { TRIAL_TARGET_CLASS_TYPE_OPTIONS } from '../lib/trialTarget.js';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -335,6 +344,7 @@ const defaultForm = {
   subject: 'Math',
   teacher_id: '',
   class_type: 'one_on_one',
+  trial_target_class_type: null,
   rate_per_30min: 0,
   rate_unit: 'session',
   duration_hours: 2,

@@ -172,7 +172,7 @@
     </section>
 
     <!-- Course Table -->
-    <div class="card table-card" data-guide="course-mgmt-table">
+    <div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">
       <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
@@ -613,13 +613,13 @@
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" title="在這裡打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 在這裡看帳務</button>
                         <button
-                          v-if="effectiveClosedReason(hc) === 'completed'"
+                          v-if="courseHistoryReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
                           role="menuitem"
                           title="從這期已完課課程建立下一期；既有課程與帳務紀錄不會變更"
                           @click="openCommercialPurchaseEntry(hc); closeActionMenu()"
                         ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
-                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> {{ DUAL_TEACHER_COPY_LABEL }}</button>
                         <p class="action-section-label">狀態管理</p>
                         <button v-if="hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
@@ -793,7 +793,7 @@
 
     <CourseManager
       v-if="courseManagerOpen && courseManagerCourse"
-      :course="courseManagerCourse" :tab="courseManagerTab"
+      :course="courseManagerCourse" :tab="courseManagerTab" :focus-fallback="focusCourseListAfterDrawerClose"
       :student-name="courseManagerCourse.student_name || ''"
       :subject-label="getSubjectLabel(courseManagerCourse.subject)"
       :class-type-label="classTypeLabel(courseManagerCourse.class_type)"
@@ -830,7 +830,7 @@
       <template #settings>
         <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
         <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
-        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p></AtInlineAlert>
+        <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
           <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
@@ -847,7 +847,7 @@
           <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <details class="cm-settings-more">
             <summary>其他操作</summary>
-            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">複製為新課程並更換老師</button>
+            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">{{ DUAL_TEACHER_COPY_DRAWER_LABEL }}</button>
           </details>
           <details class="cm-settings-danger" data-testid="course-manager-danger">
             <summary>危險操作</summary>
@@ -868,12 +868,7 @@
         <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
           <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
         </AtInlineAlert>
-        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
-          <p>{{ editSaveError.message }}</p>
-          <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
-          <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
-          <button v-if="editSaveError.code === 'subject_change_requires_transfer'" type="button" class="small primary" data-testid="open-course-transfer" @click="showCourseTransfer = true">改用轉課</button>
-        </AtInlineAlert>
+        <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro">
             <strong>這門課有資料不能用一般編輯改寫</strong>
@@ -1103,7 +1098,8 @@
       :course-id="editingId"
       :subjects="subjectOptions"
       :teachers="editTeacherOptions"
-      @close="showCourseTransfer = false"
+      :prefill="courseTransferPrefill"
+      @close="showCourseTransfer = false; courseTransferPrefill = null"
       @done="onCourseTransferDone"
     />
     <TransferSessionsModal
@@ -1320,6 +1316,7 @@
     <AccountingLedgerModal
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
+      :initial-action="ledgerInitialAction"
       :branch-id="props.branchId"
       @close="ledgerOpen = false"
       @changed="loadCourses(pagination.page)"
@@ -1445,7 +1442,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, isHistoryCourse, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -1457,7 +1454,11 @@ import PurchaseSessionsModal from '../components/course-management/PurchaseSessi
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
+import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js';
+import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
+import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
+import { DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, dualTeacherCopyNotice } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1482,6 +1483,7 @@ import {
   buildStudentsCommercialNav,
 } from '../lib/authoritativeMutationRoutes.js';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
+import { trialTargetPayload } from '../lib/trialTarget.js';
 import { listExceptionWorkflows } from '../api';
 import {
   buildCourseLeaveDeepLink,
@@ -1558,7 +1560,8 @@ const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'nav
 // a report and voiding all happen inside it.
 const openTuitionLedger = (course) => openLedgerForCourse(course);
 const goToTuitionBilling = openTuitionLedger;
-const onPaymentNextAction = openTuitionLedger;
+// In-app #398: 「登記繳費回報」 opens the entry form for that course, with the ledger behind it.
+const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
@@ -2150,7 +2153,7 @@ function interceptGoToPurchaseCM(conflict) {
     openCommercialPurchaseEntry(target);
     return;
   }
-  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
+  alert('找不到要續課的課程，請重新整理後再從課程列點「續課」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -2190,9 +2193,18 @@ const editForm = ref({});
 const editFormSnapshot = ref('');
 const editSaveError = ref(null);
 const showCourseTransfer = ref(false);
+const courseTransferPrefill = ref(null);
+// The one way to open 轉課 (CourseTransferModal): ⋯ menu, a refused 課程設定 save
+// (in-app #409, prefilled) and any later deep link. Always resets the prefill.
+function openCourseTransfer(course, prefill = null) {
+  if (course && Number(course.id) !== Number(editingId.value)) editCourse(course, { openModal: false });
+  courseTransferPrefill.value = prefill;
+  showCourseTransfer.value = true;
+}
 const onCourseTransferDone = async () => {
   showCourseTransfer.value = false;
-  showEditModal.value = false;
+  courseTransferPrefill.value = null;
+  closeCourseManager();
   editSaveError.value = null;
   await loadCourses();
   toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
@@ -2241,6 +2253,7 @@ const EDITABILITY_ACTION_HANDLERS = new Set([
   'package_adjustment',
   'reconcile_usage',
   'new_contract',
+  'course_transfer',
 ]);
 
 function canOpenEditabilityAction(action) {
@@ -2261,6 +2274,11 @@ const navigateToStudentCourse = (course) => {
 async function openEditabilityAction(action) {
   const course = editingCourseRaw.value;
   if (!course) return;
+  // 轉課 carries the refused edits over (in-app #409), so nothing is discarded.
+  if (action === 'course_transfer') {
+    openCourseTransfer(course, editSaveError.value?.transferPrefill || null);
+    return;
+  }
   if (editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value) {
     if (!await askConfirm({ title: '捨棄尚未儲存的修改？', message: '前往帳務更正會捨棄你目前在編輯畫面改的內容。', confirmLabel: '捨棄並前往', danger: true })) return;
   }
@@ -2630,7 +2648,7 @@ function courseManagerNextSessionLabel(c) {
 function courseManagerOverviewNeeds(c) {
   const needs = [];
   if (isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 99))) {
-    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
+    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續課', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
   if (makeups.length) needs.push({ id: 'makeup', title: `${makeups.length} 堂待補課`, action: 'quick-add', actionLabel: '安排補課' });
@@ -2664,6 +2682,13 @@ async function leaveCourseManagerSettings() {
     } catch (_) { /* keep current form if snapshot corrupt */ }
   }
   courseManagerTab.value = 'overview';
+}
+// #4178: a drawer close that removed its own opener (course closed under 「進行中」) lands on the student's group, else the list.
+const courseTableCard = ref(null);
+function focusCourseListAfterDrawerClose(course) {
+  const sid = course?.student_id ?? course?.StudentID;
+  const toggle = sid != null && sid !== '' ? document.getElementById(studentGroupToggleId(`sid:${sid}`)) : null;
+  (toggle || courseTableCard.value)?.focus();
 }
 function syncCourseManagerCourseFromList() {
   if (!courseManagerOpen.value || !courseManagerCourse.value) return;
@@ -2827,7 +2852,7 @@ function canCloseCourse(c) {
 async function duplicateCourseForTeacher(course) {
   const teacherName = course.teacher_name || '目前老師';
   const studentName = course.student_name || '學生';
-  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: `會複製這門課的設定並指定另一位老師。原課程（${teacherName}）不受影響。`, confirmLabel: '開啟新增課程' })) return;
+  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: dualTeacherCopyNotice(teacherName), confirmLabel: '開啟新增課程' })) return;
   backfillForm.value = {
     ...backfillForm.value,
     student_id: course.student_id || '',
@@ -2855,7 +2880,8 @@ async function duplicateCourseForTeacher(course) {
 function purchaseActionLabel(c) {
   if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
-  return isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? '續報加購' : '加購堂數';
+  // in-app #429: one name for the count-mode extension, low remaining or not (Founder Q8=A).
+  return RENEW_LESSONS_LABEL;
 }
 function purchaseActionIsRenew(c) {
   if (!isSessionMode(c)) return true;
@@ -2863,7 +2889,7 @@ function purchaseActionIsRenew(c) {
 }
 function purchaseActionTitle(c) {
   if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
-  return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
+  return isSessionMode(c) ? '續課（加買堂數）' : '月結課程結算本期並續約下個月';
 }
 
 function openPurchaseModal(course) {
@@ -3038,7 +3064,7 @@ async function submitPurchaseSessions() {
         focusedStudentKey.value = groupKey;
       }
       toastRef.value?.show?.({
-        title: op === 'set' ? '已設定共用方案總堂數' : '已加購共用方案堂數',
+        title: op === 'set' ? '已設定共用方案總堂數' : '已續課：共用方案堂數已增加',
         description: `方案總堂數已由 ${currentTotal} 堂調整為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
         variant: 'success',
         durationMs: 7000,
@@ -3070,7 +3096,7 @@ async function submitPurchaseSessions() {
       const duplicateHint = json?.duplicate_course?.id
         ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
         : '';
-      alert((details || json?.message || '加購失敗') + duplicateHint);
+      alert((details || json?.message || '續課失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -3082,7 +3108,7 @@ async function submitPurchaseSessions() {
       focusedStudentKey.value = groupKey;
     }
     toastRef.value?.show?.({
-      title: '已建立加購批次',
+      title: '已建立續課批次',
       description: formatRenewSuccessMessage({
         kind: 'purchase',
         studentName: course?.student_name || '',
@@ -3095,7 +3121,7 @@ async function submitPurchaseSessions() {
       durationMs: 7000,
     });
   } catch (e) {
-    alert('加購失敗：' + (e?.message || '請稍後再試'));
+    alert('續課失敗：' + (e?.message || '請稍後再試'));
   } finally {
     purchaseSubmitting.value = false;
   }
@@ -4083,8 +4109,8 @@ const toggleStudentGroup = (groupKey) => {
 const groupHasPausedCourse = (group) =>
   (group?.courses || []).some((c) => c.status === 'inactive' && !effectiveClosedReason(c));
 
-const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
-const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
+const activeCourses = (group) => (group?.courses || []).filter(c => !isCourseManagementHistory(c));
+const historyCourses = (group) => (group?.courses || []).filter(c => isCourseManagementHistory(c));
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
 // "進行中" rows fighting over the same teacher slot. Paused rows remain in
@@ -4153,7 +4179,7 @@ function clearCourseFilters() {
 
 const courseLensMetrics = computed(() => {
   const visibleCourses = courses.value;
-  const activeCount = visibleCourses.filter((course) => !isHistoryCourse(course) && course.status !== 'inactive').length;
+  const activeCount = visibleCourses.filter(isActiveCourse).length;
   const attentionCount = visibleCourses.filter((course) => {
     const remaining = displayRemainingSessions(course);
     return isSessionMode(course)
@@ -4802,6 +4828,7 @@ const editCourse = (c, options = {}) => {
     subject: c.subject,
     teacher_id: c.teacher_id || '',
     class_type: c.class_type,
+    trial_target_class_type: c.trial_target_class_type ?? null,
     rate_per_30min: c.rate_per_30min,
     rate_unit: c.rate_unit || 'session',
     duration_hours: c.duration_hours ?? 2,
@@ -4874,6 +4901,7 @@ const submitEdit = async () => {
             ? { teacher_effective_date: form.teacher_effective_date || new Date().toLocaleDateString('sv-SE') }
             : {}),
           class_type: form.class_type,
+          ...trialTargetPayload(form),
           rate_per_30min: form.rate_per_30min,
           rate_unit: form.rate_unit || 'session',
           sessions_purchased: form.sessions_purchased,
@@ -4960,6 +4988,8 @@ const submitEdit = async () => {
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
+          nextStep: editabilityNextStepForError(err),
+          transferPrefill: transferPrefillFromBlockedEdit(err, form, JSON.parse(editFormSnapshot.value || '{}')),
         };
         toastRef.value?.show?.({
           title: '儲存失敗',
@@ -5012,6 +5042,7 @@ const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
+const ledgerInitialAction = ref(null);
 const studentGroupTabs = ref({});
 const studentBillingState = ref({});
 const paymentSlipOpen = ref(false);
@@ -5133,9 +5164,10 @@ const studentBillingAnchorCourse = (group) => {
     || null;
 };
 
-const openLedgerForCourse = (course) => {
+const openLedgerForCourse = (course, initialAction = null) => {
   if (!course?.id) return;
   ledgerStudentClassId.value = course.id;
+  ledgerInitialAction.value = initialAction;
   ledgerOpen.value = true;
 };
 
@@ -5465,7 +5497,7 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   isDetailsOpen: (c) => expandedDates.value.has(c.id),
   isSessionEditOpen: () => showSessionEditModal.value,
   requestDelete: (c) => { confirmDeleteTarget.value = c; },
-  openCourseTransfer: (c) => { editCourse(c, { openModal: false }); showCourseTransfer.value = true; },
+  openCourseTransfer: (c) => openCourseTransfer(c),
   openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
   editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,

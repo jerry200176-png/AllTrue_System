@@ -362,6 +362,10 @@ class ScheduleController extends Controller
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id'          => $effectiveTeacherId,
                 'class_type'          => $effectiveClassType,
+                // in-app #426: a linked trial course carries its target class type.
+                'trial_target_class_type' => $effectiveClassType === 'trial' && $courseId > 0
+                    ? DB::table('StudentClass')->where('ID', $courseId)->value('trial_target_class_type')
+                    : null,
                 'room_id'             => $effectiveRoomId,
                 'branch_id'           => $branchId,
                 'schedule_date'       => $data['schedule_date'] ?? null,
@@ -944,23 +948,7 @@ class ScheduleController extends Controller
 
                 // Record schedules leave entry (created after cascade so the "already cascaded"
                 // detection in applyLeaveCascade doesn't fire on retries)
-                $markerKey = ['student_course_id' => $courseId, 'schedule_date' => $sessionDate, 'status' => 'leave']
-                    + ($this->dateHasTwoLessons($courseId, $sessionDate) ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []); // HH:MM like other producers // #3914 review
-                Schedule::firstOrCreate(
-                    $markerKey,
-                    [
-                        'student_id'  => (int) $course->StudentID,
-                        'day_of_week' => Carbon::parse($sessionDate)->dayOfWeekIso,
-                        'start_time'  => substr((string) $session->StartTime, 0, 5),
-                        'end_time'    => substr((string) $session->EndTime, 0, 5),
-                        'class_type'  => $course->ClassType ?? 'one_on_one',
-                        'type'        => 'normal',
-                        'deduction'   => 0,
-                        'branch_id'   => $studentCampusId,
-                        'teacher_id'  => (int) ($course->TeacherID ?? 0),
-                        'subject'     => $course->SubjectID ?? null,
-                    ]
-                );
+                CourseLeaveCascadeService::recordLeaveMarker($course, $session, $studentCampusId);
 
                 return response()->json([
                     'message'            => strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
@@ -1137,7 +1125,8 @@ class ScheduleController extends Controller
         // moving / re-statusing the row would detach its pin too (review r4247039997).
         if ($locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time)) {
             $moves = fn (string $k, int $len) => isset($data[$k]) && strtolower(substr((string) $data[$k], 0, $len)) !== strtolower(substr((string) $schedule->{$k}, 0, $len));
-            if ($moves('schedule_date', 10) || $moves('start_time', 5) || $moves('status', 32)
+            // #3979: a type change moves a makeup row out of the makeup branch, so it detaches the pin too.
+            if ($moves('schedule_date', 10) || $moves('start_time', 5) || $moves('status', 32) || $moves('type', 16)
                 || (isset($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id && (int) $data['teacher_id'] !== (int) $locked->TeacherID)) {
                 return \App\Support\LearningRecordMutableOwnership::lockedResponse();
             }
@@ -1158,7 +1147,7 @@ class ScheduleController extends Controller
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass')
                 ->where('ID', $courseId)
-                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate'])
+                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
                 ->first();
             if ($courseMeta) {
                 if (empty($merged['class_type'])) {
@@ -1194,6 +1183,7 @@ class ScheduleController extends Controller
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id' => $effectiveTeacherId,
                 'class_type' => $effectiveClassType,
+                'trial_target_class_type' => $courseMeta->trial_target_class_type ?? null,
                 'room_id' => $effectiveRoomId,
                 'branch_id' => $branchId,
                 'schedule_date' => $merged['schedule_date'] ?? null,
@@ -1334,8 +1324,7 @@ class ScheduleController extends Controller
     /** #3914 review: does this course hold two or more (non-cancelled) lessons on the date? */
     private function dateHasTwoLessons(int $courseId, string $date): bool
     {
-        return ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', $date)
-            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
+        return CourseLeaveCascadeService::courseHasTwoLessonsOn($courseId, $date);
     }
 
     /** #3914 review: delete the calendar's leave markers for one course/date; with two lessons that date, only this lesson's. */
@@ -1404,8 +1393,18 @@ class ScheduleController extends Controller
         }
     }
 
-    public function destroy(Schedule $schedule)
+    public function destroy(Request $request, Schedule $schedule)
     {
+        // Same caller rule as cancelMakeup(): a director of the row's campus (or super_admin), checked before the
+        // assessment is read so another campus learns nothing about it (#3938 item 2).
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'super_admin'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if ($role !== 'super_admin' && !in_array((int) ($schedule->branch_id ?? 0), $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
         // #3824: the pin row of a protected occurrence cannot be deleted (review r4247040009).
         $locked = \App\Support\LearningRecordMutableOwnership::protectedRecordForSlot((int) $schedule->student_course_id, (string) $schedule->schedule_date, (string) $schedule->start_time);
         // A makeup (type=extra) keeps the contract teacher on its row while the assessment records the substitute,

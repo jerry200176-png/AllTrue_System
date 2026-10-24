@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-22-self-join-campus-pending
+    published_at: "2026-10-22"
+    audiences:
+      - teacher
+    importance: digest
+    title: 新加入的分校要等主任核准
+    summary: 在個人資料新增的分校，要等該分校主任核准後才會生效。
+    items:
+      - category: action_required
+        text: 新增的分校會先標示「待審核」，請通知該分校主任核准；核准前不會生效。
+      - category: improved
+        text: 原本已核准的分校不受影響，照常使用。
+    source_refs:
+      - "changelog:2026-10-22:self-service-access-pending"

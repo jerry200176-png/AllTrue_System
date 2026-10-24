@@ -47,6 +47,17 @@ describe('useCalendarReschedule', () => {
     vi.unstubAllGlobals();
   });
 
+  it('renders the authoritative conflict message exactly once', async () => {
+    const message = '老師此時段本分校已有 2 位學生，已達一對二上限（2 位）。此時段已有：S-B。';
+    commitReschedule.mockRejectedValue(Object.assign(new Error(message), {
+      conflicts: [{ overlap_details: [{ student_id: 20, student_name: 'S-B' }] }],
+    }));
+    const flow = useCalendarReschedule(makeDeps());
+    flow.openRescheduleModal();
+    await flow.submitReschedule();
+    expect(flow.rescheduleError.value).toBe(message);
+  });
+
   it('matches a reschedule anchor by exact course, date, and start time', () => {
     const rows = [
       { id: 1, status: 'leave', student_course_id: 99, schedule_date: '2026-06-11', start_time: '16:00:00' },
@@ -136,7 +147,7 @@ describe('useCalendarReschedule', () => {
     expect(buildReschedulePreview({ targetDate: '' }).status).toBe('incomplete');
   });
 
-  it.each(['leave', 'leave_adjusted', 'excused', 'cancelled'])
+  it.each(['leave', 'leave_adjusted', 'excused', 'cancelled', 'voided'])
     ('does not block a target slot when the existing course is %s on that date', (status) => {
       const result = buildReschedulePreview({
         currentCourseId: 99,
@@ -156,7 +167,7 @@ describe('useCalendarReschedule', () => {
       expect(result.message).toContain('沒有發現衝堂');
     });
 
-  it('uses a schedule exception when the session projection is not loaded yet', () => {
+  it.each(['leave_adjusted', 'voided'])('uses a %s exception when the session projection is not loaded yet', (status) => {
     const result = buildReschedulePreview({
       currentCourseId: 99,
       studentId: 10,
@@ -166,10 +177,33 @@ describe('useCalendarReschedule', () => {
       endTime: '20:00',
       classType: 'one_on_one',
       courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
-      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', status: 'leave_adjusted' }],
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', start_time: '18:00', status }],
     });
 
     expect(result.blocked).toBe(false);
+  });
+
+  it.each(['18:00', undefined])('keeps an active occurrence when a voided exception has start %s', (voidedStart) => {
+    const result = buildReschedulePreview({
+      currentCourseId: 99, studentId: 10, teacherId: 5,
+      targetDate: '2026-09-01', startTime: '20:00', endTime: '22:00', classType: 'one_on_one',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '20:00', end_time: '22:00', class_type: 'one_on_one' }],
+      sessionDatesByCourseId: { 20: [{ session_date: '2026-09-01', start_time: '20:00', status: 'scheduled' }] },
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', start_time: voidedStart, status: 'voided' }],
+    });
+    expect(result.blocked).toBe(true);
+  });
+
+  it.each([['18:00', false], ['20:00', true]])('checks session status for the %s occurrence', (start, blocked) => {
+    const result = buildReschedulePreview({
+      teacherId: 5, targetDate: '2026-09-01', startTime: start, endTime: start === '18:00' ? '20:00' : '22:00',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: start, end_time: start === '18:00' ? '20:00' : '22:00' }],
+      sessionDatesByCourseId: { 20: [
+        { session_date: '2026-09-01', start_time: '18:00', status: 'voided' },
+        { session_date: '2026-09-01', start_time: '20:00', status: 'scheduled' },
+      ] },
+    });
+    expect(result.blocked).toBe(blocked);
   });
 
   it('lets a leave exception override a stale scheduled session projection', () => {

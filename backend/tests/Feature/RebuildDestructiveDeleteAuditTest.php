@@ -51,8 +51,9 @@ class RebuildDestructiveDeleteAuditTest extends TestCase
             'Notify_Token' => '',
         ]);
 
-        // No StudentSignIn, no approved LearningRecord → hasImmutableSessionHistory() is
-        // false → the StartDate change below takes the destructive full-rebuild path.
+        // No StudentSignIn, no approved LearningRecord, no attendance mark and no ledger row
+        // → the StartDate change below takes the destructive full-rebuild path. (#4455: an
+        // attended lesson is history now and is kept; see LessonDeleteGuardTest.)
         $course = StudentClass::create([
             'StudentID' => $student->id,
             'GradeID' => 1,
@@ -83,7 +84,7 @@ class RebuildDestructiveDeleteAuditTest extends TestCase
             'SessionDate' => '2026-08-06',
             'StartTime' => '18:00:00',
             'EndTime' => '20:00:00',
-            'Status' => 'attended',
+            'Status' => 'completed',
         ]);
 
         $record = LearningRecord::create([
@@ -121,7 +122,7 @@ class RebuildDestructiveDeleteAuditTest extends TestCase
             $sessionDeleteLog,
             'ClassSession deletion during full rebuild must be logged (per-row delete(), not mass ::delete())'
         );
-        $this->assertSame('attended', $sessionDeleteLog->old_data['Status'] ?? null);
+        $this->assertSame('completed', $sessionDeleteLog->old_data['Status'] ?? null);
 
         $recordDeleteLog = ScheduleAuditLog::where('action_type', 'delete')
             ->where('session_id', $session->id)

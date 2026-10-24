@@ -38,8 +38,10 @@ for (const [wf, names] of Object.entries(jobNames)) {
 
 test('presubmit reads PR number and runs the declaration gate under dispatch', () => {
   const y = read('.github/workflows/presubmit.yml');
-  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 4);
+  // concurrency + declaration body + CHECK 0d + CHECK 4A (labels for release-note-none) + CHECK 4B
+  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 5);
   assert.match(y, /workflow_dispatch' && inputs\.pr_number != ''/);
+  assert.match(y, /PR_LABELS="\$\(gh api "repos\/\$\{REPO\}\/pulls\/\$\{PR_NUMBER\}" --jq '\.labels\[\]\.name'\)"\n\s+fi\n\s+export PR_LABELS\n\s+node scripts\/check-release-notes-coverage\.mjs --base origin\/main --head HEAD/);
 });
 
 test('queue dispatches CI on main once after a merge', () => {
@@ -125,10 +127,10 @@ test('presubmit skips only the per-PR gates on dispatched land-queue batch branc
   assert.deepEqual(skipped.map((n) => /\[CHECK (\w+)\]/.exec(n)?.[1]).sort(), ['0d', '2', '4B']);
 });
 
-test('every squash goes through guardedSquash (fresh thread re-read right before merging)', () => {
-  assert.equal([...queue.matchAll(/\bsquash\(/g)].length, 0, 'call squash only via guardedSquash(n, sha, unresolvedThreads, squash)');
-  const guarded = [...queue.matchAll(/guardedSquash\([^)]*unresolvedThreads, squash\)/g)].length;
-  assert.equal(guarded, 2, 'serial path (processQueue) and batch path (landBatch) both re-check threads');
+test('every squash goes through guardedSquash (fresh thread + final-head review re-read right before merging)', () => {
+  assert.equal([...queue.matchAll(/\bsquash\(/g)].length, 0, 'call squash only via guardedSquash(n, sha, unresolvedThreads, readReview, squash)');
+  const guarded = [...queue.matchAll(/guardedSquash\([^)]*unresolvedThreads, readReview, squash\)/g)].length;
+  assert.equal(guarded, 2, 'serial path (processQueue) and batch path (landBatch) both re-check threads and review');
 });
 
 test('retired Agent Session Provenance stays a pass-through until the ruleset drops it', () => {

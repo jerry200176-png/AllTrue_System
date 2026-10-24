@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-21-legacy-paid-flag-resolve
+    published_at: "2026-10-21"
+    audiences:
+      - director
+    importance: digest
+    title: 「需核對」課程可補登或改未繳
+    summary: 標記已收卻沒有收款紀錄的課程，現在可在學生帳務的合約卡直接處理。
+    items:
+      - category: improved
+        text: 已經收過：按「已收過，補登收款」，填收款日期、繳費方式和金額，就會有收款紀錄。
+      - category: improved
+        text: 其實沒收：按「其實沒收，改成未繳」並寫原因，課程會依合約金額列入收款。
+    source_refs:
+      - "changelog:2026-10-21:legacy-paid-flag-resolve"

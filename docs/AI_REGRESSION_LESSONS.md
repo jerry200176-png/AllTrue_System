@@ -16,6 +16,19 @@ last_reviewed: 2026-09-05
 - **強制規則（續）**：會寫正式憑證的 job 必須 `needs:` 其合約測試且要求 `result == 'success'`，不可與測試平行跑。
 - **測試必補**：`scripts/tests/test_principal_rotation_grant_replay.py` 直接抽出 `deploy.yml` 裡實際出貨的轉換器與預檢程式來跑：MariaDB `BY PASSWORD`／`VIA … USING … OR`、MySQL 8 不變、殘留認證字串拒絕、拒絕時 stdout 為零位元組、預檢的殘留拒絕／排除目前帳號／已鎖定前任＋目前帳號通過／未鎖定非目前 `atr_*` 拒絕／讀不到鎖定狀態時前任仍算／讀不到 `mysql.user` 拒絕／數量格式錯誤拒絕；`test_deploy_activation_state.py` 斷言輪替 job `needs: contract-test`。
 
+### R158. workflow 的 `run:` 含 `${{ }}` 時整段是一個運算式，超過 21,000 位元組會讓整個 workflow 靜默停擺（#4051／#4066／#4085，2026-10-15）
+
+- **現象**：deploy.yml 的 Deploy 步驟（內嵌送到 Pi 的整份部署腳本）量到約 20,677 位元組；#3890 多加幾行註解就越線，GitHub 不再解析 deploy.yml，每次 push 只出現一個 0 job 的失敗 run。若合併，所有部署與 release train 都會停。
+- **根因**：GitHub 把含 `${{ }}` 的 `run:` 整段轉成一個 `format()` 運算式，上限 21,000 位元組；原本只有 deploy.yml 內部的合約測試量大小，而 deploy.yml 解析失敗時那個測試根本不會跑。
+- **強制規則**：長腳本放進 checked-in 檔案（Deploy 的遠端腳本在 `scripts/production-deploy/pi-remote-deploy.sh`，原 `${{ }}` 值由 step `env:` 傳入、以 `render_pi_remote_deploy.py` 純文字代換，Pi 收到的位元組不變）。`scripts/ci/workflow_expression_size.py` 在每個 PR（Control Plane Contract Lint）量所有 workflow，含 `${{ }}` 的區塊達 18,000 位元組即失敗；它無法精確量的寫法（anchor／alias／tag、`|2` 這類明確縮排）一律 fail closed。不含 `${{ }}` 的區塊不是運算式、不受此限（但加一個 `${{ }}` 就會被量到）。
+- **測試必補**：`test_deploy_activation_state.py` 的 expression-size、`fails_over_the_limit_and_on_unmeasurable_forms`、`sends_the_checked_in_remote_script_without_expressions`、`renders_like_github_text_substitution` 與 runner 區塊 rc 測試。
+
+### R159. 「authorization hardening」不是 silent ship 的理由：改到 UI／API 的變更要發教職員卡（2026-10-23）
+
+- **現象**：2026-10-22／23 上線的權限、帳務與畫面變更（老師管理、科目更名按鈕變灰、共用方案扣堂、重複課程提示等）都標成 `silent_ship`（多半寫「authorization hardening」），App 內「版本更新」一張都沒有。
+- **根因**：CHECK 4A（`scripts/check-release-notes-coverage.mjs`）只檢查「有沒有決策」，任何 `silent-reason` 都能過，不看 PR 是否改到 UI／API。
+- **防護**：CHECK 4A 新規則：PR 新增的 `silent_ship` fragment 若同 PR 改到 `frontend/src`（非測試）、`backend/app/Http/Controllers`、`backend/routes`，須貼 label `release-note-none`＋PR body 一行原因，否則失敗（self-test 涵蓋前端、測試檔、Controllers、label、staff_update 五種情況）。漏掉的卡由 #4462 補發。
+
 ### R156. 不再提供交易折扣；任何會產生折扣的入口一律在寫入前擋下（#4018／#4020，2026-10-14）
 
 - **現象**：100% 或等於原價的固定折扣讓續約產生 NT$0 帳單，但沒有任何流程能把它記成已結清：帳單維持未繳、課程卡一直提示「登記這筆」；而且這筆課有費用，所以「免費／贈送」也被拒絕（#4018）。
@@ -956,6 +969,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **根因**：heredoc SSH script 預設不因中途指令失敗而中止；成功訊息寫在指令後面而非以 exit code 分支。
 - **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。**D1（Founder 2026-10-13）起：migration 或 `migrate:status` 失敗一律 `abort_deploy`**（走既有 `rollback_deploy` 還原舊 code，不跑 build／health／smoke／success 標記）；不得再「code 繼續上線、run 結尾才紅」。
 - **測試必補**：`scripts/tests/test_deploy_activation_state.py`（`_execute_isolated_migration` 實際執行 migration 區塊：失敗即中止、status 失敗不得當成 0 筆 pending；success 標記步驟不得有 `if:`／`continue-on-error`）。
+- **同族告警（#4370）**：HTTP 呼叫完成不等於通知被接收。`monitor-alert.sh` 必須同時驗 HTTP 與 provider 成功回應；失敗回傳非零且不印成功，不輸出憑證／原始回應，也不自動重送可能已接收的 POST。`scripts/tests/test_monitor_alert_notify.py` 用 stub 驗證拒收、timeout、回應契約與清理，禁止對正式通知通道跑測試。
 
 ---
 

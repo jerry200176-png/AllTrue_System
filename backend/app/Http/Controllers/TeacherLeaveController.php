@@ -222,10 +222,12 @@ class TeacherLeaveController extends Controller
                 'count' => count($assignments),
             ]);
 
+            $status = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getStatusCode() < 500 ? $e->getStatusCode() : 500;
+
             return response()->json([
                 'message' => '批次代課失敗，整批已回滾：'.$e->getMessage(),
                 'rolled_back' => true,
-            ], 500);
+            ], $status);
         }
 
         $successCount = collect($results)->where('ok', true)->count();
@@ -276,8 +278,10 @@ class TeacherLeaveController extends Controller
         if (OccurrenceAssignmentService::enabledFor($campusId) && OccurrenceAssignmentService::onLeave($session)) {
             return ['ok' => false, 'error' => '此堂已請假，無法代課', 'class_session_id' => $classSessionId];
         }
-        if (\App\Support\LearningRecordMutableOwnership::protectedRecordForSession($classSessionId)) {
-            return ['ok' => false, 'error' => '此堂評量已填寫並核准，不能更改授課老師', 'class_session_id' => $classSessionId]; // #3824
+        // #3824/#3966: refuse only a real reassignment; re-asserting the assessment's own teacher is a safe repair, as in single substitute.
+        $protectedLr = \App\Support\LearningRecordMutableOwnership::protectedRecordForSession($classSessionId);
+        if ($protectedLr && (int) $protectedLr->TeacherID !== $teacherId) {
+            return ['ok' => false, 'error' => '此堂評量已填寫並核准，不能更改授課老師', 'class_session_id' => $classSessionId];
         }
         if (!$svc->teacherBoundToAny($teacherId, $managedCampusIds)) {
             return ['ok' => false, 'error' => '代課老師未綁定任一您管理的分校', 'class_session_id' => $classSessionId];
@@ -330,6 +334,10 @@ class TeacherLeaveController extends Controller
         $response = $sub->substitute($inner, $classSessionId);
         $status = $response->getStatusCode();
         $json = json_decode((string) $response->getContent(), true) ?: [];
+        if ($status >= 400 && $status < 500) {
+            // #3938: keep the substitute's own refusal status (e.g. 409 when the assessment was approved after the precheck).
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException($status, $json['message'] ?? '代課失敗');
+        }
         if ($status < 200 || $status >= 300) {
             throw new \RuntimeException($json['message'] ?? '代課失敗');
         }

@@ -157,7 +157,7 @@ const purchaseMsg = formatRenewSuccessMessage({
   firstDate: '2026-08-01',
   lastDate: '2026-09-20',
 });
-assert.ok(purchaseMsg.includes('加購 8 堂'));
+assert.ok(purchaseMsg.includes('續課 8 堂'));
 assert.ok(purchaseMsg.includes('2026-08-01'));
 assert.equal(primaryLeaksInternalId(purchaseMsg), false);
 
