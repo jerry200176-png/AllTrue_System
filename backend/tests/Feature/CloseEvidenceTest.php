@@ -16,8 +16,14 @@ class CloseEvidenceTest extends TestCase
     public function test_round_trip_preserves_nested_and_long_snapshot_values(): void
     {
         $payload = $this->payload();
+        $payload['previous_pointer'] = [
+            'kind' => 'ordinary_close_corrected_v1', 'close_uuid' => (string) Str::uuid(), 'correction_event_id' => 91,
+        ];
         $payload['guard_fact_ids']['invoices'] = range(1, 80);
-        $payload['cancelled_sessions'][] = $this->sessionEvidence(19, ' [結案取消]');
+        $payload['guard_fact_ids']['sessions'] = range(1, 65);
+        $payload['cancelled_sessions'] = array_map(
+            fn (int $id) => $this->sessionEvidence($id, ' [結案取消]'), range(1, 65)
+        );
         $service = new OrdinaryCloseEvidence();
         $id = $this->appendEvidence($service, $payload);
 
@@ -27,7 +33,7 @@ class CloseEvidenceTest extends TestCase
         $this->assertSame('success', $row->outcome);
         $this->assertSame(12, (int) $row->campus_id);
         $this->assertNotSame('77', $row->actor_ref);
-        $this->assertStringNotContainsString('private note', (string) $row->metadata);
+        $this->assertGreaterThan(120, strlen((string) $row->metadata));
     }
 
     public function test_reader_refuses_tampering_wrong_owner_or_wrong_campus(): void
@@ -48,7 +54,7 @@ class CloseEvidenceTest extends TestCase
         $this->assertNull($service->read($id, 34, 12));
     }
 
-    public function test_writer_refuses_unsupported_version_schema_and_raw_pii(): void
+    public function test_writer_refuses_unsupported_version_schema_and_free_text_fields(): void
     {
         $service = new OrdinaryCloseEvidence();
         $payload = $this->payload();
@@ -56,7 +62,7 @@ class CloseEvidenceTest extends TestCase
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
 
         $payload = $this->payload();
-        $payload['cancelled_sessions'][] = $this->sessionEvidence(19, 'tag') + ['note_text' => 'private note'];
+        $payload['cancelled_sessions'][] = $this->sessionEvidence(19, ' [結案取消]') + ['note_text' => 'free text'];
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
 
         $payload = $this->payload();
@@ -69,9 +75,12 @@ class CloseEvidenceTest extends TestCase
     {
         $service = new OrdinaryCloseEvidence();
         $armed = true;
-        DB::connection()->beforeExecuting(function ($query) use (&$armed) {
+        $appendAttempted = false;
+        DB::connection()->beforeExecuting(function ($query, $bindings) use (&$armed, &$appendAttempted) {
             if ($armed && stripos((string) $query, 'insert') !== false
-                && stripos((string) $query, 'security_audit_events') !== false) {
+                && stripos((string) $query, 'security_audit_events') !== false
+                && in_array(OrdinaryCloseEvidence::EVENT_TYPE, $bindings, true)) {
+                $appendAttempted = true;
                 throw new RuntimeException('forced evidence insert failure');
             }
         });
@@ -92,6 +101,7 @@ class CloseEvidenceTest extends TestCase
         } finally {
             $armed = false;
         }
+        $this->assertTrue($appendAttempted, 'Fault injection must reach the typed evidence insert.');
         $this->assertSame(0, DB::table('security_audit_events')->count());
     }
 
@@ -103,6 +113,93 @@ class CloseEvidenceTest extends TestCase
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
     }
 
+    public function test_reader_refuses_duplicate_close_uuid_rows(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $id = $this->appendEvidence($service, $this->payload());
+        $row = (array) DB::table('security_audit_events')->where('id', $id)->first();
+        unset($row['id']);
+        DB::table('security_audit_events')->insert($row);
+
+        $this->assertNull($service->read($id, 34, 12));
+    }
+
+    public function test_writer_rejects_mismatched_binding_before_commit(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $this->payload(), 35, 12));
+        $this->assertSame(0, DB::table('security_audit_events')->count());
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $this->payload(), 34, 13));
+        $this->assertSame(0, DB::table('security_audit_events')->count());
+    }
+
+    public function test_writer_rejects_invalid_session_dates_times_states_and_note_suffix(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $cases = [
+            ['date' => '2030-02-30'], ['start' => '25:00:00'],
+            ['owner_id' => 35], ['before_status' => 'free text'], ['after_status' => 'attended'],
+            ['suffix' => 'unrecognized note marker'],
+        ];
+        foreach ($cases as $changes) {
+            $session = $this->sessionEvidence(19, ' [結案取消]');
+            if (array_key_exists('suffix', $changes)) {
+                $session['note']['suffix'] = $changes['suffix'];
+                unset($changes['suffix']);
+            }
+            $payload = $this->payload();
+            $payload['cancelled_sessions'] = [array_merge($session, $changes)];
+            $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+            $this->assertSame(0, DB::table('security_audit_events')->count());
+        }
+    }
+
+    public function test_snapshot_requires_session_row_digests_and_exact_previous_pointer_shape(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $payload = $this->payload();
+        $payload['guard_fact_ids']['sessions'] = [19];
+        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        unset($payload['cancelled_sessions'][0]['before_row_digest']);
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+
+        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        $payload['cancelled_sessions'][0]['after_row_digest'] = 'not-a-digest';
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+
+        foreach (['contract_before_digest', 'contract_after_digest', 'guard_before_digest', 'guard_digest'] as $requiredDigest) {
+            $payload = $this->payload();
+            unset($payload[$requiredDigest]);
+            $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+        }
+
+        $payload = $this->payload();
+        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+        $payload['guard_fact_ids']['sessions'] = [19];
+        $payload['previous_pointer'] = [
+            'kind' => 'ordinary_close_v1', 'close_uuid' => (string) Str::uuid(), 'correction_event_id' => 91,
+        ];
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+        $this->assertSame(0, DB::table('security_audit_events')->count());
+    }
+
+    public function test_fact_and_serialized_byte_budgets_fail_closed(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $payload = $this->payload();
+        $payload['guard_fact_ids']['invoices'] = range(1, 1001);
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload), 'fact-row budget');
+
+        $payload = $this->payload();
+        $payload['guard_fact_ids']['sessions'] = range(1, 500);
+        $payload['cancelled_sessions'] = array_map(
+            fn (int $id) => $this->sessionEvidence($id, ' [結案取消]'), range(1, 500)
+        );
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload), 'serialized-byte budget');
+        $this->assertSame(0, DB::table('security_audit_events')->count());
+    }
+
     private function payload(): array
     {
         return [
@@ -111,8 +208,12 @@ class CloseEvidenceTest extends TestCase
             'close_reason' => 'settled',
             'lifecycle_before' => ['stop' => 0, 'closed_reason' => null, 'end_date' => null, 'mdate' => '2026-10-24 08:00:00'],
             'lifecycle_after' => ['stop' => 1, 'closed_reason' => 'settled', 'end_date' => '2030-01-01', 'mdate' => '2026-10-24 08:01:00'],
+            'previous_pointer' => null,
             'cancel_mode' => 'cancel_remaining', 'cancelled_sessions' => [],
-            'guard_digest' => hash('sha256', 'synthetic guard'),
+            'contract_before_digest' => hash('sha256', 'contract before'),
+            'contract_after_digest' => hash('sha256', 'contract after'),
+            'guard_before_digest' => hash('sha256', 'guard before'),
+            'guard_digest' => hash('sha256', 'guard after'),
             'guard_fact_ids' => [
                 'invoices' => [], 'invoice_items' => [], 'payments' => [], 'payment_reports' => [],
                 'deduction_events' => [], 'sign_ins' => [], 'learning_records' => [],
@@ -127,6 +228,8 @@ class CloseEvidenceTest extends TestCase
         return [
             'id' => $id, 'owner_id' => 34, 'date' => '2030-01-01', 'start' => '09:00:00', 'end' => '10:00:00',
             'before_status' => 'scheduled', 'after_status' => 'cancelled',
+            'before_row_digest' => hash('sha256', 'complete before row'),
+            'after_row_digest' => hash('sha256', 'complete after row'),
             'note' => [
                 'was_null' => false, 'byte_length' => 7, 'sha256' => hash('sha256', 'before'),
                 'suffix' => $suffix, 'after_sha256' => hash('sha256', 'after'),
@@ -134,18 +237,21 @@ class CloseEvidenceTest extends TestCase
         ];
     }
 
-    private function assertEvidenceThrows(callable $callback): void
+    private function assertEvidenceThrows(callable $callback, ?string $message = null): void
     {
         try {
             $callback();
             $this->fail('Expected evidence validation to reject the input.');
         } catch (RuntimeException $e) {
             $this->assertNotSame('', $e->getMessage());
+            if ($message !== null) {
+                $this->assertStringContainsString($message, $e->getMessage());
+            }
         }
     }
 
-    private function appendEvidence(OrdinaryCloseEvidence $service, array $payload): int
+    private function appendEvidence(OrdinaryCloseEvidence $service, array $payload, int $contractId = 34, int $campusId = 12): int
     {
-        return DB::transaction(fn () => $service->append($payload, 77, 12, 34));
+        return DB::transaction(fn () => $service->append($payload, 77, $campusId, $contractId));
     }
 }

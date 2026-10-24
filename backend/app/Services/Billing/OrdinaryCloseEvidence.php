@@ -8,13 +8,17 @@ use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
 
-/** Dedicated, lossless evidence storage for ordinary close snapshots. */
+/**
+ * Dedicated, lossless evidence storage for ordinary close snapshots.
+ * The caller holds the owning StudentClass parent lock; this table has no UUID uniqueness constraint.
+ */
 final class OrdinaryCloseEvidence
 {
     public const EVENT_TYPE = 'student_class.ordinary_close.v1';
     public const VERSION = 1;
     private const MAX_BYTES = 131072;
     private const MAX_FACTS = 1000;
+    // Full pre/post facts are represented by keyed canonical digests; only exact identity sets and write-set inverses persist.
     private const KEY_DOMAIN = 'alltrue-ordinary-close-evidence-v1|';
     private const GUARD_FACT_CATEGORIES = [
         'invoices', 'invoice_items', 'payments', 'payment_reports', 'deduction_events',
@@ -22,12 +26,8 @@ final class OrdinaryCloseEvidence
         'group_memberships', 'sessions', 'schedules', 'successor_courses',
     ];
 
-    /**
-     * Payload is deliberately separate from generic audit metadata: nested arrays and long
-     * canonical values must survive JSON storage without the generic 120-byte sanitizer.
-     *
-     * @param array<string, mixed> $payload
-     */
+    /** Payload is kept separate from generic metadata to preserve the complete typed snapshot. */
+    /** @param array<string, mixed> $payload */
     public function append(array $payload, int $actorId, int $campusId, int $contractId): int
     {
         $key = $this->applicationKey();
@@ -37,6 +37,9 @@ final class OrdinaryCloseEvidence
         $this->validatePayload($payload);
         if ($actorId < 1 || $campusId < 1 || $contractId < 1) {
             throw new RuntimeException('Invalid ordinary-close evidence binding.');
+        }
+        if ($payload['student_class_id'] !== $contractId || $payload['campus_id'] !== $campusId) {
+            throw new RuntimeException('Ordinary-close evidence binding mismatch.');
         }
 
         $uuid = $payload['close_uuid'];
@@ -85,6 +88,10 @@ final class OrdinaryCloseEvidence
         $key = $this->applicationKey();
         $row = DB::table('security_audit_events')->where('id', $eventId)->first();
         if (!$row || $row->event_type !== self::EVENT_TYPE || $row->outcome !== 'success') {
+            return null;
+        }
+        if (DB::table('security_audit_events')->where('event_type', self::EVENT_TYPE)
+            ->where('correlation_id', $row->correlation_id)->count() !== 1) {
             return null;
         }
         try {
@@ -147,8 +154,9 @@ final class OrdinaryCloseEvidence
     {
         $this->exactKeys($payload, [
             'close_uuid', 'student_class_id', 'student_id', 'campus_id', 'schedule_mode',
-            'close_reason', 'lifecycle_before', 'lifecycle_after', 'cancel_mode',
-            'cancelled_sessions', 'guard_digest', 'guard_fact_ids',
+            'close_reason', 'lifecycle_before', 'lifecycle_after', 'previous_pointer', 'cancel_mode',
+            'cancelled_sessions', 'contract_before_digest', 'contract_after_digest',
+            'guard_before_digest', 'guard_digest', 'guard_fact_ids',
         ]);
         if (!is_string($payload['close_uuid'] ?? null) || !Str::isUuid($payload['close_uuid'])
             || !is_int($payload['student_class_id'] ?? null) || $payload['student_class_id'] < 1
@@ -158,11 +166,15 @@ final class OrdinaryCloseEvidence
             || !in_array($payload['close_reason'] ?? null, ['settled', 'completed', 'settled_pending'], true)
             || !in_array($payload['cancel_mode'] ?? null, ['cancel_remaining', 'forfeit_remaining', 'none'], true)
             || !is_array($payload['lifecycle_before'] ?? null) || !is_array($payload['lifecycle_after'] ?? null)
-            || !is_array($payload['cancelled_sessions'] ?? null) || !is_string($payload['guard_digest'] ?? null)
-            || !preg_match('/^[a-f0-9]{64}$/', $payload['guard_digest'])
+            || !is_array($payload['cancelled_sessions'] ?? null)
+            || !$this->isHash($payload['contract_before_digest'] ?? null)
+            || !$this->isHash($payload['contract_after_digest'] ?? null)
+            || !$this->isHash($payload['guard_before_digest'] ?? null)
+            || !$this->isHash($payload['guard_digest'] ?? null)
             || !is_array($payload['guard_fact_ids'] ?? null)) {
             throw new RuntimeException('Malformed ordinary-close evidence payload.');
         }
+        // guard_digest is the complete post-close census; guard_before_digest is its complete pre-close counterpart.
         foreach ([$payload['lifecycle_before'], $payload['lifecycle_after']] as $lifecycle) {
             $this->exactKeys($lifecycle, ['stop', 'closed_reason', 'end_date', 'mdate']);
             if (!in_array($lifecycle['stop'], [0, 1], true)
@@ -172,15 +184,20 @@ final class OrdinaryCloseEvidence
                 throw new RuntimeException('Malformed lifecycle evidence.');
             }
         }
+        $this->validatePreviousPointer($payload['previous_pointer'] ?? null);
         $sessionIds = [];
         foreach ($payload['cancelled_sessions'] as $session) {
             if (!is_array($session)) {
                 throw new RuntimeException('Malformed cancelled-session evidence.');
             }
-            $this->exactKeys($session, ['id', 'owner_id', 'date', 'start', 'end', 'before_status', 'after_status', 'note']);
+            $this->exactKeys($session, [
+                'id', 'owner_id', 'date', 'start', 'end', 'before_status', 'after_status',
+                'before_row_digest', 'after_row_digest', 'note',
+            ]);
             if (!is_int($session['id']) || $session['id'] < 1 || $session['owner_id'] !== $payload['student_class_id']
-                || !is_string($session['date']) || !is_string($session['start']) || !is_string($session['end'])
-                || !is_string($session['before_status']) || !is_string($session['after_status'])
+                || !$this->isDateValue($session['date']) || !$this->isTimeValue($session['start']) || !$this->isTimeValue($session['end'])
+                || !in_array($session['before_status'], ['scheduled'], true) || $session['after_status'] !== 'cancelled'
+                || !$this->isHash($session['before_row_digest']) || !$this->isHash($session['after_row_digest'])
                 || !is_array($session['note'])) {
                 throw new RuntimeException('Malformed cancelled-session binding.');
             }
@@ -196,6 +213,7 @@ final class OrdinaryCloseEvidence
             }
         }
         $this->exactKeys($payload['guard_fact_ids'], self::GUARD_FACT_CATEGORIES);
+        $guardFactCount = 0;
         foreach ($payload['guard_fact_ids'] as $ids) {
             if (!is_array($ids) || !array_is_list($ids)) {
                 throw new RuntimeException('Malformed guard fact identity set.');
@@ -207,10 +225,33 @@ final class OrdinaryCloseEvidence
                 }
                 $seen[$id] = true;
             }
+            $guardFactCount += count($ids);
+        }
+        if (array_diff(array_keys($sessionIds), $payload['guard_fact_ids']['sessions']) !== []) {
+            throw new RuntimeException('Cancelled-session set is outside the complete session census.');
         }
         $this->validateSafeTree($payload);
-        if ($this->factCount($payload) > self::MAX_FACTS || strlen($this->canonicalJson($payload)) > self::MAX_BYTES) {
-            throw new RuntimeException('Ordinary-close evidence is incomplete or exceeds its limit.');
+        if ($guardFactCount > self::MAX_FACTS) {
+            throw new RuntimeException('Ordinary-close evidence exceeds the fact-row budget.');
+        }
+        if (strlen($this->canonicalJson($payload)) > self::MAX_BYTES) {
+            throw new RuntimeException('Ordinary-close evidence exceeds the serialized-byte budget.');
+        }
+    }
+
+    private function validatePreviousPointer(mixed $pointer): void
+    {
+        if ($pointer === null) {
+            return;
+        }
+        if (!is_array($pointer)) {
+            throw new RuntimeException('Malformed previous ordinary-close pointer.');
+        }
+        $this->exactKeys($pointer, ['kind', 'close_uuid', 'correction_event_id']);
+        if ($pointer['kind'] !== 'ordinary_close_corrected_v1' || !is_string($pointer['close_uuid'])
+            || !Str::isUuid($pointer['close_uuid']) || !is_int($pointer['correction_event_id'])
+            || $pointer['correction_event_id'] < 1) {
+            throw new RuntimeException('Malformed previous ordinary-close pointer.');
         }
     }
 
@@ -229,18 +270,6 @@ final class OrdinaryCloseEvidence
         } elseif (!is_null($value) && !is_scalar($value)) {
             throw new RuntimeException('Ordinary-close evidence contains an unsupported value.');
         }
-    }
-
-    private function factCount(array $value): int
-    {
-        $count = 0;
-        foreach ($value as $child) {
-            $count++;
-            if (is_array($child)) {
-                $count += $this->factCount($child);
-            }
-        }
-        return $count;
     }
 
     private function canonicalJson(array $value): string
@@ -279,8 +308,22 @@ final class OrdinaryCloseEvidence
 
     private function isDateValue(mixed $value): bool
     {
-        return is_string($value) && strlen($value) <= 35
-            && (bool) preg_match('/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:?\d{2})?)?$/', $value);
+        if (!is_string($value) || strlen($value) > 35
+            || !preg_match('/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?)?$/', $value, $match)) {
+            return false;
+        }
+        if (!checkdate((int) $match[2], (int) $match[3], (int) $match[1])) {
+            return false;
+        }
+        return !isset($match[4]) || ((int) $match[4] < 24 && (int) $match[5] < 60 && (int) $match[6] < 60);
+    }
+
+    private function isTimeValue(mixed $value): bool
+    {
+        if (!is_string($value) || !preg_match('/^(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?$/', $value, $match)) {
+            return false;
+        }
+        return (int) $match[1] < 24 && (int) $match[2] < 60 && (int) $match[3] < 60;
     }
 
     private function applicationKey(): string
