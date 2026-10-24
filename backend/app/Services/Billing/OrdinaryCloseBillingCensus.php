@@ -20,6 +20,7 @@ final class OrdinaryCloseBillingCensus
         if (DB::transactionLevel() < 1 || $courseId < 1 || $studentId < 1 || $remainingFactBudget < 0 || $remainingFactBudget > 1000) {
             $this->fail('invalid_context');
         }
+        $this->facts = [];
         $this->budget = $remainingFactBudget;
         $this->courseId = $courseId;
         try {
@@ -57,7 +58,7 @@ final class OrdinaryCloseBillingCensus
             $payments = $this->mergeRows($payments, $this->read('Payment', fn ($q) => $q->whereIn('id', $this->ids($reports, 'payment_id'))));
             $payments = $this->mergeRows($payments, $this->read('Payment', fn ($q) => $q->whereIn('payment_report_id', $reportIds)));
             $paymentIds = $this->union($paymentIds, $this->ids($payments, 'id'));
-            $this->validatePaymentsAndReports($payments, $reports, $invoiceIds, $paymentIds, $courseId, $studentId);
+            $this->validatePaymentsAndReports($payments, $reports, $invoiceIds, $courseId, $studentId);
 
             $corrections = $this->mergeRows($corrections, $this->read('invoice_corrections', fn ($q) => $q
                 ->where('student_class_id', $courseId)->orWhereIn('original_invoice_id', $invoiceIds)
@@ -131,7 +132,7 @@ final class OrdinaryCloseBillingCensus
         }
     }
 
-    private function validatePaymentsAndReports(array $payments, array $reports, array $invoices, array $paymentIds, int $course, int $student): void
+    private function validatePaymentsAndReports(array $payments, array $reports, array $invoices, int $course, int $student): void
     {
         $paymentMap = $this->byId($payments); $reportMap = $this->byId($reports);
         $reportPointers = [];
@@ -139,17 +140,45 @@ final class OrdinaryCloseBillingCensus
             if (!in_array((int) $p['InvoiceID'], array_map('intval', $invoices), true)) $this->fail('foreign_payment');
             $rid = $p['payment_report_id'] ?? null;
             if ($rid !== null) {
-                if (!isset($reportMap[(string) $rid]) || (($reportMap[(string) $rid]['payment_id'] ?? null) !== null
-                    && (string) $reportMap[(string) $rid]['payment_id'] !== (string) $p['id'])) $this->fail('payment_report_conflict');
+                if (!isset($reportMap[(string) $rid])) $this->fail('payment_report_conflict');
+                $reportInvoice = $reportMap[(string) $rid]['InvoiceID'] ?? null;
+                if ($reportInvoice !== null && (int) $reportInvoice !== (int) $p['InvoiceID']) $this->fail('payment_report_conflict');
                 $reportPointers[(string) $rid][] = (string) $p['id'];
             }
         }
-        foreach ($reportPointers as $linked) if (count($linked) !== 1) $this->fail('duplicate_report_payment');
+        foreach ($reportPointers as $reportId => $linked) {
+            $positive = array_filter($linked, static function ($paymentId) use ($paymentMap): bool {
+                $payment = $paymentMap[(string) $paymentId];
+                return (int) $payment['Amount'] > 0 && (string) $payment['Method'] !== 'void';
+            });
+            $reportPaymentId = $reportMap[$reportId]['payment_id'] ?? null;
+            if ($reportPaymentId !== null) {
+                $reportPayment = $paymentMap[(string) $reportPaymentId] ?? null;
+                if (!$reportPayment || (int) $reportPayment['Amount'] <= 0 || (string) $reportPayment['Method'] === 'void') $this->fail('payment_report_conflict');
+                $positive[(string) $reportPaymentId] = (string) $reportPaymentId;
+            }
+            if (count(array_unique(array_map('strval', $positive))) > 1) $this->fail('duplicate_report_payment');
+            if ($reportPaymentId !== null && !in_array((string) $reportPaymentId, $linked, true)) {
+                $reportPayment = $paymentMap[(string) $reportPaymentId] ?? null;
+                if (!$reportPayment || (($reportPayment['payment_report_id'] ?? null) !== null
+                    && (string) $reportPayment['payment_report_id'] !== (string) $reportId)) $this->fail('payment_report_conflict');
+            }
+        }
+        $reportPaymentClaims = [];
         foreach ($reports as $r) {
             if ((int) $r['StudentID'] !== $student || ($r['StudentClassID'] !== null && (int) $r['StudentClassID'] !== $course)) $this->fail('foreign_report');
             if (($r['InvoiceID'] ?? null) !== null && !in_array((int) $r['InvoiceID'], $invoices, true)) $this->fail('foreign_report_invoice');
             $pid = $r['payment_id'] ?? null;
-            if ($pid !== null && (!isset($paymentMap[(string) $pid]) || (string) $paymentMap[(string) $pid]['InvoiceID'] !== (string) ($r['InvoiceID'] ?? $paymentMap[(string) $pid]['InvoiceID']))) $this->fail('report_payment_conflict');
+            if ($pid !== null) {
+                $payment = $paymentMap[(string) $pid] ?? null;
+                if (!$payment || (int) $payment['Amount'] <= 0 || (string) $payment['Method'] === 'void'
+                    || (($r['InvoiceID'] ?? null) !== null && (string) $payment['InvoiceID'] !== (string) $r['InvoiceID'])
+                    || (($payment['payment_report_id'] ?? null) !== null && (string) $payment['payment_report_id'] !== (string) $r['id'])) {
+                    $this->fail('report_payment_conflict');
+                }
+                if (isset($reportPaymentClaims[(string) $pid]) && $reportPaymentClaims[(string) $pid] !== (string) $r['id']) $this->fail('duplicate_report_payment');
+                $reportPaymentClaims[(string) $pid] = (string) $r['id'];
+            }
         }
     }
 

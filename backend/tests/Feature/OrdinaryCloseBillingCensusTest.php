@@ -64,6 +64,21 @@ class OrdinaryCloseBillingCensusTest extends TestCase
         catch (\RuntimeException $e) { $this->assertStringContainsString('foreign_invoice_item', $e->getMessage()); }
     }
 
+    public function test_reusing_one_reader_resets_the_per_call_fact_budget(): void
+    {
+        $first = $this->fixture();
+        $second = $this->fixture();
+        DB::table('Payment')->insert(['InvoiceID' => $second['invoice']->id, 'Amount' => 10, 'PaidAt' => now(), 'Method' => 'cash', 'Note' => 'synthetic']);
+        $reader = app(OrdinaryCloseBillingCensus::class);
+        $capture = static fn (array $f): array => DB::transaction(fn () => $reader->captureLocked(
+            (int) $f['course']->ID, (int) $f['student']->id, 3
+        ));
+        $firstResult = $capture($first);
+        $secondResult = $capture($second);
+        $this->assertSame(2, $firstResult['fact_count']);
+        $this->assertSame(3, $secondResult['fact_count']);
+    }
+
     public function test_payment_report_two_way_link_is_captured_and_conflicts_refuse(): void
     {
         $f = $this->fixture();
@@ -104,6 +119,51 @@ class OrdinaryCloseBillingCensusTest extends TestCase
         $this->assertCount(1, $manifest['id_sets']['payment_reports']);
         $this->assertCount(1, $manifest['id_sets']['payments']);
         $this->assertStringNotContainsString('PRIVATE', json_encode($manifest));
+    }
+
+    public function test_valid_void_payment_history_shares_report_pointer_but_competing_crosslink_refuses(): void
+    {
+        $f = $this->fixture();
+        DB::table('payment_reports')->insert(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
+            'InvoiceID' => $f['invoice']->id, 'reported_by_name' => 'Synthetic', 'payment_date' => '2026-10-01',
+            'payment_method' => 'cash', 'reported_amount' => 7600, 'status' => 'voided', 'report_token_hash' => str_repeat('1', 64),
+            'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+        $reportId = (int) DB::getPdo()->lastInsertId();
+        DB::table('Payment')->insert(['InvoiceID' => $f['invoice']->id, 'Amount' => 7600, 'PaidAt' => now(), 'Method' => 'cash',
+            'Note' => 'PRIVATE retained receipt', 'payment_report_id' => $reportId, 'created_at' => now(), 'updated_at' => now()]);
+        $receiptId = (int) DB::getPdo()->lastInsertId();
+        DB::table('Payment')->insert(['InvoiceID' => $f['invoice']->id, 'Amount' => -7600, 'PaidAt' => now(), 'Method' => 'void',
+            'Note' => 'PRIVATE retained reversal', 'payment_report_id' => $reportId, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('payment_reports')->where('id', $reportId)->update(['payment_id' => $receiptId]);
+        $valid = $this->capture($f);
+        $this->assertCount(2, $valid['id_sets']['payments']);
+
+        DB::table('payment_reports')->insert(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
+            'InvoiceID' => $f['invoice']->id, 'reported_by_name' => 'Synthetic', 'payment_date' => '2026-10-01',
+            'payment_method' => 'cash', 'reported_amount' => 7600, 'status' => 'pending', 'report_token_hash' => str_repeat('2', 64),
+            'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+        $otherReportId = (int) DB::getPdo()->lastInsertId();
+        DB::table('Payment')->where('id', $receiptId)->update(['payment_report_id' => $otherReportId]);
+        try { $this->capture($f); $this->fail('report pointer to payment linked to a different report must refuse'); }
+        catch (\RuntimeException $e) { $this->assertStringContainsString('payment_report_conflict', $e->getMessage()); }
+    }
+
+    public function test_two_reports_cannot_claim_the_same_positive_payment(): void
+    {
+        $f = $this->fixture();
+        foreach (['3', '4'] as $tokenChar) {
+            DB::table('payment_reports')->insert(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
+                'InvoiceID' => $f['invoice']->id, 'reported_by_name' => 'Synthetic', 'payment_date' => '2026-10-01',
+                'payment_method' => 'cash', 'reported_amount' => 50, 'status' => 'confirmed', 'report_token_hash' => str_repeat($tokenChar, 64),
+                'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $reports = DB::table('payment_reports')->where('StudentClassID', $f['course']->ID)->orderBy('id')->pluck('id');
+        DB::table('Payment')->insert(['InvoiceID' => $f['invoice']->id, 'Amount' => 50, 'PaidAt' => now(), 'Method' => 'cash',
+            'Note' => 'PRIVATE disputed receipt', 'created_at' => now(), 'updated_at' => now()]);
+        $paymentId = (int) DB::getPdo()->lastInsertId();
+        DB::table('payment_reports')->whereIn('id', $reports)->update(['payment_id' => $paymentId]);
+        try { $this->capture($f); $this->fail('one payment cannot be claimed by two reports'); }
+        catch (\RuntimeException $e) { $this->assertStringContainsString('duplicate_report_payment', $e->getMessage()); }
     }
 
     public function test_dangling_payment_report_and_foreign_report_owner_are_rejected(): void
