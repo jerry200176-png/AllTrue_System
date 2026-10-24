@@ -2,7 +2,6 @@
 
 namespace App\Services\Billing;
 
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PDOException;
@@ -23,7 +22,7 @@ final class OrdinaryCloseActivityCensus
     {
         try {
             return $this->captureLockedUnsafe($courseId, $studentId, $remainingFactBudget);
-        } catch (QueryException|PDOException $e) {
+        } catch (PDOException $e) {
             throw new RuntimeException('Ordinary-close activity source unavailable.');
         }
     }
@@ -225,8 +224,7 @@ final class OrdinaryCloseActivityCensus
         $map = [];
         foreach ($rows as $row) {
             $data = (array) $row; $id = $data[$pk] ?? null;
-            $identity = (string) $this->sqlId($id);
-            $map[$identity] = $data;
+            $map[$this->sqlId($id)] = $data;
         }
         ksort($map, SORT_NUMERIC);
         if (count($map) > $this->budget || $this->factCount() + count($map) > $this->budget) throw new RuntimeException('Ordinary-close activity fact budget exceeded.');
