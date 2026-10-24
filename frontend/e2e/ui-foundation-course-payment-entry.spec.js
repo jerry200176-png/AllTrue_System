@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { REPORT_STATUS_LABELS } from '../src/lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
@@ -14,11 +14,14 @@ import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from '.
  * different action, and the ledger mock answers only for the requested
  * student_class_id, so opening the wrong row's billing fails.
  */
+// #4186: each state also pins the badge text the row must show (labels from courseMoneyState.js).
 const STATES = [
-  { paymentStatus: 'unpaid', actionLabel: '登記繳費回報' },
-  { paymentStatus: 'partial', actionLabel: '登記繳費回報' },
-  { paymentStatus: 'pending_report', actionLabel: `查看「${REPORT_STATUS_LABELS.pending}」` },
-  { paymentStatus: 'paid', actionLabel: '在這裡看帳務' },
+  { paymentStatus: 'unpaid', actionLabel: '登記繳費回報', badge: TUITION_STATUS_CONFIG.unpaid.label },
+  { paymentStatus: 'partial', actionLabel: '登記繳費回報', badge: TUITION_STATUS_CONFIG.partial.label },
+  { paymentStatus: 'pending_report', actionLabel: `查看「${REPORT_STATUS_LABELS.pending}」`, badge: TUITION_STATUS_CONFIG.pending_report.label },
+  { paymentStatus: 'paid', actionLabel: '在這裡看帳務', badge: TUITION_STATUS_CONFIG.paid.label },
+  // #4174: paid by the legacy flag alone (no payment record) reads 需核對, never 已收.
+  { paymentStatus: 'paid', legacyFlagOnly: true, actionLabel: '在這裡看帳務', badge: LEGACY_FLAG_UNVERIFIED_LABEL },
 ];
 
 /**
@@ -29,21 +32,22 @@ const STATES = [
  */
 const READ_ONLY_POSTS = new Set(['/api/v1/student-classes/session-dates', '/api/v1/adoption/events']);
 
-function course(id, studentId, studentName, paymentStatus) {
+function course(id, studentId, studentName, paymentStatus, legacyFlagOnly = false) {
   return {
+    legacy_paid_flag_only: legacyFlagOnly,
     id, student_id: studentId, student_name: studentName, teacher_name: '合成老師', TeacherID: 7301,
     subject: '數學', subject_name: '數學', class_type: 'one_on_one', payment_type: 'count', schedule_mode: 'count',
     SessionCount: 8, UsedSessions: 2, RemainingSessions: 6, payment_status: paymentStatus, charge: 4000,
-    paid_amount: paymentStatus === 'paid' ? 4000 : 0, has_valid_payment: paymentStatus === 'paid',
+    paid_amount: paymentStatus === 'paid' && !legacyFlagOnly ? 4000 : 0, has_valid_payment: paymentStatus === 'paid' && !legacyFlagOnly,
     latest_payment_report_id: paymentStatus === 'pending_report' ? 7401 : null,
     days_of_week: [2], start_time: '17:00', end_time: '18:00', status: 'active', branch_id: 1,
   };
 }
 
-for (const { paymentStatus, actionLabel } of STATES) {
-  test(`director 課程查找 ${paymentStatus}: payment badge is read-only and ${actionLabel} opens that course's billing in place`, async ({ page }) => {
+for (const { paymentStatus, legacyFlagOnly = false, actionLabel, badge } of STATES) {
+  test(`director 課程查找 ${paymentStatus}${legacyFlagOnly ? ' (legacy flag only)' : ''}: payment badge reads ${badge} and ${actionLabel} opens that course's billing in place`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    const target = course(7101, 7201, '合成目標學生', paymentStatus);
+    const target = course(7101, 7201, '合成目標學生', paymentStatus, legacyFlagOnly);
     const other = course(7102, 7202, '合成其他學生', paymentStatus === 'paid' ? 'unpaid' : 'paid');
     const ledgerIds = [];
     /** @type {string[]} */
@@ -102,6 +106,7 @@ for (const { paymentStatus, actionLabel } of STATES) {
     await expect(heading).toBeVisible({ timeout: 15_000 });
 
     await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: heading, courses, actionLabel });
+    await expect(page.locator(`.payment-status-and-action[data-course-id="${target.id}"] .payment-status-badge`)).toHaveText(badge);
     expect(ledgerIds).toEqual([target.id]);
     await expect(page.locator('#ledger-modal-title')).toHaveText(`${target.student_name}的帳務`);
     expect(writes, 'payment entry must not issue any non-GET API request').toEqual([]);
