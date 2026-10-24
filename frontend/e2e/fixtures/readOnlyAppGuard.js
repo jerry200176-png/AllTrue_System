@@ -49,10 +49,15 @@ export function classifySentryEnvelope(body) {
     const length = itemHeader.length;
     if (length !== undefined) {
       if (!Number.isSafeInteger(length) || length < 0 || length > MAX_SENTRY_ENVELOPE_BYTES
-        || payload.length < length + 1 || payload[length] !== 10) return 'malformed';
+        || payload.length < length) return 'malformed';
       payload = payload.subarray(0, length);
-      extra = bytes.subarray(itemHeaderLine.next + length + 1);
-      extraHeaderOffset = itemHeaderLine.next + length + 1;
+      const remainderOffset = itemHeaderLine.next + length;
+      const remainder = bytes.subarray(remainderOffset);
+      if (remainder.length > 0) {
+        if (remainder[0] !== 10) return 'malformed';
+        extra = remainder.subarray(1);
+        extraHeaderOffset = remainderOffset + 1;
+      }
     } else {
       const end = payload.indexOf(10);
       if (end >= 0) {

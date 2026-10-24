@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
+import { createEnvelope, serializeEnvelope } from '@sentry/core';
 import {
   appOriginOf,
   isAppOriginUrl,
@@ -75,6 +76,10 @@ describe('readOnlyAppGuard', () => {
       ]))).toBe('error');
     }
     const unicode = Buffer.from(JSON.stringify({ type: 'transaction', transaction: '課程測試' }));
+    const sdkEnvelope = createEnvelope({}, [[{ type: 'transaction', length: unicode.length }, unicode]]);
+    const serializedBySdk = Buffer.from(serializeEnvelope(sdkEnvelope));
+    expect(serializedBySdk.at(-1)).not.toBe(10);
+    expect(classifySentryEnvelope(serializedBySdk)).toBe('transaction');
     expect(classifySentryEnvelope(Buffer.concat([
       Buffer.from(`{}\n{"type":"transaction","length":${unicode.length}}\n`), unicode, Buffer.from('\n'),
     ]))).toBe('transaction');
@@ -84,6 +89,8 @@ describe('readOnlyAppGuard', () => {
     expect(classifySentryEnvelope(Buffer.concat([
       Buffer.from(`{}\n{"type":"transaction","length":${unicode.length}}\n`), unicode, Buffer.from('x'),
     ]))).toBe('malformed');
+    expect(classifySentryEnvelope(Buffer.from('{}\r\n{"type":"transaction"}\r\n{"type":"transaction"}'))).toBe('transaction');
+    expect(classifySentryEnvelope(Buffer.from(`{}\n{"type":"transaction","length":${unicode.length}}\n${unicode.toString('utf8')}`))).toBe('transaction');
     expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{}\nnoise'))).toBe('malformed');
     expect(classifySentryEnvelope(Buffer.alloc(1024 * 1024 + 1))).toBe('oversize');
   });
