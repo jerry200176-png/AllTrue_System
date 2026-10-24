@@ -19,6 +19,7 @@ class CloseEvidenceTest extends TestCase
         $payload['previous_pointer'] = [
             'kind' => 'ordinary_close_corrected_v1', 'close_uuid' => (string) Str::uuid(), 'correction_event_id' => 91,
         ];
+        $payload['cancel_remaining'] = true;
         $payload['guard_fact_ids']['invoices'] = range(1, 80);
         $payload['guard_fact_ids']['sessions'] = range(1, 65);
         $payload['cancelled_sessions'] = array_map(
@@ -136,22 +137,81 @@ class CloseEvidenceTest extends TestCase
     public function test_writer_rejects_invalid_session_dates_times_states_and_note_suffix(): void
     {
         $service = new OrdinaryCloseEvidence();
+        $baseline = $this->payload();
+        $baseline['cancel_remaining'] = true;
+        $baseline['guard_fact_ids']['sessions'] = [19];
+        $baseline['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        $validId = $this->appendEvidence($service, $baseline);
+        $this->assertEquals($baseline, $service->read($validId, 34, 12));
+
         $cases = [
             ['date' => '2030-02-30'], ['start' => '25:00:00'],
             ['owner_id' => 35], ['before_status' => 'free text'], ['after_status' => 'attended'],
             ['suffix' => 'unrecognized note marker'],
         ];
         foreach ($cases as $changes) {
-            $session = $this->sessionEvidence(19, ' [結案取消]');
+            $payload = $baseline;
+            $payload['close_uuid'] = (string) Str::uuid();
+            $session = $payload['cancelled_sessions'][0];
             if (array_key_exists('suffix', $changes)) {
                 $session['note']['suffix'] = $changes['suffix'];
                 unset($changes['suffix']);
             }
-            $payload = $this->payload();
-            $payload['cancelled_sessions'] = [array_merge($session, $changes)];
+            $payload['cancelled_sessions'][0] = array_merge($session, $changes);
             $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
-            $this->assertSame(0, DB::table('security_audit_events')->count());
+            $this->assertSame(1, DB::table('security_audit_events')->count());
         }
+    }
+
+    public function test_cancelled_sessions_must_be_a_list_even_when_map_is_otherwise_valid(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $payload = $this->payload();
+        $payload['cancel_remaining'] = true;
+        $payload['guard_fact_ids']['sessions'] = [19];
+        $payload['cancelled_sessions'] = ['person@example.test' => $this->sessionEvidence(19, ' [結案取消]')];
+
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+        $this->assertSame(0, DB::table('security_audit_events')->count());
+    }
+
+    public function test_cancel_and_forfeit_flags_preserve_all_four_independent_combinations(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        $incoherent = $this->payload();
+        $incoherent['guard_fact_ids']['sessions'] = [19];
+        $incoherent['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $incoherent));
+
+        foreach ([[false, false], [false, true], [true, false], [true, true]] as [$cancel, $forfeit]) {
+            $payload = $this->payload();
+            $payload['cancel_remaining'] = $cancel;
+            $payload['forfeit_remaining'] = $forfeit;
+            if ($cancel) {
+                $payload['guard_fact_ids']['sessions'] = [19];
+                $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+            }
+            $id = $this->appendEvidence($service, $payload);
+            $read = $service->read($id, 34, 12);
+            $this->assertSame($cancel, $read['cancel_remaining']);
+            $this->assertSame($forfeit, $read['forfeit_remaining']);
+            $this->assertCount($cancel ? 1 : 0, $read['cancelled_sessions']);
+        }
+        $this->assertSame(4, DB::table('security_audit_events')->count());
+    }
+
+    public function test_lifecycle_after_state_must_be_a_committed_ordinary_close(): void
+    {
+        $service = new OrdinaryCloseEvidence();
+        foreach ([
+            ['stop' => 0, 'closed_reason' => 'settled'],
+            ['stop' => 1, 'closed_reason' => 'completed'],
+        ] as $changes) {
+            $payload = $this->payload();
+            $payload['lifecycle_after'] = array_merge($payload['lifecycle_after'], $changes);
+            $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+        }
+        $this->assertSame(0, DB::table('security_audit_events')->count());
     }
 
     public function test_snapshot_requires_session_row_digests_and_exact_previous_pointer_shape(): void
@@ -193,6 +253,7 @@ class CloseEvidenceTest extends TestCase
 
         $payload = $this->payload();
         $payload['guard_fact_ids']['sessions'] = range(1, 500);
+        $payload['cancel_remaining'] = true;
         $payload['cancelled_sessions'] = array_map(
             fn (int $id) => $this->sessionEvidence($id, ' [結案取消]'), range(1, 500)
         );
@@ -209,7 +270,7 @@ class CloseEvidenceTest extends TestCase
             'lifecycle_before' => ['stop' => 0, 'closed_reason' => null, 'end_date' => null, 'mdate' => '2026-10-24 08:00:00'],
             'lifecycle_after' => ['stop' => 1, 'closed_reason' => 'settled', 'end_date' => '2030-01-01', 'mdate' => '2026-10-24 08:01:00'],
             'previous_pointer' => null,
-            'cancel_mode' => 'cancel_remaining', 'cancelled_sessions' => [],
+            'cancel_remaining' => false, 'forfeit_remaining' => false, 'cancelled_sessions' => [],
             'contract_before_digest' => hash('sha256', 'contract before'),
             'contract_after_digest' => hash('sha256', 'contract after'),
             'guard_before_digest' => hash('sha256', 'guard before'),

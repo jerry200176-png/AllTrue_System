@@ -154,7 +154,8 @@ final class OrdinaryCloseEvidence
     {
         $this->exactKeys($payload, [
             'close_uuid', 'student_class_id', 'student_id', 'campus_id', 'schedule_mode',
-            'close_reason', 'lifecycle_before', 'lifecycle_after', 'previous_pointer', 'cancel_mode',
+            'close_reason', 'lifecycle_before', 'lifecycle_after', 'previous_pointer',
+            'cancel_remaining', 'forfeit_remaining',
             'cancelled_sessions', 'contract_before_digest', 'contract_after_digest',
             'guard_before_digest', 'guard_digest', 'guard_fact_ids',
         ]);
@@ -164,7 +165,7 @@ final class OrdinaryCloseEvidence
             || !is_int($payload['campus_id'] ?? null) || $payload['campus_id'] < 1
             || !in_array($payload['schedule_mode'] ?? null, ['count', 'date', 'monthly', 'package', 'trial', 'other'], true)
             || !in_array($payload['close_reason'] ?? null, ['settled', 'completed', 'settled_pending'], true)
-            || !in_array($payload['cancel_mode'] ?? null, ['cancel_remaining', 'forfeit_remaining', 'none'], true)
+            || !is_bool($payload['cancel_remaining'] ?? null) || !is_bool($payload['forfeit_remaining'] ?? null)
             || !is_array($payload['lifecycle_before'] ?? null) || !is_array($payload['lifecycle_after'] ?? null)
             || !is_array($payload['cancelled_sessions'] ?? null)
             || !$this->isHash($payload['contract_before_digest'] ?? null)
@@ -184,7 +185,17 @@ final class OrdinaryCloseEvidence
                 throw new RuntimeException('Malformed lifecycle evidence.');
             }
         }
+        if ($payload['lifecycle_after']['stop'] !== 1
+            || $payload['lifecycle_after']['closed_reason'] !== $payload['close_reason']) {
+            throw new RuntimeException('Ordinary-close lifecycle after-state is inconsistent.');
+        }
+        if ($payload['cancel_remaining'] === false && $payload['cancelled_sessions'] !== []) {
+            throw new RuntimeException('A non-cancelling close cannot own cancelled sessions.');
+        }
         $this->validatePreviousPointer($payload['previous_pointer'] ?? null);
+        if (!array_is_list($payload['cancelled_sessions'])) {
+            throw new RuntimeException('Cancelled-session evidence must be a complete list.');
+        }
         $sessionIds = [];
         foreach ($payload['cancelled_sessions'] as $session) {
             if (!is_array($session)) {
