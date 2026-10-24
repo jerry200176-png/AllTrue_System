@@ -26,7 +26,7 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     from.mockImplementation(() => query(students(1, 9000)));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
-  afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
   it.each([0, 1, 500, 501, 1001])('loads every matching student for %i rows with bounded, authenticated pages', async (count) => {
     const fixture = students(count);
@@ -99,11 +99,19 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     }));
     wrapper = mountStudents();
     await flushPromises();
+    vi.useFakeTimers();
     await wrapper.find('#students-name-filter').setValue('光華');
     await wrapper.find('#students-grade-filter').setValue('J1');
     await flushPromises();
-    const filteredCalls = calls.filter(url => url.searchParams.get('class_id') === '7');
+    let filteredCalls = calls.filter(url => url.searchParams.get('class_id') === '7');
     expect(filteredCalls.map(url => url.searchParams.get('page'))).toEqual(['1', '2']);
+    // Grade refreshes immediately; search also schedules its existing 300 ms
+    // refresh. Control that clock so coverage/slow rendering cannot race this assertion.
+    await vi.advanceTimersByTimeAsync(300);
+    await flushPromises();
+    filteredCalls = calls.filter(url => url.searchParams.get('class_id') === '7');
+    expect(filteredCalls.map(url => url.searchParams.get('page'))).toEqual(['1', '2', '1', '2']);
+    expect(wrapper.findAll('.student-row')).toHaveLength(501);
     for (const url of filteredCalls) {
       expect(url.searchParams.get('search')).toBe('光華');
       expect(url.searchParams.get('branch_id')).toBe('11');
