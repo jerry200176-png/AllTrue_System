@@ -1038,6 +1038,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
   3. 手動緊急部署（minutes 凍結）也必須：merge 進 main 之後才跑 migrate —— 見 `.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md` §0 的授權流程。
   4. 接手任何 session 前先 `git log origin/main..<分支>` 檢查有無「已在 prod 生效但未合併」的 migration。
 - **測試必補**：`StudentClassRoomIdSchemaDriftTest` 鎖 `Schema::hasColumn('StudentClass','RoomID') === false`＋Export SELECT/headings 對齊；未來刪欄位一律加同型 drift 測試。
+- **既有欄位採用案例（#4136，2026-10-24）**：`up()` 因欄位已存在而跳過，不代表該 migration 擁有欄位；套件版本或 model cast 也不能證明刪除權。依既有 guarded-adoption 規則保留空 `down()`，回歸須先建立既有欄位與值，再驗證 `up()`／`down()` 後仍保留。原 migration 已在離線測試重現刪除既有 expiry 的問題，候選修補通過六個情境；尚未整合／合併，auth-table migration 核准與歷史 TTL 證據缺口仍保留。
 
 ---
 

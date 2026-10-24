@@ -2335,3 +2335,5 @@ CI 在全天任意時間跑都不會觸發 `isEndedAtCreateTime`。
 - Pi repo config 出現 `http.sslbackend` = 已被 Windows 工具污染，先 `git config --local --unset-all http.sslbackend`
 - 「部署成功」的定義 = production HEAD 等於 CI 驗證的 commit；health 200 不能單獨當簽收條件
 事故 issue：https://github.com/jerry200176-png/AllTrue_System/issues/1102
+
+**CI 重用競態案例（#4485，2026-10-24）**：查到符合 exact SHA／branch／workflow／event 的可重用 CI 後，回傳前仍須重新讀取 main；tip 已移動就拒絕，不得將舊 tip 的 CI 當成新 tip 證據。moved-tip 回歸已重現修補前失敗、候選修補後通過，但 #4485 仍為 Draft／HOLD，尚未安裝。最後一次查詢之後仍可能有晚到的 push run；此核對不代表 GitHub dispatch 具有原子去重保證。
