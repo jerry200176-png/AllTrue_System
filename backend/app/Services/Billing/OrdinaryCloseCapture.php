@@ -156,7 +156,9 @@ final class OrdinaryCloseCapture
                         'sha256' => hash('sha256', $old['note_was_null'] ? '' : $beforeNote), 'suffix' => $suffix,
                         'after_sha256' => hash('sha256', $afterNote)],
                 ];
-            } elseif ($changed) throw new RuntimeException('Ordinary-close changed an ineligible session.');
+            } elseif ($changed || !hash_equals($old['row_digest'], $this->digest('ClassSession', $row))) {
+                throw new RuntimeException('Ordinary-close changed an ineligible session.');
+            }
         }
         if (array_keys($expected) !== array_keys($actual) && array_diff_key($expected, $actual) !== []) {
             throw new RuntimeException('Ordinary-close cancellation set is incomplete.');

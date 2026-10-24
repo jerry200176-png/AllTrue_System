@@ -20,6 +20,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $course = $this->course(88032);
         $session = $this->makeSession($course, '2026-10-24', 'scheduled', '');
         $unicode = $this->makeSession($course, '2026-10-26', 'scheduled', ' 你好 [暫停取消]');
+        $whitespace = $this->makeSession($course, '2026-10-25', 'scheduled', '   ');
         $past = $this->makeSession($course, '2026-10-20', 'attended', 'unchanged');
         $movedOwner = $this->course(88039);
         $movedSession = $this->makeSession($movedOwner, '2026-10-21', 'attended', 'moved');
@@ -29,49 +30,41 @@ class OrdinaryCloseCaptureTest extends TestCase
         DB::table('StudentClass')->where('ID', $course)->update(['settlement_snapshot' => json_encode($priorPointer)]);
         DB::table('session_entitlement_transfers')->insert($this->transfer($session, $course, $course));
         DB::table('class_session_reassignments')->insert($this->reassignment($session, $course, $course));
-        $movedTransfer = $this->transfer($movedSession, $course, $movedOwner);
-        unset($movedTransfer['id']);
+        $movedTransfer = array_diff_key($this->transfer($movedSession, $course, $movedOwner), ['id' => true]);
         $movedTransfer['rolled_back_at'] = now();
         DB::table('session_entitlement_transfers')->insert($movedTransfer);
-        $movedReassignment = $this->reassignment($movedSession, $course, $movedOwner);
-        unset($movedReassignment['id']);
-        DB::table('class_session_reassignments')->insert($movedReassignment);
-        $unrelatedTransfer = $this->transfer($unrelatedSession, $unrelatedOwner, $unrelatedOwner);
-        unset($unrelatedTransfer['id']);
-        DB::table('session_entitlement_transfers')->insert($unrelatedTransfer);
-        $unrelatedReassignment = $this->reassignment($unrelatedSession, $unrelatedOwner, $unrelatedOwner);
-        unset($unrelatedReassignment['id']);
-        DB::table('class_session_reassignments')->insert($unrelatedReassignment);
+        DB::table('class_session_reassignments')->insert(array_diff_key($this->reassignment($movedSession, $course, $movedOwner), ['id' => true]));
+        DB::table('session_entitlement_transfers')->insert(array_diff_key($this->transfer($unrelatedSession, $unrelatedOwner, $unrelatedOwner), ['id' => true]));
+        DB::table('class_session_reassignments')->insert(array_diff_key($this->reassignment($unrelatedSession, $unrelatedOwner, $unrelatedOwner), ['id' => true]));
         $capture = DB::transaction(fn () => $service->captureLocked($course));
-        $this->assertSame([$session, $unicode, $past], array_keys($capture['sessions']));
+        $this->assertSame([$session, $unicode, $whitespace, $past], array_keys($capture['sessions']));
         $this->assertSame([$session, (int) DB::table('session_entitlement_transfers')->where('class_session_id', $movedSession)->value('id')], $capture['history']['session_entitlement_transfers']['ids']);
         $this->assertSame([$session, (int) DB::table('class_session_reassignments')->where('class_session_id', $movedSession)->value('id')], $capture['history']['class_session_reassignments']['ids']);
-        $this->assertSame($session, $capture['history']['session_entitlement_transfers']['ids'][0]);
-        $this->assertSame($session, $capture['history']['class_session_reassignments']['ids'][0]);
         $this->assertNotSame($capture['history']['session_entitlement_transfers']['digest'], $capture['history']['class_session_reassignments']['digest']);
         $this->assertArrayNotHasKey('Note', $capture['sessions'][$session]);
         $uuid = (string) Str::uuid();
 
         DB::beginTransaction();
         try {
-            DB::table('StudentClass')->where('ID', $course)->update([
-                'Stop' => 1, 'closed_reason' => 'settled', 'EndDate' => '2026-10-24 00:00:00',
-                'settlement_snapshot' => json_encode(['kind' => 'ordinary_close_v1', 'close_uuid' => $uuid, 'version' => 1, 'invalidated' => false]),
-                'MDate' => now(),
-            ]);
+            $this->closeContract($course, $uuid, 'settled', '2026-10-24 00:00:00');
             DB::table('ClassSession')->where('id', $session)->update([
                 'Status' => 'cancelled', 'Note' => ' [結案取消]', 'updated_at' => now(),
             ]);
             DB::table('ClassSession')->where('id', $unicode)->update([
                 'Status' => 'cancelled', 'Note' => ' 你好 [暫停取消] [結案取消]', 'updated_at' => now(),
             ]);
+            DB::table('ClassSession')->where('id', $whitespace)->update([
+                'Status' => 'cancelled', 'Note' => '    [結案取消]', 'updated_at' => now(),
+            ]);
             $partial = $service->describeCloseLocked($capture, $uuid, 'settled', true, false, '2026-10-24');
-            $this->assertSame([$session, $unicode], array_column($partial['cancelled_sessions'], 'id'));
+            $this->assertSame([$session, $unicode, $whitespace], array_column($partial['cancelled_sessions'], 'id'));
             $this->assertSame($priorPointer, $partial['previous_pointer']);
             $this->assertFalse($partial['cancelled_sessions'][0]['note']['was_null']);
             $this->assertSame(0, $partial['cancelled_sessions'][0]['note']['byte_length']);
             $this->assertSame(strlen(' 你好 [暫停取消]'), $partial['cancelled_sessions'][1]['note']['byte_length']);
             $this->assertSame(hash('sha256', ' 你好 [暫停取消]'), $partial['cancelled_sessions'][1]['note']['sha256']);
+            $this->assertSame(3, $partial['cancelled_sessions'][2]['note']['byte_length']);
+            $this->assertSame(hash('sha256', '   '), $partial['cancelled_sessions'][2]['note']['sha256']);
             $this->assertArrayNotHasKey('guard_before_digest', $partial);
             $this->assertArrayNotHasKey('guard_digest', $partial);
             $this->assertSame(['sessions', 'entitlement_changes', 'session_reassignments'], array_keys($partial['guard_fact_ids']));
@@ -90,13 +83,11 @@ class OrdinaryCloseCaptureTest extends TestCase
         $capture = DB::transaction(fn () => $service->captureLocked($course));
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
-        DB::table('StudentClass')->where('ID', $course)->update([
-            'Stop' => 1, 'closed_reason' => 'completed', 'settlement_snapshot' => json_encode([
-                'kind' => 'ordinary_close_v1', 'close_uuid' => $uuid, 'version' => 1, 'invalidated' => false,
-            ]), 'MDate' => now(),
-        ]);
-        DB::table('ClassSession')->where('id', $session)->update(['Status' => 'cancelled', 'Note' => 'same [結案取消]']);
+        $this->closeContract($course, $uuid);
+        DB::table('ClassSession')->where('id', $session)->update(['Status' => 'cancelled', 'Note' => 'same [暫停取消]']);
         try {
+            $this->assertCount(1, $service->describeCloseLocked($capture, $uuid, 'completed', true, false, '2026-10-24')['cancelled_sessions']);
+            DB::table('ClassSession')->where('id', $session)->update(['Note' => 'same [結案取消]']);
             $service->describeCloseLocked($capture, $uuid, 'completed', true, false, '2026-10-24');
             $this->fail('Wrong close suffix must refuse.');
         } catch (RuntimeException $e) {
@@ -108,12 +99,11 @@ class OrdinaryCloseCaptureTest extends TestCase
         $capture = DB::transaction(fn () => $service->captureLocked($course));
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
-        DB::table('StudentClass')->where('ID', $course)->update([
-            'Stop' => 1, 'closed_reason' => 'completed', 'settlement_snapshot' => json_encode([
-                'kind' => 'ordinary_close_v1', 'close_uuid' => $uuid, 'version' => 1, 'invalidated' => false,
-            ]), 'Charge' => 1, 'MDate' => now(),
-        ]);
+        $this->closeContract($course, $uuid);
         try {
+            DB::table('StudentClass')->where('ID', $course)->update(['Charge' => 0]);
+            $service->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
+            DB::table('StudentClass')->where('ID', $course)->update(['Charge' => 1]);
             $service->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
             $this->fail('Financial drift must refuse.');
         } catch (RuntimeException $e) {
@@ -129,11 +119,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $capture = DB::transaction(fn () => $service->captureLocked($course));
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
-        DB::table('StudentClass')->where('ID', $course)->update([
-            'Stop' => 1, 'closed_reason' => 'completed', 'settlement_snapshot' => json_encode([
-                'kind' => 'ordinary_close_v1', 'close_uuid' => $uuid, 'version' => 1, 'invalidated' => false,
-            ]), 'MDate' => now(),
-        ]);
+        $this->closeContract($course, $uuid);
         $partial = $service->describeCloseLocked($capture, $uuid, 'completed', false, true, '2026-10-24');
         $this->assertSame([], $partial['cancelled_sessions']);
         $this->assertSame(['sessions', 'entitlement_changes', 'session_reassignments'], array_keys($partial['guard_fact_ids']));
@@ -151,23 +137,6 @@ class OrdinaryCloseCaptureTest extends TestCase
         DB::rollBack();
     }
 
-    public function test_capture_rejects_more_than_one_thousand_combined_source_rows(): void
-    {
-        $course = $this->course(88037);
-        $rows = [];
-        for ($i = 0; $i < 1001; $i++) {
-            $rows[] = ['StudentClassID' => $course, 'SessionDate' => '2026-10-'.str_pad((string) (($i % 28) + 1), 2, '0', STR_PAD_LEFT),
-                'StartTime' => '10:00:00', 'EndTime' => '11:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now()];
-        }
-        DB::table('ClassSession')->insert($rows);
-        try {
-            DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
-            $this->fail('An over-budget census must fail closed.');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('row budget', $e->getMessage());
-        }
-    }
-
     public function test_capture_combines_rows_from_separate_tables_for_the_single_budget(): void
     {
         $course = $this->course(88038);
@@ -178,6 +147,7 @@ class OrdinaryCloseCaptureTest extends TestCase
                 'Note' => '', 'created_at' => now(), 'updated_at' => now()];
         }
         DB::table('ClassSession')->insert($rows);
+        DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
         $ids = DB::table('ClassSession')->where('StudentClassID', $course)->orderBy('id')->limit(401)->pluck('id');
         $histories = [];
         foreach ($ids as $id) $histories[] = $this->transfer((int) $id, $course, $course);
@@ -198,6 +168,7 @@ class OrdinaryCloseCaptureTest extends TestCase
             $uuid = (string) Str::uuid();
             DB::beginTransaction();
             $this->closeContract($course, $uuid);
+            (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
             if ($change === 'delete' || $change === 'replace') DB::table('ClassSession')->where('id', $session)->delete();
             if ($change === 'move') DB::table('ClassSession')->where('id', $session)->update(['StudentClassID' => $otherCourse]);
             if ($change === 'replace') $this->makeSession($course, '2026-10-29', 'scheduled', 'x');
@@ -214,17 +185,83 @@ class OrdinaryCloseCaptureTest extends TestCase
     {
         foreach ([[false, false], [false, true], [true, false], [true, true]] as $index => [$cancel, $forfeit]) {
             $course = $this->course(88060 + $index);
+            $session = $this->makeSession($course, '2026-10-29', 'scheduled', 'flag');
             $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
             $uuid = (string) Str::uuid();
             DB::beginTransaction();
             $this->closeContract($course, $uuid);
+            if ($cancel) DB::table('ClassSession')->where('id', $session)->update(['Status' => 'cancelled', 'Note' => 'flag [暫停取消]', 'updated_at' => now()]);
             try {
                 $part = (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', $cancel, $forfeit, '2026-10-24');
                 $this->assertSame($cancel, $part['cancel_remaining']);
                 $this->assertSame($forfeit, $part['forfeit_remaining']);
-                $this->assertSame([], $part['cancelled_sessions']);
+                $this->assertCount($cancel ? 1 : 0, $part['cancelled_sessions']);
+                $this->assertSame($cancel ? 'cancelled' : 'scheduled', DB::table('ClassSession')->where('id', $session)->value('Status'));
             } finally { DB::rollBack(); }
         }
+    }
+
+    public function test_note_schema_is_nonnull_and_truncated_post_close_note_is_refused(): void
+    {
+        $noteColumn = collect(DB::select("SHOW COLUMNS FROM ClassSession LIKE 'Note'"))->first();
+        $this->assertNotNull($noteColumn);
+        $this->assertSame('NO', $noteColumn->Null, 'The current schema does not permit a NULL Note fixture.');
+
+        $course = $this->course(88076);
+        $original = str_repeat('x', 240);
+        $session = $this->makeSession($course, '2026-10-29', 'scheduled', $original);
+        $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        $uuid = (string) Str::uuid();
+        DB::beginTransaction();
+        $this->closeContract($course, $uuid);
+        DB::table('ClassSession')->where('id', $session)->update(['Status' => 'cancelled', 'Note' => $original.' [暫停取消]', 'updated_at' => now()]);
+        $this->assertCount(1, (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', true, false, '2026-10-24')['cancelled_sessions']);
+        DB::table('ClassSession')->where('id', $session)->update([
+            'Note' => $original.' [暫停',
+        ]);
+        try {
+            (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', true, false, '2026-10-24');
+            $this->fail('A truncated suffix cannot be represented as reversible evidence.');
+        } catch (RuntimeException $e) { $this->assertStringContainsString('note inverse', $e->getMessage()); }
+        finally { DB::rollBack(); }
+    }
+
+    public function test_delta_refuses_each_unchanged_session_field_drift(): void
+    {
+        $mutations = [
+            ['SubjectID' => 2], ['SessionDate' => '2026-10-21'], ['StartTime' => '12:00:00'], ['EndTime' => '12:00:00'],
+            ['updated_at' => '2026-10-01 00:00:00'], ['IsContractException' => 1],
+            ['session_charge' => 1], ['OriginalSessionDate' => '2026-10-01'],
+            ['OriginalStartTimeHM' => '08:30'], ['created_at' => '2026-10-01 00:00:00'],
+        ];
+        foreach ($mutations as $index => $mutation) {
+            $course = $this->course(88080 + $index);
+            $session = $this->makeSession($course, '2026-10-20', 'attended', 'stable');
+            $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+            $uuid = (string) Str::uuid();
+            DB::beginTransaction();
+            $this->closeContract($course, $uuid);
+            (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
+            DB::table('ClassSession')->where('id', $session)->update($mutation);
+            try {
+                (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
+                $this->fail('Session field drift must be refused.');
+            } catch (RuntimeException $e) {
+                $expected = array_key_exists('updated_at', $mutation) ? 'ineligible session' : 'unsupported session field';
+                $this->assertStringContainsString($expected, $e->getMessage());
+            }
+            finally { DB::rollBack(); }
+        }
+    }
+
+    public function test_capture_refuses_an_unsupported_previous_pointer(): void
+    {
+        $course = $this->course(88090);
+        DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        DB::table('StudentClass')->where('ID', $course)->update(['settlement_snapshot' => '{"kind":"contract_amended","unexpected":true}']);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unsupported previous ordinary-close pointer.');
+        DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
     }
 
     public function test_delta_refuses_entitlement_history_drift(): void
@@ -236,6 +273,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
         $this->closeContract($course, $uuid);
+        (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
         DB::table('session_entitlement_transfers')->where('id', $session)->update(['reason' => 'changed']);
         try {
             (new OrdinaryCloseCapture())->describeCloseLocked($capture, $uuid, 'completed', false, false, '2026-10-24');
@@ -261,10 +299,10 @@ class OrdinaryCloseCaptureTest extends TestCase
             'Status' => $status, 'Note' => $note, 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
-    private function closeContract(int $course, string $uuid): void
+    private function closeContract(int $course, string $uuid, string $reason = 'completed', ?string $endDate = null): void
     {
         DB::table('StudentClass')->where('ID', $course)->update([
-            'Stop' => 1, 'closed_reason' => 'completed', 'settlement_snapshot' => json_encode([
+            'Stop' => 1, 'closed_reason' => $reason, 'EndDate' => $endDate, 'settlement_snapshot' => json_encode([
                 'kind' => 'ordinary_close_v1', 'close_uuid' => $uuid, 'version' => 1, 'invalidated' => false,
             ]), 'MDate' => now(),
         ]);

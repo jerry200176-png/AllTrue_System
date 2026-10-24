@@ -18,6 +18,7 @@ class OrdinaryCloseCaptureGeneratedColumnsTest extends TestCase
 
     public function test_capture_requires_a_caller_owned_transaction(): void
     {
+        $this->expectExceptionMessage('Ordinary-close capture requires its transaction.');
         $this->expectException(\RuntimeException::class);
         (new OrdinaryCloseCapture())->captureLocked(88036);
     }
