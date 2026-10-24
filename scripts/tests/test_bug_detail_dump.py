@@ -1,5 +1,13 @@
+import base64
+import json
+import re
+import subprocess
 import unittest
 from pathlib import Path
+
+import yaml
+
+from scripts.tests.test_dump_ids_only_contract import post_process
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github/workflows/bug-detail-dump.yml"
@@ -9,6 +17,57 @@ class BugDetailDumpContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = WORKFLOW.read_text(encoding="utf-8")
+
+    def test_encrypted_detail_preserves_stored_browser_diagnostics(self):
+        # Exercise the actual emitted PHP projection without running its DB/SSH
+        # probe. These are stored strings, as in the normal triage detail API.
+        steps = yaml.safe_load(self.source)["jobs"]["dump"]["steps"]
+        run = next(s["run"] for s in steps if s.get("name", "").startswith("Dump bug"))
+        template = re.search(r"python3 - <<'PY' > /tmp/bug207_probe\.php\n(.*?)\nPY\n", run, re.S).group(1)
+        rendered = subprocess.run(
+            ["python3", "-W", "ignore", "-"], input=template, capture_output=True,
+            text=True, env={"PATH": "/usr/bin:/bin", "BUG_ID": "7"}, check=True,
+        ).stdout
+        projection = rendered[rendered.rindex("echo json_encode(["):]
+        variables = sorted(set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", projection)))
+        context = json.dumps({
+            "buildSha": "a" * 40,
+            "recentApiFailures": [{"method": "PATCH", "path": "/api/v1/example", "status": 422,
+                                   "requestId": "synthetic-request-reference"}],
+            "recentClicks": [{"label": "取消本堂"}],
+            "recentMessages": [{"kind": "alert", "text": "synthetic-private-diagnostic"}],
+        }, ensure_ascii=False)
+        for stored in (context, None, "", "legacy non-JSON diagnostic"):
+            with self.subTest(stored=stored):
+                fixture = base64.b64encode(json.dumps({
+                    "id": 7, "status": "new", "severity": "medium", "CampusID": 1,
+                    "page_key": "calendar", "reporter_user_id": 2, "created_at": "2026-01-01",
+                    "updated_at": "2026-01-01", "client_info": stored,
+                }).encode()).decode()
+                setup = "\n".join(f"${name} = null;" for name in variables)
+                setup += f'\n$bug = json_decode(base64_decode("{fixture}"));\n'
+                result = subprocess.run(["php"], input="<?php\n" + setup + projection,
+                                        capture_output=True, text=True, check=True)
+                detail = json.loads(result.stdout)
+                self.assertIn("client_info", detail["bug"])
+                self.assertEqual(detail["bug"]["client_info"], stored)
+
+    def test_browser_diagnostics_remain_in_encrypted_artifact_only(self):
+        sentinel = "synthetic-private-browser-diagnostic"
+        envelope = {"ok": True, "requested_bug_id": 7,
+                    "bug": {"id": 7, "status": "new", "client_info": sentinel},
+                    "attachments": [], "comments": [], "status_logs": [], "reporter_history": [],
+                    "diagnostics": {"decision_grade_required": False, "decision_grade": False}}
+        result, encrypted, public, recovered = post_process(
+            "bug-detail-dump.yml", "Dump bug", "bug-detail.log",
+            json.dumps(envelope) + "\n", {"BUG_ID": "7"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(encrypted.returncode, 0, encrypted.stderr)
+        self.assertNotIn(sentinel, result.stdout + result.stderr + encrypted.stdout + encrypted.stderr)
+        for name, content in public.items():
+            self.assertNotIn(sentinel.encode(), content, name)
+        self.assertIn(sentinel, recovered)
 
     def test_fixed_probes_are_guarded_by_their_bug_ids(self):
         source = self.source

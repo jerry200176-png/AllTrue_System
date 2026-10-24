@@ -1887,6 +1887,7 @@ jobs:
               "reporter_user_id"=>(int)$bug->reporter_user_id,
               "title"=>$title,
               "description"=>$desc,
+              "client_info"=>$bug->client_info ?? null,
               "created_at"=>$bug->created_at,
               "updated_at"=>$bug->updated_at,
             ],
