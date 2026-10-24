@@ -36,6 +36,7 @@ class OrdinaryCloseCaptureGeneratedColumnsTest extends TestCase
             DB::connection($writer)->table('Student')->where('id', $studentId)->update(['CampusID' => 2]);
             $student = DB::table('Student')->where('id', $studentId)->lockForUpdate()->first();
             $this->assertSame(2, (int) $student->CampusID);
+            $this->assertSame(1, (int) DB::table('Student')->where('id', $studentId)->value('CampusID'));
             $course = (int) DB::table('StudentClass')->insertGetId([
                 'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 1,
                 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 0, 'ClassType' => 'one_on_one',
