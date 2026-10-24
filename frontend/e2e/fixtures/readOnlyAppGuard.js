@@ -4,7 +4,8 @@
  *
  * HTTP reads pass through on every origin. App adoption telemetry is answered
  * locally with 204. An opt-in spec may answer a valid transaction-only Sentry
- * envelope locally; every other HTTP write is aborted and recorded. Blocking the first write hop
+ * envelope locally; every other HTTP write is aborted and recorded. Blocking the
+ * first write hop
  * prevents redirect chains from carrying a write back to the app: Playwright
  * routes only the first request in an HTTP redirect chain.
  * Self-tests: readOnlyAppGuard.test.js (unit) and
@@ -44,27 +45,38 @@ export function classifySentryEnvelope(body) {
       || typeof itemHeader.type !== 'string') return 'malformed';
     let payload = bytes.subarray(itemHeaderLine.next);
     let extra = Buffer.alloc(0);
-    const length = itemHeader.content_length;
+    let extraHeaderOffset = 0;
+    const length = itemHeader.length;
     if (length !== undefined) {
       if (!Number.isSafeInteger(length) || length < 0 || length > MAX_SENTRY_ENVELOPE_BYTES
-        || payload.length < length || payload.length > length + 1
-        || (payload.length === length + 1 && payload[length] !== 10)) return 'malformed';
+        || payload.length < length + 1 || payload[length] !== 10) return 'malformed';
       payload = payload.subarray(0, length);
-      extra = bytes.subarray(itemHeaderLine.next + length);
+      extra = bytes.subarray(itemHeaderLine.next + length + 1);
+      extraHeaderOffset = itemHeaderLine.next + length + 1;
     } else {
       const end = payload.indexOf(10);
       if (end >= 0) {
         extra = payload.subarray(end + 1);
         payload = payload.subarray(0, end);
+        extraHeaderOffset = itemHeaderLine.next + end + 1;
       }
     }
     if (payload.includes(10) || payload.includes(13)) return 'malformed';
     const event = decodeJson(payload);
     if (!event || Array.isArray(event) || typeof event !== 'object') return 'malformed';
-    if (extra.length && !(extra.length === 1 && extra[0] === 10)) return 'mixed';
+    if (extra.length) {
+      try {
+        const nextHeader = decodeJson(readLine(extraHeaderOffset).line);
+        return nextHeader && typeof nextHeader === 'object' && typeof nextHeader.type === 'string'
+          ? 'mixed' : 'malformed';
+      } catch {
+        return 'malformed';
+      }
+    }
     if (itemHeader.type === 'transaction' && event.type === 'transaction'
-      && !Object.hasOwn(event, 'exception')) return 'transaction';
-    if (itemHeader.type === 'event' || event.type === 'error' || Object.hasOwn(event, 'exception')) return 'error';
+      && !Object.hasOwn(event, 'exception') && !['error', 'fatal'].includes(event.level)) return 'transaction';
+    if (itemHeader.type === 'event' || event.type === 'error' || ['error', 'fatal'].includes(event.level)
+      || Object.hasOwn(event, 'exception')) return 'error';
     return 'unknown';
   } catch {
     return 'malformed';
@@ -74,7 +86,7 @@ export function classifySentryEnvelope(body) {
 function isSentryEnvelopeUrl(url) {
   try {
     const parsed = new URL(String(url));
-    return parsed.protocol === 'https:' && !parsed.username && !parsed.password
+    return parsed.protocol === 'https:' && parsed.port === '' && !parsed.username && !parsed.password
       && /^o[0-9]+\.ingest(?:\.us)?\.sentry\.io$/.test(parsed.hostname)
       && /^\/api\/[0-9]+\/envelope\/$/.test(parsed.pathname);
   } catch {

@@ -65,9 +65,26 @@ describe('readOnlyAppGuard', () => {
     expect(classifySentryEnvelope(transaction)).toBe('transaction');
     expect(classifySentryEnvelope(Buffer.from('{"event_id":"1"}\n{"type":"event"}\n{"exception":{"values":[]}}\n'))).toBe('error');
     expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{"type":"error","exception":{}}\n'))).toBe('error');
-    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{"type":"transaction"}\n{}\n'))).toBe('mixed');
+    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{"type":"transaction"}\n{"type":"event"}\n{}\n'))).toBe('mixed');
     expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"attachment"}\n{}\n'))).toBe('unknown');
     expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n'))).toBe('malformed');
+    for (const level of ['error', 'fatal']) {
+      const payload = Buffer.from(JSON.stringify({ type: 'transaction', level, transaction: 'private' }));
+      expect(classifySentryEnvelope(Buffer.concat([
+        Buffer.from(`{}\n{"type":"transaction","length":${payload.length}}\n`), payload, Buffer.from('\n'),
+      ]))).toBe('error');
+    }
+    const unicode = Buffer.from(JSON.stringify({ type: 'transaction', transaction: '課程測試' }));
+    expect(classifySentryEnvelope(Buffer.concat([
+      Buffer.from(`{}\n{"type":"transaction","length":${unicode.length}}\n`), unicode, Buffer.from('\n'),
+    ]))).toBe('transaction');
+    expect(classifySentryEnvelope(Buffer.concat([
+      Buffer.from(`{}\n{"type":"transaction","length":${unicode.length - 1}}\n`), unicode, Buffer.from('\n'),
+    ]))).toBe('malformed');
+    expect(classifySentryEnvelope(Buffer.concat([
+      Buffer.from(`{}\n{"type":"transaction","length":${unicode.length}}\n`), unicode, Buffer.from('x'),
+    ]))).toBe('malformed');
+    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{}\nnoise'))).toBe('malformed');
     expect(classifySentryEnvelope(Buffer.alloc(1024 * 1024 + 1))).toBe('oversize');
   });
 
@@ -81,6 +98,7 @@ describe('readOnlyAppGuard', () => {
       'https://key@o123.ingest.us.sentry.io/api/456/envelope/',
       'https://o123.ingest.us.sentry.io/api/456/envelope/extra',
       'https://o123.ingest.us.sentry.io/api/x/envelope/',
+      'https://o123.ingest.us.sentry.io:4443/api/456/envelope/',
     ]) expect(classifyAppRequest(APP, 'POST', url, { allowTransactionTelemetry: true })).toBe('block');
     expect(classifyAppRequest(APP, 'PUT', allowed, { allowTransactionTelemetry: true })).toBe('block');
     expect(classifyAppRequest(APP, 'POST', allowed)).toBe('block');
