@@ -5,7 +5,7 @@
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
-> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
+> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md` 的 Start here 與任務對應節（導航地圖）。禁止未讀 INDEX 就直接動手。**
 > **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
 > 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
 
@@ -143,13 +143,8 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 
 ## 任務完成後的記錄原則
 
-| 發現了什麼 | 記在哪裡 |
-|---|---|
-| 非直覺的 DB / 流程行為 | `CLAUDE.md` §Gotchas（格式：`G-NNN: 一句話 + 後果`）|
-| AI 犯的錯誤（行為/流程） | `docs/AI_REGRESSION_LESSONS.md` |
-| 新功能 / bug 修復上線 | `docs/CHANGELOG.md`（一行原則）|
-| 技術債發現 | `docs/TECH_DEBT.md`（TD-NNN 表格）|
-| 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` |
+記錄位置依 `AGENTS.md` §公司治理記錄原則；非直覺的 DB／流程 Gotcha
+仍記在本檔 §核心資料表 Gotchas（`G-NNN`），不要在 adapter 複製發布 SOP。
 
 ---
 

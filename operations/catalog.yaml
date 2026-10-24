@@ -530,6 +530,29 @@ operations:
     parameter_keys: [bug_ids, campus_id, request_id]
     notes: ADR-POP-015 (c). Closes each listed report only if it is still eligible for the 14-day reporter timeout under its row lock; the rest are skipped. Pi-local POP only.
 
+  inapp-report-resolve-after-deploy:
+    lifecycle: active
+    domain: support
+    business_owner: director-support
+    technical_owner: platform-support
+    approver_roles: [super_admin]
+    approval_policy: founder-standing-inapp-lifecycle
+    founder_approval_required: false
+    runbook: docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md
+    alert_group: LINE:ops-support
+    escalation_policy: support-escalation
+    capabilities: [plan, dry_run, verify, audit]
+    risk: medium
+    reversible: false
+    transaction_required: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_triaged_or_in_progress_report_resolved_with_one_public_reply
+    strategy_class: App\Operations\Strategies\InappReportResolveAfterDeployStrategy
+    parameter_keys: [bug_id, campus_id, deploy_run_id, fix_commit_sha, github_issue_url, public_reply, request_id, smoke_result_ref, writeback_proof]
+    notes: ADR-POP-015 (b). Resolves one report only when the fix commit is in the deployed revision of a successful deploy.yml production run, health is 200, the issue's SourceRef names the report, the reply passes the reply guard with both outcome phrases, and the 15-minute review proof still matches under the row lock. deploy_run_id is a digit string; writeback_proof is {captured_at, proof} from the triage detail API. Pi-local POP only.
+
   reviewed-mismatched-pending-return:
     lifecycle: active
     domain: billing-entitlement
@@ -587,3 +610,32 @@ operations:
     parameter_keys: [student_id, course_id, campus_id, invoice_id, expected_invoice_total, expected_charge, decision_reference, expected_state_hash]
     tags: [repair, billing, reviewed-case]
     notes: Active after catalog v15 deployment; every request requires a mounted, expiring Founder tuple binding operation, full parameters hash, idempotency key, requester and approver before Pi-local execution. No payment/report/course write, receipt confirmation or refund.
+
+  package-ledger-net-repair-4455:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-package-ledger-net-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-PACKAGE-LEDGER-NET-REPAIR-4455.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: exact_manifest_package_ledger_rows_insert_only
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\PackageLedgerNetRepairStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, package, in-app-419]
+    notes: Exact manifest of GitHub #4455 (15 missing debits, 37 double debits; two class A rows deferred to #4470). Inserts one repair_4455 row per applicable session and recomputes the package counters; any other drift fails the whole plan. No course ledger, session, invoice or payment write. Pi-local POP only.

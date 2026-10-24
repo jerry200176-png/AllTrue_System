@@ -50,6 +50,7 @@ use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
 use App\Http\Controllers\TriageContractLinkController;
 use App\Http\Controllers\TriageTokenController;
+use App\Http\Controllers\PopInappApiClientController;
 use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
@@ -712,7 +713,8 @@ Route::prefix('v1')->group(function () {
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
         Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
-        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
+        // Restore re-applies the cancelled lesson's deduction; director + super_admin only, as the calendar offers it.
+        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id')->middleware('role:director,super_admin');
         // Move a session to another contract of the same student+subject (director + super_admin, campus-scoped).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])->whereNumber('id')->middleware('role:director,super_admin');
         Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])->whereNumber('id')->middleware('role:director,super_admin');
@@ -856,6 +858,9 @@ Route::prefix('v1')->group(function () {
         Route::post('profiles/{id}/reset-password', [ProfileController::class, 'resetPassword']);
         Route::put('profiles/{id}', [ProfileController::class, 'update']);
         Route::delete('profiles/{id}', [ProfileController::class, 'destroy']);
+        // #4433: a pending campus link is decided by that campus's director (or super_admin).
+        Route::post('profiles/{id}/campus-links/{campusId}/approve', [ProfileController::class, 'approveCampusLink'])->whereNumber('id')->whereNumber('campusId');
+        Route::post('profiles/{id}/campus-links/{campusId}/reject', [ProfileController::class, 'rejectCampusLink'])->whereNumber('id')->whereNumber('campusId');
 
         Route::get('teacher_branches', [TeacherBranchController::class, 'index']);
         Route::post('teacher_branches', [TeacherBranchController::class, 'store']);
@@ -908,7 +913,8 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── Director: payment message for LINE copy ──────────────────────────
-    Route::middleware(['role:director', 'require_password_change'])->group(function () {
+    // require_campus: these act on one campus's LINE channel or students, so a director without a campus has nothing here.
+    Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
@@ -987,6 +993,10 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
         Route::post('admin/triage-tokens', [TriageTokenController::class, 'store']);
         Route::delete('admin/triage-tokens/{id}', [TriageTokenController::class, 'destroy'])->whereNumber('id');
+        // ADR-POP-015 §3: pop_inapp_agent POP requester credential (draft + dry-run of in-app operations only).
+        Route::get('admin/pop-inapp-agent-clients', [PopInappApiClientController::class, 'index']);
+        Route::post('admin/pop-inapp-agent-clients', [PopInappApiClientController::class, 'store']);
+        Route::delete('admin/pop-inapp-agent-clients/{id}', [PopInappApiClientController::class, 'destroy'])->whereNumber('id');
         // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
         Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
         Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');

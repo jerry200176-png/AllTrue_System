@@ -172,7 +172,7 @@
     </section>
 
     <!-- Course Table -->
-    <div class="card table-card" data-guide="course-mgmt-table">
+    <div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">
       <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
@@ -619,7 +619,7 @@
                           title="從這期已完課課程建立下一期；既有課程與帳務紀錄不會變更"
                           @click="openCommercialPurchaseEntry(hc); closeActionMenu()"
                         ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
-                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> {{ DUAL_TEACHER_COPY_LABEL }}</button>
                         <p class="action-section-label">狀態管理</p>
                         <button v-if="hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
@@ -793,7 +793,7 @@
 
     <CourseManager
       v-if="courseManagerOpen && courseManagerCourse"
-      :course="courseManagerCourse" :tab="courseManagerTab"
+      :course="courseManagerCourse" :tab="courseManagerTab" :focus-fallback="focusCourseListAfterDrawerClose"
       :student-name="courseManagerCourse.student_name || ''"
       :subject-label="getSubjectLabel(courseManagerCourse.subject)"
       :class-type-label="classTypeLabel(courseManagerCourse.class_type)"
@@ -847,7 +847,7 @@
           <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <details class="cm-settings-more">
             <summary>其他操作</summary>
-            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">複製為新課程並更換老師</button>
+            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">{{ DUAL_TEACHER_COPY_DRAWER_LABEL }}</button>
           </details>
           <details class="cm-settings-danger" data-testid="course-manager-danger">
             <summary>危險操作</summary>
@@ -1458,6 +1458,7 @@ import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js'
 import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import { RENEW_LESSONS_LABEL } from '../lib/courseIntent.js';
+import { DUAL_TEACHER_COPY_DRAWER_LABEL, DUAL_TEACHER_COPY_LABEL, dualTeacherCopyNotice } from '../lib/courseIntent.js';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1482,6 +1483,7 @@ import {
   buildStudentsCommercialNav,
 } from '../lib/authoritativeMutationRoutes.js';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
+import { trialTargetPayload } from '../lib/trialTarget.js';
 import { listExceptionWorkflows } from '../api';
 import {
   buildCourseLeaveDeepLink,
@@ -2681,6 +2683,13 @@ async function leaveCourseManagerSettings() {
   }
   courseManagerTab.value = 'overview';
 }
+// #4178: a drawer close that removed its own opener (course closed under 「進行中」) lands on the student's group, else the list.
+const courseTableCard = ref(null);
+function focusCourseListAfterDrawerClose(course) {
+  const sid = course?.student_id ?? course?.StudentID;
+  const toggle = sid != null && sid !== '' ? document.getElementById(studentGroupToggleId(`sid:${sid}`)) : null;
+  (toggle || courseTableCard.value)?.focus();
+}
 function syncCourseManagerCourseFromList() {
   if (!courseManagerOpen.value || !courseManagerCourse.value) return;
   const next = (courses.value || []).find((x) => Number(x.id) === Number(courseManagerCourse.value.id));
@@ -2843,7 +2852,7 @@ function canCloseCourse(c) {
 async function duplicateCourseForTeacher(course) {
   const teacherName = course.teacher_name || '目前老師';
   const studentName = course.student_name || '學生';
-  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: `會複製這門課的設定並指定另一位老師。原課程（${teacherName}）不受影響。`, confirmLabel: '開啟新增課程' })) return;
+  if (!await askConfirm({ title: `為${studentName}複製課程？`, message: dualTeacherCopyNotice(teacherName), confirmLabel: '開啟新增課程' })) return;
   backfillForm.value = {
     ...backfillForm.value,
     student_id: course.student_id || '',
@@ -4819,6 +4828,7 @@ const editCourse = (c, options = {}) => {
     subject: c.subject,
     teacher_id: c.teacher_id || '',
     class_type: c.class_type,
+    trial_target_class_type: c.trial_target_class_type ?? null,
     rate_per_30min: c.rate_per_30min,
     rate_unit: c.rate_unit || 'session',
     duration_hours: c.duration_hours ?? 2,
@@ -4891,6 +4901,7 @@ const submitEdit = async () => {
             ? { teacher_effective_date: form.teacher_effective_date || new Date().toLocaleDateString('sv-SE') }
             : {}),
           class_type: form.class_type,
+          ...trialTargetPayload(form),
           rate_per_30min: form.rate_per_30min,
           rate_unit: form.rate_unit || 'session',
           sessions_purchased: form.sessions_purchased,

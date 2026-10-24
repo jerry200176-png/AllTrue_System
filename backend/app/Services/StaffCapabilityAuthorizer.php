@@ -89,6 +89,45 @@ class StaffCapabilityAuthorizer
         $map = $this->capabilityCampusMap($user);
         return in_array($campusId, $map[$capability] ?? [], true);
     }
+
+    /**
+     * Founder policy 3 (2026-10-22): an unrevoked director grant makes the account a director for account management,
+     * whatever User.type says (a merged staff identity stays type T). Checked whether or not STAFF_MULTI_ROLE_V1 is on, so
+     * turning the flag on later cannot leave such an account editable by another director.
+     */
+    public function holdsDirectorGrant(int $userId): bool
+    {
+        return Schema::hasTable('user_capability_grants')
+            && UserCapabilityGrant::query()
+                ->where('user_id', $userId)
+                ->where('capability', self::CAP_DIRECTOR)
+                ->whereNull('revoked_at')
+                ->exists();
+    }
+
+    /**
+     * #4433: the account is linked to one of these campuses through an approved UserCampus row (Approved = 1, or a legacy
+     * NULL as in legacyCampusIds()), or through a legacy teacher_branches row at a campus where it has no UserCampus row.
+     * A pending request (Approved = 0) is not a link, so it gives that campus's director no management.
+     *
+     * @param array<int> $campusIds
+     */
+    public function hasApprovedCampusLink(int $userId, array $campusIds): bool
+    {
+        if ($campusIds === []) {
+            return false;
+        }
+        $approved = UserCampus::query()->where('UserID', $userId)->whereIn('CampusID', $campusIds)
+            ->where(fn ($q) => $q->where('Approved', true)->orWhereNull('Approved'))->exists();
+
+        return $approved || (Schema::hasTable('teacher_branches') && DB::table('teacher_branches')
+            ->where('teacher_id', $userId)->whereIn('branch_id', $campusIds)
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('UserCampus')
+                ->whereColumn('UserCampus.UserID', 'teacher_branches.teacher_id')
+                ->whereColumn('UserCampus.CampusID', 'teacher_branches.branch_id'))
+            ->exists());
+    }
+
     /**
      * @return array<string, list<int>>
      */

@@ -353,7 +353,10 @@ class PaymentReportController extends Controller
      */
     public function confirm(Request $request, $id, bool $legacyFlagBackfill = false)
     {
-        PaymentReport::findOrFail($id);
+        $found = PaymentReport::findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $found->getAttribute('StudentID'))) {
+            return $denied; // #4142: also covers confirm-batch, which forwards the caller's auth attributes
+        }
 
         $userId = $request->attributes->get('auth_user_id') ?? $request->attributes->get('auth_user')?->id; // bearer auth sets only auth_user
         $confirmationNote = trim((string) $request->input('note', ''));
@@ -629,9 +632,10 @@ class PaymentReportController extends Controller
                 : response()->json(['message' => '課程資料不存在'], 404);
         }
 
-        if ($freeGift && $request->attributes->get('auth_role') !== 'super_admin' // #3991 review: authorize the campus before classifying
-            && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        // #4142 (was free/gift only, #3991): authorize the campus before classifying, for every payment record
+        // and the batch route. Legacy backfill and correction reissue above keep their own scope checks.
+        if ($denied = $this->studentCampusRefusal($request, (int) $sc->getAttribute('StudentID'))) {
+            return $denied;
         }
         // #3991: an explicit 免費／贈送 mark skips the generic zero-fee guard (it is not a payment); tutoring stays refused.
         if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc, $freeGift)) {
@@ -860,6 +864,22 @@ class PaymentReportController extends Controller
         });
     }
 
+    /**
+     * #4142: a director may record, confirm or reject only for students in their own campuses
+     * (`require_campus` checks only that the caller has some campus). super_admin is not limited.
+     */
+    private function studentCampusRefusal(Request $request, int $studentId)
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $campusId = (int) DB::table('Student')->where('id', $studentId)->value('CampusID');
+        $allowed = $campusId > 0
+            && in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
+
+        return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
+    }
+
     /** Campus authorization for the legacy-flag actions (404 for a missing course, 403 outside the caller's campuses). */
     private function legacyFlagAccessRefusal(Request $request, ?StudentClass $course)
     {
@@ -1040,6 +1060,14 @@ class PaymentReportController extends Controller
                 return response()->json([
                     'message' => '這門課有設定費用（或費用在套裝上），不能登錄為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
                     'code' => 'free_gift_course_has_fee',
+                ], 422);
+            }
+            // #4012: a pending report must be confirmed or rejected first; the NT$0 mark would make the course `free`,
+            // which drops it from the collection queue while the zero-fee guard blocks confirming that report.
+            if (PaymentReport::query()->where('StudentClassID', $course->ID)->where('status', 'pending')->exists()) {
+                return response()->json([
+                    'message' => '這門課還有一筆待核對入帳的付款回報，請先確認或退回那筆回報，再標記「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
+                    'code' => 'free_gift_pending_report',
                 ], 422);
             }
             $freeNote = trim(Invoice::ZERO_REASON_FREE_GIFT_LABEL . ' ' . trim((string) ($data['note'] ?? '')));
@@ -1472,6 +1500,9 @@ class PaymentReportController extends Controller
     public function reject(Request $request, $id)
     {
         $report = PaymentReport::findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $report->getAttribute('StudentID'))) {
+            return $denied; // #4142
+        }
 
         if ($report->status !== 'pending') {
             return response()->json(['message' => '此回報已處理過'], 422);
@@ -1506,6 +1537,9 @@ class PaymentReportController extends Controller
     public function void(Request $request, $id)
     {
         $report = PaymentReport::with('student')->findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $report->getAttribute('StudentID'))) {
+            return $denied; // #4142 review: before the status 422 and validation, which would reveal the report's state
+        }
 
         if ($report->status !== 'confirmed') {
             $msg = $report->status === 'voided'
@@ -1520,11 +1554,6 @@ class PaymentReportController extends Controller
 
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!empty($campusIds) && $report->student) {
-            if (!in_array((int) $report->student->CampusID, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-        }
 
         $userId = $request->attributes->get('auth_user_id');
         // Routing id only — outside the write transaction so waiting on the course

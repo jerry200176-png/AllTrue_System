@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Services\StaffCapabilityAuthorizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -12,9 +14,13 @@ class TeacherBranchController extends Controller
     /**
      * GET /api/v1/teacher_branches
      */
-    public function index()
+    public function index(Request $request)
     {
-        $branches = UserCampus::all()->map(function ($uc) {
+        $query = UserCampus::query();
+        if ($request->attributes->get('auth_role') !== 'super_admin') {
+            $query->whereIn('CampusID', $this->callerCampusIds($request));
+        }
+        $branches = $query->get()->map(function ($uc) {
             return [
                 'teacher_id' => $uc->UserID,
                 'branch_id' => $uc->CampusID
@@ -41,6 +47,24 @@ class TeacherBranchController extends Controller
 
         $rows = isset($data[0]) && is_array($data[0]) ? $data : [$data];
         $hasApproved = Schema::hasColumn('UserCampus', 'Approved');
+        $superAdmin = $request->attributes->get('auth_role') === 'super_admin';
+        $callerCampusIds = $this->callerCampusIds($request);
+        // Every target must be a teacher the caller manages, AND the branch must be one the caller manages:
+        // granting a managed teacher a seat in an unmanaged campus is the campus director's decision, not this
+        // caller's (independent review F2). Both checked for all rows before any write.
+        foreach ($rows as $row) {
+            $userId = (int) ($row['teacher_id'] ?? 0);
+            $branchId = (int) ($row['branch_id'] ?? 0);
+            if (!$userId || !$branchId) {
+                continue;
+            }
+            if (!$this->managesTeacher($request, $userId)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            if (!$superAdmin && !in_array($branchId, $callerCampusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
 
         try {
             foreach ($rows as $row) {
@@ -49,11 +73,11 @@ class TeacherBranchController extends Controller
                 if (!$userId || !$campusId) {
                     continue;
                 }
-                $exists = DB::table('UserCampus')
+                $existing = DB::table('UserCampus')
                     ->where('UserID', $userId)
                     ->where('CampusID', $campusId)
-                    ->exists();
-                if ($exists) {
+                    ->first();
+                if ($existing) {
                     $update = ['Admin' => 0];
                     if ($hasApproved) {
                         $update['Approved'] = true;
@@ -62,6 +86,13 @@ class TeacherBranchController extends Controller
                         ->where('UserID', $userId)
                         ->where('CampusID', $campusId)
                         ->update($update);
+                    if ($hasApproved && isset($existing->Approved) && !(bool) $existing->Approved) {
+                        // #4433: this releases a pending request (the caller manages $campusId, checked above).
+                        SecurityAuditEvent::append('staff.campus_link.approved', 'success', [
+                            'actor_type' => 'user', 'actor_id' => $request->attributes->get('auth_user')?->id,
+                            'subject_type' => 'user', 'subject_id' => $userId, 'campus_id' => $campusId,
+                        ], ['method' => (string) $request->attributes->get('auth_role'), 'source' => 'teacher_branches.store', 'row_count' => 1]);
+                    }
                 } else {
                     $insert = [
                         'UserID' => $userId,
@@ -76,10 +107,9 @@ class TeacherBranchController extends Controller
             }
             return response()->json(['success' => true]);
         } catch (\Throwable $e) {
-            return response()->json([
-                'message' => 'Server error',
-                'error' => $e->getMessage(),
-            ], 500);
+            report($e);
+
+            return response()->json(['message' => 'Server error'], 500);
         }
     }
     
@@ -92,11 +122,47 @@ class TeacherBranchController extends Controller
         // Frontend: .delete().eq('teacher_id', editingId.value)
         // Query param: teacher_id
         
-        $teacherId = $request->query('teacher_id');
-        if ($teacherId) {
+        // One integer is checked and the same integer is deleted. teacher_id[]=<id> used to make (int) check User 1
+        // while the delete matched <id> (security review, 2026-10-22).
+        $raw = $request->query('teacher_id');
+        if ($raw !== null && $raw !== '' && (!is_scalar($raw) || !ctype_digit((string) $raw))) {
+            return response()->json(['message' => 'teacher_id must be one user id'], 422);
+        }
+        $teacherId = (int) $raw;
+        if ($teacherId > 0) {
+            if (!$this->managesTeacher($request, $teacherId)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
             UserCampus::where('UserID', $teacherId)->delete();
         }
 
         return response()->json(['success' => true]);
+    }
+
+    /** @return list<int> */
+    private function callerCampusIds(Request $request): array
+    {
+        return array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+    }
+
+    /**
+     * super_admin, or the target is a teacher (type T) with an approved link to one of the caller's campuses
+     * (StaffCapabilityAuthorizer::hasApprovedCampusLink, shared with ProfileController::canManageTeacher()).
+     * A director-grant holder is a director even as type T (Founder policy 3): only super_admin manages it.
+     */
+    private function managesTeacher(Request $request, int $userId): bool
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return true;
+        }
+        $campusIds = $this->callerCampusIds($request);
+        $authorizer = app(StaffCapabilityAuthorizer::class);
+        if ($campusIds === [] || (string) DB::table('User')->where('id', $userId)->value('type') !== 'T'
+            || $authorizer->holdsDirectorGrant($userId)) {
+            return false;
+        }
+
+        // #4433: only an approved link counts; a pending request to the caller's campus grants no management.
+        return $authorizer->hasApprovedCampusLink($userId, $campusIds);
     }
 }
