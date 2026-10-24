@@ -4,6 +4,7 @@ import {
   appOriginOf,
   isAppOriginUrl,
   classifyAppRequest,
+  classifySentryEnvelope,
   installReadOnlyAppGuard,
   isKnownPostRead,
 } from './readOnlyAppGuard.js';
@@ -59,6 +60,32 @@ describe('readOnlyAppGuard', () => {
     expect(classifyAppRequest(APP, 'POST', 'not a url')).toBe('ignore');
   });
 
+  it('classifies only a single transaction envelope from its framing and payload type', () => {
+    const transaction = Buffer.from('{"event_id":"1"}\n{"type":"transaction"}\n{"type":"transaction","transaction":"safe"}\n');
+    expect(classifySentryEnvelope(transaction)).toBe('transaction');
+    expect(classifySentryEnvelope(Buffer.from('{"event_id":"1"}\n{"type":"event"}\n{"exception":{"values":[]}}\n'))).toBe('error');
+    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{"type":"error","exception":{}}\n'))).toBe('error');
+    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n{"type":"transaction"}\n{}\n'))).toBe('mixed');
+    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"attachment"}\n{}\n'))).toBe('unknown');
+    expect(classifySentryEnvelope(Buffer.from('{}\n{"type":"transaction"}\n'))).toBe('malformed');
+    expect(classifySentryEnvelope(Buffer.alloc(1024 * 1024 + 1))).toBe('oversize');
+  });
+
+  it('accepts only the exact official HTTPS numeric Sentry envelope endpoint when opted in', () => {
+    const allowed = 'https://o123.ingest.us.sentry.io/api/456/envelope/';
+    expect(classifyAppRequest(APP, 'POST', allowed, { allowTransactionTelemetry: true })).toBe('inspect-telemetry');
+    for (const url of [
+      'http://o123.ingest.us.sentry.io/api/456/envelope/',
+      'https://o123.ingest.us.sentry.io.evil.test/api/456/envelope/',
+      'https://o123.ingest.us.sentry.io@evil.test/api/456/envelope/',
+      'https://key@o123.ingest.us.sentry.io/api/456/envelope/',
+      'https://o123.ingest.us.sentry.io/api/456/envelope/extra',
+      'https://o123.ingest.us.sentry.io/api/x/envelope/',
+    ]) expect(classifyAppRequest(APP, 'POST', url, { allowTransactionTelemetry: true })).toBe('block');
+    expect(classifyAppRequest(APP, 'PUT', allowed, { allowTransactionTelemetry: true })).toBe('block');
+    expect(classifyAppRequest(APP, 'POST', allowed)).toBe('block');
+  });
+
   it('knows a POST read only by exact method, app origin and path', () => {
     const read = { method: 'POST', origin: APP, path: '/api/v1/student-classes/session-dates' };
     expect(isKnownPostRead(APP, read)).toBe(true);
@@ -99,5 +126,23 @@ describe('readOnlyAppGuard', () => {
     expect(blocked.map((entry) => isKnownPostRead(APP, entry))).toEqual([false, true]);
     // This is the afterEach assertion the acceptance spec uses; a write fails it.
     expect(() => expect(blocked).toEqual([])).toThrow();
+  });
+
+  it('fulfills only transaction envelopes locally and blocks every other envelope', async () => {
+    let handler;
+    const context = { route: async (_predicate, registered) => { handler = registered; } };
+    const blocked = await installReadOnlyAppGuard(context, APP, { allowTransactionTelemetry: true });
+    const calls = [];
+    const route = (body) => ({
+      request: () => ({ method: () => 'POST', url: () => 'https://o123.ingest.sentry.io/api/456/envelope/', postDataBuffer: () => body }),
+      abort: async () => calls.push('abort'),
+      fulfill: async ({ status }) => calls.push(`fulfill:${status}`),
+      continue: async () => calls.push('continue'),
+    });
+    await handler(route(Buffer.from('{}\n{"type":"transaction"}\n{"type":"transaction"}\n')));
+    await handler(route(Buffer.from('{}\n{"type":"event"}\n{"exception":{}}\n')));
+    expect(calls).toEqual(['fulfill:204', 'abort']);
+    expect(blocked.telemetryCounts).toMatchObject({ transaction: 1, error: 1 });
+    expect(blocked).toEqual([{ method: 'POST', origin: 'https://o123.ingest.sentry.io', path: '/api/456/envelope/' }]);
   });
 });
