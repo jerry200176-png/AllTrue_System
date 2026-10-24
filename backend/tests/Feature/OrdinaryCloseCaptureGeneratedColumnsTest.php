@@ -23,6 +23,35 @@ class OrdinaryCloseCaptureGeneratedColumnsTest extends TestCase
         (new OrdinaryCloseCapture())->captureLocked(88036);
     }
 
+    public function test_capture_rechecks_caller_held_student_campus_as_current_read(): void
+    {
+        $studentId = 88101;
+        $writer = 'campus_writer';
+        config(['database.connections.'.$writer => config('database.connections.mysql')]);
+        DB::purge($writer);
+        DB::table('Student')->insert(['id' => $studentId, 'name' => 'Campus snapshot', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
+        try {
+            DB::beginTransaction();
+            $this->assertSame(1, (int) DB::table('Student')->where('id', $studentId)->value('CampusID'));
+            DB::connection($writer)->table('Student')->where('id', $studentId)->update(['CampusID' => 2]);
+            $student = DB::table('Student')->where('id', $studentId)->lockForUpdate()->first();
+            $this->assertSame(2, (int) $student->CampusID);
+            $course = (int) DB::table('StudentClass')->insertGetId([
+                'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 1,
+                'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 0, 'ClassType' => 'one_on_one',
+                'StartDate' => now()->subMonth(), 'SessionCount' => 1, 'SessionDuration' => 60, 'RemainingSessions' => 0,
+                'UsedSessions' => 1, 'Stop' => 0, 'ScheduleMode' => 'count', 'MDate' => now(),
+            ]);
+            $capture = (new OrdinaryCloseCapture())->captureLocked($course);
+            $this->assertSame(2, $capture['campus_id']);
+            DB::rollBack();
+        } finally {
+            if (DB::transactionLevel() > 0) DB::rollBack();
+            DB::connection($writer)->table('Student')->where('id', $studentId)->delete();
+            DB::purge($writer);
+        }
+    }
+
     public function test_post_write_digest_uses_database_generated_active_slot_value(): void
     {
         $addedFlag = !Schema::hasColumn('ClassSession', 'ActiveSlotFlag');
@@ -41,7 +70,7 @@ class OrdinaryCloseCaptureGeneratedColumnsTest extends TestCase
                 'Status' => 'scheduled', 'Note' => 'tag', 'created_at' => now(), 'updated_at' => now(),
             ]);
             $service = new OrdinaryCloseCapture();
-            $capture = DB::transaction(fn () => $service->captureLocked($course));
+            $capture = $this->capture($course);
             $this->assertSame($this->rowDigest('ClassSession', (array) DB::table('ClassSession')->where('id', $session)->first()), $capture['sessions'][$session]['row_digest']);
             $uuid = (string) Str::uuid();
             DB::beginTransaction();
@@ -72,5 +101,14 @@ class OrdinaryCloseCaptureGeneratedColumnsTest extends TestCase
         if (str_starts_with($key, 'base64:')) $key = (string) base64_decode(substr($key, 7), true);
         $json = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
         return hash_hmac('sha256', 'alltrue-ordinary-close-capture-v1|'.$table.'|'.$json, $key);
+    }
+
+    private function capture(int $course): array
+    {
+        $studentId = (int) DB::table('StudentClass')->where('ID', $course)->value('StudentID');
+        return DB::transaction(function () use ($course, $studentId) {
+            DB::table('Student')->where('id', $studentId)->lockForUpdate()->first();
+            return (new OrdinaryCloseCapture())->captureLocked($course);
+        });
     }
 }

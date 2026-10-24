@@ -36,7 +36,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         DB::table('class_session_reassignments')->insert(array_diff_key($this->reassignment($movedSession, $course, $movedOwner), ['id' => true]));
         DB::table('session_entitlement_transfers')->insert(array_diff_key($this->transfer($unrelatedSession, $unrelatedOwner, $unrelatedOwner), ['id' => true]));
         DB::table('class_session_reassignments')->insert(array_diff_key($this->reassignment($unrelatedSession, $unrelatedOwner, $unrelatedOwner), ['id' => true]));
-        $capture = DB::transaction(fn () => $service->captureLocked($course));
+        $capture = $this->capture($course);
         $this->assertSame([$session, $unicode, $whitespace, $past], array_keys($capture['sessions']));
         $this->assertSame([$session, (int) DB::table('session_entitlement_transfers')->where('class_session_id', $movedSession)->value('id')], $capture['history']['session_entitlement_transfers']['ids']);
         $this->assertSame([$session, (int) DB::table('class_session_reassignments')->where('class_session_id', $movedSession)->value('id')], $capture['history']['class_session_reassignments']['ids']);
@@ -62,9 +62,10 @@ class OrdinaryCloseCaptureTest extends TestCase
             $this->assertFalse($partial['cancelled_sessions'][0]['note']['was_null']);
             $this->assertSame(0, $partial['cancelled_sessions'][0]['note']['byte_length']);
             $this->assertSame(strlen(' 你好 [暫停取消]'), $partial['cancelled_sessions'][1]['note']['byte_length']);
-            $this->assertSame(hash('sha256', ' 你好 [暫停取消]'), $partial['cancelled_sessions'][1]['note']['sha256']);
+            $this->assertSame($this->noteDigest(' 你好 [暫停取消]'), $partial['cancelled_sessions'][1]['note']['sha256']);
+            $this->assertSame($this->noteDigest(' 你好 [暫停取消] [結案取消]'), $partial['cancelled_sessions'][1]['note']['after_sha256']);
             $this->assertSame(3, $partial['cancelled_sessions'][2]['note']['byte_length']);
-            $this->assertSame(hash('sha256', '   '), $partial['cancelled_sessions'][2]['note']['sha256']);
+            $this->assertSame($this->noteDigest('   '), $partial['cancelled_sessions'][2]['note']['sha256']);
             $this->assertArrayNotHasKey('guard_before_digest', $partial);
             $this->assertArrayNotHasKey('guard_digest', $partial);
             $this->assertSame(['sessions', 'entitlement_changes', 'session_reassignments'], array_keys($partial['guard_fact_ids']));
@@ -80,7 +81,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $service = new OrdinaryCloseCapture();
         $course = $this->course(88033);
         $session = $this->makeSession($course, '2026-10-29', 'scheduled', 'same');
-        $capture = DB::transaction(fn () => $service->captureLocked($course));
+        $capture = $this->capture($course);
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
         $this->closeContract($course, $uuid);
@@ -96,7 +97,7 @@ class OrdinaryCloseCaptureTest extends TestCase
 
         $course = $this->course(88034);
         $session = $this->makeSession($course, '2026-10-29', 'scheduled', 'same');
-        $capture = DB::transaction(fn () => $service->captureLocked($course));
+        $capture = $this->capture($course);
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
         $this->closeContract($course, $uuid);
@@ -116,7 +117,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $service = new OrdinaryCloseCapture();
         $course = $this->course(88035);
         $this->makeSession($course, '2026-10-29', 'scheduled', 'x');
-        $capture = DB::transaction(fn () => $service->captureLocked($course));
+        $capture = $this->capture($course);
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
         $this->closeContract($course, $uuid);
@@ -147,13 +148,13 @@ class OrdinaryCloseCaptureTest extends TestCase
                 'Note' => '', 'created_at' => now(), 'updated_at' => now()];
         }
         DB::table('ClassSession')->insert($rows);
-        DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        $this->capture($course);
         $ids = DB::table('ClassSession')->where('StudentClassID', $course)->orderBy('id')->limit(401)->pluck('id');
         $histories = [];
         foreach ($ids as $id) $histories[] = $this->transfer((int) $id, $course, $course);
         DB::table('session_entitlement_transfers')->insert($histories);
         try {
-            DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+            $this->capture($course);
             $this->fail('The combined census must enforce its one-thousand row limit.');
         } catch (RuntimeException $e) { $this->assertStringContainsString('row budget', $e->getMessage()); }
     }
@@ -164,7 +165,7 @@ class OrdinaryCloseCaptureTest extends TestCase
             $course = $this->course(88050 + $index);
             $otherCourse = $this->course(88070 + $index);
             $session = $this->makeSession($course, '2026-10-29', 'scheduled', 'x');
-            $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+            $capture = $this->capture($course);
             $uuid = (string) Str::uuid();
             DB::beginTransaction();
             $this->closeContract($course, $uuid);
@@ -186,7 +187,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         foreach ([[false, false], [false, true], [true, false], [true, true]] as $index => [$cancel, $forfeit]) {
             $course = $this->course(88060 + $index);
             $session = $this->makeSession($course, '2026-10-29', 'scheduled', 'flag');
-            $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+            $capture = $this->capture($course);
             $uuid = (string) Str::uuid();
             DB::beginTransaction();
             $this->closeContract($course, $uuid);
@@ -210,7 +211,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $course = $this->course(88076);
         $original = str_repeat('x', 240);
         $session = $this->makeSession($course, '2026-10-29', 'scheduled', $original);
-        $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        $capture = $this->capture($course);
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
         $this->closeContract($course, $uuid);
@@ -226,6 +227,15 @@ class OrdinaryCloseCaptureTest extends TestCase
         finally { DB::rollBack(); }
     }
 
+    public function test_note_hmac_keeps_null_distinct_from_empty_without_persisting_plain_hashes(): void
+    {
+        $method = new \ReflectionMethod(OrdinaryCloseCapture::class, 'digestValue');
+        $method->setAccessible(true);
+        $service = new OrdinaryCloseCapture();
+        $this->assertNotSame($method->invoke($service, 'note', null), $method->invoke($service, 'note', ''));
+        $this->assertNotSame(hash('sha256', 'private note'), $this->noteDigest('private note'));
+    }
+
     public function test_delta_refuses_each_unchanged_session_field_drift(): void
     {
         $mutations = [
@@ -237,7 +247,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         foreach ($mutations as $index => $mutation) {
             $course = $this->course(88080 + $index);
             $session = $this->makeSession($course, '2026-10-20', 'attended', 'stable');
-            $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+            $capture = $this->capture($course);
             $uuid = (string) Str::uuid();
             DB::beginTransaction();
             $this->closeContract($course, $uuid);
@@ -257,11 +267,11 @@ class OrdinaryCloseCaptureTest extends TestCase
     public function test_capture_refuses_an_unsupported_previous_pointer(): void
     {
         $course = $this->course(88090);
-        DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        $this->capture($course);
         DB::table('StudentClass')->where('ID', $course)->update(['settlement_snapshot' => '{"kind":"contract_amended","unexpected":true}']);
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Unsupported previous ordinary-close pointer.');
-        DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        $this->capture($course);
     }
 
     public function test_delta_refuses_entitlement_history_drift(): void
@@ -269,7 +279,7 @@ class OrdinaryCloseCaptureTest extends TestCase
         $course = $this->course(88075);
         $session = $this->makeSession($course, '2026-10-20', 'attended', '');
         DB::table('session_entitlement_transfers')->insert($this->transfer($session, $course, $course));
-        $capture = DB::transaction(fn () => (new OrdinaryCloseCapture())->captureLocked($course));
+        $capture = $this->capture($course);
         $uuid = (string) Str::uuid();
         DB::beginTransaction();
         $this->closeContract($course, $uuid);
@@ -292,6 +302,14 @@ class OrdinaryCloseCaptureTest extends TestCase
             'UsedSessions' => 1, 'Stop' => 0, 'ScheduleMode' => 'count', 'MDate' => now(),
         ]);
     }
+    private function capture(int $course): array
+    {
+        $student = (int) DB::table('StudentClass')->where('ID', $course)->value('StudentID');
+        return DB::transaction(function () use ($course, $student) {
+            DB::table('Student')->where('id', $student)->lockForUpdate()->first();
+            return (new OrdinaryCloseCapture())->captureLocked($course);
+        });
+    }
     private function makeSession(int $course, string $date, string $status, ?string $note): int
     {
         return (int) DB::table('ClassSession')->insertGetId([
@@ -311,6 +329,13 @@ class OrdinaryCloseCaptureTest extends TestCase
     {
         return ['id' => $session, 'class_session_id' => $session, 'source_student_class_id' => $source, 'target_student_class_id' => $target,
             'reason' => 'test', 'decision_reference' => 'capture-test', 'transferred_at' => now(), 'snapshot_before' => '{}', 'created_at' => now(), 'updated_at' => now()];
+    }
+    private function noteDigest(?string $note): string
+    {
+        $key = (string) config('app.key');
+        if (str_starts_with($key, 'base64:')) $key = (string) base64_decode(substr($key, 7), true);
+        $json = json_encode(['value' => $note], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
+        return hash_hmac('sha256', 'alltrue-ordinary-close-capture-v1|note|'.$json, $key);
     }
     private function reassignment(int $session, int $old, int $new): array
     {

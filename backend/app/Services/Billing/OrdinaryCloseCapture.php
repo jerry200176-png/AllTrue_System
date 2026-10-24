@@ -25,7 +25,7 @@ final class OrdinaryCloseCapture
     ];
     private const MAX_FACTS = 1000;
 
-    /** Capture a complete current census while the caller's transaction is active. */
+    /** Caller holds the Student prefix lock before this transaction-bound contract-first census. */
     public function captureLocked(int $courseId): array
     {
         $this->requireTransaction();
@@ -35,9 +35,9 @@ final class OrdinaryCloseCapture
         $contract = $this->raw($course);
         $this->assertOrdinaryContract($contract);
         $this->requireColumns('StudentClass', ['ID', 'StudentID', 'Stop', 'closed_reason', 'EndDate', 'MDate', 'settlement_snapshot', 'ScheduleMode']);
-        $this->requireColumns('Student', ['id', 'CampusID']);
         $this->requireColumns('ClassSession', ['id', 'StudentClassID', 'SubjectID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'Note', 'IsContractException', 'session_charge', 'OriginalSessionDate', 'OriginalStartTimeHM', 'created_at', 'updated_at', 'StartTimeHM']);
-        $campusId = (int) DB::table('Student')->where('id', (int) $contract['StudentID'])->value('CampusID');
+        // Re-read the caller-held Student prefix as a current locking read, not an older RR snapshot.
+        $campusId = (int) DB::table('Student')->where('id', (int) $contract['StudentID'])->lockForUpdate()->value('CampusID');
         if ($campusId < 1) throw new RuntimeException('Ordinary-close campus binding unavailable.');
         $sessions = $this->rows('ClassSession', fn ($q) => $q->where('StudentClassID', $courseId), self::MAX_FACTS);
         $sessionIds = array_map(static fn ($r) => (int) $r['id'], $sessions);
@@ -153,8 +153,8 @@ final class OrdinaryCloseCapture
                     'before_status' => 'scheduled', 'after_status' => 'cancelled',
                     'before_row_digest' => $old['row_digest'], 'after_row_digest' => $this->digest('ClassSession', $row),
                     'note' => ['was_null' => $old['note_was_null'], 'byte_length' => $old['note_length'],
-                        'sha256' => hash('sha256', $old['note_was_null'] ? '' : $beforeNote), 'suffix' => $suffix,
-                        'after_sha256' => hash('sha256', $afterNote)],
+                        'sha256' => $old['note_digest'], 'suffix' => $suffix,
+                        'after_sha256' => $this->digestValue('note', $row['Note'])],
                 ];
             } elseif ($changed || !hash_equals($old['row_digest'], $this->digest('ClassSession', $row))) {
                 throw new RuntimeException('Ordinary-close changed an ineligible session.');
