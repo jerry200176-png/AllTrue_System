@@ -63,6 +63,7 @@ last_reviewed: 2026-09-05
 - **根因**：各處各自寫 `err.message || '未知錯誤'`，沒有共用的「非 2xx 怎麼說」。
 - **強制規則**：非 2xx 一律 `res.json().catch(() => ({}))` 後用 `httpFailureMessage(res.status, body)`（先欄位錯誤、再 message、最後點名 HTTP 狀態）；catch 區塊只留給真的連不上。
 - **測試必補**：`HttpFailureMessage.test.js`（欄位錯誤優先、message、空本文／HTML 本文顯示 HTTP 狀態）。
+- **分頁補充（#4490，2026-10-25）**：後續頁非 2xx 不可吞成空陣列後回報完整讀取成功；格式錯誤、未知頁數或超出既有頁數上限也須拒絕。`calendarCourseLoad.test.js` 以真實 loader 覆蓋 0／1／500／501／1001 筆及缺頁時 `apiSucceeded=false`，不提高上限或改授權範圍。
 
 ### R149. 提前結束的合約底下，過期仍「預排」的堂次要用精確名單的 POP 取消，不可手改或放寬守門（in-app #341，2026-10-08）
 
