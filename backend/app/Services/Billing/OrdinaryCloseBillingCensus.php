@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use JsonException;
 use RuntimeException;
+use Illuminate\Support\Str;
 
 /** Read-only, lossless billing source manifest for ordinary-close review. */
 final class OrdinaryCloseBillingCensus
@@ -14,6 +15,16 @@ final class OrdinaryCloseBillingCensus
     private const MAX_CANONICAL_SOURCE_BYTES = 8388608;
     private int $budget;
     private array $facts = [];
+    private array $reads = [];
+    private const REQUIRED = [
+        'Invoice' => ['id', 'StudentID', 'StudentClassID'],
+        'InvoiceItem' => ['id', 'InvoiceID', 'StudentClassID'],
+        'Payment' => ['id', 'InvoiceID', 'payment_report_id', 'Amount', 'Method'],
+        'payment_reports' => ['id', 'StudentID', 'StudentClassID', 'InvoiceID', 'payment_id'],
+        'invoice_corrections' => ['id', 'student_class_id', 'campus_id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id'],
+        'student_class_pricing_amendments' => ['id', 'student_class_id'],
+        'pop_execution_records' => ['id', 'operation_id', 'phase', 'snapshot'],
+    ];
 
     public function captureLocked(int $courseId, int $studentId, int $remainingFactBudget = 1000): array
     {
@@ -21,6 +32,7 @@ final class OrdinaryCloseBillingCensus
             $this->fail('invalid_context');
         }
         $this->facts = [];
+        $this->reads = [];
         $this->budget = $remainingFactBudget;
         $this->courseId = $courseId;
         try {
@@ -29,12 +41,13 @@ final class OrdinaryCloseBillingCensus
             if (!$student || !$course || (int) $course->StudentID !== $studentId || (int) $student->CampusID < 1) $this->fail('owner_mismatch');
             $campusId = (int) $student->CampusID;
 
-            $headers = $this->read('Invoice', fn ($q) => $q->where('StudentClassID', $courseId));
+            $headers = $this->read('Invoice', fn ($q) => $q->where('StudentClassID', $courseId), ['id', 'StudentID', 'StudentClassID']);
+            $this->validateHeaderOwners($headers, $studentId);
             $items = $this->read('InvoiceItem', fn ($q) => $q->where('StudentClassID', $courseId));
             $reports = $this->read('payment_reports', fn ($q) => $q->where('StudentClassID', $courseId));
             $corrections = $this->read('invoice_corrections', fn ($q) => $q->where('student_class_id', $courseId));
             $pricing = $this->read('student_class_pricing_amendments', fn ($q) => $q->where('student_class_id', $courseId));
-            $directPayments = $this->read('Payment', fn ($q) => $q->whereIn('id', $this->ids($reports, 'payment_id')));
+            $directPayments = $this->read('Payment', fn ($q) => $q->whereIn('id', $this->ids($reports, 'payment_id')), ['id', 'InvoiceID']);
 
             $invoiceIds = $this->ids($headers, 'id');
             $invoiceIds = $this->union($invoiceIds, $this->ids($items, 'InvoiceID'));
@@ -42,12 +55,14 @@ final class OrdinaryCloseBillingCensus
             $invoiceIds = $this->union($invoiceIds, $this->ids($corrections, 'original_invoice_id'));
             $invoiceIds = $this->union($invoiceIds, $this->ids($corrections, 'replacement_invoice_id'));
             $invoiceIds = $this->union($invoiceIds, $this->ids($directPayments, 'InvoiceID'));
+            $routingHeaders = $this->read('Invoice', fn ($q) => $q->whereIn('id', $invoiceIds), ['id', 'StudentID', 'StudentClassID']);
+            $this->validateHeaderOwners($routingHeaders, $studentId);
             $headerRows = $this->read('Invoice', fn ($q) => $q->whereIn('id', $invoiceIds));
             $items = $this->mergeRows($items, $this->read('InvoiceItem', fn ($q) => $q->whereIn('InvoiceID', $invoiceIds)));
             $this->validateInvoices($headerRows, $items, $invoiceIds, $courseId, $studentId);
             $invoiceIds = $this->union($invoiceIds, $this->ids($headerRows, 'id'));
 
-            $payments = $this->mergeRows($directPayments, $this->read('Payment', fn ($q) => $q->whereIn('InvoiceID', $invoiceIds)));
+            $payments = $this->read('Payment', fn ($q) => $q->whereIn('InvoiceID', $invoiceIds));
             $paymentIds = $this->ids($payments, 'id');
             $reports = $this->mergeRows($reports, $this->read('payment_reports', function ($q) use ($invoiceIds, $paymentIds, $payments, $corrections) {
                 $reportIds = $this->union($this->ids($payments, 'payment_report_id'), $this->ids($corrections, 'payment_report_id'));
@@ -66,7 +81,11 @@ final class OrdinaryCloseBillingCensus
             $this->validateCorrections($corrections, $invoiceIds, $reportIds, $courseId, $campusId);
             $this->validateInvoices($headerRows, $items, $invoiceIds, $courseId, $studentId);
 
-            $proofRows = $this->proofs($paymentIds, $invoiceIds, $courseId);
+            $proofRows = $this->proofs($payments, $invoiceIds, $studentId, $campusId);
+            foreach ($this->reads as [$query, $columns, $expected]) {
+                $actual = (clone $query)->get($columns)->map(static fn ($r) => (array) $r)->all();
+                if ($actual !== $expected) $this->fail('source_changed');
+            }
             $sources = [
                 'invoices' => ['Invoice', $headerRows], 'invoice_items' => ['InvoiceItem', $items],
                 'payments' => ['Payment', $payments], 'payment_reports' => ['payment_reports', $reports],
@@ -82,26 +101,33 @@ final class OrdinaryCloseBillingCensus
             return ['owner_binding' => ['course_id' => $courseId, 'student_id' => $studentId, 'campus_id' => $campusId],
                 'captured_sources' => ['completeness' => 'PARTIAL', 'tables' => array_keys($sources)], 'id_sets' => $ids, 'table_digests' => $digests,
                 'fact_count' => count($this->facts), 'context_ids' => ['course_id' => $courseId]];
-        } catch (RuntimeException $e) {
-            throw $e;
         } catch (\Throwable $e) {
+            if ($e::class === RuntimeException::class && preg_match('/\Aordinary_close_billing_[a-z_]+\z/', $e->getMessage())) throw $e;
             $this->fail('source_unavailable');
         }
     }
 
     private int $courseId;
 
-    private function read(string $table, callable $predicate): array
+    private function read(string $table, callable $predicate, array $columns = ['*']): array
     {
         if (!Schema::hasTable($table)) $this->fail('source_unavailable');
         $cols = Schema::getColumnListing($table);
-        if (!in_array('id', $cols, true)) $this->fail('source_unavailable');
+        if (array_diff(self::REQUIRED[$table], $cols)) $this->fail('source_unavailable');
         $query = DB::table($table);
         $predicate($query);
-        $rows = $query->orderBy('id')->lockForUpdate()->limit($this->budget + 1)->get()->map(static fn ($r) => (array) $r)->all();
+        $query->orderBy('id')->lockForUpdate()->limit($this->budget + 1);
+        $rows = $query->get($columns)->map(static fn ($r) => (array) $r)->all();
+        $this->reads[] = [clone $query, $columns, $rows];
         if (count($rows) > $this->budget) $this->fail('fact_budget_exceeded');
         foreach ($rows as $row) $this->addFact($table, $row['id']);
         return $rows;
+    }
+
+    private function validateHeaderOwners(array $headers, int $student): void
+    {
+        foreach ($headers as $header) if ((int) $header['StudentID'] !== $student
+            || ($header['StudentClassID'] !== null && (int) $header['StudentClassID'] !== $this->courseId)) $this->fail('foreign_invoice');
     }
 
     private function addFact(string $table, mixed $id): void
@@ -193,48 +219,54 @@ final class OrdinaryCloseBillingCensus
         }
     }
 
-    private function proofs(array $paymentIds, array $invoiceIds, int $course): array
+    private function proofs(array $payments, array $invoiceIds, int $student, int $campus): array
     {
-        if (!Schema::hasTable('pop_execution_records')) $this->fail('source_unavailable');
-        $rows = DB::table('pop_execution_records')->whereIn('phase', ['reversal-proof', 'reversal-proof-rollback'])
-            ->where(function ($q) use ($paymentIds, $course) {
-                $q->where('snapshot->scope->course_id', $course);
-                if ($paymentIds) $q->orWhereIn('snapshot->payment_id', $paymentIds)->orWhereIn('snapshot->scope->payment_id', $paymentIds);
-            })
-            ->orderBy('id')->lockForUpdate()->limit($this->budget + 1)->get()->map(static fn ($r) => (array) $r)->all();
-        if (count($rows) > $this->budget) $this->fail('fact_budget_exceeded');
-        $proofsById = [];
-        foreach ($rows as $row) if ($row['phase'] === 'reversal-proof') {
-            try { $proofSnapshot = json_decode((string) ($row['snapshot'] ?? ''), true, 512, JSON_THROW_ON_ERROR); }
-            catch (JsonException $e) { $this->fail('malformed_proof'); }
-            $proofsById[(string) $row['id']] = ['operation_id' => (string) $row['operation_id'], 'snapshot' => $proofSnapshot];
-        }
-        $selected = [];
-        foreach ($rows as $r) {
-            try { $snap = json_decode((string) ($r['snapshot'] ?? ''), true, 512, JSON_THROW_ON_ERROR); }
-            catch (JsonException $e) { $this->fail('malformed_proof'); }
-            $scope = $snap['scope'] ?? [];
-            $pid = $snap['payment_id'] ?? $scope['payment_id'] ?? null;
-            if ($r['phase'] === 'reversal-proof-rollback') {
-                $original = $proofsById[(string) ($snap['original_proof_id'] ?? '')] ?? null;
-                if (!$original || $original['operation_id'] !== (string) $r['operation_id']) $this->fail('proof_history_incomplete');
-                $scope = $original['snapshot']['scope'] ?? [];
-                if ((int) ($snap['payment_id'] ?? 0) !== (int) ($scope['payment_id'] ?? 0)) $this->fail('proof_history_incomplete');
+        $paymentMap = $this->byId($payments); $paymentIds = $this->ids($payments, 'id');
+        $rows = $this->read('pop_execution_records', fn ($q) => $q->whereIn('phase', ['reversal-proof', 'reversal-proof-rollback'])
+            ->where(fn ($q) => $q->where('snapshot->scope->course_id', $this->courseId)
+                ->orWhereIn('snapshot->payment_id', $paymentIds)->orWhereIn('snapshot->scope->payment_id', $paymentIds)));
+        for ($round = 0; $round < 3; $round++) {
+            $snapshots = []; $operations = $references = [];
+            foreach ($rows as $r) {
+                if (!Str::isUuid($r['id']) || !Str::isUuid($r['operation_id'])) $this->fail('malformed_proof');
+                $snap = json_decode((string) $r['snapshot'], true, 512, JSON_THROW_ON_ERROR);
+                if (!is_array($snap) || array_is_list($snap)) $this->fail('malformed_proof');
+                $snapshots[$r['id']] = $snap; $operations[] = $r['operation_id'];
+                if (isset($snap['original_proof_id'])) {
+                    if (!is_string($snap['original_proof_id']) || !Str::isUuid($snap['original_proof_id'])) $this->fail('malformed_proof');
+                    $references[] = $snap['original_proof_id'];
+                }
             }
-            $relevant = in_array((int) $pid, $paymentIds, true) || (int) ($scope['course_id'] ?? 0) === $course;
-            if (!$relevant) continue;
-            if (!in_array((int) $pid, $paymentIds, true) || (int) ($scope['course_id'] ?? 0) !== $course
-                || !in_array((int) ($scope['invoice_id'] ?? 0), $invoiceIds, true)) $this->fail('foreign_proof');
-            $selected[] = $r;
+            $expanded = $this->read('pop_execution_records', fn ($q) => $q->whereIn('operation_id', $operations)
+                ->orWhereIn('id', $references)->orWhereIn('snapshot->original_proof_id', $this->ids($rows, 'id')));
+            $merged = $this->mergeRows($rows, $expanded);
+            if (count($merged) === count($rows)) break;
+            if ($round === 2) $this->fail('proof_history_incomplete');
+            $rows = $merged;
         }
-        $originals = [];
-        foreach ($selected as $r) if ($r['phase'] === 'reversal-proof') $originals[(string) $r['id']] = (string) $r['operation_id'];
-        foreach ($selected as $r) if ($r['phase'] === 'reversal-proof-rollback') {
-            $snap = json_decode((string) $r['snapshot'], true, 512, JSON_THROW_ON_ERROR);
-            if (($originals[(string) ($snap['original_proof_id'] ?? '')] ?? null) !== (string) $r['operation_id']) $this->fail('proof_history_incomplete');
+        $map = $this->byId($rows); $originalOperations = [];
+        foreach ($rows as $r) {
+            $snap = $snapshots[$r['id']];
+            if ($r['phase'] === 'reversal-proof') {
+                $scope = $snap['scope'] ?? null;
+                if (!is_array($scope)) $this->fail('malformed_proof');
+                $keys = array_keys($scope); sort($keys);
+                if ($keys !== ['campus_id', 'course_id', 'invoice_id', 'payment_id', 'student_id']) $this->fail('malformed_proof');
+                foreach ($scope as $id) if (!is_int($id) || $id < 1) $this->fail('malformed_proof');
+                $payment = $paymentMap[(string) $scope['payment_id']] ?? null;
+                if (!is_int($snap['payment_id'] ?? null) || $snap['payment_id'] !== $scope['payment_id'] || !$payment
+                    || $scope['course_id'] !== $this->courseId || $scope['student_id'] !== $student || $scope['campus_id'] !== $campus
+                    || !in_array($scope['invoice_id'], $invoiceIds, true) || (int) $payment['InvoiceID'] !== $scope['invoice_id']) $this->fail('foreign_proof');
+                if (isset($originalOperations[$r['operation_id']])) $this->fail('proof_history_incomplete');
+                $originalOperations[$r['operation_id']] = true;
+            } elseif ($r['phase'] === 'reversal-proof-rollback') {
+                $original = $map[$snap['original_proof_id'] ?? ''] ?? null;
+                $originalSnapshot = $snapshots[$snap['original_proof_id'] ?? ''] ?? [];
+                if (!$original || $original['phase'] !== 'reversal-proof' || $original['operation_id'] !== $r['operation_id']
+                    || !is_int($snap['payment_id'] ?? null) || $snap['payment_id'] !== ($originalSnapshot['payment_id'] ?? null)) $this->fail('proof_history_incomplete');
+            } else $this->fail('malformed_proof');
         }
-        foreach ($selected as $r) $this->addFact('pop_execution_records', $r['id']);
-        return $selected;
+        return $rows;
     }
 
     private function digest(string $table, string $role, array $rows): string

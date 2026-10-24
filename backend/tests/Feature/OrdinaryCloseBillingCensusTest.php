@@ -198,8 +198,15 @@ class OrdinaryCloseBillingCensusTest extends TestCase
         DB::table('invoice_corrections')->insert(['original_invoice_id' => $other['invoice']->id, 'replacement_invoice_id' => $f['invoice']->id,
             'student_class_id' => $f['course']->ID, 'payment_report_id' => null, 'amount' => 7600, 'reason' => 'PRIVATE foreign correction',
             'idempotency_key' => (string) \Illuminate\Support\Str::uuid(), 'operator_user_id' => null, 'created_at' => now()]);
+        $armed = true; $foreignChildrenRead = false;
+        DB::connection()->beforeExecuting(function ($sql, $bindings) use (&$armed, &$foreignChildrenRead, $other): void {
+            if ($armed && str_contains($sql, 'from `InvoiceItem`') && str_contains($sql, '`InvoiceID` in')
+                && in_array($other['invoice']->id, $bindings)) $foreignChildrenRead = true;
+        });
         try { $this->capture($f); $this->fail('cross-student invoice must refuse'); }
         catch (\RuntimeException $e) { $this->assertStringContainsString('foreign_invoice', $e->getMessage()); }
+        finally { $armed = false; }
+        $this->assertFalse($foreignChildrenRead, 'Reject foreign header before querying/locking its children.');
     }
 
     public function test_missing_invoice_referenced_by_correction_refuses_without_partial_output(): void
@@ -292,5 +299,78 @@ class OrdinaryCloseBillingCensusTest extends TestCase
         DB::table('student_class_pricing_amendments')->update(['void_reason' => 'PRIVATE changed void']);
         $after = $this->capture($f);
         $this->assertNotSame($before['table_digests']['pricing_amendments'], $after['table_digests']['pricing_amendments']);
+    }
+
+    public function test_driver_failure_is_private_and_required_link_column_cannot_be_absent(): void
+    {
+        $f = $this->fixture(); $armed = true; $attempted = false;
+        DB::connection()->beforeExecuting(function ($sql) use (&$armed, &$attempted): void {
+            if ($armed && str_contains($sql, 'from `Invoice`')) { $attempted = true; throw new \PDOException('PRIVATE SQL and bindings'); }
+        });
+        try { $this->capture($f); $this->fail('driver failure must refuse'); }
+        catch (\RuntimeException $e) { $this->assertSame('ordinary_close_billing_source_unavailable', $e->getMessage()); $this->assertNull($e->getPrevious()); }
+        finally { $armed = false; }
+        $this->assertTrue($attempted);
+        $this->endOuterTestingTransactions();
+        $f = $this->fixture();
+        DB::statement('ALTER TABLE Payment DROP COLUMN payment_report_id');
+        try { $this->capture($f); $this->fail('missing discovery column must refuse even without any report'); }
+        catch (\RuntimeException $e) { $this->assertSame('ordinary_close_billing_source_unavailable', $e->getMessage()); }
+        finally { $this->rebuildIsolatedSchema(); }
+    }
+
+    public function test_final_current_read_refuses_a_late_noncooperating_report(): void
+    {
+        $this->endOuterTestingTransactions(); $f = $this->fixture();
+        config(['database.connections.census_late' => config('database.connections.'.config('database.default'))]);
+        $b = DB::connection('census_late'); $armed = true; $reads = 0; $inserted = false;
+        DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
+        DB::listen(function ($q) use ($b, $f, &$armed, &$reads, &$inserted): void {
+            if ($armed && str_contains($q->sql, 'from `payment_reports`') && ++$reads === 2) {
+                $armed = false;
+                $b->table('payment_reports')->insert(['StudentID' => $f['student']->id, 'StudentClassID' => $f['course']->ID,
+                    'InvoiceID' => $f['invoice']->id, 'reported_by_name' => 'PRIVATE late reporter', 'payment_date' => '2026-10-01',
+                    'payment_method' => 'cash', 'reported_amount' => 1, 'status' => 'pending', 'report_token_hash' => str_repeat('9', 64),
+                    'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+                $inserted = true;
+            }
+        });
+        try { $this->capture($f); $this->fail('late selector membership must not yield a stale manifest'); }
+        catch (\RuntimeException $e) { $this->assertSame('ordinary_close_billing_source_changed', $e->getMessage()); }
+        finally { $armed = false; DB::disconnect('census_late'); DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ'); $this->rebuildIsolatedSchema(); }
+        $this->assertTrue($inserted, 'Separate PDO must actually commit after the discovery read.');
+    }
+
+    public function test_proof_scope_types_owner_and_related_rollback_cannot_be_omitted(): void
+    {
+        $f = $this->fixture();
+        $pid = DB::table('Payment')->insertGetId(['InvoiceID' => $f['invoice']->id, 'Amount' => -1, 'PaidAt' => now(), 'Method' => 'void']);
+        $id = (string) \Illuminate\Support\Str::uuid(); $operation = (string) \Illuminate\Support\Str::uuid();
+        $scope = ['course_id' => (int) $f['course']->ID, 'payment_id' => $pid, 'invoice_id' => (int) $f['invoice']->id,
+            'student_id' => (int) $f['student']->id, 'campus_id' => 1];
+        $insert = static function (string $id, string $op, string $phase, array $snapshot): void {
+            DB::table('pop_execution_records')->insert(['id' => $id, 'operation_id' => $op, 'execution_id' => (string) \Illuminate\Support\Str::uuid(),
+                'phase' => $phase, 'result' => 'succeeded', 'idempotency_key' => $id, 'correlation_id' => $op,
+                'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'payload' => '{}', 'actor' => 'synthetic', 'created_at' => now()]);
+        };
+        $insert($id, $operation, 'reversal-proof', ['payment_id' => $pid, 'scope' => $scope]);
+        $this->assertSame([$id], $this->capture($f)['id_sets']['payment_restatement_proofs']);
+        foreach (['student_id' => $scope['student_id'] + 1, 'campus_id' => 99, 'payment_id' => $pid + 1,
+            'course_id' => $scope['course_id'].'junk', 'invoice_id' => (string) $scope['invoice_id']] as $key => $value) {
+            DB::table('pop_execution_records')->where('id', $id)->update(['snapshot' => json_encode(['payment_id' => $pid, 'scope' => array_replace($scope, [$key => $value])])]);
+            try { $this->capture($f); $this->fail('malformed/foreign scope must refuse: '.$key); }
+            catch (\RuntimeException $e) { $this->assertMatchesRegularExpression('/ordinary_close_billing_(malformed|foreign)_proof/', $e->getMessage()); }
+        }
+        DB::table('pop_execution_records')->where('id', $id)->update(['snapshot' => json_encode(['payment_id' => $pid, 'scope' => $scope])]);
+        foreach ([$operation, (string) \Illuminate\Support\Str::uuid()] as $relatedOperation) {
+            $rollback = (string) \Illuminate\Support\Str::uuid();
+            $insert($rollback, $relatedOperation, 'reversal-proof-rollback', ['original_proof_id' => $id]);
+            try { $this->capture($f); $this->fail('operation/reference-linked rollback lacking payment must not disappear'); }
+            catch (\RuntimeException $e) { $this->assertStringContainsString('proof_history_incomplete', $e->getMessage()); }
+            DB::table('pop_execution_records')->where('id', $rollback)->delete();
+        }
+        DB::table('pop_execution_records')->where('id', $id)->update(['id' => 'not-a-uuid']);
+        try { $this->capture($f); $this->fail('proof category must contain real UUIDs'); }
+        catch (\RuntimeException $e) { $this->assertStringContainsString('malformed_proof', $e->getMessage()); }
     }
 }
