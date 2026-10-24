@@ -32,6 +32,7 @@ export async function fetchAllPages(url, token, opts = {}) {
   const json1 = await res1.json();
 
   const firstData = rows(json1);
+  const hasTotal = json1?.total != null || json1?.meta?.total != null;
   const total = Number(json1?.total ?? json1?.meta?.total ?? firstData.length);
   const lastPage = Number(json1?.last_page ?? json1?.meta?.last_page ?? 1);
   if (!Number.isSafeInteger(lastPage) || lastPage < 1 || !Number.isSafeInteger(total) || total < 0) {
@@ -43,6 +44,7 @@ export async function fetchAllPages(url, token, opts = {}) {
   if (onProgress) onProgress(firstData.length, total);
 
   if (pagesToFetch <= 1) {
+    if (hasTotal && firstData.length !== total) throw new Error('Incomplete pagination result');
     return { data: firstData, total };
   }
 
@@ -64,5 +66,6 @@ export async function fetchAllPages(url, token, opts = {}) {
     if (onProgress) onProgress(allData.length, total);
   }
 
+  if (hasTotal && allData.length !== total) throw new Error('Incomplete pagination result');
   return { data: allData, total };
 }

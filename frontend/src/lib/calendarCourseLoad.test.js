@@ -199,3 +199,14 @@ test('legacy arrays and meta pagination retain their contract', async (t) => {
   };
   assert.deepEqual(await fetchAllPages('/courses', null), { data: [{ id: 1 }, { id: 2 }], total: 2 });
 });
+
+test('an advertised total cannot be satisfied by missing or empty later pages', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ data: [{ id: 1 }], total: 2 }) });
+  await assert.rejects(fetchAllPages('/courses', null), /incomplete pagination/i);
+  globalThis.fetch = async (input) => new URL(input, 'https://fixture.invalid').searchParams.get('page') === '1'
+    ? { ok: true, json: async () => ({ data: [{ id: 1 }], total: 2, last_page: 2 }) }
+    : { ok: true, json: async () => ({ data: [] }) };
+  await assert.rejects(fetchAllPages('/courses', null), /incomplete pagination/i);
+});
