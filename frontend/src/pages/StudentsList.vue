@@ -1852,45 +1852,52 @@ const loadStudents = async () => {
       return;
     }
     loadBranchStudentTotal();
+    let studentResponseReceived = false;
     try {
       const token = await getAccessToken();
       if (token) {
         const params = new URLSearchParams({
-          branch_id: String(props.branchId),
-          per_page: '500'
+          branch_id: String(props.branchId)
         });
         if (filters.value.search?.trim()) params.set('search', filters.value.search);
         if (filters.value.status) params.set('status', filters.value.status || '');
         if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) params.set('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
-        const res = await authedFetch(`/api/v1/students?${params}`, {
-          headers: {}
-        }, token);
-        if (res.ok) {
-          const json = await res.json();
-          const laravelList = json?.data ?? json;
-          const arr = Array.isArray(laravelList) ? laravelList : (laravelList?.data || []);
-          if (requestSequence !== studentsRequestSequence) return;
-          students.value = arr.map(s => ({
-            ...s,
-            rfid: s.rfid ?? s.RFID ?? '',
-            _laravelId: s.id
-          }));
-          syncSelectedStudentIdsWithCurrentList();
-          studentsLoaded.value = true;
-          return;
-        }
+        const { data: arr } = await fetchAllPages(`/api/v1/students?${params}`, token, {
+          perPage: 500,
+          fetcher: async (url, init) => {
+            const res = await authedFetch(url, init, token);
+            if (res.ok) studentResponseReceived = true;
+            return res;
+          }
+        });
+        if (requestSequence !== studentsRequestSequence) return;
+        students.value = arr.map(s => ({
+          ...s,
+          rfid: s.rfid ?? s.RFID ?? '',
+          _laravelId: s.id
+        }));
+        syncSelectedStudentIdsWithCurrentList();
+        studentsLoaded.value = true;
+        return;
       }
-    } catch (_) {}
+    } catch (error) {
+      // A successful first response starts a paginated contract. A missing or
+      // malformed page must not become a successful, truncated fallback list.
+      if (studentResponseReceived) throw error;
+    }
 
     // Fallback: Supabase list + merge Laravel RFID / _laravelId
-    let query = supabase.from('students').select('*').eq('branch_id', props.branchId);
+    let query = supabase.from('students').select('*').eq('branch_id', props.branchId).eq('per_page', 500);
     if (filters.value.search?.trim()) query = query.eq('search', filters.value.search);
     if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) query = query.eq('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
     if (filters.value.status) query = query.eq('status', filters.value.status);
     query = query.order('name');
     const { data, error } = await query;
     if (error) throw error;
-    let list = data || [];
+    // The compatibility adapter drops pagination metadata. A full page cannot
+    // prove completeness, so let the user retry rather than silently truncate.
+    if (!Array.isArray(data) || data.length >= 500) throw new Error('Incomplete fallback student list');
+    let list = data;
     try {
       const token = await getAccessToken();
       if (token) {

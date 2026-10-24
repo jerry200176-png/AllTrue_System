@@ -11,10 +11,11 @@
  * @param {number} [opts.maxPages=50]       - Safety cap
  * @param {number} [opts.concurrency=4]     - Max parallel requests
  * @param {function} [opts.onProgress]      - Called with (loadedSoFar, total)
+ * @param {function} [opts.fetcher=fetch]   - Request adapter, retaining the caller's authentication/error handling
  * @returns {Promise<{ data: any[], total: number }>}
  */
 export async function fetchAllPages(url, token, opts = {}) {
-  const { perPage = 200, maxPages = 50, concurrency = 4, onProgress } = opts;
+  const { perPage = 200, maxPages = 50, concurrency = 4, onProgress, fetcher = fetch } = opts;
   const rows = (json) => {
     const data = Array.isArray(json) ? json : json?.data;
     if (!Array.isArray(data)) throw new Error('Invalid page data');
@@ -27,7 +28,7 @@ export async function fetchAllPages(url, token, opts = {}) {
   const sep = url.includes('?') ? '&' : '?';
   const buildUrl = (page) => `${url}${sep}per_page=${perPage}&page=${page}`;
 
-  const res1 = await fetch(buildUrl(1), { headers });
+  const res1 = await fetcher(buildUrl(1), { headers });
   if (!res1.ok) throw new Error(`API error ${res1.status}`);
   const json1 = await res1.json();
 
@@ -53,7 +54,7 @@ export async function fetchAllPages(url, token, opts = {}) {
   for (let p = 2; p <= pagesToFetch; p++) remaining.push(p);
 
   const fetchPage = async (page) => {
-    const r = await fetch(buildUrl(page), { headers });
+    const r = await fetcher(buildUrl(page), { headers });
     if (!r.ok) throw new Error(`API error ${r.status}`);
     const j = await r.json();
     return rows(j);
