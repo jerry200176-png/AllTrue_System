@@ -1,7 +1,7 @@
 // @ts-check
 import { recordLatestGetJson } from './latestGetJson.js';
 import { expect } from '@playwright/test';
-import { REPORT_STATUS_LABELS } from '../../src/lib/courseMoneyState.js';
+import { REPORT_STATUS_LABELS, coursePaymentBadge } from '../../src/lib/courseMoneyState.js';
 
 const UNPAID_ACTION = '登記繳費回報';
 const PENDING_REPORT_ACTION = `查看「${REPORT_STATUS_LABELS.pending}」`;
@@ -50,10 +50,11 @@ export function recordCourseLists(page) {
  * #4130 follow-up: the acceptance still expected a 前往帳務中心 button and a
  * 帳務中心 heading after the click, so it failed on every build since #3858.
  *
- * The clicked row is identified through the ledger request's student_class_id.
- * That course must be in the list the page loaded, belong to the student group
- * the row sits in, and have the action label its payment state requires. The panel
- * title must then name that student.
+ * The clicked row carries its course id (data-course-id, #4186). The ledger request's
+ * student_class_id must be that id, so "click course A opens course B of the same
+ * student" fails. The course must be in the list the page loaded, belong to the
+ * student group the row sits in, show the badge text and action label its payment
+ * state requires (courseMoneyState.js), and the panel title must name that student.
  *
  * @param {import('@playwright/test').Page} page
  * @param {{
@@ -78,6 +79,11 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   await expect(page.locator('.btn-status')).toHaveCount(0);
   await expect(action).toBeVisible();
   const clickedLabel = (await action.innerText()).trim();
+  const rowCourseId = Number(await paymentCell.getAttribute('data-course-id'));
+  expect(rowCourseId, 'the payment cell names its course (data-course-id)').toBeGreaterThan(0);
+  const rowCourse = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === rowCourseId);
+  expect(rowCourse, `row course ${rowCourseId} must be a course listed on 課程查找`).toBeTruthy();
+  await expect(status, `badge for course ${rowCourseId} matches its payment state`).toHaveText(coursePaymentBadge(rowCourse ?? {}, { monthlyPeriod: true }).label);
   const rowStudent = (await paymentCell
     .locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " student-group-card ")][1]')
     .locator('.cell-student').first().innerText()).trim();
@@ -93,7 +99,7 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   expect(response.status(), 'student billing panel ledger request').toBe(200);
 
   const requestedId = Number(new URL(response.url()).searchParams.get('student_class_id'));
-  expect(requestedId, 'ledger request names the clicked course (student_class_id)').toBeGreaterThan(0);
+  expect(requestedId, 'ledger request names the clicked course (student_class_id)').toBe(rowCourseId);
   const course = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === requestedId);
   expect(course, `ledger course ${requestedId} must be a course listed on 課程查找`).toBeTruthy();
   const studentName = String(course?.student_name ?? '').trim();
