@@ -312,6 +312,31 @@ class OrdinaryCloseActivityCensusTest extends TestCase
         $this->assertSame(0, $result['fact_count']);
     }
 
+    public function test_unrepresentable_bigint_ids_refuse_without_aliasing_rows(): void
+    {
+        [$student, $course] = $this->owner();
+        $database = str_replace('`', '``', DB::connection()->getDatabaseName());
+        DB::statement('CREATE TEMPORARY TABLE `StudentSingIn` AS SELECT * FROM '
+            .'(SELECT * FROM `'.$database.'`.`StudentSingIn`) AS `source_row` WHERE 1 = 0');
+        try {
+            foreach (['9223372036854775808', '9223372036854775809'] as $id) {
+                DB::table('StudentSingIn')->insert([
+                    'id' => $id, 'StudentClassID' => $course, 'StudentID' => $student,
+                    'SignInDT' => now(), 'MDT' => now(), 'ClassSessionID' => null, 'Status' => 'present',
+                    'CampusID' => 1, 'PersonType' => 'student', 'SessionDeducted' => 0,
+                ]);
+            }
+            try {
+                $this->capture($course, $student);
+                $this->fail('unrepresentable BIGINT identities were normalized');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('Ordinary-close activity identity unsupported.', $e->getMessage());
+            }
+        } finally {
+            DB::statement('DROP TEMPORARY TABLE IF EXISTS `StudentSingIn`');
+        }
+    }
+
     public function test_unrelated_student_activity_is_not_in_the_manifest(): void
     {
         [$student, $course] = $this->owner();
