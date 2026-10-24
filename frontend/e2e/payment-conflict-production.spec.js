@@ -29,10 +29,11 @@ const noCache = { headers: { 'cache-control': 'no-cache' } };
 function installAppAssetInventory(context, origin) {
   const entries = [];
   const byRequest = new WeakMap();
+  const acceptedMimes = { document: new Set(['text/html']), script: new Set(['application/javascript', 'text/javascript', 'application/ecmascript', 'text/ecmascript']), stylesheet: new Set(['text/css']) };
   context.on('request', (request) => {
     const previous = request.redirectedFrom();
     const inherited = previous && byRequest.get(previous);
-    if (inherited) { byRequest.set(request, inherited); inherited.current = request; return; }
+    if (inherited) { byRequest.set(request, inherited); inherited.current = request; inherited.finished = false; return; }
     const url = new URL(request.url());
     if (url.origin !== origin || !['document', 'script', 'stylesheet'].includes(request.resourceType())) return;
     const entry = { initial_url: `${url.origin}${url.pathname}`, resource: request.resourceType(), current: request,
@@ -49,15 +50,17 @@ function installAppAssetInventory(context, origin) {
   });
   context.on('response', (response) => {
     const request = response.request(); const entry = byRequest.get(request);
-    if (!entry || request.redirectedTo()) return;
+    if (!entry || request.redirectedTo() || (response.status() >= 300 && response.status() < 400)) return;
     const url = new URL(response.url());
     entry.responsePromise = (async () => {
+      const contentType = response.headers()['content-type'] || '';
+      const mime = contentType.split(';', 1)[0].trim().toLowerCase();
+      entry.observed = { final_url: `${url.origin}${url.pathname}`, origin: url.origin, status: response.status(), content_type: contentType };
       if (url.origin !== origin) throw new Error('app_asset_final_origin_mismatch');
       if (!response.ok()) throw new Error('app_asset_response_not_ok');
+      if (!acceptedMimes[entry.resource].has(mime)) throw new Error('app_asset_mime_mismatch');
       const bytes = await response.body();
-      entry.response = { final_url: `${url.origin}${url.pathname}`, origin: url.origin,
-        status: response.status(), content_type: response.headers()['content-type'] || '',
-        sha256: createHash('sha256').update(bytes).digest('hex') };
+      entry.response = { ...entry.observed, sha256: createHash('sha256').update(bytes).digest('hex') };
     })().catch(() => { entry.error ||= 'app_asset_response_or_body_failed'; });
   });
   return { entries, async assertComplete() {
@@ -240,10 +243,21 @@ test('local guard: fixture refusal is upstream-free and unexpected writes remain
     if (req.method !== 'GET') upstreamWrites += 1;
     if (req.url === '/asset-control.html') {
       res.writeHead(200, { 'content-type': 'text/html' });
-      res.end('<!doctype html><link rel="stylesheet" href="/broken.css"><script src="/ok.js"></script>'); return;
+      res.end('<!doctype html><link rel="stylesheet" href="/broken.css"><link rel="stylesheet" href="/ok.css"><script src="/ok.js"></script>'); return;
     }
+    if (req.url === '/mime-control.html') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<!doctype html><link rel="stylesheet" href="/ok.css"><script src="/wrong.js"></script><script src="/ok.js"></script>'); return;
+    }
+    if (req.url === '/redirect-control.html') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<!doctype html><link rel="stylesheet" href="/redirect.css"><script src="/ok.js"></script>'); return;
+    }
+    if (req.url === '/redirect.css') { res.writeHead(302, { location: '/ok-redirect.css' }); res.end(); return; }
     if (req.url === '/ok.js') { res.writeHead(200, { 'content-type': 'application/javascript' }); res.end('window.assetControlLoaded=true;'); return; }
-    if (req.url === '/broken.css') { res.writeHead(200, { 'content-type': 'text/css' }); res.end('body{color:black}'); return; }
+    if (req.url === '/wrong.js') { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html>not JavaScript</html>'); return; }
+    if (req.url === '/ok-redirect.css') { res.writeHead(200, { 'content-type': 'text/css' }); res.end('body{color:black}'); return; }
+    if (req.url === '/broken.css' || req.url === '/ok.css') { res.writeHead(200, { 'content-type': 'text/css' }); res.end('body{color:black}'); return; }
     res.writeHead(200, { 'content-type': 'text/html' }); res.end('<button id="send">send</button>');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -289,7 +303,26 @@ test('local guard: fixture refusal is upstream-free and unexpected writes remain
     await context.route('**/broken.css', (route) => route.abort());
     const control = await context.newPage(); await control.goto(`${base}/asset-control.html`);
     await expect.poll(() => control.evaluate(() => window.assetControlLoaded)).toBe(true);
+    await expect.poll(() => inventory.entries.some((entry) => entry.resource === 'stylesheet' && entry.failed)).toBe(true);
+    expect(inventory.entries.some((entry) => entry.resource === 'stylesheet' && entry.response?.content_type.startsWith('text/css'))).toBe(true);
     await expect(inventory.assertComplete()).rejects.toThrow('asset proof failed');
+
+    const mimeContext = await browser.newContext({ serviceWorkers: 'block' });
+    const mimeInventory = installAppAssetInventory(mimeContext, base); const mimePage = await mimeContext.newPage();
+    await mimePage.goto(`${base}/mime-control.html`);
+    await expect.poll(() => mimePage.evaluate(() => window.assetControlLoaded)).toBe(true);
+    await expect.poll(() => mimeInventory.entries.some((entry) => entry.initial_url.endsWith('/wrong.js') && entry.observed?.content_type.startsWith('text/html'))).toBe(true);
+    expect(mimeInventory.entries.some((entry) => entry.resource === 'stylesheet' && entry.response?.content_type.startsWith('text/css'))).toBe(true);
+    await expect(mimeInventory.assertComplete()).rejects.toThrow('asset proof failed');
+    await mimeContext.close();
+
+    const redirectContext = await browser.newContext({ serviceWorkers: 'block' });
+    const redirectInventory = installAppAssetInventory(redirectContext, base); const redirectPage = await redirectContext.newPage();
+    await redirectPage.goto(`${base}/redirect-control.html`);
+    await expect.poll(() => redirectPage.evaluate(() => window.assetControlLoaded)).toBe(true);
+    const redirectedCss = (await redirectInventory.assertComplete()).find((entry) => entry.initial_url.endsWith('/redirect.css'));
+    expect(redirectedCss?.final_url).toBe(`${base}/ok-redirect.css`);
+    await redirectContext.close();
   } finally {
     await context.close(); await new Promise((resolve) => server.close(resolve));
   }
