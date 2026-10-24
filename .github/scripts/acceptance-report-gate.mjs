@@ -11,6 +11,13 @@ const paymentTests = [
   ['payment-display-production.spec.js', 537, 3, '帳務: a legacy paid flag with no standing payment reads 需核對'],
   ['payment-display-production.spec.js', 541, 3, '帳務: payments that net to zero show no 繳費日'],
 ];
+const paymentConflictTests = [
+  ['payment-conflict-production.spec.js', 151, 3, 'production UI: pending report conflict refreshes the collection owner'],
+  ['payment-conflict-production.spec.js', 151, 3, 'production UI: pending report conflict refreshes ledger and collection owners'],
+  ['payment-conflict-production.spec.js', 151, 3, 'production UI: synthetic expected_amount7600 refusal preserves entered amount'],
+  ['payment-conflict-production.spec.js', 151, 3, 'production UI: synthetic expected_amount0 refusal preserves entered amount'],
+  ['payment-conflict-production.spec.js', 183, 1, 'local guard: fixture refusal is upstream-free and unexpected writes remain blocked'],
+];
 // #4150 review: a payments run is conclusive only when at least one target rule (one per #4150 display fix) checked
 // at least one live case in a passing test. Ordinary rows alone exercise none of the fixes.
 const TARGET_RULES = ['free_gift', 'waived', 'legacy_only', 'net_zero_reversal'];
@@ -57,6 +64,7 @@ const expectedTests = (branchId, scope = 'all') => {
     tutoring: tests.filter(([file]) => file === 'tutoring-free-production.spec.js'),
     feedback: tests.filter(([file]) => file === 'feedback-launcher-production.spec.js'),
     payments: paymentTests,
+    'payment-conflicts': paymentConflictTests,
   }[scope];
   if (!selected) throw new Error(`unsupported acceptance scope: ${scope}`);
   return selected.map(([file, line, column, title]) => ({ file, line, column, title, project: 'chromium' }));
@@ -248,9 +256,12 @@ function selfTest() {
   });
   validateReport(makeReport(16), 16);
   validateReport(makeReport(9), 9);
-  for (const scope of ['calendar', 'print', 'tutoring', 'feedback', 'payments']) {
+  for (const scope of ['calendar', 'print', 'tutoring', 'feedback', 'payments', 'payment-conflicts']) {
     validateReport(makeReport(16, scope), 16, scope);
   }
+  const skippedConflict = makeReport(16, 'payment-conflicts');
+  skippedConflict.suites[0].specs[0].tests[0] = { projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }], annotations: [] };
+  expectReject('payment-conflicts skip', () => validateReport(skippedConflict, 16, 'payment-conflicts'));
   const lineShifted = makeReport(16);
   lineShifted.suites[0].specs.forEach((spec) => { spec.line += 100; });
   validateReport(lineShifted, 16);
@@ -310,7 +321,7 @@ function selfTest() {
   const leakySummary = summarizeReport(leakyNote).join('\n');
   if (leakySummary.includes('王小明') || !leakySummary.includes('coverage cards_checked=3')) throw new Error('self-test summary leaked or dropped a note');
   for (const scope of ['all', 'calendar']) {
-    if (expectedTests(16, scope).some((item) => item.file === 'payment-display-production.spec.js')) throw new Error(`payments leaked into ${scope}`);
+    if (expectedTests(16, scope).some((item) => item.file === 'payment-display-production.spec.js' || item.file === 'payment-conflict-production.spec.js')) throw new Error(`payment acceptance leaked into ${scope}`);
   }
   // A missing production case is printed as PRECONDITION ABSENT (name only); the test itself still passed.
   const absent = makeReport(16);

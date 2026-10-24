@@ -31,6 +31,7 @@ on:
           - tutoring
           - feedback
           - payments
+          - payment-conflicts
   # #4207: GitHub Actions run.name becomes run-name ("Release train") for
   # release-train dispatches. Empirically those completed trains do not fire a
   # listener that only lists the workflow file name "Deploy to Pi". List both
@@ -60,6 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Configure pinned production SSH trust
@@ -477,6 +479,7 @@ jobs:
             feedback) acceptance_args=(e2e/feedback-launcher-production.spec.js) ;;
             # #4150: read-only payment-display checks; kept out of `all` so they report separately.
             payments) acceptance_args=(e2e/payment-display-production.spec.js) ;;
+            payment-conflicts) acceptance_args=(e2e/payment-conflict-production.spec.js) ;;
             *) echo "unsupported acceptance scope: ${ACCEPTANCE_SCOPE}" >&2; exit 1 ;;
           esac
           acceptance_args+=(--project=chromium --reporter=json)
