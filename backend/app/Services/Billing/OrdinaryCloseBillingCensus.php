@@ -147,13 +147,13 @@ final class OrdinaryCloseBillingCensus
         foreach ($items as $item) {
             if (!in_array((int) $item['InvoiceID'], $invoiceIds, true)) $this->fail('foreign_invoice_item');
             $itemsByInvoice[(string) $item['InvoiceID']][] = $item;
-            if (isset($item['StudentClassID']) && $item['StudentClassID'] !== null && (int) $item['StudentClassID'] !== $course) $this->fail('foreign_invoice_item');
+            if (isset($item['StudentClassID']) && (int) $item['StudentClassID'] !== $course) $this->fail('foreign_invoice_item');
         }
         foreach ($byId as $id => $header) {
             if ((int) $header['StudentID'] !== $student || ($header['StudentClassID'] !== null && (int) $header['StudentClassID'] !== $course)) $this->fail('foreign_invoice');
             if ($header['StudentClassID'] === null && empty($itemsByInvoice[$id])) $this->fail('unowned_invoice');
             if ($header['StudentClassID'] === null) foreach ($itemsByInvoice[$id] as $item) {
-                if (!isset($item['StudentClassID']) || $item['StudentClassID'] === null || (int) $item['StudentClassID'] !== $course) $this->fail('unowned_invoice_item');
+                if (!isset($item['StudentClassID']) || (int) $item['StudentClassID'] !== $course) $this->fail('unowned_invoice_item');
             }
         }
     }
@@ -181,7 +181,7 @@ final class OrdinaryCloseBillingCensus
             if ($reportPaymentId !== null) {
                 $reportPayment = $paymentMap[(string) $reportPaymentId] ?? null;
                 if (!$reportPayment || (int) $reportPayment['Amount'] <= 0 || (string) $reportPayment['Method'] === 'void') $this->fail('payment_report_conflict');
-                $positive[(string) $reportPaymentId] = (string) $reportPaymentId;
+                $positive[] = (string) $reportPaymentId;
             }
             if (count(array_unique(array_map('strval', $positive))) > 1) $this->fail('duplicate_report_payment');
             if ($reportPaymentId !== null && !in_array((string) $reportPaymentId, $linked, true)) {
@@ -237,8 +237,9 @@ final class OrdinaryCloseBillingCensus
                     $references[] = $snap['original_proof_id'];
                 }
             }
-            $expanded = $this->read('pop_execution_records', fn ($q) => $q->whereIn('operation_id', $operations)
-                ->orWhereIn('id', $references)->orWhereIn('snapshot->original_proof_id', $this->ids($rows, 'id')));
+            $expanded = $this->read('pop_execution_records', fn ($q) => $q->whereIn('phase', ['reversal-proof', 'reversal-proof-rollback'])
+                ->where(fn ($q) => $q->whereIn('operation_id', $operations)->orWhereIn('id', $references)
+                    ->orWhereIn('snapshot->original_proof_id', $this->ids($rows, 'id'))));
             $merged = $this->mergeRows($rows, $expanded);
             if (count($merged) === count($rows)) break;
             if ($round === 2) $this->fail('proof_history_incomplete');

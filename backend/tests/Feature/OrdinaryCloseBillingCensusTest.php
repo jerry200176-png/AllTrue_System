@@ -103,6 +103,16 @@ class OrdinaryCloseBillingCensusTest extends TestCase
         catch (\RuntimeException $e) { $this->assertStringContainsString('duplicate_report_payment', $e->getMessage()); }
     }
 
+    // #4492: the reciprocal payment ID must not overwrite a numeric list index.
+    public function test_duplicate_receipts_with_reciprocal_pointer_refuse(): void
+    {
+        $validate = new \ReflectionMethod(OrdinaryCloseBillingCensus::class, 'validatePaymentsAndReports');
+        $payment = ['InvoiceID' => 1, 'payment_report_id' => 1, 'Amount' => 50, 'Method' => 'cash'];
+        $this->expectExceptionMessage('ordinary_close_billing_duplicate_report_payment');
+        $validate->invoke(new OrdinaryCloseBillingCensus(), [['id' => 1] + $payment, ['id' => 2] + $payment],
+            [['id' => 1, 'StudentID' => 1, 'StudentClassID' => 1, 'InvoiceID' => 1, 'payment_id' => 1]], [1], 1, 1);
+    }
+
     public function test_legacy_report_to_payment_one_way_link_is_kept(): void
     {
         $f = $this->fixture();
@@ -240,6 +250,13 @@ class OrdinaryCloseBillingCensusTest extends TestCase
             'snapshot' => json_encode(['payment_id' => $paymentId, 'scope' => ['payment_id' => $paymentId, 'course_id' => $f['course']->ID,
                 'invoice_id' => $f['invoice']->id, 'student_id' => $f['student']->id, 'campus_id' => 1]], JSON_THROW_ON_ERROR),
             'payload' => '{}', 'actor' => 'synthetic', 'created_at' => now()]);
+        // #4492: PopOperationService stores ordinary receipts beside the strategy proof.
+        $proof = (array) DB::table('pop_execution_records')->where('id', $proofId)->first();
+        foreach (['execute', 'verify', 'rollback'] as $phase) {
+            $receiptId = (string) \Illuminate\Support\Str::uuid();
+            DB::table('pop_execution_records')->insert(array_replace($proof, ['id' => $receiptId, 'execution_id' => $receiptId,
+                'phase' => $phase, 'idempotency_key' => $receiptId, 'snapshot' => $phase === 'execute' ? '{"proof_id":"'.$proofId.'"}' : null]));
+        }
         $manifest = $this->capture($f);
         $this->assertSame([$proofId], $manifest['id_sets']['payment_restatement_proofs']);
         $this->assertSame(4, $manifest['fact_count']);
