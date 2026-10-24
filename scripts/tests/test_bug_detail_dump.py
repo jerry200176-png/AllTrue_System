@@ -7,7 +7,10 @@ from pathlib import Path
 
 import yaml
 
-from scripts.tests.test_dump_ids_only_contract import post_process
+if __package__:
+    from .test_dump_ids_only_contract import post_process
+else:
+    from test_dump_ids_only_contract import post_process
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github/workflows/bug-detail-dump.yml"
