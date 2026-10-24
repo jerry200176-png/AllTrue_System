@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\Schedule;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -87,6 +88,37 @@ class CourseLeaveCascadeService
         }
 
         return $session;
+    }
+
+    /**
+     * The calendar's leave marker for one lesson (#4210 P2-3): ordinary leave and the renewal-shift leave
+     * write the same row. With two lessons on the date the marker also carries the lesson's start (#3914).
+     * The caller owns the leave transaction and its row locks.
+     */
+    public static function recordLeaveMarker(StudentClass $course, ClassSession $session, int $campusId): void
+    {
+        $date = Carbon::parse($session->SessionDate)->toDateString();
+        $key = ['student_course_id' => (int) $course->ID, 'schedule_date' => $date, 'status' => 'leave']
+            + (self::courseHasTwoLessonsOn((int) $course->ID, $date) ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []); // HH:MM like other producers
+        Schedule::query()->firstOrCreate($key, [
+            'student_id'  => (int) $course->StudentID,
+            'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time'  => substr((string) $session->StartTime, 0, 5),
+            'end_time'    => substr((string) $session->EndTime, 0, 5),
+            'class_type'  => $course->ClassType ?? 'one_on_one',
+            'type'        => 'normal',
+            'deduction'   => 0,
+            'branch_id'   => $campusId,
+            'teacher_id'  => (int) ($course->TeacherID ?? 0),
+            'subject'     => $course->SubjectID ?? null,
+        ]);
+    }
+
+    /** #3914 review: does this course hold two or more (non-cancelled) lessons on the date? */
+    public static function courseHasTwoLessonsOn(int $courseId, string $date): bool
+    {
+        return ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', $date)
+            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
     }
 
     /**
@@ -636,6 +668,12 @@ class CourseLeaveCascadeService
         }
         $slotDays = array_values(array_filter($weekdays, fn ($d) => in_array($d . '|' . $start, $contractSlots, true)));
         $next = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+        // #4058: an occupied compatible date keeps searching the same slot weekdays. Returning null here would let
+        // computeAppendOnlyPlan() fall back to every course weekday and put this lesson's time on another weekday.
+        for ($tries = 0; $tries < 52 && !$free($next); $tries++) {
+            $baseDates[$next] = true;
+            $next = self::nextRecurringDate(Carbon::parse($next)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+        }
 
         return $free($next) ? $next : null;
     }

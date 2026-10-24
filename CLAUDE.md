@@ -5,7 +5,7 @@
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
-> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
+> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md` 的 Start here 與任務對應節（導航地圖）。禁止未讀 INDEX 就直接動手。**
 > **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
 > 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
 
@@ -110,7 +110,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 
 ### G-010：行事曆來源真相 = 已物化的 `ClassSession`；「某天課很少」未必是 bug
 行事曆/點名/評量的來源真相是**已物化的 `ClassSession`**（非 `schedules` 模板），經 `class-sessions` API（`branch_id`+`start`/`end`）→ 前端 `mergeWeekCalendarOccurrences()`。**判定「課表漏顯/數量不對」前，先查 DB**：`ClassSession JOIN StudentClass JOIN Student.CampusID` by `SessionDate`，DB 數量 = API 數量 = 真相。週日/低量日只有少數堂是**正常**（補習班週日課少），主任週檢視是依時段聚合成「堂」（例：2026-06-28 新莊分校 = 3 時段 / 12 筆 student-session，皆正確，非資料遺失）。
-**但 count 模式（預付包堂）課程目前無「向前產生 session」的排程 job**——`Kernel.php` 只跑 reconcile/close-orphans，`schedules:backfill-class-sessions` 只能從既有 `schedules` 物化、無法向前生成。導致已付堂數未物化、行事曆向前看不到 = 系統性 P0（**#1062**，全分校約 2,000 堂預付堂卡住）。每日 03:40 已排 `sessions:audit-stranded` 稽核；根因修復（向前生成 + 永不遺失已付餘額）屬 owner-gated 紅區。產品／架構決策包（**Accepted — Phase 0 evidence authorized**，非 implemented）：[`docs/ADR_006_prepaid_session_horizon_and_commitment.md`](docs/ADR_006_prepaid_session_horizon_and_commitment.md)——Schedule Commitment → materialize → pool coverage；禁止餘額猜堂。
+**count 模式（預付包堂）的向前產生只涵蓋 active 課程**：`Kernel.php` 每日 03:45 跑 `sessions:generate-forward --execute --scheduled --horizon-weeks=4`（#1062 Track A，參數見 `SchedulerEvidence.php`），只替近期有固定每週節奏的課向前物化 4 週；**dormant（停滯）預付課刻意排除**（#1152），已付堂數仍可能未物化、行事曆向前看不到（**#1062** 系統性問題的剩餘部分）。`schedules:backfill-class-sessions` 只能從既有 `schedules` 物化。每日 03:40 已排 `sessions:audit-stranded` 稽核；根因修復（向前生成 + 永不遺失已付餘額）屬 owner-gated 紅區。產品／架構決策包（**Accepted — Phase 0 evidence authorized**，非 implemented）：[`docs/ADR_006_prepaid_session_horizon_and_commitment.md`](docs/ADR_006_prepaid_session_horizon_and_commitment.md)——Schedule Commitment → materialize → pool coverage；禁止餘額猜堂。
 
 ### G-011：「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死
 `StudentClass.standard_lesson_minutes`（計費標準堂長）與 `SessionDuration`（排課時長）是**兩件事**。同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 **2.00 / 1.50 / 1.00** 堂；買 8 堂分別 = 720 / 960 / 1440 分鐘。
@@ -143,13 +143,8 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 
 ## 任務完成後的記錄原則
 
-| 發現了什麼 | 記在哪裡 |
-|---|---|
-| 非直覺的 DB / 流程行為 | `CLAUDE.md` §Gotchas（格式：`G-NNN: 一句話 + 後果`）|
-| AI 犯的錯誤（行為/流程） | `docs/AI_REGRESSION_LESSONS.md` |
-| 新功能 / bug 修復上線 | `docs/CHANGELOG.md`（一行原則）|
-| 技術債發現 | `docs/TECH_DEBT.md`（TD-NNN 表格）|
-| 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` |
+記錄位置依 `AGENTS.md` §公司治理記錄原則；非直覺的 DB／流程 Gotcha
+仍記在本檔 §核心資料表 Gotchas（`G-NNN`），不要在 adapter 複製發布 SOP。
 
 ---
 

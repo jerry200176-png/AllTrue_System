@@ -204,10 +204,22 @@ jobs:
               - 'frontend/src/pages/TeacherEligibilityPage.vue'
               - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
               - 'frontend/e2e/teacher-eligibility-playwright.config.js'
+              # 科目設定 (subject-settings-clarity.spec.js runs in the ui-foundation suite)
+              - 'frontend/src/pages/SubjectSettingsPage.vue'
+              - 'frontend/e2e/subject-settings-clarity.spec.js'
               # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
               - 'frontend/e2e/tuition-*-clarity.spec.js'
               - 'frontend/src/{pages/TuitionCollectionPage.vue,components/TuitionDocActions.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
               - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
+              # #4180: sidebar search / hub tabs (ui-foundation-sidebar-navigation.spec.js) and the 課程查找 payment
+              # entry (ui-foundation-course-payment-entry.spec.js), incl. the helpers the production acceptance shares
+              - 'frontend/src/App.vue'
+              - 'frontend/src/lib/navigationRegistry.js'
+              - 'frontend/e2e/fixtures/openPageFromSidebarSearch.js'
+              - 'frontend/src/pages/CourseManagement.vue'
+              - 'frontend/e2e/fixtures/coursePaymentEntry.js'
+              - 'frontend/e2e/fixtures/{dismissOverlays,latestGetJson}.js'
+              - 'frontend/src/lib/{roleCapabilities,paymentStatus}.js'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:

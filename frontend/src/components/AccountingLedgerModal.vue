@@ -545,16 +545,23 @@ function scrollToOpenedContract() {
   card?.scrollIntoView?.({ block: 'start' });
 }
 
+// #3912: a combined bill belongs to every course it has a line for (covered_student_class_ids), not only its anchor.
+const invoiceCoversCourse = (inv, id) => {
+  const covered = Array.isArray(inv?.covered_student_class_ids) && inv.covered_student_class_ids.length
+    ? inv.covered_student_class_ids : [inv?.student_class_id];
+  return covered.some((x) => Number(x) === Number(id));
+};
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  return !!scopeId && Number(inv.student_class_id) !== scopeId;
+  return !!scopeId && !invoiceCoversCourse(inv, scopeId);
 };
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  const inScope = (rows) => (rows || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
-  return !inScope(payload.value?.invoices).length && !inScope(payload.value?.receipts).length;
+  const invoices = (payload.value?.invoices || []).filter((inv) => !scopeId || invoiceCoversCourse(inv, scopeId));
+  const receipts = (payload.value?.receipts || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
+  return !invoices.length && !receipts.length;
 });
 
 const ledgerExceptions = computed(() => {
@@ -676,6 +683,9 @@ const packageLeadOf = (c) => {
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
   if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    // #4002: a tutoring member has no payment obligation (the server answers tutoring_no_payment_obligation),
+    // so a payable regular member leads; the lines below stay as fallbacks (e.g. an all-tutoring package).
+    || members.find((m) => m.class_type !== 'tutoring' && !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
     || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];

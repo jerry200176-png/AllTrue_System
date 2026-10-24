@@ -1,10 +1,12 @@
 // @ts-check
+import { recordLatestGetJson } from './latestGetJson.js';
 import { expect } from '@playwright/test';
 import { REPORT_STATUS_LABELS, coursePaymentBadge } from '../../src/lib/courseMoneyState.js';
 
 const UNPAID_ACTION = '登記繳費回報';
 const PENDING_REPORT_ACTION = `查看「${REPORT_STATUS_LABELS.pending}」`;
-const BILLING_ACTION = '在這裡看帳務';
+/** The billing action every course offers; 課程查找 rows show it once (#3982). */
+export const BILLING_ACTION = '在這裡看帳務';
 
 /** Any 課程查找 payment next action (used only to find a row whose state is not known yet). */
 export const COURSE_PAYMENT_ACTION_NAME = new RegExp(`^(?:${UNPAID_ACTION}|${PENDING_REPORT_ACTION}|${BILLING_ACTION})$`);
@@ -32,18 +34,12 @@ export function expectedCoursePaymentActionLabel(course) {
  * @returns {() => Array<Record<string, any>>} the most recently loaded list
  */
 export function recordCourseLists(page) {
-  /** @type {Array<Record<string, any>>} */
-  let latest = [];
-  page.on('response', async (response) => {
-    const url = new URL(response.url());
-    if (url.pathname !== '/api/v1/student-classes' || response.request().method() !== 'GET' || !response.ok()) return;
-    try {
-      const json = await response.json();
-      const list = json?.data ?? json;
-      latest = Array.isArray(list) ? list : (list?.data ?? []);
-    } catch { /* body unavailable after navigation */ }
-  });
-  return () => latest;
+  const latest = recordLatestGetJson(page, '/api/v1/student-classes');
+  return () => {
+    const json = latest()?.body;
+    const list = json?.data ?? json;
+    return Array.isArray(list) ? list : (list?.data ?? []);
+  };
 }
 
 /**
@@ -66,6 +62,8 @@ export function recordCourseLists(page) {
  *   courses: () => Array<Record<string, any>>,
  *   actionLabel?: string,
  * }} options `actionLabel` pins the exact action to click when the row's state is known.
+ * @returns {Promise<{ ledger: import('@playwright/test').Locator, studentClassId: number, paymentCell: import('@playwright/test').Locator }>}
+ *   the open billing panel, the course it was opened for, and the clicked row's payment cell
  */
 export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading, courses, actionLabel }) {
   const actionName = actionLabel ? new RegExp(`^${actionLabel}$`) : COURSE_PAYMENT_ACTION_NAME;
@@ -110,4 +108,5 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   expect(clickedLabel, `action for course ${requestedId} matches its payment state`).toBe(expectedCoursePaymentActionLabel(course ?? {}));
   await expect(ledger.locator('#ledger-modal-title')).toHaveText(`${studentName}的帳務`);
   await expect(pageHeading, 'still on 課程查找 (billing opens in place)').toBeVisible();
+  return { ledger, studentClassId: requestedId, paymentCell };
 }

@@ -80,6 +80,15 @@ on:
           - unchanged
           - "on"
           - "off"
+      pop_inapp_standing_policy:
+        description: "Application deploy only (default unchanged = preserve the current production value): explicitly set the backend POP in-app standing policy flag POP_INAPP_STANDING_POLICY. ADR-POP-015: the Founder turns it on only after the dry-run phase."
+        required: false
+        default: unchanged
+        type: choice
+        options:
+          - unchanged
+          - "on"
+          - "off"
 
 permissions:
   contents: read
@@ -112,6 +121,7 @@ jobs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
       superseded: ${{ steps.resolve.outputs.superseded }}
       release_train: ${{ steps.resolve.outputs.release_train }}
+      flag_changes: ${{ steps.resolve.outputs.flag_changes }}
     steps:
       - name: Validate target SHA and CI evidence
         id: resolve
@@ -121,6 +131,7 @@ jobs:
           FLAG_ADMISSIONS: ${{ inputs.admissions_funnel_v1 }}
           FLAG_CALENDAR: ${{ inputs.course_session_calendar_v1 }}
           FLAG_MANAGER: ${{ inputs.course_manager_v1 }}
+          FLAG_POP_INAPP: ${{ inputs.pop_inapp_standing_policy }}
           RUN_HEAD_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           WORKFLOW_REF: ${{ github.ref }}
@@ -129,10 +140,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Only unchanged/on/off (empty on automatic runs) may reach the Pi script; the requested
+          # changes are shown to the Founder as an annotation and in the Release state summary.
+          FLAG_CHANGES=""
+          for pair in "admissions_funnel_v1=$FLAG_ADMISSIONS" "course_session_calendar_v1=$FLAG_CALENDAR" \
+                      "course_manager_v1=$FLAG_MANAGER" "pop_inapp_standing_policy=$FLAG_POP_INAPP"; do
+            case "${pair#*=}" in
+              ""|unchanged) ;;
+              on|off) FLAG_CHANGES="${FLAG_CHANGES:+$FLAG_CHANGES, }$pair" ;;
+              *) echo "::error::${pair%%=*} accepts only unchanged, on or off; nothing was deployed."; exit 1 ;;
+            esac
+          done
+          echo "flag_changes=${FLAG_CHANGES:-none}" >> "$GITHUB_OUTPUT"
+          [[ -z "$FLAG_CHANGES" ]] || echo "::warning title=Feature-flag change requested::${FLAG_CHANGES}"
           RELEASE_TRAIN=false
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then
             RELEASE_TRAIN=true
-            for flag in "$FLAG_ADMISSIONS" "$FLAG_CALENDAR" "$FLAG_MANAGER"; do
+            for flag in "$FLAG_ADMISSIONS" "$FLAG_CALENDAR" "$FLAG_MANAGER" "$FLAG_POP_INAPP"; do
               if [[ -n "$flag" && "$flag" != "unchanged" ]]; then
                 echo "::error::A release train never changes feature flags; use phase=application-deploy for a flag change."
                 exit 1
@@ -248,6 +272,7 @@ jobs:
           ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
           COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
           COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
+          POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}
           PRODUCTION_URL: https://daan.lifenet.com.tw
         run: |
           python3 - <<'PYEOF'
@@ -270,7 +295,7 @@ jobs:
               os.environ.get("PHASE") == "application-deploy"
               and any(
                   (os.environ.get(key) or "unchanged").strip().lower() in {"on", "off"}
-                  for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1")
+                  for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1", "POP_INAPP_STANDING_POLICY")
               )
           )
 
@@ -459,7 +484,8 @@ jobs:
           if runtime_state == "current":
               if explicit_flag_activation:
                   # Flag on/off must rebuild the Vite bundle even when the tip SHA
-                  # already matches production (admissions / calendar activation).
+                  # already matches production (admissions / calendar activation),
+                  # or rewrite .env before the config cache rebuild (POP standing policy).
                   emit(
                       True,
                       deployed,
@@ -480,6 +506,13 @@ jobs:
               raise SystemExit(0)
           if runtime_state != "normal-version-lag":
               emit(True, deployed, str(runtime["reason"]), runtime_state)
+              raise SystemExit(0)
+
+          if explicit_flag_activation:
+              # A flag on/off reaches .env only in the Deploy step, so a lag with no
+              # application files (control-plane or docs only) must deploy too, never
+              # end as a green no-op (an `off` kill switch would fail open).
+              emit(True, deployed, "explicit Founder feature-flag activation on a lagging runtime; Deploy step required", runtime_state)
               raise SystemExit(0)
 
           if control_plane_only:
@@ -1031,6 +1064,7 @@ jobs:
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
           GO_REASON: ${{ needs.classify-activation.outputs.go_reason }}
           RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          FLAG_CHANGES: ${{ needs.resolve-target.outputs.flag_changes }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1105,6 +1139,7 @@ jobs:
               {
                 echo "## state=awaiting-approval"
                 echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
+                echo "Requested feature-flag changes: ${FLAG_CHANGES:-none}"
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
             ""|*)
@@ -1556,6 +1591,7 @@ jobs:
           DEPLOY_ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
           DEPLOY_COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
           DEPLOY_COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
+          DEPLOY_POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}
           DEPLOY_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           DEPLOY_SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
           DEPLOY_SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}

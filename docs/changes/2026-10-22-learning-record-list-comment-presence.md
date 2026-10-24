@@ -1,0 +1,5 @@
+## 2026-10-22 — Learning-record list stops one teacher-comment query per record
+<!-- release-notes: silent_ship=silent-2026-10-22-learning-record-list-comment-presence -->
+<!-- silent-reason: query-count fix; responses are unchanged -->
+
+Sentry PHP-LARAVEL-3E flagged an N+1 `select exists(… learning_record_teacher_comments …)` on the learning-record list. `decorateRecords()` resolves each record's effective teacher, and the ownership check (`LearningRecordMutableOwnership::hasSubstantiveTeacherContent`) asked the database whether a teacher comment exists, once per record. The list already loads all teacher comments of the page in one query; that load now runs before the effective-teacher loop and is handed to the check as the `teacherComment` relation, which the check uses when present (the relation is dropped again so the response keeps its formatted `teacher_comment`). Other callers keep the direct query. Regression: `LearningRecordsPerformanceTest::test_list_does_not_check_teacher_comments_once_per_record`. Rollback is a normal revert. Refs #3059.

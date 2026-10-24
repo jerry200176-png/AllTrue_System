@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { ciForMainTip } from '../../.github/scripts/land-queue.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -38,13 +39,111 @@ for (const [wf, names] of Object.entries(jobNames)) {
 
 test('presubmit reads PR number and runs the declaration gate under dispatch', () => {
   const y = read('.github/workflows/presubmit.yml');
-  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 4);
+  // concurrency + declaration body + CHECK 0d + CHECK 4A (labels for release-note-none) + CHECK 4B
+  assert.equal(y.split('github.event.pull_request.number || inputs.pr_number').length - 1, 5);
   assert.match(y, /workflow_dispatch' && inputs\.pr_number != ''/);
+  assert.match(y, /PR_LABELS="\$\(gh api "repos\/\$\{REPO\}\/pulls\/\$\{PR_NUMBER\}" --jq '\.labels\[\]\.name'\)"\n\s+fi\n\s+export PR_LABELS\n\s+node scripts\/check-release-notes-coverage\.mjs --base origin\/main --head HEAD/);
 });
 
 test('queue dispatches CI on main once after a merge', () => {
   assert.match(queue, /ciForMainTip/);
   assert.match(queue, /'workflow', 'run', 'ci\.yml', '--repo', REPO, '--ref', 'main'/);
+});
+
+const tip = 'a'.repeat(40);
+const ciRun = (extra = {}) => ({ id: 10, head_sha: tip, head_branch: 'main', path: '.github/workflows/ci.yml', event: 'push', status: 'queued', conclusion: null, ...extra });
+function mainCiStub(pages, { failAt = -1, moved = false } = {}) {
+  const calls = [], waits = [], messages = [];
+  let reads = 0, refs = 0, dispatches = 0;
+  return {
+    calls, waits, messages, dispatched: () => dispatches,
+    run: () => ciForMainTip({
+      readApi: (query) => {
+        calls.push(query);
+        if (query === 'git/ref/heads/main') return { object: { sha: moved && refs++ > 0 ? 'b'.repeat(40) : tip } };
+        assert.equal(query, `actions/workflows/ci.yml/runs?branch=main&head_sha=${tip}&per_page=100`);
+        if (reads === failAt) throw new Error('GitHub API unavailable');
+        const runs = pages[Math.min(reads++, pages.length - 1)];
+        return Array.isArray(runs) ? { total_count: runs.length, workflow_runs: runs } : runs;
+      },
+      wait: async (ms) => waits.push(ms), log: (message) => messages.push(message),
+      dispatch: () => { dispatches += 1; },
+    }),
+  };
+}
+
+test('main CI: visible push/dispatch pending, running or successful exact-tip CI suppresses fallback', async () => {
+  for (const event of ['push', 'workflow_dispatch']) {
+    for (const status of ['queued', 'pending', 'waiting', 'requested', 'in_progress', 'completed']) {
+      const stub = mainCiStub([[ciRun({ event, status, conclusion: status === 'completed' ? 'success' : null })]]);
+      assert.deepEqual(await stub.run(), { action: 'reuse', sha: tip, runId: 10 });
+      assert.equal(stub.dispatched(), 0);
+      assert.deepEqual(stub.waits, []);
+      assert.match(stub.messages[0], /reusing ci.yml run #10/);
+    }
+  }
+});
+
+test('main CI: delayed push visibility is read again before dispatch', async () => {
+  const stub = mainCiStub([[], [], [ciRun()]]);
+  assert.equal((await stub.run()).action, 'reuse');
+  assert.deepEqual(stub.waits, [5000, 10000]);
+  assert.equal(stub.dispatched(), 0);
+});
+
+test('main CI: a reused run cannot cover a main tip that moved during lookup', async () => {
+  const stub = mainCiStub([[ciRun()]], { moved: true });
+  await assert.rejects(stub.run, /main moved during CI lookup/);
+  assert.equal(stub.dispatched(), 0);
+});
+
+test('main CI: token-made merge with no push dispatches exactly once after bounded reads', async () => {
+  const stub = mainCiStub([[]]);
+  assert.deepEqual(await stub.run(), { action: 'dispatch', sha: tip });
+  assert.equal(stub.dispatched(), 1);
+  assert.equal(stub.calls.filter((query) => query.includes('actions/workflows/ci.yml/runs')).length, 3);
+  assert.equal(stub.calls.filter((query) => query === 'git/ref/heads/main').length, 2);
+  assert.deepEqual(stub.waits, [5000, 10000]);
+});
+
+test('main CI: failed/cancelled history, other SHAs, workflows, branches and PR events do not suppress necessary CI', async () => {
+  for (const run of [
+    ciRun({ status: 'completed', conclusion: 'failure' }),
+    ciRun({ status: 'completed', conclusion: 'cancelled' }),
+    ciRun({ head_sha: 'b'.repeat(40) }), ciRun({ path: '.github/workflows/codeql.yml' }),
+    ciRun({ head_branch: 'feature' }), ciRun({ event: 'pull_request' }),
+  ]) {
+    const stub = mainCiStub([[run]]);
+    assert.equal((await stub.run()).action, 'dispatch');
+    assert.equal(stub.dispatched(), 1);
+  }
+});
+
+test('main CI: API errors, partial/unknown responses and main movement block dispatch with a clear reason', async () => {
+  for (const failAt of [0, 1, 2]) {
+    const stub = mainCiStub([[]], { failAt });
+    await assert.rejects(stub.run, /main CI fallback blocked before dispatch.*GitHub API unavailable/);
+    assert.equal(stub.dispatched(), 0);
+  }
+  for (const data of [null, {}, { total_count: 1, workflow_runs: [] }, { total_count: 0, workflow_runs: [], incomplete_results: true }, [ciRun({ status: 'unknown' })]]) {
+    const stub = mainCiStub([data]);
+    await assert.rejects(stub.run, /main CI fallback blocked before dispatch/);
+    assert.equal(stub.dispatched(), 0);
+  }
+  const stub = mainCiStub([[]], { moved: true });
+  await assert.rejects(stub.run, /main moved during CI lookup/);
+  assert.equal(stub.dispatched(), 0);
+});
+
+test('main CI: initial ref failure blocks dispatch and an ambiguous dispatch failure is never retried', async () => {
+  let writes = 0;
+  await assert.rejects(() => ciForMainTip({ readApi: () => { throw new Error('ref lookup failed'); }, dispatch: () => { writes += 1; } }), /blocked before dispatch.*ref lookup failed/);
+  assert.equal(writes, 0);
+  await assert.rejects(() => ciForMainTip({
+    readApi: (query) => query === 'git/ref/heads/main' ? { object: { sha: tip } } : { total_count: 0, workflow_runs: [] },
+    wait: async () => {}, log: () => {}, dispatch: () => { writes += 1; throw new Error('network interrupted'); },
+  }), /dispatch outcome unknown.*inspect existing runs before retry/);
+  assert.equal(writes, 1);
 });
 
 test('batch-only workflows keep their required job name and are dispatchable without inputs', () => {

@@ -6,6 +6,8 @@ import {
   uniqueStudentCount,
   coursesWithSlotConflicts,
 } from './slotOccupancy.js';
+import { TRIAL_TARGET_CLASS_TYPE_OPTIONS, trialTargetPayload } from './trialTarget.js';
+import { mapCalendarCourse } from './calendarCourseLoad.js';
 
 const mixedTwo = [
   { id: 1, student_id: 341, class_type: 'one_on_three' },
@@ -160,3 +162,78 @@ const otherCampusRoom = pickerSlotConflict({
 assert.equal(otherCampusRoom.conflict, true, 'under-capacity other-campus lesson still blocks');
 assert.equal(otherCampusRoom.otherCampusConflict, true);
 assert.equal(otherCampusRoom.capacityWarn, false);
+
+// in-app #426 (Founder decision 1a, 2026-10-21): in a one-on-three slot trial
+// students take real seats; more than one trial may join while total <= 3.
+const r = (id, type) => ({ id, student_id: 700 + id, class_type: type });
+const conflictFor = (incomingType, overlappingCourses) => incomingClassConflict({ incomingType, overlappingCourses });
+
+// 1 regular + 1 trial: a second trial is allowed (the reported case, with a 1v3 student present).
+assert.equal(conflictFor('trial', [r(1, 'one_on_three'), r(2, 'trial')]).blocked, false);
+// 2 regular + 1 trial is allowed.
+assert.equal(conflictFor('trial', [r(1, 'one_on_three'), r(2, 'one_on_three')]).blocked, false);
+// 2 regular + 1 trial, then a third regular: blocked (the trial took a seat).
+const thirdRegular = conflictFor('one_on_three', [r(1, 'one_on_three'), r(2, 'one_on_three'), r(3, 'trial')]);
+assert.equal(thirdRegular.blocked, true);
+assert.equal(thirdRegular.unique, 3);
+// A 4th of any kind is blocked.
+const fourthTrial = conflictFor('trial', [r(1, 'one_on_three'), r(2, 'trial'), r(3, 'trial')]);
+assert.equal(fourthTrial.blocked, true);
+assert.equal(fourthTrial.reason, 'absolute');
+assert.equal(conflictFor('trial', [r(1, 'one_on_three'), r(2, 'one_on_three'), r(3, 'one_on_three')]).blocked, true);
+
+// Badge shows the true total, trials included.
+const fullWithTrial = occupancyBadge({ courses: [r(1, 'one_on_three'), r(2, 'one_on_three'), r(3, 'trial')] });
+assert.equal(fullWithTrial.label, '3/3');
+assert.match(fullWithTrial.tooltip, /含試聽 1 位/);
+assert.match(fullWithTrial.tooltip, /已滿/);
+
+// Blast radius: non-1v3 slots keep the one-trial-per-slot rule.
+const oneOnTwoSecondTrial = conflictFor('trial', [r(1, 'one_on_two'), r(2, 'trial')]);
+assert.equal(oneOnTwoSecondTrial.blocked, true);
+assert.equal(oneOnTwoSecondTrial.reason, 'trial');
+assert.equal(conflictFor('trial', [r(2, 'trial')]).blocked, true);
+assert.equal(conflictFor('trial', [r(1, 'one_on_one'), r(2, 'one_on_three'), r(3, 'trial')]).reason, 'trial');
+// Trial auditing outside 1v3 is unchanged (first trial joins a 1v1 slot).
+assert.equal(conflictFor('trial', [r(1, 'one_on_one')]).blocked, false);
+
+// in-app #426 trial target: trials for a 1v3 class make the slot 1v3 with no regular student yet.
+const t = (id, target) => ({ id, student_id: 800 + id, class_type: 'trial', trial_target_class_type: target });
+const targetConflict = (overlappingCourses, incomingType = 'trial', incomingTrialTarget = 'one_on_three') =>
+  incomingClassConflict({ incomingType, incomingTrialTarget, overlappingCourses });
+// 3 trials targeting 1v3, no regular student: allowed; a 4th is blocked.
+assert.equal(targetConflict([t(1, 'one_on_three'), t(2, 'one_on_three')]).blocked, false);
+const fourthTargeted = targetConflict([t(1, 'one_on_three'), t(2, 'one_on_three'), t(3, 'one_on_three')]);
+assert.equal(fourthTargeted.blocked, true);
+assert.equal(fourthTargeted.reason, 'absolute');
+// 2 targeted trials + 1 regular 1v3: allowed.
+assert.equal(targetConflict([t(1, 'one_on_three'), t(2, 'one_on_three')], 'one_on_three', null).blocked, false);
+// A stored target alone marks the slot for an untargeted incoming trial.
+assert.equal(targetConflict([t(1, 'one_on_three')], 'trial', null).blocked, false);
+// Null-target trials keep one per slot; a 1v2 target does not lift the cap.
+assert.equal(targetConflict([t(1, null)], 'trial', null).reason, 'trial');
+assert.equal(targetConflict([t(1, 'one_on_two')], 'trial', 'one_on_two').reason, 'trial');
+// A one-on-one booking still excludes the slot from 1v3 typing.
+assert.equal(targetConflict([r(1, 'one_on_one'), t(2, 'one_on_three')]).reason, 'trial');
+// Badge counts targeted trials as seats.
+assert.equal(occupancyBadge({ courses: [t(1, 'one_on_three'), t(2, 'one_on_three'), t(3, 'one_on_three')] }).label, '3/3');
+
+// Form payload: only a trial sends its target; null clears it.
+assert.deepEqual(trialTargetPayload({ class_type: 'trial', trial_target_class_type: 'one_on_three' }), { trial_target_class_type: 'one_on_three' });
+assert.deepEqual(trialTargetPayload({ class_type: 'trial', trial_target_class_type: '' }), { trial_target_class_type: null });
+assert.deepEqual(trialTargetPayload({ class_type: 'one_on_three', trial_target_class_type: 'one_on_three' }), {});
+assert.deepEqual(TRIAL_TARGET_CLASS_TYPE_OPTIONS.map((o) => o.value), ['one_on_one', 'one_on_two', 'one_on_three']);
+// The calendar course mapping exposes the stored target to the conflict check.
+assert.equal(mapCalendarCourse({ id: 9, class_type: 'trial', trial_target_class_type: 'one_on_three' }).trial_target_class_type, 'one_on_three');
+assert.equal(mapCalendarCourse({ id: 9, class_type: 'trial' }).trial_target_class_type, null);
+// The badge uses the same trial-target rule as the guard: a 1v2 student plus a trial for a 1v3
+// class is a 1v3 slot, so it reads 2/3 with a seat left, and 3/3 after the permitted third.
+const targetedBadge = occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, 'one_on_three')] });
+assert.equal(targetedBadge.label, '2/3');
+assert.equal(targetedBadge.remaining, 1);
+assert.match(targetedBadge.tooltip, /一對二已滿/, 'the separate 1v2 capacity detail is kept');
+assert.equal(targetConflict([r(1, 'one_on_two'), t(2, 'one_on_three')], 'trial', 'one_on_three').blocked, false);
+assert.equal(occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, 'one_on_three'), t(3, 'one_on_three')] }).label, '3/3');
+// Untargeted or 1v2-targeted trials keep the class-type maximum.
+assert.equal(occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, null)] }).label, '2/2');
+assert.equal(occupancyBadge({ courses: [r(1, 'one_on_one'), t(2, 'one_on_three')] }).label, '2/1');

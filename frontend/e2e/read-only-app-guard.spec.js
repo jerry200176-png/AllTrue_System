@@ -78,7 +78,7 @@ test.describe('read-only acceptance guard self-test', () => {
     });
 
     expect(outcome).toBe('failed');
-    expect(blocked).toEqual([{ method: 'PATCH', path: '/api/v1/schedules/9' }]);
+    expect(blocked).toEqual([{ method: 'PATCH', origin: app.base, path: '/api/v1/schedules/9' }]);
     expect(app.received.filter((r) => r.method !== 'GET')).toEqual([]);
     // The acceptance spec's afterEach makes exactly this assertion, so the run fails.
     expect(() => expect(blocked).toEqual([])).toThrow();
@@ -98,6 +98,29 @@ test.describe('read-only acceptance guard self-test', () => {
     expect(app.received.map((r) => r.path)).not.toContain('/api/v1/adoption/events');
   });
 
+  test('opted-in Sentry transaction is fulfilled locally while error telemetry stays blocked', async ({ page, context }) => {
+    const blocked = await installReadOnlyAppGuard(context, appOriginOf(app.base), { allowTransactionTelemetry: true });
+    await page.goto(`${app.base}/`);
+    const result = await page.evaluate(async () => {
+      const send = async (body) => {
+        try {
+          return (await fetch('https://o123.ingest.us.sentry.io/api/456/envelope/', {
+            method: 'POST', body,
+          })).status;
+        } catch { return 'blocked'; }
+      };
+      return [
+        await send('{}\n{"type":"transaction"}\n{"type":"transaction","transaction":"synthetic"}\n'),
+        await send('{}\n{"type":"event"}\n{"exception":{"values":[]}}\n'),
+      ];
+    });
+    expect(result).toEqual([204, 'blocked']);
+    expect(blocked.telemetryCounts).toMatchObject({ transaction: 1, error: 1 });
+    expect(blocked).toEqual([{ method: 'POST', origin: 'https://o123.ingest.us.sentry.io', path: '/api/456/envelope/' }]);
+    expect([app, third, middle].flatMap((server) => server.received)
+      .filter((entry) => !['GET', 'HEAD', 'OPTIONS'].includes(entry.method))).toEqual([]);
+  });
+
   test('(b) third-party HTTP writes are blocked before their first hop', async ({ page, context }) => {
     const blocked = await installReadOnlyAppGuard(context, appOriginOf(app.base));
     await page.goto(`${app.base}/`);
@@ -115,7 +138,7 @@ test.describe('read-only acceptance guard self-test', () => {
     }
 
     expect(blocked).toEqual(['POST', 'PUT', 'PATCH', 'DELETE'].map((method) => (
-      { method, path: '/api/4500000/envelope/' }
+      { method, origin: third.base, path: '/api/4500000/envelope/' }
     )));
     expect(third.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
     expect(app.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
@@ -135,7 +158,7 @@ test.describe('read-only acceptance guard self-test', () => {
     }, `${third.base}/api/v1/adoption/events`);
 
     expect(outcome).toBe('failed');
-    expect(blocked).toEqual([{ method: 'POST', path: '/api/v1/adoption/events' }]);
+    expect(blocked).toEqual([{ method: 'POST', origin: third.base, path: '/api/v1/adoption/events' }]);
     expect(third.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
   });
 
@@ -161,7 +184,7 @@ test.describe('read-only acceptance guard self-test', () => {
       }, `${third.base}/redirect`);
 
       expect(outcome).toBe('failed');
-      expect(blocked).toEqual([{ method: 'POST', path: '/redirect' }]);
+      expect(blocked).toEqual([{ method: 'POST', origin: third.base, path: '/redirect' }]);
       for (const server of [app, third, middle]) {
         expect(server.received.filter((r) => !['GET', 'HEAD', 'OPTIONS'].includes(r.method))).toEqual([]);
       }
@@ -199,7 +222,7 @@ test.describe('read-only acceptance guard self-test', () => {
     await popup.waitForLoadState();
     await popup.evaluate(() => fetch('/api/v1/students/1', { method: 'DELETE' }).catch(() => null));
 
-    expect(blocked).toEqual([{ method: 'DELETE', path: '/api/v1/students/1' }]);
+    expect(blocked).toEqual([{ method: 'DELETE', origin: app.base, path: '/api/v1/students/1' }]);
     expect(app.received.filter((r) => r.method === 'DELETE')).toEqual([]);
   });
 

@@ -1,0 +1,5 @@
+## 2026-10-22 — Status text tokens that meet AA on their wash fills
+<!-- release-notes: silent_ship=silent-2026-10-22-status-text-tokens -->
+<!-- silent-reason: contrast fix in shared badges and inline alerts; colors stay in the same hue -->
+
+`--ds-success`, `--ds-warning` and `--ds-danger` had no dark-theme values, so status text on its matching `*-wash` fill was 2.9–3.4:1 in dark mode; in light mode success and danger on their washes were 4.29:1 and 4.07:1. New tokens `--ds-success-text`, `--ds-warning-text` and `--ds-danger-text` are ≥ 4.5:1 on their washes in both themes (light `#167a3f` / base warning / `#be123c`; dark `#4ade80` / `#fbbf24` / `#f87171`). `AtBadge` and `AtInlineAlert` use them for status text. `tokenContrast.test.js` now checks every `{status}-text` on `{status}-wash` pair in both themes and resolves one-level `var()` aliases. First slice of #3931: page-level styles still use the base tokens (about 270 rules in about 60 files) and CourseManagement keeps its page-local dark override until they move. Rollback is a normal revert. Refs #3931.

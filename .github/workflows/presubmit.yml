@@ -290,10 +290,23 @@ jobs:
       # ─────────────────────────────────────────────
       # CHECK 4A：版本更新覆蓋閘門
       # CHANGELOG 每一筆近期產品變更都必須標記 STAFF_UPDATE 或 SILENT_SHIP。
+      # 新增的 silent_ship fragment 若同一 PR 改到 UI／API 程式（frontend/src 非測試、Controllers、routes），
+      # 需 PR label `release-note-none`（+ PR body 一行原因）。Labels are read live, like 0d: add it, then re-run.
+      # No PR context (land-queue batch): PR_NUMBER is empty and the script skips only that rule.
       # ─────────────────────────────────────────────
       - name: "[CHECK 4A] Release-notes coverage"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
+          set -euo pipefail
           node scripts/check-release-notes-coverage.mjs --self-test
+          PR_LABELS=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            PR_LABELS="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name')"
+          fi
+          export PR_LABELS
           node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD
 
       # CHECK 4B：production-impacting PR 必須先宣告 release impact；

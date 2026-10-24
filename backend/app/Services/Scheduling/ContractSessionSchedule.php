@@ -24,6 +24,14 @@ use Illuminate\Support\Facades\Schema;
  */
 class ContractSessionSchedule
 {
+    /**
+     * Statuses that are NOT a status-locked lesson: 'scheduled' (the sync moves it), one-off 'rescheduled' rows
+     * and 停課 'suspended' (off the contract on purpose), and SessionStatus::futureReservationExclusionStatuses()
+     * (cancelled, voided, approved leave: no slot held). Every other status, including attendance outcomes from
+     * AttendanceStatus::META, a pending leave and any status added later, keeps the lesson where it is.
+     */
+    private const NOT_STATUS_LOCKED_STATUSES = [SessionStatus::SCHEDULED, 'rescheduled', 'suspended'];
+
     public function __construct(private ClassSessionContractReflowService $contractSessionReflowService)
     {
     }
@@ -942,12 +950,15 @@ class ContractSessionSchedule
         return false;
     }
 
+    /** Statuses a person marked; shared with ClassSessionDeleteGuard. */
+    public const ATTENDANCE_MARKED_STATUSES = ['attended', 'late', 'leave', 'excused', 'absent'];
+
     /** Attendance-marked sessions are history: a slot-only edit must never delete-and-rebuild them. */
     public static function hasAttendanceMarkedSessions(int $studentClassId): bool
     {
         return DB::table('ClassSession')
             ->where('StudentClassID', $studentClassId)
-            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'absent'])
+            ->whereIn('Status', self::ATTENDANCE_MARKED_STATUSES)
             ->exists();
     }
 
@@ -1602,6 +1613,39 @@ class ContractSessionSchedule
 
     public function countUnalignedFutureContractSessions(StudentClass $studentClass): int
     {
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
+
+        return $this->countOffContractSessions($studentClass, $query);
+    }
+
+    /**
+     * Not-yet-started lessons that a fixed-slot edit left off the saved contract slots because of their status.
+     * syncFutureScheduledSessionTimes() moves only 'scheduled' rows, so a lesson in any status outside
+     * NOT_STATUS_LOCKED_STATUSES and the reservation exclusions (already marked, pending leave, an unknown status)
+     * keeps its old time. Zero rows moved by the sync is not evidence of a lock: an unchanged slot needs no move (#4435).
+     */
+    public function countStatusLockedFutureContractSessions(StudentClass $studentClass): int
+    {
+        $now = Carbon::now();
+        $today = $now->toDateString();
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->whereNotIn('Status', array_merge(self::NOT_STATUS_LOCKED_STATUSES, SessionStatus::futureReservationExclusionStatuses()))
+            ->where(function ($q) use ($today, $now) {
+                $q->whereDate('SessionDate', '>', $today)
+                    ->orWhere(fn ($sameDay) => $sameDay->whereDate('SessionDate', $today)->where('StartTime', '>', $now->format('H:i:s')));
+            });
+
+        return $this->countOffContractSessions($studentClass, $query);
+    }
+
+    /**
+     * Regular (non-exception) rows of $query (a ClassSession query) whose weekday, start and end are not one of
+     * the course's contract slots.
+     */
+    private function countOffContractSessions(StudentClass $studentClass, $query): int
+    {
         $slots = self::resolveScheduleSlotsForRebuild($studentClass);
         $contractKeys = [];
         $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
@@ -1616,9 +1660,6 @@ class ContractSessionSchedule
             $contractKeys["{$day}|{$start}|{$end}"] = true;
         }
 
-        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
         if (Schema::hasColumn('ClassSession', 'IsContractException')) {
             $query->where(function ($q) {
                 $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
