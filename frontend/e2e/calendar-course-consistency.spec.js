@@ -306,9 +306,9 @@ async function expectNoRetiredBillingLabels(locator, where) {
 
 // Enforce the read-only contract in the browser, like the other production
 // acceptance specs: no unsafe HTTP method from any page may reach any origin.
-// See fixtures/readOnlyAppGuard.js: app adoption POST telemetry is answered
-// locally with 204. Every other HTTP write, including third-party telemetry,
-// is aborted before its first hop and fails the test in afterEach. Reads on
+// See fixtures/readOnlyAppGuard.js: app adoption POST telemetry and this spec's
+// well-formed transaction-only Sentry envelopes are answered locally with 204.
+// Every other HTTP write is aborted before its first hop and fails afterEach. Reads on
 // every origin pass through. The route is installed on the
 // browser context so popup pages are guarded too.
 const APP_ORIGIN = appOriginOf(BASE);
@@ -339,12 +339,15 @@ test.describe('production acceptance — calendar/course parity', () => {
   test.use({ serviceWorkers: 'block' });
 
   test.beforeEach(async ({ context }) => {
-    blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN);
+    blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN, { allowTransactionTelemetry: true });
     countKnownPostReads = false;
     expectedAbortedPosts = new Set();
   });
 
   test.afterEach(async () => {
+    for (const [type, count] of Object.entries(blockedHttpWrites.telemetryCounts || {})) {
+      if (count > 0) noteCoverage(`sentry_${type}`, count);
+    }
     const expected = blockedHttpWrites.filter(isExpectedAbort);
     if (expected.length > 0) noteCoverage('expected_aborted_posts', expected.length);
     expect(blockedHttpWrites.filter((write) => !expected.includes(write)),
