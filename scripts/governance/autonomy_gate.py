@@ -1138,6 +1138,245 @@ def classify_activation_scope(
     }
 
 
+# Limited preparation for #4359: actual protected R3 effects keep the Founder path.
+def unresolved_review_threads(conn: object) -> int | None:
+    """Open threads in a ``reviewThreads(first:100)`` connection; None when unknown.
+
+    Same rule as ``.github/scripts/land-queue.mjs`` ``unresolvedCount``: a thread is open until it
+    is resolved and replied to (2+ comments); a second page or a missing count is unknown.
+    """
+
+    if not isinstance(conn, Mapping) or not isinstance(conn.get("nodes"), list):
+        return None
+    if (conn.get("pageInfo") or {}).get("hasNextPage") is not False:
+        return None
+    open_threads = 0
+    for thread in conn["nodes"]:
+        replies = ((thread or {}).get("comments") or {}).get("totalCount")
+        if not isinstance(replies, int) or isinstance(replies, bool):
+            return None
+        if thread.get("isResolved") is not True or replies < 2:
+            open_threads += 1
+    return open_threads
+
+
+def final_head_review_evidence(
+    *, repo: str, pr_numbers: Iterable[object], api: Callable[..., object], graphql: Callable[[str], object],
+) -> dict[str, object]:
+    """Independent review on the final head of every PR ("LGTM on the final patch set").
+
+    Codex's explicit no-findings confirmation of the PR's exact merged head
+    (``codex_confirms_head``) and zero open review threads. API errors propagate to the caller,
+    which fails closed; anything missing here is a hold.
+    """
+
+    owner, name = repo.split("/", 1)
+    numbers = [int(str(number)) for number in pr_numbers]
+    if not numbers:
+        return {"ok": False, "reason": "no PRs to review"}
+    flags = ("--paginate", "--slurp")
+
+    def flat(value: object) -> list:
+        if not isinstance(value, list):
+            return []
+        return [item for page in value for item in (page if isinstance(page, list) else [page])]
+
+    for number in numbers:
+        pr = api(f"/repos/{repo}/pulls/{number}")
+        head = ((pr or {}).get("head") or {}).get("sha")
+        if not codex_confirms_head(
+            head,
+            flat(api(f"/repos/{repo}/issues/{number}/comments?per_page=100", *flags)),
+            flat(api(f"/repos/{repo}/pulls/{number}/reviews?per_page=100", *flags)),
+            flat(api(f"/repos/{repo}/issues/{number}/reactions?per_page=100", *flags)),
+        ):
+            return {"ok": False, "reason": f"PR #{number}: no Codex no-findings confirmation on its final head"}
+        threads = graphql(
+            f'{{repository(owner:{json.dumps(owner)},name:{json.dumps(name)}){{pullRequest(number:{number})'
+            '{reviewThreads(first:100){nodes{isResolved comments{totalCount}} pageInfo{hasNextPage}}}}}'
+        )
+        conn = (((threads or {}).get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+        open_threads = unresolved_review_threads(conn.get("reviewThreads"))
+        if open_threads != 0:
+            state = "unknown" if open_threads is None else str(open_threads)
+            return {"ok": False, "reason": f"PR #{number}: open review threads {state}"}
+    return {"ok": True, "reason": "final-head Codex review with no open threads on " +
+            ", ".join(f"#{n}" for n in numbers)}
+
+
+DEPLOY_JOB_NAME = "Deploy to Production"
+
+
+def activation_range_commits(comparison: object, base: str, target: str) -> list:
+    """Only a complete, immutable ancestor range can supply activation evidence."""
+    if not isinstance(comparison, Mapping):
+        raise ValueError("comparison unavailable")
+    commits, total = comparison.get("commits"), comparison.get("total_commits")
+    if (not isinstance(commits, list) or not isinstance(total, int) or isinstance(total, bool)
+            or total <= 0 or total != len(commits)
+            or comparison.get("status") != "ahead"
+            or (comparison.get("base_commit") or {}).get("sha") != base
+            or (comparison.get("merge_base_commit") or {}).get("sha") != base):
+        raise ValueError("incomplete or non-ancestor activation range")
+    shas = [c.get("sha") if isinstance(c, Mapping) else None for c in commits]
+    if (not _full_sha(base) or not _full_sha(target) or shas[-1] != target
+            or any(not _full_sha(sha) for sha in shas) or len(set(shas)) != total):
+        raise ValueError("invalid activation commit identities")
+    return commits
+
+
+def landed_file_paths(files: object) -> list[str]:
+    """Renamed source paths are effects too; the commit API's 300-file cap is unknown."""
+    if not isinstance(files, list) or len(files) >= _COMMIT_API_FILE_CAP:
+        raise ValueError("incomplete commit file evidence")
+    paths = set()
+    for item in files:
+        if not isinstance(item, Mapping) or not isinstance(item.get("filename"), str) or not item["filename"]:
+            raise ValueError("invalid changed-file metadata")
+        if item.get("status") == "renamed" and not item.get("previous_filename"):
+            raise ValueError("renamed source path unavailable")
+        for key in ("filename", "previous_filename"):
+            if key in item:
+                if not isinstance(item[key], str) or not item[key]:
+                    raise ValueError("invalid changed-file path")
+                paths.add(item[key].replace("\\", "/"))
+    return sorted(paths)
+
+
+def _activation_api_rows(api, path: str, key: str):
+    """Lazy pagination, with schema/count/identity checks and the API's 1000-result ceiling."""
+    seen, expected = set(), None
+    for page in range(1, 11):
+        data = api(f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}")
+        if not isinstance(data, Mapping):
+            raise ValueError("activation history unavailable")
+        rows, total = data.get(key), data.get("total_count")
+        if (not isinstance(rows, list) or not isinstance(total, int) or isinstance(total, bool)
+                or total < 0 or (expected is not None and expected != total)
+                or len(rows) != min(100, max(0, total - len(seen)))):
+            raise ValueError("activation history is partial or changed")
+        if total > 1000:
+            raise ValueError("activation history exceeds the API result ceiling")
+        expected = total
+        for row in rows:
+            identity = row.get("id") if isinstance(row, Mapping) else None
+            if not isinstance(identity, int) or isinstance(identity, bool) or identity <= 0 or identity in seen:
+                raise ValueError("activation history identity unavailable")
+            seen.add(identity)
+            yield row
+        if len(seen) == total:
+            return
+    raise ValueError("activation history exceeds the API result ceiling")
+
+
+def deploy_freeze_reason(*, repo: str, api: Callable[..., object], current_run_id: object = None) -> str | None:
+    """Compare actual executor intervals across complete attempts; never use run creation order."""
+    ci = api(f"/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=20")
+    if not isinstance(ci, Mapping) or not isinstance(ci.get("workflow_runs"), list):
+        return "main CI state unknown"
+    decided = [r for r in ci["workflow_runs"] if isinstance(r, Mapping)
+               and r.get("name") == "CI — PHPUnit Tests" and r.get("conclusion") not in {"cancelled", "skipped"}]
+    if not decided or decided[0].get("status") != "completed" or decided[0].get("conclusion") != "success":
+        return "main CI is red or unknown"
+    history, attempts_seen = [], 0
+    runs = list(_activation_api_rows(api, f"/repos/{repo}/actions/workflows/deploy.yml/runs", "workflow_runs"))
+    for run in runs:
+        attempts = run.get("run_attempt")
+        if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 1:
+            raise ValueError("executor attempts unknown")
+        attempts_seen += attempts
+        if attempts_seen > 1000:
+            raise ValueError("executor attempt history exceeds the evidence ceiling")
+        if str(run["id"]) == str(current_run_id):
+            if attempts != 1:
+                raise ValueError("executor rerun requires fresh classification")
+            continue
+        for attempt in range(1, attempts + 1):
+            path = f"/repos/{repo}/actions/runs/{run['id']}/attempts/{attempt}/jobs"
+            for job in _activation_api_rows(api, path, "jobs"):
+                if not isinstance(job.get("name"), str) or not job["name"]:
+                    raise ValueError("executor job identity unknown")
+                if job.get("name") != DEPLOY_JOB_NAME:
+                    continue
+                status, conclusion = job.get("status"), job.get("conclusion")
+                if status == "completed" and conclusion == "skipped":
+                    continue
+                started, finished = job.get("started_at"), job.get("completed_at")
+                if status in {"queued", "waiting", "pending", "requested"} and started is None and finished is None and conclusion is None:
+                    continue
+                if status != "completed":
+                    return "production executor active or unknown; reviewed recovery required"
+                started, finished = _parse_timestamp(started), _parse_timestamp(finished)
+                if (started is None or finished is None or started.tzinfo is None
+                        or finished.tzinfo is None or started > finished):
+                    raise ValueError("executor chronology unknown")
+                history.append((started, finished, conclusion))
+    if not history:
+        return "production deployment state unknown"
+    history.sort(key=lambda item: item[1])
+    if any(b[0] < a[1] or b[1] == a[1] for a, b in zip(history, history[1:])):
+        raise ValueError("executor chronology overlaps or is ambiguous")
+    return None if history[-1][2] == "success" else "last production executor failed, was cancelled or is unknown; reviewed recovery required"
+
+
+def r3_runtime_evidence(*, repo: str, pr_numbers: Iterable[object], api, graphql, current_run_id: object = None) -> dict:
+    """Read evidence, never author assurances of flag coverage or backend-only behavior."""
+    numbers = list(pr_numbers)
+    rollback = bool(numbers) and all(has_strict_rollback(
+        api(f"/repos/{repo}/pulls/{int(str(n))}").get("body") or ""
+    ) for n in numbers)
+    return {"review": final_head_review_evidence(repo=repo, pr_numbers=numbers, api=api, graphql=graphql),
+            "freeze_reason": deploy_freeze_reason(repo=repo, api=api, current_run_id=current_run_id), "rollback_evidence": rollback}
+
+
+def decide_r3_auto_activation(
+    records: Iterable[dict[str, object]], *, event_name: str, rollback_evidence: bool,
+    range_paths: Iterable[str] | None, review: Mapping[str, object] | None = None,
+    freeze_reason: str | None = "freeze state not evaluated",
+) -> dict[str, object]:
+    """Partial #4359 subset: conservative T3 declarations on existing <=T2 effects only.
+
+    Actual R3 semantics, routes, control plane and unproven flags/recovery remain Founder-gated.
+    No config default, token occurrence or backend-only prose proves a dark launch.
+    """
+    def hold(reason):
+        return {"ok": False, "reason": reason}
+    if event_name not in {"workflow_run", "repository_dispatch", "schedule"}:
+        return hold("manual events keep the Founder path")
+    if range_paths is None:
+        return hold("range paths unavailable")
+    paths = {str(p).replace("\\", "/") for p in range_paths if p}
+    if not paths or any(is_control_plane_path(p) or p.startswith(("scripts/", "backend/routes/")) for p in paths):
+        return hold("control-plane, route or unknown range requires Founder")
+    records = list(records)
+    # Recompute from landed paths/patches, not the PR author's classification or flag claims.
+    provenance = classify_activation_provenance(records)
+    apps = provenance.get("application_prs") or []
+    if provenance.get("blocked") or not apps or provenance.get("declared_tier") != 3:
+        return hold("not a complete conservatively declared R3 application range")
+    for pr in apps:
+        scope = pr["scope"]
+        if (scope.get("founder_required") is not False or scope.get("machine_minimum_tier") not in {0, 1, 2}
+                or scope.get("activation_class") not in {"routine", "guarded-sensitive"}):
+            return hold(f"PR #{pr['number']}: actual protected R3 effect or unknown recovery/guard boundary")
+    if rollback_evidence is not True:
+        return hold("strict code-revert directive unavailable; generic rollback prose is not evidence")
+    if freeze_reason is not None:
+        return hold(f"deploy freeze: {freeze_reason}")
+    if not isinstance(review, Mapping) or review.get("ok") is not True:
+        return hold("final-head review unavailable")
+    return {"ok": True, "reason": "limited R3 declarations; actual routine/guarded-sensitive <=T2 effects, strict code revert, final-head review, no freeze"}
+
+
+def recheck_r3_execution(*, repo: str, base_sha: str, runtime_base_sha: object, pr_numbers: Iterable[object], api, graphql, current_run_id: object = None) -> None:
+    """After the executor lock, re-read mutable evidence before SSH or any production write."""
+    if not _full_sha(base_sha) or runtime_base_sha != base_sha:
+        raise ValueError("production base moved; fresh classification required")
+    evidence = r3_runtime_evidence(repo=repo, pr_numbers=pr_numbers, api=api, graphql=graphql, current_run_id=current_run_id)
+    if evidence["freeze_reason"] is not None or evidence["rollback_evidence"] is not True or evidence["review"].get("ok") is not True:
+        raise ValueError("R3 evidence changed after the executor queue; nothing deployed")
+
+
 def _parse_timestamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -1981,10 +2220,12 @@ def auto_environment_is_valid(
 ) -> bool:
     """Accept the reviewer-less ``production-auto`` Environment only with verified 1A evidence.
 
+    ``auto-r3`` is limited to conservative R3 declarations with actual existing <=T2 effects.
+
     Manual exceptional phases never use it; they keep ``production-activation``.
     """
 
-    if go_evidence != "verified" or mode not in {"auto", "auto-founder-go"}:
+    if go_evidence != "verified" or mode not in {"auto", "auto-founder-go", "auto-r3"}:
         return False
     if event_name == "workflow_dispatch":
         if phase != "release-train":
@@ -2066,6 +2307,14 @@ __all__ = [
     "declares_additive_migration",
     "decide_activation",
     "decide_manual_activation",
+    "activation_range_commits",
+    "landed_file_paths",
+    "r3_runtime_evidence",
+    "recheck_r3_execution",
+    "decide_r3_auto_activation",
+    "deploy_freeze_reason",
+    "final_head_review_evidence",
+    "unresolved_review_threads",
     "is_founder_approval_eligible",
     "classify_production_runtime",
     "wait_for_exact_successful_provenance",
