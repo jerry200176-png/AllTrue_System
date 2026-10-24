@@ -58,18 +58,25 @@ class CloseEvidenceTest extends TestCase
     public function test_writer_refuses_unsupported_version_schema_and_free_text_fields(): void
     {
         $service = new OrdinaryCloseEvidence();
-        $payload = $this->payload();
+        $baseline = $this->validCancellationPayload();
+        $validId = $this->appendEvidence($service, $baseline);
+        $this->assertEquals($baseline, $service->read($validId, 34, 12));
+
+        $payload = $baseline;
+        $payload['close_uuid'] = (string) Str::uuid();
         $payload['schema_version'] = 2;
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
 
-        $payload = $this->payload();
-        $payload['cancelled_sessions'][] = $this->sessionEvidence(19, ' [結案取消]') + ['note_text' => 'free text'];
+        $payload = $baseline;
+        $payload['close_uuid'] = (string) Str::uuid();
+        $payload['cancelled_sessions'][0]['note_text'] = 'free text';
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
 
-        $payload = $this->payload();
-        $payload['cancelled_sessions'][] = $this->sessionEvidence(19, 'tag');
+        $payload = $baseline;
         $payload['close_uuid'] = (string) Str::uuid();
+        $payload['cancelled_sessions'][0]['note']['suffix'] = 'unrecognized note marker';
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
+        $this->assertSame(1, DB::table('security_audit_events')->count());
     }
 
     public function test_required_insert_failure_throws_and_caller_transaction_rolls_back(): void
@@ -217,31 +224,34 @@ class CloseEvidenceTest extends TestCase
     public function test_snapshot_requires_session_row_digests_and_exact_previous_pointer_shape(): void
     {
         $service = new OrdinaryCloseEvidence();
-        $payload = $this->payload();
-        $payload['guard_fact_ids']['sessions'] = [19];
-        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        $baseline = $this->validCancellationPayload();
+        $validId = $this->appendEvidence($service, $baseline);
+        $this->assertEquals($baseline, $service->read($validId, 34, 12));
+
+        $payload = $baseline;
+        $payload['close_uuid'] = (string) Str::uuid();
         unset($payload['cancelled_sessions'][0]['before_row_digest']);
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
 
-        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        $payload = $baseline;
+        $payload['close_uuid'] = (string) Str::uuid();
         $payload['cancelled_sessions'][0]['after_row_digest'] = 'not-a-digest';
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
 
         foreach (['contract_before_digest', 'contract_after_digest', 'guard_before_digest', 'guard_digest'] as $requiredDigest) {
-            $payload = $this->payload();
+            $payload = $baseline;
+            $payload['close_uuid'] = (string) Str::uuid();
             unset($payload[$requiredDigest]);
             $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
         }
 
-        $payload = $this->payload();
-        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
-        $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
-        $payload['guard_fact_ids']['sessions'] = [19];
+        $payload = $baseline;
+        $payload['close_uuid'] = (string) Str::uuid();
         $payload['previous_pointer'] = [
             'kind' => 'ordinary_close_v1', 'close_uuid' => (string) Str::uuid(), 'correction_event_id' => 91,
         ];
         $this->assertEvidenceThrows(fn () => $this->appendEvidence($service, $payload));
-        $this->assertSame(0, DB::table('security_audit_events')->count());
+        $this->assertSame(1, DB::table('security_audit_events')->count());
     }
 
     public function test_fact_and_serialized_byte_budgets_fail_closed(): void
@@ -282,6 +292,15 @@ class CloseEvidenceTest extends TestCase
                 'sessions' => [], 'schedules' => [], 'successor_courses' => [],
             ],
         ];
+    }
+
+    private function validCancellationPayload(): array
+    {
+        $payload = $this->payload();
+        $payload['cancel_remaining'] = true;
+        $payload['guard_fact_ids']['sessions'] = [19];
+        $payload['cancelled_sessions'] = [$this->sessionEvidence(19, ' [結案取消]')];
+        return $payload;
     }
 
     private function sessionEvidence(int $id, string $suffix): array
