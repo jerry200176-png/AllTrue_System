@@ -1,0 +1,106 @@
+name: Laravel 4504 metadata (read-only)
+# governance-capability: read-only-probe
+on:
+  workflow_dispatch:
+    inputs:
+      expected_backend_sha:
+        description: Exact approved production backend SHA (40 lowercase hex)
+        required: true
+        type: string
+      expected_workflow_sha:
+        description: Exact approved main SHA containing this collector
+        required: true
+        type: string
+      confirm:
+        description: READ_ONLY_4504:<expected_backend_sha>:<expected_workflow_sha>
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+  queue: max
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 5
+    steps:
+      - name: Validate approved main and production identities
+        env:
+          BACKEND: ${{ inputs.expected_backend_sha }}
+          WORKFLOW: ${{ inputs.expected_workflow_sha }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main && "$WORKFLOW" == "$GITHUB_SHA" ]]
+          [[ "$BACKEND" =~ ^[a-f0-9]{40}$ && "$WORKFLOW" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$CONFIRM" == "READ_ONLY_4504:$BACKEND:$WORKFLOW" ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Collect bounded metadata without host files or business queries
+        id: probe
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+          BACKEND: ${{ inputs.expected_backend_sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ ${#DUMP_ARTIFACT_KEY} -ge 16 ]]
+          mkdir -p raw out
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/metadata4504.key"
+          set +e
+          timeout --signal=TERM --kill-after=5s 70s ssh -i "$RUNNER_TEMP/metadata4504.key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
+            "cd /home/admin/backend && EXPECTED_BACKEND_SHA='$BACKEND' timeout --signal=TERM --kill-after=5s 45s php" \
+            < scripts/laravel-4504-metadata.php > raw/production-case.json 2> raw/production-case.stderr.log
+          status=$?
+          set -e
+          printf '%s\n' "$status" > raw/probe-exit-code
+          printf 'exit_code=%s\n' "$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - name: Publish only the closed metadata projection
+        if: ${{ always() && steps.probe.outcome != 'skipped' }}
+        env:
+          BACKEND: ${{ inputs.expected_backend_sha }}
+          PROBE_EXIT: ${{ steps.probe.outputs.exit_code }}
+        run: |
+          python3 scripts/laravel-4504-metadata-summary.py raw/production-case.json out/metadata.summary.json \
+            --backend "$BACKEND" --workflow "$GITHUB_SHA" --run_id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --probe_exit "$PROBE_EXIT"
+      - name: Encrypt private metadata and errors
+        if: always()
+        env:
+          DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ ! -d raw ]]; then exit 0; fi
+          [[ ${#DUMP_ARTIFACT_KEY} -ge 16 ]]
+          tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/metadata.private.tar.gz.enc
+          (cd out && sha256sum metadata.private.tar.gz.enc > metadata.private.tar.gz.enc.sha256)
+      - name: Shred private runner files
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -d raw ]]; then find raw -type f -exec shred -u {} +; rmdir raw; fi
+          if [[ -f "$RUNNER_TEMP/metadata4504.key" ]]; then shred -u "$RUNNER_TEMP/metadata4504.key"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: laravel-4504-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            out/metadata.summary.json
+            out/metadata.private.tar.gz.enc
+            out/metadata.private.tar.gz.enc.sha256
+          if-no-files-found: ignore
+          retention-days: 14
