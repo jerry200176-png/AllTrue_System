@@ -310,6 +310,26 @@ namespace {
                 self.assertNotIn('tail', probe)
                 self.assertNotIn('conflict', probe)
 
+    def test_433_binding_reason_public_projection_is_a_closed_enum(self):
+        sentinel = 'synthetic-private-binding-context'
+        for reason, expected in [('course_mode', 'course_mode'), (sentinel, None), ({'detail': sentinel}, None)]:
+            with self.subTest(reason=reason):
+                envelope = {'ok': True, 'requested_bug_id': 433, 'bug': {'id': 433, 'title': sentinel},
+                            'diagnostics': {'decision_grade_required': True, 'decision_grade': False,
+                                            'probe_results': {'probe_433_leave_tail': {
+                                                'decision_grade': False, 'error': 'target_binding_failed',
+                                                'binding_failure': reason}}}}
+                result, encrypted, public, recovered = post_process(
+                    'bug-detail-dump.yml', 'Dump bug', 'bug-detail.log', json.dumps(envelope) + '\n', {'BUG_ID': '433'})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(encrypted.returncode, 0, encrypted.stderr)
+                self.assertNotIn(sentinel, result.stdout + result.stderr)
+                for name, content in public.items():
+                    self.assertNotIn(sentinel.encode(), content, name)
+                summary = json.loads(public['summary.json'])
+                self.assertEqual(summary.get('probe_433_binding_failure'), expected)
+                self.assertIn(sentinel, recovered)
+
     def test_433_probe_is_inert_for_other_reports(self):
         probe, calls = self.run_433_probe({}, bug_id=7)
         self.assertFalse(probe['applicable'])
