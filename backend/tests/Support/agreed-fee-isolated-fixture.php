@@ -31,6 +31,8 @@ function agreed_fee_isolated_block_side_effects(): void
 {
     \Illuminate\Support\Facades\Http::fake(static fn () => throw new \RuntimeException('isolated outbound HTTP forbidden'));
     \Illuminate\Support\Facades\Notification::fake();
+    // Laravel 12 resolves the manager before faking; registration stays inside this guarded harness.
+    app()->register(\Illuminate\Mail\MailServiceProvider::class);
     \Illuminate\Support\Facades\Mail::fake();
     \Illuminate\Support\Facades\Queue::fake();
 }

@@ -1,34 +1,22 @@
-## 2026-10-25 — official Laravel 12 security/compatibility candidate (#977)
+## 2026-10-25 — official Laravel 12 compatibility candidate (#977)
 <!-- release-notes: silent_ship=silent-2026-10-25-laravel12-security-compatibility -->
 <!-- silent-reason: unactivated framework dependency and compatibility candidate -->
 
-Prepare from current main, separately from #4385 and the stale closed #2833.
-Use official Laravel 12.70.1, compatible Sanctum/Carbon/Symfony/testing tools,
-and remove the prior advisory-ignore entries. The locked dependency graph is
-audited without ignores; this is an official package upgrade, not a version
-alias or a vendor backport. No migration, feature activation or auth/campus
-authorization change is included.
+Prepare fresh from main, separately from #4385 and closed #2833. Use official
+Laravel 12.70.1 and compatible tools; remove advisory ignores and audit the lock.
+Preserve whole-minute attendance/report/reschedule durations and whole-second,
+absolute RFID/undo windows, plus the existing reminder-template day calculation.
+Keep contracts, payroll writers, notification gates and campus/auth boundaries.
+Preserve unknown LINE-setting rejection when validation filters nested keys.
+Adapt PHPUnit helpers/providers/XML and exception fixtures without dropping tests;
+the isolated HTTP harness registers the mail manager before blocking every send.
+Add accurate Eloquent types; keep PHPStan level 5/scope and only shrink suppressions.
+Disable only new optional Larastan env/collection style rules to retain live gates
+and loaded-collection semantics. Capture the existing parent-card month label.
 
-Preserve Carbon 2's complete-minute attendance totals and complete-second,
-absolute RFID debounce/substitute-undo windows. Keep the reminder template
-picker's existing absolute day difference; eligibility and senders are unchanged.
-The retired public payment-report submit method is not revived or modified.
-Rename private test/console helpers that collide with new parent methods, make
-the existing data providers static, and migrate the coverage XML format while
-preserving its app scope and uncovered files.
-
-Add precise relationship PHPDocs without changing queries. Keep PHPStan level 5,
-the existing app scope/exclusions and original matching baseline fields. Remove
-only machine-proven obsolete suppression records. Larastan's newly introduced
-optional env/collection style rules are disabled because existing live maintenance/security
-gates must remain live and loaded-collection semantics must remain stable. No
-existing runtime guard or test is disabled. Capture the existing current-month
-label in the parent course-card closure instead of suppressing an undefined
-variable. Adapt synthetic QueryException fixtures and require the new nested
-deadlock wrapper to retain its original query cause and retry boundary.
-
-Local preparation only: publication, merge and production activation remain
-separate decisions. Before activation verify the actual PHP 8.2+/extensions,
-exact range, runtime/config/process state and direct billing/scheduling/auth
-contracts. Rollback needs the prior approved locked dependency artifact and
-process/cache verification; no production data repair is authorized here.
+Sanctum 4 stops auto-loading migrations: publish its official 2019 migration under
+the original filename. Existing migration history/schema must be verified before
+activation; no ALTER, data backfill, token rotation or production DDL was run.
+Publication, merge and activation remain separate decisions. Verify real PHP 8.2+
+and exact runtime/range before activation; rollback uses the prior locked artifact,
+with no automatic migration rollback or data repair. Retired routes stay retired.

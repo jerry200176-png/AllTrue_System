@@ -535,8 +535,8 @@ class RescheduleSessionService
     private function durationHours(string $start, string $end): float
     {
         try {
-            $minutes = Carbon::createFromFormat('H:i:s', $start)
-                ->diffInMinutes(Carbon::createFromFormat('H:i:s', $end));
+            $minutes = (int) Carbon::createFromFormat('H:i:s', $start)
+                ->diffInMinutes(Carbon::createFromFormat('H:i:s', $end), true);
             return round($minutes / 60, 2);
         } catch (\Throwable) {
             return 0;
