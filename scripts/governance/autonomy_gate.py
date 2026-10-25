@@ -1232,9 +1232,13 @@ def landed_file_paths(files: object) -> list[str]:
 
 
 def _activation_api_rows(api, path: str, key: str):
-    """Lazy pagination, with schema/count/identity checks and the API's 1000-result ceiling."""
-    seen, expected = set(), None
-    for page in range(1, 11):
+    """Read the entire finite advertised result, never an accepted capped prefix.
+
+    API failures and the caller's rate/time budget still fail closed. Unfiltered
+    workflow history is not subject to the filtered-search 1,000-result limit.
+    """
+    seen, expected, page = set(), None, 1
+    while True:
         data = api(f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}")
         if not isinstance(data, Mapping):
             raise ValueError("activation history unavailable")
@@ -1243,8 +1247,6 @@ def _activation_api_rows(api, path: str, key: str):
                 or total < 0 or (expected is not None and expected != total)
                 or len(rows) != min(100, max(0, total - len(seen)))):
             raise ValueError("activation history is partial or changed")
-        if total > 1000:
-            raise ValueError("activation history exceeds the API result ceiling")
         expected = total
         for row in rows:
             identity = row.get("id") if isinstance(row, Mapping) else None
@@ -1254,27 +1256,69 @@ def _activation_api_rows(api, path: str, key: str):
             yield row
         if len(seen) == total:
             return
-    raise ValueError("activation history exceeds the API result ceiling")
+        page += 1
 
 
-def deploy_freeze_reason(*, repo: str, api: Callable[..., object], current_run_id: object = None) -> str | None:
-    """Compare actual executor intervals across complete attempts; never use run creation order."""
-    ci = api(f"/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=20")
-    if not isinstance(ci, Mapping) or not isinstance(ci.get("workflow_runs"), list):
-        return "main CI state unknown"
-    decided = [r for r in ci["workflow_runs"] if isinstance(r, Mapping)
-               and r.get("name") == "CI — PHPUnit Tests" and r.get("conclusion") not in {"cancelled", "skipped"}]
-    if not decided or decided[0].get("status") != "completed" or decided[0].get("conclusion") != "success":
-        return "main CI is red or unknown"
-    history, attempts_seen = [], 0
+def _deployment_inventory(repo, api):
     runs = list(_activation_api_rows(api, f"/repos/{repo}/actions/workflows/deploy.yml/runs", "workflow_runs"))
+    state = {}
+    fields = ("run_attempt", "status", "conclusion", "created_at", "updated_at", "run_started_at",
+              "head_sha", "head_branch", "event", "workflow_id")
     for run in runs:
         attempts = run.get("run_attempt")
         if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 1:
             raise ValueError("executor attempts unknown")
-        attempts_seen += attempts
-        if attempts_seen > 1000:
-            raise ValueError("executor attempt history exceeds the evidence ceiling")
+        if run.get("status") not in {"completed", "queued", "waiting", "pending", "requested", "in_progress"}:
+            raise ValueError("executor run state unknown")
+        values = tuple(run.get(key) for key in fields)
+        if any(value is not None and type(value) not in {str, int} for value in values):
+            raise ValueError("executor inventory fields unknown")
+        state[run["id"]] = values
+    return runs, state
+
+
+def _main_ci_state(repo, api):
+    ci = api(f"/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=20")
+    if not isinstance(ci, Mapping) or not isinstance(ci.get("workflow_runs"), list):
+        return None
+    decided = [r for r in ci["workflow_runs"] if isinstance(r, Mapping)
+               and r.get("name") == "CI — PHPUnit Tests" and r.get("conclusion") not in {"cancelled", "skipped"}]
+    if not decided or decided[0].get("status") != "completed" or decided[0].get("conclusion") != "success":
+        return None
+    if type(decided[0].get("id")) is not int or decided[0]["id"] <= 0:
+        return None
+    return {key: decided[0].get(key) for key in ("id", "head_sha", "run_attempt", "status", "conclusion", "updated_at")}
+
+
+def _completed_executor_envelope(job):
+    """Retain raw evidence; a bounded cancelled anomaly is never a success witness."""
+    started, finished = _parse_timestamp(job.get("started_at")), _parse_timestamp(job.get("completed_at"))
+    if started is None or finished is None or started.tzinfo is None or finished.tzinfo is None:
+        raise ValueError("executor chronology unknown")
+    if started > finished:
+        # Audited GitHub cancelled-job metadata has a one-second inversion. Its
+        # entire uncertainty envelope must precede a later uncontested recovery;
+        # this is not a repaired timestamp or proof of a physical execution span.
+        if job["conclusion"] != "cancelled" or started - finished != timedelta(seconds=1):
+            raise ValueError("executor chronology unknown")
+        return finished, started, False
+    return started, finished, job["conclusion"] == "success"
+
+
+def deploy_freeze_reason(*, repo: str, api: Callable[..., object], current_run_id: object = None) -> str | None:
+    """A complete, stable history needs one strictly later successful recovery.
+
+    Old overlaps/known cancelled uncertainty remain in the evidence. They can be
+    superseded only by an unambiguous success starting after all their bounds.
+    Inventory revalidation detects advertised mutations, not an atomic API lock.
+    """
+    ci = _main_ci_state(repo, api)
+    if ci is None:
+        return "main CI is red or unknown"
+    history, job_ids = [], set()
+    runs, inventory = _deployment_inventory(repo, api)
+    for run in runs:
+        attempts = run["run_attempt"]
         if str(run["id"]) == str(current_run_id):
             if attempts != 1:
                 raise ValueError("executor rerun requires fresh classification")
@@ -1282,29 +1326,54 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object], current_run_i
         for attempt in range(1, attempts + 1):
             path = f"/repos/{repo}/actions/runs/{run['id']}/attempts/{attempt}/jobs"
             for job in _activation_api_rows(api, path, "jobs"):
+                if (type(job.get("run_id")) is not int or type(job.get("run_attempt")) is not int
+                        or job.get("run_id") != run["id"] or job.get("run_attempt") != attempt
+                        or job["id"] in job_ids):
+                    raise ValueError("executor job identity or attempt unknown")
+                job_ids.add(job["id"])
                 if not isinstance(job.get("name"), str) or not job["name"]:
                     raise ValueError("executor job identity unknown")
                 if job.get("name") != DEPLOY_JOB_NAME:
                     continue
+                if not isinstance(run.get("head_branch"), str) or not run["head_branch"]:
+                    raise ValueError("executor source branch unknown")
                 status, conclusion = job.get("status"), job.get("conclusion")
                 if status == "completed" and conclusion == "skipped":
+                    if (job.get("started_at") is None) != (job.get("completed_at") is None):
+                        raise ValueError("skipped executor chronology unknown")
+                    if job.get("started_at") is not None:
+                        # A completed skipped job did not execute. Its two API
+                        # placeholder timestamps have no execution ordering and
+                        # are never an interval or a recovery witness.
+                        start = _parse_timestamp(job["started_at"])
+                        end = _parse_timestamp(job["completed_at"])
+                        if start is None or end is None or start.tzinfo is None or end.tzinfo is None:
+                            raise ValueError("skipped executor chronology unknown")
                     continue
                 started, finished = job.get("started_at"), job.get("completed_at")
                 if status in {"queued", "waiting", "pending", "requested"} and started is None and finished is None and conclusion is None:
                     continue
                 if status != "completed":
+                    if status not in {"queued", "waiting", "pending", "requested", "in_progress"}:
+                        raise ValueError("executor status unknown")
                     return "production executor active or unknown; reviewed recovery required"
-                started, finished = _parse_timestamp(started), _parse_timestamp(finished)
-                if (started is None or finished is None or started.tzinfo is None
-                        or finished.tzinfo is None or started > finished):
-                    raise ValueError("executor chronology unknown")
-                history.append((started, finished, conclusion))
+                if conclusion not in {"success", "failure", "cancelled", "timed_out", "neutral", "action_required", "stale", "startup_failure"}:
+                    raise ValueError("executor conclusion unknown")
+                begin, end, success = _completed_executor_envelope(job)
+                # A same-named job on an application branch cannot certify a
+                # production recovery. Keep its bounded risk, not its assurance.
+                history.append((begin, end, success and run["head_branch"] == "main"))
+    if _deployment_inventory(repo, api)[1] != inventory:
+        raise ValueError("executor inventory changed during collection")
+    if _main_ci_state(repo, api) != ci:
+        return "main CI changed or became unknown during collection"
     if not history:
         return "production deployment state unknown"
     history.sort(key=lambda item: item[1])
-    if any(b[0] < a[1] or b[1] == a[1] for a, b in zip(history, history[1:])):
+    witness = history[-1]
+    if any(item[1] >= witness[0] for item in history[:-1]):
         raise ValueError("executor chronology overlaps or is ambiguous")
-    return None if history[-1][2] == "success" else "last production executor failed, was cancelled or is unknown; reviewed recovery required"
+    return None if witness[2] else "last production executor failed, was cancelled or is unknown; reviewed recovery required"
 
 
 def r3_runtime_evidence(*, repo: str, pr_numbers: Iterable[object], api, graphql, current_run_id: object = None) -> dict:

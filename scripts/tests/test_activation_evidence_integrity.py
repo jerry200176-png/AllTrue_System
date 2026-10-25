@@ -15,7 +15,7 @@ class Evidence:
     def __init__(self, skipped=0):
         self.body = "Rollback: revert this PR\nRisk-Class: R3\nAutonomy-Tier: T3"
         self.head, self.open_thread, self.ci = HEAD, False, "success"
-        self.runs = [{"id": n, "status": "completed", "run_attempt": 1} for n in range(skipped + 1, 0, -1)]
+        self.runs = [{"id": n, "status": "completed", "run_attempt": 1, "head_branch": "main"} for n in range(skipped + 1, 0, -1)]
         self.jobs = {r["id"]: [{"id": r["id"], "name": gate.DEPLOY_JOB_NAME,
                       "status": "completed", "conclusion": "skipped" if r["id"] > 1 else "success"}]
                      for r in self.runs}
@@ -48,6 +48,10 @@ class Evidence:
             run_id = int(path.split("/runs/")[1].split("/")[0])
             attempt = int(path.split("/attempts/")[1].split("/")[0]) if "/attempts/" in path else next(r["run_attempt"] for r in self.runs if r["id"] == run_id)
             rows, key = self.attempt_jobs.get((run_id, attempt), self.jobs[run_id]), "jobs"
+            # Official per-attempt jobs carry both identities; keep legacy test
+            # fixtures well-formed without masking explicitly supplied values.
+            rows = [dict(job, **{k: v for k, v in {"run_id": run_id, "run_attempt": attempt}.items()
+                                if k not in job}) for job in rows]
         return {"total_count": len(rows), key: rows[(page - 1) * 100:page * 100]}
 
     def graphql(self, query):
@@ -148,9 +152,14 @@ class ActivationEvidenceIntegrityTest(unittest.TestCase):
         self.assertTrue(any("deploy.yml/runs?per_page=100&page=2" in p for p in evidence.calls))
         for conclusion in ("failure", "cancelled", None):
             evidence.jobs[1][0]["conclusion"] = conclusion
-            self.assertIsNotNone(evidence.read()["freeze_reason"])
+            if conclusion is None:
+                with self.assertRaises(ValueError):
+                    evidence.read()
+            else:
+                self.assertIsNotNone(evidence.read()["freeze_reason"])
         # A failed executor may release its lock before its workflow finishes.
         evidence.runs[-1]["status"] = "in_progress"
+        evidence.jobs[1][0]["conclusion"] = "failure"
         self.assertIsNotNone(evidence.read()["freeze_reason"])
 
     def test_older_created_executor_failure_after_newer_success_freezes(self):
@@ -183,7 +192,7 @@ class ActivationEvidenceIntegrityTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overlaps"):
             evidence.read()
         evidence = Evidence(); evidence.runs[0]["run_attempt"] = 1001
-        with self.assertRaisesRegex(ValueError, "ceiling"):
+        with self.assertRaisesRegex(ValueError, "identity"):
             evidence.read()
         evidence = Evidence(); evidence.runs[0].pop("run_attempt")
         with self.assertRaises(ValueError):
@@ -229,10 +238,11 @@ class ActivationEvidenceIntegrityTest(unittest.TestCase):
             return response | {"total_count": 101} if "/deploy.yml/" in path else response
         with self.assertRaises(ValueError):
             gate.deploy_freeze_reason(repo="o/r", api=partial)
-        evidence = Evidence(skipped=3383)  # Root observed3384 run metadata, not production proof.
-        with self.assertRaisesRegex(ValueError, "ceiling"):
-            evidence.read()
-        self.assertFalse(any("/attempts/" in p for p in evidence.calls))
+        # Complete unfiltered history can exceed1,000. Every explicit attempt is
+        # read and a second inventory must agree; a prefix never authorizes.
+        evidence = Evidence(skipped=3383)
+        self.assertIsNone(evidence.read()["freeze_reason"])
+        self.assertEqual(sum("/attempts/" in p for p in evidence.calls), 3384)
         conn = {"nodes": [], "pageInfo": {"hasNextPage": True}}
         self.assertIsNone(gate.unresolved_review_threads(conn))
 

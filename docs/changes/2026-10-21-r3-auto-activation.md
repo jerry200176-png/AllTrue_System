@@ -36,7 +36,29 @@ mutable evidence can change after the final read. Unknown/unsupported effects re
 Founder review. Evidence freshness is rechecked before SSH, and all existing executor
 and release-train gates remain required. No production or delivery proof is claimed.
 
-Root's read-only GitHub metadata observation found **3,384 deploy runs**, beyond the
-unchanged 1,000-run/attempt evidence ceiling. This candidate therefore remains
-**unready/held for auto-r3 activation** in AllTrue; a prefix success cannot prove the
-latest executor. No new history platform or larger/unbounded scan is proposed.
+The history follow-up reads the complete finite advertised pagination, every explicit
+attempt, and then the inventory again. Counts, page lengths and identities must agree;
+same-count substitutions, late reruns and metadata changes hold. It does not replace
+the old 1,000-row cut-off with a larger accepted prefix, or prune by `updated_at`.
+
+Every known completed executor contributes its full interval. The audited one-second
+timestamp inversion of a **cancelled** job contributes a retained uncertainty envelope,
+not a corrected interval or success. Other inversions, missing/unparseable dates,
+foreign identities and unknown statuses/conclusions hold. Completed/skipped jobs did
+not execute: their raw, typed timestamp placeholders are retained but never become
+execution intervals or recovery witnesses. A main-branch successful executor may clear
+historical overlaps/uncertainty only when its valid start is strictly after every other
+completed envelope's end. A later failed/active/unknown executor or touching boundary
+still holds; run creation order never establishes recovery. Main CI is rechecked too.
+
+Source-derived anonymized regression data preserves the 26 cancelled inversions and
+five older interval ambiguities. An offline replay uses the saved complete 3,574-run,
+3,621-attempt, 25,269-job snapshot without fetching it again or rewriting raw evidence.
+These historical metadata issues are not a claim of a current production incident.
+
+**Still an unactivated candidate.** Complete live scans may exceed the existing
+three-minute classifier or API budgets; errors/timeouts remain Hold. No cache,
+checkpoint service, new authority, timeout/permission change or live scalability proof
+is added. Inventory revalidation detects advertised changes, not an atomic GitHub
+snapshot. A new exact-head review covers this follow-up, not merge/activation authority.
+The existing Founder-held control-plane diff and initial activation conditions remain.
