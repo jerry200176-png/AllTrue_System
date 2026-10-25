@@ -1,12 +1,12 @@
 <template>
   <div class="legacy" data-testid="legacy-flag-actions">
-    <p class="legacy__text" data-testid="legacy-flag-help">{{ LEGACY_FLAG_ACTION_HELP }}</p>
-    <div class="legacy__buttons">
-      <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="emit('backfill')">已收過，補登收款</AtButton>
+    <p class="legacy__text" data-testid="legacy-flag-help">{{ hasConfirmedReport ? LEGACY_CONFIRMED_REPORT_HELP : LEGACY_FLAG_ACTION_HELP }}</p>
+    <div v-if="!hasConfirmedReport" class="legacy__buttons">
+      <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="openBackfill">已收過，補登收款</AtButton>
       <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="legacy-clear-open" @click="openClear">其實沒收，改成未繳</AtButton>
     </div>
 
-    <AtDialog :open="clearOpen" title="改成未繳" size="sm" :title-id="`legacy-clear-title-${courseId}`" @close="clearOpen = false">
+    <AtDialog :open="clearOpen && !hasConfirmedReport" title="改成未繳" size="sm" :title-id="`legacy-clear-title-${courseId}`" @close="clearOpen = false">
       <p class="legacy__note">只把舊的「已收」標記拿掉，這門課會變成未繳：有帳單就依帳單未收額、沒有帳單就依合約金額列入收款。不會動任何帳單或收款紀錄。</p>
       <label class="legacy__label" :for="`legacy-reason-${courseId}`">原因 <span aria-hidden="true">*</span></label>
       <AtTextarea :id="`legacy-reason-${courseId}`" v-model="reason" :rows="2" data-testid="legacy-clear-reason" />
@@ -20,16 +20,18 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
 import { clearLegacyPaidFlag } from '../../lib/paymentActions.js';
-import { LEGACY_FLAG_ACTION_HELP } from '../../lib/courseMoneyState.js';
+import { LEGACY_FLAG_ACTION_HELP, LEGACY_CONFIRMED_REPORT_HELP } from '../../lib/courseMoneyState.js';
 
 // Founder GO 2026-10-21 (docs/DIRECTOR_PAYMENT_ALERT_RULES.md §只有舊「已收」標記): the 需核對 card says what to do next.
 const props = defineProps({
   courseId: { type: Number, required: true },
+  // Existing same-course API report status; unrelated to receipt display amount/date.
+  hasConfirmedReport: { type: Boolean, default: false },
 });
 const emit = defineEmits(['backfill', 'resolved']);
 
@@ -37,8 +39,14 @@ const busy = ref(false);
 const error = ref('');
 const clearOpen = ref(false);
 const reason = ref('');
+watch(() => props.hasConfirmedReport, (confirmed) => { if (confirmed) clearOpen.value = false; });
+
+function openBackfill() {
+  if (!props.hasConfirmedReport) emit('backfill');
+}
 
 function openClear() {
+  if (props.hasConfirmedReport) return;
   reason.value = '';
   error.value = '';
   clearOpen.value = true;
@@ -46,7 +54,7 @@ function openClear() {
 
 // A failure keeps the dialog open with the reason and the server's sentence.
 async function submitClear() {
-  if (busy.value) return;
+  if (busy.value || props.hasConfirmedReport) return;
   if (reason.value.trim().length < 2) { error.value = '請寫下原因（至少 2 個字）。'; return; }
   busy.value = true;
   error.value = '';
