@@ -6,7 +6,7 @@ import subprocess
 import unittest
 
 from scripts.governance.conditional_page import digest, read_page, weak_etag_equal
-from scripts.governance.gh_conditional_transport import API_VERSION, GhMetadataClient, MetadataHold, decode_response, validate_path
+from scripts.governance.gh_conditional_transport import API_VERSION, GhMetadataClient, MetadataHold, core_rate_evidence, decode_response, validate_path
 
 TRACE = Path(__file__).resolve().parent / 'fixtures/github-conditional-jobs-protocol.json'
 PATH = '/repos/o/r/actions/runs/1/attempts/1/jobs?per_page=100&page=1'
@@ -133,6 +133,22 @@ class IntegrationTest(unittest.TestCase):
 
 
 class ScopeTest(unittest.TestCase):
+    def test_core_rate_limit_is_observation_and_cannot_coerce_unknown_values(self):
+        known = {'limit': 1000, 'remaining': 999, 'used': 1, 'reset': 1792952373}
+        self.assertEqual(core_rate_evidence(known), known)
+        for key, value in [('limit', True), ('limit', 0), ('remaining', '999'), ('remaining', 1001), ('reset', None)]:
+            with self.subTest(key=key, value=value), self.assertRaises(MetadataHold):
+                core_rate_evidence({**known, key: value})
+
+    def test_runner_observation_keeps_existing_permissions_and_manual_pr_guard(self):
+        ci = (Path(__file__).resolve().parents[2] / '.github/workflows/ci.yml').read_text()
+        self.assertIn('permissions:\n  contents: read\n  pull-requests: read\n', ci)
+        step = ci.split('- name: Record actual runner core rate limit', 1)[1].split('- name:', 1)[0]
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.pr_number != ''", step)
+        self.assertIn('gh api /rate_limit', step)
+        self.assertNotIn('permissions:', step)
+        self.assertNotIn('environment:', step)
+
     def test_other_hosts_repos_writes_encoded_paths_or_history_filters_hold(self):
         cases = ['https://api.github.com' + PATH, PATH.replace('/o/r/', '/other/repo/'),
                  '/repos/o/r/actions/runs/1/rerun', PATH + '&page=2', PATH + '&filter=latest',

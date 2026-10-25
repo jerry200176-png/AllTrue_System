@@ -17,6 +17,16 @@ SAFE_HEADERS = {'etag', 'date', 'age', 'x-github-api-version-selected', 'x-ratel
                 'x-ratelimit-remaining', 'x-ratelimit-used', 'x-ratelimit-reset', 'x-ratelimit-resource'}
 
 
+def core_rate_evidence(data):
+    """Validate selected /rate_limit fields; no estimate or activation authority."""
+    fields = {'limit', 'remaining', 'used', 'reset'}
+    if (not isinstance(data, dict) or set(data) != fields
+            or any(type(data[key]) is not int or data[key] < 0 for key in fields)
+            or data['limit'] <= 0 or data['reset'] <= 0 or data['remaining'] > data['limit']):
+        raise MetadataHold('core_rate_evidence_unknown')
+    return dict(data)
+
+
 class MetadataHold(RuntimeError):
     def __init__(self, reason, status=None):
         super().__init__(reason)  # Fixed enum; never body/stderr/credentials.
