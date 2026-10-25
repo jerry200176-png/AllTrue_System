@@ -143,7 +143,7 @@ namespace App\Models {
   class StudentClass {
     public $ID = 2282, $StudentID = 1, $Stop = 0, $ScheduleMode = 'count', $scheduling_policy = 'auto_recurrence';
     public static function query() { return new \ProbeQuery('course'); }
-    public function isUsageSettlementLocked() { return false; }
+    public function isUsageSettlementLocked() { return $GLOBALS['fixture']['settlement_locked'] ?? false; }
   }
   class ClassSession {
     public $id = 43722, $StudentClassID = 2282, $SessionDate = '2026-10-24', $Status = 'scheduled';
@@ -208,8 +208,11 @@ namespace {
     public function whereDate($field, $value) { return $this->where($field, $value); }
     public function whereRaw($sql, $bindings) { return $this; }
     public function first() {
+      if ($GLOBALS['fixture'][$this->kind . '_missing'] ?? false) return null;
       $obj = $this->kind === 'course' ? new \App\Models\StudentClass : new \App\Models\ClassSession;
       if ($this->kind === 'session' && ($GLOBALS['fixture']['wrong_target'] ?? false)) $obj->StudentClassID = 999;
+      $fields = $this->kind === 'course' ? ['Stop', 'ScheduleMode', 'scheduling_policy'] : ['SessionDate', 'StartTime', 'EndTime', 'Status'];
+      foreach ($fields as $field) if (array_key_exists($field, $GLOBALS['fixture'])) $obj->$field = $GLOBALS['fixture'][$field];
       foreach ($this->conditions as $k => $v) if (($obj->$k ?? null) != $v) return null;
       return $obj;
     }
@@ -276,6 +279,56 @@ namespace {
         self.assertTrue(probe['readonly_session_verified'])
         self.assertTrue(calls['envelope_grade'])
         self.assertEqual(calls['rollback'], 1)
+
+    def test_433_binding_failure_identifies_existing_guard_without_preview(self):
+        cases = [
+            ({'report_campus': 4}, 'report_campus'),
+            ({'course_missing': True}, 'course_missing'),
+            ({'session_missing': True}, 'session_missing'),
+            ({'wrong_target': True}, 'course_link'),
+            ({'SessionDate': '2026-10-25'}, 'session_date'),
+            ({'StartTime': '11:00:00'}, 'session_start'),
+            ({'EndTime': '13:00:00'}, 'session_end'),
+            ({'Status': 'cancelled'}, 'session_status'),
+            ({'Stop': 1}, 'course_stopped'),
+            ({'ScheduleMode': 'date'}, 'course_mode'),
+            ({'scheduling_policy': 'manual'}, 'course_policy'),
+            ({'settlement_locked': True}, 'settlement_locked'),
+            ({'student_campus': 4}, 'student_campus'),
+            # Preserve the old guard's order when several facts reject the case.
+            ({'report_campus': 4, 'course_missing': True}, 'report_campus'),
+        ]
+        for fixture, reason in cases:
+            with self.subTest(reason=reason, fixture=fixture):
+                probe, calls = self.run_433_probe(fixture)
+                self.assertFalse(probe['decision_grade'])
+                self.assertEqual(probe['error'], 'target_binding_failed')
+                self.assertEqual(probe.get('binding_failure'), reason)
+                self.assertEqual(calls['preview'], 0)
+                self.assertEqual(calls['guard'], 0)
+                self.assertEqual(calls['rollback'], 1)
+                self.assertNotIn('tail', probe)
+                self.assertNotIn('conflict', probe)
+
+    def test_433_binding_reason_public_projection_is_a_closed_enum(self):
+        sentinel = 'synthetic-private-binding-context'
+        for reason, expected in [('course_mode', 'course_mode'), (sentinel, None), ({'detail': sentinel}, None)]:
+            with self.subTest(reason=reason):
+                envelope = {'ok': True, 'requested_bug_id': 433, 'bug': {'id': 433, 'title': sentinel},
+                            'diagnostics': {'decision_grade_required': True, 'decision_grade': False,
+                                            'probe_results': {'probe_433_leave_tail': {
+                                                'decision_grade': False, 'error': 'target_binding_failed',
+                                                'binding_failure': reason}}}}
+                result, encrypted, public, recovered = post_process(
+                    'bug-detail-dump.yml', 'Dump bug', 'bug-detail.log', json.dumps(envelope) + '\n', {'BUG_ID': '433'})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(encrypted.returncode, 0, encrypted.stderr)
+                self.assertNotIn(sentinel, result.stdout + result.stderr)
+                for name, content in public.items():
+                    self.assertNotIn(sentinel.encode(), content, name)
+                summary = json.loads(public['summary.json'])
+                self.assertEqual(summary.get('probe_433_binding_failure'), expected)
+                self.assertIn(sentinel, recovered)
 
     def test_433_probe_is_inert_for_other_reports(self):
         probe, calls = self.run_433_probe({}, bug_id=7)
