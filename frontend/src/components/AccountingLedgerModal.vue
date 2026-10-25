@@ -838,8 +838,11 @@ function runInitialAction() {
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
   if (needsLegacyChoice(course)) {
-    initialActionNote.value = hasConfirmedReportFor(course.id) ? LEGACY_CONFIRMED_REPORT_HELP
-      : '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
+    if (hasConfirmedReportFor(course.id)) {
+      initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
+      return;
+    }
+    initialActionNote.value = '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
     return;
   }
   if (allocContracts.value.some((c) => Number(c.id) === id)) {

@@ -1,10 +1,13 @@
 <template>
   <div class="legacy" data-testid="legacy-flag-actions">
-    <p class="legacy__text" data-testid="legacy-flag-help">{{ hasConfirmedReport ? LEGACY_CONFIRMED_REPORT_HELP : LEGACY_FLAG_ACTION_HELP }}</p>
-    <div v-if="!hasConfirmedReport" class="legacy__buttons">
-      <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="openBackfill">已收過，補登收款</AtButton>
-      <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="legacy-clear-open" @click="openClear">其實沒收，改成未繳</AtButton>
-    </div>
+    <p v-if="hasConfirmedReport" class="legacy__text" data-testid="legacy-flag-help">{{ LEGACY_CONFIRMED_REPORT_HELP }}</p>
+    <template v-else>
+      <p class="legacy__text" data-testid="legacy-flag-help">{{ LEGACY_FLAG_ACTION_HELP }}</p>
+      <div class="legacy__buttons">
+        <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="openBackfill">已收過，補登收款</AtButton>
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="legacy-clear-open" @click="openClear">其實沒收，改成未繳</AtButton>
+      </div>
+    </template>
 
     <AtDialog :open="clearOpen && !hasConfirmedReport" title="改成未繳" size="sm" :title-id="`legacy-clear-title-${courseId}`" @close="clearOpen = false">
       <p class="legacy__note">只把舊的「已收」標記拿掉，這門課會變成未繳：有帳單就依帳單未收額、沒有帳單就依合約金額列入收款。不會動任何帳單或收款紀錄。</p>
@@ -54,7 +57,8 @@ function openClear() {
 
 // A failure keeps the dialog open with the reason and the server's sentence.
 async function submitClear() {
-  if (busy.value || props.hasConfirmedReport) return;
+  if (busy.value) return;
+  if (props.hasConfirmedReport) return;
   if (reason.value.trim().length < 2) { error.value = '請寫下原因（至少 2 個字）。'; return; }
   busy.value = true;
   error.value = '';
