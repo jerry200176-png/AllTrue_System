@@ -80,7 +80,7 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
  * @property int|string|null $monthly_session_count Optional projection/aggregate attribute; no schema change.
- * @property \Illuminate\Support\Carbon|null $created_at Optional projection/aggregate attribute; no schema change.
+ * @property \Illuminate\Support\Carbon|null $created_at Optional legacy attribute only; absent from the current schema and normal rows.
  */
 class StudentClass extends Model
 {

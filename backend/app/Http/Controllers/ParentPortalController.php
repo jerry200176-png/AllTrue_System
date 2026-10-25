@@ -836,7 +836,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap): array {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $courseStatuses, $packageMap, $studentCampusMap): array {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';

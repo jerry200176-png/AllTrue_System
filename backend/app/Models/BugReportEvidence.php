@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use LogicException;
 
 /**
- * @property \Illuminate\Support\Carbon|null $verified_at Optional projection/aggregate attribute; no schema change.
+ * @property \Illuminate\Support\Carbon|null $verified_at May be absent on partial/unsaved models; required on persisted rows.
  */
 class BugReportEvidence extends Model
 {

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * @property \Illuminate\Support\Carbon|null $created_at Optional projection/aggregate attribute; no schema change.
+ * @property \Illuminate\Support\Carbon|null $created_at May be absent on partial/unsaved models; required on persisted rows.
  */
 class BugReportStatusLog extends Model
 {

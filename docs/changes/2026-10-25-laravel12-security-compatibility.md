@@ -20,8 +20,12 @@ preserving its app scope and uncovered files.
 Add precise relationship PHPDocs without changing queries. Keep PHPStan level 5,
 the existing app scope/exclusions and original matching baseline fields. Remove
 only machine-proven obsolete suppression records. Larastan's newly introduced
-optional env-style rule is disabled because existing live maintenance/security
-gates must remain live; no existing runtime guard or test is disabled.
+optional env/collection style rules are disabled because existing live maintenance/security
+gates must remain live and loaded-collection semantics must remain stable. No
+existing runtime guard or test is disabled. Capture the existing current-month
+label in the parent course-card closure instead of suppressing an undefined
+variable. Adapt synthetic QueryException fixtures and require the new nested
+deadlock wrapper to retain its original query cause and retry boundary.
 
 Local preparation only: publication, merge and production activation remain
 separate decisions. Before activation verify the actual PHP 8.2+/extensions,
