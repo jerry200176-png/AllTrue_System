@@ -9,3 +9,5 @@ of leaving only a public metadata summary. The query, scope, credentials and
 evidence gates are unchanged. A regression executes the actual shell with
 errexit and verifies successful, failed, mismatched and missing envelopes,
 encrypted round trips and absence of private text from logs/public artifacts.
+The #433 public summary can identify the failed stage only through a fixed enum;
+exception text, business rows and arbitrary probe strings remain private.

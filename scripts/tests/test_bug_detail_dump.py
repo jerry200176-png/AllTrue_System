@@ -100,7 +100,9 @@ class BugDetailDumpContractTest(unittest.TestCase):
                             "bug": {"id": requested_id, "title": sentinel},
                             "diagnostics": {"decision_grade_required": True,
                                             "decision_grade": grade,
-                                            "probe_results": {"private_error": sentinel}}}
+                                            "probe_results": {"private_error": sentinel,
+                                                "probe_433_leave_tail": {"decision_grade": False,
+                                                    "error": "student_slot_guard_failed" if label == "failed_probe" else sentinel}}}}
                 (root / "raw/bug-detail.log").write_text(
                     raw or json.dumps(envelope) + "\n", encoding="utf-8")
                 env = {**os.environ, "BUG_ID": "433", "DUMP_ARTIFACT_KEY": "synthetic-test-key"}
@@ -112,6 +114,9 @@ class BugDetailDumpContractTest(unittest.TestCase):
                 self.assertTrue(encrypted.is_file(), "a failed probe must keep private evidence")
                 for artifact in (root / "out").iterdir():
                     self.assertNotIn(sentinel.encode(), artifact.read_bytes(), artifact.name)
+                summary = json.loads((root / "out/summary.json").read_text())
+                self.assertEqual(summary["probe_433_failure_stage"],
+                                 "student_slot_guard_failed" if label == "failed_probe" else None)
                 archive = root / "recovered.tar.gz"
                 decrypted = subprocess.run(
                     ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "600000",
