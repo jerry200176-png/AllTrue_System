@@ -25,6 +25,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property \Illuminate\Database\Eloquent\Collection<int, \App\Models\InvoiceItem> $items
  * @property \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payment> $payments
  * @property \App\Models\StudentClass|null $studentClass
+ * @property int|null $campus_id Optional projection/aggregate attribute; no schema change.
+ * @property string|null $campus_name Optional projection/aggregate attribute; no schema change.
  */
 class Invoice extends Model
 {
@@ -119,21 +121,25 @@ class Invoice extends Model
             . " WHERE PS.ID = $invoice.StudentClassID AND CP.paid = 1)))";
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<InvoiceItem, $this> */
     public function items()
     {
         return $this->hasMany(InvoiceItem::class, 'InvoiceID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<Payment, $this> */
     public function payments()
     {
         return $this->hasMany(Payment::class, 'InvoiceID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');

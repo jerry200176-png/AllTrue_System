@@ -136,7 +136,7 @@ class StudentClassUpdateSessionSyncWarningTest extends TestCase
     }
 
     /** @return array<string, array{0: string}> */
-    public function statusLockedStatuses(): array
+    public static function statusLockedStatuses(): array
     {
         return ['pending leave' => ['leave_requested'], 'trial attendance' => ['trial']];
     }

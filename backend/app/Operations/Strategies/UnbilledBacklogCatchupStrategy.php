@@ -255,15 +255,17 @@ final class UnbilledBacklogCatchupStrategy
             $covered = count(array_filter($dates, fn ($d) => $this->covered($d, $invoices, $own)));
             $other = count(array_filter($dates, fn ($d) => $this->covered($d, $invoices, $own) || $this->otherCovers($d, $c, $own, $studentInvoices, $subjects, $dated)));
             $rates = array_map(fn ($d) => $pricing->forDate($c, $d), $dates);
+            $lessonCount = count($dates);
+            $afterCount = count($after);
             $reason = match (true) {
                 (int) ($c->getAttribute('PackageID') ?? 0) > 0 => 'package',
                 in_array(strtolower(trim((string) $c->getAttribute('ClassType'))), ['tutoring', 'trial'], true) => 'tutoring_or_trial',
                 $c->getAttribute('closed_reason') === 'waived' => 'waived',
                 (int) $c->getAttribute('Stop') !== 0 && $c->getAttribute('closed_reason') !== 'settled_pending' => 'contract_closed',
-                $covered === count($dates) => 'already_billed',
-                $other === count($dates) => 'other_contract_covers_month',
+                $covered === $lessonCount => 'already_billed',
+                $other === $lessonCount => 'other_contract_covers_month',
                 $other > 0 => 'partially_billed',
-                $after && count($after) !== count($dates) => 'lessons_on_both_sides',
+                $after && $afterCount !== $lessonCount => 'lessons_on_both_sides',
                 default => null,
             };
             $priced = array_filter($rates, fn ($p) => $p['rate'] > 0 && $p['rate_unit'] === 'session') === $rates;

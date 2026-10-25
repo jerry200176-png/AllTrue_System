@@ -202,7 +202,7 @@ class SubstituteController extends Controller
 
         $createdAt = $lastNotification->created_at ? Carbon::parse($lastNotification->created_at) : null;
         $serverWindow = self::resolveServerUndoWindow();
-        if ($createdAt && $createdAt->diffInSeconds(now()) > $serverWindow) {
+        if ($createdAt && (int) $createdAt->diffInSeconds(now(), true) > $serverWindow) {
             return response()->json([
                 'message' => '已超過可撤銷時間窗',
                 'server_window_seconds' => $serverWindow,

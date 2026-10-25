@@ -52,21 +52,25 @@ class CoursePackage extends Model
             && trim((string) ($this->paid_at ?? '')) !== '';
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Campus, $this> */
     public function campus()
     {
         return $this->belongsTo(Campus::class, 'campus_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentClass, $this> */
     public function studentClasses()
     {
         return $this->hasMany(StudentClass::class, 'PackageID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<PackageSessionLedger, $this> */
     public function ledgerEntries()
     {
         return $this->hasMany(PackageSessionLedger::class, 'package_id', 'id');
@@ -79,7 +83,7 @@ class CoursePackage extends Model
     {
         // $current: a shared-locked read, for callers whose transaction may hold an older snapshot (#4456).
         $entries = $this->ledgerEntries();
-        $netDelta = (int) (($current ? $entries->sharedLock() : $entries)->sum('delta') ?? 0);
+        $netDelta = (int) ($current ? $entries->sharedLock() : $entries)->sum('delta');
         return max(0, $this->total_sessions + $netDelta);
     }
 

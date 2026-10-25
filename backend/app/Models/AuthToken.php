@@ -16,6 +16,7 @@ class AuthToken extends Model
         'pin_verified_until' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

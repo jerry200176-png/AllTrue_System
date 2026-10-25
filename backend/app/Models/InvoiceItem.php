@@ -27,6 +27,7 @@ class InvoiceItem extends Model
         'PeriodEnd',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');

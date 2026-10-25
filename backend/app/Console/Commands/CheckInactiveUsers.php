@@ -80,7 +80,7 @@ class CheckInactiveUsers extends Command
         if (!$lastLogin) {
             return 'gentle_reminder';
         }
-        $daysAway = now()->diffInDays($lastLogin);
+        $daysAway = (int) now()->diffInDays($lastLogin, true);
         if ($daysAway >= 7) {
             return 'firm_reminder';
         }

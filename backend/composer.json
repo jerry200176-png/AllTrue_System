@@ -3,19 +3,21 @@
   "type": "project",
   "require": {
     "guzzlehttp/guzzle": "^7.12.1",
-    "laravel/framework": "^8.75",
-    "laravel/sanctum": "^2.11",
-    "laravel/tinker": "^2.5",
+    "laravel/framework": "^12.68",
+    "laravel/sanctum": "^4.0",
+    "laravel/tinker": "^2.10.1",
     "maatwebsite/excel": "^3.1",
     "pusher/pusher-php-server": "^7.0",
-    "sentry/sentry-laravel": "^4.25"
+    "sentry/sentry-laravel": "^4.25",
+    "php": "^8.2"
   },
   "require-dev": {
     "fakerphp/faker": "^1.24",
+    "larastan/larastan": "^3.0",
     "mockery/mockery": "^1.6",
-    "nunomaduro/collision": "^5.11",
+    "nunomaduro/collision": "^8.6",
     "phpstan/phpstan": "^2.0",
-    "phpunit/phpunit": "^9.6"
+    "phpunit/phpunit": "^11.5.50"
   },
   "autoload": {
     "psr-4": {
@@ -35,16 +37,6 @@
     },
     "allow-plugins": {
       "pestphp/pest-plugin": true
-    },
-    "audit": {
-      "ignore": {
-        "GHSA-5vg9-5847-vvmq": "Reachability reviewed 2026-07-12: no Laravel email validation rule or outbound mail to user-supplied addresses; Laravel 8 uses SwiftMailer. Framework EOL migration remains tracked in #977.",
-        "GHSA-mh25-x5hq-wrqp": "Reachability reviewed 2026-08-07: league/commonmark is an optional transitive dependency of laravel/framework's built-in Markdown mail-message rendering (Illuminate Mail Markdown). AllTrue never uses that feature (no mail::message Blade templates, no MailMessage::markdown() calls) and never instantiates the CommonMarkConverter class anywhere in backend/app — no code path in this application parses any Markdown, crafted or otherwise, through this library. This entry has no expiry mechanism of its own; re-review tracked as TD-075, tied to the framework EOL migration (#977).",
-        "GHSA-jfm3-95jq-q3rf": "Same reachability review as GHSA-mh25-x5hq-wrqp (2026-08-07) — league/commonmark is unused dead weight pulled in transitively; this app never parses Markdown through it. Re-review tracked as TD-075 / #977.",
-        "GHSA-g2gp-3wwq-f4ph": "Same reachability review as GHSA-mh25-x5hq-wrqp (2026-08-07) — league/commonmark is unused dead weight pulled in transitively; this app never parses Markdown through it. Re-review tracked as TD-075 / #977.",
-        "GHSA-2q4p-g7hv-5rgv": "Same reachability review as GHSA-mh25-x5hq-wrqp (2026-08-07) — league/commonmark is unused dead weight pulled in transitively; this app never parses Markdown through it. Re-review tracked as TD-075 / #977.",
-        "GHSA-f9x3-7vq9-cph6": "Reachability reviewed 2026-10-24 (CVE-2026-114509, TokenGuard authentication bypass through non-string API credentials; affects every laravel/framework below 12.68.0, so Laravel 8 has no patch): AllTrue ships no config/auth.php, so no auth guard is configured and Illuminate\\Auth\\TokenGuard is never constructed; backend/app and backend/routes never call the Auth facade, auth() or ->guard(), and no route uses the auth middleware. Every API request is authenticated by the app's own middleware (AttachAuthUser bearer AuthToken lookup, ApiKeyAuth, PopMachineAuth, AuthenticateTriageToken), none of which reads api_token through Laravel's guard. Re-review if a Laravel auth guard is ever configured; tracked as TD-075 with the framework EOL migration (#977)."
-      }
     }
   },
   "minimum-stability": "dev",

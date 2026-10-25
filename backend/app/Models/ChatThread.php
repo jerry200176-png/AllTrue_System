@@ -17,27 +17,32 @@ class ChatThread extends Model
         'last_message_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ChatThreadMember, $this> */
     public function members()
     {
         return $this->hasMany(ChatThreadMember::class, 'thread_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ChatThreadMember, $this> */
     public function activeMembers()
     {
         return $this->hasMany(ChatThreadMember::class, 'thread_id')
             ->whereNull('left_at');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ChatMessage, $this> */
     public function messages()
     {
         return $this->hasMany(ChatMessage::class, 'thread_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ChatMessage, $this> */
     public function lastMessage()
     {
         return $this->belongsTo(ChatMessage::class, 'last_message_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

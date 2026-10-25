@@ -14,6 +14,7 @@ class BugReportAttachment extends Model
         'bug_report_id', 'stored_path', 'original_name', 'mime_type', 'size',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<BugReport, $this> */
     public function bugReport()
     {
         return $this->belongsTo(BugReport::class, 'bug_report_id');

@@ -1088,6 +1088,7 @@ final class ContractRenewal
     {
         $query = StudentClass::query()->where('ID', $id);
         $query->lockForUpdate();
+        /** @var \Illuminate\Database\Eloquent\Model $course Raw ORM boundary; keep the fail-closed concrete-model check. */
         $course = $query->firstOrFail();
         if (!$course instanceof StudentClass) {
             throw new \LogicException('StudentClass query returned a foreign model');
@@ -1232,7 +1233,7 @@ final class ContractRenewal
 
             $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
             // #3991: an unpriced term gets no bill; staff record a price or mark the term 免費／贈送 (never an unmarked NT$0 bill).
-            $invoice = $totalAmount <= 0 && (int) ($discountSnapshot['original_amount'] ?? 0) <= 0 ? null : app(InvoiceIssuer::class)->issue([ // a fully discounted term keeps its NT$0 bill as discount evidence
+            $invoice = $totalAmount <= 0 && (int) $discountSnapshot['original_amount'] <= 0 ? null : app(InvoiceIssuer::class)->issue([ // a fully discounted term keeps its NT$0 bill as discount evidence
                 'StudentID'      => (int) $newCourse->StudentID,
                 'StudentClassID' => (int) $newCourse->ID,
                 'IssueDate'      => Carbon::today()->toDateString(),

@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use LogicException;
 
+/**
+ * @property \Illuminate\Support\Carbon|null $verified_at Optional projection/aggregate attribute; no schema change.
+ */
 class BugReportEvidence extends Model
 {
     public const TYPE_RESOLUTION_PRODUCTION_VERIFICATION = 'resolution_production_verification';
@@ -30,11 +33,13 @@ class BugReportEvidence extends Model
         'created_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<BugReport, $this> */
     public function bugReport()
     {
         return $this->belongsTo(BugReport::class, 'bug_report_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function verifiedByUser()
     {
         return $this->belongsTo(User::class, 'verified_by');

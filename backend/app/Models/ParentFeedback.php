@@ -22,6 +22,7 @@ class ParentFeedback extends Model
         'rating'  => 'integer',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id');

@@ -179,6 +179,7 @@ final class PaymentReversalRestatement
         // The future registered POP adapter owns approval validation; this primitive grants none.
     }
 
+    /** @return \stdClass|null */
     private function proof(string $id, string $phase): ?object
     {
         return DB::table('pop_execution_records')->where('attempt_key', $id.':'.$phase)->first();

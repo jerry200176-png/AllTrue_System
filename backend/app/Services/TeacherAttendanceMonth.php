@@ -94,7 +94,7 @@ class TeacherAttendanceMonth
                 'run_school' => isset($runDates[$date]),
                 'sign_in'    => $pairs ? min(array_column($pairs, 0))->format('H:i') : $openIn?->format('H:i'),
                 'sign_out'   => $pairs ? max(array_column($pairs, 1))->format('H:i') : null,
-                'minutes'    => $pairs ? array_sum(array_map(fn ($p) => $p[0]->diffInMinutes($p[1]), $pairs)) : null,
+                'minutes'    => $pairs ? array_sum(array_map(fn ($p) => (int) $p[0]->diffInMinutes($p[1], true), $pairs)) : null,
                 'note'       => implode('、', $notes),
                 'anomaly'    => $lone !== [],
                 'corrected'  => $corrected,

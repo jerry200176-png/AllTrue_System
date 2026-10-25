@@ -39,6 +39,19 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $VoidReason
  * @property bool $ExcludeFromSubjectCount
  * @property \App\Models\StudentClass|null $studentClass
+ * @property string|null $due_date Optional projection/aggregate attribute; no schema change.
+ * @property string|null $status Optional projection/aggregate attribute; no schema change.
+ * @property string|null $student_name Optional projection/aggregate attribute; no schema change.
+ * @property string|null $owner_name Optional projection/aggregate attribute; no schema change.
+ * @property string|null $actor_name Optional projection/aggregate attribute; no schema change.
+ * @property int|string|null $session_count Optional projection/aggregate attribute; no schema change.
+ * @property string|null $teacher_name Optional projection/aggregate attribute; no schema change.
+ * @property int|null $campus_id Optional projection/aggregate attribute; no schema change.
+ * @property string|null $campus_name Optional projection/aggregate attribute; no schema change.
+ * @property int|null $session_number Optional projection/aggregate attribute; no schema change.
+ * @property array<string,mixed>|null $parent_feedback Optional projection/aggregate attribute; no schema change.
+ * @property string|null $approved_at Optional projection/aggregate attribute; no schema change.
+ * @property int|string|null $learning_record_id Optional projection/aggregate attribute; no schema change.
  */
 class LearningRecord extends Model
 {
@@ -171,26 +184,31 @@ class LearningRecord extends Model
         return $this->VoidedAt !== null;
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
     public function classSession()
     {
         return $this->belongsTo(ClassSession::class, 'ClassSessionID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function teacher()
     {
         return $this->belongsTo(User::class, 'TeacherID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasOne<LearningRecordFeedback, $this> */
     public function feedback()
     {
         return $this->hasOne(LearningRecordFeedback::class, 'learning_record_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasOne<LearningRecordTeacherComment, $this> */
     public function teacherComment()
     {
         return $this->hasOne(LearningRecordTeacherComment::class, 'learning_record_id', 'id');

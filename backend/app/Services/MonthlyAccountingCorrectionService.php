@@ -295,6 +295,7 @@ final class MonthlyAccountingCorrectionService
     {
         $query = StudentClass::query()->where('ID', $id);
         if ($lock) $query->lockForUpdate();
+        /** @var \Illuminate\Database\Eloquent\Model $course Raw ORM boundary; keep the fail-closed concrete-model check. */
         $course = $query->firstOrFail();
         if (!$course instanceof StudentClass) throw new \RuntimeException('Course model unavailable');
         return $course;

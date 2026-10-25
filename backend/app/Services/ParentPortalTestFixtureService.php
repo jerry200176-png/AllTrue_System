@@ -22,7 +22,6 @@ final class ParentPortalTestFixtureService
         }
 
         return DB::transaction(function (): array {
-            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
             $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)
                 ->where('code', config('parent_portal_test.campus_code'))
                 ->lockForUpdate()
@@ -33,7 +32,6 @@ final class ParentPortalTestFixtureService
             }
 
             if (!$campus) {
-                // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
                 $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)->create([
                     'name' => config('parent_portal_test.campus_name'),
                     'code' => config('parent_portal_test.campus_code'),
@@ -55,7 +53,6 @@ final class ParentPortalTestFixtureService
                 ]);
             }
 
-            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
             $students = Student::withoutGlobalScope(OperationalTenantScope::class)
                 ->where('CampusID', $campus->id)
                 ->get();
@@ -65,7 +62,6 @@ final class ParentPortalTestFixtureService
 
             $student = $students->first();
             if (!$student) {
-                // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
                 $student = Student::withoutGlobalScope(OperationalTenantScope::class)->create([
                     'name' => config('parent_portal_test.student_name'),
                     'CampusID' => $campus->id,
@@ -142,6 +138,7 @@ final class ParentPortalTestFixtureService
     public function createReusableSession(array $fixture): array
     {
         return DB::transaction(function () use ($fixture): array {
+            /** @var \Illuminate\Database\Eloquent\Model $student Raw ORM boundary; keep the fail-closed concrete-model check. */
             $student = Student::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $fixture['student_id'])
                 ->where('CampusID', (int) $fixture['campus_id'])
@@ -150,6 +147,7 @@ final class ParentPortalTestFixtureService
                 throw new \RuntimeException('fixture_student_lookup_invalid_model');
             }
 
+            /** @var \Illuminate\Database\Eloquent\Model $campus Raw ORM boundary; keep the fail-closed concrete-model check. */
             $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $student->getAttribute('CampusID'))
                 ->where('is_test', true)

@@ -660,7 +660,7 @@ class AttendanceController extends Controller
         // from its callback, but this boundary must map them after rollback.
         try {
             return DB::transaction($transaction, DeadlockRetry::ATTEMPTS); // re-reads its rows; batchMark calls it per item
-        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+        } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }
@@ -837,7 +837,7 @@ class AttendanceController extends Controller
                 return response()->json(['message' => 'Attendance already recorded'], 409);
             }
             throw $e;
-        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+        } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }

@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property string|null $actor_name Optional projection/aggregate attribute; no schema change.
+ */
 class UserLoginActivity extends Model
 {
     protected $table = 'user_login_activities';

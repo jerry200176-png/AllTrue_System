@@ -24,6 +24,7 @@ class Room extends Model
         'is_active' => 'boolean',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Campus, $this> */
     public function campus()
     {
         return $this->belongsTo(Campus::class, 'campus_id', 'id');

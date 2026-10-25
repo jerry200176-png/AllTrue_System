@@ -19,21 +19,25 @@ class PackageSessionLedger extends Model
         'request_id',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<CoursePackage, $this> */
     public function coursePackage()
     {
         return $this->belongsTo(CoursePackage::class, 'package_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
     public function classSession()
     {
         return $this->belongsTo(ClassSession::class, 'class_session_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function recorder()
     {
         return $this->belongsTo(User::class, 'recorded_by', 'id');

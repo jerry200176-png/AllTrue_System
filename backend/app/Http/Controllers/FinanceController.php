@@ -411,7 +411,7 @@ class FinanceController extends Controller
 
         // Fill share_pct = this teacher's weighted hours / month total weighted (same ratio as 科目數含輔導)
         foreach ($result as &$t) {
-            $w = (float) ($t['_weighted_with'] ?? 0);
+            $w = (float) $t['_weighted_with'];
             unset($t['_weighted_with']);
             $t['share_pct'] = $grandWeightedWith > 0
                 ? round(($w / $grandWeightedWith) * 100, 1)
@@ -531,7 +531,7 @@ class FinanceController extends Controller
                 'share_pct',
             ];
             $response['teachers'] = array_values(array_filter(array_map(function ($t) use ($authTeacherId, $redactedFields) {
-                $isSelf = $authTeacherId > 0 && (int) ($t['teacher_id'] ?? 0) === $authTeacherId;
+                $isSelf = $authTeacherId > 0 && (int) $t['teacher_id'] === $authTeacherId;
                 $t['is_self'] = $isSelf;
                 if (!$isSelf) {
                     foreach ($redactedFields as $f) {

@@ -42,7 +42,7 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
             'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'scheduled', 'created_at' => now(), 'updated_at' => now()]);
     }
 
-    private function status(int $id): string
+    private function storedStatus(int $id): string
     {
         return (string) DB::table('ClassSession')->where('id', $id)->value('Status');
     }
@@ -55,7 +55,7 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
         self::assertSame('before', $plan['state']);
         self::assertSame(2, $plan['counts']['to_cancel']);
         self::assertSame($plan['digest'], $s->plan(self::PARAMS)['digest']);
-        self::assertSame('scheduled', $this->status(9201));
+        self::assertSame('scheduled', $this->storedStatus(9201));
         self::assertSame(['case_parameters_mismatch'], $s->plan([])['errors']);
     }
 
@@ -65,7 +65,7 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
         $plan = $s->plan(self::PARAMS);
         $result = $s->execute($plan, ['operation_id' => 't']);
         self::assertSame(2, $result['updated']);
-        self::assertSame(['cancelled', 'cancelled', 'scheduled'], [$this->status(9201), $this->status(9202), $this->status(9203)]);
+        self::assertSame(['cancelled', 'cancelled', 'scheduled'], [$this->storedStatus(9201), $this->storedStatus(9202), $this->storedStatus(9203)]);
         $course = DB::table('StudentClass')->where('ID', 9200)->first();
         self::assertSame([22000, 1, 3], [(int) $course->Charge, (int) $course->Paid, (int) $course->SessionCount]);
         self::assertTrue($s->verify($plan, $result)['ok']);
@@ -110,7 +110,7 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
         self::assertSame(1, $out['restored']);
         self::assertSame([9202], $out['skipped_ids']);
         self::assertTrue($out['partial']);
-        self::assertSame(['scheduled', 'cancelled'], [$this->status(9201), $this->status(9202)]);
+        self::assertSame(['scheduled', 'cancelled'], [$this->storedStatus(9201), $this->storedStatus(9202)]);
     }
 
     public function test_retry_after_apply_is_idempotent_and_rollback_snapshot_restores_scheduled(): void
@@ -123,6 +123,6 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
         self::assertTrue($result['already_applied']);
         self::assertTrue($s->verify($again, $result)['ok']);
         self::assertSame(2, $s->rollback($result['snapshot'], [])['restored']);
-        self::assertSame('scheduled', $this->status(9201));
+        self::assertSame('scheduled', $this->storedStatus(9201));
     }
 }

@@ -20,6 +20,7 @@ class NotificationRead extends Model
         'ArchivedAt' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Notification, $this> */
     public function notification()
     {
         return $this->belongsTo(Notification::class, 'NotificationID', 'id');

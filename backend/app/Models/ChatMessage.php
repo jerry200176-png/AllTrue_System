@@ -20,16 +20,19 @@ class ChatMessage extends Model
         'deleted_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ChatThread, $this> */
     public function thread()
     {
         return $this->belongsTo(ChatThread::class, 'thread_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function sender()
     {
         return $this->belongsTo(User::class, 'sender_user_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ChatMessage, $this> */
     public function replyTo()
     {
         return $this->belongsTo(ChatMessage::class, 'reply_to_message_id');

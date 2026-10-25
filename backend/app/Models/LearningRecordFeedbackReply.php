@@ -16,6 +16,7 @@ class LearningRecordFeedbackReply extends Model
         'content',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<LearningRecordFeedback, $this> */
     public function feedback()
     {
         return $this->belongsTo(LearningRecordFeedback::class, 'feedback_id', 'id');

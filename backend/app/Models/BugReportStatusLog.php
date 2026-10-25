@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property \Illuminate\Support\Carbon|null $created_at Optional projection/aggregate attribute; no schema change.
+ */
 class BugReportStatusLog extends Model
 {
     protected $table = 'bug_report_status_logs';
@@ -18,11 +21,13 @@ class BugReportStatusLog extends Model
         'created_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<BugReport, $this> */
     public function bugReport()
     {
         return $this->belongsTo(BugReport::class, 'bug_report_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function changedByUser()
     {
         return $this->belongsTo(User::class, 'changed_by');

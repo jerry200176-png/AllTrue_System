@@ -108,6 +108,7 @@ final class TriageTokenService
         return is_array($abilities) && array_values($abilities) === [self::ability()];
     }
 
+    /** @return \Illuminate\Database\Eloquent\Builder<\Laravel\Sanctum\PersonalAccessToken> */
     private static function query(): \Illuminate\Database\Eloquent\Builder
     {
         return PersonalAccessToken::query()
