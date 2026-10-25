@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-25-student-list-pagination
+    published_at: "2026-10-25"
+    audiences:
+      - director
+      - teacher
+      - super_admin
+    importance: digest
+    title: 學生清單顯示更完整
+    summary: 學生清單會接續讀取各頁，資料未讀齊時會提示重試。
+    items:
+      - category: fixed
+        text: 學生較多時可接續顯示後續資料，並保留搜尋、年級與狀態篩選。
+      - category: improved
+        text: 分頁讀取失敗時顯示既有重試提示，避免把不完整的清單當成讀取成功。
+    source_refs:
+      - "issue:4490"
