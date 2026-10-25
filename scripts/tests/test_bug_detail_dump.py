@@ -21,16 +21,19 @@ class BugDetailDumpContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.source = WORKFLOW.read_text(encoding="utf-8")
 
-    def test_encrypted_detail_preserves_stored_browser_diagnostics(self):
-        # Exercise the actual emitted PHP projection without running its DB/SSH
-        # probe. These are stored strings, as in the normal triage detail API.
+    def rendered_php(self, bug_id=7):
         steps = yaml.safe_load(self.source)["jobs"]["dump"]["steps"]
         run = next(s["run"] for s in steps if s.get("name", "").startswith("Dump bug"))
         template = re.search(r"python3 - <<'PY' > /tmp/bug207_probe\.php\n(.*?)\nPY\n", run, re.S).group(1)
-        rendered = subprocess.run(
+        return subprocess.run(
             ["python3", "-W", "ignore", "-"], input=template, capture_output=True,
-            text=True, env={"PATH": "/usr/bin:/bin", "BUG_ID": "7"}, check=True,
+            text=True, env={"PATH": "/usr/bin:/bin", "BUG_ID": str(bug_id)}, check=True,
         ).stdout
+
+    def test_encrypted_detail_preserves_stored_browser_diagnostics(self):
+        # Exercise the actual emitted PHP projection without running its DB/SSH
+        # probe. These are stored strings, as in the normal triage detail API.
+        rendered = self.rendered_php()
         projection = rendered[rendered.rindex("echo json_encode(["):]
         variables = sorted(set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", projection)))
         context = json.dumps({
@@ -60,7 +63,8 @@ class BugDetailDumpContractTest(unittest.TestCase):
         envelope = {"ok": True, "requested_bug_id": 7,
                     "bug": {"id": 7, "status": "new", "client_info": sentinel},
                     "attachments": [], "comments": [], "status_logs": [], "reporter_history": [],
-                    "diagnostics": {"decision_grade_required": False, "decision_grade": False}}
+                    "diagnostics": {"decision_grade_required": False, "decision_grade": False,
+                                    "probe_results": {"probe_433_leave_tail": {"private_sentinel": sentinel}}}}
         result, encrypted, public, recovered = post_process(
             "bug-detail-dump.yml", "Dump bug", "bug-detail.log",
             json.dumps(envelope) + "\n", {"BUG_ID": "7"},
@@ -71,6 +75,163 @@ class BugDetailDumpContractTest(unittest.TestCase):
         for name, content in public.items():
             self.assertNotIn(sentinel.encode(), content, name)
         self.assertIn(sentinel, recovered)
+
+    def run_433_probe(self, fixture, bug_id=433):
+        match = re.search(r"// #433 bounded read-only tail diagnosis\n(.*?)// End #433 tail diagnosis", self.rendered_php(bug_id), re.S)
+        self.assertIsNotNone(match, "the report needs its own target-bound read-only diagnosis")
+        encoded = base64.b64encode(json.dumps(fixture).encode()).decode()
+        # Execute the actual rendered probe with synthetic DB/service doubles.
+        # The doubles refuse any SQL except session controls and read-only-mode
+        # checks. No Laravel bootstrap, DB, SSH or production credentials run.
+        setup = r'''<?php
+namespace Illuminate\Support\Facades {
+  class DB { public static function connection() { $GLOBALS['calls']['connection']++; return new \ProbeConnection; } }
+}
+namespace App\Models {
+  class StudentClass {
+    public $ID = 2282, $StudentID = 1, $Stop = 0, $ScheduleMode = 'count', $scheduling_policy = 'auto_recurrence';
+    public static function query() { return new \ProbeQuery('course'); }
+    public function isUsageSettlementLocked() { return false; }
+  }
+  class ClassSession {
+    public $id = 43722, $StudentClassID = 2282, $SessionDate = '2026-10-24', $Status = 'scheduled';
+    public $StartTime = '10:00:00', $EndTime = '12:00:00';
+    public static function query() { return new \ProbeQuery('session'); }
+  }
+  class Student { public static function query() { return new \ProbeQuery('student'); } }
+}
+namespace App\Services {
+  class CourseLeaveCascadeService {
+    const POLICY_KEEP_FUTURE_DATES_APPEND_TAIL = 'KEEP_FUTURE_DATES_APPEND_TAIL';
+    public static function previewLeaveCascadeForCourse($id, $date, $session) {
+      $GLOBALS['calls']['preview']++;
+      if ($GLOBALS['fixture']['preview_error'] ?? false) throw new \RuntimeException('synthetic-private-error');
+      if ([$id, $date, $session] !== [2282, '2026-10-24', 43722]) throw new \RuntimeException('wrong preview target');
+      return ['policy' => self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL, 'moves' => [], 'vacated' => [],
+        'future_dates_unchanged' => true, 'append' => array_key_exists('append', $GLOBALS['fixture']) ? $GLOBALS['fixture']['append'] : '2026-10-31'];
+    }
+    public static function resolveContractSlotTimes($course, $date) {
+      $GLOBALS['calls']['times']++;
+      return ['start' => '11:00:00', 'end' => '13:00:00'];
+    }
+  }
+  class ClassSessionMaterializationService {
+    public function findStudentSlotConflict($course, $date, $start, $end, $asOf = null, $exclude = [], $lock = false) {
+      $GLOBALS['calls']['guard']++;
+      $GLOBALS['calls']['guard_args'] = [$course->ID, $date, $start, $end, $asOf, $exclude, $lock];
+      if (!($GLOBALS['fixture']['conflict'] ?? true)) return null;
+      return (object) ['responseCode' => 'student_slot_conflict', 'conflictCourseId' => 4453,
+        'conflictSessionId' => 99999, 'conflictScheduleId' => null, 'message' => 'synthetic-private-error'];
+    }
+  }
+}
+namespace {
+  class ProbeConnection {
+    private $checks = 0;
+    public function statement($sql) {
+      if (!in_array($sql, ['SET SESSION TRANSACTION READ ONLY', 'SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ'], true))
+        throw new \RuntimeException('unexpected SQL');
+      $GLOBALS['calls']['statements'][] = $sql;
+    }
+    public function selectOne($sql, $bindings = [], $read = true) {
+      if ($read !== false || $bindings !== [] || !in_array($sql, ['SELECT @@SESSION.transaction_read_only AS ro', 'SELECT @@SESSION.tx_read_only AS ro'], true))
+        throw new \RuntimeException('unexpected read-only check');
+      if (($GLOBALS['fixture']['mariadb'] ?? false) && $sql === 'SELECT @@SESSION.transaction_read_only AS ro')
+        throw new \RuntimeException('synthetic-private-error');
+      $this->checks++;
+      $ro = ($GLOBALS['fixture']['readonly'] ?? true) && !(($GLOBALS['fixture']['lose_readonly'] ?? false) && $this->checks >= 3);
+      return (object) ['ro' => $ro ? 1 : 0];
+    }
+    public function beginTransaction() { $GLOBALS['calls']['begin']++; }
+    public function rollBack() {
+      $GLOBALS['calls']['rollback']++;
+      if ($GLOBALS['fixture']['rollback_error'] ?? false) throw new \RuntimeException('synthetic-private-error');
+    }
+  }
+  class ProbeQuery {
+    private $conditions = [];
+    public function __construct(private $kind) {}
+    public function where($field, $value) { $this->conditions[$field] = $value; return $this; }
+    public function whereKey($id) { return $this->where($this->kind === 'course' ? 'ID' : 'id', $id); }
+    public function whereDate($field, $value) { return $this->where($field, $value); }
+    public function whereRaw($sql, $bindings) { return $this; }
+    public function first() {
+      $obj = $this->kind === 'course' ? new \App\Models\StudentClass : new \App\Models\ClassSession;
+      if ($this->kind === 'session' && ($GLOBALS['fixture']['wrong_target'] ?? false)) $obj->StudentClassID = 999;
+      foreach ($this->conditions as $k => $v) if (($obj->$k ?? null) != $v) return null;
+      return $obj;
+    }
+    public function value($field) { return $GLOBALS['fixture']['student_campus'] ?? 9; }
+    public function count() {
+      if ($this->conditions !== ['StudentClassID' => 2282, 'SessionDate' => '2026-10-24']) throw new \RuntimeException('unscoped count');
+      return $GLOBALS['fixture']['lessons_on_date'] ?? 1;
+    }
+  }
+  function app($class) { return new $class; }
+  $fixture = json_decode(base64_decode('FIXTURE'), true);
+  $calls = ['connection' => 0, 'begin' => 0, 'rollback' => 0, 'preview' => 0, 'times' => 0, 'guard' => 0, 'statements' => []];
+  $bug = (object) ['id' => 433, 'CampusID' => $fixture['report_campus'] ?? 9];
+  $bugId = BUG_ID;
+'''.replace("FIXTURE", encoded).replace("BUG_ID", str(bug_id))
+        rendered = self.rendered_php(bug_id)
+        footer = rendered[rendered.index('$targetProbe = match ($bugId)'):rendered.rindex('echo json_encode([')]
+        php = setup + match.group(1) + footer + '\n$calls["envelope_required"] = $decisionGradeRequired; $calls["envelope_grade"] = $decisionGrade; echo json_encode([$probe433, $calls]);\n}\n'
+        result = subprocess.run(["php"], input=php, text=True, capture_output=True, check=True)
+        self.assertNotIn('synthetic-private-error', result.stdout + result.stderr)
+        return json.loads(result.stdout)
+
+    def test_433_probe_uses_preview_slot_and_readonly_conflict_guard(self):
+        for lessons, start, end in [(1, '11:00:00', '13:00:00'), (2, '10:00:00', '12:00:00')]:
+            with self.subTest(lessons=lessons):
+                probe, calls = self.run_433_probe({'lessons_on_date': lessons})
+                self.assertTrue(probe['decision_grade'])
+                self.assertTrue(probe['readonly_session_verified'])
+                self.assertTrue(calls['envelope_required'])
+                self.assertTrue(calls['envelope_grade'])
+                self.assertEqual(probe['tail'], {'date': '2026-10-31', 'start': start, 'end': end})
+                self.assertEqual(probe['conflict'], {'code': 'student_slot_conflict', 'course_id': 4453, 'session_id': 99999, 'schedule_id': None})
+                self.assertEqual(calls['guard_args'], [2282, '2026-10-31', start, end, None, [], False])
+                self.assertEqual(calls['rollback'], 1)
+
+    def test_433_probe_distinguishes_free_slot_from_failed_read(self):
+        probe, calls = self.run_433_probe({'conflict': False})
+        self.assertTrue(probe['decision_grade'])
+        self.assertIsNone(probe['conflict'])
+        self.assertEqual(calls['guard'], 1)
+        probe, calls = self.run_433_probe({'append': None})
+        self.assertTrue(probe['decision_grade'])
+        self.assertIsNone(probe['tail'])
+        self.assertIsNone(probe['conflict'])
+        self.assertEqual(calls['guard'], 0)
+
+    def test_433_probe_discards_failed_or_wrong_target_evidence(self):
+        for fixture in ({'readonly': False}, {'wrong_target': True}, {'report_campus': 4}, {'student_campus': 4}, {'preview_error': True}, {'lose_readonly': True}, {'rollback_error': True}):
+            with self.subTest(fixture=fixture):
+                probe, calls = self.run_433_probe(fixture)
+                self.assertFalse(probe['decision_grade'])
+                self.assertFalse(probe['readonly_session_verified'])
+                self.assertTrue(calls['envelope_required'])
+                self.assertFalse(calls['envelope_grade'])
+                self.assertNotIn('tail', probe)
+                self.assertNotIn('conflict', probe)
+                self.assertEqual(calls['rollback'], 0 if fixture.get('readonly') is False else 1)
+                if fixture.get('readonly') is False or any(k in fixture for k in ('wrong_target', 'report_campus', 'student_campus')):
+                    self.assertEqual(calls['preview'], 0)
+                    self.assertEqual(calls['guard'], 0)
+
+    def test_433_probe_verifies_mariadb_readonly_session(self):
+        probe, calls = self.run_433_probe({'mariadb': True})
+        self.assertTrue(probe['readonly_session_verified'])
+        self.assertTrue(calls['envelope_grade'])
+        self.assertEqual(calls['rollback'], 1)
+
+    def test_433_probe_is_inert_for_other_reports(self):
+        probe, calls = self.run_433_probe({}, bug_id=7)
+        self.assertFalse(probe['applicable'])
+        self.assertEqual(calls['connection'], 0)
+        self.assertFalse(calls['envelope_required'])
+        self.assertIn('433 => $probe433,', self.source)
+        self.assertIn('"probe_433_leave_tail" => $probe433,', self.source)
 
     def test_fixed_probes_are_guarded_by_their_bug_ids(self):
         source = self.source
