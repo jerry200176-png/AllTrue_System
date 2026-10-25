@@ -1850,6 +1850,101 @@ jobs:
             }}
           }}
 
+          // #433 bounded read-only tail diagnosis
+          $probe433 = ["applicable" => false, "read_only" => true, "decision_grade" => false];
+          if ($bugId === 433) {{
+              $probe433["applicable"] = true;
+              $probe433["readonly_session_verified"] = false;
+              $stage433 = "readonly_session";
+              try {{
+                  $conn433 = \\Illuminate\\Support\\Facades\\DB::connection();
+                  $conn433->statement("SET SESSION TRANSACTION READ ONLY");
+                  $conn433->statement("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+                  $readOnly433 = function () use ($conn433): bool {{
+                      try {{
+                          return (int)($conn433->selectOne("SELECT @@SESSION.transaction_read_only AS ro", [], false)->ro ?? 0) === 1;
+                      }} catch (\\Throwable $e) {{
+                          return (int)($conn433->selectOne("SELECT @@SESSION.tx_read_only AS ro", [], false)->ro ?? 0) === 1;
+                      }}
+                  }};
+                  if (!$readOnly433()) {{ throw new \\RuntimeException(); }}
+                  $conn433->beginTransaction();
+                  try {{
+                      if (!$readOnly433()) {{ throw new \\RuntimeException(); }}
+                      $stage433 = "target_binding";
+                      $course433 = \\App\\Models\\StudentClass::query()->whereKey(2282)->first();
+                      $session433 = \\App\\Models\\ClassSession::query()->whereKey(43722)->first();
+                      if ((int)$bug->CampusID !== 9 || !$course433 || !$session433
+                          || (int)$session433->StudentClassID !== 2282
+                          || substr((string)$session433->SessionDate, 0, 10) !== "2026-10-24"
+                          || substr((string)$session433->StartTime, 0, 5) !== "10:00"
+                          || substr((string)$session433->EndTime, 0, 5) !== "12:00"
+                          || strtolower((string)$session433->Status) !== "scheduled"
+                          || (int)$course433->Stop !== 0
+                          || strtolower((string)$course433->ScheduleMode) !== "count"
+                          || (string)($course433->scheduling_policy ?? "auto_recurrence") !== "auto_recurrence"
+                          || $course433->isUsageSettlementLocked()
+                          || (int)\\App\\Models\\Student::query()->where("id", (int)$course433->StudentID)->value("CampusID") !== 9) {{
+                          throw new \\RuntimeException();
+                      }}
+                      $stage433 = "leave_preview";
+                      $preview433 = \\App\\Services\\CourseLeaveCascadeService::previewLeaveCascadeForCourse(2282, "2026-10-24", 43722);
+                      if (($preview433["policy"] ?? null) !== \\App\\Services\\CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL
+                          || ($preview433["moves"] ?? null) !== [] || ($preview433["vacated"] ?? null) !== []
+                          || ($preview433["future_dates_unchanged"] ?? null) !== true
+                          || !array_key_exists("append", $preview433)) {{ throw new \\RuntimeException(); }}
+                      $tail433 = null;
+                      $conflict433 = null;
+                      if ($preview433["append"] !== null) {{
+                          if (!is_string($preview433["append"]) || preg_match('/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/D', $preview433["append"]) !== 1) {{
+                              throw new \\RuntimeException();
+                          }}
+                          $stage433 = "tail_times";
+                          // Match appendTailAfterLeave: a two-lesson date retains this lesson's own times.
+                          $lessons433 = \\App\\Models\\ClassSession::query()->where("StudentClassID", 2282)
+                              ->whereDate("SessionDate", "2026-10-24")
+                              ->whereRaw("LOWER(COALESCE(Status, '')) <> ?", ["cancelled"])->count();
+                          $times433 = $lessons433 > 1 ? ["start" => "", "end" => ""]
+                              : \\App\\Services\\CourseLeaveCascadeService::resolveContractSlotTimes($course433, $preview433["append"]);
+                          if (!isset($times433["start"], $times433["end"]) || !is_string($times433["start"]) || !is_string($times433["end"])) {{
+                              throw new \\RuntimeException();
+                          }}
+                          $start433 = $times433["start"] !== "" ? $times433["start"] : (string)$session433->StartTime;
+                          $end433 = $times433["end"] !== "" ? $times433["end"] : (string)$session433->EndTime;
+                          if (preg_match('/^\\d{{2}}:\\d{{2}}:\\d{{2}}$/D', $start433) !== 1
+                              || preg_match('/^\\d{{2}}:\\d{{2}}:\\d{{2}}$/D', $end433) !== 1) {{ throw new \\RuntimeException(); }}
+                          $tail433 = ["date" => $preview433["append"], "start" => $start433, "end" => $end433];
+                          $stage433 = "student_slot_guard";
+                          $blocked433 = app(\\App\\Services\\ClassSessionMaterializationService::class)->findStudentSlotConflict(
+                              $course433, $tail433["date"], $start433, $end433, null, [], false
+                          );
+                          if ($blocked433 !== null) {{
+                              if (!in_array($blocked433->responseCode, ["student_slot_conflict", "slot_occupied"], true)) {{
+                                  throw new \\RuntimeException();
+                              }}
+                              $conflict433 = ["code" => $blocked433->responseCode,
+                                  "course_id" => $blocked433->conflictCourseId, "session_id" => $blocked433->conflictSessionId,
+                                  "schedule_id" => $blocked433->conflictScheduleId];
+                          }}
+                      }}
+                      $stage433 = "readonly_session";
+                      if (!$readOnly433()) {{ throw new \\RuntimeException(); }}
+                      $result433 = ["applicable" => true, "read_only" => true, "readonly_session_verified" => true,
+                          "decision_grade" => true, "course_id" => 2282, "session_id" => 43722,
+                          "source_date" => "2026-10-24", "tail" => $tail433, "conflict" => $conflict433,
+                          "guard_as_of" => date("Y-m-d"), "future_dates_unchanged" => true];
+                  }} finally {{
+                      try {{ $conn433->rollBack(); }} catch (\\Throwable $e) {{ $stage433 = "rollback"; throw $e; }}
+                  }}
+                  $probe433 = $result433;
+              }} catch (\\Throwable $e) {{
+                  // No raw exception text or partial plan/identity data is emitted on failure.
+                  $probe433 = ["applicable" => true, "read_only" => true, "readonly_session_verified" => false,
+                      "decision_grade" => false, "error" => $stage433 . "_failed"];
+              }}
+          }}
+          // End #433 tail diagnosis
+
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1865,9 +1960,10 @@ jobs:
             338 => $probe338,
             359 => $probe359,
             376 => $probe376,
+            433 => $probe433,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 433, 359], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1917,6 +2013,7 @@ jobs:
                 "probe_338_target_capacity" => $probe338,
                 "probe_359_cross_campus_source" => $probe359,
                 "probe_376_teacher_reassign" => $probe376,
+                "probe_433_leave_tail" => $probe433,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
