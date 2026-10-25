@@ -1,7 +1,10 @@
 import base64
 import json
+import os
 import re
 import subprocess
+import tarfile
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -75,6 +78,55 @@ class BugDetailDumpContractTest(unittest.TestCase):
         for name, content in public.items():
             self.assertNotIn(sentinel.encode(), content, name)
         self.assertIn(sentinel, recovered)
+
+    def test_failed_evidence_gate_preserves_encrypted_diagnostics(self):
+        # Run the shipped shell with errexit, unlike the older helper that runs
+        # Python and encryption independently and misses a failure between them.
+        steps = yaml.safe_load(self.source)["jobs"]["dump"]["steps"]
+        run = next(s["run"] for s in steps if s.get("name", "").startswith("Dump bug"))
+        transport = run.split("\nREMOTE\n", 1)[1]
+        sentinel = "synthetic-private-failed-probe"
+        for label, requested_id, grade, raw in (
+            ("success", 433, True, None),
+            ("failed_probe", 433, False, None),
+            ("wrong_target", 7, True, None),
+            ("missing_envelope", 433, True, sentinel),
+        ):
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "raw").mkdir()
+                (root / "out").mkdir()
+                envelope = {"ok": True, "requested_bug_id": requested_id,
+                            "bug": {"id": requested_id, "title": sentinel},
+                            "diagnostics": {"decision_grade_required": True,
+                                            "decision_grade": grade,
+                                            "probe_results": {"private_error": sentinel,
+                                                "probe_433_leave_tail": {"decision_grade": False,
+                                                    "error": "student_slot_guard_failed" if label == "failed_probe" else sentinel}}}}
+                (root / "raw/bug-detail.log").write_text(
+                    raw or json.dumps(envelope) + "\n", encoding="utf-8")
+                env = {**os.environ, "BUG_ID": "433", "DUMP_ARTIFACT_KEY": "synthetic-test-key"}
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", transport],
+                                        cwd=root, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, label == "success", result.stderr)
+                self.assertNotIn(sentinel, result.stdout + result.stderr)
+                encrypted = root / "out/bug-detail.full.tar.gz.enc"
+                self.assertTrue(encrypted.is_file(), "a failed probe must keep private evidence")
+                for artifact in (root / "out").iterdir():
+                    self.assertNotIn(sentinel.encode(), artifact.read_bytes(), artifact.name)
+                summary = json.loads((root / "out/summary.json").read_text())
+                self.assertEqual(summary["probe_433_failure_stage"],
+                                 "student_slot_guard_failed" if label == "failed_probe" else None)
+                archive = root / "recovered.tar.gz"
+                decrypted = subprocess.run(
+                    ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "600000",
+                     "-pass", "env:DUMP_ARTIFACT_KEY", "-in", str(encrypted), "-out", str(archive)],
+                    env=env, capture_output=True)
+                self.assertEqual(decrypted.returncode, 0, decrypted.stderr)
+                with tarfile.open(archive) as contents:
+                    evidence = json.load(contents.extractfile("./bug-detail.json"))
+                    self.assertEqual(evidence.get("requested_bug_id"), None if raw else requested_id)
+                    self.assertIn(sentinel, contents.extractfile("./bug-detail.log").read().decode())
 
     def run_433_probe(self, fixture, bug_id=433):
         match = re.search(r"// #433 bounded read-only tail diagnosis\n(.*?)// End #433 tail diagnosis", self.rendered_php(bug_id), re.S)

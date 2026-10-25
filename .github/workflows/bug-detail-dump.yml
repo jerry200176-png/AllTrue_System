@@ -2063,13 +2063,24 @@ jobs:
           Path("raw/bug-detail.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
           requested_id = int(os.environ["BUG_ID"])
           bug = obj.get("bug") or {}
+          probe433 = ((obj.get("diagnostics") or {}).get("probe_results") or {}).get("probe_433_leave_tail") or {}
+          safe_stages = {stage + "_failed" for stage in (
+            "readonly_session", "target_binding", "leave_preview", "tail_times", "student_slot_guard", "rollback",
+          )}
+          # A closed enum is safe public metadata; never copy exception text or probe data.
+          failure_stage = probe433.get("error") if requested_id == 433 and probe433.get("decision_grade") is False else None
           Path("out/summary.json").write_text(json.dumps({
             "ok": obj.get("ok"), "requested_bug_id": obj.get("requested_bug_id"),
             **{k: bug.get(k) for k in ("id", "status", "severity", "campus_id", "page_key", "reporter_user_id", "created_at", "updated_at")},
             "counts": {k: len(obj.get(k) or []) for k in ("attachments", "comments", "status_logs", "reporter_history")},
             "decision_grade": (obj.get("diagnostics") or {}).get("decision_grade"),
+            "probe_433_failure_stage": failure_stage if failure_stage in safe_stages else None,
             "dump_generated_at": obj.get("dump_generated_at"), "prod_head": obj.get("prod_head"),
           }, indent=2), encoding="utf-8")
+          # Preserve private failure evidence before a validation error exits the
+          # errexit shell. Encryption failure still fails closed; no plaintext fallback.
+          import subprocess
+          subprocess.run(["bash", "-c", "set -euo pipefail; tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/bug-detail.full.tar.gz.enc"], check=True)
           if obj.get("requested_bug_id") != requested_id:
             raise SystemExit("requested_bug_id does not match dispatched bug_id")
           diagnostics = obj.get("diagnostics") or {}
@@ -2077,7 +2088,6 @@ jobs:
             raise SystemExit("target-correct probe is required; evidence is not decision-grade")
           print("parsed", bool(obj.get("ok")), "decision_grade", diagnostics.get("decision_grade"))
           PY
-          tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/bug-detail.full.tar.gz.enc
 
       - name: Upload
         if: always()
