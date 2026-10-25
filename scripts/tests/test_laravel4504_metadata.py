@@ -39,7 +39,7 @@ def fixture():
 
 
 def project(raw):
-    return module.project(raw, BACKEND, WORKFLOW, "123", "1", "0")
+    return module.project(raw, BACKEND, WORKFLOW, "123", "1", "0", "true")
 
 
 class MetadataProjectionTest(unittest.TestCase):
@@ -81,11 +81,11 @@ class MetadataProjectionTest(unittest.TestCase):
         for key in ("candidate_head", "checkout_sha_start", "checkout_sha_end", "manifest_backend_sha", "identity_consistent", "captured_at_utc"):
             raw = fixture(); raw.pop(key)
             self.assertFalse(project(raw)["metadata_collected"], key)
-        self.assertNotIn("FAKE_PRIVATE", json.dumps(module.project(fixture(), "FAKE_PRIVATE", WORKFLOW, "123", "1", "0")))
+        self.assertNotIn("FAKE_PRIVATE", json.dumps(module.project(fixture(), "FAKE_PRIVATE", WORKFLOW, "123", "1", "0", "true")))
         for status in ("1", "124", "137", "255"):
-            self.assertFalse(module.project(fixture(), BACKEND, WORKFLOW, "123", "1", status)["metadata_collected"])
+            self.assertFalse(module.project(fixture(), BACKEND, WORKFLOW, "123", "1", status, "true")["metadata_collected"])
         failed = {"metadata_collected": False, "stage": "identity_before_configuration", "message": "FAKE_PRIVATE"}
-        out = module.project(failed, BACKEND, WORKFLOW, "123", "1", "1")
+        out = module.project(failed, BACKEND, WORKFLOW, "123", "1", "1", "true")
         self.assertEqual(out["capture_stage"], "identity_before_configuration")
         self.assertNotIn("FAKE_PRIVATE", json.dumps(out))
 
@@ -97,6 +97,15 @@ class MetadataProjectionTest(unittest.TestCase):
         raw = fixture(); del raw["schema_metadata"]["migration_ledger_present"]
         self.assertFalse(project(raw)["metadata_collected"])
 
+    def test_partial_collection_shapes_and_missing_private_package_hold(self):
+        for key in ("tables", "columns", "indexes"):
+            raw = fixture(); raw["schema_metadata"][key] = {}
+            self.assertFalse(project(raw)["metadata_collected"], key)
+        self.assertTrue(project(fixture())["encrypted_evidence_packaged"])
+        out = module.project(fixture(), BACKEND, WORKFLOW, "123", "1", "0", "false")
+        self.assertFalse(out["metadata_collected"])
+        self.assertEqual(out["reason"], "encrypted_evidence_missing")
+
     def test_actual_cli_rejects_partial_duplicate_and_oversize_input_and_emits_only_safe_file(self):
         with tempfile.TemporaryDirectory() as directory:
             source, output = Path(directory) / "raw.json", Path(directory) / "public.json"
@@ -105,7 +114,7 @@ class MetadataProjectionTest(unittest.TestCase):
             for i, sample in enumerate(samples):
                 source.write_text(sample)
                 run = subprocess.run(["python3", str(SCRIPT), str(source), str(output), "--backend", BACKEND,
-                                      "--workflow", WORKFLOW, "--run_id", "123", "--attempt", "1", "--probe_exit", "0"], capture_output=True, text=True)
+                                      "--workflow", WORKFLOW, "--run_id", "123", "--attempt", "1", "--probe_exit", "0", "--private_packaged", "true"], capture_output=True, text=True)
                 self.assertEqual(run.returncode, 0 if i == 0 else 1)
                 self.assertEqual(json.loads(output.read_text())["metadata_collected"], i == 0)
                 self.assertNotIn("FAKE_PRIVATE", output.read_text() + run.stdout + run.stderr)

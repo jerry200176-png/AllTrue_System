@@ -69,15 +69,8 @@ jobs:
           printf '%s\n' "$status" > raw/probe-exit-code
           printf 'exit_code=%s\n' "$status" >> "$GITHUB_OUTPUT"
           exit "$status"
-      - name: Publish only the closed metadata projection
-        if: ${{ always() && steps.probe.outcome != 'skipped' }}
-        env:
-          BACKEND: ${{ inputs.expected_backend_sha }}
-          PROBE_EXIT: ${{ steps.probe.outputs.exit_code }}
-        run: |
-          python3 scripts/laravel-4504-metadata-summary.py raw/production-case.json out/metadata.summary.json \
-            --backend "$BACKEND" --workflow "$GITHUB_SHA" --run_id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --probe_exit "$PROBE_EXIT"
       - name: Encrypt private metadata and errors
+        id: encrypt
         if: always()
         env:
           DUMP_ARTIFACT_KEY: ${{ secrets.DUMP_ARTIFACT_KEY }}
@@ -86,8 +79,19 @@ jobs:
           umask 077
           if [[ ! -d raw ]]; then exit 0; fi
           [[ ${#DUMP_ARTIFACT_KEY} -ge 16 ]]
+          trap 'rm -f out/metadata.private.tar.gz.enc out/metadata.private.tar.gz.enc.sha256' ERR
           tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/metadata.private.tar.gz.enc
           (cd out && sha256sum metadata.private.tar.gz.enc > metadata.private.tar.gz.enc.sha256)
+          printf 'complete=true\n' >> "$GITHUB_OUTPUT"
+      - name: Publish only the closed metadata projection
+        if: ${{ always() && steps.probe.outcome != 'skipped' }}
+        env:
+          BACKEND: ${{ inputs.expected_backend_sha }}
+          PROBE_EXIT: ${{ steps.probe.outputs.exit_code }}
+          PRIVATE_PACKAGED: ${{ steps.encrypt.outputs.complete }}
+        run: |
+          python3 scripts/laravel-4504-metadata-summary.py raw/production-case.json out/metadata.summary.json \
+            --backend "$BACKEND" --workflow "$GITHUB_SHA" --run_id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --probe_exit "$PROBE_EXIT" --private_packaged "$PRIVATE_PACKAGED"
       - name: Shred private runner files
         if: always()
         run: |

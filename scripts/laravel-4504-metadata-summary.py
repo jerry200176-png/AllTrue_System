@@ -38,9 +38,9 @@ def reject_constant(_):
     raise ValueError("non-finite JSON")
 
 
-def project(raw, backend, workflow, run_id, attempt, probe_exit):
+def project(raw, backend, workflow, run_id, attempt, probe_exit, private_packaged):
     out = {"case": CASE, "metadata_collected": False, "production_acceptance": "UNKNOWN",
-           "activation_decision": "HOLD", "reason": "invalid_context"}
+           "activation_decision": "HOLD", "encrypted_evidence_packaged": False, "reason": "invalid_context"}
     if not SHA.fullmatch(backend) or not SHA.fullmatch(workflow):
         return out
     try:
@@ -53,6 +53,10 @@ def project(raw, backend, workflow, run_id, attempt, probe_exit):
             stages = {"paths", "identity_before_configuration", "configuration_only",
                       "metadata_only_read_only_transaction", "identity_and_versions"}
             out["capture_stage"] = raw.get("stage") if raw.get("stage") in stages else "withheld"
+        out["encrypted_evidence_packaged"] = private_packaged == "true"
+        if not out["encrypted_evidence_packaged"]:
+            out["reason"] = "encrypted_evidence_missing"
+            return out
         if probe_exit != 0:
             out["reason"] = "transport_incomplete"
             return out
@@ -69,6 +73,10 @@ def project(raw, backend, workflow, run_id, attempt, probe_exit):
             raise ValueError("unknown capture time")
         datetime.strptime(captured, "%Y-%m-%dT%H:%M:%SZ")
         schema = raw["schema_metadata"]
+        groups = ("tables", "columns", "indexes", "original_migration_records")
+        if (not isinstance(schema, dict) or any(not isinstance(schema.get(k), list) for k in groups)
+                or any(not isinstance(row, dict) for k in groups for row in schema[k])):
+            raise ValueError("partial metadata shape")
         if type(schema["migration_ledger_present"]) is not bool:
             raise ValueError("unknown ledger")
         records = schema["original_migration_records"]
@@ -128,7 +136,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
-    for name in ("backend", "workflow", "run_id", "attempt", "probe_exit"):
+    for name in ("backend", "workflow", "run_id", "attempt", "probe_exit", "private_packaged"):
         parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
     try:
@@ -139,9 +147,9 @@ if __name__ == "__main__":
         raw = json.loads(data, object_pairs_hook=unique_object, parse_constant=reject_constant)
     except (OSError, ValueError, UnicodeError):
         raw = None
-    result = project(raw, args.backend, args.workflow, args.run_id, args.attempt, args.probe_exit)
+    result = project(raw, args.backend, args.workflow, args.run_id, args.attempt, args.probe_exit, args.private_packaged)
     if raw is not None:
-        result["private_output_sha256"] = hashlib.sha256(data).hexdigest()
+        result["collector_output_sha256"] = hashlib.sha256(data).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     print("metadata_summary_status=" + ("collected" if result["metadata_collected"] else "hold"))

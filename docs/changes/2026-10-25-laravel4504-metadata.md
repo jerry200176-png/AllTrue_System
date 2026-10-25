@@ -25,7 +25,10 @@ Retrieve artifact `laravel-4504-metadata-<run_id>-<attempt>`, then read `metadat
 Its fixed schema contains only approved identities, capture time, numeric versions, fixed extension
 presence, known token-column types/nullability, fixed index predicates and original migration count.
 It requires no decryption key. Private metadata/errors remain encrypted; no raw stderr enters the
-public summary. Failure, malformed JSON, identity drift or incomplete transport produces Hold.
+public summary. The existing PII purge removes these production runs/artifacts after6hours;
+retrieve and preserve the exact-run summary/checksums promptly (14days is only the upload ceiling). Failure, malformed JSON, identity drift or incomplete transport produces Hold.
+Encryption/checksum failure forces public Hold and removes partial ciphertext.
 Collection success is not framework compatibility, loaded FPM state, activation approval or acceptance.
+Verify run SHA/attempt/time; capture-time syntax alone is not freshness proof.
 The separate PR test workflow uploads an explicitly synthetic artifact to verify safe retrieval.
 Rollback: revert this diagnostic; it has no production data or configuration change to undo.
