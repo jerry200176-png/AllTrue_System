@@ -1,0 +1,30 @@
+name: Laravel 4504 metadata contract
+# governance-capability: non-production
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/laravel-4504-metadata*.yml'
+      - 'scripts/laravel-4504-metadata*'
+      - 'scripts/tests/test_laravel4504_metadata.py'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.2'
+          coverage: none
+      - run: python3 scripts/tests/test_laravel4504_metadata.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: synthetic-4504-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/synthetic-metadata.summary.json
+          if-no-files-found: error
+          retention-days: 14
