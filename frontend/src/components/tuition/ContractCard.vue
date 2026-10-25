@@ -12,7 +12,7 @@
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
-        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
         <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
@@ -151,6 +151,7 @@ const props = defineProps({
   rateNote: { type: Object, default: null },
   // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
   canResolveLegacy: { type: Boolean, default: false },
+  hasConfirmedReport: { type: Boolean, default: false },
 });
 const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill']);
 

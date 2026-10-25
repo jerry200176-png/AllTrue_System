@@ -91,6 +91,7 @@
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
                 :can-resolve-legacy="canManageInvoices()"
+                :has-confirmed-report="hasConfirmedReportFor(c.id)"
                 @record="openEntry"
                 @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
@@ -322,7 +323,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -665,6 +666,9 @@ const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
+// Mirror the existing server refusal by report status, independently of payment display completeness.
+const hasConfirmedReportFor = (id) => (payload.value?.receipts || [])
+  .some((r) => Number(r.student_class_id) === Number(id) && r.status === 'confirmed');
 // #4115: the issued-bill vs current-contract note for the bill row (display only).
 const rateNoteFor = (inv) => {
   const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
@@ -770,6 +774,10 @@ const entryOpen = ref(false);
 const entryRow = ref(null);
 const entryMode = ref('record');
 function openEntry(course, mode = 'record') {
+  if (mode === 'legacy-backfill' && hasConfirmedReportFor(course.id)) {
+    initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
+    return;
+  }
   entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
@@ -819,6 +827,9 @@ let pendingInitialAction = null;
 watch(() => props.show, (open) => { pendingInitialAction = open ? props.initialAction : null; }, { immediate: true });
 const initialActionNote = ref('');
 watch(() => props.show, () => { initialActionNote.value = ''; });
+watch(() => entryOpen.value && entryMode.value === 'legacy-backfill' && hasConfirmedReportFor(entryRow.value?.id), (blocked) => {
+  if (blocked) { entryOpen.value = false; initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP; }
+});
 function runInitialAction() {
   const action = pendingInitialAction;
   pendingInitialAction = null;
@@ -827,6 +838,10 @@ function runInitialAction() {
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
   if (needsLegacyChoice(course)) {
+    if (hasConfirmedReportFor(course.id)) {
+      initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
+      return;
+    }
     initialActionNote.value = '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
     return;
   }
