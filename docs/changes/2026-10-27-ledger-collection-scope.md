@@ -1,5 +1,5 @@
 ## 2026-10-27 — fix(ui): 說明學生帳務收款入口的合約範圍
-<!-- release-notes: silent_ship=silent-2026-10-27-ledger-collection-scope -->
-<!-- silent-reason: 這是可見提示修正，尚未發布；公告仍需依正式驗證與具體時序決策處理，不能把此標記當作看不到差異。 -->
+<!-- release-notes: staff_update=staff-2026-10-08-panel-allocate -->
+<!-- delivery-note: 連回既有已發布的多合約收款範圍說明，不新增、修改或重發公告；準備本提示修正時尚未部署，不能以此引用證明帳務金額有誤、已修復或個案結案。 -->
 - 底部收款入口說明可處理這位學生其他可收款合約，並請在下一步確認科目與金額；保留原有資格、合約、金額與配款步驟。
 - SourceRef alltrue:bug_report:437（#4517）：改善焦點課程與學生層級入口混淆，不宣稱已證實或修復正式帳務金額問題。
