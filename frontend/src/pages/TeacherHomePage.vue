@@ -18,8 +18,6 @@
       class="th-clockin-card card"
       :class="clockinCardClass"
       @click="goAttendance"
-      aria-labelledby="teacher-clockin-title"
-      aria-describedby="teacher-clockin-status"
     >
 
       <!-- Header row: icon + title + badge + arrow -->
@@ -31,7 +29,7 @@
           <span id="teacher-clockin-title" class="th-clockin-title">今日打卡狀態</span>
           <span id="teacher-clockin-status" class="th-clockin-badge" :class="clockinBadgeClass" aria-live="polite">{{ clockinBadgeLabel }}</span>
         </div>
-        <span class="material-symbols-outlined th-clockin-arrow">chevron_right</span>
+        <span class="material-symbols-outlined th-clockin-arrow" aria-hidden="true">chevron_right</span>
       </div>
 
       <!-- Body: two time chips side by side -->
@@ -63,7 +61,7 @@
 
       <!-- Hint: first class time -->
       <div class="th-clockin-hint" v-if="!clockinLoading && clockinRecord.first_class_start_time">
-        <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">schedule</span>
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:13px;vertical-align:-2px">schedule</span>
         第一堂課：{{ clockinRecord.first_class_start_time }}
       </div>
     </button>
