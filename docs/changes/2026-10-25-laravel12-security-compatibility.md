@@ -15,21 +15,9 @@ Disable only new optional Larastan env/collection style rules to retain live gat
 and loaded-collection semantics. Capture the existing parent-card month label.
 
 Sanctum 4 stops auto-loading migrations: publish its official 2019 migration under
-the original filename. The approved read-only production capture (run 40246976614)
-confirmed the original migration is already recorded and the token table lacks
-`expires_at` and its index. Add a forward migration that adds the nullable timestamp
-and index to legacy installations, adds only a missing index when the column
-already exists, and leaves complete/fresh schemas unchanged. Existing token values
-remain untouched; no backfill, token rotation or production DDL was run.
-
-The forward migration is an Expand operation. Its guarded `down()` is deliberately
-empty: code rollback retains the additive schema and all expiry values, including
-columns or indexes that predated this migration. The prior locked application can
-use the expanded table. Identity-table migrations remain outside the autonomous
-additive-migration merge exception. Production execution requires a separate exact
-DDL decision through the existing deployment path; unknown table size/server DDL
-capabilities mean metadata locks and index-build cost remain release risks.
-
+the original filename. Approved metadata run 40246976614 confirmed the original
+migration is recorded but expires_at is absent; the independent forward-schema
+PR is a release dependency. No production DDL or token changes were executed.
 Publication, merge and activation remain separate decisions. Verify real PHP 8.2+
 and exact runtime/range before activation; rollback uses the prior locked artifact,
 with no automatic migration rollback or data repair. Retired routes stay retired.
