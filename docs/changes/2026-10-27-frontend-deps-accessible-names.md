@@ -1,6 +1,11 @@
-## 2026-10-27 — chore(deps): 更新前端依賴並校正無障礙操作名稱
-<!-- release-notes: silent_ship=silent-2026-10-27-frontend-deps-accessible-names -->
-<!-- silent-reason: 輔助科技使用者可感知名稱修正，尚未發布；需具體程式先行／驗證後公告時序決定，不能把此標記當作看不到差異。 -->
-- 保留Supabase、Vue、axe與Playwright更新；新ARM64 optional binary未核實官方來源，暫維持原鎖定版本，不降級axe或忽略檢查。
-- 學生匯入與範例按鈕名稱以畫面原文開頭；老師打卡按鈕從完整可見內容命名，裝飾圖示不朗讀。
-- 原有資料、操作、鍵盤與狀態通知行為保留；舊head四個axe失敗已定位，新head完整axe／CI尚待驗證。
+<!-- engineering-context: 本PR的依賴版本與安全驗證詳見PR工程紀錄；下列兩個條目只連回既有控件的已發布說明，不表示舊卡已公告本次依賴更新或新的axe驗收結果。 -->
+
+## 2026-10-27 — fix(a11y): 老師打卡按鈕名稱對齊可見內容
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-card-a11y -->
+<!-- delivery-note: 引用既有原生按鈕與狀態說明，不新增、修改或重發公告；準備本修正時尚未部署，不以此引用當作本次部署或驗收證據。 -->
+- 讓原生打卡按鈕以完整可見內容提供可及名稱，保留目前狀態描述、鍵盤操作與原有導頁，不改打卡或其他業務規則。
+
+## 2026-10-27 — fix(a11y): 學生匯入與範例控制項名稱對齊
+<!-- release-notes: staff_update=staff-2026-09-15-student-import-template -->
+<!-- delivery-note: 引用既有下載範例與名單匯入說明，不新增、修改或重發公告；本引用不表示此次名稱修正已部署。 -->
+- 匯入名單與下載範例的可及名稱對齊既有可見文字；欄位、CSV／Excel匯入、API與分校權限規則維持不變。
