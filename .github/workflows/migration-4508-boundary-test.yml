@@ -1,0 +1,39 @@
+name: Migration 4508 execution boundary
+# governance-capability: non-production
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/migration-4508-boundary-test.yml'
+      - 'scripts/production-deploy/**'
+      - 'scripts/tests/test*4508*'
+      - 'scripts/tests/fixtures/4508*'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_DATABASE: AllTrue_test_4508
+        ports:
+          - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=2s --health-timeout=2s --health-retries=30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql
+          coverage: none
+      - run: python3 -m unittest scripts.tests.test_migration_4508_execution
+      - run: php scripts/tests/test_4508_bounded_runner.php
+      - run: php scripts/tests/test_4508_native_bounds.php
+        env:
+          BOUNDARY_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=AllTrue_test_4508

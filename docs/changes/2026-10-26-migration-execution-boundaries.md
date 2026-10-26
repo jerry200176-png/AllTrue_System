@@ -18,3 +18,9 @@ automatic retry. Success additionally verifies the primary nullable timestamp,
 single-column index and exact ledger entry. Preserve token/expiry data and all
 existing activation/identity-migration approval boundaries. No production probe,
 DDL, deployment, credential or live protection change was executed by this PR.
+
+Isolated MariaDB 10.11.19 regressions observe native error 1969 for a statement
+abort request and 1205 for metadata-lock wait, absent partial column in those
+fixtures, successful subsequent ALTERs and preservation of synthetic token rows.
+Those fixtures do not establish a production duration, cleanup deadline or engine
+profile. The PR-only workflow has no production environment or secrets.
