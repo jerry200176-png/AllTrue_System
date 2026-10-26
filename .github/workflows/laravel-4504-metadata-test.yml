@@ -17,7 +17,7 @@ jobs:
       mariadb:
         image: mariadb:10.11
         env:
-          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_ROOT_PASSWORD: rootpw
           MARIADB_DATABASE: AllTrue_test_4508
         ports:
           - 3306:3306

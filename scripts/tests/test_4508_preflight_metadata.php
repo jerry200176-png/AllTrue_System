@@ -9,7 +9,7 @@ function check(bool $ok, string $label): void
 }
 $dsn = (string) getenv('PREFLIGHT_TEST_DSN');
 check((bool) preg_match('~^mysql:host=127\.0\.0\.1;port=[0-9]+;dbname=AllTrue_test_4508$~D', $dsn), 'test DSN only');
-$pdo = new PDO($dsn, 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdo = new PDO($dsn, 'root', 'rootpw', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo->exec('CREATE TABLE personal_access_tokens (id BIGINT PRIMARY KEY, token VARCHAR(64)) ENGINE=InnoDB');
 $pdo->exec('CREATE TABLE migrations (migration VARCHAR(255), batch INT) ENGINE=InnoDB');
 $pdo->exec("INSERT INTO personal_access_tokens VALUES (1, 'FAKE_PRIVATE_TOKEN_NEVER_READ_BY_COLLECTOR')");
