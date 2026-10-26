@@ -44,6 +44,7 @@ class BoundaryDb
     public bool $writeReads = false;
     public mixed $reconnector = null;
     public string $name = 'mysql';
+    public string $defaultName = 'mysql';
     public array $config = ['host' => '127.0.0.1', 'port' => 3306, 'database' => 'AllTrue'];
     public function __construct(public BoundaryPdo $pdo) {}
     public function connection(): self { return $this; }
@@ -51,6 +52,7 @@ class BoundaryDb
     public function getPdo(): PDO { return $this->pdo; }
     public function getTablePrefix(): string { return ''; }
     public function getName(): string { return $this->name; }
+    public function getDefaultConnection(): string { return $this->defaultName; }
     public function getConfig(): array { return $this->config; }
     public function setReconnector(callable $callback): void { $this->reconnector = $callback; }
 }
@@ -94,7 +96,7 @@ try {
         if (in_array($case, [6, 7, 8, 10], true)) { $expected = 75; }
         if ($case === 8) { $app['db']->pdo->nullable = false; }
         if ($case === 9) { $app['migration.repository']->ran = ['duplicate', 'duplicate']; }
-        if ($case === 11) { $app['db']->name = 'mysql::read'; }
+        if ($case === 11) { $app['db']->defaultName = 'mysql::read'; } // getName() remains mysql in real Laravel.
         if ($case === 12) { $app['db']->config['host'] = 'other-host'; }
         if ($case === 13) { $app['db']->config['port'] = 3307; }
         if ($case === 14) { $app['db']->config['write'] = ['host' => 'other-host']; }

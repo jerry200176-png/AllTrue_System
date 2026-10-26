@@ -56,7 +56,7 @@ function inspect($app): array
     $config = $db->getConfig();
     // Match the canonical mysqldump endpoint, not merely a same-named database.
     // Split/URL/socket configurations and ::read aliases are outside this profile.
-    if ($db->getName() !== 'mysql' || ($config['host'] ?? null) !== '127.0.0.1'
+    if ($app['db']->getDefaultConnection() !== 'mysql' || $db->getName() !== 'mysql' || ($config['host'] ?? null) !== '127.0.0.1'
         || (string) ($config['port'] ?? '') !== '3306' || ($config['database'] ?? null) !== 'AllTrue'
         || !empty($config['unix_socket']) || !empty($config['url']) || !empty($config['read']) || !empty($config['write'])) {
         throw new \RuntimeException('backup_endpoint_unverified');
