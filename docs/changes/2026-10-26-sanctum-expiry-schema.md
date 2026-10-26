@@ -7,6 +7,8 @@ already recorded while `personal_access_tokens.expires_at` and its index are
 absent. Add a new forward migration with a nullable timestamp/index, an index-only
 path, and no changes for a complete schema. Check metadata using Laravel 8/12
 compatible APIs so this prerequisite can be reviewed separately from #4504.
+All structure guards read primary metadata on the connection used for ALTER,
+preserving correct behavior with a stale or unavailable read replica.
 Preserve all existing token values, abilities and expiry dates; no backfill or
 rotation. Missing base tables stop instead of silently recording success.
 

@@ -239,6 +239,26 @@ class SanctumExpiryMigrationTest extends TestCase
         self::assertSame('2020-01-01 00:00:00', $this->connection->table('personal_access_tokens')->value('expires_at'));
     }
 
+    public function test_4504_all_metadata_guards_use_the_primary_not_a_read_replica(): void
+    {
+        foreach ([false, true] as $withExpiry) {
+            $this->dropFixtureTables();
+            $this->legacyTable(withExpiry: $withExpiry);
+            $readPdo = $this->connection->getRawReadPdo();
+            $replica = $this->createMock(\PDO::class);
+            $replica->expects($this->never())->method('prepare');
+            $this->connection->setReadPdo($replica);
+            try {
+                $this->migrateForward();
+            } finally {
+                $this->connection->setReadPdo($readPdo);
+            }
+
+            self::assertTrue($this->schema->hasColumn('personal_access_tokens', 'expires_at'));
+            self::assertSame(1, $this->expiryIndexCount());
+        }
+    }
+
     public function test_4504_fresh_install_runs_original_and_forward_without_duplicate_indexes(): void
     {
         $repository = new DatabaseMigrationRepository($this->capsule->getDatabaseManager(), 'migrations');
