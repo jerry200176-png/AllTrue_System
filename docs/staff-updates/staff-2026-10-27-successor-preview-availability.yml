@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-27-successor-preview-availability
+    published_at: "2026-10-27"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 請假前先核對續約順延
+    summary: 續約順延尚未開放時，會清楚提示並阻止送出，不改動課程。
+    items:
+      - category: improved
+        text: 遇到請假會影響續約堂次的情況，先顯示預覽與阻擋原因；尚未開放時不能確認送出。
+      - category: fixed
+        text: 切換校區或離開出缺勤畫面後，尚未送出的舊操作會失效，避免沿用舊堂次繼續處理。
+    source_refs:
+      - "issue:4210"
+      - "issue:4152"

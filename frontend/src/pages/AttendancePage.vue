@@ -1126,6 +1126,7 @@ const emit = defineEmits(['navigate', 'navigate-learning', 'navigate-context']);
 const leaveBlockers = ref([]);
 const leaveBlockerDate = ref('');
 const leaveConfirmOwner = ref(null);
+const statusEditOwner = ref(0);
 async function confirmSuccessorLeave(message) {
   const answer = askConfirm({ title: '請假與續約順延影響', message, confirmLabel: '確認請假與順延' });
   const owner = confirmState.value;
@@ -1133,8 +1134,8 @@ async function confirmSuccessorLeave(message) {
   try { return await answer; } finally { if (leaveConfirmOwner.value === owner) leaveConfirmOwner.value = null; }
 }
 function cancelLeaveConfirmation() { if (leaveConfirmOwner.value && confirmState.value === leaveConfirmOwner.value) settleConfirm(false); }
-onBeforeUnmount(cancelLeaveConfirmation);
-watch(() => [props.branchId, props.userRole], () => { cancelLeaveConfirmation(); leaveBlockers.value = []; leaveBlockerDate.value = ''; });
+onBeforeUnmount(() => { statusEditOwner.value += 1; cancelLeaveConfirmation(); });
+watch(() => [props.branchId, props.userRole], () => { statusEditOwner.value += 1; cancelLeaveConfirmation(); leaveBlockers.value = []; leaveBlockerDate.value = ''; }, { flush: 'sync' });
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorOrAdmin = computed(() => props.userRole === 'director' || props.userRole === 'super_admin');
@@ -2194,10 +2195,15 @@ const submitMakeupMark = async (s) => {
 const saveStatusEdit = async (record) => {
   if (record._saving) return;
   if (record._newStatus === record.Status) { record._editing = false; return; }
+  const context = { owner: statusEditOwner.value, branch: props.branchId, role: props.userRole,
+    session: record.ClassSessionID, course: record.StudentClassID, status: record.Status, nextStatus: record._newStatus };
+  const ownsEdit = () => statusEditOwner.value === context.owner && props.branchId === context.branch
+    && props.userRole === context.role && record.ClassSessionID === context.session
+    && record.StudentClassID === context.course && record.Status === context.status && record._newStatus === context.nextStatus;
   record._saving = true;
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token || !ownsEdit()) return;
     if (!record.ClassSessionID) {
       alert('此記錄缺少堂次關聯，無法修改狀態');
       record._saving = false;
@@ -2208,12 +2214,8 @@ const saveStatusEdit = async (record) => {
       leaveBlockers.value = [];
       const isAttended = ['present', 'late'].includes(String(record.Status || '').toLowerCase());
       if (!isAttended) {
-        const branchAtPreview = props.branchId;
-        const sessionAtPreview = record.ClassSessionID;
-        const roleAtPreview = props.userRole;
-        const plan = await previewSuccessorLeave({ role: props.userRole, sessionId: record.ClassSessionID, token });
-        if (props.branchId !== branchAtPreview || record.ClassSessionID !== sessionAtPreview
-          || props.userRole !== roleAtPreview || record._newStatus !== 'leave') return;
+        const plan = await previewSuccessorLeave({ role: context.role, sessionId: context.session, token });
+        if (!ownsEdit()) return;
         if (plan) {
           const effects = successorImpactItems(plan).join('\n');
           if (!plan.eligible) {
@@ -2222,9 +2224,9 @@ const saveStatusEdit = async (record) => {
             return;
           }
           if (!await confirmSuccessorLeave(effects)) return;
-          if (props.branchId !== branchAtPreview || record.ClassSessionID !== sessionAtPreview
-            || props.userRole !== roleAtPreview || record._newStatus !== 'leave') return;
+          if (!ownsEdit()) return;
           await applySuccessorLeave(plan, { token });
+          if (!ownsEdit()) return;
           record.Status = 'leave';
           record.status_label = '請假';
           record._editing = false;

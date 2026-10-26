@@ -3679,7 +3679,9 @@ async function refreshLeaveCascadePreview() {
       if (!owns()) return;
       if (plan) {
         leaveCascadePlan.value = plan;
-        if (!plan.eligible) leavePreviewError.value = '請先處理下列阻擋原因，再重新預覽';
+        if (!plan.eligible) leavePreviewError.value = plan.apply_enabled === false
+          ? '續約順延目前尚未開放，這次沒有變更課程。'
+          : '請先處理下列阻擋原因，再重新預覽';
         leavePreviewSuccessKey.value = key;
         return;
       }

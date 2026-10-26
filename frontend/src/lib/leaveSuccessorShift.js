@@ -12,6 +12,7 @@ async function post(path, payload, { token, request = fetch }) {
 const slotValid = slot => slot && /^\d{4}-\d{2}-\d{2}$/.test(slot.date) && /^\d{2}:\d{2}(?::\d{2})?$/.test(slot.start) && /^\d{2}:\d{2}(?::\d{2})?$/.test(slot.end);
 function validPlan(plan, sessionId) {
   return plan?.applicable === true && Number(plan.leave_session?.id) === Number(sessionId)
+    && typeof plan.apply_enabled === 'boolean'
     && /^[a-f0-9]{64}$/.test(plan.preview_token) && typeof plan.eligible === 'boolean'
     && Array.isArray(plan.blockers) && plan.eligible === (plan.blockers.length === 0)
     && Array.isArray(plan.moves) && plan.moves.length > 1
@@ -34,6 +35,9 @@ export async function previewSuccessorLeave({ role, sessionId, courseId, date, s
   const plan = await post('preview', { class_session_id: Number(sessionId) }, { token, request });
   if (plan.applicable === false) return null;
   if (!validPlan(plan, sessionId)) throw new Error('續約順延預覽資料不完整，請重新取得預覽');
+  if (!plan.apply_enabled) {
+    return { ...plan, eligible: false, blockers: [...plan.blockers, { type: 'feature_unavailable', message: '續約順延目前尚未開放，這次沒有變更課程。' }] };
+  }
   return plan;
 }
 
@@ -50,7 +54,7 @@ export function successorImpactItems(plan) {
 }
 
 export async function applySuccessorLeave(plan, options = {}) {
-  if (!validPlan(plan, plan?.leave_session?.id) || !plan.eligible) throw new Error('此預覽不可送出，請先處理阻擋原因並重新預覽');
+  if (!validPlan(plan, plan?.leave_session?.id) || !plan.eligible || !plan.apply_enabled) throw new Error('此預覽不可送出，請先處理阻擋原因並重新預覽');
   const result = await post('apply', { class_session_id: plan.leave_session.id, preview_token: plan.preview_token }, options);
   if (result.applied !== true && result.already_applied !== true) throw new Error('未確認請假完成，請重新整理課表');
   return result;

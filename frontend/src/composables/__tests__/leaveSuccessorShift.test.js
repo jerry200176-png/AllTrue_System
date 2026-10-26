@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../../lib/leaveSuccessorShift.js';
 import actualPreview from './fixtures/leaveSuccessorPreview4210.json';
-const plan = { applicable: true, eligible: true, leave_session: { id: 11 }, preview_token: 'a'.repeat(64), old_end_date: '2026-12-08', successor_end_date: '2026-12-22', blockers: [], moves: [{ role:'old_tail', session_id:null, from:null, to:{date:'2026-12-08',start:'19:00:00',end:'21:00:00'} }, { role:'successor', session_id: 21, from: {date:'2026-12-08',start:'16:00:00',end:'18:00:00'}, to:{date:'2026-12-15',start:'16:00:00',end:'18:00:00'} }] };
+const plan = { applicable: true, apply_enabled: true, eligible: true, leave_session: { id: 11 }, preview_token: 'a'.repeat(64), old_end_date: '2026-12-08', successor_end_date: '2026-12-22', blockers: [], moves: [{ role:'old_tail', session_id:null, from:null, to:{date:'2026-12-08',start:'19:00:00',end:'21:00:00'} }, { role:'successor', session_id: 21, from: {date:'2026-12-08',start:'16:00:00',end:'18:00:00'}, to:{date:'2026-12-15',start:'16:00:00',end:'18:00:00'} }] };
 const response = (body, ok=true, status=200) => ({ok,status,json:async()=>body});
 describe('in-app410 successor leave API boundary', () => {
  it('accepts an actual synthetic backend preview including new tail and seconds', async () => {
@@ -13,6 +13,19 @@ describe('in-app410 successor leave API boundary', () => {
  });
  it('preserves teacher access without calling restricted endpoints', async () => {
   const request=vi.fn(); expect(await previewSuccessorLeave({role:'teacher',sessionId:11,request})).toBeNull(); expect(request).not.toHaveBeenCalled();
+ });
+ it('keeps a disabled applicable preview blocked and cannot apply or fall through', async () => {
+  const request=vi.fn().mockResolvedValue(response({...plan,apply_enabled:false}));
+  const disabled=await previewSuccessorLeave({role:'director',sessionId:11,request});
+  expect(disabled.applicable).toBe(true);expect(disabled.eligible).toBe(false);
+  expect(disabled.blockers.at(-1).message).toContain('尚未開放');
+  request.mockClear();await expect(applySuccessorLeave(disabled,{request})).rejects.toThrow();expect(request).not.toHaveBeenCalled();
+ });
+ it.each([undefined,null,'false'])('rejects unknown or malformed capability %j', async apply_enabled => {
+  const request=vi.fn().mockResolvedValue(response({...plan,apply_enabled}));
+  await expect(previewSuccessorLeave({role:'director',sessionId:11,request})).rejects.toThrow('預覽資料不完整');
+  await expect(applySuccessorLeave({...plan,apply_enabled},{request})).rejects.toThrow();
+  expect(request).toHaveBeenCalledOnce();
  });
  it('resolves exactly one materialized course/date/start occurrence', async () => {
   const resolve=vi.fn().mockResolvedValue({items:[{id:11,studentClassId:1,date:'2026-12-01',startTime:'16:00',isProjected:false},{id:12,studentClassId:1,date:'2026-12-01',startTime:'19:00',isProjected:false}]});
