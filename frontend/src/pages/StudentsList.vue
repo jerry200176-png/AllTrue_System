@@ -11,8 +11,8 @@
           <span>目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
         </template>
         <template #actions>
-          <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">匯入名單</AtButton>
-          <AtButton shape="rect" variant="ghost" icon="download" aria-label="下載學生名單匯入範例" @click="downloadImportTemplate">下載範例</AtButton>
+          <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入名單（學生）" @click="openImportDialog">匯入名單</AtButton>
+          <AtButton shape="rect" variant="ghost" icon="download" aria-label="下載範例（學生名單匯入）" @click="downloadImportTemplate">下載範例</AtButton>
           <input
             ref="importInput"
             class="student-import-input"

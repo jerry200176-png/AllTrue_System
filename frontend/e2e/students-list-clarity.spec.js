@@ -110,7 +110,7 @@ test.describe('Students List width acceptance', () => {
       await page.setViewportSize(viewport);
       await page.goto('/pilot-mount.html?page=students');
       await expect(page.getByRole('heading', { name: '學生管理' })).toBeVisible();
-      await expect(page.getByRole('button', { name: '匯入學生名單' })).toBeVisible();
+      await expect(page.getByRole('button', { name: '匯入名單（學生）', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '新增學生' })).toBeVisible();
       await expect(page.getByLabel('搜尋姓名')).toBeVisible();
       await expect(page.getByText('測試學生長名字驗證用名稱避免真實個資')).toBeVisible();
