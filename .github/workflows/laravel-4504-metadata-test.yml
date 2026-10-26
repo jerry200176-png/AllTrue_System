@@ -6,12 +6,22 @@ on:
       - '.github/workflows/laravel-4504-metadata*.yml'
       - 'scripts/laravel-4504-metadata*'
       - 'scripts/tests/test_laravel4504_metadata.py'
+      - 'scripts/tests/test_4508_preflight_metadata.php'
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: rootpw
+          MARIADB_DATABASE: AllTrue_test_4508
+        ports:
+          - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=2s --health-timeout=2s --health-retries=30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,8 +30,12 @@ jobs:
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.2'
+          extensions: pdo_mysql
           coverage: none
       - run: python3 scripts/tests/test_laravel4504_metadata.py
+      - run: php scripts/tests/test_4508_preflight_metadata.php
+        env:
+          PREFLIGHT_TEST_DSN: mysql:host=127.0.0.1;port=3306;dbname=AllTrue_test_4508
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: synthetic-4504-metadata-${{ github.run_id }}-${{ github.run_attempt }}
