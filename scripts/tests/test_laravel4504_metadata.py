@@ -43,6 +43,72 @@ def project(raw):
 
 
 class MetadataProjectionTest(unittest.TestCase):
+    def test_4508_preflight_is_snapshot_only_and_never_publishes_ledger_names(self):
+        raw, target = self.preflight_fixture()
+        out = module.project(raw, BACKEND, WORKFLOW, '123', '1', '0', 'true', target)
+        fact = out['migration_preflight']
+        self.assertEqual(fact['snapshot_check'], 'PASS')
+        self.assertTrue(fact['pending_exact_4508'])
+        self.assertEqual(fact['pending_count'], 1)
+        self.assertEqual(fact['activation_decision'], 'HOLD')
+        self.assertEqual(fact['loaded_fpm'], 'UNKNOWN')
+        self.assertEqual(fact['duration_and_online_ddl'], 'UNKNOWN')
+        self.assertTrue(fact['table_sizes_are_estimates'])
+        self.assertNotIn('private_ledger_name', json.dumps(out))
+        self.assertNotIn('FAKE_PRIVATE', json.dumps(out))
+
+    @staticmethod
+    def preflight_fixture():
+        raw = fixture(); raw['php_int_size'] = 8
+        ran = '2020_01_01_000001_private_ledger_name'
+        raw['schema_metadata']['preflight'] = {
+            'server_version': '10.11.19-MariaDB-0+deb12u2', 'backup_database_matches': True, 'backup_endpoint_matches': True,
+            'token_table': [{'ENGINE': 'InnoDB', 'TABLE_ROWS': '20', 'DATA_LENGTH': 16384, 'INDEX_LENGTH': 16384}],
+            'session_variables': {'lock_wait_timeout': '86400', 'max_statement_time': '0', 'alter_algorithm': 'DEFAULT', 'wsrep_on': 'OFF'},
+            'ledger_records': [{'migration': ran, 'batch': 1}], 'ledger_complete': True}
+        return raw, {'target_sha': WORKFLOW, 'names': [ran, module.EXPIRY], 'fixed_hash_verified': True}
+
+    def test_4508_preflight_refuses_unknown_and_ambiguous_facts(self):
+        changes = [lambda r, t: r.pop('php_int_size'), lambda r, t: r.update(php_int_size=4),
+                   lambda r, t: t.update(target_sha=BACKEND), lambda r, t: t.update(fixed_hash_verified=False),
+                   lambda r, t: t['names'].append('2020_02_02_000001_other'),
+                   lambda r, t: t['names'].append(t['names'][0]),
+                   lambda r, t: t['names'].remove(t['names'][0])]
+        for key, value in [('server_version', '8.0.46'), ('backup_database_matches', False), ('backup_endpoint_matches', False), ('ledger_complete', False),
+                           ('ledger_records', []), ('token_table', []), ('session_variables', {})]:
+            changes.append(lambda r, t, k=key, v=value: r['schema_metadata']['preflight'].update({k: v}))
+        changes += [lambda r, t: r['schema_metadata']['preflight']['ledger_records'].append(dict(r['schema_metadata']['preflight']['ledger_records'][0])),
+                    lambda r, t: r['schema_metadata']['preflight']['session_variables'].update(wsrep_on='ON'),
+                    lambda r, t: r['schema_metadata']['preflight']['token_table'][0].update(TABLE_ROWS=None)]
+        for change in changes:
+            raw, target = self.preflight_fixture(); change(raw, target)
+            self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
+        raw, target = self.preflight_fixture()
+        raw['schema_metadata']['preflight']['ledger_records'] *= 10001
+        self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
+        for missing in ('php_int_size', 'schema_metadata'):
+            raw, target = self.preflight_fixture(); raw.pop(missing)
+            self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
+
+    def test_4508_inventory_requires_real_exact_checkout_and_fixed_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(['git', '-C', directory, *args], stderr=subprocess.DEVNULL).decode().strip()
+            git('init'); git('config', 'user.name', 'synthetic'); git('config', 'user.email', 'synthetic@example.invalid')
+            path = Path(directory)/'backend/database/migrations'; path.mkdir(parents=True)
+            (path/(module.EXPIRY+'.php')).write_text('FAKE_PRIVATE_WRONG_MIGRATION')
+            git('add', '.'); git('commit', '-m', 'synthetic')
+            head = git('rev-parse', 'HEAD')
+            previous = Path.cwd()
+            try:
+                os.chdir(directory)
+                self.assertFalse(module.inventory(head)['fixed_hash_verified'])
+                with self.assertRaises(ValueError): module.inventory('f'*40)
+                (path/(module.EXPIRY+'.php')).unlink(); git('add', '.'); git('commit', '-m', 'missing')
+                with self.assertRaises(subprocess.CalledProcessError): module.inventory(git('rev-parse', 'HEAD'))
+            finally:
+                os.chdir(previous)
+
     def test_complete_structure_is_readable_but_never_activation_or_loaded_fpm_evidence(self):
         out = project(fixture())
         self.assertTrue(out["metadata_collected"])

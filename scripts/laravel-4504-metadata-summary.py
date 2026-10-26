@@ -4,7 +4,9 @@ import argparse
 from datetime import datetime
 import hashlib
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 CASE = "laravel_4504_metadata"
@@ -13,10 +15,78 @@ MIGRATION = "2019_12_14_000001_create_personal_access_tokens_table"
 COLUMNS = ("id", "tokenable_type", "tokenable_id", "name", "token", "abilities",
            "last_used_at", "expires_at", "created_at", "updated_at")
 EXTENSIONS = ("ctype", "curl", "dom", "fileinfo", "filter", "hash", "mbstring", "openssl",
-              "pcre", "pdo", "pdo_mysql", "session", "tokenizer", "xml", "zip", "intl", "gd")
+              "pcre", "pdo", "pdo_mysql", "session", "tokenizer", "xml", "zip", "intl", "gd",
+              "json", "iconv", "libxml", "simplexml", "xmlreader", "xmlwriter", "zlib")
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 VERSION = re.compile(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,5}\Z")
 TYPE = re.compile(r"(?:bigint|int|varchar|char|text|longtext|datetime|timestamp)(?:\([0-9]{1,5}\))?(?: unsigned)?\Z")
+EXPIRY = "2026_10_26_000001_add_expires_at_to_personal_access_tokens"
+EXPIRY_HASH = "e9cd5c466475acb346adbcadf640074787d7d2488263098382a332eb95ec7b47"
+MIGRATION_NAME = re.compile(r"[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[a-zA-Z0-9_]{1,180}\Z")
+
+
+def inventory(workflow):
+    """Only inspect the exact checked-out workflow tree. Never fetch/execute candidate code."""
+    if not SHA.fullmatch(workflow):
+        raise ValueError("invalid target")
+    env = dict(os.environ, GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
+    def git(*args):
+        return subprocess.check_output(["git", *args], env=env, stderr=subprocess.DEVNULL, timeout=10)
+    if git("rev-parse", "HEAD").decode().strip() != workflow:
+        raise ValueError("target mismatch")
+    paths = git("ls-tree", "--name-only", workflow+":backend/database/migrations").decode().splitlines()
+    names = [p[:-4] for p in paths if p.endswith(".php")]
+    if not names or len(names) > 10000 or any(not MIGRATION_NAME.fullmatch(n) for n in names):
+        raise ValueError("inventory unknown")
+    source = git("show", workflow+":backend/database/migrations/"+EXPIRY+".php")
+    return {"target_sha": workflow, "names": names, "fixed_hash_verified": hashlib.sha256(source).hexdigest() == EXPIRY_HASH}
+
+
+def preflight(raw, target, workflow):
+    out = {"snapshot_check": "HOLD", "activation_decision": "HOLD", "loaded_fpm": "UNKNOWN",
+           "table_sizes_are_estimates": True, "duration_and_online_ddl": "UNKNOWN"}
+    try:
+        fact = raw["schema_metadata"]["preflight"]
+        if any(type(fact[key]) is not bool for key in ("backup_database_matches", "backup_endpoint_matches", "ledger_complete")):
+            return out
+        rows = fact["ledger_records"]
+        if not isinstance(rows, list) or len(rows) > 10000:
+            return out
+        ran = [r["migration"] for r in rows]
+        if any(not isinstance(n, str) or not MIGRATION_NAME.fullmatch(n) for n in ran) or len(set(ran)) != len(ran):
+            return out
+        if any(integer(r["batch"]) < 1 for r in rows):
+            return out
+        tables = fact["token_table"]
+        if not isinstance(tables, list) or len(tables) != 1:
+            return out
+        table = tables[0]
+        sizes = {key.lower(): integer(table[key]) for key in ("TABLE_ROWS", "DATA_LENGTH", "INDEX_LENGTH")}
+        version = fact["server_version"]
+        match = re.fullmatch(r"(10\.11\.[0-9]{1,5})(?:[-+][a-zA-Z0-9.+:~_-]{1,100})?", version)
+        vars = fact["session_variables"]
+        profile = bool(match and "MariaDB" in version and table["ENGINE"] == "InnoDB"
+                       and set(vars) == {"lock_wait_timeout", "max_statement_time", "alter_algorithm", "wsrep_on"}
+                       and vars["wsrep_on"] == "OFF")
+        out.update(php_cli_64bit=raw.get("php_int_size") == 8 if type(raw.get("php_int_size")) is int else "UNKNOWN",
+                   backup_database_matches=fact["backup_database_matches"], backup_endpoint_matches=fact["backup_endpoint_matches"],
+                   engine="InnoDB" if table["ENGINE"] == "InnoDB" else "UNKNOWN",
+                   server_profile="MariaDB_10.11" if profile else "UNKNOWN", table_estimates=sizes,
+                   ledger_complete=fact["ledger_complete"], ledger_count=len(ran),
+                   ledger_names_sha256=hashlib.sha256(json.dumps(sorted(ran), separators=(",", ":")).encode()).hexdigest())
+        if not isinstance(target, dict) or target.get("target_sha") != workflow or target.get("fixed_hash_verified") is not True:
+            return out
+        names = target["names"]
+        if not isinstance(names, list) or not names or len(names) > 10000 or len(names) != len(set(names)) or any(not MIGRATION_NAME.fullmatch(n) for n in names):
+            return out
+        pending = sorted(set(names) - set(ran))
+        out.update(target_sha=workflow, pending_count=len(pending), pending_exact_4508=pending == [EXPIRY])
+        if (out["php_cli_64bit"] is True and profile and fact["backup_database_matches"] and fact["backup_endpoint_matches"] and fact["ledger_complete"]
+                and pending == [EXPIRY] and not set(ran) - set(names)):
+            out["snapshot_check"] = "PASS"  # Snapshot only: no duration, FPM, approval or activation claim.
+        return out
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        return out
 
 
 def integer(value):
@@ -38,7 +108,7 @@ def reject_constant(_):
     raise ValueError("non-finite JSON")
 
 
-def project(raw, backend, workflow, run_id, attempt, probe_exit, private_packaged):
+def project(raw, backend, workflow, run_id, attempt, probe_exit, private_packaged, target=None):
     out = {"case": CASE, "metadata_collected": False, "production_acceptance": "UNKNOWN",
            "activation_decision": "HOLD", "encrypted_evidence_packaged": False, "reason": "invalid_context"}
     if not SHA.fullmatch(backend) or not SHA.fullmatch(workflow):
@@ -126,7 +196,8 @@ def project(raw, backend, workflow, run_id, attempt, probe_exit, private_package
                       columns=columns, unknown_column_count=len(schema["columns"]) - len(columns),
                       indexes={"primary_id": has_index(("id",), True, True), "unique_token": has_index(("token",), True),
                                "tokenable_pair": has_index(("tokenable_type", "tokenable_id")), "expires_at": has_index(("expires_at",))},
-                      loaded_fpm_worker_version_extensions_config_sha="UNKNOWN")
+                      loaded_fpm_worker_version_extensions_config_sha="UNKNOWN",
+                      migration_preflight=preflight(raw, target, workflow))
         return result
     except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
         return out
@@ -140,6 +211,10 @@ if __name__ == "__main__":
         parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
     try:
+        target = inventory(args.workflow)
+    except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+        target = None
+    try:
         with args.input.open("rb") as stream:
             data = stream.read(262145)
         if len(data) > 262144:
@@ -147,7 +222,7 @@ if __name__ == "__main__":
         raw = json.loads(data, object_pairs_hook=unique_object, parse_constant=reject_constant)
     except (OSError, ValueError, UnicodeError):
         raw = None
-    result = project(raw, args.backend, args.workflow, args.run_id, args.attempt, args.probe_exit, args.private_packaged)
+    result = project(raw, args.backend, args.workflow, args.run_id, args.attempt, args.probe_exit, args.private_packaged, target)
     if raw is not None:
         result["collector_output_sha256"] = hashlib.sha256(data).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
