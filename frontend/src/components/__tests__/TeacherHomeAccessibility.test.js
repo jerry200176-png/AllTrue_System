@@ -12,6 +12,7 @@ describe('TeacherHome controls accessibility', () => {
     const card = source.match(/<button\b[\s\S]*?class="th-clockin-card card"[\s\S]*?<\/button>/)?.[0];
     expect(card).toBeDefined();
     expect(card).not.toMatch(/aria-label(?:ledby)?=/);
+    expect(card).toContain('aria-describedby="teacher-clockin-status"');
     expect(card).toContain('今日打卡狀態');
     expect(card).toContain('>簽到</span>');
     expect(card).toContain('>簽退</span>');
