@@ -89,7 +89,7 @@ function mountCm(extra = {}) {
         <div class="cef">settings</div>
         <button type="button">返回總覽</button>
         <button type="button">儲存課程設定</button>
-        <button type="button">複製為新課程並更換老師</button>
+        <button type="button">複製為雙師課程（原課程保留）</button>
       `,
     },
     attachTo: document.body,
@@ -148,7 +148,7 @@ describe('CourseManager polish', () => {
     const settingsSlot = pageSource.slice(pageSource.indexOf('<template #settings>'), pageSource.indexOf('</template>', pageSource.indexOf('<template #settings>')) + 11)
     expect(settingsSlot).toContain('@click="leaveCourseManagerSettings"')
     expect(settingsSlot).toContain('返回總覽')
-    expect(settingsSlot).toContain('複製為新課程並更換老師')
+    expect(settingsSlot).toContain('{{ DUAL_TEACHER_COPY_DRAWER_LABEL }}')
     expect(settingsSlot).not.toContain('補課')
     expect(settingsSlot).not.toContain('>取消<')
     expect(pageSource).toContain("title: '放棄未儲存的變更？'")
@@ -293,6 +293,38 @@ describe('CourseManager drawer a11y (C-PR4)', () => {
     expect(document.activeElement).toBe(w.get('#cm-title').element)
     w.unmount()
     expect(document.activeElement).toBe(opener)
+  })
+
+  // #4178: closing under 「進行中」 removes the course row, and with it the 管理課程 button that opened the drawer.
+  it('hands focus to focusFallback when the opener left the page, and not when focus went back to it', async () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const focusFallback = vi.fn()
+    const w = mountCm({ focusFallback })
+    await flushPromises()
+    opener.remove()
+    w.unmount()
+    await nextTick()
+    expect(focusFallback).toHaveBeenCalledTimes(1)
+    expect(focusFallback.mock.calls[0][0]).toMatchObject({ id: 7 })
+
+    const kept = document.createElement('button')
+    document.body.appendChild(kept)
+    kept.focus()
+    const again = vi.fn()
+    const w2 = mountCm({ focusFallback: again })
+    await flushPromises()
+    w2.unmount()
+    await nextTick()
+    expect(document.activeElement).toBe(kept)
+    expect(again).not.toHaveBeenCalled()
+  })
+
+  it('the page falls back to the student group toggle, else the course list card', () => {
+    expect(pageSource).toContain(':focus-fallback="focusCourseListAfterDrawerClose"')
+    expect(pageSource).toMatch(/function focusCourseListAfterDrawerClose\(course\) \{[\s\S]{0,300}studentGroupToggleId\(`sid:\$\{sid\}`\)[\s\S]{0,120}\(toggle \|\| courseTableCard\.value\)\?\.focus\(\)/)
+    expect(pageSource).toContain('<div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">')
   })
 
   it('traps Tab inside the drawer (wraps last → first, first → last on Shift+Tab)', async () => {

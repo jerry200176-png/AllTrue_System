@@ -223,6 +223,21 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo")->assertStatus(409);
     }
 
+    /** #3938 item 3: an approval landing after the batch precheck rolls the batch back with the domain 409, not a 500. */
+    public function test_batch_substitute_race_after_precheck_returns_409(): void
+    {
+        $s = $this->mkSession('scheduled');
+        $lr = $this->lr($s, 'pending', true);
+        \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, function () use ($lr) {
+            \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: ' . LearningRecord::class);
+            DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'approved', 'ApprovedAt' => now(), 'ApprovedBy' => 1]);
+        });
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
+            'assignments' => [['class_session_id' => $s->id, 'substitute_teacher_id' => $this->bId]],
+        ])->assertStatus(409)->assertJsonPath('rolled_back', true);
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+    }
+
     // ---- Codex review r4247039986 / 997 / 4247040009 / 020 / 032 / 043 / 049 ----------------------------------
 
     public function test_legacy_schedule_writers_without_teacher_id_or_deleting_the_pin_are_refused(): void
@@ -307,6 +322,53 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]); // stale pin: the contract teacher B is effective
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->aId])->assertOk();
         $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+    }
+
+    /** #3966: the batch leave workflow allows the same repair; a reassignment is still refused (test_batch_substitute_is_refused). */
+    public function test_batch_substitute_repair_that_keeps_the_assessments_teacher_is_allowed(): void
+    {
+        $s = $this->mkSession('scheduled');
+        $lr = $this->lr($s, 'approved', true);
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]); // stale pin: the contract teacher B is effective
+        $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
+            'assignments' => [['class_session_id' => $s->id, 'substitute_teacher_id' => $this->aId]],
+        ])->assertOk()->assertJsonPath('summary.success', 1)->assertJsonPath('results.0.ok', true);
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
+    }
+
+    /** #3979 (1): a type change takes a makeup row out of the makeup branch, so it is refused like a move. */
+    public function test_a_type_change_on_a_protected_makeup_row_is_refused(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        $this->approve($lr, $this->bId); // substitute B taught it; the makeup row keeps the contract teacher A
+        $row = $this->schedule(self::DATE, '16:00', '18:00', $this->aId);
+        $row->update(['type' => 'extra']);
+        $this->assertLocked($lr, fn () => $this->api()->putJson("/api/v1/schedules/{$row->id}", ['type' => 'normal']), $this->bId);
+        $this->assertSame('extra', (string) $row->fresh()->type);
+    }
+
+    /** #3979 (2): a director may edit an approved assessment but not empty it, since the lock reads the text. */
+    public function test_an_approved_assessment_cannot_be_edited_down_to_no_content(): void
+    {
+        $lr = $this->lr($this->mkSession('attended'), 'approved', true);
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '（評量表）', 'Progress' => ''])
+            ->assertStatus(422)->assertJsonPath('code', 'approved_assessment_content_required');
+        $fresh = $lr->fresh();
+        $this->assertSame('老師實際填寫的評量正文', (string) $fresh->Content);
+        $this->assertSame('第三章', (string) $fresh->Progress);
+        $this->assertSame('approved', (string) $fresh->Status);
+
+        // A drifted time mirror makes the update heal (and save) the record; the refusal must come first (Codex r4347282693).
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['StartTime' => '15:00:00']);
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '（評量表）', 'Progress' => ''])->assertStatus(422);
+        $drifted = $lr->fresh();
+        $this->assertSame('老師實際填寫的評量正文', (string) $drifted->Content);
+        $this->assertSame('第三章', (string) $drifted->Progress);
+        $this->assertSame($this->aId, (int) $drifted->TeacherID);
+
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '主任修正後的評量正文', 'Progress' => ''])->assertOk();
+        $this->assertSame('approved', (string) $lr->fresh()->Status, 'an edit that keeps content stays approved');
+        $this->assertSame('主任修正後的評量正文', (string) $lr->fresh()->Content);
     }
 
     public function test_transfer_and_recover_transfer_to_another_teachers_contract_are_refused(): void

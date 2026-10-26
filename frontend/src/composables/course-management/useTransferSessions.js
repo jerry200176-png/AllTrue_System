@@ -68,7 +68,7 @@ export function useTransferSessions({ allSessionUnits, goToBilling, goToPurchase
   function openTargetPurchase(targetId) {
     const target = targetCourses.value.find((c) => Number(c.id) === Number(targetId));
     if (!target || typeof goToPurchase !== 'function') {
-      error.value = '找不到目標課程，請關閉後從課程列點「加購」。';
+      error.value = '找不到目標課程，請關閉後從課程列點「續課」。';
       return;
     }
     showModal.value = false;
@@ -161,19 +161,19 @@ export function useTransferSessions({ allSessionUnits, goToBilling, goToPurchase
           : json?.conflict_schedule_id
             ? `衝突預排 #${json.conflict_schedule_id}`
             : '';
-        error.value = [details, json?.message, conflict].filter(Boolean).join(' ') || '轉移失敗';
+        error.value = [details, json?.message, conflict].filter(Boolean).join(' ') || '搬移失敗';
         return;
       }
       showModal.value = false;
       notify({
-        title: '已轉移堂次紀錄',
-        description: json?.message || `已轉移 ${sessionIds.length} 堂到課程 #${targetCourseId}`,
+        title: '已搬移上課紀錄',
+        description: json?.message || `已搬移 ${sessionIds.length} 堂到課程 #${targetCourseId}`,
         variant: 'success',
         durationMs: 7000,
       });
       await reload();
     } catch (e) {
-      error.value = '轉移失敗：' + (e?.message || '請稍後再試');
+      error.value = '搬移失敗：' + (e?.message || '請稍後再試');
     } finally {
       submitting.value = false;
     }

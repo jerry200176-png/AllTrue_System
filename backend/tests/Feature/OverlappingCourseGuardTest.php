@@ -72,6 +72,8 @@ class OverlappingCourseGuardTest extends TestCase
         $res2 = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $second, 'one_on_two'));
         $res2->assertStatus(409)->assertJson(['code' => 'overlapping_active_course']);
+        $this->assertStringContainsString('「續課」', (string) $res2->json('message')); // in-app #429
+        $this->assertStringNotContainsString('加購堂數', (string) $res2->json('message'));
 
         $audit = null;
         \Illuminate\Support\Facades\Log::listen(function ($e) use (&$audit) {
@@ -277,7 +279,8 @@ class OverlappingCourseGuardTest extends TestCase
         $before = $this->counts();
         $thu = Carbon::parse($wed)->addDay()->toDateString();
 
-        $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        $rangeOverlap = $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        $this->assertStringContainsString('「續課」', (string) $rangeOverlap->json('message')); // in-app #429
         DB::table('StudentClass')->where('ID', $fx[3])->update(['TeacherID' => $fx[2] + 999]); // same class type, other teacher
         $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
         DB::table('StudentClass')->where('ID', $fx[3])->update(['TeacherID' => $fx[2]]);

@@ -16,6 +16,7 @@ export default defineConfig({
       'src/lib/authedFetch.test.js',
       'src/lib/navigationRegistry.test.js',
       'src/lib/bugResolveReply.test.js',
+      'e2e/fixtures/readOnlyAppGuard.test.js',
     ],
     globals: false,
     coverage: {

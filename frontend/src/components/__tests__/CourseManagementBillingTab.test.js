@@ -68,7 +68,10 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('class="small ghost payment-next-action"');
     expect(source).toContain('@click="onPaymentNextAction(c)"');
     // PRD v2 D2: every billing action opens the ledger panel in place, never another page
-    expect(source).toContain('const onPaymentNextAction = openTuitionLedger;');
+    // In-app #398: 登記繳費回報 (report_payment) opens the ledger with the entry form; other next actions open the ledger only.
+    expect(source).toContain("const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);");
+    expect(source).toContain(':initial-action="ledgerInitialAction"');
+    expect(source).toContain('ledgerInitialAction.value = initialAction;');
     expect(source).toContain('const openTuitionLedger = (course) => openLedgerForCourse(course);');
     expect(source).not.toMatch(/emit\('navigate', buildTuitionCollectNav/);
     expect(source).toContain('<th>堂數</th>');

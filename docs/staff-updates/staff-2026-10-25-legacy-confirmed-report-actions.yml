@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-25-legacy-confirmed-report-actions
+    published_at: "2026-10-25"
+    audiences:
+      - director
+    importance: digest
+    title: 已有收款回報先核對
+    summary: 「需核對」課程若已有確認過的收款回報，請先核對收款紀錄。
+    items:
+      - category: fixed
+        text: 學生帳務會提示核對原收款回報，不再提供重複補登或改未繳的入口。
+    source_refs:
+      - "changelog:2026-10-25:legacy-confirmed-report-actions"

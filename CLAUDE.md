@@ -5,7 +5,7 @@
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
-> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
+> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md` 的 Start here 與任務對應節（導航地圖）。禁止未讀 INDEX 就直接動手。**
 > **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
 > 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
 
@@ -51,7 +51,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
 | R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表與帳務表除外；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），但在 `deploy.yml` 支援其失敗時自動回滾 code 之前，上線仍走 Founder 批准；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
-| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動走隔離 task worktree → PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
+| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
 
@@ -110,7 +110,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 
 ### G-010：行事曆來源真相 = 已物化的 `ClassSession`；「某天課很少」未必是 bug
 行事曆/點名/評量的來源真相是**已物化的 `ClassSession`**（非 `schedules` 模板），經 `class-sessions` API（`branch_id`+`start`/`end`）→ 前端 `mergeWeekCalendarOccurrences()`。**判定「課表漏顯/數量不對」前，先查 DB**：`ClassSession JOIN StudentClass JOIN Student.CampusID` by `SessionDate`，DB 數量 = API 數量 = 真相。週日/低量日只有少數堂是**正常**（補習班週日課少），主任週檢視是依時段聚合成「堂」（例：2026-06-28 新莊分校 = 3 時段 / 12 筆 student-session，皆正確，非資料遺失）。
-**但 count 模式（預付包堂）課程目前無「向前產生 session」的排程 job**——`Kernel.php` 只跑 reconcile/close-orphans，`schedules:backfill-class-sessions` 只能從既有 `schedules` 物化、無法向前生成。導致已付堂數未物化、行事曆向前看不到 = 系統性 P0（**#1062**，全分校約 2,000 堂預付堂卡住）。每日 03:40 已排 `sessions:audit-stranded` 稽核；根因修復（向前生成 + 永不遺失已付餘額）屬 owner-gated 紅區。產品／架構決策包（**Accepted — Phase 0 evidence authorized**，非 implemented）：[`docs/ADR_006_prepaid_session_horizon_and_commitment.md`](docs/ADR_006_prepaid_session_horizon_and_commitment.md)——Schedule Commitment → materialize → pool coverage；禁止餘額猜堂。
+**count 模式（預付包堂）的向前產生只涵蓋 active 課程**：`Kernel.php` 每日 03:45 跑 `sessions:generate-forward --execute --scheduled --horizon-weeks=4`（#1062 Track A，參數見 `SchedulerEvidence.php`），只替近期有固定每週節奏的課向前物化 4 週；**dormant（停滯）預付課刻意排除**（#1152），已付堂數仍可能未物化、行事曆向前看不到（**#1062** 系統性問題的剩餘部分）。`schedules:backfill-class-sessions` 只能從既有 `schedules` 物化。每日 03:40 已排 `sessions:audit-stranded` 稽核；根因修復（向前生成 + 永不遺失已付餘額）屬 owner-gated 紅區。產品／架構決策包（**Accepted — Phase 0 evidence authorized**，非 implemented）：[`docs/ADR_006_prepaid_session_horizon_and_commitment.md`](docs/ADR_006_prepaid_session_horizon_and_commitment.md)——Schedule Commitment → materialize → pool coverage；禁止餘額猜堂。
 
 ### G-011：「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死
 `StudentClass.standard_lesson_minutes`（計費標準堂長）與 `SessionDuration`（排課時長）是**兩件事**。同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 **2.00 / 1.50 / 1.00** 堂；買 8 堂分別 = 720 / 960 / 1440 分鐘。
@@ -124,8 +124,8 @@ Claude Code on the web／其他雲端 session 不承接本機 WSL2 的環境；�
 **撈資料（唯讀）**：編輯 `operations/closeout/bug-queue-dump.request.md`（撈開放佇列，無參數）與 `operations/closeout/bug-detail-dump.request.md`（**要改檔內 `bug_id: <n>` 那一行**，workflow 真的會解析這行，不是只看 diff 有沒有變動）— 走 **`chore/`（禁止 `ops/`，`branch-policy.mjs` 只認 `chore|ci|fix`）** branch → PR → CI 綠 → merge 進 `main`（`push: branches:[main]` 才會觸發）→ 抓 run。
 **log 只有 ID／數量（公開 repo，#3605）**：完整 JSON（標題／描述／留言）只在以 `DUMP_ARTIFACT_KEY` 加密的 artifact（`*.full.tar.gz.enc`）；缺 secret 時 workflow fail closed。artifact 能否下載依當前連線政策；曾觀測到的 `blob.core.windows.net` 403 不代表所有 session，遇到 egress 阻擋不得繞過。未持有既有合法解密金鑰的 session 不能讀全文；解密 custody 的具名批准及其他 secret 限制見 [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-19；依 [SOP Cloud decryption custody](docs/sop/BUG_INTAKE_TO_PRODUCTION.md#cloud-decryption-custody) 核對環境與 readiness、私下驗收及保留原始金鑰。dispatch 不新增金鑰或資料權限。
 **兩者有 15 分鐘新鮮度限制**（`scripts/validate-bug-intake-evidence.py --max-age-minutes 15`）：queue-dump 與 detail-dump 必須在同一輪 15 分鐘內連續觸發並互相對得上，否則視為 stale、禁止拿舊 dump 直接分診。
-**回寫（Phase A／公開 follow-up）已有受保護的雲端 dispatch 路徑**：[PR #4196](https://github.com/jerry200176-png/AllTrue_System/pull/4196) 已於 2026-10-16 合併。`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 仍是 `workflow_dispatch`-only、沒有 push fallback；目前是 `preview` → `approve` → production 寫入。雲端 agent 在既有授權範圍、當前連線有 dispatch 權限時，可提交待審請求；不再要求人類代按 dispatch，但**技術可觸發不等於操作已獲授權**。既有 Founder 常設批准及其條件仍依 `FOUNDER_STANDING_DECISIONS.md`；每次 run 的 `production-activation` 平台審核仍須 Founder 完成，Agent 不得代為批准或繞過。所需欄位與各階段證據見下方 SOP。
-**已合併 guard 的實際邊界**：preview 驗證輸入，公開 summary 僅列案件／issue／狀態等 metadata 與 `public_reply` 長度、精確 UTF-8 SHA-256，不印回覆全文；Founder 對照私下審過的逐筆回覆與 hash。approve 驗證 required reviewer **恰為 Founder `jerry200176-png`**、禁止 admin bypass、branch policy **只有 `main`**；後續寫入 job 才使用 main-only `production-ssh`。兩個 workflow 共用 `inapp-production-writeback` concurrency（`cancel-in-progress: false`、`queue: max`）。這些是目前程式控制，不是本文件新增權限；未具真實案件、授權或必要證據時，仍不得執行，也不能把 guard 合併當成回寫成功。`bug-phase-c-allowlist.yml` 的 push trigger 只限「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
+**回寫（Phase A／公開 follow-up）已有受保護的雲端 dispatch 路徑**：[PR #4196](https://github.com/jerry200176-png/AllTrue_System/pull/4196) 已於 2026-10-16 合併。`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 仍是 `workflow_dispatch`-only、只在 `main` 跑、沒有 push fallback；批次實作 #4386 已合併（main `7c6f3bdf`），目前為 `preview` → production 寫入，輸入為 `rows_json` 批次（1–20 筆，任一筆不合格整批不寫）。**Founder 2026-10-21 起不再逐次核准這兩個 workflow**（範圍見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21 第 1 條）；雲端 agent 備齊真實案件與證據後可直接 dispatch，但**技術可觸發不等於其他寫入已獲授權**。所需欄位與各階段證據見下方 SOP。
+**批次 guard 的生效邊界（#4386 已安裝）**：以下控制已隨 #4386 合併至 main；preview（`.github/scripts/inapp-writeback-rows.py`）驗證每一筆，公開 summary 僅列案件／issue／狀態等 metadata 與每筆回覆長度（≤600 字元）、精確 UTF-8 SHA-256，不印回覆全文；寫入 job 才使用 main-only `production-ssh`。兩個 workflow 共用 `inapp-production-writeback` concurrency（`cancel-in-progress: false`、`queue: max`）。這些是已接受實作的控制，不是本文件自行新增的執行權限；未具真實案件、授權或必要證據時，仍不得執行，也不能把 guard 合併當成回寫成功。`bug-phase-c-allowlist.yml` 的 push trigger 只限「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
 **即時唯讀（2026-10-13 起；cloud 環境的具名例外見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）補充第 3 條）**：若環境有 `ALLTRUE_TRIAGE_TOKEN`（超級管理員在「個人資料 → 安全性 → AI 分診唯讀金鑰」建立，預設 90 天到期），可直接 HTTPS 讀 `GET /api/v1/triage/bug-reports`（列表／單筆含留言／附件），不必走 dump。這把金鑰只能讀，其他 API 一律 403；回寫仍走上述 dispatch workflow。**repo 是公開的：絕不可把回報內容（姓名、電話、描述、留言、截圖）貼到 GitHub issue／PR／commit**，只寫 ID 與自己的技術判斷。
 完整程序見 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](docs/sop/BUG_INTAKE_TO_PRODUCTION.md)。
 
@@ -139,16 +139,12 @@ Add the label `queue` to a green-ready PR instead of looping on `gh pr update-br
 `.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread (an unknown thread count never merges). Re-add `queue` after fixing.
 **Batching (only while the main ruleset's strict up-to-date policy is off):** the queue cuts `chore/land-queue-batch-<run>` from the main tip, merges up to 4 oldest eligible heads into it (a conflicting PR is left out with a comment), dispatches the required-check workflows on it, and squash-merges the members in order only when every required context is green and main has not moved. Red or timed out: members get a `batch-failed` comment and land one at a time. One serial merge per run; a head behind main is always updated first (`behindBy`), so strict off never merges an untested combination. Fork PRs never queue.
 GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
+**Final-head review:** green checks and zero threads still wait (`review-pending`, label retained) for the exact-head evidence in the [canonical merge policy](docs/governance/RISK_BASED_MERGE_POLICY.md#final-head-review-evidence). Serial and batch squashes re-read that evidence; a running/incomplete current-head Codex review cannot be overridden by owner fallback. Native auto-merge stays disabled until the Founder pins `review/final-head` after the default-branch gate has published checks. Existing approval continuity and T3 boundaries remain.
 
 ## 任務完成後的記錄原則
 
-| 發現了什麼 | 記在哪裡 |
-|---|---|
-| 非直覺的 DB / 流程行為 | `CLAUDE.md` §Gotchas（格式：`G-NNN: 一句話 + 後果`）|
-| AI 犯的錯誤（行為/流程） | `docs/AI_REGRESSION_LESSONS.md` |
-| 新功能 / bug 修復上線 | `docs/CHANGELOG.md`（一行原則）|
-| 技術債發現 | `docs/TECH_DEBT.md`（TD-NNN 表格）|
-| 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` |
+記錄位置依 `AGENTS.md` §公司治理記錄原則；非直覺的 DB／流程 Gotcha
+仍記在本檔 §核心資料表 Gotchas（`G-NNN`），不要在 adapter 複製發布 SOP。
 
 ---
 

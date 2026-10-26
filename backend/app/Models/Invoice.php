@@ -71,10 +71,13 @@ class Invoice extends Model
         return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;
     }
 
-    /** #3991 review: the mark settles a term only while its course still has no fee on record (a fee added by any path voids its effect). */
-    public function freeGiftHolds(?StudentClass $course): bool
+    /**
+     * #3991 review: the mark settles a term only while its course still has no fee on record (a fee added by any path voids its effect).
+     * #4017: a caller checking many terms of one course passes courseHasFee() read once.
+     */
+    public function freeGiftHolds(?StudentClass $course, ?bool $courseHasFee = null): bool
     {
-        return $this->isMarkedFreeGift() && $course !== null && !self::courseHasFee($course);
+        return $this->isMarkedFreeGift() && $course !== null && !($courseHasFee ?? self::courseHasFee($course));
     }
 
     /** #3991: a fee or money on record (rate, charge, package, legacy Paid/Pay/PayDate, live priced amendment, positive live bill line) rules out 免費／贈送. */

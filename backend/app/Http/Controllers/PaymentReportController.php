@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
+use App\Models\SecurityAuditEvent;
 use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -19,6 +20,8 @@ use App\Services\PaymentReportTokenService;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -344,18 +347,24 @@ class PaymentReportController extends Controller
     /**
      * PUT /api/v1/payment-reports/{id}/confirm
      * Director confirms a payment report → creates Payment, updates Invoice.
+     * $legacyFlagBackfill (Founder GO 2026-10-21; never from the route) is set only by recordLegacyFlagBackfill() after
+     * legacyFlagRefusal() proved `paid` rests on the legacy Paid flag alone: it skips just the "already paid" guards that
+     * flag trips; every other guard, the bill cap and the ledger writes stay this one confirm path.
      */
-    public function confirm(Request $request, $id)
+    public function confirm(Request $request, $id, bool $legacyFlagBackfill = false)
     {
-        PaymentReport::findOrFail($id);
+        $found = PaymentReport::findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $found->getAttribute('StudentID'))) {
+            return $denied; // #4142: also covers confirm-batch, which forwards the caller's auth attributes
+        }
 
-        $userId = $request->attributes->get('auth_user_id');
+        $userId = $request->attributes->get('auth_user_id') ?? $request->attributes->get('auth_user')?->id; // bearer auth sets only auth_user
         $confirmationNote = trim((string) $request->input('note', ''));
         // Routing id only — must not run inside the transaction (would start an RR
         // consistent-read snapshot before waiting on the course lock).
         $courseId = $this->resolveReportCourseId((int) $id);
 
-        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote) {
+        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote, $legacyFlagBackfill) {
             // Global lock order with BillingCorrection::applyCountCorrection and void:
             // StudentClass → payment_reports (never report-first). Serializes confirm retries
             // after a lost response so a second Payment cannot be created.
@@ -393,10 +402,10 @@ class PaymentReportController extends Controller
             }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
-            if ($sc && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
+            if ($sc && !$legacyFlagBackfill && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
                 return $this->duplicateCoursePaymentResponse($blockReason);
             }
-            if ($sc && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
+            if ($sc && !$legacyFlagBackfill && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
                 return $over;
             }
 
@@ -433,7 +442,7 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
-            if (! $invoice && $sc && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+            if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse('paid');
             }
 
@@ -599,6 +608,16 @@ class PaymentReportController extends Controller
         }
 
         $userId = $request->attributes->get('auth_user_id');
+        // Founder GO 2026-10-21: 已收過，補登收款 for a legacy-flag-only course (Paid=1, no payment record).
+        if ($request->boolean('legacy_flag_backfill')) {
+            if ($freeGift || !empty($data['invoice_id']) || !empty($data['replaces_invoice_id'])) {
+                return response()->json(['message' => '補登收款不能同時指定帳單、更正或標記免費。沒有登記任何款項。', 'code' => 'legacy_backfill_conflict'], 422);
+            }
+            $request->validate(['idempotency_key' => 'required|uuid']);
+            $actorId = $request->attributes->get('auth_user')?->id;
+
+            return $this->recordLegacyFlagBackfill($request, $data, (int) $sc->getKey(), $actorId === null ? null : (int) $actorId);
+        }
         // #4132 Codex P1: feature gate + campus auth before tutoring/zero-fee classification.
         if (!empty($data['replaces_invoice_id'])) {
             if (!config('billing.receipt_correction_reissue_enabled', false)) {
@@ -613,9 +632,10 @@ class PaymentReportController extends Controller
                 : response()->json(['message' => '課程資料不存在'], 404);
         }
 
-        if ($freeGift && $request->attributes->get('auth_role') !== 'super_admin' // #3991 review: authorize the campus before classifying
-            && !in_array((int) $sc->student->CampusID, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        // #4142 (was free/gift only, #3991): authorize the campus before classifying, for every payment record
+        // and the batch route. Legacy backfill and correction reissue above keep their own scope checks.
+        if ($denied = $this->studentCampusRefusal($request, (int) $sc->getAttribute('StudentID'))) {
+            return $denied;
         }
         // #3991: an explicit 免費／贈送 mark skips the generic zero-fee guard (it is not a payment); tutoring stays refused.
         if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc, $freeGift)) {
@@ -742,20 +762,7 @@ class PaymentReportController extends Controller
                 ], 422);
             }
 
-            $report = PaymentReport::create([
-                'StudentID'         => $sc->StudentID,
-                'StudentClassID'    => $sc->ID,
-                'InvoiceID'         => $invoice?->id,
-                'reported_by_name'  => $sc->student->name,
-                'payment_date'      => $data['payment_date'],
-                'payment_method'    => $data['payment_method'],
-                'reported_amount'   => $data['amount'],
-                'account_last5'     => $data['account_last5'] ?? null,
-                'note'              => trim((string) ($data['note'] ?? '')) ?: null,
-                'status'            => 'pending',
-                'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
-                'token_expires_at'  => Carbon::now()->addDays(30),
-            ]);
+            $report = $this->createPendingReport($lockedCourse, $data, $invoice?->id);
 
             Log::info('PaymentReport director-record pending', [
                 'report_id'  => $report->id,
@@ -771,6 +778,185 @@ class PaymentReportController extends Controller
                 'status'     => 'pending',
             ]);
         });
+    }
+
+    /**
+     * Founder GO 2026-10-21 (§只有舊「已收」標記): the director says the money of a legacy-flag-only course was received.
+     * No separate money rule: the same pending report director-record writes, then confirmReport() (the 確認入帳 path:
+     * bill pick or issue, Payment, projection, receipt) in this one transaction. Paid stays 1; the course now has payment
+     * evidence, so the #4114 rule stops showing 需核對. A replay of the same idempotency key returns the first result.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function recordLegacyFlagBackfill(Request $request, array $data, int $courseId, ?int $userId)
+    {
+        $tokenHash = hash('sha256', "legacy-flag-backfill|{$courseId}|" . $data['idempotency_key']);
+
+        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash) {
+            $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
+                return $denied;
+            }
+            $replay = PaymentReport::query()->where('StudentClassID', $courseId)->where('report_token_hash', $tokenHash)->first();
+            if ($replay && (int) $replay->reported_amount === (int) $data['amount'] && $replay->payment_method === $data['payment_method'] && $replay->payment_date?->toDateString() === Carbon::parse($data['payment_date'])->toDateString()) {
+                return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
+                    'invoice_id' => $replay->InvoiceID, 'status' => $replay->status, 'replayed' => true]);
+            }
+            if ($refusal = $this->legacyFlagRefusal($course)) {
+                return $refusal;
+            }
+            if ((int) $data['amount'] <= 0) {
+                return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
+            }
+            $report = $this->createPendingReport($course, $data, null, $tokenHash);
+            $confirmed = $this->confirm($request, $report->id, true); // the backfill already holds the course lock
+            if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
+                throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
+            }
+            if (!$this->courseResolvedPaid($course)) { // a partial payment leaves money owed: drop the flag, as void() does
+                $course->refresh()->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null]
+                    + ($course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
+            }
+            $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
+
+            return response()->json(['status' => 'confirmed'] + (array) $confirmed->getData(true));
+        });
+    }
+
+    /**
+     * POST /api/v1/payment-reports/legacy-flag-clear — Founder GO 2026-10-21: 其實沒收，改成未繳.
+     * Clears only the legacy flag (Paid=0, Pay=0, PayDate=null) of a legacy-flag-only course; never touches invoices or
+     * payments. Repeating it on a course already back to Paid=0 changes nothing (idempotent).
+     */
+    public function clearLegacyFlag(Request $request)
+    {
+        $data = $request->validate([
+            'student_class_id' => 'required|integer|min:1',
+            'reason' => 'required|string|min:2|max:200',
+        ]);
+        $courseId = (int) $data['student_class_id'];
+        $actorId = $request->attributes->get('auth_user')?->id;
+
+        return DB::transaction(function () use ($request, $data, $courseId, $actorId) {
+            $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
+                return $denied;
+            }
+            $hasPayment = isset(app(BillingPayableResolver::class)->validPaymentEvidence([$courseId])['classes'][$courseId]);
+            if ((int) ($course->Paid ?? 0) !== 1 && !$hasPayment) {
+                return response()->json(['message' => '這門課已經是未繳，不需要再改', 'student_class_id' => $courseId, 'replayed' => true]);
+            }
+            if ($refusal = $this->legacyFlagRefusal($course)) {
+                return $refusal;
+            }
+            $reopen = $course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+            $course->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null] + $reopen);
+            // What is owed now: an open bill's balance (the resolver's), else the contract amount (as AlertController).
+            $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$courseId])[$courseId] ?? [];
+            $owed = ($status['source'] ?? null) === 'invoice' ? (int) $status['outstanding'] : (int) ($course->Charge ?? 0);
+            $this->auditLegacyFlag($course, $actorId === null ? null : (int) $actorId, 'student_class.legacy_paid_flag_cleared', [
+                'reason_code' => 'legacy_paid_flag_cleared',
+                'reason_hash' => hash('sha256', trim((string) $data['reason'])),
+                'outstanding_amount' => $owed,
+            ]);
+
+            return response()->json(['message' => '已改成未繳', 'student_class_id' => $courseId]);
+        });
+    }
+
+    /**
+     * #4142: a director may record, confirm or reject only for students in their own campuses
+     * (`require_campus` checks only that the caller has some campus). super_admin is not limited.
+     */
+    private function studentCampusRefusal(Request $request, int $studentId)
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+        $campusId = (int) DB::table('Student')->where('id', $studentId)->value('CampusID');
+        $allowed = $campusId > 0
+            && in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
+
+        return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
+    }
+
+    /** Campus authorization for the legacy-flag actions (404 for a missing course, 403 outside the caller's campuses). */
+    private function legacyFlagAccessRefusal(Request $request, ?StudentClass $course)
+    {
+        $campusId = $course ? (int) DB::table('Student')->where('id', $course->StudentID)->value('CampusID') : 0;
+        if (!$course || $campusId <= 0) {
+            return response()->json(['message' => '找不到此課程'], 404);
+        }
+        $allowed = $request->attributes->get('auth_role') === 'super_admin'
+            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
+
+        return $allowed ? null : response()->json(['message' => 'Forbidden'], 403);
+    }
+
+    /**
+     * Both legacy-flag actions apply only to a single count-mode course whose `paid` rests on StudentClass.Paid alone:
+     * Paid=1, no net payment on any non-void bill (BillingPayableResolver::validPaymentEvidence, the #4114 rule) and no
+     * pending or confirmed payment report. Caller holds the course row lock.
+     */
+    private function legacyFlagRefusal(StudentClass $course)
+    {
+        $id = (int) $course->getKey();
+        $refuse = fn (string $message, string $code) => response()->json(['message' => $message . '沒有變更任何資料。', 'code' => $code], 422);
+        if ($blocked = $this->tutoringPaymentBlocked($course)) {
+            return $blocked;
+        }
+        if ($waived = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能變更繳費狀態')) {
+            return $waived;
+        }
+        if ((int) ($course->Charge ?? 0) <= 0 && (float) ($course->Rate ?? 0) <= 0) { // 0 元 courses are out of scope
+            return $refuse('這門課沒有設定收費金額，不需要補登或改未繳；若要收費請先到課程管理設定費用。', 'legacy_flag_zero_fee');
+        }
+        if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage() || $course->isTrialFeeRecordedByDate()) {
+            return $refuse('目前只有單一堂數制正式課程可以在這裡處理舊「已收」標記；月結、共用方案或已記錄繳費日期的試聽請到學生帳務逐筆核對。', 'legacy_flag_count_only');
+        }
+        if ((int) ($course->Paid ?? 0) !== 1) {
+            return $refuse('這門課沒有「已收」標記，請重新整理。', 'legacy_flag_not_set');
+        }
+        if (isset(app(BillingPayableResolver::class)->validPaymentEvidence([$id])['classes'][$id])) {
+            return $refuse('這門課已有收款紀錄，不是只有舊標記；請重新整理後在學生帳務核對。', 'legacy_flag_has_payment');
+        }
+        $report = PaymentReport::query()->where('StudentClassID', $id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->first();
+        if ($report) {
+            return $report->status === 'pending'
+                ? $refuse('這門課有待核對的繳費回報，請先確認入帳或退回那筆回報。', 'pending_report_exists')
+                : $refuse('這門課已有確認過的收款回報，請在學生帳務核對那筆收款。', 'confirmed_report_exists');
+        }
+
+        return null;
+    }
+
+    /** @param array<string, int|string> $metadata no free text: a reason is stored only as its hash */
+    private function auditLegacyFlag(StudentClass $course, ?int $actorId, string $event, array $metadata): void
+    {
+        SecurityAuditEvent::append($event, 'success', [
+            'campus_id' => DB::table('Student')->where('id', $course->StudentID)->value('CampusID'),
+            'actor_type' => 'user', 'actor_id' => $actorId,
+            'subject_type' => 'student_class', 'subject_id' => (int) $course->getKey(),
+        ], $metadata + ['outcome' => 'success'], true); // required: an audit failure rolls the billing write back
+    }
+
+    /** The 已回報、待核對 report director-record writes (also the first step of the legacy-flag backfill). @param array<string, mixed> $data */
+    private function createPendingReport(StudentClass $sc, array $data, ?int $invoiceId, ?string $tokenHash = null): PaymentReport
+    {
+        return PaymentReport::create([
+            'StudentID'         => $sc->StudentID,
+            'StudentClassID'    => $sc->ID,
+            'InvoiceID'         => $invoiceId,
+            'reported_by_name'  => (string) $sc->student?->name,
+            'payment_date'      => $data['payment_date'],
+            'payment_method'    => $data['payment_method'],
+            'reported_amount'   => $data['amount'],
+            'account_last5'     => $data['account_last5'] ?? null,
+            'note'              => trim((string) ($data['note'] ?? '')) ?: null,
+            'status'            => 'pending',
+            'report_token_hash' => $tokenHash ?? hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
+            'token_expires_at'  => Carbon::now()->addDays(30),
+        ]);
     }
 
     /** Receipt-intent reissue; confirmation separately settles the pending report. @param array<string, mixed> $data */
@@ -874,6 +1060,14 @@ class PaymentReportController extends Controller
                 return response()->json([
                     'message' => '這門課有設定費用（或費用在套裝上），不能登錄為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
                     'code' => 'free_gift_course_has_fee',
+                ], 422);
+            }
+            // #4012: a pending report must be confirmed or rejected first; the NT$0 mark would make the course `free`,
+            // which drops it from the collection queue while the zero-fee guard blocks confirming that report.
+            if (PaymentReport::query()->where('StudentClassID', $course->ID)->where('status', 'pending')->exists()) {
+                return response()->json([
+                    'message' => '這門課還有一筆待核對入帳的付款回報，請先確認或退回那筆回報，再標記「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
+                    'code' => 'free_gift_pending_report',
                 ], 422);
             }
             $freeNote = trim(Invoice::ZERO_REASON_FREE_GIFT_LABEL . ' ' . trim((string) ($data['note'] ?? '')));
@@ -1306,6 +1500,9 @@ class PaymentReportController extends Controller
     public function reject(Request $request, $id)
     {
         $report = PaymentReport::findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $report->getAttribute('StudentID'))) {
+            return $denied; // #4142
+        }
 
         if ($report->status !== 'pending') {
             return response()->json(['message' => '此回報已處理過'], 422);
@@ -1340,6 +1537,9 @@ class PaymentReportController extends Controller
     public function void(Request $request, $id)
     {
         $report = PaymentReport::with('student')->findOrFail($id);
+        if ($denied = $this->studentCampusRefusal($request, (int) $report->getAttribute('StudentID'))) {
+            return $denied; // #4142 review: before the status 422 and validation, which would reveal the report's state
+        }
 
         if ($report->status !== 'confirmed') {
             $msg = $report->status === 'voided'
@@ -1354,11 +1554,6 @@ class PaymentReportController extends Controller
 
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!empty($campusIds) && $report->student) {
-            if (!in_array((int) $report->student->CampusID, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-        }
 
         $userId = $request->attributes->get('auth_user_id');
         // Routing id only — outside the write transaction so waiting on the course

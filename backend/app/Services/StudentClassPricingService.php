@@ -13,6 +13,14 @@ class StudentClassPricingService
     private array $cache = [];
 
     /**
+     * #3756: a course's non-voided amendments, read once per service instance and reused for
+     * every date (monthly billing and backlog catch-up call forDate() per lesson).
+     *
+     * @var array<int, \Illuminate\Support\Collection<int, StudentClassPricingAmendment>>
+     */
+    private array $amendmentsByCourse = [];
+
+    /**
      * @return array{rate:int, rate_unit:string, source:string, amendment_id:int|null}
      */
     public function forDate(Model $course, string|CarbonInterface $date): array
@@ -24,19 +32,18 @@ class StudentClassPricingService
             return $this->cache[$key];
         }
 
-        $loaded = $course->relationLoaded('pricingAmendments')
-            ? $course->getRelation('pricingAmendments')->filter(fn ($row) => !$row->voided_at && substr((string) $row->effective_from, 0, 10) <= $dateValue)
-                ->sortByDesc('id')->sortByDesc('effective_from')->first()
-            : null;
-        $amendment = $course->relationLoaded('pricingAmendments') ? $loaded : ($courseId > 0
-            ? StudentClassPricingAmendment::query()
-                ->where('student_class_id', $courseId)
-                ->whereNull('voided_at')
-                ->whereDate('effective_from', '<=', $dateValue)
-                ->orderByDesc('effective_from')
-                ->orderByDesc('id')
-                ->first()
-            : null);
+        $amendments = $course->relationLoaded('pricingAmendments')
+            ? $course->getRelation('pricingAmendments')
+            : ($courseId > 0
+                ? ($this->amendmentsByCourse[$courseId] ??= StudentClassPricingAmendment::query()
+                    ->where('student_class_id', $courseId)
+                    ->whereNull('voided_at')
+                    ->get())
+                : collect());
+        // Latest effective_from on or before the date; the higher id wins a tie (stable sorts).
+        $amendment = $amendments
+            ->filter(fn ($row) => !$row->voided_at && substr((string) $row->effective_from, 0, 10) <= $dateValue)
+            ->sortByDesc('id')->sortByDesc('effective_from')->first();
 
         if ($amendment) {
             return $this->cache[$key] = [

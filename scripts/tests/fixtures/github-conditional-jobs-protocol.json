@@ -1,0 +1,43 @@
+{
+  "captured_at_utc": "2026-10-25T17:19:36.114591+00:00",
+  "caller": "existing AllTrue Engineering gh CLI context; runtime revision40; NOT a GitHub Actions GITHUB_TOKEN runner measurement",
+  "endpoint": "/repos/jerry200176-png/AllTrue_System/actions/runs/40183487536/attempts/1/jobs?per_page=100&page=1",
+  "first_body_summary": {
+    "job_rows": 5,
+    "all_explicit_run_attempt_and_head_matched": true,
+    "body_sha256": "f7d6d07b04963c9a2855f8c4e6d3e405fa899db9e4179aa0b0fd0857d5ad7577"
+  },
+  "purpose": "recorded sanitized HTTP protocol; test payloads are synthetic; no runtime cache or runner quota proof",
+  "requests": [
+    {
+      "status": 200,
+      "returncode": 0,
+      "headers": {
+        "date": "Sun, 25 Oct 2026 17:19:34 GMT",
+        "etag": "W/\"e08cef28b93241f3cc86487a42beec59c1f9862588defedf552d442e533dabed\"",
+        "x-github-api-version-selected": "2022-11-28",
+        "x-ratelimit-limit": "15000",
+        "x-ratelimit-remaining": "14999",
+        "x-ratelimit-reset": "1792952373",
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-used": "1"
+      },
+      "body_bytes": 19607
+    },
+    {
+      "status": 304,
+      "returncode": 1,
+      "headers": {
+        "date": "Sun, 25 Oct 2026 17:19:35 GMT",
+        "etag": "\"e08cef28b93241f3cc86487a42beec59c1f9862588defedf552d442e533dabed\"",
+        "x-github-api-version-selected": "2022-11-28",
+        "x-ratelimit-limit": "15000",
+        "x-ratelimit-remaining": "14999",
+        "x-ratelimit-reset": "1792952373",
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-used": "1"
+      },
+      "body_bytes": 0
+    }
+  ]
+}

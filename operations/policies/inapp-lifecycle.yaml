@@ -2,7 +2,7 @@
 # Approves only when every machine check passes; anything else falls back to the catalog super_admin quorum.
 # Kill switches: lifecycle: frozen here, POP_INAPP_STANDING_POLICY=0 (the default), or revoking the requester ApiClient.
 id: founder-standing-inapp-lifecycle
-version: 1
+version: 2
 lifecycle: active
 decision_reference: FSD-2026-10-14-II:#4069:#4073
-operations: [inapp-report-reporter-timeout]
+operations: [inapp-report-reporter-timeout, inapp-report-resolve-after-deploy]

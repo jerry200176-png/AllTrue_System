@@ -17,6 +17,10 @@ trait CreatesApplication
 
         $app->make(Kernel::class)->bootstrap();
 
+        // Register test-only migration fixtures (e.g. the legacy teacher_branches table that has no production
+        // migration) so they run during RefreshDatabase's migrate:fresh. This path is never used in production.
+        $app->make('migrator')->path(__DIR__.'/database/migrations');
+
         return $app;
     }
 }

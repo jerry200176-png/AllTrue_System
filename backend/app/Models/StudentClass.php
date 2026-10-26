@@ -76,6 +76,8 @@ use Illuminate\Support\Facades\DB;
  * @property \Carbon\CarbonInterface|null $settlement_locked_at
  * @property string|null $settlement_snapshot
  * @property int|null $trial_converted_to_id
+ * @property string|null $trial_target_class_type Trial courses only: regular class type the trial is for (in-app #426).
+ * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
  */
 class StudentClass extends Model
@@ -90,6 +92,9 @@ class StudentClass extends Model
 
     /** Course memo is TEXT; keep a hard cap so paste cannot unbounded-grow the row. */
     public const MEMO_MAX_LENGTH = 8000;
+
+    /** in-app #426: regular class types a trial course may target (trial_target_class_type). */
+    public const TRIAL_TARGET_CLASS_TYPES = ['one_on_one', 'one_on_two', 'one_on_three'];
 
     protected $fillable = [
         'StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1',
@@ -107,6 +112,8 @@ class StudentClass extends Model
         'rate_unit',
         'PackageID', 'PackageTotalSessions', 'PackageName',
         'trial_converted_to_id',
+        'purchase_request_key',
+        'trial_target_class_type',
     ];
 
     protected $casts = [
@@ -327,6 +334,26 @@ class StudentClass extends Model
             && (int) $package->student_id === (int) $this->StudentID
             && $campusId !== null && (int) $package->campus_id === (int) $campusId
             && $package->isTrialFeeRecordedByDate();
+    }
+
+    /**
+     * Courses a teacher may see: their own, plus ones they cover through a substitute schedule or makeup
+     * (the student-classes list scope; also the teacher's duplicate-course pre-check, in-app #427).
+     */
+    public function scopeVisibleToTeacher($query, int $teacherId)
+    {
+        return $query->where(function ($q) use ($teacherId) {
+            $q->where('TeacherID', $teacherId)
+                ->orWhereExists(function ($sub) use ($teacherId) {
+                    $sub->select(DB::raw(1))
+                        ->from('schedules')
+                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
+                        ->where('schedules.teacher_id', $teacherId)
+                        ->where('schedules.status', 'scheduled')
+                        ->whereNotNull('schedules.original_schedule_id');
+                });
+            \App\Services\SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
+        });
     }
 
     /**

@@ -10,15 +10,15 @@
 | 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 可觸發；看得到 log 的 ID／數量；artifact 與全文由已授權且具解密 secret 的受控環境下載與解密（見 Cloud decryption custody） |
 | 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
 | 即時唯讀（金鑰） | 無 workflow：`GET /api/v1/triage/bug-reports…`，帶 `ALLTRUE_TRIAGE_TOKEN`（見下方「Reading reports with `ALLTRUE_TRIAGE_TOKEN`」） | 直接 HTTPS | 可以：已設定金鑰且網路允許正式站 host 時，讀全文、留言、附件；不能寫 |
-| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only**；preview → Founder approve → write | 在既有授權範圍且當前連線可 dispatch 時，可提交待審請求；準備 `bug_id`、`github_issue_url`、含 issue URL 的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged=true`（預設是 `bug`／`false`） |
-| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only**；preview → Founder approve → write | 同上；準備 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
-| Phase C 上線後回寫 | **SSH allowlist path retired 2026-10-19（ADR-POP-015 / #4289）**：`bug-phase-c-allowlist.yml` 遠端步驟在任何 `BugReportService` 寫入前拋 `legacy_ssh_phase_c_retired`；`bug-phase-c-autodispatch.yml` 對新增 allowlist ID **fail closed**。**目前可跑的替代路徑只有** `bug-followup-comment.yml`（preview→Founder approve→write；只留言、不改狀態）。ADR-POP-015 規劃的 Pi-local `inapp-report-resolve-after-deploy` **尚未**寫入 `operations/catalog.yaml`／standing policy（現有 in-app lifecycle 僅 `inapp-report-reporter-timeout`），不得當成已可執行。Allowlist 檔保留供契約測試 | 勿再靠 allowlist PR／request-file 期望寫入；用 follow-up | follow-up：可提交 preview；勿假設未 catalog 的 resolve 操作可跑 |
+| Phase A 分診回寫 | `bug-phase-a-triage.yml`：`new`→`triaged` + 公開回覆；建議類 `close_as_logged` | **dispatch-only、main-only**；#4386 已合併，preview → write（既有決定） | 備齊證據可直接 dispatch；`rows_json` 每筆準備 `bug_id`、`github_issue_url`、含 issue URL 且 ≤600 字元的 §3.8 `public_reply`；建議類另加 `disposition` 與 `close_as_logged: true`（預設是 `bug`／`false`）；一次 ≤20 筆 |
+| 進度補充／建議上線通知 | `bug-followup-comment.yml`：只留言、不改狀態；`expected_status=closed`（已上線的建議）會記 production evidence 並關 GitHub issue（守門同 Phase C） | **dispatch-only、main-only**；#4386 已合併，preview → write（既有決定） | 同上；`rows_json` 每筆準備 `bug_id`、`expected_status`、`github_issue_url`、`public_reply`；`expected_status=closed`（已上線的建議）另需 40 字元 `production_revision` 與 `deploy_run_id` |
+| Phase C 上線後回寫 | **SSH allowlist path retired 2026-10-19（ADR-POP-015 / #4289）**：`bug-phase-c-allowlist.yml` 遠端步驟在任何 `BugReportService` 寫入前拋 `legacy_ssh_phase_c_retired`；`bug-phase-c-autodispatch.yml` 對新增 allowlist ID **fail closed**。**目前可跑的替代路徑只有** `bug-followup-comment.yml`（#4386 已安裝：preview→write；只留言、不改狀態）。Pi-local `inapp-report-resolve-after-deploy`（ADR-POP-015 b）已寫入 `operations/catalog.yaml` 與 standing policy v2。每項證據都是硬性檢查，super_admin 人工核准也不能略過：修正 commit 是 Pi 部署版本的祖先；`deploy.yml`「Deploy to Production」成功且目標就是 Pi 現在的版本；健康 200；issue SourceRef 指向該回報；回覆含 issue 連結與「確認已修好」「問題仍存在」，且無個資／外部連結；15 分鐘審閱證明在列鎖下仍相符。要求端憑證（ADR-POP-015 第二部分）上線且 Founder 開 `POP_INAPP_STANDING_POLICY` 之前，常設政策一律不核准，只能由 super_admin 在 POP 草擬、核准後由 Pi 本機執行。Allowlist 檔保留供契約測試 | 勿再靠 allowlist PR／request-file 期望寫入；結案走 POP resolve 操作，其餘用 follow-up | follow-up：可提交 preview；resolve：備齊參數（含 triage 詳細 API 的 `writeback_evidence`）交 super_admin 在 POP 草擬／核准；憑證與旗標就緒前不會自動執行 |
 | `resolved`→`closed` 逾時 | `bug-reporter-timeout.yml` `auto`（排程）：只看 `resolved`，14 天無回報者回覆即結案並白話回覆；回報者回覆會重開（Founder 2A）。符合者超過 20 筆時整批拒絕、**一筆都不關**，要先人工 dry-run 處理。人工 `dry-run`／`apply` 是另一條路：`days` 預設 **7**（只作用於 `resolved`），另外也檢查固定 14 天的 `triaged` 等回報者佇列；`apply` 必填 `confirmation=CLOSE_STALE_RESOLVED` 與逐筆審過的 `reviewed_ids` | `auto`：schedule 每日 10:40 台北（亦可 dispatch `auto-dry-run`／`auto`）；`dry-run`／`apply`：只限人工 dispatch | `auto` 自動；人工 `apply` 不行：交出 dry-run 審過的 `reviewed_ids` 與 `days` |
 | 週報 | `bug-sla-weekly-report.yml`：「in-app 週報 YYYY-Www」issue | schedule 週一 09:00 台北；可人工 dispatch 重產 | 自動 |
 
 **雲端 dispatch 現況（更正舊說法「一律 403」）**：2026-10-15 的原始觀測是在當時那一個 Claude cloud session、以當時的權限，成功呼叫 `workflow_dispatch`（`land-queue.yml` 的 no-op）及 `repository_dispatch`（未觸發任何寫入）；不代表所有 session 或日後權限皆可觸發。**可 dispatch 不等於已授權**：既有 Founder 常設批准及其條件以 [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md) 為準，本表不新增 token、正式資料存取或政策例外。
 
-**Phase A／follow-up 的 guard 已合併**：[PR #4196](https://github.com/jerry200176-png/AllTrue_System/pull/4196)（2026-10-16）已讓上述兩個 dispatch-only workflow 走 `preview` → `approve` → write。雲端 agent 有既有範圍授權及可用 dispatch 權限時可提交請求；不是必須由人類代按 dispatch。preview 驗證輸入，公開 summary 只顯示案件／issue／狀態等 metadata、回覆長度與精確 UTF-8 `sha256(public_reply)`，不顯示全文；Founder 需對照私下審過的逐筆回覆及 hash。approve 在 `production-activation` 等待平台審核，並 fail closed 檢查 required reviewer 恰為 Founder `jerry200176-png`、無 admin bypass、僅允許 `main`；通過後的寫入 job 才使用 main-only `production-ssh`。兩個 workflow 共用 `inapp-production-writeback` concurrency（`cancel-in-progress: false`、`queue: max`）。Agent 不得代為批准、繞過平台 gate，或僅因 guard 已合併就宣稱案件已回寫。這段只描述已合併控制，不更動其他 workflow 的授權／人工 apply 限制。
+**Phase A／follow-up 的 guard 已合併**：[PR #4196](https://github.com/jerry200176-png/AllTrue_System/pull/4196)（2026-10-16）建立兩個 dispatch-only workflow；**Founder 2026-10-21 起移除逐次 `production-activation` 審核**（[`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-21 第 1 條）。技術實作 #4386 已於 main `7c6f3bdf` 合併，以下批次契約現已安裝：`preview` → write。輸入是 `rows_json`：JSON 陣列 1–20 筆，Phase A 每筆 `{"bug_id","github_issue_url","public_reply","disposition"?,"close_as_logged"?}`，follow-up 每筆 `{"bug_id","expected_status","github_issue_url","public_reply","production_revision"?,"deploy_run_id"?}`；單筆就送一個元素的陣列。`.github/scripts/inapp-writeback-rows.py` 在 preview 與寫入 job 各驗一次，任一筆不合格（含 bug_id 重複、回覆超過 600 字元、未知欄位，以及回覆含電話／身分證字號／email／金鑰樣式字串，或本 repo issue 與正式站 `https://daan.lifenet.com.tw` 以外的任何網域／IP／變形連結；比對前先做 NFKC 正規化並移除零寬字元）整批在寫入前失敗。此 guard 偵測不到人名，不等於個資保證，回覆仍須人工依 §3.8 撰寫；錯誤只寫第幾筆與欄位名。公開 summary 只列每筆 bug_id／issue／disposition 或狀態／長度與精確 UTF-8 `sha256(public_reply)`，不顯示全文。只能在 `main` 執行；寫入 job 使用 main-only `production-ssh`，依序在同一個 SSH session 逐筆寫入，遇到失敗的那筆即停（前面已寫的保留，重跑每筆冪等）。兩個 workflow 共用 `inapp-production-writeback` concurrency（`cancel-in-progress: false`、`queue: max`）。不得僅因 guard 已合併就宣稱案件已回寫；Phase C、部署、資料修復與其他正式寫入維持原關卡。
 
 回覆仍須符合 §3.8、含 issue URL、避免重複送出；私下審核清單也不貼公開 GitHub。各階段仍須先備齊真實案件、讀取新鮮度及完整留言／附件 coverage；宣稱已上線時另須上線與受影響路徑證據。缺證據就停止該項，不以猜測內容或舊 dump 補足。`expected_status=closed` 仍限已上線的 logged suggestion，並提供完整 `production_revision` 與 `deploy_run_id`；不得代替回報者驗收。
 
@@ -172,6 +172,15 @@ plaintext is shown once and expires after `config/triage_tokens.php` `ttl_days`
 production host. The token reads live data, so the 15-minute dump freshness gate
 does not apply to it; the dumps above stay the fallback when no token is set.
 
+For the selected report's complete reporter history (§R51), take
+`reporter_user_id` from its detail and list
+`/api/v1/triage/bug-reports?reporter_user_id=<id>&since_id=0&limit=100`.
+Omit `status` to include closed reports and other campuses; follow
+`next_since_id` until an empty page, then read the relevant detail/comment
+histories. This narrows the existing token's report list; it does not grant a
+new route, write ability, or access to financial records. Invalid reporter IDs
+return 422. Do not substitute an unfiltered site-wide scan for this lookup.
+
 Run each block as one shell call. It keeps the token out of argv and `ps`
 (`printf` is a bash builtin; curl reads the header from a 0600 config via `-K`),
 writes report data only inside a private `mktemp -d` directory that is deleted
@@ -183,16 +192,24 @@ for the detail block.
 ```bash
 ( set -euo pipefail; umask 077
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT   # 0700 dir, deleted when the block ends
-  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
+  # Token in the environment: send it from a 0600 config. No variable: the egress proxy injects it (#4048).
+  AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"; AUTH=(-K "$T/auth.cfg"); fi
   B=https://daan.lifenet.com.tw/api/v1/triage
-  # Full live snapshot = open AND resolved (reporter-confirmation queue). Page each until data is empty.
-  for S in new,triaged,in_progress resolved; do N=0; while :; do
-    P=$(curl -sf -K "$T/auth.cfg" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed ($S since_id=$N)" >&2; exit 1; }
-    L=$(jq -e '.data|length' <<<"$P") || { echo "INCOMPLETE: malformed page ($S since_id=$N)" >&2; exit 1; }
-    [ "$L" = 0 ] && break
-    jq -c '.data[]' <<<"$P"; N=$(jq '.next_since_id' <<<"$P"); done; done > "$T/live-queue.jsonl"
-  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after both groups paged to empty (resolved may legitimately be 0)
-  jq -r '[.id, .status, .campus_id, .title] | @tsv' "$T/live-queue.jsonl"   # the queue itself, read it here before $T is deleted
+  # Full live snapshot = open AND resolved (reporter-confirmation queue) in ONE status filter with ONE cursor, so a
+  # report that changes status mid-scan is neither counted twice nor skipped (#4048). Page until data is empty.
+  S=new,triaged,in_progress,resolved; N=0
+  while :; do
+    P=$(curl -sf --max-redirs 0 "${AUTH[@]}" "$B/bug-reports?status=$S&since_id=$N&limit=100") || { echo "INCOMPLETE: fetch failed (since_id=$N)" >&2; exit 1; }
+    jq -e '(.data|type) == "array"' <<<"$P" >/dev/null || { echo "INCOMPLETE: malformed page (since_id=$N)" >&2; exit 1; }
+    [ "$(jq '.data|length' <<<"$P")" = 0 ] && break
+    jq -c '.data[]' <<<"$P"
+    NEXT=$(jq -r '.next_since_id // empty' <<<"$P")   # a non-empty page must move the cursor forward
+    if ! [[ "$NEXT" =~ ^[0-9]+$ ]] || (( NEXT <= N )); then echo "INCOMPLETE: next_since_id did not advance (since_id=$N)" >&2; exit 1; fi
+    N=$NEXT
+  done > "$T/live-queue.jsonl"
+  jq -r .status "$T/live-queue.jsonl" | sort | uniq -c   # per-status counts, only after paging to an empty page (resolved may legitimately be 0)
+  jq -r '[.id, .status, .campus_id, (.title|tojson)] | @tsv' "$T/live-queue.jsonl"   # read it here before $T is deleted; tojson keeps tabs/newlines in titles from breaking columns
 )
 ```
 
@@ -202,8 +219,9 @@ Then one report: description, comments (incl. internal notes), status logs and
 ```bash
 ( set -euo pipefail; umask 077; ID=<id>
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-  printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"
-  curl -sf -K "$T/auth.cfg" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/$ID" || { echo "FAILED: detail fetch for $ID" >&2; exit 1; }
+  AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$T/auth.cfg"; AUTH=(-K "$T/auth.cfg"); fi
+  curl -sf --max-redirs 0 "${AUTH[@]}" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/$ID" || { echo "FAILED: detail fetch for $ID" >&2; exit 1; }
 )
 ```
 
@@ -211,17 +229,19 @@ An attachment has to outlive the shell call so you can open it, so it gets its
 own private directory that you delete yourself after viewing:
 
 ```bash
-umask 077; D=$(mktemp -d)
-printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$D/auth.cfg"
-if curl -sf -K "$D/auth.cfg" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>"; then
-  rm -f "$D/auth.cfg"; echo "$D"
+umask 077; D=$(mktemp -d)   # keeps only the downloaded file; the token never lands here (#4048)
+if ( set -euo pipefail; A=$(mktemp -d); trap 'rm -rf "$A"' EXIT INT TERM   # token dir, removed even on Ctrl-C
+     AUTH=(); if [ -n "${ALLTRUE_TRIAGE_TOKEN:-}" ]; then
+       printf 'header = "Authorization: Bearer %s"\n' "$ALLTRUE_TRIAGE_TOKEN" > "$A/auth.cfg"; AUTH=(-K "$A/auth.cfg"); fi
+     curl -sf --max-redirs 0 "${AUTH[@]}" -o "$D/a.png" "https://daan.lifenet.com.tw/api/v1/triage/bug-reports/<id>/attachments/<attachment_id>" ); then
+  echo "$D"
 else
-  rc=$?; rm -rf "$D"; echo "FAILED: attachment download (curl exit $rc); the attachment was NOT reviewed" >&2; false
+  rc=$?; rm -rf "$D"; echo "FAILED: attachment download (exit $rc); the attachment was NOT reviewed" >&2; false
 fi
 # view "$D/a.png", then: rm -rf "$D"
 ```
 
-- **Completeness.** Only a run that pages both status groups to an empty page is a
+- **Completeness.** Only a run that pages the combined status filter to an empty page is a
   full snapshot. A single page, or the open statuses alone, is partial: say so, or
   fall back to the queue dump.
 - **Read-only.** Any other route answers 403 to this token, and there is no write

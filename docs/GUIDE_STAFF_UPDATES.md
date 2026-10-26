@@ -37,6 +37,8 @@
 
 每一筆近期產品變更（fragment）都必須在標題下方放一個決策標記：`staff_update=<id>`，或（只影響內部治理、CI、文件、安全作業時）`silent_ship=<id>` 加 `silent-reason`。`staff_update` 的 id 必須存在於 `STAFF_UPDATES.yml` 或 `docs/staff-updates/`；Presubmit 的 CHECK 4A 會 fail-closed 檢查，沒有決策就不能 merge。
 
+**改到 UI／API 的 PR 不能只寫 silent-reason（CHECK 4A）**：PR 新增的 fragment 用 `silent_ship`，而同一個 PR 改到 `frontend/src/`（`__tests__/`、`*.test.*`、`*.spec.*` 除外）、`backend/app/Http/Controllers/` 或 `backend/routes/` 時，CHECK 4A 會失敗。要嘛新增 `docs/staff-updates/<id>.yml` 並把標記改成 `staff_update=<id>`；要嘛確定教職員真的看不到差異，貼上 PR label `release-note-none`，並在 PR body 寫一行原因（reviewer 對照 diff 檢查，比照 Kubernetes 的 `release-note-none`）。「權限收斂」「authorization hardening」不是看不到差異：會出現新的「沒有權限」或按鈕變灰，就要發卡。label 是即時讀取，但 presubmit 不會因為加 label 自動重跑：貼完請重跑該 job。沒有 PR 的執行（land-queue 批次）略過這一條，其他檢查照跑。
+
 PR checklist：
 
 1. 新增 `docs/changes/` fragment。
@@ -48,7 +50,7 @@ AI 不得把未核准草稿寫進 YAML 並宣稱已發布。
 
 ## Schema
 
-必填：`id`、`published_at`、`audiences`（director|teacher）、`importance`（digest|major|action_required）、`title`（≤18）、`summary`（≤45）、`items`（1–3；`category`+`text`≤60）。  
+必填：`id`、`published_at`、`audiences`（director|teacher|super_admin；`super_admin` = 只有超級管理員看得到的畫面，主任與老師的版本更新不會出現）、`importance`（digest|major|action_required）、`title`（≤18）、`summary`（≤45）、`items`（1–3；`category`+`text`≤60）。  
 可選：`effective_at`、`source_refs`。  
 `category`：added|fixed|improved|action_required → UI：你現在可以／我們修好了／操作更順手／需要你注意。
 

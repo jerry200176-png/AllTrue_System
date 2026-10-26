@@ -24,6 +24,7 @@ inapp-289-course-2817-restore.yml
 inapp-289-learningrecord-preflight.yml
 inapp-289-preincident-target-manifest.yml
 inapp-289-schema-preflight.yml
+inapp-package-ledger-probe.yml
 learning-records-void-stale-leave-manual.yml
 leave-makeup-evidence-closeout.yml
 lr-missing-diagnose.yml
@@ -59,6 +60,7 @@ pop-founder-scoped-repair.yml
 pop-invoice1997-stale-values.yml
 pop-mount-reviewed-financial-once.yml
 pop-muzha-chen-billing-catchup.yml
+pop-package-ledger-net-repair-4455.yml
 pop-past-scheduled-cancel.yml
 pop-td076-occurrence-repairs.yml
 pop-telegram-webhook-secret.yml
@@ -81,3 +83,4 @@ wuaitong-course-ops-20260827.yml
 wuaitong-signin-status-repair.yml
 xindian-capacity-diagnose.yml
 yang-1445-contract-repair.yml
+laravel-4504-metadata.yml
