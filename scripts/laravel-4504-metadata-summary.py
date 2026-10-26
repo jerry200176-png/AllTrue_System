@@ -44,7 +44,8 @@ def inventory(workflow):
 
 def preflight(raw, target, workflow):
     out = {"snapshot_check": "HOLD", "activation_decision": "HOLD", "loaded_fpm": "UNKNOWN",
-           "table_sizes_are_estimates": True, "duration_and_online_ddl": "UNKNOWN"}
+           "table_sizes_are_estimates": True, "duration_and_online_ddl": "UNKNOWN",
+           "inventory_scope": "exact_target_app_tree_only", "runtime_provider_inventory": "UNKNOWN"}
     try:
         fact = raw["schema_metadata"]["preflight"]
         if any(type(fact[key]) is not bool for key in ("backup_database_matches", "backup_endpoint_matches", "ledger_complete")):

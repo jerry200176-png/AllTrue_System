@@ -52,6 +52,7 @@ class MetadataProjectionTest(unittest.TestCase):
         self.assertEqual(fact['pending_count'], 1)
         self.assertEqual(fact['activation_decision'], 'HOLD')
         self.assertEqual(fact['loaded_fpm'], 'UNKNOWN')
+        self.assertEqual(fact['runtime_provider_inventory'], 'UNKNOWN')
         self.assertEqual(fact['duration_and_online_ddl'], 'UNKNOWN')
         self.assertTrue(fact['table_sizes_are_estimates'])
         self.assertNotIn('private_ledger_name', json.dumps(out))

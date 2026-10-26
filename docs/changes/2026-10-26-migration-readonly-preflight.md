@@ -18,3 +18,8 @@ activation approval; the fixed deployment entry must recheck immediately before 
 This candidate neither runs nor authorizes a second production collection. A future
 one-time read requires its own exact backend/workflow binding and approved scope.
 The current main lacks the unmerged #4508 file, so it cannot pass this scope check.
+Inventory is explicitly the target app tree, not booted provider/vendor paths.
+An existing vendor migration ledger entry absent from that tree (including the
+old Sanctum migration before #4504 adds it to app migrations) conservatively holds.
+Do not filter those entries away. Runtime provider inventory remains UNKNOWN and
+the controlled execution entry must validate the actual migrator's entire path set.
