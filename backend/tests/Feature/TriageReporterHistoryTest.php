@@ -59,14 +59,14 @@ final class TriageReporterHistoryTest extends TestCase
     /** @dataProvider invalidReporterIds */
     public function test_invalid_reporter_filter_is_rejected($value): void
     {
-        $query = http_build_query(['reporter_user_id' => $value]);
+        $query = $value === null ? 'reporter_user_id' : http_build_query(['reporter_user_id' => $value]);
         $this->getJson('/api/v1/triage/bug-reports?' . $query, $this->headers())
             ->assertStatus(422)->assertJsonValidationErrors('reporter_user_id');
     }
 
     public static function invalidReporterIds(): array
     {
-        return [['0'], ['-1'], ['not-an-id'], ['1.5'], [[1]]];
+        return [['0'], ['-1'], ['not-an-id'], ['1.5'], [[1]], [''], ['   '], [null]];
     }
 
     private function headers(): array

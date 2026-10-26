@@ -19,7 +19,7 @@ class TriageBugReportController extends Controller
         $max = (int) config('triage_tokens.list_max_limit');
         $validator = Validator::make($request->query(), [
             'status' => ['nullable', 'string', 'max:100'],
-            'reporter_user_id' => ['nullable', 'integer', 'min:1'],
+            'reporter_user_id' => ['sometimes', 'required', 'integer', 'min:1'],
             'since_id' => ['nullable', 'integer', 'min:0'],
             'limit' => ['nullable', 'integer', 'min:1', "max:{$max}"],
         ]);
