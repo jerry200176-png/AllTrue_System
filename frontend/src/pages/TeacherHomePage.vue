@@ -16,6 +16,7 @@
     <button
       type="button"
       class="th-clockin-card card"
+      aria-describedby="teacher-clockin-status"
       :class="clockinCardClass"
       @click="goAttendance"
     >
