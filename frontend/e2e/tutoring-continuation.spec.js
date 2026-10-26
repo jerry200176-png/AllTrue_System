@@ -66,8 +66,9 @@ for (const width of [390, 1440]) {
     const workspace = page.getByTestId('student-course-workspace');
     await workspace.locator('.student-course-card__actions > summary').click();
     if (before) {
-      await workspace.getByRole('button', { name: /再次續報加購|^加購$/ }).first().click();
-      await expect(page.getByRole('dialog', { name: /加購堂數/ })).toContainText('未繳課程批次');
+      // The pre-continuation build still says 再次續報加購／加購; the current build says 續課 (in-app #429).
+      await workspace.getByRole('button', { name: /^(再次續報加購|加購|續課)$/ }).first().click();
+      await expect(page.getByRole('dialog', { name: /加購堂數|續課/ })).toContainText('未繳課程批次');
       await page.screenshot({ path: testInfo.outputPath('before-tutoring-charge-copy.png'), fullPage: true });
       expect(state.writes).toEqual([]);
       return;

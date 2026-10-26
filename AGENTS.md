@@ -3,7 +3,7 @@
 > **Cursor 使用者**：`.cursorrules` 已自動載入，這裡補充必讀順序與 Commit SOP。
 >
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
-> 所有 Agent 做事前先查 `docs/INDEX.md`（本機另可查 MemPalace；cloud session 沒有，跳過）；做完把決策寫回文件，讓下一個 AI 不靠猜測。
+> 所有 Agent 做事前先查 `docs/INDEX.md` 的 Start here 與任務對應節（本機另可查 MemPalace；cloud session 沒有，跳過）；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
 ## Worktree & path safety (canonical)
 
@@ -44,9 +44,9 @@
 
 1. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
 2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
-3. **`docs/INDEX.md`**（導航地圖，決定接下來只讀哪些章節 — 省 token 關鍵）
+3. **`docs/INDEX.md`** 的 **Start here** + 任務對應節（導航；本清單與條件分支的政策原文仍須完整載入）
 
-（`.cursorrules` 自動載入，已讀，不用手動加進清單。）
+（Cursor 通常自動載入 `.cursorrules`；其他 client 不得假設已載入，未載入時先讀原文，保留完整 P0。實際載入／截斷未能查證時記 unknown。）
 
 ### 條件分支（依任務類型挑對應章節，不用全讀）
 
@@ -122,7 +122,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 | T0 Docs-only | README、FAQ、INDEX、Runbook、規則文件，且不碰 `.github/**` / `scripts/**` | docs batch → `git diff --check` → PR；避免 deployable diff |
 | T1 Low-risk code | 單一 UI 顯示、純 helper、無資料寫入、無權限邊界 | 小 PR → 對應測試/build → REVIEW |
 | T2 Product workflow | 前後端契約、排課、出缺勤、評量、跨分校查詢 | PLAN/ARCH → DEV → TEST → INT → REVIEW |
-| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據，在受保護的合併／正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
+| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據。合併條件見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21 第 2(a) 條；正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
 
 **Definition of Ready（進 DEV 前）**
 - 已定義 product intent、architecture boundary、API/DB/data ownership、錯誤處理、多校區隔離。

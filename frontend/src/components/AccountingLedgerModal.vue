@@ -34,6 +34,7 @@
             @done="onAllocDone"
           />
           <div v-show="!allocating">
+          <p v-if="initialActionNote" class="ledger-empty" role="status" data-testid="ledger-initial-action-note">{{ initialActionNote }}</p>
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
             <p class="ledger-owed__label">{{ owedLabel }}</p>
@@ -79,6 +80,7 @@
                 :key="c.id"
                 :course="c"
                 :focused="isOpenedCourse(c)"
+                :can-view-docs="canManageInvoices()"
                 :outstanding="owedFor(c.id)"
                 :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
                 :shared-follower="!packageLead(c)"
@@ -88,10 +90,14 @@
                 :month-lines="monthLinesFor(c.id)"
                 :bill-draft="draftFor(c.id)"
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
+                :has-confirmed-report="hasConfirmedReportFor(c.id)"
                 @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
                 @confirmed="openReceipt"
                 @changed="onPanelChanged"
+                @slip="openSlip"
               />
             </div>
           </section>
@@ -237,6 +243,14 @@
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
+                <!-- in-app #425: same 查看收據 as the 帳務中心 收款紀錄 tab, on every confirmed row. -->
+                <button
+                  v-if="r.status === 'confirmed' && canManageInvoices()"
+                  class="ledger-more"
+                  type="button"
+                  :data-testid="`ledger-receipt-view-${r.report_id}`"
+                  @click="viewReceipt(r.report_id)"
+                >查看收據</button>
                 <button
                   v-if="canShowReceiptCoverage(r)"
                   class="ledger-more ledger-receipt-toggle"
@@ -290,8 +304,9 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" />
-      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" later-label="稍後再開" :return-focus-to="modalEl" @close="receiptOpen = false" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
+      <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
   </Transition>
 </template>
@@ -308,12 +323,13 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
+import PaymentSlipModal from './PaymentSlipModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
@@ -329,7 +345,11 @@ import {
 
 const EXCEPTION_PREVIEW = 2;
 
-const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean });
+const props = defineProps({
+  show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean,
+  // In-app #398: 'record' opens 登記收款 for the opened course once the ledger has loaded (only if its card offers it).
+  initialAction: { type: String, default: null },
+});
 
 const emit = defineEmits(['close', 'changed', 'step']);
 
@@ -501,6 +521,7 @@ async function loadLedger() {
     payload.value = json;
     autoExpandAttention();
     loadDrafts();
+    runInitialAction();
   } catch (e) {
     if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
@@ -525,16 +546,23 @@ function scrollToOpenedContract() {
   card?.scrollIntoView?.({ block: 'start' });
 }
 
+// #3912: a combined bill belongs to every course it has a line for (covered_student_class_ids), not only its anchor.
+const invoiceCoversCourse = (inv, id) => {
+  const covered = Array.isArray(inv?.covered_student_class_ids) && inv.covered_student_class_ids.length
+    ? inv.covered_student_class_ids : [inv?.student_class_id];
+  return covered.some((x) => Number(x) === Number(id));
+};
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  return !!scopeId && Number(inv.student_class_id) !== scopeId;
+  return !!scopeId && !invoiceCoversCourse(inv, scopeId);
 };
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
   const scopeId = Number(payload.value?.scope?.student_class_id || 0);
-  const inScope = (rows) => (rows || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
-  return !inScope(payload.value?.invoices).length && !inScope(payload.value?.receipts).length;
+  const invoices = (payload.value?.invoices || []).filter((inv) => !scopeId || invoiceCoversCourse(inv, scopeId));
+  const receipts = (payload.value?.receipts || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
+  return !invoices.length && !receipts.length;
 });
 
 const ledgerExceptions = computed(() => {
@@ -610,6 +638,11 @@ const payLineFor = (course) => {
   const paid = lastInvoicePayment(ids);
   if (paid) return paid;
   if (isWaivedContract(course)) return { waived: true };
+  // in-app #428: a trial that carries its payment date has no invoice by design; the server derives this
+  // (StudentClass::isTrialFeeRecordedByDate, same rule as legacy_paid_flag_only), so it is not 需核對 legacy data.
+  // #4339 review: show that recorded date and the trial fee, never 還沒繳費 beside 已收清.
+  // A package-created trial member carries Charge=0 (the fee lives on the package): show the date only, never NT$ 0.
+  if (course.trial_fee_recorded_by_date === true && course.paid_at) return { date: course.paid_at, amount: Number(course.charge) > 0 ? Number(course.charge) : null };
   return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
@@ -633,6 +666,9 @@ const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
+// Mirror the existing server refusal by report status, independently of payment display completeness.
+const hasConfirmedReportFor = (id) => (payload.value?.receipts || [])
+  .some((r) => Number(r.student_class_id) === Number(id) && r.status === 'confirmed');
 // #4115: the issued-bill vs current-contract note for the bill row (display only).
 const rateNoteFor = (inv) => {
   const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
@@ -651,6 +687,9 @@ const packageLeadOf = (c) => {
   const pending = (payload.value?.receipts || []).find((r) => r.status === 'pending' && members.some((m) => Number(m.id) === Number(r.student_class_id)));
   if (!pending && members.filter((m) => owedFor(m.id) > 0).length > 1) return c;
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
+    // #4002: a tutoring member has no payment obligation (the server answers tutoring_no_payment_obligation),
+    // so a payable regular member leads; the lines below stay as fallbacks (e.g. an all-tutoring package).
+    || members.find((m) => m.class_type !== 'tutoring' && !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
     || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
@@ -666,8 +705,13 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(courseId) && Number(inv.outstanding_amount || 0) > 0 && !['paid', 'void'].includes(inv.status))
   .sort((a, b) => String(a.due_date || a.billing_period || a.issue_date || '').localeCompare(String(b.due_date || b.billing_period || b.issue_date || ''))
     || Number(a.id) - Number(b.id))[0];
+const needsLegacyChoice = (course) => !payload.value?.scope?.no_payment_obligation && canResolveLegacyPaidFlag(course, {
+  legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
+  isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
+  pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
+});
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => c.class_type !== 'tutoring' && !needsLegacyChoice(c) && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
@@ -728,12 +772,18 @@ async function submitIssue() {
 // PRD v2 D2/D9: 登記收款 (step 1) opens the existing entry form inside the panel.
 const entryOpen = ref(false);
 const entryRow = ref(null);
-function openEntry(course) {
+const entryMode = ref('record');
+function openEntry(course, mode = 'record') {
+  if (mode === 'legacy-backfill' && hasConfirmedReportFor(course.id)) {
+    initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
+    return;
+  }
+  entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
   entryRow.value = {
     id: course.id,
-    charge: course.charge,
+    charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,
@@ -747,11 +797,73 @@ function openEntry(course) {
 // #398/#405: same step as the 待處理 queue — after 確認入帳 the receipt opens here; 稍後再開 keeps it in 收款紀錄.
 const receiptOpen = ref(false);
 const receiptReportId = ref(null);
+const receiptLaterLabel = ref('');
 function openReceipt(reportId) {
   receiptReportId.value = Number(reportId);
+  receiptLaterLabel.value = '稍後再開';
   receiptOpen.value = true;
 }
+// In-app #425: viewing a confirmed row's receipt is not the post-確認入帳 step, so no 稍後再開 label.
+function viewReceipt(reportId) {
+  openReceipt(reportId);
+  receiptLaterLabel.value = '';
+}
+// In-app #425: 繳費單 on a contract card, same modal and request as the 帳務中心 list (oldest open bill first).
+const slipOpen = ref(false);
+const slipInvoiceId = ref(null);
+const slipStudentClassId = ref(null);
+function openSlip(course) {
+  const inv = oldestOpenInvoice(course.id);
+  slipInvoiceId.value = inv ? Number(inv.id) : null;
+  slipStudentClassId.value = inv ? null : Number(course.id);
+  slipOpen.value = true;
+}
 watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpen.value = false; });
+
+// In-app #398: 「登記繳費回報」 from 課程查找 lands on the entry form, with the ledger behind it. Armed once per open;
+// a course whose card would not offer 登記這筆 (pending report, waived, tutoring, package member) just shows the ledger.
+let pendingInitialAction = null;
+watch(() => props.show, (open) => { pendingInitialAction = open ? props.initialAction : null; }, { immediate: true });
+const initialActionNote = ref('');
+watch(() => props.show, () => { initialActionNote.value = ''; });
+watch(() => entryOpen.value && entryMode.value === 'legacy-backfill' && hasConfirmedReportFor(entryRow.value?.id), (blocked) => {
+  if (blocked) { entryOpen.value = false; initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP; }
+});
+function runInitialAction() {
+  const action = pendingInitialAction;
+  pendingInitialAction = null;
+  if (action !== 'record') return;
+  const id = Number(props.studentClassId || 0);
+  const course = contractCourses.value.find((c) => Number(c.id) === id);
+  if (!course) return;
+  if (needsLegacyChoice(course)) {
+    if (hasConfirmedReportFor(course.id)) {
+      initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
+      return;
+    }
+    initialActionNote.value = '這門課只有舊資料標記已收，請先在課程卡確認是否已收款，再選擇補登收款或改成未繳。';
+    return;
+  }
+  if (allocContracts.value.some((c) => Number(c.id) === id)) {
+    openEntry(course);
+    return;
+  }
+  // Say why the form did not open (the same conditions the card uses), instead of falling back silently.
+  initialActionNote.value = recordBlockedReason(course);
+}
+function recordBlockedReason(c) {
+  if (payload.value?.scope?.no_payment_obligation || c.class_type === 'tutoring') return '輔導課不用繳費，所以沒有打開登記表。';
+  if (pendingReportFor(c.id)) return '這門課已有家長回報待核對，請在下面的課程卡按「確認入帳」或「退回」。';
+  if (isWaivedContract(c)) return '這門課已確認不收，所以沒有打開登記表。';
+  if (c.package_id) return '這是共用方案，請在下面的課程卡處理收款。';
+  return '這門課目前沒有要收的款，所以沒有打開登記表。';
+}
+
+async function onEntryConflict() {
+  await loadLedger();
+  emit('changed');
+}
 
 async function onPanelChanged() {
   entryOpen.value = false;
@@ -772,7 +884,7 @@ function getAuthRole() {
 
 async function voidReport(reportId) {
   if (!reportId || !isDirectorRole(getAuthRole())) return;
-  const reason = window.prompt('請輸入撤銷原因（會保留稽核紀錄）');
+  const reason = window.prompt('撤銷收款會保留稽核紀錄，不會更改帳單應繳金額；帳單開錯需另行作廢並更正。請輸入撤銷原因');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
   try {

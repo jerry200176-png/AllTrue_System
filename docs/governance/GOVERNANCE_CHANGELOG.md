@@ -1,5 +1,11 @@
 # Governance changelog
 
+## 2026-10-22 — Prepare final-head review integrity (#4360 replacement)
+
+- One exact-head evidence rule is shared by land queue and native auto-merge; incomplete current-head Codex review cannot be overridden by owner provenance. Before-squash thread/review rechecks remain mandatory.
+- Shared event/sweep serialization, retained pending runs and deleted-evidence events repair stale review-check publication. Canonical merge policy and Merge SOP now describe the same contract.
+- This is preparation for the existing T3 diff decision, not a new approval or live ruleset mutation. Approval continuity preserves already-approved work, including #4280/#4371; production, credential, identity and Environment boundaries are unchanged.
+
 ## 2026-10-14 — Full move to cloud sessions; retire local agent machinery
 
 - Founder decision (Jerry, Q1–Q24 in session): all work moves to Claude cloud sessions. Local mechanisms (agent-start worktrees, preflight path allowlist, Agent Session Provenance, local-heavy-gate, Exo, local crontab) are retired rather than given cloud exceptions.

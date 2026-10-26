@@ -155,7 +155,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 | 步驟 | 動作 |
 |------|------|
 | B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
-| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才進 task worktree → regression RED → 改 code → focused tests／review／CI → PR。 |
+| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才依 [WORKTREE_POLICY](governance/WORKTREE_POLICY.md) 在雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才進 task worktree）→ regression RED → 改 code → focused tests／review／CI → PR。 |
 | B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線後由 Phase-C 自動關，F14） |
 | B4 | merge → `deploy.yml` → 核對 deployed SHA、`GET /api/v1/health`／`deployment.json`（前端有改再查 `version.json`）→ 驗證原回報角色、分校與使用者路徑。 |
 
@@ -163,7 +163,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）；cloud 可走 `bug-phase-c-allowlist.yml` allowlist PR（merge 後 autodispatch） |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／SOP 對照表）。**目前可跑**：`bug-followup-comment.yml`（僅改用詞、不改狀態）。ADR 規劃的 Pi-local `inapp-report-resolve-after-deploy` 尚未 catalog，不得當成已可執行 |
 | C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 SOP 對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |

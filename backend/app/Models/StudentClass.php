@@ -76,6 +76,8 @@ use Illuminate\Support\Facades\DB;
  * @property \Carbon\CarbonInterface|null $settlement_locked_at
  * @property string|null $settlement_snapshot
  * @property int|null $trial_converted_to_id
+ * @property string|null $trial_target_class_type Trial courses only: regular class type the trial is for (in-app #426).
+ * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
  */
 class StudentClass extends Model
@@ -90,6 +92,9 @@ class StudentClass extends Model
 
     /** Course memo is TEXT; keep a hard cap so paste cannot unbounded-grow the row. */
     public const MEMO_MAX_LENGTH = 8000;
+
+    /** in-app #426: regular class types a trial course may target (trial_target_class_type). */
+    public const TRIAL_TARGET_CLASS_TYPES = ['one_on_one', 'one_on_two', 'one_on_three'];
 
     protected $fillable = [
         'StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1',
@@ -107,6 +112,8 @@ class StudentClass extends Model
         'rate_unit',
         'PackageID', 'PackageTotalSessions', 'PackageName',
         'trial_converted_to_id',
+        'purchase_request_key',
+        'trial_target_class_type',
     ];
 
     protected $casts = [
@@ -150,6 +157,11 @@ class StudentClass extends Model
         if ($ids === []) {
             return false;
         }
+        // Unbilled agreed-fee rows keep no invoice link — still block hard-delete.
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_corrections')
+            && DB::table('invoice_corrections')->whereIn('student_class_id', $ids)->exists()) {
+            return true;
+        }
         $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
 
         // Every append-only table that keeps a contract id. Add new ones here.
@@ -160,6 +172,7 @@ class StudentClass extends Model
             'student_class_pricing_amendments' => ['student_class_id'],
             'dunning_events' => ['student_class_id'],
             'course_contract_group_members' => ['student_class_id'],
+            'bug_report_contract_links' => ['student_class_id'],
         ];
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {
@@ -293,6 +306,54 @@ class StudentClass extends Model
         }
 
         return CoursePackage::query()->where('id', $packageId)->where('paid', true)->exists();
+    }
+
+    /**
+     * in-app #428: a trial records its fee by payment date alone and never gets an invoice by design, so its paid
+     * flag is not legacy data to verify (no 需核對). Only a trial that actually carries the date qualifies: the
+     * course's own Paid=1 needs ClassType=trial and PayDate; a paid state derived from the package needs the
+     * package's class_type=trial and paid_at (a regular course bound to a trial package follows the package).
+     * Shared by the course list, the tuition alerts and the accounting ledger so they cannot drift.
+     * #4339 review: the package is read only when it belongs to this course's own student and campus (same owner rule as
+     * BillingPayableResolver::validPaymentEvidence), so a stale PackageID to another student's or campus's package never
+     * clears 需核對 with foreign billing metadata.
+     */
+    public function isTrialFeeRecordedByDate(?CoursePackage $package = null): bool
+    {
+        if ((int) ($this->Paid ?? 0) === 1) {
+            return strtolower(trim((string) ($this->ClassType ?? ''))) === 'trial'
+                && trim((string) ($this->PayDate ?? '')) !== '';
+        }
+        if (!$this->isPartOfPackage()) {
+            return false;
+        }
+        $package ??= $this->coursePackage;
+        $campusId = $this->student?->CampusID;
+
+        return $package !== null && (int) $package->id === (int) $this->PackageID
+            && (int) $package->student_id === (int) $this->StudentID
+            && $campusId !== null && (int) $package->campus_id === (int) $campusId
+            && $package->isTrialFeeRecordedByDate();
+    }
+
+    /**
+     * Courses a teacher may see: their own, plus ones they cover through a substitute schedule or makeup
+     * (the student-classes list scope; also the teacher's duplicate-course pre-check, in-app #427).
+     */
+    public function scopeVisibleToTeacher($query, int $teacherId)
+    {
+        return $query->where(function ($q) use ($teacherId) {
+            $q->where('TeacherID', $teacherId)
+                ->orWhereExists(function ($sub) use ($teacherId) {
+                    $sub->select(DB::raw(1))
+                        ->from('schedules')
+                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
+                        ->where('schedules.teacher_id', $teacherId)
+                        ->where('schedules.status', 'scheduled')
+                        ->whereNotNull('schedules.original_schedule_id');
+                });
+            \App\Services\SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
+        });
     }
 
     /**

@@ -19,6 +19,7 @@ class TriageBugReportController extends Controller
         $max = (int) config('triage_tokens.list_max_limit');
         $validator = Validator::make($request->query(), [
             'status' => ['nullable', 'string', 'max:100'],
+            'reporter_user_id' => ['sometimes', 'required', 'integer', 'min:1'],
             'since_id' => ['nullable', 'integer', 'min:0'],
             'limit' => ['nullable', 'integer', 'min:1', "max:{$max}"],
         ]);
@@ -37,6 +38,9 @@ class TriageBugReportController extends Controller
             ->limit((int) ($data['limit'] ?? $max));
         if ($statuses !== []) {
             $query->whereIn('status', $statuses);
+        }
+        if (isset($data['reporter_user_id'])) {
+            $query->where('reporter_user_id', (int) $data['reporter_user_id']);
         }
 
         $rows = $query->get()->map(fn (BugReport $bug) => [

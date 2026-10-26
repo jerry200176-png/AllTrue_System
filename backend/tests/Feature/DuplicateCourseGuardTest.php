@@ -115,6 +115,9 @@ class DuplicateCourseGuardTest extends TestCase
 
         $second->assertStatus(409);
         $second->assertJsonPath('code', 'duplicate_active_course');
+        // in-app #429: one name for adding lessons (Founder Q8=A).
+        $this->assertStringContainsString('「續課」', (string) $second->json('message'));
+        $this->assertStringNotContainsString('加購堂數', (string) $second->json('message'));
         $this->assertNotEmpty($second->json('conflicts'));
         $this->assertSame('one_on_one', $second->json('conflicts.0.class_type'));
     }

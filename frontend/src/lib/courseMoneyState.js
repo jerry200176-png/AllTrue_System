@@ -148,10 +148,27 @@ export const closedPaymentState = (course) => {
   return settled ? 'settled' : 'pending';
 };
 
-/** History list membership. includePending: StudentsList also files 待對帳結案 rows under history; CourseManagement keeps them in the active list. */
-export const isHistoryCourse = (course, { includePending = false } = {}) => {
-  const reason = closedReason(course);
-  return reason === 'settled' || reason === 'completed' || reason === 'waived' || (includePending && reason === 'settled_pending');
+// ── 進行中 / history (server-owned, in-app #427) ─────────────
+// The student-classes list computes these once (backend StudentClassActivity); the same verdict drives the
+// 「已有進行中課程」 prompt and the create-time duplicate guard. Pages read the flags, never re-derive them.
+
+/**
+ * Why the row is history ('completed' | 'settled' | 'settled_pending' | 'waived' | 'converted_trial' | …), or null.
+ * A degraded fallback row (`_noncanonical`, no server verdict) only shows its recorded closure (closedReason).
+ */
+export const courseHistoryReason = (course) => (
+  course?._noncanonical ? closedReason(course) : (course?.history_reason || null)
+);
+
+/** 進行中: running and not history (paused courses are not 進行中 but stay in the active section). */
+export const isActiveCourse = (course) => (course?._noncanonical
+  ? String(course?.status || '').toLowerCase() !== 'inactive' && courseHistoryReason(course) === null
+  : course?.is_active_course === true);
+
+/** 課程管理 keeps 待對帳結案 rows in its working list (that is where they are reconciled); everything else follows the server. */
+export const isCourseManagementHistory = (course) => {
+  const reason = courseHistoryReason(course);
+  return reason !== null && reason !== 'settled_pending';
 };
 
 // ── payment-status labels (display only; the server owns the status itself) ──
@@ -219,6 +236,15 @@ export const latestStandingPayment = (payments) => {
 // #4114 (Founder Q3): paid only by the legacy Paid / package flag, no Payment on record. Neutral: never green 已收, never 未繳.
 export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對：舊資料標記已收，缺付款紀錄';
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
+// Founder GO 2026-10-21: on the ledger card the director gets the next step, not a dead-end label.
+export const LEGACY_FLAG_ACTION_HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
+export const LEGACY_CONFIRMED_REPORT_HELP = '這門課已有確認過的收款回報，請先在學生帳務的「收款紀錄」核對。';
+// The ledger shortcut and card must use the same existing backfill eligibility.
+export const canResolveLegacyPaidFlag = (course, {
+  legacyUnverified, canResolveLegacy, isMonthly, waived, pendingReport, sharedFollower,
+} = {}) => Boolean(legacyUnverified && canResolveLegacy && course?.paid === true
+  && course.class_type !== 'tutoring' && !course.package_id && !course.free_gift_settled && !isMonthly && !waived
+  && !pendingReport && !sharedFollower);
 export const ENDED_PENDING_LABEL = '課已結束，尚未收款';
 export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };

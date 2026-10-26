@@ -9,6 +9,17 @@ use RuntimeException;
 /** Control-plane request/approval API; it deliberately has no execute endpoint. */
 final class PopOperationController extends Controller
 {
+    public function status(Request $request, string $requestId, PopOperationService $service)
+    {
+        if (!$request->attributes->get('auth_user')) return response()->json(['message' => 'Unauthenticated'], 401);
+        try {
+            return response()->json(['data' => $service->statusForActor($requestId,
+                (string) $request->attributes->get('auth_role'), (array) $request->attributes->get('auth_campus_ids', []))]);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => 'POP status unavailable'], $this->errorStatus($e));
+        }
+    }
+
     public function storeDraft(Request $request, string $operationId, PopOperationService $service)
     {
         $validated = $request->validate([

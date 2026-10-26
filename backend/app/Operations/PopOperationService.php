@@ -17,7 +17,7 @@ final class PopOperationService
     private const ACTOR_PATTERN = '/^[A-Za-z0-9:_-]{1,128}$/';
     private const REFERENCE_PATTERN = '/^[A-Za-z0-9_.:#\/-]{3,128}$/';
 
-    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null)
+    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null, private readonly ?string $financialCaseAuthorizationPath = null)
     {
     }
 
@@ -34,12 +34,16 @@ final class PopOperationService
     ): array {
         $entry = $this->catalog->operation($operationId);
         $this->assertActor($actor);
+        if ($this->isReviewedFinancialCase($entry) && ($actorId === null || $actor !== 'user:'.$actorId || $actorRole === 'pop_machine')) throw new RuntimeException('Reviewed financial repair requires an authenticated human requester.');
         $this->assertIdempotencyKey($idempotencyKey);
         $normalized = self::canonicalParameters($parameters);
         $this->assertParameterContract($entry, $normalized);
         $this->assertCampusScope($normalized, $actorRole, $actorCampusIds);
         $hash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
         $contextHash = $this->contextHash($context);
+        if ($this->isReviewedFinancialCase($entry)) {
+            $this->reviewedFinancialCaseTuple($entry, $normalized, $idempotencyKey, $actor, null, null, null);
+        }
         if ($this->isReviewedMonthly($entry)) {
             if ($actorRole !== 'super_admin' || $actorId === null || $actor !== 'user:' . $actorId) {
                 throw new RuntimeException('Reviewed monthly repair requires an authenticated human requester.');
@@ -158,6 +162,17 @@ final class PopOperationService
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         if (!$byStandingPolicy) $this->assertCampusScope($parameters, $approverRole, $approverCampusIds); // the requester's scope was checked at draft
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
+        $reviewedCaseContinuation = false;
+        if ($this->isReviewedFinancialCase($entry)) {
+            $recovery = $this->financialRecoveryPhase($request);
+            $reviewedCaseContinuation = in_array($recovery, ['recovery', 'rollback'], true);
+            if ($reviewedCaseContinuation) {
+                $this->assertPriorReviewedFinancialCaseApproval($request, $parameters, $entry, $approvalReference, $approver, $approverId);
+            } else {
+                $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key, (string) $request->actor,
+                    $approvalReference, $approver, $approverId, $ttlMinutes);
+            }
+        }
         if ($this->isReviewedMonthly($entry)) {
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
@@ -166,6 +181,8 @@ final class PopOperationService
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
+            && !$this->isExactPackageLedgerNetRepair($entry)
+            && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
@@ -173,11 +190,15 @@ final class PopOperationService
         if (!$dryRun || (string) $dryRun->result !== 'succeeded') {
             throw new RuntimeException('POP approval requires a successful dry-run.');
         }
+        if ($this->isReviewedFinancialCase($entry) && !$reviewedCaseContinuation
+            && !(bool) ($this->safePlan($entry, $parameters, (string) $request->id)['ok'] ?? false)) {
+            throw new RuntimeException('POP approval requires a current preview; refresh the case evidence and create a new draft.');
+        }
         if ((int) $request->catalog_version !== $this->catalog->version()) {
             throw new RuntimeException('POP request catalog version is stale; create a new draft.');
         }
 
-        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles, $byStandingPolicy): array {
+        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles, $byStandingPolicy, $reviewedCaseContinuation): array {
             $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if (!$locked || ($byStandingPolicy && (string) $locked->status !== 'awaiting_approval')) {
                 throw new RuntimeException('POP request not found; fail closed.');
@@ -187,12 +208,23 @@ final class PopOperationService
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
+            if ($this->isReviewedFinancialCase($entry)) {
+                if ($reviewedCaseContinuation) {
+                    $this->assertPriorReviewedFinancialCaseApproval($locked, $lockedParameters, $entry, $approvalReference, $approver, $approverId);
+                } else {
+                    $this->reviewedFinancialCaseTuple($entry, $lockedParameters, (string) $locked->idempotency_key,
+                        (string) $locked->actor, $approvalReference, $approver, $approverId, $ttlMinutes);
+                }
+                if (!$reviewedCaseContinuation && !(bool) ($this->safePlan($entry, $lockedParameters, (string) $locked->id)['ok'] ?? false)) {
+                    throw new RuntimeException('POP approval requires a current preview; refresh the case evidence and create a new draft.');
+                }
+            }
             if ($this->isReviewedMonthly($entry)) {
                 $this->assertMonthlyApprover($locked, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
             }
-            $sameRole = DB::table('pop_approval_events')
-                ->where('operation_id', $requestId)
-                ->where('event_type', 'approved')
+            $recoveryPhase = $this->financialRecoveryPhase($locked);
+            $renewal = $recoveryPhase !== null; $approvalPhase = $recoveryPhase ?? 'execute';
+            $sameRole = $this->approvals($locked)
                 ->where('approver_role', $approverRole)
                 ->exists();
             if ($sameRole) {
@@ -210,7 +242,7 @@ final class PopOperationService
                 throw new RuntimeException('POP approvals must bind one exact commit SHA.');
             }
 
-            DB::table('pop_approval_events')->insert([
+            $approvalId = DB::table('pop_approval_events')->insertGetId([
                 'operation_id' => $requestId,
                 'event_type' => 'approved',
                 'approval_reference' => substr($approvalReference, 0, 128),
@@ -218,7 +250,7 @@ final class PopOperationService
                 'approver_role' => $approverRole,
                 'approver_id' => $approverId,
                 'commit_sha' => $commitSha,
-                'phase' => 'execute',
+                'phase' => $approvalPhase,
                 'parameters_hash' => $locked->parameters_hash,
                 'token_hash' => null,
                 'expires_at' => now()->addMinutes($ttlMinutes),
@@ -230,24 +262,22 @@ final class PopOperationService
             $token = null;
             $expiresAt = null;
             if ($ready) {
-                $expiresAt = now()->addMinutes($ttlMinutes);
-                $token = $this->sign($locked, 'execute', $commitSha, $expiresAt->timestamp);
+                $expiresAt = $renewal ? Carbon::parse((string) $this->approvals($locked)->min('expires_at')) : now()->addMinutes($ttlMinutes);
+                $token = $this->sign($locked, $approvalPhase, $commitSha, $expiresAt->timestamp);
                 DB::table('pop_approval_events')
-                    ->where('operation_id', $requestId)
-                    ->where('approver_role', $approverRole)
-                    ->where('commit_sha', $commitSha)
+                    ->where('id', $approvalId)
                     ->whereNull('token_hash')
                     ->update(['token_hash' => hash('sha256', $token), 'expires_at' => $expiresAt]);
             }
             DB::table('pop_operation_requests')->where('id', $requestId)->update([
-                'status' => $ready ? 'approved' : 'awaiting_approval',
+                'status' => $renewal ? 'failed' : ($ready ? 'approved' : 'awaiting_approval'),
                 'updated_at' => now(),
             ]);
             $this->audit($locked, 'approval', 'success', $parameters, $approverId, $approverRole);
 
             return [
                 'request_id' => $requestId,
-                'status' => $ready ? 'approved' : 'awaiting_approval',
+                'status' => $renewal ? 'failed' : ($ready ? 'approved' : 'awaiting_approval'),
                 'ready' => $ready,
                 'required_roles' => $requiredRoles,
                 'approved_roles' => $approvedRoles,
@@ -255,6 +285,27 @@ final class PopOperationService
                 'expires_at' => $expiresAt?->toIso8601String(),
             ];
         });
+    }
+
+    /** Read-only phase receipt, never parameters, snapshots, approvers or approval tokens. */
+    public function statusForActor(string $requestId, string $role, array $campusIds): array
+    {
+        $request = $this->request($requestId);
+        $p = json_decode($request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCampusScope($p, $role, $campusIds);
+        $query = DB::table('pop_execution_records')->where('operation_id', $requestId)
+            ->whereIn('phase', ['dry-run', 'execute', 'verify', 'rollback'])->select(['phase', 'result', 'execution_id', 'commit_sha']);
+        // created_at has second precision: select the phase consistent with the authoritative request status.
+        $phase = match ($request->status) {
+            'succeeded', 'verification_failed' => 'verify', 'verifying' => 'execute', 'rolled_back' => 'rollback', default => null,
+        };
+        if ($phase) $query->where('phase', $phase);
+        if ($request->status === 'failed') $query->where('result', 'failed');
+        // Equal-second failures follow phase progression; attempt numbers are local to one phase.
+        $record = $query->orderByDesc('created_at')->orderByRaw("CASE phase WHEN 'rollback' THEN 4 WHEN 'verify' THEN 3 WHEN 'execute' THEN 2 ELSE 1 END DESC")->orderByDesc('attempt_no')->first();
+        return ['request_id' => $requestId, 'operation_id' => $request->operation_id, 'status' => $request->status,
+            'phase' => $record?->phase, 'result' => $record?->result, 'execution_id' => $record?->execution_id,
+            'commit_sha' => $record?->commit_sha];
     }
 
     /** Run the authenticated, read-only planning phase for the control plane. */
@@ -292,6 +343,17 @@ final class PopOperationService
         ?array $context = null
     ): array
     {
+        $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        return DB::transaction(function () use ($requestId, $phase, $run): array {
+            DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
+            return $run();
+        }, 3);
+    }
+
+    private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
+    {
         $request = $this->request($requestId);
         if (!in_array($phase, ['dry-run', 'execute', 'verify', 'rollback'], true)) {
             throw new RuntimeException('POP phase is invalid; fail closed.');
@@ -316,21 +378,37 @@ final class PopOperationService
         }
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         $this->assertRequestIntegrity($request, $entry, $parameters, $context, false);
+        if ($this->isReviewedFinancialCase($entry)) {
+            $hasExecuted = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+            if ($hasExecuted && in_array($phase, ['verify', 'rollback'], true)) {
+                $this->assertPriorReviewedFinancialCaseApproval($request, $parameters, $entry);
+            } else {
+                foreach ($this->approvals($request)->get() as $event) {
+                    $this->reviewedFinancialCaseTuple($entry, $parameters, (string) $request->idempotency_key,
+                        (string) $request->actor, (string) $event->approval_reference, (string) $event->approver,
+                        $event->approver_id === null ? null : (int) $event->approver_id);
+                }
+            }
+        }
         if ((string) $entry['lifecycle'] !== 'active') {
             throw new RuntimeException('POP operation is not active; Founder activation is required.');
         }
         if (!$token || !$commitSha) {
             throw new RuntimeException('POP approval token is missing; fail closed.');
         }
-        $approval = $this->validApproval($request, $token, $commitSha);
+        $approval = $this->validApproval($request, $token, $commitSha, $phase);
         if (!$approval) {
             throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
+        }
+        // Retained writes need an execute receipt; failed atomic attempts have no committed write to undo.
+        if ($this->atomicFinancialRepair((string) $request->strategy_id) && DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists()) {
+            if (in_array($phase, ['verify', 'rollback'], true) && $this->financialRecoveryPhase($request) === 'execute-recovery') throw new RuntimeException('POP recovery requires its successful execute receipt first.');
         }
         $existing = $this->existing($request, $phase);
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
         $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
             ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
@@ -346,7 +424,7 @@ final class PopOperationService
             if ($phase === 'execute') {
                 $strategy = app((string) $entry['strategy_class']);
 
-                return $this->record(
+                $executeAndRecord = fn () => $this->record(
                     $request,
                     $entry,
                     $parameters,
@@ -357,6 +435,10 @@ final class PopOperationService
                     $commitSha,
                     $this->durationMs($startedAt)
                 );
+                // Co-commit financial repair/receipt; preserve other strategies' external-effect contracts.
+                return $this->atomicFinancialRepair($strategy)
+                    ? DB::transaction($executeAndRecord, 3)
+                    : $executeAndRecord();
             }
             $execution = $this->latest($request, 'execute');
             if (!$execution) {
@@ -364,11 +446,11 @@ final class PopOperationService
             }
             $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
             $strategy = app((string) $entry['strategy_class']);
-            $result = $phase === 'verify'
-                ? $strategy->verify($plan, $payload)
-                : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
-
-            return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            $complete = fn () => $this->record($request, $entry, $parameters, $phase,
+                $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
+                $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            return $this->atomicFinancialRepair($strategy)
+                ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
@@ -377,14 +459,20 @@ final class PopOperationService
         }
     }
 
+    private function atomicFinancialRepair(object|string $strategy): bool
+    {
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'], true);
+    }
+
     /**
      * Execute the next already-approved request on the production host.
      *
      * The raw approval token is reconstructed only inside the Pi process from
      * its database hash and local APP_KEY; it is never returned or logged.
      */
-    public function runApprovedLocally(?string $requestId = null): array
+    public function runApprovedLocally(?string $requestId = null, string $phase = 'execute'): array
     {
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || ($phase !== 'execute' && $requestId === null)) throw new RuntimeException('POP recovery requires one explicit request and valid phase.');
         $lockName = 'alltrue:pop:executor';
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
@@ -392,13 +480,13 @@ final class PopOperationService
         }
 
         try {
-            return $this->claimApprovedLocally($requestId);
+            return $this->claimApprovedLocally($requestId, $phase);
         } finally {
             DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
     }
 
-    private function claimApprovedLocally(?string $requestId): array
+    private function claimApprovedLocally(?string $requestId, string $phase): array
     {
         if ($requestId === null) {
             $pending = DB::table('pop_operation_requests')->where('status', 'approved');
@@ -431,13 +519,19 @@ final class PopOperationService
 
         try {
             $request = $this->request((string) $candidate->id);
-            if ((string) $request->status !== 'approved') {
+            $retry = $requestId !== null && $this->retryableFinancialExecute($request);
+            $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
+            $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
+                && (clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
+            if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
             }
             $approval = $this->localApproval($request);
             $commitSha = (string) $approval->commit_sha;
             $this->assertLocalDeployment($commitSha);
             $token = $this->reconstructToken($request, $approval, $commitSha);
+            if ($phase !== 'execute') return $this->localSummary($request, $this->run((string) $request->id, $phase, $token, $commitSha, 'pop-pi-local'));
             $execute = $this->run((string) $request->id, 'execute', $token, $commitSha, 'pop-pi-local');
             if (($execute['result'] ?? null) !== 'succeeded') {
                 return $this->localSummary($request, $execute);
@@ -448,6 +542,17 @@ final class PopOperationService
         } finally {
             DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
+    }
+
+    /** Explicit Pi-local retries only; the ordinary scheduler never requeues failed requests. */
+    private function retryableFinancialExecute(object $request): bool
+    {
+        if ((string) $request->status !== 'failed' || !$this->atomicFinancialRepair((string) $request->strategy_id)) return false;
+        $executions = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute');
+        return ((clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
+                || DB::table('pop_execution_records')->where('operation_id', $request->id)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->exists())
+            && !(clone $executions)->where('result', 'succeeded')->exists()
+            && !DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rollback')->exists();
     }
 
     /** @param array<string,mixed> $parameters */
@@ -624,6 +729,8 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isReviewedFinancialCase($entry)) return $roles;
+
         $isFounderScopedRepair = $policy === 'founder-explicit-single-repair'
             && ($entry['id'] ?? null) === 'course-contract-repair'
             && ($entry['founder_approval_required'] ?? false) === true
@@ -718,6 +825,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactPackageLedgerNetRepair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'exact_manifest_package_ledger_rows_insert_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactPastScheduledCancel($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -793,6 +915,80 @@ final class PopOperationService
         }
     }
 
+    /**
+     * A reviewed financial approval is usable only when a protected, expiring
+     * Founder decision manifest binds the operation, immutable request, requester,
+     * approver and exact approval reference. The checked-in policy stays empty.
+     * @param array<string,mixed> $entry @param array<string,mixed> $parameters
+     */
+    private function reviewedFinancialCaseTuple(array $entry, array $parameters, string $key, string $requester,
+        ?string $reference, ?string $approver, ?int $approverId, ?int $ttlMinutes = null): array
+    {
+        $configuredPath = config('pop.reviewed_financial_cases_path');
+        $path = $this->financialCaseAuthorizationPath
+            ?? (is_string($configuredPath) && $configuredPath !== '' ? $configuredPath : storage_path('app/private/pop/reviewed-financial-cases.json'));
+        $policy = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $cases = is_array($policy) ? ($policy['eligible_cases'] ?? null) : null;
+        if (($policy['version'] ?? null) !== 1 || !is_array($cases) || !array_is_list($cases) || count($cases) !== 1) {
+            throw new RuntimeException('Reviewed financial operation has no exact active Founder authorization.');
+        }
+        $case = $cases[0];
+        $fields = ['operation_id', 'parameters_sha256', 'idempotency_sha256', 'requester_sha256', 'approver_sha256', 'approval_reference', 'valid_until'];
+        if (!is_array($case) || array_diff(array_keys($case), $fields) !== [] || array_diff($fields, array_keys($case)) !== []) {
+            throw new RuntimeException('Reviewed financial Founder authorization tuple is malformed.');
+        }
+        foreach (['parameters_sha256', 'idempotency_sha256', 'requester_sha256', 'approver_sha256'] as $field) {
+            if (!is_string($case[$field]) || !preg_match('/^[0-9a-f]{64}$/', $case[$field])) {
+                throw new RuntimeException('Reviewed financial Founder authorization digest is malformed.');
+            }
+        }
+        try { $expiry = is_string($case['valid_until']) ? Carbon::parse($case['valid_until']) : null; }
+        catch (Throwable) { throw new RuntimeException('Reviewed financial Founder authorization expiry is malformed.'); }
+        $parametersHash = hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        $requesterHash = hash('sha256', $requester);
+        if (($case['operation_id'] ?? null) !== ($entry['id'] ?? null)) throw new RuntimeException('Reviewed financial authorization operation mismatch.');
+        if (!hash_equals($case['parameters_sha256'], $parametersHash)) throw new RuntimeException('Reviewed financial authorization parameters mismatch.');
+        if (!hash_equals($case['idempotency_sha256'], hash('sha256', $key))) throw new RuntimeException('Reviewed financial authorization key mismatch.');
+        if (!hash_equals($case['requester_sha256'], $requesterHash)) throw new RuntimeException('Reviewed financial authorization requester mismatch.');
+        if (!is_string($case['approval_reference'])
+            || $case['approval_reference'] !== 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16)) {
+            throw new RuntimeException('Reviewed financial authorization reference mismatch.');
+        }
+        if (!$expiry || $expiry->utc()->format('Y-m-d\\TH:i:s\\Z') !== $case['valid_until'] || $expiry->timestamp <= now()->timestamp) {
+            throw new RuntimeException('Reviewed financial authorization expiry is invalid or expired.');
+        }
+        if ($reference !== null && $ttlMinutes !== null && now()->addMinutes($ttlMinutes)->timestamp > $expiry->timestamp) {
+            throw new RuntimeException('Reviewed financial approval TTL exceeds the exact authorization expiry.');
+        }
+        if ($reference !== null && ($reference !== $case['approval_reference'] || $approverId === null
+            || $approver !== 'user:' . $approverId || !hash_equals($case['approver_sha256'], hash('sha256', $approver)))) {
+            throw new RuntimeException('Reviewed financial approval does not match the exact authorized case and operation.');
+        }
+        return $case;
+    }
+
+    /** A completed, exact authorization remains sufficient for verify/rollback after its issuance window closes. */
+    private function assertPriorReviewedFinancialCaseApproval(object $request, array $parameters, array $entry,
+        ?string $approvalReference = null, ?string $approver = null, ?int $approverId = null): void
+    {
+        if ((int) $request->catalog_version !== $this->catalog->version()) {
+            throw new RuntimeException('POP request catalog version is stale; fail closed.');
+        }
+        $parametersHash = hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        $reference = 'founder-go-' . $entry['id'] . '-' . substr($parametersHash, 0, 16);
+        $event = DB::table('pop_approval_events')->where('operation_id', $request->id)->where('event_type', 'approved')
+            ->where('approver_role', 'super_admin')->where('approval_reference', $reference)
+            ->where('parameters_hash', $parametersHash)->whereNotNull('approver_id')->first();
+        if (!$event || (string) $event->approver !== 'user:' . (int) $event->approver_id) {
+            throw new RuntimeException('POP continuation lacks its original exact reviewed financial approval.');
+        }
+        if ($approvalReference !== null && ($approvalReference !== $reference || $approverId === null
+            || $approver !== 'user:' . $approverId || (int) $event->approver_id !== $approverId
+            || (string) $event->approver !== $approver)) {
+            throw new RuntimeException('POP continuation approval must use the original exact case approver and reference.');
+        }
+    }
+
     /** Eligibility is policy, never approval: an authenticated DB event is still required. */
     private function isReviewedMonthly(array $entry): bool
     {
@@ -832,12 +1028,40 @@ final class PopOperationService
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
     }
 
+    /** Prepared exact single-record repair shapes; activation and every immutable case still require Founder approval. */
+    private function isReviewedFinancialCase(array $e): bool
+    {
+        $shapes = [
+            'reviewed-unpaid-invoice-charge-alignment' => ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
+                ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_unpaid_invoice_total'],
+            'reviewed-legacy-reversal-restatement' => ['App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',
+                ['campus_id', 'plan', 'decision_reference'], 'one_exact_unlinked_negative_posting'],
+            'reviewed-mismatched-pending-return' => [Strategies\PaymentReportPendingReturnStrategy::class,
+                ['campus_id', 'student_id', 'course_id', 'invoice_id', 'report_id', 'expected_reported_amount', 'expected_charge', 'expected_invoice_total', 'decision_reference', 'reason', 'expected_state_hash'], 'one_exact_mismatched_pending_report'],
+        ];
+        $shape = $shapes[$e['id'] ?? ''] ?? null;
+        if (!$shape || [$e['strategy_class'] ?? null, $e['parameter_keys'] ?? null, $e['blast_radius'] ?? null] !== $shape) return false;
+        foreach (['founder_approval_required', 'reversible', 'snapshot_required', 'transaction_required', 'rollback_supported', 'verification_required', 'approval_required'] as $key)
+            if (($e[$key] ?? false) !== true) return false;
+        return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
+            && ($e['approval_policy'] ?? null) === 'founder-exact-reviewed-financial' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
+    }
+
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
     private function isExactInvoice1997StaleValues(array $entry): bool
     {
         return ($entry['id'] ?? null) === 'invoice1997-stale-values-20261008'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\Invoice1997StaleValuesStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice1997-stale-values'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (GitHub #4455, shared package ledger rows). */
+    private function isExactPackageLedgerNetRepair(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'package-ledger-net-repair-4455'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\PackageLedgerNetRepairStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-package-ledger-net-repair'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 
@@ -939,7 +1163,7 @@ final class PopOperationService
         return $expiresAt . '.' . hash_hmac('sha256', $body, $key);
     }
 
-    private function validApproval(object $request, string $token, string $commitSha): ?object
+    private function validApproval(object $request, string $token, string $commitSha, string $phase): ?object
     {
         $this->assertCommitSha($commitSha);
         $parts = explode('.', $token, 2);
@@ -951,10 +1175,7 @@ final class PopOperationService
             return null;
         }
         $entry = $this->catalog->operation((string) $request->operation_id);
-        $approvals = DB::table('pop_approval_events')
-            ->where('operation_id', $request->id)
-            ->where('event_type', 'approved')
-            ->get();
+        $approvals = $this->approvals($request)->get();
         $requiredRoles = $this->quorumRoles($entry, $approvals, (string) $request->id);
         $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $approvedRoles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
@@ -972,9 +1193,11 @@ final class PopOperationService
         if ((string) $approval->parameters_hash !== (string) $request->parameters_hash) {
             return null;
         }
+        if (($approval->phase === 'rollback' && $phase !== 'rollback') || ($approval->phase === 'recovery' && !in_array($phase, ['verify', 'rollback'], true))) return null;
+        if ($approval->phase === 'execute-recovery' && !$this->existing($request, 'execute') && ($phase !== 'execute' || $this->financialRecoveryPhase($request) !== 'execute-recovery')) return null;
 
         return hash_equals((string) $approval->token_hash, hash('sha256', $token))
-            && hash_equals($token, $this->sign($request, 'execute', $commitSha, $expiresAt))
+            && hash_equals($token, $this->sign($request, (string) $approval->phase, $commitSha, $expiresAt))
             ? $approval
             : null;
     }
@@ -986,6 +1209,8 @@ final class PopOperationService
             ->where('operation_id', $request->id)
             ->where('event_type', 'approved')
             ->get();
+        $current = $approvals->filter(fn ($row) => Carbon::parse((string) $row->expires_at)->isFuture());
+        if ($this->atomicFinancialRepair((string) $request->strategy_id) && $current->isNotEmpty()) $approvals = $current;
         $requiredRoles = $this->quorumRoles($entry, $approvals, (string) $request->id);
         $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $roles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
@@ -1007,7 +1232,7 @@ final class PopOperationService
     private function reconstructToken(object $request, object $approval, string $commitSha): string
     {
         $expiresAt = Carbon::parse((string) $approval->expires_at)->timestamp;
-        $token = $this->sign($request, 'execute', $commitSha, $expiresAt);
+        $token = $this->sign($request, (string) $approval->phase, $commitSha, $expiresAt);
         if (!hash_equals((string) $approval->token_hash, hash('sha256', $token))) {
             throw new RuntimeException('POP local executor token hash mismatch; fail closed.');
         }
@@ -1055,9 +1280,7 @@ final class PopOperationService
     /** @return array<int,string> */
     private function approvedRoles(string $requestId): array
     {
-        return DB::table('pop_approval_events')
-            ->where('operation_id', $requestId)
-            ->where('event_type', 'approved')
+        return $this->approvals($this->request($requestId))
             ->pluck('approver_role')
             ->map(fn ($role): string => (string) $role)
             ->unique()
@@ -1065,12 +1288,32 @@ final class PopOperationService
             ->all();
     }
 
+    private function financialRecoveryPhase(object $request): ?string
+    {
+        if (!$this->atomicFinancialRepair((string) $request->strategy_id)) return null;
+        $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
+        if ((clone $records)->where('phase', 'rollback')->where('result', 'rolled_back')->exists()) return null;
+        if ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists())
+            return (clone $records)->where('phase', 'rollback')->exists() ? 'rollback' : 'recovery';
+        $proof = (clone $records)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->first();
+        if (!$proof && $this->retryableFinancialExecute($request)) return 'execute-recovery';
+        $snapshot = $proof ? json_decode((string) $proof->snapshot, true, 512, JSON_THROW_ON_ERROR) : []; $parameters = $snapshot['parameters'] ?? $snapshot['request_parameters'] ?? [];
+        return $proof && hash_equals((string) $request->parameters_hash, hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR)))
+            && !(clone $records)->where('phase', 'rollback')->exists() ? 'execute-recovery' : null;
+    }
+
+    private function approvals(object $request): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('pop_approval_events')->where('operation_id', $request->id)->where('event_type', 'approved')
+            ->when($this->financialRecoveryPhase($request) !== null, fn ($q) => $q->where('expires_at', '>', now()));
+    }
+
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @return array<string,mixed> */
-    private function safePlan(array $entry, array $parameters): array
+    private function safePlan(array $entry, array $parameters, string $requestId): array
     {
         try {
             $strategy = app((string) $entry['strategy_class']);
-            $plan = $strategy->plan($parameters);
+            $plan = $strategy->plan($parameters, ['operation_id' => $requestId]);
 
             return is_array($plan) ? $plan : ['ok' => false, 'errors' => ['strategy_plan_invalid']];
         } catch (Throwable) {
@@ -1098,7 +1341,7 @@ final class PopOperationService
         if ($existing) {
             return $existing;
         }
-        $plan = $this->safePlan($entry, $parameters);
+        $plan = $this->safePlan($entry, $parameters, (string) $request->id);
 
         return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole, $requestFingerprint);
     }
@@ -1144,7 +1387,7 @@ final class PopOperationService
         $idempotencyKey = $request->idempotency_key . ':' . $phase;
         $attemptNo = 1;
         $attemptKey = $idempotencyKey;
-        if ($phase === 'dry-run') {
+        if ($phase === 'dry-run' || (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id))) {
             $attemptNo = ((int) DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)
                 ->where('phase', $phase)
@@ -1291,6 +1534,12 @@ final class PopOperationService
 
     private function existing(object $request, string $phase): ?array
     {
+        if (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id)) {
+            $row = DB::table('pop_execution_records')->where('operation_id', $request->id)
+                ->where('phase', $phase)->where('result', $this->resultFor($phase, true, null))->orderByDesc('attempt_no')->first();
+            return $row ? json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR)
+                + ['execution_id' => $row->execution_id, 'phase' => $phase] : null;
+        }
         $row = $phase === 'dry-run'
             ? DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)

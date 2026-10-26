@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { assertDirectorDashboardTelemetry } from './fixtures/directorDashboardTelemetry.js';
-import { assertTutoringReceivableControls } from './fixtures/tutoringReceivableControls.js';
+import { assertTutoringReceivableControls, invoiceReceivableControls } from './fixtures/tutoringReceivableControls.js';
 
 /** Authenticated, read-only production acceptance for In-App #325. */
 test.use({ serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
@@ -246,8 +246,8 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       const stop = field(row, 'Stop', 'stop');
       return stop !== null && stop !== undefined && (stop === 0 || stop === '0');
     };
-    const regularUnpaid = scopedCourses.filter((row) => active(row) && !isTutoring(row) && amount(row, 'Charge', 'charge') > amount(row, 'Pay', 'paid'));
-    const regularOutstanding = regularUnpaid.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
+    const receivables = invoiceReceivableControls(courses, BRANCH_ID);
+    const regularUnpaid = scopedCourses.filter((row) => receivables.regularIds.includes(String(field(row, 'id', 'ID', 'class_id') || '')));
     const activeTutoring = tutoring.filter(active);
     const tutoringOutstanding = activeTutoring.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
     const alerts = rows(await getJson(request, `/api/v1/alerts/tuition?branch_id=${BRANCH_ID}`, token));
@@ -256,11 +256,11 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     expect(aging).toHaveProperty('totals');
     const coverage = assertTutoringReceivableControls({
       branchId: BRANCH_ID,
-      tutoringIds: activeTutoring.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')),
-      regularIds: regularUnpaid.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')),
+      tutoringIds: receivables.tutoringIds,
+      regularIds: receivables.regularIds,
       alertIds,
       agingTotal: Number(aging.totals.grand_total || 0),
-      regularOutstanding,
+      regularOutstanding: receivables.regularOutstanding,
       tutoringOutstanding,
     });
     await test.info().attach('live-tutoring-control-coverage.json', {
@@ -271,7 +271,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const expectedByStudent = new Map();
     for (const row of regularUnpaid) {
       const student = String(field(row, 'StudentID', 'student_id') || '');
-      expectedByStudent.set(student, (expectedByStudent.get(student) || 0) + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')));
+      expectedByStudent.set(student, (expectedByStudent.get(student) || 0) + row.billing_verdict.outstanding);
     }
     for (const [student, expected] of expectedByStudent) {
       expect(agingByStudent.get(student), `regular student ${student} paired AR control`).toBe(expected);

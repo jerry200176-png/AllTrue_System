@@ -184,9 +184,10 @@ class AccountingController extends Controller
             $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
             $status = $stoppedStatuses[(int) $course->getAttribute('ID')] ?? null;
             $state = $status !== null && (int) $course->getAttribute('Stop') === 1 ? $this->stoppedCourseVisibleState($course, $status) : null;
-            $pendingReconciliation = $state === 'pending';
-            $paymentReview = $state === 'review';
-            if ($state === 'pending' || $state === 'review') {
+            // pending_review (#4124): count as pending (amount in totals) and keep payment_review hint.
+            $pendingReconciliation = $state === 'pending' || $state === 'pending_review';
+            $paymentReview = $state === 'review' || $state === 'pending_review';
+            if ($state === 'pending' || $state === 'review' || $state === 'pending_review') {
                 $invoiceTotal = (int) $status['payable_total'];
                 $appliedTotal = (int) $status['applied'];
                 $outstandingTotal = (int) $status['outstanding'];
@@ -221,9 +222,11 @@ class AccountingController extends Controller
                 'has_exception' => $overpaidTotal > 0,
                 'pending_reconciliation' => $pendingReconciliation,
                 'payment_review_required' => $paymentReview,
-                'reconciliation_label' => $pendingReconciliation
-                    ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
-                    : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null)),
+                'reconciliation_label' => $state === 'pending_review'
+                    ? '課已結束，尚未收款 · 月結帳單與上課堂數不符，請核對'
+                    : ($pendingReconciliation
+                        ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
+                        : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null))),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
@@ -245,6 +248,7 @@ class AccountingController extends Controller
 
     /**
      * Stopped contract: 'pending' (resolver says it still owes), 'review' (payment period unattributable),
+     * 'pending_review' (#4124: review_required + issued open bill — pending totals + review hint),
      * 'history' (closed settled_pending/amended but the resolver says paid) or null.
      * waived is history with outstanding 0, never pending.
      *
@@ -256,7 +260,9 @@ class AccountingController extends Controller
             return null;
         }
         if ($status['status'] === 'review_required') {
-            return 'review';
+            // #4124: issued open bill under review stays findable as pending (matches tuition) and keeps a review hint.
+            // Review without an issued open balance stays review-only on both pages.
+            return BillingPayableResolver::isAmountPendingConfirmation($course, $status) ? 'pending_review' : 'review';
         }
         // Settled by Payment rows although the invoice/closure state says otherwise: keep it in history.
         if ($status['status'] === 'paid' && in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true)) {
@@ -456,7 +462,7 @@ class AccountingController extends Controller
             ->pluck('first_session_date', 'StudentClassID');
 
         $invoices = Invoice::with(['studentClass', 'items', 'payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id', 'receipt_url'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
@@ -472,12 +478,13 @@ class AccountingController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        $restatedPaymentIds = \App\Services\Billing\PaymentReversalRestatement::recordedDispositionIds($invoices->flatMap(fn ($i) => $i->payments));
         $reportsByPaymentId = $reports->whereNotNull('payment_id')->keyBy('payment_id');
         $reportsById = $reports->keyBy('id');
         $reportsByInvoiceId = $reports->whereNotNull('InvoiceID')->groupBy('InvoiceID');
         $anomalies = [];
 
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $payments = $invoice->payments;
@@ -529,17 +536,50 @@ class AccountingController extends Controller
                 );
             }
 
+            // A receipt cancelled by a later reversal row (撤銷: Method 'void' / negative Amount, same report) is no
+            // longer money on this invoice. Allocating it anyway showed an already-reversed receipt as 多收.
+            $reversedReceiptIds = [];
+            $receiptRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) > 0 && (string) ($p->Method ?? '') !== 'void'
+                && !isset($restatedPaymentIds[(int) $p->id]))->sortBy('id')->values();
+            $reversalRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void')->sortBy('id');
+            foreach ($reversalRows as $reversal) {
+                $reportId = (int) ($reversal->payment_report_id ?? 0);
+                $amount = abs((int) ($reversal->Amount ?? 0));
+                $reversedReport = $reportId > 0 ? $reportsById->get($reportId) : null;
+                $match = $receiptRows->first(fn ($p) => !isset($reversedReceiptIds[(int) $p->id]) && $reportId > 0
+                    && (int) $p->Amount === $amount
+                    && ((int) ($p->payment_report_id ?? 0) === $reportId || (int) ($reversedReport->payment_id ?? 0) === (int) $p->id));
+                // Older reversals carry no report id: pair them with an earlier receipt of the same amount whose
+                // receipt was voided (or never had one), never with a receipt that is still confirmed.
+                if (!$match && $reportId === 0) {
+                    $match = $receiptRows->first(function ($p) use ($reversedReceiptIds, $amount, $reversal, $reportsByPaymentId, $reportsById) {
+                        if (isset($reversedReceiptIds[(int) $p->id]) || (int) $p->Amount !== $amount || (int) $p->id >= (int) $reversal->id) {
+                            return false;
+                        }
+                        $receiptReport = $reportsByPaymentId->get((int) $p->id)
+                            ?? ($p->payment_report_id ? $reportsById->get((int) $p->payment_report_id) : null);
+                        return !$receiptReport || $receiptReport->status === 'voided';
+                    });
+                }
+                if ($match) {
+                    $reversedReceiptIds[(int) $match->id] = true;
+                }
+            }
+
             $remainingInvoiceAmount = $totalAmount;
-            $paymentRows = $payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
+            $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reversedReceiptIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
-                $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                $isRestatement = isset($restatedPaymentIds[(int) $payment->id]);
+                // Recorded zero-value history uses the existing 已更正 chip, never an applied cash receipt.
+                $isVoid = $isRestatement || (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
                 $amount = (int) ($payment->Amount ?? 0);
                 $appliedToInvoice = 0;
                 $unappliedAmount = 0;
-                $applicationStatus = $isVoid ? 'voided' : 'applied';
+                $isReversed = isset($reversedReceiptIds[(int) $payment->id]);
+                $applicationStatus = $isVoid || $isReversed ? 'voided' : 'applied';
 
-                if (!$isVoid && $amount > 0) {
+                if (!$isVoid && !$isReversed && $amount > 0) {
                     $appliedToInvoice = min($amount, max(0, $remainingInvoiceAmount));
                     $remainingInvoiceAmount -= $appliedToInvoice;
                     $unappliedAmount = max(0, $amount - $appliedToInvoice);
@@ -633,6 +673,10 @@ class AccountingController extends Controller
                 // #4115: every line belongs to this bill's own course (no multi-course or hand-entered lines).
                 'single_course_items' => $invoice->items->isNotEmpty()
                     && $invoice->items->every(fn ($item) => (int) $item->StudentClassID === (int) $invoice->StudentClassID),
+                // #3912: every course the bill covers (anchor + its lines), the same union BillingController uses.
+                'covered_student_class_ids' => collect([(int) $invoice->StudentClassID])
+                    ->merge($invoice->items->map(fn ($item) => (int) $item->StudentClassID))
+                    ->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
                 // D3 (Founder 2026-10-15): a hand-priced bill is never compared with the contract Charge (see isHandPriced()).
                 'hand_priced' => $this->isHandPriced($invoice),
             ] + ($invoice->zero_amount_reason !== null ? ['zero_amount_reason' => $invoice->zero_amount_reason] : []); // #3991: 免費／贈送 badge
@@ -694,6 +738,15 @@ class AccountingController extends Controller
         $invoiceTotal = (int) $invoiceRows->sum('total_amount');
         $openInvoiceTotal = (int) $invoiceRows->where('status', '!=', 'void')->sum('total_amount');
 
+        // In-app #425: 金額待確認 only applies to a stopped contract (BillingPayableResolver::isAmountPendingConfirmation),
+        // so the resolver runs for stopped courses only; none stopped = no extra query.
+        $stoppedClasses = $classes->filter(fn (StudentClass $c) => (int) ($c->getAttribute('Stop') ?? 0) === 1)->values();
+        $stoppedVerdicts = $stoppedClasses->isEmpty() ? [] : app(BillingPayableResolver::class)
+            ->courseStatusesByStudentClassIds($stoppedClasses->pluck('ID')->map(fn ($id) => (int) $id)->all(), $stoppedClasses);
+        $amountPendingIds = $stoppedClasses
+            ->filter(fn (StudentClass $c) => BillingPayableResolver::isAmountPendingConfirmation($c, $stoppedVerdicts[(int) $c->ID] ?? []))
+            ->map(fn (StudentClass $c) => (int) $c->ID)->values()->all();
+
         return response()->json([
             'student' => [
                 'id' => (int) $student->id,
@@ -721,7 +774,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $freeGiftSettled = $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
@@ -739,6 +792,10 @@ class AccountingController extends Controller
                 'free_gift_settled' => $freeGiftSettled,
                 'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
+                // in-app #428: server-derived (same rule as legacy_paid_flag_only); the panel shows no 需核對 for it.
+                // #4339 review: only the course's own Paid=1 trial row (the one `paid` above reads), so it never marks a
+                // Paid=0 member of a paid trial package; whether the ledger derives `paid` from a package is a billing rule.
+                'trial_fee_recorded_by_date' => (int) ($class->Paid ?? 0) === 1 && $class->isTrialFeeRecordedByDate(),
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
                 'stop' => (int) ($class->Stop ?? 0) === 1,
@@ -746,6 +803,8 @@ class AccountingController extends Controller
                 // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
                 'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
                     ? (int) $class->PackageID : null,
+                // In-app #425: same 金額待確認 verdict as the tuition list (TuitionDocActions keeps 繳費單 disabled). Read-only.
+                'amount_pending_confirmation' => in_array((int) $class->ID, $amountPendingIds, true),
                 ];
             })->values()->all(),
             'invoices' => $invoiceRows->all(),

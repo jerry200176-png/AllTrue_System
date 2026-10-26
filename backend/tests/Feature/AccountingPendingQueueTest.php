@@ -182,11 +182,40 @@ class AccountingPendingQueueTest extends TestCase
 
         $settled = $this->row($c);
         $this->assertTrue($settled['payment_review_required']);
+        // #4124: issued open bill under review also counts as pending (same bucket as tuition's findable row).
+        $this->assertTrue($settled['pending_reconciliation']);
         $alert = $this->tuitionRow($c);
         $this->assertSame('amount_review', $alert['payment_status']);
         $this->assertSame((int) $verdict['outstanding'], $alert['pending_confirmation_amount']);
         $this->assertSame($settled['outstanding_amount'], $alert['pending_confirmation_amount']);
         $this->assertSame(3400, $alert['pending_confirmation_amount']);
+    }
+
+    /** #4124: review_required + issued open bill must share pending+amount on tuition and settled-courses. */
+    public function test_4124_review_with_open_invoice_aligns_tuition_and_settled_pending(): void
+    {
+        $c = $this->reviewMonthlyCourse();
+        $invoice = $this->invoice($c, 4400);
+        $invoice->forceFill(['billing_period' => '2026-09'])->save();
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $this->assertSame('review_required', $verdict['status']);
+        $this->assertSame('invoice', $verdict['source']);
+        $this->assertGreaterThan(0, (int) $verdict['outstanding']);
+
+        $alert = $this->tuitionRow($c);
+        $this->assertNotNull($alert);
+        $this->assertTrue($alert['amount_pending_confirmation']);
+        $settled = $this->row($c);
+        $this->assertNotNull($settled);
+        $this->assertTrue($settled['pending_reconciliation'], 'settled page must count the open bill as pending (#4124)');
+        $this->assertTrue($settled['payment_review_required'], 'keep the review hint');
+        $this->assertSame((int) $alert['pending_confirmation_amount'], (int) $settled['outstanding_amount']);
+        $this->assertSame((int) $verdict['outstanding'], (int) $settled['outstanding_amount']);
+
+        $summary = $this->getJson('/api/v1/accounting/settled-courses?branch_id=1', $this->headers)->assertOk()->json('summary');
+        $this->assertGreaterThanOrEqual(1, (int) $summary['pending_reconciliation_count']);
+        $this->assertGreaterThanOrEqual((int) $settled['outstanding_amount'], (int) $summary['pending_reconciliation_total']);
     }
 
     public function test_review_required_with_pending_parent_report_stays_confirmable_and_marked_pending(): void
@@ -259,6 +288,23 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertFalse($json['amount_pending_confirmation']);
         $this->assertSame(1200, $json['total_amount']);
         $this->assertSame(0, $json['remaining']);
+    }
+
+    public function test_ledger_course_carries_the_same_pending_confirmation_verdict_as_the_tuition_list(): void
+    {
+        // In-app #425: the ledger card's 繳費單 stays disabled exactly when the tuition list says 金額待確認.
+        $pending = $this->reviewMonthlyCourse();
+        $this->invoice($pending, 4400)->forceFill(['billing_period' => '2026-09'])->save();
+        $this->assertTrue($this->tuitionRow($pending)['amount_pending_confirmation'], 'fixture: the course must be 金額待確認');
+        $course = collect($this->getJson("/api/v1/accounting/ledger?student_class_id={$pending->ID}", $this->headers)
+            ->assertOk()->json('courses'))->firstWhere('id', (int) $pending->ID);
+        $this->assertTrue($course['amount_pending_confirmation']);
+
+        $settled = $this->course(['closed_reason' => 'settled']);
+        $this->invoice($settled, 8800);
+        $course = collect($this->getJson("/api/v1/accounting/ledger?student_class_id={$settled->ID}", $this->headers)
+            ->assertOk()->json('courses'))->firstWhere('id', (int) $settled->ID);
+        $this->assertFalse($course['amount_pending_confirmation']);
     }
 
     public function test_tuition_slip_still_works_for_a_confirmed_unpaid_stopped_contract(): void

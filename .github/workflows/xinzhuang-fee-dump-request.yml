@@ -1,0 +1,127 @@
+# governance-capability: non-production
+name: Xinzhuang fee dump request
+
+# Cloud agents often lack workflow_dispatch. Mirror bug-detail-dump: push a request
+# file on main → dispatch Production Case Dump for allowlisted course IDs only.
+# Child workflow still uses production-ssh + DUMP_ARTIFACT_KEY fail-closed.
+# Not inventory-listed: dispatcher has no SSH/artisan markers; child production-case-dump.yml stays classified.
+#
+# Serialize dispatches: production-ssh environment approval cancels sibling pending
+# deployments when three dumps are fired back-to-back (seen: 3753 cancelled on #4293 land).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/xinzhuang-fee-dump.request.md'
+      - '.github/workflows/xinzhuang-fee-dump-request.yml'
+  workflow_dispatch:
+    inputs:
+      student_class_ids:
+        description: 'Comma-separated StudentClass IDs (allowlisted: 4064,3753,3693)'
+        required: true
+        type: string
+
+concurrency:
+  group: xinzhuang-fee-dump-request
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    # Three serial dumps × env approval + probe; keep headroom under Actions limits.
+    timeout-minutes: 45
+    steps:
+      - name: Checkout request
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            operations/closeout/xinzhuang-fee-dump.request.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Parse allowlisted course IDs
+        id: cfg
+        env:
+          DISPATCH_IDS: ${{ inputs.student_class_ids || '' }}
+        run: |
+          set -euo pipefail
+          IDS=$(python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          allowed = {'4064', '3753', '3693'}
+          raw = (os.environ.get('DISPATCH_IDS') or '').strip()
+          if not raw:
+              text = Path('operations/closeout/xinzhuang-fee-dump.request.md').read_text(encoding='utf-8')
+              m = re.search(r'(?m)^student_class_ids:\s*([0-9,\s]+)\s*$', text)
+              if not m:
+                  raise SystemExit('student_class_ids missing (request file or workflow_dispatch input)')
+              raw = m.group(1)
+          ids = [p.strip() for p in raw.split(',') if p.strip()]
+          if not ids:
+              raise SystemExit('student_class_ids empty')
+          bad = [i for i in ids if i not in allowed]
+          if bad:
+              raise SystemExit(f'student_class_ids not allowlisted: {bad}; allowed={sorted(allowed)}')
+          if len(ids) != len(set(ids)):
+              raise SystemExit('duplicate student_class_ids')
+          print(','.join(ids))
+          PY
+          )
+          echo "ids=$IDS" >> "$GITHUB_OUTPUT"
+          echo "Parsed allowlisted ids: $IDS"
+
+      - name: Dispatch production-case-dump per course (serial)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDS: ${{ steps.cfg.outputs.ids }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -r -a ARR <<< "$IDS"
+
+          wait_for_new_run() {
+            local before="$1"
+            local deadline=$((SECONDS + 120))
+            local rid=""
+            while (( SECONDS < deadline )); do
+              rid=$(gh run list \
+                --repo "${{ github.repository }}" \
+                --workflow=production-case-dump.yml \
+                --event=workflow_dispatch \
+                --limit 5 \
+                --json databaseId \
+                --jq "[.[] | select(.databaseId > ${before})] | sort_by(.databaseId) | .[0].databaseId // empty")
+              if [[ -n "$rid" ]]; then
+                echo "$rid"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "timed out waiting for new production-case-dump run (before=$before)" >&2
+            return 1
+          }
+
+          for id in "${ARR[@]}"; do
+            before=$(gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow=production-case-dump.yml \
+              --event=workflow_dispatch \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // 0')
+            echo "Dispatching xinzhuang_fee_cases student_class_id=$id (before_run=$before)"
+            gh workflow run production-case-dump.yml \
+              --repo "${{ github.repository }}" \
+              --ref main \
+              -f case_key=xinzhuang_fee_cases \
+              -f student_class_id="$id"
+            run_id=$(wait_for_new_run "$before")
+            echo "Watching production-case-dump run $run_id for student_class_id=$id"
+            # Fail the dispatcher if a dump is cancelled/failed so we do not silently skip a course.
+            gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
+            echo "Completed run $run_id for student_class_id=$id"
+          done
+          echo "Serially completed ${#ARR[@]} production-case-dump run(s)."

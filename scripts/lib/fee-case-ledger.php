@@ -1,0 +1,289 @@
+<?php
+
+/** Bounded SELECT-only evidence. Caller supplies its reviewed case/campus allowlist. */
+function alltrue_fee_case_ledger(\Illuminate\Database\Connection $conn, int $courseId, int $campusId, string $campusName, bool $inspectOwnedLinks = false): array
+{
+    $out = ['read_only_transaction' => false, 'campus_bound' => $campusId,
+        'snapshot_complete' => false, 'completeness' => 'not_started'];
+    if ($conn->transactionLevel() !== 0) {
+        return $out + ['reason' => 'existing_transaction'];
+    }
+    $rows = static function ($query) {
+        $result = $query->limit(101)->get();
+        if ($result->count() > 100) throw new \LengthException('row_budget');
+        return $result;
+    };
+    $enum = static fn ($v, array $allowed) => $v === null ? null : (in_array($v, $allowed, true) ? $v : 'other');
+    $stage = 'connection';
+    try {
+        $conn->useWriteConnectionWhenReading();
+        $version = (string) $conn->getPdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
+        if (stripos($version, 'MariaDB') !== false) {
+            $conn->select('SET SESSION max_statement_time = 2', [], false);
+        } elseif (preg_match('/^(8\.|9\.|5\.7\.)/', $version)) {
+            $conn->select('SET SESSION max_execution_time = 2000', [], false);
+        } else { throw new \RuntimeException('unsupported_engine'); }
+        $conn->select('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ', [], false);
+        $conn->select('SET TRANSACTION READ ONLY', [], false);
+        $conn->beginTransaction();
+        $out['read_only_transaction'] = true;
+        $stage = 'campus';
+        if (!$conn->table('Campus')->where('id', $campusId)->where('name', $campusName)->exists()) {
+            throw new \RuntimeException('campus_mismatch');
+        }
+        $stage = 'contract';
+        $course = $conn->table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where('sc.ID', $courseId)->where('s.CampusID', $campusId)->first([
+                'sc.ID', 'sc.StudentID', 'sc.Charge', 'sc.Rate', 'sc.SessionCount', 'sc.TotalHours', 'sc.UsedSessions',
+                'sc.RemainingSessions', 'sc.Paid', 'sc.Pay', 'sc.PayDate', 'sc.Stop', 'sc.ScheduleMode', 'sc.ClassType',
+                'sc.PackageID', 'sc.closed_reason', 'sc.rate_unit', 'sc.StartDate', 'sc.EndDate',
+            ]);
+        if (!$course) throw new \RuntimeException('course_not_found_in_campus');
+        $studentId = (int) $course->StudentID;
+        $stage = 'invoice_items';
+        if ($conn->table('InvoiceItem as ii')->leftJoin('Invoice as i', 'i.id', '=', 'ii.InvoiceID')
+            ->where('ii.StudentClassID', $courseId)->whereNull('i.id')->exists()) {
+            throw new \RuntimeException('orphan_target_item');
+        }
+        $linked = $conn->table('Invoice')->where(function ($q) use ($courseId) {
+            $q->where('StudentClassID', $courseId)->orWhereIn('id', function ($items) use ($courseId) {
+                $items->select('InvoiceID')->from('InvoiceItem')->where('StudentClassID', $courseId);
+            });
+        });
+        if ((clone $linked)->where(fn ($q) => $q->where('StudentID', '<>', $studentId)->orWhereNull('StudentID'))->exists()) {
+            throw new \RuntimeException('invoice_owner_mismatch');
+        }
+        $invoices = $rows($linked->where('StudentID', $studentId)->orderBy('id')->select([
+            'id', 'StudentClassID', 'TotalAmount', 'PaidAmount', 'Status', 'IssueDate', 'DueDate', 'zero_amount_reason',
+            'billing_period', 'ScheduleModeAtIssue',
+        ]));
+        $ids = $invoices->pluck('id')->all();
+        // Shared invoices are identifiable without exporting other courses or their line amounts.
+        $allItems = $rows($conn->table('InvoiceItem')->whereIn('InvoiceID', $ids)->orderBy('id')
+            ->select(['id', 'InvoiceID', 'StudentClassID', 'Amount', 'PeriodStart', 'PeriodEnd']));
+        $referencedIds = $allItems->pluck('StudentClassID')->merge($invoices->pluck('StudentClassID'))
+            ->filter(static fn ($id) => $id !== null)->unique()->values()->all();
+        $owners = $rows($conn->table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->whereIn('sc.ID', $referencedIds)->orderBy('sc.ID')->select(['sc.ID', 'sc.StudentID', 's.CampusID']))->keyBy('ID');
+        foreach ($referencedIds as $id) {
+            $owner = $owners->get($id);
+            if (!$owner || (int) $owner->StudentID !== $studentId || (int) $owner->CampusID !== $campusId) {
+                throw new \RuntimeException('typed_invoice_reference_owner_mismatch');
+            }
+        }
+        $stage = 'reports';
+        $reports = $rows($conn->table('payment_reports')->where(function ($q) use ($ids, $courseId, $conn) {
+            $q->where('StudentClassID', $courseId)->orWhereIn('InvoiceID', $ids)
+                ->orWhereIn('payment_id', $conn->table('Payment')->whereIn('InvoiceID', $ids)->select('id'));
+        })->orderBy('id')->select(['id', 'StudentID', 'StudentClassID', 'InvoiceID', 'reported_amount',
+            'status', 'payment_id', 'payment_method', 'payment_date', 'confirmed_at', 'voided_at']));
+        foreach ($reports as $r) {
+            if ((int) $r->StudentID !== $studentId || (int) $r->StudentClassID !== $courseId
+                || ($r->InvoiceID !== null && !in_array($r->InvoiceID, $ids))) {
+                throw new \RuntimeException('report_owner_mismatch');
+            }
+        }
+        $linkIssues = [];
+        $linkIssue = static function (string $code) use (&$linkIssues, $inspectOwnedLinks): void {
+            if (!$inspectOwnedLinks) throw new \RuntimeException($code);
+            $linkIssues[$code] = true;
+        };
+        $stage = 'payments';
+        $payments = $rows($conn->table('Payment')->whereIn('InvoiceID', $ids)->orderBy('id')
+            ->select(['id', 'InvoiceID', 'Amount', 'Method', 'payment_report_id', 'PaidAt']));
+        $reportIds = $reports->pluck('id')->all();
+        foreach ($payments as $p) {
+            if ($p->payment_report_id !== null && !in_array($p->payment_report_id, $reportIds)) {
+                $linkIssue('payment_report_link_mismatch');
+            }
+        }
+        $seenReceipts = [];
+        foreach ($reports as $r) {
+            $anchors = $payments->filter(static fn ($p) => (int) $p->Amount > 0 && $p->Method !== 'void'
+                && ((int) $p->payment_report_id === (int) $r->id || ($r->payment_id !== null && (int) $p->id === (int) $r->payment_id)));
+            if ($anchors->count() > 1 || ($anchors->count() === 1 && isset($seenReceipts[$anchors->first()->id]))) {
+                $linkIssue('duplicate_receipt_link');
+            }
+            if ($anchors->count() === 1) $seenReceipts[$anchors->first()->id] = true;
+            if ($r->payment_id === null) continue;
+            $p = $payments->firstWhere('id', $r->payment_id);
+            if (!$p || (int) $p->Amount <= 0 || $p->Method === 'void' || (int) $p->InvoiceID !== (int) $r->InvoiceID
+                || ($p->payment_report_id !== null && (int) $p->payment_report_id !== (int) $r->id)) {
+                $linkIssue('report_payment_link_mismatch');
+            }
+        }
+        $seenReversals = [];
+        foreach ($payments as $p) {
+            if ($p->payment_report_id === null) {
+                if (((int) $p->Amount < 0 && $p->Method !== 'transfer_out') || $p->Method === 'void') $linkIssue('unlinked_reversal');
+                continue;
+            }
+            if ((int) $p->Amount < 0 || $p->Method === 'void') {
+                if (isset($seenReversals[$p->payment_report_id])) $linkIssue('duplicate_reversal_link');
+                $seenReversals[$p->payment_report_id] = true;
+            }
+            $r = $reports->firstWhere('id', $p->payment_report_id);
+            if (!$r || (int) $r->InvoiceID !== (int) $p->InvoiceID) {
+                $linkIssue('payment_invoice_link_mismatch');
+                continue;
+            }
+            if ((int) $p->Amount < 0 || $p->Method === 'void') {
+                $receipt = $payments->first(static fn ($a) => (int) $a->Amount > 0 && $a->Method !== 'void'
+                    && ((int) $a->payment_report_id === (int) $r->id || (int) $a->id === (int) $r->payment_id));
+                if (!$receipt || $r->status !== 'voided' || abs((int) $p->Amount) !== (int) $receipt->Amount
+                    || preg_match('/\A([1-9][0-9]*)(?:\.0+)?\z/', (string) $r->reported_amount, $parts) !== 1
+                    || filter_var($parts[1], FILTER_VALIDATE_INT) !== (int) $receipt->Amount) $linkIssue('reversal_provenance_mismatch');
+            }
+        }
+        $out['contract'] = (array) $course;
+        $out['contract']['ScheduleMode'] = $enum($course->ScheduleMode, ['date', 'count']);
+        $out['contract']['ClassType'] = $enum($course->ClassType, ['regular', 'trial', 'tutoring', 'one_on_one', 'one_on_two', 'one_on_three']);
+        $out['contract']['rate_unit'] = $enum($course->rate_unit, ['session', 'hour']);
+        $out['contract']['closed_reason'] = $enum($course->closed_reason === null ? null : strtolower(trim($course->closed_reason)),
+            ['', 'waived', 'usage_settled', 'contract_amended', 'settled_pending', 'settled', 'completed']);
+        $stage = 'pricing_amendments';
+        $out['pricing_amendments'] = $rows($conn->table('student_class_pricing_amendments')
+            ->where('student_class_id', $courseId)->orderBy('effective_from')->orderBy('id')
+            ->select(['id', 'effective_from', 'rate', 'rate_unit', 'created_at', 'voided_at']))
+            ->map(static function ($a) use ($enum) {
+                $row = (array) $a; $row['rate_unit'] = $enum($a->rate_unit, ['session', 'hour']); return $row;
+            })->all();
+        $out['invoices'] = $invoices->map(static function ($i) use ($payments, $allItems, $courseId, $enum) {
+            $net = $payments->where('InvoiceID', $i->id)->sum(static fn ($p) =>
+                $p->Method === 'void' || $p->Amount < 0 ? -abs((int) $p->Amount) : max(0, (int) $p->Amount));
+            return ['id' => $i->id, 'header_matches_course' => (int) $i->StudentClassID === $courseId,
+                'total_amount' => $i->TotalAmount, 'stored_paid_amount' => $i->PaidAmount, 'net_paid' => max(0, $net),
+                'status' => $enum($i->Status, ['unpaid', 'partial', 'paid', 'void']),
+                'billing_period' => $i->billing_period === null ? null
+                    : (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $i->billing_period) ? $i->billing_period : 'other'),
+                'schedule_mode_at_issue' => $enum($i->ScheduleModeAtIssue, ['date', 'count']),
+                'has_zero_amount_reason' => !empty($i->zero_amount_reason),
+                'issue_date' => $i->IssueDate, 'due_date' => $i->DueDate,
+                'unscoped_item_count' => $allItems->where('InvoiceID', $i->id)->whereNull('StudentClassID')->count(),
+                'other_course_item_count' => $allItems->where('InvoiceID', $i->id)->filter(
+                    static fn ($l) => $l->StudentClassID !== null && (int) $l->StudentClassID !== $courseId)->count()];
+        })->all();
+        $out['items'] = $allItems->filter(static fn ($l) => (int) $l->StudentClassID === $courseId)
+            ->map(static fn ($l) => ['id' => $l->id, 'invoice_id' => $l->InvoiceID, 'amount' => $l->Amount,
+                'period_start' => $l->PeriodStart, 'period_end' => $l->PeriodEnd])->values()->all();
+        $out['reports'] = $reports->map(static function ($r) use ($enum) {
+            $a = (array) $r; unset($a['StudentID'], $a['StudentClassID']);
+            $a['status'] = $enum($r->status, ['pending', 'confirmed', 'rejected', 'voided']);
+            $a['payment_method'] = $enum($r->payment_method, ['cash', 'transfer']); return $a;
+        })->all();
+        $out['payments'] = $payments->map(static function ($p) use ($enum) {
+            $a = (array) $p; $a['Method'] = $enum($p->Method, ['cash', 'transfer', 'credit_card', 'void', 'transfer_out', 'transfer_in', 'other']); return $a;
+        })->all();
+        $stage = 'unlinked_invoices';
+        $validCourseRef = static function ($q, string $column) use ($studentId, $campusId) {
+            $q->selectRaw('1')->from('StudentClass as valid_sc')->join('Student as valid_s', 'valid_s.id', '=', 'valid_sc.StudentID')
+                ->whereColumn('valid_sc.ID', $column)->where('valid_sc.StudentID', $studentId)->where('valid_s.CampusID', $campusId);
+        };
+        $unlinked = $rows($conn->table('Invoice as i')->where('i.StudentID', $studentId)
+            ->where(function ($q) use ($validCourseRef) {
+                $q->where(function ($bare) {
+                    $bare->whereNull('i.StudentClassID')->whereNotExists(function ($items) {
+                        $items->selectRaw('1')->from('InvoiceItem as ii')->whereColumn('ii.InvoiceID', 'i.id')->whereNotNull('ii.StudentClassID');
+                    });
+                })->orWhere(function ($header) use ($validCourseRef) {
+                    $header->whereNotNull('i.StudentClassID')->whereNotExists(fn ($course) => $validCourseRef($course, 'i.StudentClassID'));
+                })->orWhereExists(function ($items) use ($validCourseRef) {
+                    $items->selectRaw('1')->from('InvoiceItem as ii')->whereColumn('ii.InvoiceID', 'i.id')->whereNotNull('ii.StudentClassID')
+                        ->whereNotExists(fn ($course) => $validCourseRef($course, 'ii.StudentClassID'));
+                });
+            })->orderBy('i.id')->select(['i.id']));
+        $out['unlinked_invoice_ids'] = $unlinked->pluck('id')->all();
+        $stage = 'correction_history';
+        $schema = $conn->getSchemaBuilder();
+        $out['correction_table_present'] = $schema->hasTable('invoice_corrections');
+        $columns = $out['correction_table_present'] ? $schema->getColumnListing('invoice_corrections') : [];
+        $out['agreed_fee_extension_columns_present'] = $out['correction_table_present'] && array_diff(
+            ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'], $columns) === [];
+        $optional = array_values(array_intersect(['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total'], $columns));
+        $out['corrections'] = $out['correction_table_present']
+            ? $rows($conn->table('invoice_corrections')->where(fn ($q) => $q->where('student_class_id', $courseId)
+                ->orWhereIn('original_invoice_id', $ids)->orWhereIn('replacement_invoice_id', $ids)
+                ->orWhereIn('payment_report_id', $reportIds))->orderBy('id')
+                ->select(array_merge(['id', 'student_class_id', 'original_invoice_id', 'replacement_invoice_id', 'payment_report_id', 'amount', 'created_at'], $optional)))
+                ->map(static function ($c) use ($enum) {
+                    if (property_exists($c, 'kind')) $c->kind = $enum($c->kind, ['receipt_reissue', 'agreed_fee', 'agreed_fee_unbilled']);
+                    return $c;
+                })->all()
+            : [];
+        foreach ($out['corrections'] as $c) {
+            if ((int) $c->student_class_id !== $courseId || (isset($c->campus_id) && (int) $c->campus_id !== $campusId)
+                || ($c->original_invoice_id !== null && !in_array($c->original_invoice_id, $ids))
+                || ($c->replacement_invoice_id !== null && !in_array($c->replacement_invoice_id, $ids))
+                || ($c->payment_report_id !== null && !in_array($c->payment_report_id, $reportIds))) {
+                throw new \RuntimeException('correction_history_link_mismatch');
+            }
+        }
+        $out['security_audit_table_present'] = $schema->hasTable('security_audit_events');
+        $out['correction_schema_ready'] = $out['correction_table_present']
+            && $out['agreed_fee_extension_columns_present'] && $out['security_audit_table_present'];
+        $hasUnscoped = $allItems->whereNull('StudentClassID')->isNotEmpty();
+        $monthlyUnverified = $course->ScheduleMode === 'date' && collect($out['invoices'])->contains(static fn ($i) =>
+            $i['status'] === 'unpaid' && $i['net_paid'] === 0);
+        $out['link_issues'] = array_keys($linkIssues);
+        $out['snapshot_complete'] = $linkIssues === [] && $unlinked->isEmpty() && !$hasUnscoped && !$monthlyUnverified && $out['correction_schema_ready'];
+        $out['completeness'] = !$out['correction_schema_ready'] ? 'correction_schema_missing'
+            : ($hasUnscoped ? 'ambiguous_obligations' : ($unlinked->isEmpty() ? 'complete' : 'unlinked_obligations'));
+        if ($monthlyUnverified && $out['completeness'] === 'complete') $out['completeness'] = 'monthly_amount_unverified';
+        if ($linkIssues !== [] && $out['completeness'] === 'complete') $out['completeness'] = 'payment_links_inconsistent';
+        // Live UnpaidInvoiceChargeAlignmentStrategy preview (read-only). state_hash matches POP expected_state_hash.
+        // Domain ineligibility stays as eligible=false + strategy error code. Unexpected failures must not
+        // soft-pass the probe (bindable hash required for alignment targets — #4289 Codex P1).
+        $out['alignment_preview'] = alltrue_fee_alignment_preview($course, $invoices, $campusId, $courseId);
+        if (($out['alignment_preview']['error'] ?? null) === 'preview_failed') {
+            throw new \RuntimeException('alignment_preview_unavailable');
+        }
+    } catch (\Throwable $e) {
+        // Never emit SQL, connection configuration, exception messages or partial ledger payloads.
+        $out = array_intersect_key($out, array_flip(['read_only_transaction', 'campus_bound']));
+        $out += ['snapshot_complete' => false, 'completeness' => 'incomplete',
+            'failure_stage' => $stage,
+            'reason' => $e instanceof \LengthException ? 'row_budget_exceeded' : 'scope_schema_or_link_failed'];
+    } finally {
+        if ($conn->transactionLevel() > 0) $conn->rollBack();
+    }
+    return $out;
+}
+
+/**
+ * @param  \Illuminate\Support\Collection<int, object>  $invoices
+ * @return array{eligible: bool, state_hash?: string, old_total?: int, new_total?: int, error?: string}
+ */
+function alltrue_fee_alignment_preview(object $course, $invoices, int $campusId, int $courseId): array
+{
+    if ($invoices->count() !== 1) {
+        return ['eligible' => false, 'error' => 'invoice_scope'];
+    }
+    $inv = $invoices->first();
+    $params = [
+        'student_id' => (int) $course->StudentID,
+        'course_id' => $courseId,
+        'campus_id' => $campusId,
+        'invoice_id' => (int) $inv->id,
+        'expected_invoice_total' => (int) $inv->TotalAmount,
+        'expected_charge' => (int) $course->Charge,
+        // Preview-only reference; not part of state_hash. Must match strategy decision_reference grammar.
+        'decision_reference' => 'xinzhuang-align-'.$courseId.'-livehash',
+    ];
+    try {
+        $preview = app(\App\Operations\Strategies\UnpaidInvoiceChargeAlignmentStrategy::class)->preview($params);
+
+        return [
+            'eligible' => true,
+            'state_hash' => (string) $preview['state_hash'],
+            'old_total' => (int) $preview['old_total'],
+            'new_total' => (int) $preview['new_total'],
+            'invoice_id' => (int) $inv->id,
+            'student_id' => (int) $course->StudentID,
+        ];
+    } catch (\Throwable $e) {
+        $msg = $e->getMessage();
+        $code = preg_match('/invoice_alignment:([a-z0-9_]+)/', $msg, $m) === 1 ? $m[1] : 'preview_failed';
+
+        return ['eligible' => false, 'error' => $code];
+    }
+}

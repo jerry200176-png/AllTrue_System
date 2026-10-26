@@ -574,6 +574,7 @@
         :initial-engagement="userProfile?.engagement ?? null"
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
+        @navigate-exam="onNavigateExamFromTeacherHome"
       />
       <AttendancePage
         v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'attendance'"
@@ -586,6 +587,7 @@
       />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
+      <ExamGradesPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'exam-grades'" :branch-id="currentBranch" :user-role="role" :focus-round-id="examFocusRoundId" />
       <QuestionBankPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
@@ -888,6 +890,7 @@ const TrueFitApp = asyncPage(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = asyncPage(() => import('./pages/StudentsList.vue'));
 const LearningRecordsPage   = asyncPage(() => import('./pages/LearningRecordsPage.vue'));
 const AssessmentPage        = asyncPage(() => import('./pages/AssessmentPage.vue'));
+const ExamGradesPage        = asyncPage(() => import('./pages/ExamGradesPage.vue'));
 const QuestionBankPage      = asyncPage(() => import('./pages/QuestionBankPage.vue'));
 const SmartCalendar         = asyncPage(() => import('./pages/SmartCalendar.vue'));
 const DirectorDashboard     = asyncPage(() => import('./pages/DirectorDashboard.vue'));
@@ -1051,7 +1054,7 @@ const directorBranchScopedPages = new Set([
   'director', 'notifications', 'calendar', 'students', 'tuition-collect', 'tuition-report',
   'parttime-payroll', 'teacher-eligibility', 'teachers', 'course-mgmt', 'admission-inquiries',
   'classroom', 'subject-settings', 'subject-units', 'attendance', 'learning', 'assessments',
-  'question-banks', 'line-integration', 'binding-management', 'binding-conflicts',
+  'exam-grades', 'question-banks', 'line-integration', 'binding-management', 'binding-conflicts',
   'binding-health', 'chat', 'bugs', 'schedule-discrepancy', 'duplicate-review',
 ]);
 let authRevision = 0;
@@ -1091,6 +1094,7 @@ const onboardingPromptSteps = ref([]);
 const onboardingPromptState = ref(null);
 const onboardingCompletionVisible = ref(false);
 const focusBugId = ref(null);
+const examFocusRoundId = ref(null);
 const onboardingPromptIsResume = computed(() => onboardingPromptState.value?.status === 'in_progress');
 const onboardingPromptStartIndex = computed(() => onboardingStartIndex(
   onboardingPromptState.value,
@@ -1987,6 +1991,21 @@ function clearBugNavigationContext() {
   focusBugId.value = null;
 }
 
+function onNavigateExamFromTeacherHome(payload = {}) {
+  const roundId = payload?.examRoundId ?? payload?.exam_round_id ?? null;
+  const campusId = Number(payload?.campusId ?? payload?.campus_id ?? 0);
+  examFocusRoundId.value = roundId || null;
+  if (campusId > 0 && Number(currentBranch.value) !== campusId) {
+    try { localStorage.setItem('app_branch', String(campusId)); } catch { /* ignore */ }
+    currentBranch.value = campusId;
+  }
+  setActivePage('exam-grades');
+}
+
+function clearExamNavigationContext() {
+  examFocusRoundId.value = null;
+}
+
 function setActivePage(page, { history = 'push', preserveInboxContext = false } = {}) {
   if (page === 'truefit') {
     openTrueFitWorkspace();
@@ -2005,6 +2024,7 @@ function setActivePage(page, { history = 'push', preserveInboxContext = false } 
   if (page !== 'tuition-collect') clearTuitionNavigationContext();
   if (page !== 'course-mgmt') clearCourseMgmtNavigationContext();
   if (page !== 'bugs') clearBugNavigationContext();
+  if (page !== 'exam-grades') clearExamNavigationContext();
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';

@@ -12,7 +12,10 @@
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
-        <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">應繳 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
+        <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
+        <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
+        <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
       </div>
       <p v-if="!isMonthly && state === 'ready'" class="contract__left" data-testid="contract-left">剩 <strong>{{ upcomingCount }}</strong> 堂</p>
     </div>
@@ -32,7 +35,13 @@
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
-      <AtButton v-else-if="!noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
+      <AtButton v-else-if="!legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
+      <template v-if="showSlip">
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
+        <span v-if="!slipState.ok" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
+      </template>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -84,7 +93,7 @@
     </template>
     <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
       <p class="contract__confirm-text" data-testid="contract-confirm-text">
-        確認收到 {{ money(pendingReport?.amount) }}，這筆會算已收。入錯時，請用「撤銷收款」更正。
+        確認實際收到 {{ money(pendingReport?.amount) }}，這筆會算已收。這裡只確認回報金額，不能修改金額；不符請取消並退回回報。撤銷收款不會更改帳單應繳金額，帳單開錯需另行作廢並更正。
       </p>
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-confirm-cancel" @click="confirmOpen = false">取消</AtButton>
@@ -92,6 +101,7 @@
       </template>
     </AtDialog>
     <AtDialog :open="rejectOpen" title="退回這筆繳費回報" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
+      <p class="contract__confirm-text">退回只處理這筆待核對回報，不會更改帳單應繳金額，也不代表退款。</p>
       <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因（家長會看到）</label>
       <AtTextarea :id="`contract-reject-reason-${course.id}`" v-model="rejectReason" :rows="3" data-testid="contract-reject-reason" />
       <template #actions>
@@ -109,15 +119,19 @@ import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
-import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, isWaivedContract } from '../../lib/courseMoneyState.js';
+import { AMOUNT_PENDING_REASON, slipAvailability } from '../../lib/billingDocState.js';
+import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, canResolveLegacyPaidFlag, isWaivedContract } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
   // In-app #396: the course the billing panel was opened from.
   focused: { type: Boolean, default: false },
+  // In-app #425: director/super_admin, same gate as 帳務中心 canViewBillingDocs.
+  canViewDocs: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
@@ -135,8 +149,11 @@ const props = defineProps({
   sharedLeadSubject: { type: String, default: '' },
   // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
+  // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
+  canResolveLegacy: { type: Boolean, default: false },
+  hasConfirmedReport: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
@@ -172,16 +189,31 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
+// Server `current_contract_charge` (StudentClass.Charge); fall back to `charge` on older payloads.
+const contractCharge = computed(() => {
+  const raw = props.course?.current_contract_charge ?? props.course?.charge;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+});
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (confirmed receipts, then non-void invoice payments; never "fixed" here).
 // #4150: legacy metadata alone is not a payment, so it reads 需核對, never 繳費日 (tutoring has nothing to collect).
 // #4150 review: a waiver (server ContractMoneyState::isWaived; a real one keeps Paid=0) is terminal, so no unpaid controls.
 const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
+// Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid with
+// no report waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
+const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
+  legacyUnverified: legacyUnverified.value, canResolveLegacy: props.canResolveLegacy,
+  isMonthly: isMonthly.value, waived: waived.value, pendingReport: props.pendingReport,
+  sharedFollower: props.sharedFollower,
+}));
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
-  return p?.date ? `繳費日 ${dateOnly(p.date)}　${money(p.amount)}` : '還沒繳費';
+  if (!p?.date) return '還沒繳費';
+  return p.amount == null ? `繳費日 ${dateOnly(p.date)}` : `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
 });
 const monthLineText = (key) => {
   const m = props.monthLines?.[key];
@@ -267,6 +299,20 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const noObligation = computed(() => data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
+// In-app #425: 繳費單 uses the 帳務中心 rule (lib/billingDocState.js); the card only maps its state into a list row.
+// Shown when it can open, or when the reason is something to act on (金額待確認); paid / reported / follower cards
+// already say so on the card, so no disabled button there.
+const slipRow = computed(() => ({
+  id: props.course.id,
+  amount_pending_confirmation: props.course.amount_pending_confirmation === true,
+  legacy_paid_without_invoice: legacyUnverified.value && !props.amounts,
+  payable_status: props.amounts ? 'invoiced' : 'unbilled',
+  payment_status: props.pendingReport ? 'pending_report'
+    : (props.outstanding > 0 || (!props.course.paid && !props.amounts)) ? 'unpaid' : 'paid',
+}));
+const slipState = computed(() => slipAvailability(slipRow.value, props.canViewDocs));
+const showSlip = computed(() => props.canViewDocs && !props.sharedFollower && !noObligation.value && !waived.value
+  && (slipState.value.ok || slipState.value.reason === AMOUNT_PENDING_REASON));
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.
 // 確認入帳 books money in one click, so ask first; 取消 has the initial focus (no undo: mistakes go through 撤銷收款).

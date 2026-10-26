@@ -1850,6 +1850,107 @@ jobs:
             }}
           }}
 
+          // #433 bounded read-only tail diagnosis
+          $probe433 = ["applicable" => false, "read_only" => true, "decision_grade" => false];
+          if ($bugId === 433) {{
+              $probe433["applicable"] = true;
+              $probe433["readonly_session_verified"] = false;
+              $stage433 = "readonly_session";
+              $bindingFailure433 = null;
+              try {{
+                  $conn433 = \\Illuminate\\Support\\Facades\\DB::connection();
+                  $conn433->statement("SET SESSION TRANSACTION READ ONLY");
+                  $conn433->statement("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+                  $readOnly433 = function () use ($conn433): bool {{
+                      try {{
+                          return (int)($conn433->selectOne("SELECT @@SESSION.transaction_read_only AS ro", [], false)->ro ?? 0) === 1;
+                      }} catch (\\Throwable $e) {{
+                          return (int)($conn433->selectOne("SELECT @@SESSION.tx_read_only AS ro", [], false)->ro ?? 0) === 1;
+                      }}
+                  }};
+                  if (!$readOnly433()) {{ throw new \\RuntimeException(); }}
+                  $conn433->beginTransaction();
+                  try {{
+                      if (!$readOnly433()) {{ throw new \\RuntimeException(); }}
+                      $stage433 = "target_binding";
+                      $course433 = \\App\\Models\\StudentClass::query()->whereKey(2282)->first();
+                      $session433 = \\App\\Models\\ClassSession::query()->whereKey(43722)->first();
+                      // Same guards, in the same short-circuit order; no new SELECTs.
+                      $requireBinding433 = static function (bool $matches, string $reason) use (&$bindingFailure433): void {{
+                          if (!$matches) {{ $bindingFailure433 = $reason; throw new \\RuntimeException(); }}
+                      }};
+                      $requireBinding433((int)$bug->CampusID === 9, "report_campus");
+                      $requireBinding433((bool)$course433, "course_missing");
+                      $requireBinding433((bool)$session433, "session_missing");
+                      $requireBinding433((int)$session433->StudentClassID === 2282, "course_link");
+                      $requireBinding433(substr((string)$session433->SessionDate, 0, 10) === "2026-10-24", "session_date");
+                      $requireBinding433(substr((string)$session433->StartTime, 0, 5) === "10:00", "session_start");
+                      $requireBinding433(substr((string)$session433->EndTime, 0, 5) === "12:00", "session_end");
+                      $requireBinding433(strtolower((string)$session433->Status) === "scheduled", "session_status");
+                      $requireBinding433((int)$course433->Stop === 0, "course_stopped");
+                      $requireBinding433(strtolower((string)$course433->ScheduleMode) === "count", "course_mode");
+                      $requireBinding433((string)($course433->scheduling_policy ?? "auto_recurrence") === "auto_recurrence", "course_policy");
+                      $requireBinding433(!$course433->isUsageSettlementLocked(), "settlement_locked");
+                      $requireBinding433((int)\\App\\Models\\Student::query()->where("id", (int)$course433->StudentID)->value("CampusID") === 9, "student_campus");
+                      $stage433 = "leave_preview";
+                      $preview433 = \\App\\Services\\CourseLeaveCascadeService::previewLeaveCascadeForCourse(2282, "2026-10-24", 43722);
+                      if (($preview433["policy"] ?? null) !== \\App\\Services\\CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL
+                          || ($preview433["moves"] ?? null) !== [] || ($preview433["vacated"] ?? null) !== []
+                          || ($preview433["future_dates_unchanged"] ?? null) !== true
+                          || !array_key_exists("append", $preview433)) {{ throw new \\RuntimeException(); }}
+                      $tail433 = null;
+                      $conflict433 = null;
+                      if ($preview433["append"] !== null) {{
+                          if (!is_string($preview433["append"]) || preg_match('/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/D', $preview433["append"]) !== 1) {{
+                              throw new \\RuntimeException();
+                          }}
+                          $stage433 = "tail_times";
+                          // Match appendTailAfterLeave: a two-lesson date retains this lesson's own times.
+                          $lessons433 = \\App\\Models\\ClassSession::query()->where("StudentClassID", 2282)
+                              ->whereDate("SessionDate", "2026-10-24")
+                              ->whereRaw("LOWER(COALESCE(Status, '')) <> ?", ["cancelled"])->count();
+                          $times433 = $lessons433 > 1 ? ["start" => "", "end" => ""]
+                              : \\App\\Services\\CourseLeaveCascadeService::resolveContractSlotTimes($course433, $preview433["append"]);
+                          if (!isset($times433["start"], $times433["end"]) || !is_string($times433["start"]) || !is_string($times433["end"])) {{
+                              throw new \\RuntimeException();
+                          }}
+                          $start433 = $times433["start"] !== "" ? $times433["start"] : (string)$session433->StartTime;
+                          $end433 = $times433["end"] !== "" ? $times433["end"] : (string)$session433->EndTime;
+                          if (preg_match('/^\\d{{2}}:\\d{{2}}:\\d{{2}}$/D', $start433) !== 1
+                              || preg_match('/^\\d{{2}}:\\d{{2}}:\\d{{2}}$/D', $end433) !== 1) {{ throw new \\RuntimeException(); }}
+                          $tail433 = ["date" => $preview433["append"], "start" => $start433, "end" => $end433];
+                          $stage433 = "student_slot_guard";
+                          $blocked433 = app(\\App\\Services\\ClassSessionMaterializationService::class)->findStudentSlotConflict(
+                              $course433, $tail433["date"], $start433, $end433, null, [], false
+                          );
+                          if ($blocked433 !== null) {{
+                              if (!in_array($blocked433->responseCode, ["student_slot_conflict", "slot_occupied"], true)) {{
+                                  throw new \\RuntimeException();
+                              }}
+                              $conflict433 = ["code" => $blocked433->responseCode,
+                                  "course_id" => $blocked433->conflictCourseId, "session_id" => $blocked433->conflictSessionId,
+                                  "schedule_id" => $blocked433->conflictScheduleId];
+                          }}
+                      }}
+                      $stage433 = "readonly_session";
+                      if (!$readOnly433()) {{ throw new \\RuntimeException(); }}
+                      $result433 = ["applicable" => true, "read_only" => true, "readonly_session_verified" => true,
+                          "decision_grade" => true, "course_id" => 2282, "session_id" => 43722,
+                          "source_date" => "2026-10-24", "tail" => $tail433, "conflict" => $conflict433,
+                          "guard_as_of" => date("Y-m-d"), "future_dates_unchanged" => true];
+                  }} finally {{
+                      try {{ $conn433->rollBack(); }} catch (\\Throwable $e) {{ $stage433 = "rollback"; throw $e; }}
+                  }}
+                  $probe433 = $result433;
+              }} catch (\\Throwable $e) {{
+                  // No raw exception text or partial plan/identity data is emitted on failure.
+                  $probe433 = ["applicable" => true, "read_only" => true, "readonly_session_verified" => false,
+                      "decision_grade" => false, "error" => $stage433 . "_failed",
+                      "binding_failure" => $stage433 === "target_binding" ? $bindingFailure433 : null];
+              }}
+          }}
+          // End #433 tail diagnosis
+
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1865,9 +1966,10 @@ jobs:
             338 => $probe338,
             359 => $probe359,
             376 => $probe376,
+            433 => $probe433,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 433, 359], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1887,6 +1989,7 @@ jobs:
               "reporter_user_id"=>(int)$bug->reporter_user_id,
               "title"=>$title,
               "description"=>$desc,
+              "client_info"=>$bug->client_info ?? null,
               "created_at"=>$bug->created_at,
               "updated_at"=>$bug->updated_at,
             ],
@@ -1916,6 +2019,7 @@ jobs:
                 "probe_338_target_capacity" => $probe338,
                 "probe_359_cross_campus_source" => $probe359,
                 "probe_376_teacher_reassign" => $probe376,
+                "probe_433_leave_tail" => $probe433,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
@@ -1965,13 +2069,30 @@ jobs:
           Path("raw/bug-detail.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
           requested_id = int(os.environ["BUG_ID"])
           bug = obj.get("bug") or {}
+          probe433 = ((obj.get("diagnostics") or {}).get("probe_results") or {}).get("probe_433_leave_tail") or {}
+          safe_stages = {stage + "_failed" for stage in (
+            "readonly_session", "target_binding", "leave_preview", "tail_times", "student_slot_guard", "rollback",
+          )}
+          # A closed enum is safe public metadata; never copy exception text or probe data.
+          failure_stage = probe433.get("error") if requested_id == 433 and probe433.get("decision_grade") is False else None
+          safe_bindings = {
+            "report_campus", "course_missing", "session_missing", "course_link", "session_date", "session_start", "session_end",
+            "session_status", "course_stopped", "course_mode", "course_policy", "settlement_locked", "student_campus",
+          }
+          binding_failure = probe433.get("binding_failure") if failure_stage == "target_binding_failed" else None
           Path("out/summary.json").write_text(json.dumps({
             "ok": obj.get("ok"), "requested_bug_id": obj.get("requested_bug_id"),
             **{k: bug.get(k) for k in ("id", "status", "severity", "campus_id", "page_key", "reporter_user_id", "created_at", "updated_at")},
             "counts": {k: len(obj.get(k) or []) for k in ("attachments", "comments", "status_logs", "reporter_history")},
             "decision_grade": (obj.get("diagnostics") or {}).get("decision_grade"),
+            "probe_433_failure_stage": failure_stage if failure_stage in safe_stages else None,
+            "probe_433_binding_failure": binding_failure if isinstance(binding_failure, str) and binding_failure in safe_bindings else None,
             "dump_generated_at": obj.get("dump_generated_at"), "prod_head": obj.get("prod_head"),
           }, indent=2), encoding="utf-8")
+          # Preserve private failure evidence before a validation error exits the
+          # errexit shell. Encryption failure still fails closed; no plaintext fallback.
+          import subprocess
+          subprocess.run(["bash", "-c", "set -euo pipefail; tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/bug-detail.full.tar.gz.enc"], check=True)
           if obj.get("requested_bug_id") != requested_id:
             raise SystemExit("requested_bug_id does not match dispatched bug_id")
           diagnostics = obj.get("diagnostics") or {}
@@ -1979,7 +2100,6 @@ jobs:
             raise SystemExit("target-correct probe is required; evidence is not decision-grade")
           print("parsed", bool(obj.get("ok")), "decision_grade", diagnostics.get("decision_grade"))
           PY
-          tar -C raw -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:DUMP_ARTIFACT_KEY -out out/bug-detail.full.tar.gz.enc
 
       - name: Upload
         if: always()

@@ -55,7 +55,7 @@
             >
               <span class="usw-type-card-icon material-symbols-outlined">layers</span>
               <h4 class="usw-type-card-title">多科共用方案（進階）</h4>
-              <p class="usw-type-card-sub">多個科目共用同一份堂數池；續報加購會加到方案總堂數，不拆成單科契約</p>
+              <p class="usw-type-card-sub">多個科目共用同一份堂數池；續課會加到方案總堂數，不拆成單科契約</p>
               <span class="usw-type-card-tags">
                 <span class="usw-type-card-tag">堂數制</span>
                 <span class="usw-type-card-tag">月結制</span>
@@ -404,6 +404,14 @@
                 </select>
               </div>
 
+              <div v-if="form.class_type === 'trial'" class="form-group">
+                <label for="ucs-trial-target">試聽班型</label>
+                <select id="ucs-trial-target" v-model="form.trial_target_class_type">
+                  <option :value="null">未指定（每時段最多 1 位試聽）</option>
+                  <option v-for="opt in TRIAL_TARGET_CLASS_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </div>
+
               <div v-if="!isTutoring" class="form-group">
                 <label>{{ hasPerDayDuration ? '每小時費用 *' : '單堂費用 *' }}</label>
                 <input v-model.number="form.price_per_session" type="number" min="0" step="50" />
@@ -747,7 +755,7 @@
               <label v-if="needsOverageConfirmation" class="coverage-overage">
                 <input v-model="form.overage_confirmed" type="checkbox" />
                 <span>
-                  我確認這門課的排程超出已購額度，超額部分會另行續約、加購或再處理。
+                  我確認這門課的排程超出已購額度，超額部分會另行續課或再處理。
                   不勾選無法建立課程；建立後仍可正常點名，不會擋住學生上課。
                 </span>
               </label>
@@ -886,6 +894,7 @@ import {
   sessionCountForYmd as countSessionsOnYmd,
 } from '../lib/schedulerSessionExpand';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
+import { TRIAL_TARGET_CLASS_TYPE_OPTIONS, trialTargetPayload } from '../lib/trialTarget.js';
 import SearchableSelect from './SearchableSelect.vue';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
@@ -976,6 +985,7 @@ const form = reactive({
   teacher_id: props.initialTeacherId ? Number(props.initialTeacherId) : '',
   subject: 'Math',
   class_type: 'one_on_one',
+  trial_target_class_type: null,
   confirmed_dates: [],
   excluded_dates: [],
   total_classes: 8,
@@ -1089,6 +1099,7 @@ function resetForm() {
   form.teacher_id = props.initialTeacherId ? Number(props.initialTeacherId) : '';
   form.subject = 'Math';
   form.class_type = 'one_on_one';
+  form.trial_target_class_type = null;
   form.confirmed_dates = [];
   form.excluded_dates = [];
   form.total_classes = 8;
@@ -2385,6 +2396,7 @@ async function submit() {
         teacher_id: Number(form.teacher_id),
         subject: form.subject,
         class_type: form.class_type,
+        ...trialTargetPayload(form),
         confirmed_dates: [],
         future_dates: [],
         session_plan: [],
@@ -2577,6 +2589,7 @@ async function submit() {
       teacher_id: globalTeacherId,
       subject: form.subject,
       class_type: form.class_type,
+      ...trialTargetPayload(form),
       confirmed_dates: [],
       future_dates: [],
       session_plan: useMonthlyRecurring ? [] : sessionPlan,

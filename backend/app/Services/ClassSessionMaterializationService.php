@@ -176,8 +176,12 @@ class ClassSessionMaterializationService
      * The write-time student overlap guard for a new 'scheduled' row of this course, as a value: null when the slot
      * is free (or in the past, where the save path does not guard), else the conflict upsertSlot() would throw.
      * Planners that pick slots themselves ask this instead of re-implementing the rule (in-app #380, R142).
+     * An atomic multi-row plan passes the rows it moves away ($excludeSessionIds) and, inside its write
+     * transaction, $lock = true for current locking reads (renewal shift, #4210). Defaults keep every other caller unchanged.
+     *
+     * @param  list<int>  $excludeSessionIds
      */
-    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null): ?SlotOccupiedException
+    public function findStudentSlotConflict(StudentClass $studentClass, string $sessionDate, string $startTime, string $endTime, ?string $asOf = null, array $excludeSessionIds = [], bool $lock = false): ?SlotOccupiedException
     {
         $date = $this->normalizeDate($sessionDate);
         // $asOf: a planner's own reference day (e.g. a report run --as-of a past date); defaults to the write path's today.
@@ -191,6 +195,9 @@ class ClassSessionMaterializationService
                 $date,
                 $this->normalizeTimeForStorage($startTime),
                 $this->normalizeTimeForStorage($endTime),
+                null,
+                $excludeSessionIds,
+                $lock,
             );
 
             return null;
@@ -199,6 +206,7 @@ class ClassSessionMaterializationService
         }
     }
 
+    /** @param  list<int>  $excludeSessionIds */
     private function assertStudentSlotAvailable(
         StudentClass $studentClass,
         int $studentClassId,
@@ -206,6 +214,8 @@ class ClassSessionMaterializationService
         string $startTime,
         string $endTime,
         ?int $excludeSessionId = null,
+        array $excludeSessionIds = [],
+        bool $lock = false,
     ): void {
         $studentId = (int) $studentClass->getAttribute('StudentID');
         $packageId = (int) $studentClass->getAttribute('PackageID');
@@ -232,6 +242,7 @@ class ClassSessionMaterializationService
                 });
             })
             ->when($excludeSessionId !== null, fn ($query) => $query->where('cs.id', '!=', $excludeSessionId))
+            ->when($excludeSessionIds !== [], fn ($query) => $query->whereNotIn('cs.id', $excludeSessionIds))
             ->whereDate('cs.SessionDate', $sessionDate)
             ->where(function ($query) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
@@ -251,6 +262,7 @@ class ClassSessionMaterializationService
             ->where('cs.StartTime', '<', $endTime)
             ->where('cs.EndTime', '>', $startTime)
             ->orderBy('cs.id')
+            ->when($lock, fn ($query) => $query->lockForUpdate())
             ->first();
 
         if ($sessionConflict) {
@@ -318,13 +330,23 @@ class ClassSessionMaterializationService
             ->where('s.start_time', '<', substr($endTime, 0, 5))
             ->where('s.end_time', '>', substr($startTime, 0, 5))
             ->orderBy('s.id')
+            ->when($lock, fn ($query) => $query->lockForUpdate())
             ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']);
+        // A plan's moving lesson leaves its slot: a dated row of that lesson (same course, date and start, e.g. a
+        // makeup row) is not a separate booking (#4210 r4359415468). Genuine schedule-only rows still count.
+        if ($excludeSessionIds !== [] && $scheduleConflicts->isNotEmpty()) {
+            $moving = ClassSession::query()->whereKey($excludeSessionIds)->whereDate('SessionDate', $sessionDate)
+                ->when($lock, fn ($query) => $query->lockForUpdate())->get(['StudentClassID', 'StartTime'])
+                ->map(fn ($s) => (int) $s->StudentClassID . '|' . substr((string) $s->StartTime, 0, 5))->all();
+            $scheduleConflicts = $scheduleConflicts->reject(fn ($row) => in_array(
+                (int) $row->student_course_id . '|' . substr((string) $row->start_time, 0, 5), $moving, true))->values();
+        }
 
         // Match availability's source-of-truth rule: a scheduled exception
         // backed only by cancelled/leave ClassSessions is stale and cannot
         // block materialization. Keep schedule-only makeup rows as busy.
         $scheduleConflict = app(StaleScheduleExceptionFilter::class)
-            ->rejectStale($scheduleConflicts, $sessionDate)[0] ?? null;
+            ->rejectStale($scheduleConflicts, $sessionDate, $lock)[0] ?? null;
 
         if ($scheduleConflict) {
             throw SlotOccupiedException::fromStudentScheduleConflict(

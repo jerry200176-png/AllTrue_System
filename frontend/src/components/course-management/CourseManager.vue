@@ -1,6 +1,7 @@
 <script>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { trapTab } from '../../lib/focusTrap.js';
+import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -44,7 +45,7 @@ export default {
     isSessionMode: { type: Boolean, default: false },
     isMonthlyMode: { type: Boolean, default: false },
     isManualOccurrence: { type: Boolean, default: false },
-    purchaseLabel: { type: String, default: '加購堂數' },
+    purchaseLabel: { type: String, default: RENEW_LESSONS_LABEL },
     paymentNoticeAvailable: { type: Boolean, default: false },
     canPackagePreview: { type: Boolean, default: false },
     formatSessionChipDate: { type: Function, required: true },
@@ -55,6 +56,8 @@ export default {
     sessionRowKey: { type: Function, required: true },
     isUserNote: { type: Function, required: true },
     formatMakeupDate: { type: Function, required: true },
+    // #4178: called with the course after close when the opener left the page (e.g. closed under 「進行中」).
+    focusFallback: { type: Function, default: null },
   },
   emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes', 'move-lesson'],
   setup(props, { emit }) {
@@ -68,6 +71,12 @@ export default {
     });
     onBeforeUnmount(() => {
       if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+      // The opener's row can leave the list in this same render; then focus would fall to <body>.
+      const course = props.course;
+      nextTick(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body || !active.isConnected) props.focusFallback?.(course);
+      });
     });
     const onKeydown = (e) => { if (e.key === 'Tab') trapTab(e, panelRef.value); };
     // Roving tabindex tabs: ←/→ move and select, Home/End jump.

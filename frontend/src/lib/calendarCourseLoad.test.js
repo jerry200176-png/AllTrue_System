@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { fetchAllPages } from './pagedFetchAll.js';
 import {
   mapCalendarCourse,
   buildStudentClassesApiUrl,
@@ -6,6 +8,7 @@ import {
   resolveCalendarRoleScopeParams,
   fetchCalendarCoursesAndSchedulesParallel,
   estimateParallelLoadSavingsMs,
+  fetchCalendarStudentClassesApi,
 } from './calendarCourseLoad.js';
 
 // R98 root-cause guard: this is the ONE place both endpoint builders must derive their
@@ -130,3 +133,80 @@ assert.equal(savings.parallelMs, 1200, 'parallel total is max');
 assert.equal(savings.savedMs, 350, 'saved ms equals shorter leg');
 
 console.log('calendarCourseLoad.test.js — 19 passed ✅');
+
+// #4490: a later-page outage must not turn a partial calendar into canonical success.
+test('paged course reads preserve every row and scope at page boundaries', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  for (const total of [0, 1, 500, 501, 1001]) {
+    const calls = [];
+    globalThis.fetch = async (input, options) => {
+      const url = new URL(input, 'https://fixture.invalid');
+      calls.push(url);
+      assert.equal(url.searchParams.get('branch_id'), '16');
+      assert.equal(url.searchParams.get('start'), '2026-10-01');
+      assert.equal(options.headers.Authorization, 'Bearer fixture-token');
+      const size = Number(url.searchParams.get('per_page'));
+      const offset = (Number(url.searchParams.get('page')) - 1) * size;
+      return { ok: true, json: async () => ({ total, last_page: Math.max(1, Math.ceil(total / size)),
+        data: Array.from({ length: Math.max(0, Math.min(size, total - offset)) }, (_, i) => ({ id: offset + i + 1 })) }) };
+    };
+    const result = await fetchAllPages('/api/v1/student-classes?branch_id=16&start=2026-10-01', 'fixture-token');
+    assert.equal(result.total, total);
+    assert.deepEqual(result.data.map((row) => row.id), Array.from({ length: total }, (_, i) => i + 1));
+    assert.equal(calls.length, Math.max(1, Math.ceil(total / 200)));
+  }
+});
+
+test('later-page failure does not claim a successful course source', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input) => new URL(input, 'https://fixture.invalid').searchParams.get('page') === '1'
+    ? { ok: true, json: async () => ({ data: [{ id: 1 }], total: 2, last_page: 2 }) }
+    : { ok: false, status: 503 };
+  const result = await fetchCalendarCoursesAndSchedulesParallel({
+    fetchCourses: () => fetchCalendarStudentClassesApi({ baseUrl: '/api', branchId: 16, token: 'fixture-token', fetchAllPages }),
+    fetchSchedules: async () => ({ list: [{ id: 'still-available' }], apiSucceeded: true }),
+  });
+  assert.equal(result.courses.apiSucceeded, false);
+  assert.deepEqual(result.courses.list, []);
+  assert.equal(result.schedules.list[0].id, 'still-available');
+});
+
+test('page budget and malformed page data reject incomplete results', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ data: [{ id: 1 }], total: 51, last_page: 51 }) });
+  await assert.rejects(fetchAllPages('/courses', null), /page.*limit/i);
+  for (const body of [{ message: 'missing data' }, { data: [], last_page: 'unknown' }, { data: [], last_page: 0 }]) {
+    globalThis.fetch = async () => ({ ok: true, json: async () => body });
+    await assert.rejects(fetchAllPages('/courses', null), /pagination|page data/i);
+  }
+  globalThis.fetch = async (input) => new URL(input, 'https://fixture.invalid').searchParams.get('page') === '1'
+    ? { ok: true, json: async () => ({ data: [{ id: 1 }], total: 2, last_page: 2 }) }
+    : { ok: true, json: async () => ({ message: 'missing data' }) };
+  await assert.rejects(fetchAllPages('/courses', null), /page data/i);
+});
+
+test('legacy arrays and meta pagination retain their contract', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => ({ ok: true, json: async () => [{ id: 1 }] });
+  assert.deepEqual(await fetchAllPages('/courses', null), { data: [{ id: 1 }], total: 1 });
+  globalThis.fetch = async (input) => {
+    const page = Number(new URL(input, 'https://fixture.invalid').searchParams.get('page'));
+    return { ok: true, json: async () => ({ data: [{ id: page }], meta: { total: 2, last_page: 2 } }) };
+  };
+  assert.deepEqual(await fetchAllPages('/courses', null), { data: [{ id: 1 }, { id: 2 }], total: 2 });
+});
+
+test('an advertised total cannot be satisfied by missing or empty later pages', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ data: [{ id: 1 }], total: 2 }) });
+  await assert.rejects(fetchAllPages('/courses', null), /incomplete pagination/i);
+  globalThis.fetch = async (input) => new URL(input, 'https://fixture.invalid').searchParams.get('page') === '1'
+    ? { ok: true, json: async () => ({ data: [{ id: 1 }], total: 2, last_page: 2 }) }
+    : { ok: true, json: async () => ({ data: [] }) };
+  await assert.rejects(fetchAllPages('/courses', null), /incomplete pagination/i);
+});

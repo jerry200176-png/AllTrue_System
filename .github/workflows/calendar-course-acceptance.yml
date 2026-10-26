@@ -31,8 +31,15 @@ on:
           - tutoring
           - feedback
           - payments
+  # #4207: GitHub Actions run.name becomes run-name ("Release train") for
+  # release-train dispatches. Empirically those completed trains do not fire a
+  # listener that only lists the workflow file name "Deploy to Pi". List both
+  # identities so post-deploy acceptance runs after merge deploys and trains.
+  # Keep in sync with deploy.yml name: / run-name literals (static test).
   workflow_run:
-    workflows: ['Deploy to Pi']
+    workflows:
+      - Deploy to Pi
+      - Release train
     types: [completed]
     branches: [main]
 
