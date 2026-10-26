@@ -259,10 +259,22 @@ echo "=== [3/7] Migration 備份 + 執行 ==="
 if ! MIGRATE_STATUS=$(cd /home/admin/backend && php artisan migrate:status); then
   abort_deploy "php artisan migrate:status 失敗 — 無法判斷 pending migration，中止部署並回滾"
 fi
+if ! printf '%s\n' "$MIGRATE_STATUS" | grep -qE '\| (Yes|No)[[:space:]]*\||\[[0-9]+\][[:space:]]+Ran|Pending'; then
+  abort_deploy "Migration status is empty or unrecognized; no DDL attempted"
+fi
 PENDING=$(printf '%s\n' "$MIGRATE_STATUS" | grep -cE "\| No|Pending" || true)
 if [ "$PENDING" -gt 0 ]; then
   echo "有 $PENDING 筆 pending migration，先備份再執行..."
-  [ "$(python3 -I "$PDV" pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" = 1 ] || MIG_HARD=hard
+  if [ "$(python3 -I "$PDV" pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" != 1 ]; then
+    abort_deploy "Pending migration is outside the reviewed range or cannot be parsed; no backup/DDL attempted"
+  fi
+  BOUNDED_4508=0
+  if printf '%s\n' "$MIGRATE_STATUS" | grep -E '\| No|Pending' | grep -q '2026_10_26_000001_add_expires_at_to_personal_access_tokens'; then
+    if ! (cd /home/admin/backend && EXPECTED_BACKEND_SHA="$TARGET_SHA" php /home/admin/scripts/production-deploy/migrate-4508-bounded.php --check); then
+      abort_deploy "4508 fixed-scope/native-DDL profile unverified; no backup/DDL attempted"
+    fi
+    BOUNDED_4508=1
+  fi
   TS=$(date '+%Y-%m-%d_%H%M%S')
   BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
   mkdir -p /home/admin/backups/emergency
@@ -280,7 +292,16 @@ if [ "$PENDING" -gt 0 ]; then
   # MIGRATION_RAN 維持 0：不呼叫 migrate:rollback（--step=1 可能退掉上一次部署的
   # migration）；同批已成功的 migration 依 expand/contract 規則對舊 code 相容，
   # 上方 $BACKUP_FILE 為人工復原依據（restore 屬 Founder-only）。
-  if (cd /home/admin/backend && php artisan migrate --force); then
+  if [ "$BOUNDED_4508" -eq 1 ]; then
+    # Native MDL=5s, statement abort request=120s, no COPY fallback/reconnect.
+    # Outer cap does NOT prove server cleanup; any failure holds without rollback/retry.
+    if (cd /home/admin/backend && EXPECTED_BACKEND_SHA="$TARGET_SHA" timeout --signal=TERM --kill-after=10s 300s php /home/admin/scripts/production-deploy/migrate-4508-bounded.php); then
+      MIGRATION_RAN=1
+    else
+      MIGRATION_RAN=1 MIG_HARD=hard
+      abort_deploy "4508 bounded migration incomplete; server/schema outcome must be reconciled before retry"
+    fi
+  elif (cd /home/admin/backend && php artisan migrate --force); then
     MIGRATION_RAN=1
     echo "✅ Migration 完成"
   else

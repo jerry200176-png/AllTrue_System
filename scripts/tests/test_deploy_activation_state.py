@@ -2082,6 +2082,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             harness = textwrap.dedent(r"""
                 set -uo pipefail
                 MIGRATION_RAN=0
+                PDV=fixture PREV_COMMIT=fixture TARGET_SHA=fixture
+                # This legacy harness tests backup/migrate outcomes, not range parsing.
+                # The new focused sandbox exercises the real parser against real Git ranges.
+                python3() { printf '1\n'; }
                 abort_deploy() { echo "abort" >> "$TRACE"; exit 1; }
                 mysqldump() { printf '%s\n' "$BACKUP_OUTPUT"; }
                 php() {
