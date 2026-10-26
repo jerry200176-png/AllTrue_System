@@ -7,10 +7,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/TeacherHomePage.vue'), 'utf8');
 
 describe('TeacherHome controls accessibility', () => {
-  it('uses a native, labelled button for the clock-in status card', () => {
+  it('uses the native clock-in button contents as its complete visible name', () => {
     expect(source).toContain('type="button"\n      class="th-clockin-card card"');
-    expect(source).toContain('aria-labelledby="teacher-clockin-title"');
-    expect(source).toContain('aria-describedby="teacher-clockin-status"');
+    const card = source.match(/<button\b[\s\S]*?class="th-clockin-card card"[\s\S]*?<\/button>/)?.[0];
+    expect(card).toBeDefined();
+    expect(card).not.toMatch(/aria-label(?:ledby)?=/);
+    expect(card).toContain('今日打卡狀態');
+    expect(card).toContain('>簽到</span>');
+    expect(card).toContain('>簽退</span>');
+    expect(card).toContain('th-clockin-arrow" aria-hidden="true"');
     expect(source).toContain('id="teacher-clockin-title"');
     expect(source).toContain('id="teacher-clockin-status"');
     expect(source).toContain('aria-live="polite"');
