@@ -43,11 +43,15 @@ class BoundaryDb
 {
     public bool $writeReads = false;
     public mixed $reconnector = null;
+    public string $name = 'mysql';
+    public array $config = ['host' => '127.0.0.1', 'port' => 3306, 'database' => 'AllTrue'];
     public function __construct(public BoundaryPdo $pdo) {}
     public function connection(): self { return $this; }
     public function useWriteConnectionWhenReading(): void { $this->writeReads = true; }
     public function getPdo(): PDO { return $this->pdo; }
     public function getTablePrefix(): string { return ''; }
+    public function getName(): string { return $this->name; }
+    public function getConfig(): array { return $this->config; }
     public function setReconnector(callable $callback): void { $this->reconnector = $callback; }
 }
 class BoundaryRepository
@@ -79,7 +83,7 @@ mkdir($root, 0700); mkdir($root.'/migrations', 0700);
 $path = $root.'/migrations/'.\AllTrue4508\MIGRATION.'.php';
 copy(__DIR__.'/fixtures/4508-expiry-migration.php.fixture', $path);
 try {
-    for ($case = 0; $case < 11; $case++) {
+    for ($case = 0; $case < 15; $case++) {
         $app = new BoundaryApp($root); $calls = 0; $expected = 78; $check = false;
         if ($case === 0) { $check = true; $expected = 0; }
         if ($case === 1) { $expected = 0; }
@@ -90,17 +94,23 @@ try {
         if (in_array($case, [6, 7, 8, 10], true)) { $expected = 75; }
         if ($case === 8) { $app['db']->pdo->nullable = false; }
         if ($case === 9) { $app['migration.repository']->ran = ['duplicate', 'duplicate']; }
+        if ($case === 11) { $app['db']->name = 'mysql::read'; }
+        if ($case === 12) { $app['db']->config['host'] = 'other-host'; }
+        if ($case === 13) { $app['db']->config['port'] = 3307; }
+        if ($case === 14) { $app['db']->config['write'] = ['host' => 'other-host']; }
         ob_start();
         $code = \AllTrue4508\run($app, function () use ($app, &$calls, $case) {
             $calls++;
             if ($case === 10) { ($app['db']->reconnector)(); }
-            if ($case === 6) { return 1; }
+            if ($case === 6) { echo 'FAKE_PRIVATE'; throw new RuntimeException('FAKE_PRIVATE_EXCEPTION'); }
             if ($case !== 7) { $app['migration.repository']->ran[] = \AllTrue4508\MIGRATION; }
             return 0;
         }, $check);
         $output = ob_get_clean();
+        verify(!str_contains($output, 'FAKE_PRIVATE'), 'no raw application/exception output');
         verify($code === $expected, 'case '.$case.' exit');
-        verify($app['db']->writeReads, 'all reads primary');
+        verify($app['db']->writeReads === ($case < 11), 'unknown endpoint rejected before connection reads');
+        if ($case >= 11) { verify($app['db']->pdo->sets === [], 'unknown endpoint must not SET'); }
         verify($calls === (in_array($case, [1, 6, 7, 8, 10], true) ? 1 : 0), 'no unexpected migration');
         if ($case === 0) { verify($app['db']->pdo->sets === [], 'check must not SET/DDL'); }
         if ($expected === 75) { verify(str_contains($output, 'HOLD_possible_partial_DDL'), 'no false success'); }
@@ -108,7 +118,7 @@ try {
     file_put_contents($path, 'synthetic wrong source');
     $app = new BoundaryApp($root); ob_start(); $code = \AllTrue4508\run($app, fn () => throw new RuntimeException('must not run'), false); ob_end_clean();
     verify($code === 78 && $app['db']->pdo->sets === [], 'wrong source stops before session changes');
-    echo "bounded4508: 12 synthetic cases PASS\n";
+    echo "bounded4508: 16 synthetic cases PASS\n";
 } finally {
     unlink($path); rmdir($root.'/migrations'); rmdir($root);
 }

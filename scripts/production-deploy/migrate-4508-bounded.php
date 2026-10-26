@@ -53,6 +53,14 @@ function pending($app): array
 function inspect($app): array
 {
     $db = $app['db']->connection();
+    $config = $db->getConfig();
+    // Match the canonical mysqldump endpoint, not merely a same-named database.
+    // Split/URL/socket configurations and ::read aliases are outside this profile.
+    if ($db->getName() !== 'mysql' || ($config['host'] ?? null) !== '127.0.0.1'
+        || (string) ($config['port'] ?? '') !== '3306' || ($config['database'] ?? null) !== 'AllTrue'
+        || !empty($config['unix_socket']) || !empty($config['url']) || !empty($config['read']) || !empty($config['write'])) {
+        throw new \RuntimeException('backup_endpoint_unverified');
+    }
     $db->useWriteConnectionWhenReading();
     $pdo = $db->getPdo();
     $path = $app->databasePath('migrations/'.MIGRATION.'.php');
@@ -109,25 +117,29 @@ function complete($app, \PDO $pdo, string $prefix): bool
 function run($app, callable $apply, bool $check): int
 {
     $attempted = false;
+    $buffer = ob_get_level();
+    ob_start();
     try {
         [$db, $pdo] = inspect($app);
         if ($check) {
-            echo "4508_pre_ddl_guard=pass\n";
-            return 0;
+            $message = '4508_pre_ddl_guard=pass'; $code = 0;
+        } else {
+            configure($db, $pdo);
+            $attempted = true;
+            if ($apply() !== 0 || !complete($app, $pdo, $db->getTablePrefix())) {
+                throw new \RuntimeException('ddl_or_readback_incomplete');
+            }
+            $message = '4508_migration=complete_primary_schema_and_ledger_verified'; $code = 0;
         }
-        configure($db, $pdo);
-        $attempted = true;
-        // apply is always the fixed --path command in the CLI entry below.
-        if ($apply() !== 0 || !complete($app, $pdo, $db->getTablePrefix())) {
-            throw new \RuntimeException('ddl_or_readback_incomplete');
-        }
-        echo "4508_migration=complete_primary_schema_and_ledger_verified\n";
-        return 0;
     } catch (\Throwable $error) {
         // Never print PDO/config/error text. 75 means possible DDL: no automatic rollback.
-        echo $attempted ? "4508_migration=HOLD_possible_partial_DDL\n" : "4508_pre_ddl_guard=HOLD\n";
-        return $attempted ? 75 : 78;
+        $message = $attempted ? '4508_migration=HOLD_possible_partial_DDL' : '4508_pre_ddl_guard=HOLD';
+        $code = $attempted ? 75 : 78;
+    } finally {
+        while (ob_get_level() > $buffer) { ob_end_clean(); }
     }
+    echo $message, "\n";
+    return $code;
 }
 
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
@@ -145,11 +157,14 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
         $app = require '/home/admin/backend/bootstrap/app.php';
         $kernel = $app->make(\Illuminate\Contracts\Console\Kernel::class);
         $kernel->bootstrap();
-        $input = new \Symfony\Component\Console\Input\ArrayInput([
-            'command' => 'migrate', '--force' => true, '--no-interaction' => true,
-            '--path' => ['database/migrations/'.MIGRATION.'.php'],
-        ]);
-        exit(run($app, static fn () => $kernel->handle($input), isset($argv[1])));
+        // Direct Migrator lets our catch own failures; Kernel::handle reports/renders
+        // raw exceptions before returning. No console rendering or logger dispatch.
+        $migrator = $app['migrator'];
+        $migrator->setOutput(new \Symfony\Component\Console\Output\NullOutput);
+        exit(run($app, static function () use ($app, $migrator) {
+            $migrator->run([$app->databasePath('migrations/'.MIGRATION.'.php')], ['pretend' => false, 'step' => false]);
+            return 0;
+        }, isset($argv[1])));
     } catch (\Throwable $error) {
         echo "4508_pre_ddl_guard=HOLD\n";
         exit(78);
