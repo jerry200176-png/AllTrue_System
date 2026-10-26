@@ -6,6 +6,14 @@ final class AllTrue4504Metadata
     public const CANDIDATE = '7f9acf5ef8ed5ead47c948da58799b035993720e';
     public const MIGRATION = '2019_12_14_000001_create_personal_access_tokens_table';
 
+    public static function backupEndpointMatches($connection, string $default): bool
+    {
+        $config = $connection->getConfig();
+        return $default === 'mysql' && $connection->getName() === 'mysql' && ($config['host'] ?? null) === '127.0.0.1'
+            && (string) ($config['port'] ?? '') === '3306' && ($config['database'] ?? null) === 'AllTrue'
+            && empty($config['unix_socket']) && empty($config['url']) && empty($config['read']) && empty($config['write']);
+    }
+
     public static function assertExpectedRevision(string $expected, string $actual): void
     {
         if (!preg_match('/^[a-f0-9]{40}$/D', $expected) || !hash_equals($expected, $actual)) {
@@ -56,7 +64,7 @@ final class AllTrue4504Metadata
         }
         try {
             $tables = [$prefix . 'personal_access_tokens', $prefix . $migrationTable];
-            $statement = $pdo->prepare('SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?) ORDER BY TABLE_NAME');
+            $statement = $pdo->prepare('SELECT TABLE_NAME, ENGINE, TABLE_ROWS, DATA_LENGTH, INDEX_LENGTH FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?) ORDER BY TABLE_NAME');
             $statement->execute($tables);
             $present = $statement->fetchAll(PDO::FETCH_ASSOC);
             $statement = $pdo->prepare('SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA, CASE WHEN COLUMN_DEFAULT IS NULL OR COLUMN_DEFAULT = \'NULL\' THEN \'null\' ELSE \'non_null\' END AS DEFAULT_KIND FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION');
@@ -67,13 +75,22 @@ final class AllTrue4504Metadata
             $indexes = $statement->fetchAll(PDO::FETCH_ASSOC);
             $ledgerPresent = in_array($tables[1], array_column($present, 'TABLE_NAME'), true);
             $migration = [];
+            $ledger = [];
             if ($ledgerPresent) {
                 $statement = $pdo->prepare('SELECT migration, batch FROM `' . $tables[1] . '` WHERE migration = ? ORDER BY batch');
                 $statement->execute([self::MIGRATION]);
                 $migration = $statement->fetchAll(PDO::FETCH_ASSOC);
+                // Metadata ledger only, never business/token rows. Sentinel detects truncation.
+                $ledger = $pdo->query('SELECT migration, batch FROM `'.$tables[1].'` ORDER BY migration, batch LIMIT 10001')->fetchAll(PDO::FETCH_ASSOC);
             }
+            $vars = $pdo->query("SHOW SESSION VARIABLES WHERE Variable_name IN ('lock_wait_timeout','max_statement_time','alter_algorithm','wsrep_on')")->fetchAll(PDO::FETCH_KEY_PAIR);
             return ['tables' => $present, 'columns' => $columns, 'indexes' => $indexes,
-                'migration_ledger_present' => $ledgerPresent, 'original_migration_records' => $migration];
+                'migration_ledger_present' => $ledgerPresent, 'original_migration_records' => $migration,
+                'preflight' => ['server_version' => $pdo->query('SELECT VERSION()')->fetchColumn(),
+                    'backup_database_matches' => $pdo->query('SELECT DATABASE()')->fetchColumn() === 'AllTrue',
+                    'token_table' => array_values(array_filter($present, static fn ($row) => $row['TABLE_NAME'] === $tables[0])),
+                    'session_variables' => $vars, 'ledger_records' => $ledger,
+                    'ledger_complete' => $ledgerPresent && count($ledger) < 10001]];
         } finally {
             if (!$pdo->rollBack()) {
                 throw new RuntimeException('read_only_transaction_cleanup_failed');
@@ -172,6 +189,7 @@ final class AllTrue4504Metadata
             }
             $stage = 'metadata_only_read_only_transaction';
             $schema = self::metadata($connection->getPdo(), $connection->getTablePrefix(), $migrationTable);
+            $schema['preflight']['backup_endpoint_matches'] = self::backupEndpointMatches($connection, $app['db']->getDefaultConnection());
             $stage = 'identity_and_versions';
             $manifest = json_decode((string) file_get_contents(self::ROOT . '/public/deployment.json'), true, 512, JSON_THROW_ON_ERROR);
             $manifestSha = $manifest['backend_sha'] ?? '';
@@ -188,7 +206,7 @@ final class AllTrue4504Metadata
                 'captured_at_utc' => gmdate('Y-m-d\TH:i:s\Z'), 'candidate_head' => self::CANDIDATE,
                 'checkout_sha_start' => $head, 'checkout_sha_end' => $endHead, 'manifest_backend_sha' => $manifestSha,
                 'identity_consistent' => hash_equals($head, $endHead) && hash_equals($head, $manifestSha),
-                'php_cli_version' => PHP_VERSION, 'php_cli_extensions' => $extensions,
+                'php_cli_version' => PHP_VERSION, 'php_cli_extensions' => $extensions, 'php_int_size' => PHP_INT_SIZE,
                 'laravel_version_fresh_cli' => $app->version(), 'configuration_cached' => $app->configurationIsCached(),
                 'config_cache_mtime_utc' => $app->configurationIsCached() ? gmdate('Y-m-d\TH:i:s\Z', filemtime($app->getCachedConfigPath())) : null,
                 'process_observation' => self::processes(), 'schema_metadata' => $schema,
