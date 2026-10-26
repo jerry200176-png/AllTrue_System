@@ -63,6 +63,8 @@ def preflight(raw, target, workflow):
             return out
         table = tables[0]
         sizes = {key.lower(): integer(table[key]) for key in ("TABLE_ROWS", "DATA_LENGTH", "INDEX_LENGTH")}
+        if any(not 0 <= value <= 2**64 - 1 for value in sizes.values()):
+            return out
         version = fact["server_version"]
         match = re.fullmatch(r"(10\.11\.[0-9]{1,5})(?:[-+][a-zA-Z0-9.+:~_-]{1,100})?", version)
         vars = fact["session_variables"]

@@ -91,6 +91,11 @@ class MetadataProjectionTest(unittest.TestCase):
                 out = module.preflight(raw, target, WORKFLOW)
                 self.assertEqual(out['snapshot_check'], 'HOLD', (key, invalid))
                 self.assertNotIn('FAKE_PRIVATE', json.dumps(out))
+        for key in ('TABLE_ROWS', 'DATA_LENGTH', 'INDEX_LENGTH'):
+            for invalid in (-1, 2**64, False, 1.5, None):
+                raw, target = self.preflight_fixture()
+                raw['schema_metadata']['preflight']['token_table'][0][key] = invalid
+                self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
         raw, target = self.preflight_fixture()
         raw['schema_metadata']['preflight']['ledger_records'] *= 10001
         self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
