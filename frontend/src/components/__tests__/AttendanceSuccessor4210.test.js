@@ -21,7 +21,7 @@ it.each([false,null])('in-app410 attendance cannot confirm disabled or unknown c
  expect(fetch).toHaveBeenCalledTimes(1);expect(record.Status).toBe('absent');
 });
 it.each(['branch','session','role','status','course','existing-status','unmount'])('in-app410 token wait loses ownership after %s changes',async field=>{
- const {save,deps,record}=setup();let finishToken;deps.getToken=()=>new Promise(resolve=>{finishToken=resolve;});
+ const {deps,record}=setup();let finishToken;deps.getToken=()=>new Promise(resolve=>{finishToken=resolve;});
  const saveWithToken=Function(...Object.keys(deps),command)(...Object.values(deps));
  const pending=saveWithToken(record);
  if(field==='branch')deps.props.branchId=2;
