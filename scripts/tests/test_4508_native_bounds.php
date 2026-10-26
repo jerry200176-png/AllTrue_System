@@ -8,7 +8,7 @@ function expect(bool $value, string $label): void
 }
 $dsn = (string) getenv('BOUNDARY_TEST_DSN');
 expect((bool) preg_match('~^mysql:host=127\.0\.0\.1;port=[0-9]+;dbname=AllTrue_test_4508$~D', $dsn), 'test DSN only');
-$open = static fn () => new PDO($dsn, 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$open = static fn () => new PDO($dsn, 'root', 'rootpw', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo = $open(); $blocker = $open();
 $pdo->exec('CREATE TABLE personal_access_tokens (id BIGINT PRIMARY KEY, token VARCHAR(64) NOT NULL UNIQUE) ENGINE=InnoDB');
 $pdo->exec("INSERT INTO personal_access_tokens VALUES (1, 'synthetic-preserved')");
