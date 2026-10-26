@@ -172,6 +172,15 @@ plaintext is shown once and expires after `config/triage_tokens.php` `ttl_days`
 production host. The token reads live data, so the 15-minute dump freshness gate
 does not apply to it; the dumps above stay the fallback when no token is set.
 
+For the selected report's complete reporter history (§R51), take
+`reporter_user_id` from its detail and list
+`/api/v1/triage/bug-reports?reporter_user_id=<id>&since_id=0&limit=100`.
+Omit `status` to include closed reports and other campuses; follow
+`next_since_id` until an empty page, then read the relevant detail/comment
+histories. This narrows the existing token's report list; it does not grant a
+new route, write ability, or access to financial records. Invalid reporter IDs
+return 422. Do not substitute an unfiltered site-wide scan for this lookup.
+
 Run each block as one shell call. It keeps the token out of argv and `ps`
 (`printf` is a bash builtin; curl reads the header from a 0600 config via `-K`),
 writes report data only inside a private `mktemp -d` directory that is deleted
