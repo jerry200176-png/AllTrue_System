@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
-import { assertDirectorDashboardTelemetry } from './fixtures/directorDashboardTelemetry.js';
+import { assertDirectorDashboardTelemetry, openStudentsAfterDashboardOpened } from './fixtures/directorDashboardTelemetry.js';
 import { assertTutoringReceivableControls, invoiceReceivableControls } from './fixtures/tutoringReceivableControls.js';
 
 /** Authenticated, read-only production acceptance for In-App #325. */
@@ -283,7 +283,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     await dismissOverlays(page);
-    await page.getByRole('button', { name: '學生管理', exact: true }).click();
+    await openStudentsAfterDashboardOpened(page, telemetry, BRANCH_ID);
     await expect(page.getByRole('heading', { name: /學生管理/ }).first()).toBeVisible({ timeout: 20_000 });
     console.log('tutoring acceptance: student management opened');
     selectedStudentId = Number(field(scopedCourses.find((course) => field(course, 'StudentID', 'student_id')), 'StudentID', 'student_id'));

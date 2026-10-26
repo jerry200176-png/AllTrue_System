@@ -4,14 +4,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import PaymentAllocation from '../tuition/PaymentAllocation.vue';
 
 const course = (id, subject) => ({ id, subject, schedule_mode: 'date', charge: 0, paid: false, stop: false, package_id: null });
 
-async function mountLedger({ studentClassId, studentId, invoices = [] }) {
+async function mountLedger({ studentClassId, studentId, invoices = [], courses }) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
   const payload = {
     summary: {}, scope: { student_class_id: studentClassId }, receipts: [], anomalies: [], invoices,
-    courses: [course(11, '數學'), course(42, '英文'), course(7, '理化')],
+    courses: courses || [course(11, '數學'), course(42, '英文'), course(7, '理化')],
   };
   vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).startsWith('/api/v1/accounting/ledger')
     ? { ok: true, status: 200, json: async () => payload }
@@ -53,6 +54,51 @@ describe('帳務面板 · 標出並捲到你點開的那門課 (in-app #396)', (
     const w = await mountLedger({ studentClassId: undefined, studentId: 5 });
     expect(w.findAll('[data-testid="contract-focused"]')).toHaveLength(0);
     expect(scrolled).toEqual([]);
+    w.unmount();
+  });
+
+  it('#437: a paid opened course does not change the other contract selected for collection', async () => {
+    const w = await mountLedger({
+      studentClassId: 42,
+      courses: [course(11, '數學'), { ...course(42, '英文'), paid: true }],
+      invoices: [{ id: 55, student_class_id: 11, status: 'unpaid', outstanding_amount: 800, total_amount: 800, payments: [] }],
+    });
+    expect(w.find('[data-testid="contract-card-42"] [data-testid="contract-focused"]').exists()).toBe(true);
+    const button = w.get('[data-testid="ledger-sticky-pay-btn"]');
+    expect(button.text()).toContain('數學');
+    const scope = w.get('[data-testid="ledger-pay-scope"]');
+    expect(scope.isVisible()).toBe(true);
+    expect(scope.text()).toContain('不限於點開的課程');
+    expect(button.attributes('aria-describedby')).toBe(scope.attributes('id'));
+    await button.trigger('click');
+    expect(w.findComponent(PaymentAllocation).props('contracts').map((c) => ({ id: c.id, invoice_id: c.invoice_id, owed: c.owed })))
+      .toEqual([{ id: 11, invoice_id: 55, owed: 800 }]);
+    expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+    w.unmount();
+  });
+
+  it('#437: settled contracts offer neither a collection action nor its scope hint', async () => {
+    const w = await mountLedger({
+      studentClassId: 42,
+      courses: [{ ...course(11, '數學'), paid: true }, { ...course(42, '英文'), paid: true }],
+    });
+    expect(w.find('[data-testid="ledger-sticky-pay"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-pay-scope"]').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it('#437: multiple contracts are named in the next step rather than promised on the count-only button', async () => {
+    const w = await mountLedger({
+      studentClassId: 42,
+      courses: [course(11, '數學'), { ...course(42, '英文'), paid: true }, course(7, '理化')],
+    });
+    const button = w.get('[data-testid="ledger-sticky-pay-btn"]');
+    expect(button.text()).toContain('2 份合約');
+    const scope = w.get('[data-testid="ledger-pay-scope"]');
+    expect(scope.isVisible()).toBe(true);
+    expect(scope.text()).toContain('下一步確認科目與金額');
+    await button.trigger('click');
+    expect(w.findComponent(PaymentAllocation).props('contracts').map((c) => c.id).sort((a, b) => a - b)).toEqual([7, 11]);
     w.unmount();
   });
 });
