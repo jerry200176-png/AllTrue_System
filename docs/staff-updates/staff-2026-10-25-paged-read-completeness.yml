@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-25-paged-read-completeness
+    published_at: "2026-10-25"
+    audiences:
+      - director
+      - teacher
+      - super_admin
+    importance: digest
+    title: 課程清單讀取更完整
+    summary: 讀取課程時會檢查分頁資料，降低連線不穩時漏顯示課程的情況。
+    items:
+      - category: improved
+        text: 資料未讀齊時會進入既有的載入失敗處理，避免把缺少部分課程的清單當成讀取成功。
+    source_refs:
+      - "issue:4490"
+      - "pr:4495"

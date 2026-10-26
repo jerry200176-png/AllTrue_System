@@ -3,6 +3,8 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingCorrection;
@@ -38,6 +40,22 @@ class BillingCorrectionTest extends TestCase
         $this->assertSame($a, $svc->confirmationToken($c, 6, 3000, 0, [], 1));
         $this->assertNotSame($a, $svc->confirmationToken($c, 6, 3000, 0, [], 2));
         $this->assertNotSame($a, $svc->confirmationToken($c, 5, 2500, 0, [], 1));
+    }
+
+    public function test_token_binds_payment_and_report_ledger_history(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $before = $svc->confirmationToken($c, 6, 3000, 0, [], 1);
+        $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $report = PaymentReport::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => '更正模組', 'payment_date' => '2032-03-02', 'reported_amount' => 4000, 'status' => 'voided',
+            'report_token_hash' => hash('sha256', 'ledger-bind-' . uniqid()), 'token_expires_at' => now()->addDay()]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'Method' => 'cash', 'PaidAt' => '2032-03-02', 'payment_report_id' => $report->id]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -4000, 'Method' => 'void', 'PaidAt' => '2032-03-03', 'payment_report_id' => $report->id]);
+        $after = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 1);
+        $this->assertNotSame($before, $after);
+        $this->assertSame($after, $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 1));
     }
 
     public function test_apply_updates_course_and_open_invoice_with_a_valid_token(): void
@@ -102,5 +120,50 @@ class BillingCorrectionTest extends TestCase
         $done = $svc->correctCountMode($c, $p + ['confirmation_token' => $preview['body']['confirmation_token']], false, 7, fn () => null);
         $this->assertSame(200, $done['status']);
         $this->assertSame(6, (int) $c->fresh()->SessionCount);
+    }
+
+    /**
+     * Targets the pre-stamp current-read: first open-invoice guard sees one bill; a test seam inserts a
+     * second open bill only after the confirmation token check; apply must refuse before stamp.
+     * Same-connection seam: the phantom rides A's txn and rolls back with the refuse — expect 1 open
+     * invoice afterward. Multi-connection persistence (count=2 when B commits) is claim9's job.
+     */
+    public function test_pre_stamp_current_read_refuses_invoice_inserted_after_first_guard(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $first = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01',
+            'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $token = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 7);
+        $insertedAfterFirstGuard = false;
+        $svc->setAfterConfirmationTokenForTests(function (int $classId) use ($c, &$insertedAfterFirstGuard): void {
+            Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $classId, 'IssueDate' => '2032-03-02',
+                'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => 'post-guard phantom']);
+            // Still inside apply's txn — prove the post-guard insert was visible before refuse.
+            $this->assertSame(2, Invoice::query()->where('StudentClassID', $classId)->where('Status', '!=', 'void')->count());
+            $insertedAfterFirstGuard = true;
+        });
+        try {
+            $svc->applyCountCorrection($c->fresh(), 6, 3000, 'pre-stamp seam', 8, 4000, $token, 7);
+            $this->fail('expected pre-stamp multi-open refuse');
+        } catch (HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_multiple_open_invoices', json_decode($e->getResponse()->getContent(), true)['code']);
+        } finally {
+            $svc->setAfterConfirmationTokenForTests(null);
+        }
+        $this->assertTrue($insertedAfterFirstGuard, 'seam must insert after the first open-invoice guard');
+        // Refuse aborts the apply txn; same-conn phantom is rolled back with it.
+        $this->assertSame(1, Invoice::query()->where('StudentClassID', $c->ID)->where('Status', '!=', 'void')->count());
+        $this->assertSame([4000, 8, 4000], [(int) $first->fresh()->TotalAmount, (int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge]);
+    }
+
+    /** Real writer: payments:backfill-legacy must not create an invoice on an unpaid count-mode correction course. */
+    public function test_legacy_backfill_command_skips_unpaid_count_correction_course(): void
+    {
+        $unpaid = $this->course();
+        $this->assertSame(0, (int) $unpaid->Paid);
+        $this->artisan('payments:backfill-legacy')->assertExitCode(0);
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $unpaid->ID)->count());
     }
 }

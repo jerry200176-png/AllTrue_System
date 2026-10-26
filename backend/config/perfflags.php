@@ -12,6 +12,7 @@
 */
 
 return [
+    'leave_successor_shift_apply_enabled' => (bool) env('LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED', false), // #410: off until undo-leave refuses an active shift (Q9a)
     // Throttle notification sync to once per 5 min per branch.
     // false = always sync on every unread-count request (old behavior)
     'throttle_notification_sync' => (bool) env('PERF_THROTTLE_NOTIF_SYNC', true),
@@ -72,4 +73,12 @@ return [
     // TrueFit V1: teacher learning workspace shell (read-only Slice 0).
     // DARK LAUNCH: default OFF. Requires VITE_TRUEFIT_V1 on frontend build too.
     'truefit_v1' => (bool) env('TRUEFIT_V1', false),
+
+    // in-app #413: inbox sync re-checks deduction_failed / lr_feedback source rows and
+    // auto-resolves handled items. DARK LAUNCH: default OFF until the product decision
+    // on lanes + "handled" (docs/plans/2026-10-20-inapp-closeout-product-decisions.md #413)
+    // is recorded. Rollback: PERF_NOTIFICATION_SOURCE_RESOLVE=false stops further auto-resolve/reopen;
+    // rows it already resolved stay resolved and carry Payload.source_resolved_at, so they can be found
+    // and reopened by a (Founder-approved) data repair if needed.
+    'notification_source_resolve_enabled' => (bool) env('PERF_NOTIFICATION_SOURCE_RESOLVE', false),
 ];

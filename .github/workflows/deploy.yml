@@ -80,6 +80,15 @@ on:
           - unchanged
           - "on"
           - "off"
+      pop_inapp_standing_policy:
+        description: "Application deploy only (default unchanged = preserve the current production value): explicitly set the backend POP in-app standing policy flag POP_INAPP_STANDING_POLICY. ADR-POP-015: the Founder turns it on only after the dry-run phase."
+        required: false
+        default: unchanged
+        type: choice
+        options:
+          - unchanged
+          - "on"
+          - "off"
 
 permissions:
   contents: read
@@ -98,7 +107,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
       - name: Verify deploy state-machine contract
-        run: python3 scripts/tests/test_deploy_activation_state.py
+        run: |
+          python3 scripts/tests/test_deploy_activation_state.py
+          python3 scripts/tests/test_principal_rotation_grant_replay.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -110,6 +121,7 @@ jobs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
       superseded: ${{ steps.resolve.outputs.superseded }}
       release_train: ${{ steps.resolve.outputs.release_train }}
+      flag_changes: ${{ steps.resolve.outputs.flag_changes }}
     steps:
       - name: Validate target SHA and CI evidence
         id: resolve
@@ -119,6 +131,7 @@ jobs:
           FLAG_ADMISSIONS: ${{ inputs.admissions_funnel_v1 }}
           FLAG_CALENDAR: ${{ inputs.course_session_calendar_v1 }}
           FLAG_MANAGER: ${{ inputs.course_manager_v1 }}
+          FLAG_POP_INAPP: ${{ inputs.pop_inapp_standing_policy }}
           RUN_HEAD_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           WORKFLOW_REF: ${{ github.ref }}
@@ -127,10 +140,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Only unchanged/on/off (empty on automatic runs) may reach the Pi script; the requested
+          # changes are shown to the Founder as an annotation and in the Release state summary.
+          FLAG_CHANGES=""
+          for pair in "admissions_funnel_v1=$FLAG_ADMISSIONS" "course_session_calendar_v1=$FLAG_CALENDAR" \
+                      "course_manager_v1=$FLAG_MANAGER" "pop_inapp_standing_policy=$FLAG_POP_INAPP"; do
+            case "${pair#*=}" in
+              ""|unchanged) ;;
+              on|off) FLAG_CHANGES="${FLAG_CHANGES:+$FLAG_CHANGES, }$pair" ;;
+              *) echo "::error::${pair%%=*} accepts only unchanged, on or off; nothing was deployed."; exit 1 ;;
+            esac
+          done
+          echo "flag_changes=${FLAG_CHANGES:-none}" >> "$GITHUB_OUTPUT"
+          [[ -z "$FLAG_CHANGES" ]] || echo "::warning title=Feature-flag change requested::${FLAG_CHANGES}"
           RELEASE_TRAIN=false
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then
             RELEASE_TRAIN=true
-            for flag in "$FLAG_ADMISSIONS" "$FLAG_CALENDAR" "$FLAG_MANAGER"; do
+            for flag in "$FLAG_ADMISSIONS" "$FLAG_CALENDAR" "$FLAG_MANAGER" "$FLAG_POP_INAPP"; do
               if [[ -n "$flag" && "$flag" != "unchanged" ]]; then
                 echo "::error::A release train never changes feature flags; use phase=application-deploy for a flag change."
                 exit 1
@@ -246,6 +272,7 @@ jobs:
           ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
           COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
           COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
+          POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}
           PRODUCTION_URL: https://daan.lifenet.com.tw
         run: |
           python3 - <<'PYEOF'
@@ -268,7 +295,7 @@ jobs:
               os.environ.get("PHASE") == "application-deploy"
               and any(
                   (os.environ.get(key) or "unchanged").strip().lower() in {"on", "off"}
-                  for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1")
+                  for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1", "POP_INAPP_STANDING_POLICY")
               )
           )
 
@@ -457,7 +484,8 @@ jobs:
           if runtime_state == "current":
               if explicit_flag_activation:
                   # Flag on/off must rebuild the Vite bundle even when the tip SHA
-                  # already matches production (admissions / calendar activation).
+                  # already matches production (admissions / calendar activation),
+                  # or rewrite .env before the config cache rebuild (POP standing policy).
                   emit(
                       True,
                       deployed,
@@ -478,6 +506,13 @@ jobs:
               raise SystemExit(0)
           if runtime_state != "normal-version-lag":
               emit(True, deployed, str(runtime["reason"]), runtime_state)
+              raise SystemExit(0)
+
+          if explicit_flag_activation:
+              # A flag on/off reaches .env only in the Deploy step, so a lag with no
+              # application files (control-plane or docs only) must deploy too, never
+              # end as a green no-op (an `off` kill switch would fail open).
+              emit(True, deployed, "explicit Founder feature-flag activation on a lagging runtime; Deploy step required", runtime_state)
               raise SystemExit(0)
 
           if control_plane_only:
@@ -642,33 +677,11 @@ jobs:
           def gh_api(path, *extra):
               # Fail closed on empty/truncated bodies. The Go `gh` client can
               # print "unexpected end of JSON input" on stderr while stdout is
-              # empty; json.loads("") then loses the path context.
-              proc = subprocess.run(
-                  ["gh", "api", path, *extra],
-                  text=True,
-                  capture_output=True,
-                  env=os.environ.copy(),
-                  check=False,
-              )
-              body = proc.stdout or ""
-              if proc.returncode != 0:
-                  err = (proc.stderr or body or "").strip().replace("\n", " ")[:180]
-                  raise RuntimeError(
-                      f"gh api failed path={path} code={proc.returncode} err={err!r}"
-                  )
-              stripped = body.strip()
-              if not stripped:
-                  err = (proc.stderr or "").strip().replace("\n", " ")[:180]
-                  raise RuntimeError(
-                      f"gh api empty JSON body path={path} err={err!r}"
-                  )
-              try:
-                  return json.loads(stripped)
-              except json.JSONDecodeError as exc:
-                  prefix = stripped[:80].replace("\n", " ")
-                  raise RuntimeError(
-                      f"gh api invalid JSON path={path}: {exc}; body_prefix={prefix!r}"
-                  ) from exc
+              # empty (run 38610137074). gh_api_json retries only an empty body
+              # or HTTP 5xx, at most 3 attempts with backoff, then raises
+              # RuntimeError so the except handler below still fails closed.
+              from scripts.governance.gh_api_retry import gh_api_json
+              return gh_api_json(path, *extra)
 
           def pages(value):
               if isinstance(value, list):
@@ -1051,6 +1064,7 @@ jobs:
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
           GO_REASON: ${{ needs.classify-activation.outputs.go_reason }}
           RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          FLAG_CHANGES: ${{ needs.resolve-target.outputs.flag_changes }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1125,6 +1139,7 @@ jobs:
               {
                 echo "## state=awaiting-approval"
                 echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
+                echo "Requested feature-flag changes: ${FLAG_CHANGES:-none}"
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
             ""|*)
@@ -1150,6 +1165,7 @@ jobs:
     if: ${{ always() && (github.event_name == 'schedule' || ((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.release_train != 'true' && needs.release-state.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation')) }}
     permissions:
       actions: write # dispatch deploy.yml phase=release-train; no other write
+      contents: read # compare tip vs window-serving train head_sha (supplemental kick)
     concurrency:
       group: alltrue-release-train-kick
       cancel-in-progress: false
@@ -1193,14 +1209,23 @@ jobs:
           fi
           # One train per window: a train since the window that asked for approval or deployed
           # used it. A train that stood down or found nothing to deploy does not count.
+          # Supplemental exception: if main tip is ahead of every used train head_sha (tip
+          # advanced after an earlier window deploy), allow another dispatch. Founder
+          # production-activation still gates every train. Compare via API (no checkout).
+          TIP="$(gh api "/repos/${REPO}/commits/main" --jq '.sha')"
           TRAINS="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_dispatch&created=%3E%3D${SINCE}&per_page=100" \
             --jq '.workflow_runs[] | select(.display_title == "Release train") | .id')"
           for run in $TRAINS; do
             USED="$(gh api "/repos/${REPO}/actions/runs/${run}/jobs?per_page=100" \
               --jq '[.jobs[] | select((.name == "Founder production approval (same run)" or .name == "Deploy to Production") and .conclusion != "skipped")] | length')"
             if [[ "$USED" -ge 1 ]]; then
-              echo "::notice::Release train: run ${run} already served the ${SINCE} window; the next window takes later merges."
-              exit 0
+              head="$(gh api "/repos/${REPO}/actions/runs/${run}" --jq '.head_sha')"
+              CMP="$(gh api "/repos/${REPO}/compare/${head}...${TIP}" --jq '.status')"
+              if [[ "$CMP" == "identical" || "$CMP" == "behind" ]]; then
+                echo "::notice::Release train: run ${run} already served the ${SINCE} window; the next window takes later merges."
+                exit 0
+              fi
+              echo "::notice::Release train: run ${run} served ${SINCE} at ${head:0:8}, but tip ${TIP:0:8} is ${CMP}; checking supplemental dispatch."
             fi
           done
           gh api -X POST "/repos/${REPO}/actions/workflows/deploy.yml/dispatches" \
@@ -1501,6 +1526,8 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            scripts/production-deploy/pi-remote-deploy.sh
+            scripts/production-deploy/render_pi_remote_deploy.py
           sparse-checkout-cone-mode: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
@@ -1552,431 +1579,36 @@ jobs:
 
       - name: Deploy
         id: deploy
+        # The remote script is scripts/production-deploy/pi-remote-deploy.sh from the same commit as this
+        # workflow file (the checkout above). Its former ${{ }} values come in through env: and are
+        # substituted as plain text, so the Pi receives the same bytes as the old inline heredoc,
+        # and this block stays far below GitHub's 21,000-byte expression limit (#4051).
+        env:
+          DEPLOY_PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          DEPLOY_PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOY_TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          DEPLOY_RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          DEPLOY_ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
+          DEPLOY_COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
+          DEPLOY_COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
+          DEPLOY_POP_INAPP_STANDING_POLICY: ${{ inputs.pop_inapp_standing_policy }}
+          DEPLOY_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DEPLOY_SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
+          DEPLOY_SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
+          DEPLOY_SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
         run: |
           rc=0
+          remote_script="$(umask 077 && mktemp "${RUNNER_TEMP}/pi-remote-deploy.XXXXXX")"
+          trap 'rm -f "$remote_script"' EXIT
+          # Fails the step (bash -e) before ssh when the template is missing or malformed.
+          python3 -I scripts/production-deploy/render_pi_remote_deploy.py scripts/production-deploy/pi-remote-deploy.sh > "$remote_script"
           ssh -i ~/.ssh/deploy_key \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=4 \
             -o IdentitiesOnly=yes \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH' || rc=$?
-          set -uo pipefail
-          cd /home/admin
-
-          PREV_COMMIT=$(git rev-parse HEAD)
-          MIGRATION_RAN=0 MIG_HARD=
-          TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
-          RELEASE_TRAIN="${{ needs.resolve-target.outputs.release_train }}"
-          ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"
-          ADMISSIONS_FLAG_CHANGED=0
-          ADMISSIONS_FLAG_WAS_PRESENT=0
-          ADMISSIONS_FLAG_BACKUP=""
-          CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"
-          CALENDAR_FLAG_CHANGED=0
-          CALENDAR_FLAG_WAS_PRESENT=0
-          CALENDAR_FLAG_BACKUP=""
-          MANAGER_FLAG_MODE="${{ inputs.course_manager_v1 }}"
-          MANAGER_FLAG_CHANGED=0
-          MANAGER_FLAG_WAS_PRESENT=0
-          MANAGER_FLAG_BACKUP=""
-
-          write_deployment_manifest() {
-            python3 /home/admin/scripts/write-deployment-manifest.py \
-              --target-sha "$1" \
-              --version-file /home/admin/backend/public/version.json \
-              --output /home/admin/backend/public/deployment.json
-          }
-
-          rollback_deploy() {
-            local rollback_failed=0
-            local health2
-
-            echo "=== [7/7] ❌ Deployment failed, starting automatic rollback ==="
-            echo "回滾到 $PREV_COMMIT ..."
-
-            cd /home/admin
-            if ! git reset --hard "$PREV_COMMIT"; then
-              echo "⚠️ git reset 失敗"
-              rollback_failed=1
-              return 1
-            fi
-
-            # Restore the exact previous lock before any old-source PHP command.
-            if ! (cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader); then
-              echo "❌ rollback Composer dependency restore 失敗"
-              rollback_failed=1
-              return 1
-            fi
-
-            if [ "${FRONTEND_CHANGED:-0}" -gt 0 ]; then
-              if ! (cd /home/admin/frontend && npm run deploy); then
-                echo "⚠️ 前端 rollback build 失敗"
-                rollback_failed=1
-              fi
-            fi
-
-            if ! write_deployment_manifest "$PREV_COMMIT"; then
-              echo "⚠️ rollback deployment manifest 寫入失敗"
-              rollback_failed=1
-            fi
-
-            if [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]; then
-              if [ "$ADMISSIONS_FLAG_WAS_PRESENT" -eq 1 ]; then
-                sed -i -E "s/^ADMISSIONS_FUNNEL_V1=.*/$ADMISSIONS_FLAG_BACKUP/" /home/admin/backend/.env
-              else
-                sed -i -E '/^ADMISSIONS_FUNNEL_V1=/d' /home/admin/backend/.env
-              fi
-              echo "✅ admissions flag restored during rollback"
-            fi
-
-            if [ "$CALENDAR_FLAG_CHANGED" -eq 1 ]; then
-              if [ "$CALENDAR_FLAG_WAS_PRESENT" -eq 1 ]; then
-                sed -i -E "s/^COURSE_SESSION_CALENDAR_V1=.*/$CALENDAR_FLAG_BACKUP/" /home/admin/backend/.env
-              else
-                sed -i -E '/^COURSE_SESSION_CALENDAR_V1=/d' /home/admin/backend/.env
-              fi
-              echo "✅ course session calendar flag restored during rollback"
-            fi
-
-            if [ "$MANAGER_FLAG_CHANGED" -eq 1 ]; then
-              if [ "$MANAGER_FLAG_WAS_PRESENT" -eq 1 ]; then
-                sed -i -E "s/^COURSE_MANAGER_V1=.*/$MANAGER_FLAG_BACKUP/" /home/admin/backend/.env
-              else
-                sed -i -E '/^COURSE_MANAGER_V1=/d' /home/admin/backend/.env
-              fi
-              echo "✅ course manager flag restored during rollback"
-            fi
-
-            if ! (cd /home/admin/backend && php artisan optimize); then
-              echo "⚠️ rollback optimize 失敗"
-              rollback_failed=1
-            fi
-
-            # Abort after target checkout (e.g. failed migration): refresh FPM like [5/7].
-            (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ rollback CLI opcache reset 失敗"
-            local rb_secret rb_response
-            rb_secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
-            for _ in $(seq 1 16); do
-              if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$rb_response" | grep -q '"opcache_cleared":true'; then # secret-echo-allow: header to the internal reset endpoint; never printed
-                echo "❌ rollback FPM refresh failed"; rollback_failed=1; break
-              fi
-            done
-            unset rb_secret rb_response
-
-            echo "Rollback health check..."
-            health2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
-              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
-              2>/dev/null || echo "error")
-            python3 -I "${PDV:-/missing}" verify -k --expect-backend-sha "$PREV_COMMIT" $([ "${FRONTEND_CHANGED:-0}" -gt 0 ] && echo --expect-frontend-sha "$PREV_COMMIT") || rollback_failed=1
-            [ -z "${SMOKE_ON_PI:-}" ] || SMOKE_EXPECTED_BACKEND_SHA="$PREV_COMMIT" SMOKE_STRICT_VERSION= bash scripts/post-merge-smoke.sh || rollback_failed=1
-            if [ "$rollback_failed" -ne 0 ] || [ "$health2" != "ok" ]; then
-              echo "❌ Rollback 未完成：health=$health2 rollback_failed=$rollback_failed — 需要人工介入"
-              return 1
-            fi
-            echo "✅ Rollback 成功，系統已恢復到 $PREV_COMMIT"
-          }
-
-          abort_deploy() {
-            echo "❌ $1"
-            [ -n "$MIG_HARD" ] || [ "$(python3 -I "$PDV" range-additive "$PREV_COMMIT" "$TARGET_SHA")" != 1 ] || MIGRATION_RAN=0
-            [ "${MIGRATION_RAN:-0}" -eq 0 ] || { echo "::error::Migration ran or in range: no auto rollback, no migrate:rollback. Manual fix needed."; exit 13; }
-            if ! rollback_deploy; then
-              echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
-              exit 11
-            fi
-            exit 10
-          }
-
-          echo "=== [0b/7] Backup storage/app/public（#1124 防呆） ==="
-          # backend/storage/app/public 正在從 git-tracked 轉為 untracked
-          # （#1124）。轉換那次 reset 會把 git 裡已刪除的 tracked 檔案從
-          # working tree 清掉——這一步永久保留，每次 deploy 前都先備份，
-          # 之後若 reset 把檔案清空，下面的還原步驟才有東西可還原。
-          UPLOADS_BACKUP_DIR="/home/admin/backups/uploads"
-          UPLOADS_TS=$(date '+%Y-%m-%d_%H%M%S')
-          UPLOADS_BACKUP_FILE="${UPLOADS_BACKUP_DIR}/storage-app-public-predeploy-${UPLOADS_TS}.tar.gz"
-          if [ -d /home/admin/backend/storage/app/public ] && [ -n "$(find /home/admin/backend/storage/app/public -type f -print -quit)" ]; then
-            mkdir -p "$UPLOADS_BACKUP_DIR"
-            if ! tar -czf "$UPLOADS_BACKUP_FILE" -C /home/admin/backend storage/app/public; then
-              echo "❌ storage/app/public backup 失敗 — 中止部署"
-              exit 1
-            fi
-            echo "✅ Backup: $UPLOADS_BACKUP_FILE"
-          else
-            echo "storage/app/public 空或不存在，略過備份"
-          fi
-
-          echo "=== [1/7] git fetch + reset ==="
-          # R62 自癒：Windows 專用 SSL backend 誤入 repo config 會讓 fetch fatal，
-          # 過去因無 -e 被吞掉 → reset 落在 stale tracking ref → 靜默部署舊版
-          git config --local --unset-all http.sslbackend 2>/dev/null || true
-          if ! git fetch origin main; then
-            echo "❌ git fetch 失敗 — 中止部署（不得以舊 code 假裝成功）"
-            exit 1
-          fi
-          REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)
-          if [ "$RELEASE_TRAIN" = "true" ]; then
-            if ! git merge-base --is-ancestor "$TARGET_SHA" "$REMOTE_MAIN_SHA"; then
-              echo "❌ release train target 不在 origin/main 歷史中：target=$TARGET_SHA origin/main=$REMOTE_MAIN_SHA — 中止部署"
-              exit 1
-            fi
-            # Never downgrade: what runs now must be in the approved target's history
-            # (a newer auto deploy may have landed while the train approval waited).
-            if ! git merge-base --is-ancestor "$PREV_COMMIT" "$TARGET_SHA"; then
-              echo "❌ release train 會降版：目前 production=$PREV_COMMIT 不在 target=$TARGET_SHA 的歷史中 — 中止部署"
-              exit 1
-            fi
-          elif [ "$REMOTE_MAIN_SHA" != "$TARGET_SHA" ]; then
-            echo "❌ main 在 activation 後已前進：origin/main=$REMOTE_MAIN_SHA ≠ target=$TARGET_SHA — 中止部署"
-            exit 1
-          fi
-          if ! git reset --hard "$TARGET_SHA"; then
-            abort_deploy "git reset 到 target SHA 失敗"
-          fi
-          if [ "$(git rev-parse HEAD)" != "$TARGET_SHA" ]; then
-            echo "❌ 部署目標不符：HEAD=$(git rev-parse HEAD) ≠ CI head=$TARGET_SHA — 中止"
-            abort_deploy "部署目標 SHA 驗證失敗"
-          fi
-          echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
-          PDV=$(mktemp -d)/v.py && cp scripts/post-deploy-verify.py "$PDV" || PDV=""
-
-          # Credential rotation verified the TCP principal; a Unix socket is a separate
-          # MySQL User@Host (user@localhost). Force TCP: set DB_HOST, clear DB_SOCKET.
-          if grep -qE '^[[:space:]]*DB_HOST[[:space:]]*=' /home/admin/backend/.env; then
-            sed -i -E 's/^[[:space:]]*DB_HOST[[:space:]]*=.*/DB_HOST=127.0.0.1/' /home/admin/backend/.env
-          else
-            printf '\nDB_HOST=127.0.0.1\n' >> /home/admin/backend/.env
-          fi
-          if grep -qE '^[[:space:]]*DB_SOCKET[[:space:]]*=' /home/admin/backend/.env; then
-            sed -i -E 's/^[[:space:]]*DB_SOCKET[[:space:]]*=.*/DB_SOCKET=/' /home/admin/backend/.env
-          fi
-          # Laravel gives DATABASE_URL precedence over the individual DB_*
-          # values. Disable it here too; otherwise it can silently restore the
-          # Unix-socket user@localhost path after the host normalization above.
-          if grep -qE '^[[:space:]]*DATABASE_URL[[:space:]]*=' /home/admin/backend/.env; then
-            sed -i -E 's/^[[:space:]]*DATABASE_URL[[:space:]]*=/# DATABASE_URL disabled by deploy/' /home/admin/backend/.env
-          fi
-          echo "✅ normalized production DB connection to TCP 127.0.0.1:3306 (socket and DATABASE_URL disabled)"
-
-          echo "=== [1b/7] Restore storage/app/public（若 reset 清空，#1124） ==="
-          if [ -f "$UPLOADS_BACKUP_FILE" ]; then
-            if [ ! -d /home/admin/backend/storage/app/public ] || [ -z "$(find /home/admin/backend/storage/app/public -type f -print -quit)" ]; then
-              echo "storage/app/public 已被 reset 清空，從剛才的備份還原..."
-              mkdir -p /home/admin/backend/storage/app/public
-              tar -xzf "$UPLOADS_BACKUP_FILE" -C /home/admin/backend
-              echo "✅ 已從 $UPLOADS_BACKUP_FILE 還原"
-            else
-              echo "storage/app/public 仍有檔案，無需還原"
-            fi
-          fi
-
-          echo "=== [2/7] Composer dependencies ==="
-          if ! (cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader); then
-            abort_deploy "Composer install 失敗"
-          fi
-          echo "✅ Composer 完成"
-
-          echo "=== [2b/7] Storage symlink + 權限 ==="
-          cd /home/admin/backend
-          php artisan storage:link --force 2>/dev/null || true
-          chmod -R 775 storage bootstrap/cache 2>/dev/null || true
-          echo "✅ storage:link + chmod 完成"
-
-          echo "=== [3/7] Migration 備份 + 執行 ==="
-          # Laravel 8 用 "| No" (Ran? 欄)；Laravel 9+ 用 "Pending"。兩者都偵測。
-          # D1：migrate:status 本身失敗（DB 連不上等）不得被當成「0 筆 pending」靜默略過。
-          if ! MIGRATE_STATUS=$(cd /home/admin/backend && php artisan migrate:status); then
-            abort_deploy "php artisan migrate:status 失敗 — 無法判斷 pending migration，中止部署並回滾"
-          fi
-          PENDING=$(printf '%s\n' "$MIGRATE_STATUS" | grep -cE "\| No|Pending" || true)
-          if [ "$PENDING" -gt 0 ]; then
-            echo "有 $PENDING 筆 pending migration，先備份再執行..."
-            [ "$(python3 -I "$PDV" pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" = 1 ] || MIG_HARD=hard
-            TS=$(date '+%Y-%m-%d_%H%M%S')
-            BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
-            mkdir -p /home/admin/backups/emergency
-            DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
-            if ! mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
-              --single-transaction AllTrue | gzip > "$BACKUP_FILE"; then
-              abort_deploy "migration 前 DB backup 失敗"
-            fi
-            echo "✅ 備份完成：$BACKUP_FILE"
-            # R67 + D1（Founder 2026-10-13）：migration 失敗絕不可被吞，且必須立即中止部署。
-            # abort_deploy 走既有 rollback_deploy：還原 PREV_COMMIT 原始碼與 Composer 依賴，
-            # 不再執行前端 build／opcache reset／health／smoke；run 以 exit 1 標紅，
-            # 後續「deployed / production-verified」步驟不會執行。
-            # MIGRATION_RAN 維持 0：不呼叫 migrate:rollback（--step=1 可能退掉上一次部署的
-            # migration）；同批已成功的 migration 依 expand/contract 規則對舊 code 相容，
-            # 上方 $BACKUP_FILE 為人工復原依據（restore 屬 Founder-only）。
-            if (cd /home/admin/backend && php artisan migrate --force); then
-              MIGRATION_RAN=1
-              echo "✅ Migration 完成"
-            else
-              abort_deploy "Migration 失敗（php artisan migrate exit != 0）— 中止部署並回滾 code；DB 備份：$BACKUP_FILE"
-            fi
-          else
-            echo "✅ 無 pending migration，略過"
-          fi
-
-          echo "=== [3b/7] 注入 Sentry DSN ==="
-          # Past [3/7] a range with a migration (or unknown) holds instead of rolling back.
-          git diff --quiet "$PREV_COMMIT" "$TARGET_SHA" -- ':(top)backend/database/migrations' || MIGRATION_RAN=1
-          # 後端 .env：寫入或更新 SENTRY_LARAVEL_DSN
-          if ! grep -q "^SENTRY_LARAVEL_DSN=" /home/admin/backend/.env; then
-            echo "SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}" >> /home/admin/backend/.env
-            echo "✅ SENTRY_LARAVEL_DSN 已寫入 .env"
-          else
-            sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}|" /home/admin/backend/.env
-            echo "✅ SENTRY_LARAVEL_DSN 已更新"
-          fi
-
-          echo "=== [3c/7] 一次性 APP_KEY containment（issue #1007） ==="
-          if ! bash /home/admin/scripts/production-operations/rotate-app-key-2026-07-19.sh; then
-            abort_deploy "APP_KEY containment 失敗 — 不得進入快取重建"
-          fi
-
-          # 前端：Vite 只從 .env 檔讀取，寫入暫時的 .env.production.local 再 build
-          if ! echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local; then
-            abort_deploy "frontend temporary environment 寫入失敗"
-          fi
-          apply_bool_feature_flag() {
-            # $1 mode var, $2 backend key, $3 vite key, $4 changed-var name, $5 present-var, $6 backup-var
-            local mode="$1" key="$2" vite_key="$3"
-            local value=false changed=0 present=0 backup=""
-            if [ "$mode" = "on" ] || [ "$mode" = "off" ]; then
-              value=$([ "$mode" = "on" ] && echo true || echo false)
-              if grep -qE "^${key}=" /home/admin/backend/.env; then
-                present=1
-                backup=$(grep -E "^${key}=" /home/admin/backend/.env | tail -n 1)
-                sed -i -E "s/^${key}=.*/${key}=${value}/" /home/admin/backend/.env
-              else
-                printf '\n%s=%s\n' "$key" "$value" >> /home/admin/backend/.env
-              fi
-              changed=1
-            else
-              if grep -qE "^${key}=" /home/admin/backend/.env; then
-                value=$(grep -E "^${key}=" /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-              fi
-              case "$value" in true|false) ;; *) value=false ;; esac
-            fi
-            printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
-            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
-            eval "$4=$changed"
-            eval "$5=$present"
-            eval "$6=\"\$backup\""
-          }
-          apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
-          apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP
-          apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1 VITE_COURSE_MANAGER_V1 MANAGER_FLAG_CHANGED MANAGER_FLAG_WAS_PRESENT MANAGER_FLAG_BACKUP
-          echo "✅ frontend .env.production.local 已寫入"
-
-          echo "=== [4/7] 前端變動偵測 ==="
-          cd /home/admin
-          FRONTEND_CHANGED=$(git diff --name-only "$PREV_COMMIT" HEAD -- frontend/ | wc -l)
-          # 若 index.html 不存在（git rm --cached 後首次 deploy），強制 build
-          ASSETS_MISSING=0
-          [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
-          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ] || [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ] || [ "$CALENDAR_FLAG_CHANGED" -eq 1 ] || [ "$MANAGER_FLAG_CHANGED" -eq 1 ]; then
-            echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}）或招生 flag 變更（${ADMISSIONS_FLAG_CHANGED}）或行事曆 flag 變更（${CALENDAR_FLAG_CHANGED}）或課程管理 flag 變更（${MANAGER_FLAG_CHANGED}），執行 build + deploy..."
-            if ! (cd /home/admin/frontend && npm install --prefer-offline && npm run deploy); then
-              rm -f /home/admin/frontend/.env.production.local || true
-              abort_deploy "frontend build/deploy 失敗"
-            fi
-            # build 完後刪除含 DSN 的暫時 env 檔
-            if ! rm -f /home/admin/frontend/.env.production.local; then
-              abort_deploy "frontend temporary environment 清理失敗"
-            fi
-            # version.json 由 Vite build 產生（vite.config.js），只在前端有重 build 時更新
-            # → backend-only deploy 不更新時間戳，使用者不會看到多餘的「請重新整理」通知
-            echo "✅ version.json 已由 Vite build 更新"
-          else
-            echo "✅ 前端無變動且 assets 存在，跳過 build（version.json 不更新）"
-            if ! rm -f /home/admin/frontend/.env.production.local; then
-              abort_deploy "frontend temporary environment 清理失敗"
-            fi
-          fi
-
-          # Keep runtime identity separate from the frontend build artifact.
-          # version.json may intentionally remain old during backend-only deploys;
-          # deployment.json always records the backend commit actually activated.
-          if ! write_deployment_manifest "$TARGET_SHA"; then
-            abort_deploy "deployment manifest 寫入失敗"
-          fi
-
-          echo "=== [5/7] 重建 Laravel 快取 + 重載 PHP-FPM ==="
-          # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
-          # ✅ 只清 composer package discovery 快取（--no-dev 後必須，否則找不到已移除的 dev 套件）
-          # ✅ optimize 直接重建快取（config:cache + route:cache + event:cache），不留空窗期
-          cd /home/admin/backend
-          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
-          if ! php artisan optimize; then
-            abort_deploy "Laravel optimize 失敗"
-          fi
-          # Read-only probe using the same Laravel config that the web process
-          # will load. Keep the authentication error visible without ever
-          # printing DB_PASSWORD; this distinguishes a remaining credential
-          # mismatch from an FPM worker/cache problem.
-          if DB_PROBE_OUTPUT=$(php artisan tinker --execute='
-          try {
-              $db = (array) config("database.connections.mysql");
-              $host = (string) ($db["host"] ?? "");
-              $socket = (string) ($db["unix_socket"] ?? "");
-              $port = (string) ($db["port"] ?? "");
-              echo "effective_db_host={$host} effective_db_port={$port} socket_set=" . ($socket !== "" ? "yes" : "no") . PHP_EOL;
-              \Illuminate\Support\Facades\DB::select("select 1");
-              echo "DB OK";
-          } catch (Throwable $e) {
-              fwrite(STDERR, $e->getMessage());
-              exit(1);
-          }' 2>&1); then
-            echo "✅ Laravel DB probe passed"
-          else
-            echo "❌ Laravel DB probe failed (password redacted): $DB_PROBE_OUTPUT"
-            abort_deploy "Laravel DB probe 失敗"
-          fi
-          # ✅ 清除 OPcache（mod_php 架構，用自製 artisan 指令，不需 sudo）
-          cd /home/admin/backend && php artisan opcache:reset 2>/dev/null \
-            && echo "✅ OPcache 清除完成" \
-            || echo "⚠️ OPcache reset 失敗（非致命，TTL 到期後自動清除）"
-
-          # php artisan opcache:reset runs in CLI and cannot refresh Laravel's
-          # cached config inside PHP-FPM workers. This endpoint performs the
-          # same reset in the web process, which is required after a DB
-          # credential rotation when sudo cannot reload php-fpm interactively.
-          DEPLOY_SECRET="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
-          if [ -z "$DEPLOY_SECRET" ]; then
-            echo "❌ DEPLOY_SECRET missing; refusing to continue with stale FPM config"
-            exit 1
-          fi
-          for attempt in $(seq 1 16); do
-            if ! OPCACHE_RESPONSE=$(curl -skf -X POST \
-                https://daan.lifenet.com.tw/api/internal/opcache-reset \
-                -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
-                -H "Connection: close" \
-                -H "Content-Type: application/json"); then
-              abort_deploy "FPM web-process refresh request failed on attempt ${attempt}"
-            fi
-            if ! echo "$OPCACHE_RESPONSE" | grep -q '"ok":true' || \
-               ! echo "$OPCACHE_RESPONSE" | grep -q '"db_connection_refreshed":true'; then
-              abort_deploy "FPM web-process refresh failed on attempt ${attempt}"
-            fi
-          done
-          unset DEPLOY_SECRET OPCACHE_RESPONSE
-          echo "✅ FPM OPcache/config and DB connection refresh completed across 16 worker requests"
-
-          echo "=== [6/7] Health + identity (bounded retries) + Smoke ==="
-          export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
-          export SMOKE_ON_PI=1
-          export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
-          export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
-          export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
-          export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
-          export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
-          python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"
-          case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
-          abort_deploy "health check 或 smoke test 失敗"
-          ENDSSH
+            "${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" < "$remote_script" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           exit "$rc"
 
@@ -2396,7 +2028,10 @@ jobs:
 
   staged_principal_rotation:
     name: Staged DB principal rotation (one phase)
-    if: github.event_name == 'workflow_dispatch' && (inputs.phase == 'phase1-create' || inputs.phase == 'phase2-cutover' || inputs.phase == 'phase3-lock')
+    # The transformer and preflight contract tests must pass before any phase
+    # can touch production credentials.
+    needs: contract-test
+    if: needs.contract-test.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.phase == 'phase1-create' || inputs.phase == 'phase2-cutover' || inputs.phase == 'phase3-lock')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Principal rotation is a production side effect and must remain mutually
@@ -2519,6 +2154,46 @@ jobs:
             exit 1
           }
 
+          # BEGIN leftover-staged-principal preflight (read-only; counts only)
+          # A staged principal with no state file means an earlier attempt left an
+          # account behind. Refuse before creating another one. Only the server's
+          # account tables are exhaustive; information_schema views list just the
+          # grantees this principal may see, so they are never used. Excluded:
+          # the exact authenticated user@host (already atr_* after a completed
+          # rotation) and atr_* predecessors that Phase 3 locked with ACCOUNT LOCK.
+          # An orphan from a failed Phase 1 is unlocked and usable, so it counts.
+          # A password-quarantined predecessor is also unlocked and cannot be told
+          # apart from an orphan, so it counts too (fail closed).
+          STAGED_PRINCIPAL_REGEXP='^atr_[0-9]{12}_[0-9a-f]{6}$'
+          STAGED_FILTER="User REGEXP '${STAGED_PRINCIPAL_REGEXP}' AND NOT (User = '${OLD_DB_USERNAME}' AND Host = '${OLD_ACCOUNT_HOST}')"
+          count_leftovers() { "${OLD_MYSQL[@]}" -e "$1" 2>/dev/null; }
+          if LEFTOVER_COUNT="$(count_leftovers \
+            "SELECT COUNT(*) FROM mysql.global_priv WHERE ${STAGED_FILTER} AND COALESCE(JSON_VALUE(Priv, '\$.account_locked'), 'false') <> 'true'")"; then
+            # MariaDB 10.4+: the lock flag lives in the global_priv JSON.
+            LEFTOVER_SOURCE=mysql.global_priv
+          elif LEFTOVER_COUNT="$(count_leftovers \
+            "SELECT COUNT(*) FROM mysql.user WHERE ${STAGED_FILTER} AND account_locked <> 'Y'")"; then
+            # MySQL 5.7+/8: mysql.user.account_locked.
+            LEFTOVER_SOURCE=mysql.user.account_locked
+          elif LEFTOVER_COUNT="$(count_leftovers \
+            "SELECT COUNT(*) FROM mysql.user WHERE ${STAGED_FILTER}")"; then
+            # Lock status unreadable: still exhaustive, but locked predecessors count.
+            LEFTOVER_SOURCE=mysql.user-lock-status-unavailable
+          else
+            echo "::error::The old principal cannot read mysql.user, so it cannot list all accounts and leftover staged principals cannot be ruled out; no account was changed. Founder review required."
+            exit 1
+          fi
+          [[ "$LEFTOVER_COUNT" =~ ^[0-9]+$ ]] || {
+            echo "::error::Unexpected staged-principal count shape; no account was changed."
+            exit 1
+          }
+          echo "Leftover staged-principal preflight: count=${LEFTOVER_COUNT} source=${LEFTOVER_SOURCE} (current principal and locked predecessors excluded)"
+          if (( LEFTOVER_COUNT > 0 )); then
+            echo "::error::An unlocked staged principal other than the current one exists without a state file; no account was changed. Founder review required before any rerun: confirm read-only whether each such account is an orphan or a password-quarantined predecessor, then lock or drop it manually."
+            exit 1
+          fi
+          # END leftover-staged-principal preflight
+
           STAGED_DB_USERNAME="atr_$(date -u '+%y%m%d%H%M%S')_$(openssl rand -hex 3)"
           STAGED_DB_PASSWORD="$(openssl rand -hex 32)"
           export OLD_DB_USERNAME OLD_ACCOUNT_HOST STAGED_DB_USERNAME STAGED_DB_PASSWORD
@@ -2536,6 +2211,20 @@ jobs:
 
           ident = r"(?:'(?:''|\\\\.|[^'])*'|`(?:``|[^`])*`)"
           target = re.compile(rf"(?i)(\b(?:TO|FROM)\s+)({ident})@({ident})")
+          # MariaDB SHOW GRANTS embeds the account's authentication clause right
+          # after the grantee. It belongs to the old principal, so strip only that
+          # clause; the new principal gets its own password via CREATE USER above.
+          literal = r"'(?:''|\\\\.|[^'\\\\])*'"
+          auth_clause = re.compile(
+              rf"(?i)^\s+IDENTIFIED\s+(?:"
+              rf"BY\s+PASSWORD\s+{literal}"
+              rf"|VIA\s+\w+(?:\s+(?:USING|AS)\s+{literal})?"
+              rf"(?:\s+OR\s+\w+(?:\s+(?:USING|AS)\s+{literal})?)*"
+              rf")(?=\s|;|$)"
+          )
+          residual = re.compile(
+              r"(?i)IDENTIFIED|PASSWORD\s*\(|\*[0-9A-F]{40}|\$[A-Z0-9]\$|[0-9A-F]{32,}|[A-Za-z0-9+/]{40,}={0,2}"
+          )
 
           def decode(token):
               if token.startswith("`"):
@@ -2546,26 +2235,38 @@ jobs:
           def quote(value):
               return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-          print(f"CREATE USER {quote(new_user)}@{quote(old_host)} IDENTIFIED BY {quote(new_pass)};")
+          # Validate every line before emitting anything: a refusal must send zero
+          # bytes to the piped mysql, so CREATE USER can never run on its own.
+          statements = [f"CREATE USER {quote(new_user)}@{quote(old_host)} IDENTIFIED BY {quote(new_pass)};"]
           count = 0
+          stripped = 0
           for raw in sys.stdin:
               grant = raw.strip()
               if not grant:
                   continue
-              if " IDENTIFIED " in grant.upper():
-                  raise SystemExit("SHOW GRANTS contains authentication material; refusing unsafe replay")
               matches = list(target.finditer(grant))
               if len(matches) != 1:
                   raise SystemExit("unexpected SHOW GRANTS target shape")
               match = matches[0]
               if decode(match.group(2)) != old_user or decode(match.group(3)) != old_host:
                   raise SystemExit("SHOW GRANTS target does not match CURRENT_USER()")
+              head = grant[:match.start()]
+              tail = grant[match.end():]
+              auth = auth_clause.match(tail)
+              if auth:
+                  tail = tail[auth.end():]
+                  stripped += 1
+              if residual.search(head) or residual.search(tail):
+                  raise SystemExit("SHOW GRANTS contains authentication material; refusing unsafe replay")
               replacement = match.group(1) + quote(new_user) + "@" + quote(old_host)
-              statement = grant[:match.start()] + replacement + grant[match.end():]
-              print(statement.rstrip(";") + ";")
+              statement = head + replacement + tail
+              statements.append(statement.rstrip(";") + ";")
               count += 1
           if count == 0:
               raise SystemExit("SHOW GRANTS returned no statements")
+          sys.stdout.write("\n".join(statements) + "\n")
+          # Counts only: never the grant text, a hash or a password.
+          print(f"grant replay: {count} statement(s), {stripped} authentication clause(s) stripped", file=sys.stderr)
           PY
 
           created_attempted=0
@@ -2610,7 +2311,7 @@ jobs:
           } > "$STATE_FILE"
           chmod 600 "$STATE_FILE"
           completed=1
-          echo "Phase 1 complete: exact SHOW GRANTS statements replayed and the new principal passed a fresh SELECT 1 connection."
+          echo "Phase 1 complete: SHOW GRANTS statements replayed (old authentication clause stripped) and the new principal passed a fresh SELECT 1 connection."
           echo "The old principal and application .env were not changed."
           REMOTE
 

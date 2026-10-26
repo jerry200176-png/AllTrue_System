@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Support\DeadlockRetry;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -31,7 +32,7 @@ class RecordStudentSwipe
 
         return DB::transaction(function () use ($student, $campusId, $swipeAt, $respond) {
             return $respond($this->record($student, $campusId, $swipeAt));
-        });
+        }, DeadlockRetry::ATTEMPTS); // record() re-reads everything it writes, so a deadlocked swipe re-runs whole (#4470)
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Support\AttendanceStatus;
+use App\Support\DeadlockRetry;
 use App\Models\PendingSwipe;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -658,7 +659,7 @@ class AttendanceController extends Controller
         // The facade's generic PHPDoc does not expose exceptions propagated
         // from its callback, but this boundary must map them after rollback.
         try {
-            return DB::transaction($transaction);
+            return DB::transaction($transaction, DeadlockRetry::ATTEMPTS); // re-reads its rows; batchMark calls it per item
         } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
             return response()->json(['message' => $e->getMessage()], 422);
         }

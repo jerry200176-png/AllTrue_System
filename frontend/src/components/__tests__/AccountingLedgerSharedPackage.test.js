@@ -32,6 +32,17 @@ describe('帳務面板 · 共用方案只有一個收款入口 (#3753)', () => {
     expect(w.findAll('[data-testid="contract-shared-follower"]')).toHaveLength(1);
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('2 份合約');
   });
+  it('#4002: a tutoring member never leads a package that also has a payable member', async () => {
+    const w = await mountLedger(ledger({
+      courses: [{ ...course(1, '輔導', 9), class_type: 'tutoring' }, course(2, '英文', 9), course(3, '理化', null)],
+    }));
+    const recordCards = w.findAll('[data-testid="contract-record"]');
+    expect(recordCards).toHaveLength(2); // 英文 leads the package + 理化
+    const followerOf = (id) => w.findAllComponents({ name: 'ContractCard' }).find((card) => card.props('course').id === id).props('sharedFollower');
+    expect(followerOf(2)).toBe(false); // 英文 holds the package action
+    expect(followerOf(1)).toBe(true);
+    expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('2 份合約');
+  });
   it('mixed states: a paid first member does not hide the package action from its unpaid sibling', async () => {
     const w = await mountLedger(ledger({
       courses: [{ ...course(1, '數學', 9), paid: true }, course(2, '英文', 9), course(3, '理化', null)],

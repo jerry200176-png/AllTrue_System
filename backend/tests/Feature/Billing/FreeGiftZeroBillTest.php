@@ -11,8 +11,10 @@ use App\Models\StudentClass;
 use App\Models\StudentClassPricingAmendment;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\BillingPayableResolver;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -73,6 +75,27 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame(Invoice::ZERO_REASON_FREE_GIFT, Invoice::query()->findOrFail((int) $res->json('invoice_id'))->zero_amount_reason);
         Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-20', 'Note' => '', 'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'unpaid']); // a later positive bill ends the mark
         $this->assertFalse(collect($this->withToken($token)->getJson('/api/v1/accounting/ledger?student_id=' . $course->StudentID)->json('courses'))->firstWhere('id', $course->ID)['paid']);
+    }
+
+    /** #4012: a course with a pending payment report cannot be marked 免費／贈送 until that report is resolved. */
+    public function test_a_pending_payment_report_blocks_the_free_gift_mark(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->monthlyCourse($this->student());
+        $report = PaymentReport::create([
+            'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'InvoiceID' => null,
+            'reported_by_name' => 'x', 'payment_date' => '2026-10-13', 'payment_method' => 'cash',
+            'reported_amount' => 3000, 'status' => 'pending', 'report_token_hash' => hash('sha256', 'free-gift-4012'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))
+            ->assertStatus(422)->assertJsonPath('code', 'free_gift_pending_report');
+        $this->assertSame(0, Invoice::query()->where('StudentClassID', $course->ID)->count());
+
+        // Once the report is rejected, the mark goes through as before.
+        $report->update(['status' => 'rejected']);
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
     }
 
     /** #3991 review: a director of another campus cannot write a free/gift bill. */
@@ -201,6 +224,47 @@ class FreeGiftZeroBillTest extends TestCase
         $this->assertSame([0, 0], [(int) $course->fresh()->Charge, (int) $first->fresh()->TotalAmount]);
         $this->withToken($token)->postJson("/api/v1/invoices/{$first->id}/void", ['reason' => 'wrong term'])->assertOk();
         $this->assertSame('void', (string) $first->fresh()->Status);
+    }
+
+    /**
+     * #4150 (Codex P2 on #4204): a monthly (date-mode) free/gift course rates its NT$0 period `paid`; the course list
+     * must still say `free` (the resolver verdict), with the monthly summary kept as-is for the period rows.
+     */
+    public function test_a_monthly_free_gift_course_lists_as_free_not_the_period_status(): void
+    {
+        $token = $this->directorToken();
+        $course = $this->monthlyCourse($this->student());
+        $this->withToken($token)->postJson(self::RECORD, $this->payload($course, ['free_gift' => true]))->assertOk();
+        $row = collect($this->withToken($token)->getJson('/api/v1/student-classes?student_id=' . $course->StudentID . '&per_page=100')
+            ->assertOk()->json('data'))->firstWhere('ID', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('free', $row['payment_status']);
+        $this->assertIsArray($row['monthly_payment']);
+        $this->assertFalse($row['legacy_paid_flag_only']);
+    }
+
+    /** #4017 item 1: the resolver reads a course's fee evidence once, however many marked terms it has. */
+    public function test_fee_evidence_is_read_once_per_course_across_marked_terms(): void
+    {
+        $course = $this->monthlyCourse($this->student());
+        foreach (['2026-08', '2026-09', '2026-10'] as $period) {
+            Invoice::create([
+                'StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => "{$period}-01",
+                'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => $period,
+                'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
+            ]);
+        }
+        $amendmentChecks = 0;
+        DB::listen(function ($query) use (&$amendmentChecks): void {
+            if (preg_match('/^select exists\s*\(select \* from [`"]?student_class_pricing_amendments/i', $query->sql)) {
+                $amendmentChecks++;
+            }
+        });
+
+        $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $course->ID]);
+
+        $this->assertSame('free', $statuses[(int) $course->ID]['status']);
+        $this->assertSame(1, $amendmentChecks, 'one fee-evidence check for the course, not one per marked term');
     }
 
     /** @param array<string, mixed> $over @return array<string, mixed> */

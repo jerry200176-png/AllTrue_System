@@ -381,7 +381,7 @@ class PaymentReportApiTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', $payload)
             ->assertStatus(422)
             ->assertJsonPath('code', 'pending_report_exists')
-            ->assertJsonPath('message', '此課程已有「等你確認」的繳費回報，請先到帳務中心確認收款或退回後再登錄。');
+            ->assertJsonPath('message', '此課程已有「已回報付款，待你核對入帳」的繳費回報，請先到帳務中心確認收款或退回後再登錄。');
     }
 
     public function test_director_record_pending_receipt_forbidden_until_confirm(): void
@@ -462,6 +462,40 @@ class PaymentReportApiTest extends TestCase
         $sc->refresh();
         $this->assertSame(0, (int) $sc->Paid);
         $this->assertSame(0, \App\Models\Payment::query()->count());
+    }
+
+    /** #4142: a director records, confirms and rejects only for students in their own campuses. */
+    public function test_director_of_another_campus_cannot_record_confirm_or_reject(): void
+    {
+        $own = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $other = ['Authorization' => 'Bearer ' . $this->createDirectorToken([2]), 'Accept' => 'application/json'];
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 3000, 'Paid' => 0]);
+        $payload = ['student_class_id' => $sc->ID, 'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'amount' => 3000];
+
+        $this->withHeaders($other)->postJson('/api/v1/payment-reports/director-record', $payload)->assertForbidden();
+        $this->withHeaders($other)->postJson('/api/v1/payment-reports/director-record-batch', [
+            'payment_date' => '2026-04-28', 'payment_method' => 'cash',
+            'entries' => [['student_class_id' => $sc->ID, 'amount' => 3000]],
+        ])->assertJsonPath('accepted', 0)->assertJsonPath('results.0.http_status', 403);
+        $this->assertSame(0, PaymentReport::query()->count());
+
+        $reportId = $this->withHeaders($own)->postJson('/api/v1/payment-reports/director-record', $payload)
+            ->assertOk()->json('report_id');
+        $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertForbidden();
+        $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/reject", ['rejection_note' => 'x'])
+            ->assertForbidden();
+        $this->withHeaders($other)->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$reportId]])
+            ->assertJsonPath('accepted', 0)->assertJsonPath('results.0.http_status', 403);
+        // void answered 422 (pending) to another campus before checking it, which revealed the report's state.
+        $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'x'])->assertForbidden();
+        $this->assertSame('pending', PaymentReport::query()->findOrFail($reportId)->status);
+        $this->assertSame(0, Payment::query()->count());
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+
+        // A director of several campuses, including the course's, still works end to end.
+        $multi = ['Authorization' => 'Bearer ' . $this->createDirectorToken([2, 1]), 'Accept' => 'application/json'];
+        $this->withHeaders($multi)->putJson("/api/v1/payment-reports/{$reportId}/confirm")->assertOk();
+        $this->assertSame(1, Payment::query()->count());
     }
 
     public function test_director_record_batch_creates_pending_only(): void
@@ -2033,6 +2067,148 @@ class PaymentReportApiTest extends TestCase
         $res->assertJsonFragment(['message' => '此收款已撤銷過']);
     }
 
+    public function test_void_rejects_confirmed_report_when_invoice_already_voided(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 500]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash',
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-invoice-mismatch'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => 'Corrected bill already void',
+        ])->assertStatus(422)->assertJsonPath('code', 'void_invoice_mismatch');
+
+        $this->assertSame(0, Payment::where('Method', 'void')->count());
+        $this->assertSame('confirmed', $report->fresh()->status);
+    }
+
+    public function test_void_refuses_missing_invoice_when_invoice_id_is_set(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8800, 'PayDate' => '2026-04-10']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => 999999001,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'void-missing-invoice'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => 'Missing bill must not clear Paid',
+        ])->assertStatus(422)->assertJsonPath('code', 'void_invoice_mismatch');
+
+        $this->assertSame(0, Payment::where('Method', 'void')->count());
+        $this->assertSame('confirmed', $report->fresh()->status);
+        $this->assertSame(1, (int) $sc->fresh()->Paid);
+        $this->assertSame('2026-04-10', $sc->fresh()->PayDate);
+    }
+
+    public function test_void_refuses_zero_invoice_id_as_non_null(): void
+    {
+        // Truthy checks would treat 0 as legacy null; strict !== null must refuse and keep Paid.
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 500, 'PayDate' => '2026-04-10']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => 0,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 500, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'void-zero-invoice'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => 'Zero InvoiceID is not legacy null',
+        ])->assertStatus(422)->assertJsonPath('code', 'void_invoice_mismatch');
+
+        $this->assertSame(0, Payment::where('Method', 'void')->count());
+        $this->assertSame('confirmed', $report->fresh()->status);
+        $this->assertSame(1, (int) $sc->fresh()->Paid);
+        $this->assertSame('2026-04-10', $sc->fresh()->PayDate);
+    }
+
+    public function test_void_null_invoice_legacy_path_requires_course_report_ownership(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $other = $this->createStudent(1);
+        $sc = $this->createCountModeClass($other->id, ['Paid' => 1, 'Charge' => 500, 'PayDate' => '2026-04-10']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => null,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 500, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'void-null-mismatch'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => 'Ownership mismatch must refuse',
+        ])->assertStatus(422)->assertJsonPath('code', 'void_invoice_mismatch');
+
+        $this->assertSame('confirmed', $report->fresh()->status);
+        $this->assertSame(1, (int) $sc->fresh()->Paid);
+        $this->assertSame('2026-04-10', $sc->fresh()->PayDate);
+    }
+
+    public function test_void_null_invoice_legacy_path_clears_paid_when_ownership_matches(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 500, 'PayDate' => '2026-04-10']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => null,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 500, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'void-null-ok'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => 'Legacy null invoice with matching ownership',
+        ])->assertOk();
+
+        $this->assertSame('voided', $report->fresh()->status);
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+        $this->assertNull($sc->fresh()->PayDate);
+        $this->assertSame(0, Payment::where('Method', 'void')->count());
+    }
+
     public function test_void_requires_void_reason(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -2456,6 +2632,73 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.payments.0.application_status', 'applied')
             ->assertJsonPath('invoices.0.payments.1.receipt_no', 'RCPT-202604-' . str_pad((string) $reportB->id, 6, '0', STR_PAD_LEFT))
             ->assertJsonPath('invoices.0.payments.1.application_status', 'applied');
+    }
+
+    public function test_accounting_ledger_does_not_show_a_reversed_receipt_as_overpaid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 500, 'Paid' => 0]);
+        // The first receipt fills the bill; before the fix the reversed duplicate was still allocated and showed as 多收.
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-10-01',
+            'DueDate' => '2026-10-10',
+            'TotalAmount' => 500,
+            'PaidAmount' => 0,
+            'Status' => 'paid',
+            'billing_period' => '2026-10',
+        ]);
+        $receipt = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 500,
+            'PaidAt' => '2026-10-09',
+            'Method' => 'cash',
+            'Note' => '第一筆',
+        ]);
+        $extra = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 500,
+            'PaidAt' => '2026-10-09',
+            'Method' => 'cash',
+            'Note' => '重複登記',
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-10-09',
+            'payment_method' => 'cash',
+            'reported_amount' => 500,
+            'status' => 'voided',
+            'payment_id' => $extra->id,
+            'report_token_hash' => hash('sha256', 'ledger-reversed-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $extra->update(['payment_report_id' => $report->id]);
+        // 撤銷 writes this reversal row (PaymentReportController::void).
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => -500,
+            'PaidAt' => '2026-10-10',
+            'Method' => 'void',
+            'Note' => '重複收款',
+            'payment_report_id' => $report->id,
+        ]);
+
+        $payments = collect($this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")
+            ->assertOk()
+            ->json('invoices.0.payments'))->keyBy('id');
+
+        $this->assertSame('applied', $payments[$receipt->id]['application_status']);
+        $this->assertSame('voided', $payments[$extra->id]['application_status']);
+        $this->assertSame(0, $payments[$extra->id]['unapplied_amount']);
+        $this->assertSame([], $payments->where('application_status', 'overpayment_pending_review')->keys()->all());
     }
 
     public function test_accounting_ledger_exposes_last5_note_and_rejected_reports_director_only(): void

@@ -28,6 +28,7 @@ use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
+use App\Services\Scheduling\ClassSessionDeleteGuard;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\OccurrenceAssignmentService;
 use App\Services\SubstituteScheduleService;
@@ -38,6 +39,7 @@ use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
+use App\Services\StudentClassActivity;
 use App\Services\SessionContractRecoveryService;
 use App\Exceptions\SessionContractRecoveryException;
 use App\Services\ScheduleGuardService;
@@ -211,6 +213,11 @@ class StudentClassController extends Controller
         // F7 S3b: one resolver batch per page is the payment_status authority (B7).
         $courseStatuses = app(\App\Services\BillingPayableResolver::class)
             ->courseStatusesByStudentClassIds($classIds, $classes->items());
+        // Match AR's invoice eligibility gate, including the paid-package hold.
+        $arCandidates = in_array($role, ['director', 'super_admin'], true)
+            ? Invoice::query()->whereIn('StudentClassID', $classIds)->whereRaw(Invoice::mayOweSql())
+                ->distinct()->pluck('StudentClassID')->flip()->all()
+            : [];
         // #4114 (Founder Q3): contracts with a standing receipt; a `paid` without one is the legacy flag alone (需核對).
         // Package expansion stays inside the caller's campuses (teachers / super admin: the owner-student rule alone).
         $paymentEvidence = app(\App\Services\BillingPayableResolver::class)->validPaymentEvidence(
@@ -331,7 +338,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -511,20 +518,13 @@ class StudentClassController extends Controller
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
             $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
-            // 堂數制 Remaining = 購買堂數 − 實際已上；月結 SessionCount 是預排數，不作餘額投影。
-
-            // #613 A1：若課程有「部分時數」事件（RemainingMinutes 非整堂倍數），分鐘為權威，
-            // 不可用 count-based observed 覆寫 recomputeCounters 已寫入的衍生值；否則沿用既有 self-heal。
-            $perSessionMin = max(1, (int) ($class->SessionDuration ?: 60));
+            // 堂數制 Remaining = 購買堂數 − 實際已上；月結與部分時數（#613 A1，分鐘為權威）不覆寫。
             $storedRemainingMinutes = $class->RemainingMinutes;
-            $hasFractionalBalance = $storedRemainingMinutes !== null
-                && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
-
-            if ($class->getAttribute('payment_type') === 'session'
-                && $class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
-                $observedUsedSessions = min($class->getAttribute('sessions_purchased'), $observedUsedSessions);
-                $class->UsedSessions = $observedUsedSessions;
-                $class->RemainingSessions = max(0, $class->getAttribute('sessions_purchased') - $observedUsedSessions);
+            $hasPartialLedger = (bool) ($usageDiagnostic['has_partial'] ?? false);
+            $healedUsage = StudentClassActivity::selfHealedUsage($class, $observedUsedSessions, $hasPartialLedger);
+            if ($healedUsage !== null) {
+                $class->UsedSessions = $healedUsage['used'];
+                $class->RemainingSessions = $healedUsage['remaining'];
             }
             $class->setAttribute('sessions_used', (int) ($class->UsedSessions ?? 0));
             $class->setAttribute('remaining_sessions', (int) ($class->RemainingSessions ?? 0));
@@ -575,6 +575,17 @@ class StudentClassController extends Controller
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
             $resolved = $courseStatuses[(int) $class->ID]['status'] ?? 'review_required';
+            if (in_array($role, ['director', 'super_admin'], true)) {
+                // Read projection of the existing batch verdict, never Charge-Pay.
+                // Keep review/unbilled distinct so consumers cannot invent AR.
+                $verdict = $courseStatuses[(int) $class->ID] ?? [];
+                $class->setAttribute('billing_verdict', [
+                    'status' => $verdict['status'] ?? 'review_required',
+                    'source' => $verdict['source'] ?? null,
+                    'outstanding' => $verdict['outstanding'] ?? null,
+                    'ar_candidate' => isset($arCandidates[(int) $class->ID]),
+                ]);
+            }
             $class->setAttribute('payment_status', match (true) {
                 // Waived (確認不收) stays `paid` here; the client labels it from closed_reason.
                 ContractMoneyState::isWaived($class) => 'paid',
@@ -625,7 +636,8 @@ class StudentClassController extends Controller
                 $monthlyPayment = $monthlyPayments[(int) $class->ID];
                 $class->setAttribute('monthly_payment', $monthlyPayment);
                 // A report is an administrative claim, not a payment for all periods.
-                if (!($pendingReportId !== null && count($monthlyPayment['periods']) === 1
+                // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
+                if ($resolved !== 'free' && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1
                     && $monthlyPayment['periods'][0]['source'] === 'single_period_legacy'
                     && $monthlyPayment['payment_status'] === 'unpaid')) {
                     $class->setAttribute('payment_status', $monthlyPayment['payment_status']);
@@ -633,11 +645,17 @@ class StudentClassController extends Controller
             }
             // Display only: payment_status stays `paid` (not owed, no reminder); the client shows 需核對, not 已收.
             // Only a real legacy flag (Paid=1 / package paid) qualifies: a derived `paid` (e.g. a Charge=0 single
-            // period, 0 >= 0) has no flag to verify (#4174 review).
-            $class->setAttribute('legacy_paid_flag_only', $effectivePaid && !$isTutoringCourse && !ContractMoneyState::isWaived($class)
+            // period, 0 >= 0) has no flag to verify (#4174 review). A trial that carries its payment date (PayDate, or the
+            // effective trial package's paid_at) never gets an invoice by design, so it is not legacy data (in-app #428).
+            $class->setAttribute('legacy_paid_flag_only', $effectivePaid && !$isTutoringCourse
+                && !$class->isTrialFeeRecordedByDate($pkg) && !ContractMoneyState::isWaived($class)
                 && $class->getAttribute('payment_status') === 'paid' && !isset($paymentEvidence[(int) $class->ID]));
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
+            // in-app #427: the one 進行中／歷史 verdict; 學生管理, 課程管理 and the duplicate prompt all read it.
+            $historyReason = StudentClassActivity::historyReason($class, (int) ($class->RemainingSessions ?? 0), $resolved, $hasPartialLedger);
+            $class->setAttribute('history_reason', $historyReason);
+            $class->setAttribute('is_active_course', StudentClassActivity::isActive($class, $historyReason));
             $class->trial_converted_to_id = $class->trial_converted_to_id
                 ? (int) $class->trial_converted_to_id
                 : null;
@@ -1642,6 +1660,8 @@ class StudentClassController extends Controller
         // a pure removal from a slot that was added or moved: deleting a slot
         // must not validate a retained locked occurrence as a new booking.
         $previousScheduleSlots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
+        // With the pre-edit SessionDuration, so a duration-only edit also counts as a slot change (#4435).
+        $previousRecurringSlots = $this->recurringSlotsFor($previousScheduleSlots, $studentClass);
         if (($rawInput['payment_status'] ?? null) === 'paid'
             && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
             return response()->json([
@@ -1735,12 +1755,12 @@ class StudentClassController extends Controller
             && $this->courseHasPastOrTaughtSessions((int) $studentClass->getKey())
         ) {
             $this->auditEditBlocked($studentClass, 'subject_change_requires_transfer', 422);
-            return response()->json([
+            return $this->withTransferHint(response()->json([
                 'message' => '此課程已有上過的堂次，直接改科目會讓過去的堂次也變成新科目。'
                     . '請改用「轉課／合約拆分」：舊合約保留已上堂次，剩餘堂數轉到新科目的新合約。',
                 'code' => 'subject_change_requires_transfer',
                 'suggested_actions' => ['split_contract'],
-            ], 422);
+            ], 422), $studentClass, $mapped, $scheduleSlotsForRebuild);
         }
         $teacherEffectiveDate = $request->validate([
             'teacher_effective_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
@@ -1750,9 +1770,22 @@ class StudentClassController extends Controller
             unset($mapped['RemainingSessions']);
         }
 
+        // in-app #426: a trial target class type is accepted only on a trial course.
+        $resultingClassType = (string) ($mapped['ClassType'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
+        $trialTarget = $mapped['trial_target_class_type'] ?? null;
+        if ($trialTarget !== null && ($resultingClassType !== 'trial' || !in_array($trialTarget, StudentClass::TRIAL_TARGET_CLASS_TYPES, true))) {
+            return response()->json([
+                'message' => '試聽班型只能用於試聽課程，且須為一對一、一對二或一對三。',
+                'code' => 'invalid_trial_target_class_type',
+            ], 422);
+        }
+        if ($resultingClassType !== 'trial' && $studentClass->getAttribute('trial_target_class_type') !== null) {
+            $mapped['trial_target_class_type'] = null;
+        }
+
         // RFC non-standard duration: validate + guard the billing contract fields.
         if ($contractError = $this->guardBillingContractUpdate($studentClass, $mapped)) {
-            return $contractError;
+            return $this->withTransferHint($contractError, $studentClass, $mapped, $scheduleSlotsForRebuild);
         }
 
         if (!empty($campusIds) && !empty($mapped['room_id'])) {
@@ -1789,8 +1822,13 @@ class StudentClassController extends Controller
             : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null);
         $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
 
+        // in-app #426: a trial's target class type decides its slot rule, so changing it re-checks capacity.
+        $oldTrialTarget = $studentClass->getAttribute('trial_target_class_type');
+        $newTrialTarget = array_key_exists('trial_target_class_type', $mapped) ? $mapped['trial_target_class_type'] : $oldTrialTarget;
+        $trialTargetChanged = $newClassType === 'trial' && $newTrialTarget !== $oldTrialTarget;
+
         if ($newTeacherId > 0 && $studentCampusId > 0) {
-            if ($scheduleFieldsPresent) {
+            if ($scheduleFieldsPresent || $trialTargetChanged) {
                 $candidate = clone $studentClass;
                 $candidate->fill($mapped);
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $scheduleSlotsForRebuild);
@@ -1825,14 +1863,19 @@ class StudentClassController extends Controller
                 $oldHoldsSeat = (int) ($studentClass->getAttribute('Stop') ?? 0) === 0
                     && ($oldMode === null || $oldMode !== 'count' || $oldRemaining === null || (int) $oldRemaining > 0);
                 $addsNoLoad = $oldHoldsSeat
+                    && !$trialTargetChanged
                     && $newTeacherId === $oldTeacherSnapshot
                     && $newClassType === $oldClassType
                     && $newRoomId === $oldRoomId
-                    && $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass) === $recurringSlots
+                    && $this->sameRecurringSlots(
+                        $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass),
+                        $recurringSlots
+                    )
                     && $this->activeWindowWithin($studentClass, $candidate);
                 $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
                     'teacher_id' => $newTeacherId,
                     'class_type' => $newClassType,
+                    'trial_target_class_type' => $newTrialTarget,
                     'room_id' => $newRoomId,
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,
@@ -1908,6 +1951,7 @@ class StudentClassController extends Controller
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
+            $previousRecurringSlots,
             $scheduleFieldsPresent,
             $teacherEffectiveDate
         ) {
@@ -2125,13 +2169,22 @@ class StudentClassController extends Controller
                 $sessionSync['reconcile_skipped'] = true;
                 $sessionSync['warning'] = "固定時段已儲存，但仍有 {$unalignedFuture} 筆未來堂次與新時段不同。請在堂次列表確認狀態。";
             } elseif (($sessionSync['reason'] ?? '') === 'history_exists'
-                && (
-                    !array_key_exists('updated_future_sessions', $sessionSync)
-                    || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
+                && !$this->sameRecurringSlots(
+                    $previousRecurringSlots,
+                    $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $studentClass)
                 )
             ) {
-                $sessionSync['reconcile_skipped'] = true;
-                $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+                // #4435: zero rows moved is not a lock. Re-sending an unchanged
+                // slot (e.g. a 堂數制→月結 switch) moves nothing and leaves
+                // nothing behind, so it is skipped above. When the slots did
+                // change, warn only for upcoming lessons whose status kept them
+                // off the saved slots.
+                $statusLockedFuture = $this->contractSchedule->countStatusLockedFutureContractSessions($studentClass);
+                if ($statusLockedFuture > 0) {
+                    $sessionSync['status_locked_future_sessions'] = $statusLockedFuture;
+                    $sessionSync['reconcile_skipped'] = true;
+                    $sessionSync['warning'] = "有 {$statusLockedFuture} 筆未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但這些堂次仍為舊時段，請檢查堂次狀態。";
+                }
             }
         } elseif ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
             $this->contractSchedule->reconcileWeekTimeFieldsFromSessions($studentClass);
@@ -2646,6 +2699,14 @@ class StudentClassController extends Controller
 
         if ($marked = $this->freeGiftMarkedRefusal($studentClass, 'charge_correction_free_gift_locked')) {
             return $marked;
+        }
+        // #4017: correcting to NT$0 would rewrite the open bill into an unmarked zero bill, which #3991 forbids.
+        if ((int) $payload['new_charge'] === 0) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_zero_forbidden', 422);
+            return response()->json([
+                'message' => '費用不能更正成 0 元，沒有變更任何資料。這張帳單若不該收，請到學生帳務作廢；有設定費用的課程不能改成「免費／贈送」。',
+                'code' => 'charge_correction_zero_forbidden',
+            ], 422);
         }
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
             $this->auditEditBlocked($studentClass, 'charge_correction_date_mode_only', 422);
@@ -3193,7 +3254,7 @@ class StudentClassController extends Controller
         // in-app #374: mirror purchaseBatch/renewMonthly so preview never advertises an unconfirmable trial renewal.
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
             return response()->json([
-                'message' => '試聽課程不能直接加購或續約，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接續課，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3293,7 +3354,7 @@ class StudentClassController extends Controller
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') === 'count') {
             return response()->json([
-                'message' => '此課程為堂數制，請使用「加購堂數」功能。',
+                'message' => '此課程為堂數制，請使用「續課」功能。',
                 'errors' => ['mode' => ['堂數制課程不支援月結續約，請使用 purchase-batch 端點。']],
             ], 422);
         }
@@ -3352,7 +3413,7 @@ class StudentClassController extends Controller
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
             ->notVoided()
             ->with(['items', 'payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id', 'receipt_url'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
@@ -3360,6 +3421,7 @@ class StudentClassController extends Controller
             ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
+        $restatedPaymentIds = \App\Services\Billing\PaymentReversalRestatement::recordedDispositionIds($payments);
         $paymentIds = $payments->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $reportIds = $payments->pluck('payment_report_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $reports = empty($paymentIds) && empty($reportIds)
@@ -3379,7 +3441,7 @@ class StudentClassController extends Controller
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $studentClass, $canSeeAccountLast5, $canViewReceipt) {
+            'invoices' => $invoices->map(function ($inv) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $studentClass, $canSeeAccountLast5, $canViewReceipt) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
@@ -3431,10 +3493,10 @@ class StudentClassController extends Controller
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
                     'paid_at'        => $paidAt,
                     'payment_count'  => $effectivePayments->count(),
-                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
+                    'payments'       => $inv->payments->map(function ($payment) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
                         $report = $reportsByPaymentId->get((int) $payment->id)
                             ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
-                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void' || isset($restatedPaymentIds[(int) $payment->id]);
 
                         return [
                             'id'                => (int) $payment->id,
@@ -3495,7 +3557,7 @@ class StudentClassController extends Controller
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial'
             && $request->attributes->get('trial_conversion') !== true) {
             return response()->json([
-                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接續課，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3503,7 +3565,7 @@ class StudentClassController extends Controller
         // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             return response()->json([
-                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援堂數制「續課」。',
                 'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
             ], 422);
         }
@@ -4417,7 +4479,7 @@ class StudentClassController extends Controller
                         'available_sessions' => $available,
                         'next_actions' => [[
                             'code' => 'open_target_purchase',
-                            'label' => '前往目標課程加購',
+                            'label' => '前往目標課程續課',
                             'available' => true,
                             'student_class_id' => (int) $target->ID,
                         ]],
@@ -4861,18 +4923,7 @@ class StudentClassController extends Controller
      */
     private function applyTeacherOrSubstituteStudentClassScope($query, int $teacherId): void
     {
-        $query->where(function ($q) use ($teacherId) {
-            $q->where('TeacherID', $teacherId)
-                ->orWhereExists(function ($sub) use ($teacherId) {
-                    $sub->select(DB::raw(1))
-                        ->from('schedules')
-                        ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
-                        ->where('schedules.teacher_id', $teacherId)
-                        ->where('schedules.status', 'scheduled')
-                        ->whereNotNull('schedules.original_schedule_id');
-                });
-            SubstituteScheduleService::orWhereTeachesMakeup($q, 'StudentClass.ID', $teacherId);
-        });
+        (new StudentClass())->scopeVisibleToTeacher($query, $teacherId);
     }
 
     /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */
@@ -5103,6 +5154,36 @@ class StudentClassController extends Controller
         }
 
         return $recurring;
+    }
+
+    /**
+     * Order-independent equality for weekly slots (#4098).
+     * A resubmit of the same Mon/Sun pair as Sun/Mon must still count as no added load.
+     *
+     * @param  array<int, array{day_of_week: int, start_time: string, end_time: string}>  $a
+     * @param  array<int, array{day_of_week: int, start_time: string, end_time: string}>  $b
+     */
+    private function sameRecurringSlots(array $a, array $b): bool
+    {
+        $normalize = static function (array $slots): array {
+            usort($slots, static function ($x, $y) {
+                $c = ((int) ($x['day_of_week'] ?? 0)) <=> ((int) ($y['day_of_week'] ?? 0));
+                if ($c !== 0) {
+                    return $c;
+                }
+                $c = strcmp((string) ($x['start_time'] ?? ''), (string) ($y['start_time'] ?? ''));
+                if ($c !== 0) {
+                    return $c;
+                }
+
+                return strcmp((string) ($x['end_time'] ?? ''), (string) ($y['end_time'] ?? ''));
+            });
+
+            // usort already reindexes 0..n-1; array_values would be a no-op (PHPStan).
+            return $slots;
+        };
+
+        return $normalize($a) === $normalize($b);
     }
 
     /** True when the candidate's active window starts no earlier and ends no later than the stored one. */
@@ -5619,6 +5700,9 @@ class StudentClassController extends Controller
         if (isset($input['teacher_id'])) $mappedData['TeacherID'] = $input['teacher_id'];
         if (isset($input['subject'])) $mappedData['SubjectID'] = $subjectId;
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
+        if (array_key_exists('trial_target_class_type', $input)) {
+            $mappedData['trial_target_class_type'] = $input['trial_target_class_type'] === '' ? null : $input['trial_target_class_type'];
+        }
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
         if (array_key_exists('scheduling_policy', $input)) {
             $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];
@@ -5938,8 +6022,9 @@ class StudentClassController extends Controller
             $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
             $classId = (int) $studentClass->ID;
 
-            // If immutable history exists, do a safe partial sync (times only).
-            if (ContractSessionSchedule::hasImmutableSessionHistory($classId) || ContractSessionSchedule::hasAttendanceMarkedSessions($classId)) {
+            // If immutable history exists (sign-in, approved record, attendance mark or a ledger
+            // debit, #4455), do a safe partial sync (times only).
+            if (ClassSessionDeleteGuard::courseHasProtectedHistory($classId)) {
                 $updatedCount = $this->contractSchedule->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
@@ -6086,7 +6171,7 @@ class StudentClassController extends Controller
             // StartDate. That mismatch concerns the start-date rebuild only;
             // letting it bypass this branch left the new contract beside old
             // future times (and made the UI issue a second, non-atomic PUT).
-            if ($scheduleUpdated && (!$startDateMismatch || ContractSessionSchedule::hasImmutableSessionHistory((int) $studentClass->getKey()))) {
+            if ($scheduleUpdated && (!$startDateMismatch || ClassSessionDeleteGuard::courseHasProtectedHistory((int) $studentClass->getKey()))) {
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
@@ -6108,8 +6193,12 @@ class StudentClassController extends Controller
             }
         }
 
-        if (ContractSessionSchedule::hasImmutableSessionHistory((int) $studentClass->ID)) {
-            // 開課日有變更：嘗試安全部分重建（只動未鎖定的未來堂次，保留已點名/已核准）
+        // #4455: a lesson already debited on the course or package ledger, or marked by a person, is
+        // history even without a sign-in or an approved record (calendar attendance and package
+        // creation write the ledger alone). Keep it, as the slot-only edit does: deleting it would
+        // strand its ledger rows and the re-created date would come back undebited.
+        if (ClassSessionDeleteGuard::courseHasProtectedHistory((int) $studentClass->ID)) {
+            // 開課日有變更：嘗試安全部分重建（只動未鎖定的未來堂次，保留已點名/已核准/已扣堂）
             if ($startDateChanged) {
                 $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
@@ -6364,6 +6453,82 @@ class StudentClassController extends Controller
         }
 
         return sprintf('%d.%02d', $whole, $hundredths);
+    }
+
+    /**
+     * in-app #409: a blocked 課程設定 save that also changes subject / teacher / weekly
+     * slots on a count-mode course can be done by 轉課 instead (past lessons stay on the
+     * old contract). Sets `next_step: course_transfer` + the cutover date on the existing
+     * 422 so the client offers it as the refusal's one next step. Read-only hint: the block itself is unchanged.
+     * Locked billing fields (SessionCount etc.) are NOT carried by 轉課: listed in
+     * `not_carried` so the UI states it instead of silently dropping them.
+     *
+     * @param  array<string, mixed>  $mapped
+     * @param  array<int, mixed>  $providedSlots
+     */
+    private function withTransferHint(\Illuminate\Http\JsonResponse $blocked, StudentClass $c, array $mapped, array $providedSlots): \Illuminate\Http\JsonResponse
+    {
+        if ($blocked->getStatusCode() !== 422) {
+            return $blocked;
+        }
+        $cid = (int) $c->getKey();
+        $changes = [];
+        $slotsAfter = [];
+        if (array_key_exists('SubjectID', $mapped) && (int) $mapped['SubjectID'] !== (int) $c->getAttribute('SubjectID')) {
+            $changes[] = 'subject';
+        }
+        if (!empty($mapped['TeacherID']) && (int) $mapped['TeacherID'] !== (int) $c->getAttribute('TeacherID')) {
+            $changes[] = 'teacher';
+        }
+        if (ContractSessionSchedule::scheduleFieldsPresentInMapped($mapped)) {
+            $candidate = clone $c;
+            $candidate->fill($mapped);
+            $before = $this->recurringSlotsFor(ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), $c);
+            $slotsAfter = array_map(fn ($x) => $x + ['duration_minutes' => (int) ($candidate->getAttribute('SessionDuration') ?: 120)],
+                ContractSessionSchedule::resolveScheduleSlotsForRebuild($candidate, $providedSlots));
+            if (!$this->sameRecurringSlots($before, $this->recurringSlotsFor($slotsAfter, $candidate))) {
+                $changes[] = 'slots';
+            }
+        }
+        // 轉課 refuses unmarked lessons before the cutover, so start at the first one.
+        $next = ClassSession::query()->where('StudentClassID', $cid)
+            ->where('Status', 'scheduled')->min('SessionDate');
+        if ($changes === [] || $next === null || count($slotsAfter) > 6) {
+            return $blocked;
+        }
+        // An unmarked row before any lesson with history (marked status, sign-in, approved
+        // record, ledger row) would make 轉課 move that history: withhold. Fail closed.
+        $moving = ClassSession::query()->where('StudentClassID', $cid)->whereDate('SessionDate', '>=', $next)
+            ->whereRaw("COALESCE(Status, '') != 'cancelled'")->get(['id', 'Status']);
+        $locked = ContractSessionSchedule::lockedClassSessionIds($cid);
+        if ($moving->contains(fn ($x) => (string) $x->Status !== 'scheduled' || isset($locked[(int) $x->id]))
+            || SessionDeductionLedger::query()->whereIn('class_session_id', $moving->pluck('id')->all())->exists()) {
+            return $blocked;
+        }
+        // Dry-run the 轉課 preview itself (rolled back) so the offered path is one that completes.
+        DB::beginTransaction();
+        try {
+            $this->applyTransfer($c, ['start_date' => $next, 'reason' => 'preview',
+                'subject_id' => in_array('subject', $changes, true) ? (int) $mapped['SubjectID'] : null,
+                'teacher_id' => in_array('teacher', $changes, true) ? (int) $mapped['TeacherID'] : null,
+                'slots' => in_array('slots', $changes, true) ? $slotsAfter : null], true);
+        } catch (\Throwable $notTransferable) {
+            return $blocked;
+        } finally {
+            DB::rollBack();
+        }
+        $data = (array) $blocked->getData(true);
+        // One next step per refusal: the client's editability next-step map reads
+        // `next_step` before the per-code default (courseEditability.js).
+        $data['next_step'] = 'course_transfer';
+        $data['transfer_hint'] = [
+            'start_date' => ContractSessionSchedule::normalizeDateString($next),
+            'changes' => $changes,
+            // 轉課 never applies a locked billing-contract edit; the client must say so.
+            'not_carried' => array_values((array) ($data['locked_fields'] ?? [])),
+        ];
+
+        return $blocked->setData($data);
     }
 
     /**

@@ -11,7 +11,7 @@ describe('ContractAdjustmentChoiceModal', () => {
     });
 
     expect(wrapper.text()).toContain('未付款，堂數改少');
-    expect(wrapper.text()).toContain('把已上課紀錄轉到另一份合約');
+    expect(wrapper.text()).toContain('搬移上課紀錄到另一份合約');
     expect(wrapper.text()).toContain('提前結束／調整合約總堂數');
     expect(wrapper.text()).toContain('不需要目標課程');
     expect(wrapper.text()).toContain('不改任何課程堂數或金額');

@@ -135,6 +135,19 @@ last_reviewed: 2026-08-23
 | A5b | **先查、不問（F15）**：回報者通常不會回覆。分診先看後台分診卡的「最近按過／畫面訊息／最近失敗請求／版本」（只在 app 內，不進公開 log）、正式站唯讀 probe、程式碼與同校同時段的其他回報自己重現。公開回覆寫「我們查到的原因＋會怎麼修／已修」，**不要**列問題請回報者回答；只有查完仍無法判斷、且答案會改變修法時，才問**一個**是非題。 |
 | A6 | **建議類（feature／ux／不做／重複）不留 `triaged`**（F12）：開／找到 GitHub issue → `bug-phase-a-triage.yml` 帶 `close_as_logged=true` + `disposition`（`suggestion`／`ux_friction`／`not_planned`／`duplicate`）。回覆範本：「已收進產品清單 <issue URL>。上線時會在這裡通知你；想補充直接回覆就會重開。」上線後用 `bug-followup-comment.yml`（`expected_status=closed` + `production_revision` + `deploy_run_id`）回「已上線＋怎麼用」；只對 `closed_as_logged` 且同一 issue 的單有效，會寫入 production evidence |
 
+##### GitHub intake consolidation metadata
+
+When consolidating an intake duplicate, preserve its SourceRef/history and put this explicit line in the same owner/bot-authored body or comment as its label-first SourceRef (replace the two IDs):
+
+```text
+SourceRef: alltrue:bug_report:416
+<!-- intake-canonical:alltrue:bug_report:416:4195 -->
+```
+
+Auto-intake validates that target #4195 is a same-repository issue with the same exact SourceRef owned by the repository owner/workflow bot. It follows one hop only; conflicting, missing, chained or cyclic targets and lookup errors stop intake before linking/reopening. Existing trusted `Canonical tracking: #4195.` lines are supported for the historical consolidation. Arbitrary prose URLs and untrusted authors/comments cannot redirect intake. Ordinary closed canonical issues still reopen for reports that remain new; consolidated duplicates stay closed. Family clustering remains advisory.
+
+This metadata only preserves GitHub tracking ownership. It does not resolve the in-app report, authorize implementation, or send a reporter reply. Consolidation can be rolled back by removing the marker and explicitly restoring the intended GitHub ownership; workflow rollback alone would restore oldest-match behavior and can reopen duplicates.
+
 **分診留言範本（公開）**：已收到 #___、已看附件 #___（若有）、已建 GitHub #___ 追蹤；勿叫補截圖若附件已存在。
 
 #### Phase B — 修復（改 `backend/`／`frontend/`）
@@ -142,7 +155,7 @@ last_reviewed: 2026-08-23
 | 步驟 | 動作 |
 |------|------|
 | B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
-| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才進 task worktree → regression RED → 改 code → focused tests／review／CI → PR。 |
+| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才依 [WORKTREE_POLICY](governance/WORKTREE_POLICY.md) 在雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才進 task worktree）→ regression RED → 改 code → focused tests／review／CI → PR。 |
 | B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線後由 Phase-C 自動關，F14） |
 | B4 | merge → `deploy.yml` → 核對 deployed SHA、`GET /api/v1/health`／`deployment.json`（前端有改再查 `version.json`）→ 驗證原回報角色、分校與使用者路徑。 |
 
@@ -150,7 +163,7 @@ last_reviewed: 2026-08-23
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）；cloud 可走 `bug-phase-c-allowlist.yml` allowlist PR（merge 後 autodispatch） |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／SOP 對照表）。**目前可跑**：`bug-followup-comment.yml`（僅改用詞、不改狀態）。ADR 規劃的 Pi-local `inapp-report-resolve-after-deploy` 尚未 catalog，不得當成已可執行 |
 | C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 SOP 對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |

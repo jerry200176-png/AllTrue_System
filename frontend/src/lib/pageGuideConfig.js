@@ -44,7 +44,7 @@ const pageGuideConfig = {
       target: '[data-guide="director-alerts"]',
       icon: 'notifications',
       title: '繳費／續課提醒與通知',
-      description: '列出本分校待繳費、月結將届，以及「已繳費但剩 0～2 堂」需聯繫加購的課程；另可從此區掌握未讀通知，或前往通知中心查看細節。',
+      description: '列出本分校待繳費、月結將届，以及「已繳費但剩 0～2 堂」需聯繫續課的課程；另可從此區掌握未讀通知，或前往通知中心查看細節。',
       placement: 'right',
     },
     {

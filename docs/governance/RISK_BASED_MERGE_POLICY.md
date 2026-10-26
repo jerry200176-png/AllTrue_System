@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.8.1
+**Version:** 1.8.2
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -21,9 +21,9 @@ Preserve autonomous delivery for reversible changes while keeping a Founder gate
 | **R2 / T2** | Reversible scheduling/runtime changes without a protected boundary | Exact-target required CI, rollback readiness, documented risk/production-verification plan, and resolved bot/reviewer threads; Agent may merge/deploy automatically when deterministic classification stays non-protected. |
 | **R3 / T3** | Production data repair; destructive migration; privilege expansion; financial correction; security boundary; backup/restore; mass recalculation; protected product direction | Agent may prepare implementation, tests, dry-run, Repair Manifest, recovery plan, and evidence package. Stop for Founder approval before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz, destructive action, backup restore, security-sensitive credential change, or major product/brand direction. |
 
-## Founder standing exception (2026-10-12)
+## Founder standing exception (2026-10-12; merge eligibility superseded by `FOUNDER_STANDING_DECISIONS.md` 2026-10-21 item 2(a))
 
-The Founder pre-approved one R3 path ([`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) ①): R3 **code** that implements billing or permission rules the Founder has already decided may be **merged** by the Agent (merge only) when all of these hold: a focused regression test for each changed money/permission path added or updated in the PR and run in exact-head CI (not only the paths `high-risk-test-gate.yml` recognizes), exact-head required checks green, an independent review (Codex or a reviewer agent; the Agent checks this before adding `queue`, since the land queue does not yet verify review evidence, #3972), the full review gate of [`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-12 ④ satisfied (no open P0/P1, every regression this PR introduces fixed at any severity, and its required P2 remediation round done), and after release the direct affected-path production evidence required by [`EVIDENCE_CONTRACT.md`](./EVIDENCE_CONTRACT.md) for R2/R3. It does **not** cover new billing/entitlement semantics, an identity/authz boundary change, production data mutation or repair, production migration, credential rotation, or irreversible operations; those keep the Founder stop above. Deployment is **not** covered: a range containing such a PR still ships through the existing release train / production-activation Founder approval in `deploy.yml`, because `autonomy_gate.py` and `deploy.yml` do not yet carry machine evidence for this exception (#3961).
+The Founder pre-approved one R3 path ([`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) ①): R3 **code** that implements billing or permission rules the Founder has already decided may be **merged** by the Agent (merge only) when all of these hold: a focused regression test for each changed money/permission path added or updated in the PR and run in exact-head CI (not only the paths `high-risk-test-gate.yml` recognizes), exact-head required checks green, an independent review (Codex or a reviewer agent; the Agent checks this before adding `queue`, and the queue rechecks exact-head review evidence before squash), the full review gate of [`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-12 ④ satisfied (no open P0/P1, every regression this PR introduces fixed at any severity, and its required P2 remediation round done), and after release the direct affected-path production evidence required by [`EVIDENCE_CONTRACT.md`](./EVIDENCE_CONTRACT.md) for R2/R3. It does **not** cover new billing/entitlement semantics, an identity/authz boundary change, production data mutation or repair, production migration, credential rotation, or irreversible operations; those keep the Founder stop above. Deployment is **not** covered: a range containing such a PR still ships through the existing release train / production-activation Founder approval in `deploy.yml`, because `autonomy_gate.py` and `deploy.yml` do not yet carry machine evidence for this exception (#3961).
 
 A second pre-approved path ([`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-14（二）③) covers only the ADR-POP-015 implementation PRs that replace #3943/#3955 (the `pop_inapp_agent` ApiClient scope, policy approval with `approver_role='policy'`, and the three in-app lifecycle write strategies through `pop:execute-approved`). Those PRs may be **merged** by the Agent under the same conditions as above: focused exact-head regression tests for every affected permission/write path, including cross-campus and empty-scope requests failing closed; exact-head required checks green; independent review; and the full 2026-10-12 ④ review gate. That identity/scope is the one this decision approves; any other identity/authz boundary change stays excluded. Deployment and turning on `POP_INAPP_STANDING_POLICY` stay Founder-approved.
 
@@ -86,7 +86,15 @@ before requesting auto-merge.
 
 ### Land queue
 
-Agents and humans add label `queue` instead of racing `gh pr update-branch` or `--auto`. `.github/workflows/land-queue.yml` (script `.github/scripts/land-queue.mjs`, base-branch code only, never PR code) processes the oldest queued PR: BEHIND -> update-branch; DIRTY, a failed required check, or an open review thread (open until it is both replied to and resolved) -> remove label with one comment (hidden marker per head SHA and reason); an unknown thread count never merges; CLEAN with all required checks green and zero open threads -> `gh pr merge --squash` without `--admin`, with the thread count re-read immediately before every squash (serial or batch). With strict up-to-date off it first tests 2-4 queued PRs together on a `chore/land-queue-batch-*` branch (see CLAUDE.md, Land queue) and lands them only from a green batch. Apart from this review-thread gate (AGENTS.md; FOUNDER_STANDING_DECISIONS ④) it adds no gate: the ruleset still decides. GitHub's native merge queue is not used because it is unavailable here (a `merge_queue` ruleset probe returned 422).
+Agents and humans add label `queue` instead of racing `gh pr update-branch` or `--auto`. `.github/workflows/land-queue.yml` runs its script from the base branch and never executes PR code. It updates a BEHIND head; a conflict, failed required check, or unresolved review thread removes `queue` with one per-head explanation. Unknown thread metadata never merges. Green required checks and zero unresolved threads still need exact-head review evidence: missing or incomplete review waits as `review-pending`, retaining `queue`. Immediately before every serial or batch squash, the queue re-reads both threads and review for the tested head. With strict up-to-date off it first tests 2–4 eligible heads together, then lands only a green batch whose base and member heads remain unchanged. GitHub's native merge queue is unavailable for this user-owned repo (the `merge_queue` ruleset probe returned 422).
+
+#### Final-head review evidence
+
+The shared `.github/scripts/review-gate.mjs` accepts a trusted Codex summary only when it is completed for the full lowercase head SHA and explicitly has no unresolved findings. An actual independent review may instead be recorded by the exact repository-owner account with the full-head `independent-review:v1` pass marker when Codex has not reviewed that head. The marker is provenance, not a second identity. Current-head findings, an active or otherwise incomplete current-head Codex review, unreadable evidence, or malformed state fail closed; an owner marker cannot override them.
+
+`review-gate.yml` publishes `review/final-head` from default-branch code. Its event and scheduled publishers share one non-cancelling lock with pending-run retention, and comment deletion re-evaluates withdrawn evidence. Before the main ruleset pins this check to the GitHub Actions app, native auto-merge is not enabled and existing unreviewed auto-merges are disabled; use the land queue. The Founder may add the required check only after the workflow is on main and has published its first sweep. This change makes no ruleset mutation. Batch heads have no PR review check; each member is checked in-process before squash.
+
+Installing this control-plane gate remains a T3 merge decision. Existing scoped approvals and accepted review evidence remain valid under [approval continuity](#approval-continuity-within-the-authorized-task); this gate does not retroactively reopen completed approved work or grant new merge, deployment, identity, credential or production authority.
 
 After merge, `deploy.yml` remains the only application production executor. Its
 deploy and principal-rotation jobs, together with the guarded repair workflows,
@@ -164,6 +172,10 @@ Required checks do not authorize protected execution. The Agent may prepare the
 complete evidence package, but must stop before the protected action and request
 Founder approval with the exact action, worst credible downside,
 rollback/reversibility, and post-action verification.
+
+When an Agent may merge an R3 PR is defined only in
+[`FOUNDER_STANDING_DECISIONS.md`](./FOUNDER_STANDING_DECISIONS.md) 2026-10-21
+item 2(a).
 
 ## Rollback
 

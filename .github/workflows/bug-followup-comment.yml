@@ -1,52 +1,61 @@
 name: Bug follow-up public comment
 
-# Idempotent public follow-up. This workflow deliberately never changes status.
+# Idempotent public follow-up, in batches of up to 20 rows. This workflow deliberately never changes status.
 # expected_status=closed is only for a logged suggestion that shipped (F12): it records
 # production evidence via BugReportService::notifyLoggedSuggestionShipped.
+# Founder 2026-10-21 (FOUNDER_STANDING_DECISIONS.md): no per-run Founder approval; main only,
+# secrets only on the main-only production-ssh environment, every row validated before any write.
 on:
   workflow_dispatch:
     inputs:
-      bug_id:
-        description: In-app bug ID
+      rows_json:
+        description: 'JSON array (1-20) of {"bug_id","expected_status"(triaged|in_progress|resolved|closed),"github_issue_url","public_reply"(<=600 chars, contains the URL),"production_revision"+"deploy_run_id"(required for closed)}'
         required: true
-        type: string
-      expected_status:
-        description: Current status that must remain unchanged (triaged, in_progress, resolved, or closed for a logged suggestion that shipped)
-        required: true
-        type: string
-      github_issue_url:
-        description: GitHub follow-up URL, required in the public reply
-        required: true
-        type: string
-      public_reply:
-        description: Public follow-up reply
-        required: true
-        type: string
-      production_revision:
-        description: Deployed full 40-char git SHA (required when expected_status=closed)
-        required: false
-        default: ""
-        type: string
-      deploy_run_id:
-        description: Deploy run ID (required when expected_status=closed)
-        required: false
-        default: ""
         type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: inapp-production-writeback
+  cancel-in-progress: false
+  queue: max
+
 jobs:
+  preview:
+    # Validates every row (all-or-nothing) and records an ID/hash-only table before the write job.
+    name: Preview the in-app write batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      shipped: ${{ steps.rows.outputs.shipped }}
+    steps:
+      - name: Checkout pinned row validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/scripts/inapp-writeback-rows.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Show the requested writes
+        id: rows
+        # rows_json is read from the event payload (never env); errors name the row and field, never the value.
+        run: python3 .github/scripts/inapp-writeback-rows.py followup preview
+
   comment:
+    needs: preview
     runs-on: ubuntu-latest
     environment: production-ssh
-    timeout-minutes: 15
+    timeout-minutes: 30
+    outputs:
+      applied: ${{ steps.write.outputs.applied }}
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and row validator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            .github/scripts/inapp-writeback-rows.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Configure pinned production SSH trust
@@ -67,28 +76,22 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Write idempotent follow-up comment
+      - name: Write idempotent follow-up comments
+        id: write
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          BUG_ID: ${{ inputs.bug_id }}
-          EXPECTED_STATUS: ${{ inputs.expected_status }}
-          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
-          PUBLIC_REPLY: ${{ inputs.public_reply }}
-          PRODUCTION_REVISION: ${{ inputs.production_revision }}
-          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+        # rows_json is deliberately not in env (GitHub prints step env in the public log header). The
+        # validator re-reads the event payload and emits one safe line per row: validated tokens plus
+        # the base64 reply. Rows run in order in one SSH session; the first failing row stops the batch
+        # (earlier rows stay written; a rerun is idempotent per row). The bug_ids the remote confirms
+        # are published as `applied`, so the follow-on job still handles rows written before a failure.
         run: |
           set -euo pipefail
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
-          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
-          if [[ "$EXPECTED_STATUS" == closed ]]; then
-            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
-            [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "closed follow-up needs deploy_run_id"; exit 1; }
-          fi
-          PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
+          ROWS="$(python3 .github/scripts/inapp-writeback-rows.py followup write)"
+          ROW_COUNT="$(printf '%s\n' "$ROWS" | wc -l | tr -d ' ')"
+          ROWS_B64="$(printf '%s' "$ROWS" | base64 | tr -d '\n')"
+          set +e
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
@@ -96,10 +99,23 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PRODUCTION_REVISION='$PRODUCTION_REVISION' DEPLOY_RUN_ID='$DEPLOY_RUN_ID' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+            "ROW_COUNT='$ROW_COUNT' ROWS_B64='$ROWS_B64' bash -s" <<'REMOTE' | tee "$RUNNER_TEMP/write.log"
           set -euo pipefail
           cd /home/admin/backend
+          applied=0
+          # fd 3 carries the rows; tinker gets /dev/null so it can never eat this script (bash -s stdin).
+          while read -r -u 3 BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PRODUCTION_REVISION DEPLOY_RUN_ID PUBLIC_REPLY_B64; do
+          if [[ "$PRODUCTION_REVISION" == - ]]; then PRODUCTION_REVISION=""; fi
+          if [[ "$DEPLOY_RUN_ID" == - ]]; then DEPLOY_RUN_ID=""; fi
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          if [[ "$EXPECTED_STATUS" == closed ]]; then
+            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
+            [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "closed follow-up needs deploy_run_id"; exit 1; }
+          fi
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
+          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
           if [[ "$EXPECTED_STATUS" == closed ]]; then
             # Same gate as Phase-C: never announce a revision that is not in production.
@@ -136,44 +152,66 @@ jobs:
           if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
           echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
           }
-          '
+          ' \
+          </dev/null
+          applied=$((applied + 1))
+          echo "applied_row=$BUG_ID"
+          done 3< <(printf '%s' "$ROWS_B64" | base64 -d; echo)
+          [[ "$applied" == "$ROW_COUNT" ]] || { echo "applied $applied of $ROW_COUNT rows"; exit 1; }
+          echo "applied $applied of $ROW_COUNT rows"
           REMOTE
+          rc=${PIPESTATUS[0]}
+          set -e
+          APPLIED="$({ grep -E '^applied_row=[0-9]+$' "$RUNNER_TEMP/write.log" || true; } | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          echo "applied=$APPLIED" >> "$GITHUB_OUTPUT"
+          echo "Write result: $(jq length <<< "$APPLIED") of $ROW_COUNT row(s) applied (exit $rc)." >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
 
   # F14: a logged suggestion that shipped closes its backlog issue (Phase-C never runs for it).
   close-shipped-issue:
-    needs: comment
-    if: inputs.expected_status == 'closed'
+    needs: [preview, comment]
+    # always(): close the issues of rows that were written even if a later row failed.
+    if: always() && needs.preview.outputs.shipped != '[]' && needs.comment.outputs.applied != '' && needs.comment.outputs.applied != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       issues: write
     steps:
-      - name: Close the shipped backlog issue
+      - name: Close the shipped backlog issues
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
-          PRODUCTION_REVISION: ${{ inputs.production_revision }}
-          BUG_ID: ${{ inputs.bug_id }}
+          SHIPPED: ${{ needs.preview.outputs.shipped }}
+          APPLIED: ${{ needs.comment.outputs.applied }}
         run: |
           set -euo pipefail
-          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
-          state="$(gh issue view "$GITHUB_ISSUE_URL" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
-          # Same guards as Phase-C: never close epics, reviewed frozen work, or an issue that also maps other reports.
-          case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip: $state"; exit 0 ;; esac
-          others="$(gh issue view "$GITHUB_ISSUE_URL" --json title,body,comments | BUG_ID="$BUG_ID" python3 -c '
+          # Each applied row is processed independently; one bad issue never strands the rest (failed=1 at the end).
+          failed=0
+          while IFS=$'\t' read -r -u 3 BUG_ID GITHUB_ISSUE_URL PRODUCTION_REVISION; do
+            [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+            [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
+            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid production_revision"; exit 1; }
+            state="$(gh issue view "$GITHUB_ISSUE_URL" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')" \
+              || { echo "::error::cannot read the issue for in-app $BUG_ID"; failed=1; continue; }
+            # Same guards as Phase-C: never close epics, reviewed frozen work, or an issue that also maps other reports.
+            case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip $BUG_ID: $state"; continue ;; esac
+            others="$(gh issue view "$GITHUB_ISSUE_URL" --json title,body,comments | BUG_ID="$BUG_ID" python3 -c '
           import json, os, re, sys
           d = json.load(sys.stdin)
           ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
           for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
               ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
-          print(" ".join(str(i) for i in sorted(ids - {int(os.environ["BUG_ID"])})))')"
-          if [[ -n "$others" ]]; then
-            # Shared backlog: leave it open but drop the exemption so the queue-dump reconcile shows it to a human.
-            echo "skip: issue also maps in-app $others"
+          print(" ".join(str(i) for i in sorted(ids - {int(os.environ["BUG_ID"])})))')" \
+              || { echo "::error::cannot read the issue mappings for in-app $BUG_ID"; failed=1; continue; }
+            if [[ -n "$others" ]]; then
+              # Shared backlog: leave it open but drop the exemption so the queue-dump reconcile shows it to a human.
+              echo "skip: issue also maps in-app $others"
+              gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
+              continue
+            fi
             gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
-            exit 0
-          fi
-          gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
-          gh issue close "$GITHUB_ISSUE_URL" --reason completed
-          gh issue comment "$GITHUB_ISSUE_URL" --body "已上線（production ${PRODUCTION_REVISION:0:9}），已在 in-app 通知原回報者。Closed automatically on ship (F14)."
+            gh issue close "$GITHUB_ISSUE_URL" --reason completed \
+              || { echo "::error::cannot close the issue for in-app $BUG_ID"; failed=1; continue; }
+            gh issue comment "$GITHUB_ISSUE_URL" --body "已上線（production ${PRODUCTION_REVISION:0:9}），已在 in-app 通知原回報者。Closed automatically on ship (F14)." \
+              || { echo "::error::cannot comment on the issue for in-app $BUG_ID"; failed=1; continue; }
+          done 3< <(jq -r --argjson a "$APPLIED" '.[] | select(.[0] as $id | $a | index($id)) | @tsv' <<< "$SHIPPED")
+          exit "$failed"

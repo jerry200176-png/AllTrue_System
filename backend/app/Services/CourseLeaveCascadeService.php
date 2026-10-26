@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\Schedule;
+use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use Carbon\Carbon;
@@ -86,6 +88,37 @@ class CourseLeaveCascadeService
         }
 
         return $session;
+    }
+
+    /**
+     * The calendar's leave marker for one lesson (#4210 P2-3): ordinary leave and the renewal-shift leave
+     * write the same row. With two lessons on the date the marker also carries the lesson's start (#3914).
+     * The caller owns the leave transaction and its row locks.
+     */
+    public static function recordLeaveMarker(StudentClass $course, ClassSession $session, int $campusId): void
+    {
+        $date = Carbon::parse($session->SessionDate)->toDateString();
+        $key = ['student_course_id' => (int) $course->ID, 'schedule_date' => $date, 'status' => 'leave']
+            + (self::courseHasTwoLessonsOn((int) $course->ID, $date) ? ['start_time' => substr((string) $session->StartTime, 0, 5)] : []); // HH:MM like other producers
+        Schedule::query()->firstOrCreate($key, [
+            'student_id'  => (int) $course->StudentID,
+            'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time'  => substr((string) $session->StartTime, 0, 5),
+            'end_time'    => substr((string) $session->EndTime, 0, 5),
+            'class_type'  => $course->ClassType ?? 'one_on_one',
+            'type'        => 'normal',
+            'deduction'   => 0,
+            'branch_id'   => $campusId,
+            'teacher_id'  => (int) ($course->TeacherID ?? 0),
+            'subject'     => $course->SubjectID ?? null,
+        ]);
+    }
+
+    /** #3914 review: does this course hold two or more (non-cancelled) lessons on the date? */
+    public static function courseHasTwoLessonsOn(int $courseId, string $date): bool
+    {
+        return ClassSession::query()->where('StudentClassID', $courseId)->whereDate('SessionDate', $date)
+            ->whereRaw('LOWER(COALESCE(Status, \'\')) <> ?', ['cancelled'])->count() > 1;
     }
 
     /**
@@ -635,6 +668,12 @@ class CourseLeaveCascadeService
         }
         $slotDays = array_values(array_filter($weekdays, fn ($d) => in_array($d . '|' . $start, $contractSlots, true)));
         $next = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+        // #4058: an occupied compatible date keeps searching the same slot weekdays. Returning null here would let
+        // computeAppendOnlyPlan() fall back to every course weekday and put this lesson's time on another weekday.
+        for ($tries = 0; $tries < 52 && !$free($next); $tries++) {
+            $baseDates[$next] = true;
+            $next = self::nextRecurringDate(Carbon::parse($next)->startOfDay(), $slotDays ?: $weekdays, $baseDates);
+        }
 
         return $free($next) ? $next : null;
     }
@@ -998,17 +1037,33 @@ class CourseLeaveCascadeService
         }
         self::requireNamedLesson($sessions, $normalizedLeaveDate, $sessionId);
 
+        $shiftTail = $sessionId === null ? null : CourseLeaveCascadeSuccessorShiftService::shiftTail($courseId, $sessionId);
         $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate, $sessionId) {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
             $status = strtolower((string) ($session->Status ?? ''));
             return $sessionDate === $normalizedLeaveDate && $status === 'leave'
                 && ($sessionId === null || (int) $session->id === $sessionId); // #3914: undo the clicked lesson
         });
+        if (!$leaveSession && $shiftTail
+            && StudentSignIn::query()->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')
+                ->whereIn('Status', ['leave', 'excused', 'leave_requested'])->exists()) {
+            $leaveSession = $sessions->first(fn ($row) => (int) $row->id === $sessionId
+                && Carbon::parse($row->SessionDate)->toDateString() === $normalizedLeaveDate
+                && strtolower((string) $row->Status) === 'scheduled');
+        }
         if (!$leaveSession) {
             throw new \InvalidArgumentException('找不到可撤銷的請假堂次');
         }
 
-        if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+        $shiftTail = CourseLeaveCascadeSuccessorShiftService::shiftTail($courseId, (int) $leaveSession->id);
+        CourseLeaveCascadeSuccessorShiftService::assertUndoAllowed($course, (int) $leaveSession->id);
+        if ($shiftTail && (!Carbon::parse(Carbon::parse($shiftTail->SessionDate)->toDateString() . ' ' . $shiftTail->StartTime)->isFuture()
+            || !self::isSafeToRemoveAutoAppend($shiftTail)
+            || SessionDeductionLedger::query()->where('class_session_id', (int) $shiftTail->id)->exists())) {
+            throw new \InvalidArgumentException('順延尾堂已經過期或已有使用紀錄，無法自動撤銷請假');
+        }
+
+        if (!$shiftTail && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
             self::restoreLeaveSession($leaveSession);
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
             return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate, null];
@@ -1029,14 +1084,14 @@ class CourseLeaveCascadeService
 
         // A leave does not always create a tail for paused or date-based
         // courses without a purchased-session commitment.
-        if (self::leaveCascadeDoesNotRequireTail($course)) {
+        if (!$shiftTail && self::leaveCascadeDoesNotRequireTail($course)) {
             self::restoreLeaveSession($leaveSession);
             $end = $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null;
             return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate, null];
         }
 
         // #3914: this lesson's own tail first; another same-date lesson's tail is never taken for it.
-        $appendedSession = self::ownTail($sessions, (int) $leaveSession->id)
+        $appendedSession = $shiftTail ?? self::ownTail($sessions, (int) $leaveSession->id)
             ?? (self::lessonsOnDate($sessions, $normalizedLeaveDate) > 1 ? null : $sessions
             ->filter(function ($session) use ($normalizedLeaveDate) {
                 $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
@@ -1064,8 +1119,8 @@ class CourseLeaveCascadeService
         // leave-policy-shift note and still need reverse-shift (handled below).
         $leaveNote = strtolower((string) ($leaveSession->Note ?? ''));
         $appendNote = strtolower((string) ($appendedSession->Note ?? ''));
-        $isLegacyShift = str_contains($leaveNote, self::NOTE_POLICY_SHIFT)
-            || str_contains($appendNote, self::NOTE_POLICY_SHIFT);
+        $isLegacyShift = !$shiftTail && (str_contains($leaveNote, self::NOTE_POLICY_SHIFT)
+            || str_contains($appendNote, self::NOTE_POLICY_SHIFT));
 
         if ($isLegacyShift) {
             $weekdays = self::resolveCourseWeekdays(
@@ -1111,7 +1166,11 @@ class CourseLeaveCascadeService
         }
 
         self::restoreLeaveSession($leaveSession);
-
+        if ($shiftTail) {
+            StudentSignIn::query()->where('ClassSessionID', (int) $leaveSession->id)->whereNull('VoidedAt')
+                ->whereIn('Status', ['leave', 'excused', 'leave_requested'])
+                ->update(['VoidedAt' => now(), 'VoidReason' => '撤銷續約順延請假']);
+        }
         $appendedSession->delete();
 
         $extendedEndDate = ClassSession::where('StudentClassID', $courseId)
@@ -1138,7 +1197,8 @@ class CourseLeaveCascadeService
         $leaveSession->setAttribute('Status', 'scheduled');
         $leaveSession->setAttribute(
             'Note',
-            self::appendNote((string) ($leaveSession->getAttribute('Note') ?? ''), self::NOTE_REVERT_TO_SCHEDULED)
+            CourseLeaveCascadeSuccessorShiftService::resolvedAnchorNote(
+                self::appendNote((string) ($leaveSession->getAttribute('Note') ?? ''), self::NOTE_REVERT_TO_SCHEDULED))
         );
         $leaveSession->save();
 

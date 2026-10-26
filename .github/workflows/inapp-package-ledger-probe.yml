@@ -1,0 +1,112 @@
+# governance-capability: read-only-probe
+name: In-app package ledger probe (read-only)
+
+# in-app #419 / #4275: does a shared package that shows more sessions used than its total hold a real overage
+# (attendance is never blocked by balance) or the same lesson debited twice? Founder allowed safe read-only production
+# access for in-app cases on 2026-10-23. Runs the reviewed scripts/probes/inapp-package-ledger-probe.php from main
+# against the deployed app's own DB connection, in a MySQL READ ONLY session and a transaction that is rolled back (the
+# server refuses any write; the script exits if the session is not read-only). Public repo (#3605): inputs are numeric
+# ids only and the output is ids, counts, dates, times, statuses and reason codes, never names, amounts or notes.
+# Record each run on the in-app case's GitHub issue (run link + ids only).
+on:
+  workflow_dispatch:
+    inputs:
+      campus_id:
+        description: "Campus id (numeric)"
+        required: true
+        type: string
+      package_id:
+        description: "Optional course_packages id (numeric); blank lists every over-used package of the campus"
+        required: false
+        default: ""
+        type: string
+      all_packages:
+        description: "With no package id: list every shared package of the campus (max 200), not only over-used ones"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: inapp-package-ledger-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Production read-only package ledger probe
+    # Production SSH secrets reach only the reviewed workflow and probe script on main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 10
+    steps:
+      - name: Validate inputs
+        env:
+          CAMPUS_ID: ${{ inputs.campus_id }}
+          PACKAGE_ID: ${{ inputs.package_id }}
+        run: |
+          set -euo pipefail
+          [[ "$CAMPUS_ID" =~ ^[1-9][0-9]{0,8}$ ]] || { echo 'campus_id must be a positive integer'; exit 1; }
+          [[ -z "$PACKAGE_ID" || "$PACKAGE_ID" =~ ^[1-9][0-9]{0,8}$ ]] || { echo 'package_id must be blank or a positive integer'; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/probes/inapp-package-ledger-probe.php
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Run read-only probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          CAMPUS_ID: ${{ inputs.campus_id }}
+          PACKAGE_ID: ${{ inputs.package_id }}
+          ALL_PACKAGES: ${{ inputs.all_packages && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          [[ "$ALL_PACKAGES" == true || "$ALL_PACKAGES" == false ]] || { echo 'all_packages must be true or false'; exit 1; }
+          PROBE_B64=$(base64 -w0 scripts/probes/inapp-package-ledger-probe.php)
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "PROBE_B64='${PROBE_B64}' CAMPUS_ID='${CAMPUS_ID}' PACKAGE_ID='${PACKAGE_ID}' ALL_PACKAGES='${ALL_PACKAGES}' bash -s" <<'ENDSSH' | tee out/package-ledger-probe.json
+          set -euo pipefail
+          PROBE=$(mktemp /tmp/inapp-package-ledger-probe.XXXXXX.php)
+          trap 'rm -f "$PROBE"' EXIT
+          printf '%s' "$PROBE_B64" | base64 -d > "$PROBE"
+          cd /home/admin/backend
+          INAPP_PACKAGE_LEDGER_PROBE=1 APP_ROOT=/home/admin/backend CAMPUS_ID="$CAMPUS_ID" PACKAGE_ID="$PACKAGE_ID" ALL_PACKAGES="$ALL_PACKAGES" php "$PROBE"
+          ENDSSH
+          grep -q '"read_only": true' out/package-ledger-probe.json
+          grep -q '"session_read_only": 1' out/package-ledger-probe.json
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### In-app package ledger probe (read-only)'
+            echo 'ids, counts, dates, statuses and reason codes only'
+            echo '```json'
+            sed -n '1,400p' out/package-ledger-probe.json 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,8 +1,11 @@
+
 name: Bug Phase-C allowlist resolve (Pi)
 
-# Idempotent Phase C for bugs whose code fix is already on production.
-# Trigger via request file (cloud agents cannot workflow_dispatch).
-# Allowlist only — never invent new bug IDs here without Evidence Contract.
+# WRITE PATH RETIRED 2026-10-19 (ADR-POP-015 / ADR-POP-008): the remote step throws
+# legacy_ssh_phase_c_retired before any BugReportService write. Keep allowlist map +
+# request-file parser for control-plane contract tests and audit. Do not remove the throw.
+# Currently runnable: bug-followup-comment.yml (wording-only). ADR-named
+# inapp-report-resolve-after-deploy is not catalogued yet. Autodispatch fails closed on new IDs.
 on:
   workflow_dispatch:
     inputs:
@@ -107,6 +110,9 @@ jobs:
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
           $actor = $admin ? (int)$admin : 1;
           $svc = \App\Services\BugReportService::class;
+          // 2026-10-19: refuse all runner→SSH→tinker engineering resolves (ADR-POP-015 / ADR-POP-008).
+          // Autodispatch of new allowlist IDs is also retired. Do not remove this guard to "just resolve".
+          throw new \RuntimeException("legacy_ssh_phase_c_retired:ADR-POP-015");
           // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
           $items = [
             242 => [
@@ -936,6 +942,22 @@ jobs:
               "issue" => 3901,
               "rev" => "e2783fa4a36d46ffd75fb1c4fcea68fbc5399db1",
               "deploy" => "38487348016",
+            ],
+            407 => [
+              "reply" => "已修好並上線：帳務中心的學生列表只有真的有收款紀錄時才會顯示「已收」；還沒開帳單會顯示「還沒開帳單」，目前沒有待收款項會顯示「沒有待收款項」。若只有舊資料打了已收標記、卻找不到付款紀錄，會改成「需核對」，不會再誤顯示綠色已收。請重新整理帳務中心確認；順利的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/4114",
+              "issue" => 4114,
+              "rev" => "83c52b2b9c490b01d5aa90b21f1813ff250d2577",
+              "deploy" => "39002903783",
+            ],
+            // #394 path is ended monthly open-bill → 金額待確認 (#4121). Do not claim
+            // count-only issuedBillRateNote (#4128) for monthly; that helper returns null
+            // unless schedule_mode===count. Prefer Pi-local inapp-report-resolve-after-deploy
+            // (ADR-POP-015) over re-running this SSH allowlist entry for new engineering resolves.
+            394 => [
+              "reply" => "已修好並上線：帳務中心不會再把「已結束、但仍有未繳帳單、金額待核對」的月結課顯示成「已收」或從未收清單消失，這類會改列在「金額待確認」。已開出且尚未收款的帳單金額不會因事後改價而靜默改寫；堂數制非方案課程若開單金額與目前課程金額不同，畫面會並列兩者並註明差異不代表帳單有誤，月結課不會出現該對照標示。若要改帳單請走既有核對／更正流程。請重新整理帳務中心確認；順利的話請按「確認已修好」；若仍有問題請按「問題仍存在」並簡述分校與操作步驟（請勿貼姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3980",
+              "issue" => 3980,
+              "rev" => "7dd2e2505410170f696ac2609b715a94876c396d",
+              "deploy" => "39211021996",
             ],
           ];
           // One authorized target per run. A request for an unknown ID or an

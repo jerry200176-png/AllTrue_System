@@ -82,8 +82,12 @@ class ContractMoneyCallersAgreeTest extends TestCase
             $answers['alerts_listing'] = "owes {$v->outstanding} but is not in the alert list (Paid={$c['paidFlag']})";
         }
         // 2. Course list.
-        $list = collect($this->withHeaders($headers)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $course->StudentID)->assertOk()->json());
+        $list = collect($this->withHeaders($headers)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $course->StudentID)->assertOk()->json('data'));
         $listRow = $list->first(fn ($r) => (int) ($r['ID'] ?? $r['id'] ?? 0) === $id);
+        $this->assertNotNull($listRow, 'seed ' . $seed . ': course list must exercise the seeded contract');
+        $this->assertSame(['status' => $v->status, 'source' => $v->source, 'outstanding' => $v->outstanding],
+            array_diff_key($listRow['billing_verdict'] ?? [], ['ar_candidate' => true]), 'seed ' . $seed . ': canonical list verdict');
+        $this->assertIsBool($listRow['billing_verdict']['ar_candidate'] ?? null);
         if ($listRow && $class) {
             $listClass = match ($listRow['payment_status'] ?? '') {
                 'paid', 'free' => 'settled',
@@ -257,6 +261,10 @@ class ContractMoneyCallersAgreeTest extends TestCase
         $h = $this->directorHeaders();
         $rows = collect($this->withHeaders($h)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
         $this->assertNull($rows->first(fn ($r) => (int) ($r['id'] ?? 0) === (int) $course->ID && empty($r['package_id'])));
+        $projection = collect($this->withHeaders($h)->getJson('/api/v1/student-classes?campus_id=1')->assertOk()->json('data'))->firstWhere('ID', $course->ID);
+        $this->assertSame('partial', $projection['billing_verdict']['status']);
+        $this->assertSame(6000, $projection['billing_verdict']['outstanding']);
+        $this->assertFalse($projection['billing_verdict']['ar_candidate']);
         // Same hold for the class-level finance lists (#3891 review): no member-level AR or bank match either.
         $this->assertSame(0, (int) $this->withHeaders($h)->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total'));
         $txn = \App\Models\BankTransaction::create(['campus_id' => 1, 'transaction_date' => '2026-08-20', 'amount' => 6000, 'reference' => 'pkg', 'status' => 'unmatched']);
@@ -274,6 +282,8 @@ class ContractMoneyCallersAgreeTest extends TestCase
         ])->id]);
         $this->assertSame(1, \App\Models\Invoice::query()->where('StudentClassID', $course->ID)->whereRaw(\App\Models\Invoice::mayOweSql())->count());
         $this->assertSame(6000, (int) $this->withHeaders($this->directorHeaders())->getJson('/api/v1/finance/ar-aging?branch_id=1')->assertOk()->json('totals.grand_total'));
+        $projection = collect($this->withHeaders($this->directorHeaders())->getJson('/api/v1/student-classes?campus_id=1')->assertOk()->json('data'))->firstWhere('ID', $course->ID);
+        $this->assertTrue($projection['billing_verdict']['ar_candidate']);
     }
 
     /** @return array<string, string> */
