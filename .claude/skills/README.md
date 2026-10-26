@@ -29,4 +29,8 @@ Each entry is a relative symlink. Edit the canonical file, not the link.
 | `$HOME/workspace/state/alltrue/delivery/` | Local WSL state; absent in cloud sessions. Use GitHub issues/PRs. |
 | `.cursor/skills-cursor/*` (create-rule, babysit, ...) | Cursor built-ins with no repo equivalent; use Claude Code's own `/code-review`, hooks and skills. |
 
-**Cloud checks before pushing:** the SessionStart hook (`.claude/hooks/session-start.sh`) installs `vendor/`, `node_modules/` and a local MariaDB `AllTrue_test`, so run `cd backend && vendor/bin/phpunit --filter X` (or a test file) and `vendor/bin/phpstan analyse --memory-limit=1G <files>` instead of waiting for CI; CI (MySQL 8) stays the source of truth.
+**Cloud checks before pushing:** when dependency setup succeeds, run `cd backend && vendor/bin/phpunit --filter X` (or a test file) and `vendor/bin/phpstan analyse --memory-limit=1G <files>`; CI (MySQL 8) stays the source of truth. SessionStart failures are non-fatal and do not establish test readiness.
+
+The hook preserves the managed runtime proxy and CA trust, disables dependency lifecycle scripts/plugins, and does not seed Git archives after a download refusal. Backend setup requires Composer's `source-fallback=false` control and verifies that project configuration has not enabled it; an unsupported Composer version safely skips the install. See [Composer's security rationale](https://getcomposer.org/doc/06-config.md#source-fallback). Database clients ignore default connection files and inherited MySQL variables and use only `/run/mysqld/mysqld.sock`; failed provisioning never claims readiness. These are local cloud-container operations, never a Production setup path.
+
+Offline regression: `python3 .claude/hooks/test_session_start.py`. The existing entry check runs it too; all installers, network and DB commands are synthetic mocks.
