@@ -65,7 +65,16 @@ def preflight(raw, target, workflow):
         version = fact["server_version"]
         match = re.fullmatch(r"(10\.11\.[0-9]{1,5})(?:[-+][a-zA-Z0-9.+:~_-]{1,100})?", version)
         vars = fact["session_variables"]
+        bounded_values = (isinstance(vars, dict)
+                          and type(vars.get("lock_wait_timeout")) is str
+                          and re.fullmatch(r"[0-9]{1,9}", vars["lock_wait_timeout"])
+                          and int(vars["lock_wait_timeout"]) <= 31536000
+                          and type(vars.get("max_statement_time")) is str
+                          and re.fullmatch(r"[0-9]{1,9}(?:\.[0-9]{1,6})?", vars["max_statement_time"])
+                          and float(vars["max_statement_time"]) <= 31536000
+                          and vars.get("alter_algorithm") in ("DEFAULT", "COPY", "INPLACE", "NOCOPY", "INSTANT"))
         profile = bool(match and "MariaDB" in version and table["ENGINE"] == "InnoDB"
+                       and bounded_values
                        and set(vars) == {"lock_wait_timeout", "max_statement_time", "alter_algorithm", "wsrep_on"}
                        and vars["wsrep_on"] == "OFF")
         out.update(php_cli_64bit=raw.get("php_int_size") == 8 if type(raw.get("php_int_size")) is int else "UNKNOWN",

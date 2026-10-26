@@ -83,6 +83,13 @@ class MetadataProjectionTest(unittest.TestCase):
         for change in changes:
             raw, target = self.preflight_fixture(); change(raw, target)
             self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
+        for key in ('lock_wait_timeout', 'max_statement_time', 'alter_algorithm'):
+            for invalid in (None, False, [], {}, 'FAKE_PRIVATE_UNKNOWN', 'nan', '-1', '99999999999999'):
+                raw, target = self.preflight_fixture()
+                raw['schema_metadata']['preflight']['session_variables'][key] = invalid
+                out = module.preflight(raw, target, WORKFLOW)
+                self.assertEqual(out['snapshot_check'], 'HOLD', (key, invalid))
+                self.assertNotIn('FAKE_PRIVATE', json.dumps(out))
         raw, target = self.preflight_fixture()
         raw['schema_metadata']['preflight']['ledger_records'] *= 10001
         self.assertEqual(module.preflight(raw, target, WORKFLOW)['snapshot_check'], 'HOLD')
