@@ -36,6 +36,11 @@ class DirectorGrantTargetGuardTest extends TestCase
         $target = $this->user('T', $campus->id);
         // The grant is on a campus the director does not manage: any unrevoked director grant counts.
         $this->grant($target->id, $other->id);
+        foreach (["/api/v1/profiles?single=1&id={$target->id}", "/api/v1/teachers?single=1&id={$target->id}"] as $url) {
+            $this->api($token)->getJson($url)->assertOk()
+                ->assertJsonPath('profile_management_blocked_by_director_grant', true)
+                ->assertJsonPath('profile_management_block_reason', 'director_grant_holder');
+        }
         $state = fn () => [
             DB::table('User')->where('id', $target->id)->first(['PSW', 'LoginName', 'Name', 'status', 'MustChangePassword']),
             DB::table('UserCampus')->where('UserID', $target->id)->orderBy('CampusID')->get(['CampusID', 'Approved', 'Admin'])->toArray(),
@@ -60,10 +65,15 @@ class DirectorGrantTargetGuardTest extends TestCase
         $target = $this->user('T', $campus->id);
         $grant = $this->grant($target->id, $campus->id);
 
-        $this->api($this->token($this->user('S', null)))->putJson("/api/v1/profiles/{$target->id}", ['name' => '超管改名'])->assertOk();
+        $superToken = $this->token($this->user('S', null));
+        $this->api($superToken)->getJson("/api/v1/profiles?single=1&id={$target->id}")->assertOk()
+            ->assertJsonPath('profile_management_blocked_by_director_grant', false);
+        $this->api($superToken)->putJson("/api/v1/profiles/{$target->id}", ['name' => '超管改名'])->assertOk();
         $this->assertSame('超管改名', (string) $target->fresh()->Name);
 
         $grant->forceFill(['revoked_at' => now()])->save();
+        $this->api($token)->getJson("/api/v1/profiles?single=1&id={$target->id}")->assertOk()
+            ->assertJsonPath('profile_management_blocked_by_director_grant', false);
         $this->api($token)->putJson("/api/v1/profiles/{$target->id}", ['name' => '主任改名'])->assertOk();
         $this->assertSame('主任改名', (string) $target->fresh()->Name);
     }
@@ -76,9 +86,41 @@ class DirectorGrantTargetGuardTest extends TestCase
         $this->grant($holder->id, $campus->id);
         $this->grant($holder->id, $campus->id, 'teacher');
 
-        $this->api($this->token($holder))->withHeaders(['X-Acting-As' => 'director'])
+        $token = $this->token($holder);
+        $this->api($token)->withHeaders(['X-Acting-As' => 'director'])
+            ->getJson("/api/v1/profiles?single=1&id={$holder->id}")->assertOk()
+            ->assertJsonPath('profile_management_blocked_by_director_grant', false);
+        $this->api($token)->withHeaders(['X-Acting-As' => 'director'])
             ->putJson("/api/v1/profiles/{$holder->id}", ['name' => '自己改名'])->assertOk();
         $this->assertSame('自己改名', (string) $holder->fresh()->Name);
+    }
+
+    public function test_list_shapes_and_grant_lookup_do_not_grow_per_teacher(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $token = $this->token($this->user('D', $campus->id));
+        $target = $this->user('T', $campus->id);
+        $this->grant($target->id, $campus->id);
+        $lookupCount = function () use ($token, $target): int {
+            DB::flushQueryLog();
+            $response = $this->api($token)->getJson('/api/v1/teachers?per_page=all')->assertOk();
+            $item = collect($response->json())->firstWhere('id', $target->id);
+            $this->assertTrue($item['profile_management_blocked_by_director_grant']);
+            return collect(DB::getQueryLog())->filter(fn ($q) => str_contains(strtolower($q['query']), 'from `user_capability_grants`'))->count();
+        };
+        DB::enableQueryLog();
+        try {
+            $before = $lookupCount();
+            $this->assertGreaterThanOrEqual(1, $before, 'the query budget must measure actual grant reads');
+            for ($i = 0; $i < 8; $i++) $this->user('T', $campus->id);
+            $this->assertSame($before, $lookupCount(), 'grant lookup count must stay bounded as the list grows');
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+        $page = $this->api($token)->getJson('/api/v1/teachers?per_page=200')->assertOk();
+        $item = collect($page->json('data'))->firstWhere('id', $target->id);
+        $this->assertTrue($item['profile_management_blocked_by_director_grant']);
     }
 
     private function grant(int $userId, int $campusId, string $capability = 'director'): UserCapabilityGrant

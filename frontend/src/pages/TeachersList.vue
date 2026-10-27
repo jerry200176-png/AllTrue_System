@@ -191,7 +191,7 @@
                 <span v-if="teacher.rfid" class="rfid-tag">{{ teacher.rfid }}</span>
                 <span v-else class="no-support">—</span>
               </template>
-              <button type="button" class="small ghost tpc-rfid-btn" @click="editTeacher(teacher)">
+              <button type="button" class="small ghost tpc-rfid-btn" :disabled="managementBlocked(teacher)" :aria-describedby="managementBlocked(teacher) ? `teacher-management-${teacher.id}` : undefined" @click="editTeacher(teacher)">
                 {{ teacherHasAnyRfid(teacher) ? '重新綁定' : '綁定' }}
               </button>
             </div>
@@ -203,8 +203,9 @@
         </div>
 
         <footer class="tpc-actions">
-          <button type="button" class="small" @click="editTeacher(teacher)">編輯</button>
-          <button type="button" class="small warning" @click="resetTeacherPassword(teacher)">重設密碼</button>
+          <span v-if="managementBlocked(teacher)" :id="`teacher-management-${teacher.id}`" class="tpc-management-note">此帳號具主任權限，請由超級管理員處理</span>
+          <button type="button" class="small" :disabled="managementBlocked(teacher)" :aria-describedby="managementBlocked(teacher) ? `teacher-management-${teacher.id}` : undefined" @click="editTeacher(teacher)">編輯</button>
+          <button type="button" class="small warning" :disabled="managementBlocked(teacher)" :aria-describedby="managementBlocked(teacher) ? `teacher-management-${teacher.id}` : undefined" @click="resetTeacherPassword(teacher)">重設密碼</button>
           <button v-if="teacher.status === 'pending'" type="button" class="small primary" @click="approveTeacher(teacher)">核准</button>
           <template v-for="cid in approvableCampusIds(teacher)" :key="'link-' + teacher.id + '-' + cid">
             <button v-if="teacher.status !== 'pending'" type="button" class="small primary tpc-link-approve" @click="decideCampusLink(teacher, cid, 'approve')">核准加入{{ shortBranchName(cid) }}</button>
@@ -212,7 +213,7 @@
           </template>
           <button type="button" class="small ghost" @click="navigateToSchedule(teacher.id, 'course-mgmt')">課程</button>
           <button type="button" class="small ghost" @click="navigateToSchedule(teacher.id, 'calendar')">日曆</button>
-          <button type="button" class="small danger" @click="deleteTeacher(teacher)">刪除</button>
+          <button type="button" class="small danger" :disabled="managementBlocked(teacher)" :aria-describedby="managementBlocked(teacher) ? `teacher-management-${teacher.id}` : undefined" @click="deleteTeacher(teacher)">刪除</button>
         </footer>
       </article>
       </div>
@@ -1217,7 +1218,10 @@ async function loadAllBranchOptions() {
   }
 }
 
+const managementBlocked = (teacher) => teacher?.profile_management_blocked_by_director_grant === true;
+
 const editTeacher = (teacher) => {
+  if (managementBlocked(teacher)) return;
   editingId.value = teacher.id;
   const mainId = teacher.branch_id != null ? Number(teacher.branch_id) : null;
   const branchIds = teacher.branch_ids || [];
@@ -1329,6 +1333,7 @@ function navigateToSchedule(teacherId, target) {
 }
 
 async function resetTeacherPassword(teacher) {
+  if (managementBlocked(teacher)) return;
   const name = teacher?.username || '老師';
   const account = teacher?.account || teacher?.email || '';
   if (!confirm(`確認重設「${name}」的密碼？`)) return;
@@ -1367,6 +1372,7 @@ async function resetTeacherPassword(teacher) {
 }
 
 async function deleteTeacher(teacher) {
+  if (managementBlocked(teacher)) return;
   const name = teacher?.username || '老師';
   const account = teacher?.account || teacher?.email || '';
   const confirmed = confirm(
@@ -2033,6 +2039,17 @@ watch(showBulkModal, (opened) => {
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
+}
+.tpc-rfid-btn:disabled,
+.tpc-actions .small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tpc-management-note {
+  flex-basis: 100%;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 .teachers-card :deep(.at-filter-bar) {
   margin-bottom: var(--ds-space-3);
