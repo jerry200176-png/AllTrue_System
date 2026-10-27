@@ -968,6 +968,65 @@ class ScheduleGuardService
     private function buildTeacherCapacityConflict(string $newClassType, array $slot, array $overlaps, ?string $newTrialTarget = null): ?array
     {
         $overlaps = $this->withTrialTargets(array_values(array_filter($overlaps, fn ($entry) => $entry['teacher_occupancy'] ?? true)));
+        $decision = $this->teacherCapacityDecision($newClassType, $slot, $overlaps, $newTrialTarget);
+
+        if ($decision['allowed']) {
+            return null;
+        }
+
+        return $this->finalizeCapacityConflict([
+            ...$decision['conflict'],
+            ...$this->overlapPayload($overlaps),
+        ]);
+    }
+
+    /**
+     * Prepare canonical occupancy for multiple dates before pure capacity decisions.
+     *
+     * @param  array<string, array<int, array<string, mixed>>>  $entriesByDate
+     * @return array{entries_by_date: array<string, array<int, array<string, mixed>>>, incoming_trial_target: ?string}
+     */
+    public function prepareTeacherCapacityContext(array $entriesByDate, ?int $incomingCourseId): array
+    {
+        $flat = [];
+        foreach ($entriesByDate as $entries) {
+            foreach ($entries as $entry) {
+                if ($entry['teacher_occupancy'] ?? true) {
+                    $flat[] = $entry;
+                }
+            }
+        }
+        $incomingMarker = $incomingCourseId && !array_key_exists($incomingCourseId, $this->trialTargetCache);
+        if ($incomingMarker) {
+            $flat[] = ['class_type' => 'trial', 'course_id' => $incomingCourseId];
+        }
+        $prepared = $this->withTrialTargets($flat);
+        if ($incomingMarker) {
+            array_pop($prepared);
+        }
+        $index = 0;
+        foreach ($entriesByDate as $date => $entries) {
+            $entriesByDate[$date] = [];
+            foreach ($entries as $entry) {
+                if ($entry['teacher_occupancy'] ?? true) {
+                    $entriesByDate[$date][] = $prepared[$index++];
+                }
+            }
+        }
+
+        return [
+            'entries_by_date' => $entriesByDate,
+            'incoming_trial_target' => $incomingCourseId ? ($this->trialTargetCache[$incomingCourseId] ?? null) : null,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $preparedOverlaps
+     * @return array{allowed: bool, distinct_students: int, conflict: array<string, mixed>|null}
+     */
+    public function teacherCapacityDecision(string $newClassType, array $slot, array $preparedOverlaps, ?string $newTrialTarget = null): array
+    {
+        $overlaps = array_values(array_filter($preparedOverlaps, fn ($entry) => $entry['teacher_occupancy'] ?? true));
         $existingCount = $this->countDistinctStudents($overlaps);
         $newCapacity = $this->capacityForClassType($newClassType);
 
@@ -983,7 +1042,7 @@ class ScheduleGuardService
             $incoming = ['class_type' => 'trial', 'trial_target_class_type' => $newTrialTarget] + $slot;
             if ($this->isOneOnThreeSlot([...$overlaps, $incoming], $slot)) {
                 if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
-                    return $this->finalizeCapacityConflict([
+                    return ['allowed' => false, 'distinct_students' => $existingCount, 'conflict' => [
                         'type' => 'teacher_capacity',
                         'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                         'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -995,10 +1054,9 @@ class ScheduleGuardService
                             $existingCount,
                             self::TEACHER_SLOT_ABSOLUTE_MAX
                         ),
-                        ...$this->overlapPayload($overlaps),
-                    ]);
+                    ]];
                 }
-                return null;
+                return ['allowed' => true, 'distinct_students' => $existingCount, 'conflict' => null];
             }
 
             $trialOverlaps = array_values(array_filter($overlaps, function ($entry) {
@@ -1006,7 +1064,7 @@ class ScheduleGuardService
             }));
             $existingTrialCount = $this->countDistinctStudents($trialOverlaps);
             if ($existingTrialCount >= 1) {
-                return $this->finalizeCapacityConflict([
+                return ['allowed' => false, 'distinct_students' => $existingCount, 'conflict' => [
                     'type' => 'teacher_capacity',
                     'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                     'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -1017,10 +1075,9 @@ class ScheduleGuardService
                         '老師此時段已有 %d 位試聽學生，試聽 上限為 1 位學生。',
                         $existingTrialCount
                     ),
-                    ...$this->overlapPayload($overlaps),
-                ]);
+                ]];
             }
-            return null;
+            return ['allowed' => true, 'distinct_students' => $existingCount, 'conflict' => null];
         }
 
         $hasOneOnOne = false;
@@ -1031,7 +1088,7 @@ class ScheduleGuardService
             }
         }
         if ($hasOneOnOne) {
-            return $this->finalizeCapacityConflict([
+            return ['allowed' => false, 'distinct_students' => $existingCount, 'conflict' => [
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -1039,12 +1096,11 @@ class ScheduleGuardService
                 'current_students' => $existingCount,
                 'allowed_students' => 1,
                 'message' => '老師此時段本分校已有一對一課程，無法再加課。',
-                ...$this->overlapPayload($overlaps),
-            ]);
+            ]];
         }
 
         if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
-            return $this->finalizeCapacityConflict([
+            return ['allowed' => false, 'distinct_students' => $existingCount, 'conflict' => [
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -1056,12 +1112,11 @@ class ScheduleGuardService
                     $existingCount,
                     self::TEACHER_SLOT_ABSOLUTE_MAX
                 ),
-                ...$this->overlapPayload($overlaps),
-            ]);
+            ]];
         }
 
         if ($existingCount >= $newCapacity) {
-            return $this->finalizeCapacityConflict([
+            return ['allowed' => false, 'distinct_students' => $existingCount, 'conflict' => [
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -1074,11 +1129,10 @@ class ScheduleGuardService
                     $this->classTypeLabel($newClassType),
                     $newCapacity
                 ),
-                ...$this->overlapPayload($overlaps),
-            ]);
+            ]];
         }
 
-        return null;
+        return ['allowed' => true, 'distinct_students' => $existingCount, 'conflict' => null];
     }
 
     /**

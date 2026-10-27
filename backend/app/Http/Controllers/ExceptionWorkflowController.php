@@ -9,6 +9,7 @@ use App\Models\Schedule;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowCandidateGenerator;
 use App\Services\ExceptionWorkflowService;
+use App\Services\ScheduleGuardService;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -420,29 +421,21 @@ class ExceptionWorkflowController extends Controller
             return false;
         }
 
-        $capacity = match ((string) ($course->ClassType ?? 'one_on_one')) {
-            'one_on_two' => 2,
-            'one_on_three' => 3,
-            'tutoring' => 4,
-            default => 1,
-        };
-        $count = ClassSession::query()
-            ->join('StudentClass as sc', 'sc.ID', '=', 'ClassSession.StudentClassID')
-            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->where('sc.TeacherID', (int) ($candidate->teacher_id ?? $course->TeacherID ?? 0))
-            ->where('st.CampusID', (int) $workflow->campus_id)
-            ->whereDate('ClassSession.SessionDate', Carbon::parse($candidate->candidate_date)->toDateString())
-            ->whereNotIn('ClassSession.Status', array_merge(['cancelled'], SessionStatus::leaveFamily()))
-            ->where('ClassSession.id', '!=', (int) $workflow->class_session_id)
-            ->where(function ($query) use ($candidate) {
-                $start = $this->trimToHM($candidate->start_time);
-                $end = $this->trimToHM($candidate->end_time);
-                $query->whereRaw('SUBSTRING(ClassSession.StartTime,1,5) < ?', [$end])
-                    ->whereRaw('SUBSTRING(ClassSession.EndTime,1,5) > ?', [$start]);
-            })
-            ->count();
+        $candidateCourse = clone $course;
+        if ($candidate->teacher_id) {
+            $candidateCourse->TeacherID = (int) $candidate->teacher_id;
+        }
+        if ($candidate->room_id) {
+            $candidateCourse->room_id = (int) $candidate->room_id;
+        }
 
-        return $count < $capacity;
+        return app(ScheduleGuardService::class)->validateCourseOccurrence(
+            $candidateCourse,
+            (int) $workflow->campus_id,
+            Carbon::parse($candidate->candidate_date)->toDateString(),
+            $this->trimToHM($candidate->start_time),
+            $this->trimToHM($candidate->end_time),
+        ) === [];
     }
 
     private function durationHours(string $startTime, string $endTime): float
