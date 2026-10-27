@@ -98,7 +98,11 @@ class StaffCapabilityAuthorizer
     public function holdsDirectorGrant(int $userId): bool
     {
         return Schema::hasTable('user_capability_grants')
-            && $this->activeDirectorGrants()->where('user_id', $userId)->exists();
+            && UserCapabilityGrant::query()
+                ->where('user_id', $userId)
+                ->where('capability', self::CAP_DIRECTOR)
+                ->whereNull('revoked_at')
+                ->exists();
     }
 
     /**
@@ -111,13 +115,10 @@ class StaffCapabilityAuthorizer
             return [];
         }
 
-        return $this->activeDirectorGrants()->whereIn('user_id', $userIds)->distinct()->pluck('user_id')
-            ->map(fn ($id) => (int) $id)->all();
-    }
-
-    private function activeDirectorGrants()
-    {
-        return UserCapabilityGrant::query()->where('capability', self::CAP_DIRECTOR)->whereNull('revoked_at');
+        // Keep the capability and revocation predicate in sync with holdsDirectorGrant().
+        return UserCapabilityGrant::query()->whereIn('user_id', $userIds)
+            ->where('capability', self::CAP_DIRECTOR)->whereNull('revoked_at')
+            ->distinct()->pluck('user_id')->map(fn ($id) => (int) $id)->all();
     }
 
     /**

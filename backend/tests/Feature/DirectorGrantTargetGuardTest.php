@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Models\UserCapabilityGrant;
+use App\Services\StaffCapabilityAuthorizer;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
@@ -121,6 +122,29 @@ class DirectorGrantTargetGuardTest extends TestCase
         $page = $this->api($token)->getJson('/api/v1/teachers?per_page=200')->assertOk();
         $item = collect($page->json('data'))->firstWhere('id', $target->id);
         $this->assertTrue($item['profile_management_blocked_by_director_grant']);
+    }
+
+    public function test_batch_director_grants_match_the_existing_single_user_guard(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $other = CampusFactory::new()->create();
+        $active = $this->user('T', $campus->id);
+        $revoked = $this->user('T', $campus->id);
+        $teacherOnly = $this->user('T', $campus->id);
+        $withoutGrant = $this->user('T', $campus->id);
+        $this->grant($active->id, $campus->id);
+        $this->grant($active->id, $other->id);
+        $this->grant($revoked->id, $campus->id)->forceFill(['revoked_at' => now()])->save();
+        $this->grant($teacherOnly->id, $campus->id, 'teacher');
+
+        $ids = [$active->id, $revoked->id, $teacherOnly->id, $withoutGrant->id];
+        $authorizer = app(StaffCapabilityAuthorizer::class);
+        $batch = $authorizer->directorGrantHolderIds($ids);
+        $this->assertSame([(int) $active->id], $batch);
+        foreach ($ids as $id) {
+            $this->assertSame($authorizer->holdsDirectorGrant((int) $id), in_array((int) $id, $batch, true));
+        }
+        $this->assertSame([], $authorizer->directorGrantHolderIds([]));
     }
 
     private function grant(int $userId, int $campusId, string $capability = 'director'): UserCapabilityGrant

@@ -1306,13 +1306,13 @@ class ProfileController extends Controller
         return $caller !== null && (int) $caller->id === $userId;
     }
 
-    private function directorGrantBlocksManagement(Request $request, int $userId, ?array $holders = null): bool
+    private function directorGrantBlocksManagement(Request $request, int $userId, array $holders): bool
     {
         if ((string) ($request->attributes->get('auth_role') ?? '') === 'super_admin') return false;
         $authUser = $request->attributes->get('auth_user');
         if (is_object($authUser) && (int) ($authUser->id ?? 0) === $userId) return false;
 
-        return $holders !== null ? isset($holders[$userId]) : app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($userId);
+        return isset($holders[$userId]);
     }
 
     private function directorGrantManagementHint(Request $request, $user, array $holders): array
@@ -1332,7 +1332,9 @@ class ProfileController extends Controller
         }
         // Founder policy 3: a director-grant holder is a director, even as type T; only super_admin manages it (its own
         // profile stays editable by the holder).
-        if ($this->directorGrantBlocksManagement($request, $teacherUserId)) {
+        $authUser = $request->attributes->get('auth_user');
+        $self = is_object($authUser) && (int) ($authUser->id ?? 0) === $teacherUserId;
+        if (!$self && app(StaffCapabilityAuthorizer::class)->holdsDirectorGrant($teacherUserId)) {
             return false;
         }
 
