@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
-use App\Support\ClassTypeCapacity;
 use App\Support\SessionStatus;
 use App\Models\StudentClass;
 use Carbon\Carbon;
@@ -43,8 +42,8 @@ class ExceptionWorkflowCandidateGenerator
         $durationMinutes = $this->durationMinutes($sourceSession, $course);
         $durationSlots = max(1, (int) ceil($durationMinutes / 30));
         $teacherId = (int) ($course->TeacherID ?? 0);
-        $capacity = ClassTypeCapacity::for((string) ($course->ClassType ?? 'one_on_one'));
-        $occupancy = $this->buildOccupancy($workflow, $teacherId, $start, $end);
+        $guard = app(ScheduleGuardService::class);
+        $occupancy = $this->buildOccupancy($workflow, $teacherId, $start, $end, $guard);
         // Candidate generation is only a recommendation, but it must not offer
         // a slot that the final ClassSession guard will reject for this student
         // under another contract. Keep this read-side snapshot aligned with
@@ -58,28 +57,14 @@ class ExceptionWorkflowCandidateGenerator
 
         for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
             $date = $cursor->toDateString();
-            $dayOccupancy = $occupancy[$date] ?? [];
+            $dayOccupancy = $occupancy['entries_by_date'][$date] ?? [];
             for ($slot = $this->slotIndex('09:00'); $slot <= $this->slotIndex('21:00') - $durationSlots; $slot += 1) {
-                $maxCount = 0;
                 $available = true;
-                $names = [];
 
                 for ($offset = 0; $offset < $durationSlots; $offset += 1) {
                     if (!empty($studentBusySlots[$date][$slot + $offset])) {
                         $available = false;
                         break;
-                    }
-                    $cell = $dayOccupancy[$slot + $offset] ?? ['count' => 0, 'students' => []];
-                    $count = (int) ($cell['count'] ?? 0);
-                    if ($count >= $capacity) {
-                        $available = false;
-                        break;
-                    }
-                    $maxCount = max($maxCount, $count);
-                    foreach (($cell['students'] ?? []) as $studentName) {
-                        if ($studentName !== '') {
-                            $names[$studentName] = true;
-                        }
                     }
                 }
 
@@ -89,6 +74,25 @@ class ExceptionWorkflowCandidateGenerator
 
                 $startTime = $this->slotTime($slot);
                 $endTime = $this->slotTime($slot + $durationSlots);
+                $overlaps = array_values(array_filter($dayOccupancy, fn (array $entry) =>
+                    $this->overlaps($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time'])));
+                $decision = $guard->teacherCapacityDecision(
+                    (string) ($course->ClassType ?? 'one_on_one'),
+                    ['day_of_week' => $cursor->dayOfWeekIso, 'start_time' => $startTime, 'end_time' => $endTime],
+                    $overlaps,
+                    $occupancy['incoming_trial_target'],
+                );
+                if (!$decision['allowed']) {
+                    continue;
+                }
+                $count = $decision['distinct_students'];
+                $names = [];
+                foreach ($overlaps as $entry) {
+                    $studentId = (int) ($entry['student_id'] ?? 0);
+                    if ($studentId > 0 && !empty($occupancy['names'][$studentId])) {
+                        $names[$studentId] = $occupancy['names'][$studentId];
+                    }
+                }
                 $candidateBuckets[$date][] = [
                     'rank' => $rank,
                     'candidate_date' => $date,
@@ -96,11 +100,11 @@ class ExceptionWorkflowCandidateGenerator
                     'end_time' => $endTime,
                     'teacher_id' => $teacherId > 0 ? $teacherId : null,
                     'room_id' => $course->room_id ?? null,
-                    'status' => $maxCount === 0 ? 'available' : 'warning',
-                    'score' => max(0, 100 - ($maxCount * 15) - (($rank - 1) * 2)),
+                    'status' => $count === 0 ? 'available' : 'warning',
+                    'score' => max(0, 100 - ($count * 15) - (($rank - 1) * 2)),
                     'reasons' => array_values(array_filter([
-                        $maxCount === 0 ? '老師此時段無其他學生' : '老師此時段尚有容量',
-                        !empty($names) ? '同時段學生：' . implode('、', array_keys($names)) : null,
+                        $count === 0 ? '老師此時段無其他學生' : '老師此時段尚有容量',
+                        !empty($names) ? '同時段學生：' . implode('、', $names) : null,
                     ])),
                     'expires_at' => Carbon::parse("{$date} {$startTime}")->subMinutes(10)->toDateTimeString(),
                 ];
@@ -137,18 +141,21 @@ class ExceptionWorkflowCandidateGenerator
     }
 
     /**
-     * @return array<string, array<int, array{count:int, students:array<int, string>}>>
+     * @return array{entries_by_date: array<string, array<int, array<string, mixed>>>, names: array<int, string>, incoming_trial_target: ?string}
      */
-    private function buildOccupancy(ExceptionWorkflow $workflow, int $teacherId, Carbon $start, Carbon $end): array
+    private function buildOccupancy(ExceptionWorkflow $workflow, int $teacherId, Carbon $start, Carbon $end, ScheduleGuardService $guard): array
     {
         if ($teacherId <= 0) {
-            return [];
+            return [
+                'entries_by_date' => [],
+                'names' => [],
+                'incoming_trial_target' => null,
+            ];
         }
 
         // #3639: ScheduleGuardService is the single source of truth for "is the teacher
         // busy" (Stop, voided/leave, branch, stale/leave schedule rows, TD-076 makeups).
         // Self-exclusions match validateCourseOccurrence: same course and same student.
-        $guard = app(ScheduleGuardService::class);
         $courseId = (int) $workflow->getAttribute('student_class_id');
         $studentId = (int) $workflow->getAttribute('student_id');
         $entriesByDate = [];
@@ -169,25 +176,22 @@ class ExceptionWorkflowCandidateGenerator
         }
         $names = DB::table('Student')->whereIn('id', array_keys($studentIds))->pluck('name', 'id');
 
-        $occupancy = [];
-        foreach ($entriesByDate as $date => $entries) {
-            foreach ($entries as $entry) {
-                $sid = (int) ($entry['student_id'] ?? 0);
-                $who = $sid > 0 ? 's' . $sid : 'r' . ($entry['source'] ?? '') . ($entry['source_id'] ?? '');
-                $endSlot = $this->slotIndex((string) $entry['end_time']);
-                for ($slot = $this->slotIndex((string) $entry['start_time']); $slot < $endSlot; $slot += 1) {
-                    $occupancy[$date][$slot]['students'][$who] = (string) ($names[$sid] ?? '');
-                }
-            }
-        }
-        foreach ($occupancy as &$cells) {
-            foreach ($cells as &$cell) {
-                $cell = ['count' => count($cell['students']), 'students' => array_values($cell['students'])];
-            }
-        }
-        unset($cells, $cell);
+        $context = $guard->prepareTeacherCapacityContext($entriesByDate, $courseId ?: null);
 
-        return $occupancy;
+        return [...$context, 'names' => $names->all()];
+    }
+
+    private function overlaps(string $startA, string $endA, string $startB, string $endB): bool
+    {
+        return $this->minutesOfDay($startA) < $this->minutesOfDay($endB)
+            && $this->minutesOfDay($endA) > $this->minutesOfDay($startB);
+    }
+
+    private function minutesOfDay(string $time): int
+    {
+        [$hours, $minutes] = array_map('intval', explode(':', $time));
+
+        return $hours * 60 + $minutes;
     }
 
     /**
