@@ -422,11 +422,13 @@ class ExceptionWorkflowController extends Controller
         }
 
         $candidateCourse = clone $course;
-        if ($candidate->teacher_id) {
-            $candidateCourse->TeacherID = (int) $candidate->teacher_id;
+        $teacherId = $candidate->getAttribute('teacher_id');
+        $roomId = $candidate->getAttribute('room_id');
+        if ($teacherId) {
+            $candidateCourse->TeacherID = (int) $teacherId;
         }
-        if ($candidate->room_id) {
-            $candidateCourse->room_id = (int) $candidate->room_id;
+        if ($roomId) {
+            $candidateCourse->room_id = (int) $roomId;
         }
 
         return app(ScheduleGuardService::class)->validateCourseOccurrence(
