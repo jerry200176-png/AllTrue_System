@@ -94,20 +94,54 @@ export function occupancyBadge({ courses = [] } = {}) {
  * whose trial_target_class_type is one_on_three, and no booking is one_on_one.
  * Mirrors ScheduleGuardService::isOneOnThreeSlot().
  */
-export function isOneOnThreeSlot(bookings = []) {
+function spanBounds(span) {
+  const start = String(span?.start_time ?? span?.startTime ?? span?.start ?? '');
+  const end = String(span?.end_time ?? span?.endTime ?? span?.end ?? '');
+  const seconds = (value) => {
+    const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    const second = match[3] === undefined ? 0 : Number(match[3]);
+    return hour <= 23 && minute <= 59 && second <= 59
+      ? (hour * 60 + minute) * 60 + second
+      : null;
+  };
+  const startSeconds = seconds(start);
+  const endSeconds = seconds(end);
+  return startSeconds != null && endSeconds != null && endSeconds > startSeconds
+    ? { start: startSeconds, end: endSeconds }
+    : null;
+}
+
+export function isOneOnThreeSlot(bookings = [], requestedSpan = null) {
+  const requested = requestedSpan == null ? null : spanBounds(requestedSpan);
   let oneOnThree = false;
   for (const booking of bookings || []) {
     const type = String(booking?.class_type || '');
     if (type === 'one_on_one') return false;
-    if (type === 'one_on_three'
-      || (type === 'trial' && String(booking?.trial_target_class_type || '') === 'one_on_three')) {
+    const establishesOneOnThree = type === 'one_on_three'
+      || (type === 'trial' && String(booking?.trial_target_class_type || '') === 'one_on_three');
+    if (!establishesOneOnThree) continue;
+    if (requested) {
+      const bookingSpan = spanBounds(booking);
+      if (!bookingSpan || bookingSpan.start > requested.start || bookingSpan.end < requested.end) continue;
+    } else if (requestedSpan != null) {
+      continue;
+    }
+    if (establishesOneOnThree) {
       oneOnThree = true;
     }
   }
   return oneOnThree;
 }
 
-export function incomingClassConflict({ incomingType, incomingTrialTarget = null, overlappingCourses = [] } = {}) {
+export function incomingClassConflict({
+  incomingType,
+  incomingTrialTarget = null,
+  overlappingCourses = [],
+  requestedSpan = null,
+} = {}) {
   const unique = uniqueStudentCount(overlappingCourses);
   const types = overlappingCourses.map((course) => String(course.class_type || ''));
   const newMax = Math.min(capacityForClassType(incomingType), TEACHER_SLOT_ABSOLUTE_MAX);
@@ -115,8 +149,15 @@ export function incomingClassConflict({ incomingType, incomingTrialTarget = null
   if (incomingType === 'trial') {
     // in-app #426 (Founder 1a + trial target): in a one-on-three slot trials take real
     // seats and several may join while the total stays within 3. Mirrors ScheduleGuardService.
-    const incoming = { class_type: 'trial', trial_target_class_type: incomingTrialTarget };
-    if (isOneOnThreeSlot([...overlappingCourses, incoming])) {
+    const incoming = {
+      class_type: 'trial',
+      trial_target_class_type: incomingTrialTarget,
+      ...(requestedSpan == null ? {} : {
+        start_time: requestedSpan?.start_time ?? requestedSpan?.startTime ?? requestedSpan?.start,
+        end_time: requestedSpan?.end_time ?? requestedSpan?.endTime ?? requestedSpan?.end,
+      }),
+    };
+    if (isOneOnThreeSlot([...overlappingCourses, incoming], requestedSpan)) {
       const full = unique >= TEACHER_SLOT_ABSOLUTE_MAX;
       return {
         blocked: full,
