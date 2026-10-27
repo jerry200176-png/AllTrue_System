@@ -2048,7 +2048,7 @@ watch(showBulkModal, (opened) => {
 .tpc-management-note {
   flex-basis: 100%;
   color: var(--ds-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.4;
 }
 .teachers-card :deep(.at-filter-bar) {
