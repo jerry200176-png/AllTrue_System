@@ -64,12 +64,12 @@ export function computePackageNextTotal({ mode, currentTotal, value, usedSession
  * showing「購買 12」per subject reads as additive (數學12 + 物理12 ≈ 24) and hides
  * the pool's already-used count. Frame package members around the SHARED pool —
  * the single source of truth (`package_total/remaining_sessions`) — instead.
- * Non-package session courses keep the per-course「已上 / 購買」framing.
+ * Non-package session courses show entitlement usage as「已用 / 購買」.
  * Monthly courses have no purchased-session cap (R102); never say「購買 N 堂」.
  *
  * @param {Object} course   StudentClass row (with package_* fields when pooled)
  * @param {Object} [counts]
- * @param {number} [counts.completed] this course's completed sessions
+ * @param {number} [counts.completed] attended sessions for package/monthly courses; entitlement usage for standalone session courses
  * @param {number} [counts.cancelled] cancelled sessions to annotate
  * @returns {{ isPackage: boolean, total: number, used: number, remaining: number, purchased: number, text: string }}
  */
@@ -110,6 +110,6 @@ export function packageMemberSessionSummary(course, { completed = 0, cancelled =
     used: done,
     remaining: Math.max(0, purchased - done),
     purchased,
-    text: `已上 ${done} / 購買 ${purchased} 堂${cancelledSuffix}`,
+    text: `已用 ${done} / 購買 ${purchased} 堂${cancelledSuffix}`,
   };
 }

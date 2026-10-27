@@ -321,6 +321,41 @@ class ExceptionWorkflowApiTest extends TestCase
         ]);
     }
 
+    public function test_confirm_candidate_rechecks_the_selected_teacher_before_writing(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '代課確認學生', '0912004368');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}", 'campus_id' => 1,
+            'student_id' => $student->id, 'student_class_id' => $course->ID, 'class_session_id' => $session->id,
+            'type' => 'student_leave', 'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-selected-teacher-race@example.com');
+        $candidate = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 1,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->assertOk()->json('data.candidates.0');
+
+        $candidateModel = ExceptionWorkflowCandidate::findOrFail($candidate['id']);
+        $candidateModel->teacher_id = 2;
+        $candidateModel->save();
+        [, $otherCourse] = $this->makeStudentCourseSession(1, '代課既有學生', '0912004369');
+        $otherCourse->TeacherID = 2;
+        $otherCourse->save();
+        ClassSession::create([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => $candidate['candidate_date'],
+            'StartTime' => $candidate['start_time'], 'EndTime' => $candidate['end_time'], 'Status' => 'scheduled',
+        ]);
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidate['id'],
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->assertStatus(409);
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $course->ID, 'schedule_date' => $candidate['candidate_date'], 'type' => 'extra',
+        ]);
+        $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'scheduled']);
+    }
+
     public function test_makeup_candidates_start_after_original_session_even_when_requested_window_starts_earlier(): void
     {
         [$student, $course, $session] = $this->makeStudentCourseSession(1, '日期邊界學生', '0912000010');
@@ -807,6 +842,117 @@ class ExceptionWorkflowApiTest extends TestCase
     public function test_candidates_ignore_other_branch_sessions_like_the_guard(): void
     {
         $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('scheduled', 0, 2));
+    }
+
+    public function test_candidate_generation_excludes_a_short_one_on_one_overlap(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '短衝突補課學生', '0912004370');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}", 'campus_id' => 1,
+            'student_id' => $student->id, 'student_class_id' => $course->ID, 'class_session_id' => $session->id,
+            'type' => 'student_leave', 'status' => 'open',
+        ]);
+        [, $otherCourse] = $this->makeStudentCourseSession(1, '短衝突既有學生', '0912004371');
+        ClassSession::create([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => '2026-05-07',
+            'StartTime' => '09:10', 'EndTime' => '09:20', 'Status' => 'scheduled',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-short-overlap@example.com');
+
+        $response = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 20,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->assertOk();
+
+        $this->assertNotContains('09:00', collect($response->json('data.candidates'))->pluck('start_time')->all());
+    }
+
+    /** @dataProvider trialCandidateCapacityCases */
+    public function test_trial_makeup_candidates_use_the_full_span_capacity(?string $target, array $occupants, bool $available): void
+    {
+        [$workflow, , , $token] = $this->trialMakeupFixture($target, $occupants);
+        $response = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 20,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->assertOk();
+        $starts = collect($response->json('data.candidates'))->pluck('start_time')
+            ->map(fn ($time) => substr($time, 0, 5))->all();
+
+        $this->assertSame($available, in_array('09:00', $starts, true));
+    }
+
+    public static function trialCandidateCapacityCases(): array
+    {
+        return [
+            'second targeted trial without regulars' => ['one_on_three', [['trial', 'one_on_three', 1]], true],
+            'third targeted trial without regulars' => ['one_on_three', [['trial', 'one_on_three', 1], ['trial', 'one_on_three', 2]], true],
+            'fourth targeted trial is full' => ['one_on_three', [['trial', 'one_on_three', 1], ['trial', 'one_on_three', 2], ['trial', 'one_on_three', 3]], false],
+            'duplicate rows do not take another seat' => ['one_on_three', [['trial', 'one_on_three', 1], ['trial', 'one_on_three', 1], ['trial', 'one_on_three', 2]], true],
+            'ordinary second trial stays blocked' => [null, [['trial', null, 1]], false],
+            'one on two second trial stays blocked' => ['one_on_two', [['trial', 'one_on_two', 1]], false],
+            'first ordinary trial may audit one on one' => [null, [['one_on_one', null, 1]], true],
+            'full regular context allows another trial' => [null, [['one_on_three', null, 1], ['trial', null, 2]], true],
+            'partial regular context cannot lift the trial limit' => [null, [
+                ['one_on_three', null, 1, '09:00', '10:00'],
+                ['trial', null, 2, '09:00', '10:00'], ['trial', null, 3, '10:00', '11:00'],
+            ], false],
+        ];
+    }
+
+    /** @dataProvider trialConfirmationCapacityCases */
+    public function test_trial_makeup_confirmation_checks_current_capacity(int $existing, int $expectedStatus): void
+    {
+        $occupants = array_map(fn ($id) => ['trial', 'one_on_three', $id], range(1, $existing));
+        [$workflow, $course, $source, $token] = $this->trialMakeupFixture('one_on_three', $occupants);
+        // A stored recommendation may predate the current occupancy; confirmation must re-read it.
+        $candidate = ExceptionWorkflowCandidate::create([
+            'workflow_id' => $workflow->id, 'rank' => 1, 'candidate_date' => '2026-05-07',
+            'start_time' => '09:00', 'end_time' => '11:00', 'teacher_id' => 1,
+            'status' => 'warning', 'score' => 80, 'reasons' => ['合成候選'],
+            'expires_at' => '2026-05-07 08:50:00',
+        ]);
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidate->id,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->assertStatus($expectedStatus);
+
+        $written = $expectedStatus === 200 ? 1 : 0;
+        $this->assertSame($written, ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-05-07')->count());
+        $this->assertSame($written, DB::table('schedules')->where('student_course_id', $course->ID)
+            ->whereDate('schedule_date', '2026-05-07')->count());
+        if ($written === 0) {
+            $this->assertSame('scheduled', $source->fresh()->Status);
+            $this->assertSame('open', $workflow->fresh()->status);
+        }
+    }
+
+    public static function trialConfirmationCapacityCases(): array
+    {
+        return ['second trial' => [1, 200], 'third trial' => [2, 200], 'late fourth trial' => [3, 409]];
+    }
+
+    private function trialMakeupFixture(?string $target, array $occupants): array
+    {
+        [$student, $course, $source] = $this->makeStudentCourseSession(1, '試聽補課合成學生', '0912004380');
+        $course->forceFill(['ClassType' => 'trial', 'trial_target_class_type' => $target])->save();
+        $others = [];
+        foreach ($occupants as $row) {
+            [$type, $otherTarget, $identity] = $row;
+            if (!isset($others[$identity])) {
+                [, $other] = $this->makeStudentCourseSession(1, '佔位合成學生' . $identity, '091200438' . $identity);
+                $other->forceFill(['ClassType' => $type, 'trial_target_class_type' => $otherTarget])->save();
+                $others[$identity] = $other;
+            }
+            ClassSession::create([
+                'StudentClassID' => $others[$identity]->ID, 'SessionDate' => '2026-05-07',
+                'StartTime' => $row[3] ?? '09:00', 'EndTime' => $row[4] ?? '11:00', 'Status' => 'scheduled',
+            ]);
+        }
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$source->id}", 'campus_id' => 1,
+            'student_id' => $student->id, 'student_class_id' => $course->ID, 'class_session_id' => $source->id,
+            'type' => 'student_leave', 'status' => 'open',
+        ]);
+
+        return [$workflow, $course, $source, $this->createDirectorToken([1])];
     }
 
     private function makeStudentCourseSession(

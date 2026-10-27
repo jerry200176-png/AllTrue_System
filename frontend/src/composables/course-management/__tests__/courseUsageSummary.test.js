@@ -36,3 +36,23 @@ it('keeps actual attendance labels for monthly and shared-package courses', () =
   const pooled = { PackageID: 1, SessionCount: 8, package_total_sessions: 8, package_remaining_sessions: 0 };
   expect(packageMemberSessionSummary(pooled, { completed: 3 }).text).toBe('本科已上 3 堂｜方案共用 8 堂（已用 8 / 剩 0）');
 });
+
+
+it('uses entitlement remaining, then used, then attendance as the existing fallback', () => {
+  const row = (date, id) => sessionViewModelFromClassSessionsRow({
+    id, student_class_id: 700002, session_date: date, start_time: '10:00', end_time: '11:00', status: 'attended',
+  });
+  const rows = [row('2026-09-01', 1), row('2026-09-02', 2), row('2026-09-03', 3)];
+  const display = useCourseSessionsDisplay({
+    sessionsByCourse: ref({ 700002: rows }), completedSessionDatesByCourse: ref({}),
+    fetchClassSessionsFn: vi.fn(), supabase: { auth: { getSession: vi.fn() } }, branchId: ref(1),
+  });
+  const base = { id: 700002, ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, SessionCount: 8 };
+  const label = (course) => packageMemberSessionSummary(course, { completed: display.getUsedSessions(course) }).text;
+  expect(label({ ...base, remaining_sessions: 6, sessions_used: 7 })).toBe('已用 2 / 購買 8 堂');
+  expect(label({ ...base, remaining_sessions: 2, remaining_minutes: 45 })).toBe('已用 6 / 購買 8 堂');
+  expect(label({ ...base, remaining_sessions: 8 })).toBe('已用 0 / 購買 8 堂');
+  expect(label({ ...base, remaining_sessions: 0 })).toBe('已用 8 / 購買 8 堂');
+  expect(label({ ...base, sessions_used: 4 })).toBe('已用 4 / 購買 8 堂');
+  expect(label(base)).toBe('已用 3 / 購買 8 堂');
+});

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-course-used-summary-label
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 課程堂數摘要用詞
+    summary: 堂數制單科課程的摘要以「已用」標示權益用量。
+    items:
+      - category: fixed
+        text: 課程上課日期中的已使用堂數，不再誤稱為已上堂數。
+    source_refs:
+      - "changelog:2026-10-27:course-used-summary-label"

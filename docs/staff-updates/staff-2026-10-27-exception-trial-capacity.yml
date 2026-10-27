@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-exception-trial-capacity
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 補課候選依實際容量判斷
+    summary: 一對三試聽仍有名額時會列入補課候選，確認前再次檢查老師與教室。
+    items:
+      - category: improved
+        text: 補課候選與確認採用相同容量規則，減少仍有名額卻無法選擇的情況。
+    source_refs:
+      - "changelog:2026-10-27:exception-trial-capacity"

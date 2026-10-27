@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-trial-reschedule-preview
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 試聽調課不再誤報已滿
+    summary: 一對三試聽調課的預覽會計入正式與試聽學生，送出時仍由系統檢查。
+    items:
+      - category: improved
+        text: 符合一對三規則且合計未滿三位時，不再僅因已有試聽而提醒名額已滿。
+    source_refs:
+      - "changelog:2026-10-27:trial-reschedule-preview"

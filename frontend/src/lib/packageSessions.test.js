@@ -73,7 +73,7 @@ import { computePackageNextTotal, packageMemberSessionSummary } from './packageS
   const solo = { payment_type: 'session', SessionCount: 8, sessions_purchased: 8 };
   const r = packageMemberSessionSummary(solo, { completed: 2 });
   assert.equal(r.isPackage, false);
-  assert.equal(r.text, '已上 2 / 購買 8 堂');
+  assert.equal(r.text, '已用 2 / 購買 8 堂');
 }
 
 // monthly courses must not reuse prepaid「購買 N 堂」(大安翟君和 社會 / R102 copy gap).
@@ -111,7 +111,7 @@ import { computePackageNextTotal, packageMemberSessionSummary } from './packageS
     { payment_type: 'session', SessionCount: 8 },
     { completed: 2, cancelled: 2 },
   );
-  assert.equal(solo.text, '已上 2 / 購買 8 堂，2 堂已取消');
+  assert.equal(solo.text, '已用 2 / 購買 8 堂，2 堂已取消');
 }
 
 console.log('packageSessions.test.js OK');

@@ -99,7 +99,7 @@ assert.deepEqual(packageMemberSessionSummary(F.packageMember, { completed: 3, ca
 });
 assert.equal(packageMemberSessionSummary(F.packagePascalPool).remaining, 1);
 assert.equal(packageMemberSessionSummary(F.packageNoPool).total, 0, 'summary does NOT fall back to sessions_purchased');
-assert.equal(packageMemberSessionSummary(F.sessionCourse, { completed: 3 }).text, '已上 3 / 購買 10 堂');
+assert.equal(packageMemberSessionSummary(F.sessionCourse, { completed: 3 }).text, '已用 3 / 購買 10 堂');
 assert.equal(packageMemberSessionSummary(F.monthly, { completed: 2 }).text, '已上 2 堂');
 
 // ─── UNIFIED (Founder-approved 2026-10-06) ───
