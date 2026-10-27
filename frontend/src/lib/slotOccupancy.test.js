@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import {
   occupancyBadge,
   incomingClassConflict,
+  isOneOnThreeSlot,
   pickerSlotConflict,
   uniqueStudentCount,
   coursesWithSlotConflicts,
 } from './slotOccupancy.js';
+import { buildReschedulePreview } from './reschedulePreview.js';
 import { TRIAL_TARGET_CLASS_TYPE_OPTIONS, trialTargetPayload } from './trialTarget.js';
 import { mapCalendarCourse } from './calendarCourseLoad.js';
 
@@ -237,3 +239,167 @@ assert.equal(occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, 'one_on_three')
 // Untargeted or 1v2-targeted trials keep the class-type maximum.
 assert.equal(occupancyBadge({ courses: [r(1, 'one_on_two'), t(2, null)] }).label, '2/2');
 assert.equal(occupancyBadge({ courses: [r(1, 'one_on_one'), t(2, 'one_on_three')] }).label, '2/1');
+
+// #4368 slice 1: the reschedule advisory preview must use the same #4342
+// one-on-three decision as the guard, including full-span qualification.
+const rescheduleTrialPreview = (courses, overrides = {}) => buildReschedulePreview({
+  currentCourseId: 90,
+  studentId: 900,
+  teacherId: 5,
+  targetDate: '2026-10-27',
+  startTime: '16:00',
+  endTime: '18:00',
+  classType: 'trial',
+  courses,
+  ...overrides,
+});
+const previewCourse = (id, studentId, classType, extra = {}) => ({
+  id,
+  student_id: studentId,
+  teacher_id: 5,
+  day_of_week: 2,
+  start_time: '16:00',
+  end_time: '18:00',
+  class_type: classType,
+  ...extra,
+});
+
+// The current trial's target can arrive as either the course id or student_course_id.
+// No regular 1v3 row is present: the binding itself must establish capacity.
+for (const current of [
+  { ...previewCourse(90, 900, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }) },
+  { ...previewCourse(901, 900, 'trial', { teacher_id: 8, student_course_id: 90, trial_target_class_type: 'one_on_three' }) },
+]) {
+  const allowed = rescheduleTrialPreview([
+    current,
+    previewCourse(1, 1, 'trial'),
+    previewCourse(2, 2, 'trial'),
+  ]);
+  assert.equal(allowed.blocked, false, 'the bound target establishes the third trial seat');
+}
+
+// A full-span regular 1v3 independently expands an untargeted incoming trial.
+const untargetedWithRegular = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8 }),
+  previewCourse(1, 1, 'one_on_three'),
+  previewCourse(2, 2, 'trial'),
+]);
+assert.equal(untargetedWithRegular.blocked, false);
+
+const previewFull = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }),
+  previewCourse(1, 1, 'one_on_three'),
+  previewCourse(2, 2, 'trial'),
+  previewCourse(3, 3, 'trial'),
+]);
+assert.equal(previewFull.blocked, true);
+assert.match(previewFull.message, /3 位學生/);
+
+// A partial, missing, or malformed existing 1v3 span must not expand a trial slot.
+for (const existing of [
+  previewCourse(1, 1, 'one_on_three', { start_time: '16:30', end_time: '17:30' }),
+  previewCourse(1, 1, 'one_on_three', { start_time: '', end_time: '18:00' }),
+  previewCourse(1, 1, 'one_on_three', { start_time: 'bad', end_time: '18:00' }),
+]) {
+  const partial = rescheduleTrialPreview([
+    previewCourse(90, 900, 'trial', { teacher_id: 8 }),
+    existing,
+    previewCourse(2, 2, 'trial'),
+  ]);
+  assert.equal(partial.blocked, true);
+  assert.match(partial.message, /試聽時段已有安排/);
+}
+
+// An incoming targeted trial establishes its own full requested span, but never a fourth seat.
+const targetedOnly = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }),
+  previewCourse(1, 1, 'trial'),
+]);
+assert.equal(targetedOnly.blocked, false);
+const targetedFull = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }),
+  previewCourse(1, 1, 'trial'),
+  previewCourse(2, 2, 'trial'),
+  previewCourse(3, 3, 'trial'),
+]);
+assert.equal(targetedFull.blocked, true);
+
+// Duplicate schedule rows for one student occupy one seat, leaving the correct third seat.
+const duplicateStudentPreview = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }),
+  previewCourse(1, 1, 'trial'),
+  previewCourse(2, 1, 'trial'),
+  previewCourse(3, 2, 'trial'),
+]);
+assert.equal(duplicateStudentPreview.blocked, false);
+assert.match(duplicateStudentPreview.message, /2 位學生/);
+
+// Missing, ambiguous, or non-trial source rows cannot lend a target to the incoming trial.
+for (const sources of [
+  [],
+  [
+    previewCourse(90, 900, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }),
+    previewCourse(90, 901, 'trial', { teacher_id: 8, trial_target_class_type: 'one_on_three' }),
+  ],
+  [previewCourse(90, 900, 'one_on_three', { teacher_id: 8, trial_target_class_type: 'one_on_three' })],
+]) {
+  const unbound = rescheduleTrialPreview([
+    ...sources,
+    previewCourse(1, 1, 'one_on_two'),
+    previewCourse(2, 2, 'trial'),
+  ]);
+  assert.equal(unbound.blocked, true);
+  assert.match(unbound.message, /試聽時段已有安排/);
+}
+
+// A 1v1 never expands the slot, while its first ordinary trial remains allowed.
+const firstAlongsideOne = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8 }),
+  previewCourse(1, 1, 'one_on_one'),
+]);
+assert.equal(firstAlongsideOne.blocked, false);
+const secondAlongsideOne = rescheduleTrialPreview([
+  previewCourse(90, 900, 'trial', { teacher_id: 8 }),
+  previewCourse(1, 1, 'one_on_one'),
+  previewCourse(2, 2, 'trial'),
+]);
+assert.equal(secondAlongsideOne.blocked, true);
+assert.match(secondAlongsideOne.message, /試聽時段已有安排/);
+
+// The old non-trial preview uses raw Set identities: do not normalize these values.
+const nonTrialIdentityPreview = buildReschedulePreview({
+  currentCourseId: 90,
+  studentId: 900,
+  teacherId: 5,
+  targetDate: '2026-10-27',
+  startTime: '16:00',
+  endTime: '18:00',
+  classType: 'one_on_two',
+  courses: [
+    previewCourse(1, 7, 'one_on_two'),
+    previewCourse(2, '007', 'one_on_two'),
+  ],
+});
+assert.equal(nonTrialIdentityPreview.blocked, true);
+assert.match(nonTrialIdentityPreview.message, /已達一對二上限/);
+
+// Span comparisons are second-precise and fail closed for missing or invalid values.
+const requestedSpan = { startTime: '16:00', endTime: '18:00' };
+assert.equal(isOneOnThreeSlot([
+  { class_type: 'one_on_three', start_time: '16:00:30', end_time: '18:00' },
+], requestedSpan), false, '16:00:30 does not cover a 16:00 request');
+assert.equal(isOneOnThreeSlot([
+  { class_type: 'one_on_three', start_time: '16:00:99', end_time: '18:00' },
+], requestedSpan), false, 'invalid booking seconds fail closed');
+assert.equal(isOneOnThreeSlot([
+  { class_type: 'one_on_three', start_time: '', end_time: '18:00' },
+], requestedSpan), false, 'missing booking times fail closed');
+assert.equal(isOneOnThreeSlot([
+  { class_type: 'one_on_three', start_time: '16:00', end_time: '18:00' },
+], { startTime: '16:00:99', endTime: '18:00' }), false, 'invalid requested seconds fail closed');
+assert.equal(incomingClassConflict({
+  incomingType: 'trial',
+  incomingTrialTarget: 'one_on_three',
+  overlappingCourses: [previewCourse(1, 1, 'trial')],
+  requestedSpan: { startTime: '16:00:99', endTime: '18:00' },
+}).reason, 'trial', 'invalid requested times do not let the synthetic target expand capacity');
