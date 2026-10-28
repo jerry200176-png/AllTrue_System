@@ -25,7 +25,10 @@ const month = ref(today().slice(0, 7));
 const unpaidOnly = ref(false);
 const loading = ref(false);
 const error = ref('');
-const ledger = ref({ charges: [], payouts: [], summary: { rows: [], total: {} }, categories: {}, methods: {} });
+const emptyLedger = () => ({ charges: [], payouts: [], summary: { rows: [], total: {} }, categories: {}, methods: {} });
+const ledger = ref(emptyLedger());
+let loadSeq = 0; // only the newest request may write; a slow reply for an old campus/filter is dropped
+let loadedCampus = null;
 
 async function api(path, body) {
   const token = await getAccessToken();
@@ -38,17 +41,21 @@ async function api(path, body) {
 }
 
 async function load() {
-  if (campusId.value == null) return;
+  const seq = ++loadSeq;
+  const campus = campusId.value;
+  if (campus !== loadedCampus) { ledger.value = emptyLedger(); loadedCampus = campus; } // never show campus A's rows under B
+  if (campus == null) return;
   loading.value = true;
   error.value = '';
   try {
-    const q = new URLSearchParams({ campus_id: String(campusId.value) });
+    const q = new URLSearchParams({ campus_id: String(campus) });
     if (unpaidOnly.value) q.set('scope', 'unpaid'); else q.set('month', month.value);
-    ledger.value = await api(`fee-ledger?${q}`);
+    const data = await api(`fee-ledger?${q}`);
+    if (seq === loadSeq) ledger.value = data;
   } catch (e) {
-    error.value = e.message || '載入失敗';
+    if (seq === loadSeq) error.value = e.message || '載入失敗';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 

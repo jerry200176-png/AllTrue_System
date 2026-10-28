@@ -95,3 +95,19 @@ it('records a payment and shows the server refusal when it fails', async () => {
   await flushPromises();
   expect(toast.error).toHaveBeenCalledWith('這筆代收款已經收過了。');
 });
+
+it('drops a slow reply for the previous campus and clears its rows on switch', async () => {
+  const pending = {};
+  mockFetch.mockImplementation((url) => new Promise((resolve) => { pending[new URLSearchParams(url.split('?')[1]).get('campus_id')] = resolve; }));
+  wrapper = mountIt();
+  await flushPromises();
+  await wrapper.setProps({ branchId: 6 });
+  await flushPromises();
+  expect(wrapper.text()).not.toContain('王小明');
+  pending['6'](res({ ...ledger, charges: [{ ...ledger.charges[1], id: 9, student_name: '六號分校學生' }], payouts: [] }));
+  await flushPromises();
+  pending['5'](res(ledger)); // campus 5 answers last
+  await flushPromises();
+  expect(wrapper.text()).toContain('六號分校學生');
+  expect(wrapper.text()).not.toContain('王小明');
+});
