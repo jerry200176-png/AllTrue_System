@@ -1103,6 +1103,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtSelectAll from '../components/design-system/AtSelectAll.vue';
 import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
 import { useSelection } from '../composables/useSelection';
+import { shareInFlight } from '../lib/shareInFlight';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
@@ -1983,7 +1984,9 @@ async function doSubmitPendingMark(s, status) {
 
 // Batch mark all selected as "present" using the backend batch API
 // Resolves true only when every selected session was marked; failed rows stay selected for retry.
-async function batchMarkAllPresent() {
+// The batch bar and the mobile sticky bar both call it; a second tap joins the run in flight.
+const batchMarkAllPresent = shareInFlight(submitBatchMarkAllPresent);
+async function submitBatchMarkAllPresent() {
   if (selection.count === 0) return;
   batchResults.value = [];
   pendingMarkMsg.value = '';

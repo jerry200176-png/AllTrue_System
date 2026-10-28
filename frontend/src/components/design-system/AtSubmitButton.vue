@@ -117,16 +117,20 @@ onBeforeUnmount(() => clearTimeout(timer));
   cursor: progress;
 }
 
-.at-submit.at-submit--success {
+/* Outranks AtButton's variant :hover/:active rules (one more class), so a pointer still resting
+   on the button cannot put result text on the variant's hover fill. */
+.at-btn.at-submit.at-submit--success:not(:disabled) {
   background: var(--ds-success-wash);
   border-color: var(--ds-success-line);
   color: var(--ds-success-text);
+  filter: none;
 }
 
-.at-submit.at-submit--error {
+.at-btn.at-submit.at-submit--error:not(:disabled) {
   background: var(--ds-danger-wash);
   border-color: var(--ds-danger-line);
   color: var(--ds-danger-text);
+  filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
