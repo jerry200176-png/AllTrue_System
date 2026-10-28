@@ -12,8 +12,9 @@ with zero open review threads, and no deploy freeze (main CI red or the last pro
 deploy failed). Exact-main CI, health/identity/smoke verification and the automatic
 rollback are unchanged. Anything else still waits for the Founder on the release train.
 
-Gap #9: each PR in an `auto-r3` range must also ship dark. Its body declares exactly one
-`Feature-Flag: <perfflags key> (default off)` (the key is `(bool) env('X', false)` in the
-target's `backend/config/perfflags.php` and the PR's added lines use it) or
-`Feature-Flag: none — <reason>` (refused when the PR changes `frontend/src/`). A missing or
-invalid declaration falls back to the Founder click.
+Review fixes (2026-10-28, Founder「能不能不要一直讓我按approve 實現自動化」→「做」): a capped
+compare range, a rename out of a protected path, a control-plane file inside an application PR,
+`backend/routes/api.php`, or a Rollback line that names no reversal all keep the Founder gate;
+freeze and final-head review are re-checked after the executor slot is held; the last real
+deploy is searched past skipped runs. The self-declared `Feature-Flag:` gate (gap #9) is dropped:
+it could not be machine-verified and would have kept most R3 fixes on a manual click.

@@ -12,7 +12,6 @@
 **Autonomy-Tier:** T? <!-- R0/T0, R1/T1, R2/T2, R3/T3 -->
 **Review / protected-boundary evidence：** <!-- T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
-**Feature-Flag:** <!-- R3 only, needed for auto-activation: `<perfflags key> (default off)` or `none — <why it is not user-facing>`; delete for R0-R2 -->
 
 <!--
 Generate the two declaration values from the actual branch diff before opening

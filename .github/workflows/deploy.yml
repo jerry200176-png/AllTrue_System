@@ -775,6 +775,11 @@ jobs:
               if not files:
                   emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
                   sys.exit(0)
+              # The unpaginated compare caps `commits` (250): an omitted commit is never classified (#4359 review).
+              if comparison.get("total_commits") != len(comparison.get("commits") or []):
+                  emit("awaiting-activation", "unknown", "none",
+                       f"runtime range lists {len(comparison.get('commits') or [])} of {comparison.get('total_commits')} commits; fail closed")
+                  sys.exit(0)
 
               # Attribute the undeployed range to each merged PR before
               # classifying it. A control-plane-only PR is already effective
@@ -800,7 +805,8 @@ jobs:
                   if not isinstance(actual_files, list):
                       provenance_complete = False
                       continue
-                  actual_paths = [item.get("filename", "") for item in actual_files]
+                  # A rename's source path is classified too: moving a file out of a protected path is a protected change.
+                  actual_paths = [p for item in actual_files for p in (item.get("filename", ""), item.get("previous_filename")) if p]
                   if range_paths is not None and len(actual_files) < 300:
                       range_paths.update(p for item in actual_files for p in (item.get("filename"), item.get("previous_filename")) if p)
                   else:
@@ -1054,17 +1060,18 @@ jobs:
                           api=gh_api, graphql=graphql,
                       )
                       freeze = target_r3_gate.deploy_freeze_reason(repo=repo, api=gh_api)
-                      # Gap #9: ship dark. Flag keys come from the target's own config file.
-                      with open(target_r3_gate.FEATURE_FLAG_CONFIG, encoding="utf-8") as config:
-                          flags = target_r3_gate.feature_flag_evidence(
-                              repo=repo, pr_numbers=[pr["number"] for pr in provenance["application_prs"]],
-                              api=gh_api, config_text=config.read(),
+                      # auto-r3 needs a reversal the Rollback line actually names (#4359 review).
+                      r3_rollback = all(
+                          target_r3_gate.has_actionable_rollback(
+                              gh_api(f"/repos/{repo}/pulls/{pr['number']}").get("body") or ""
                           )
+                          for pr in provenance["application_prs"]
+                      )
                       r3_results = [
                           gate.decide_r3_auto_activation(
                               attributed, event_name=classify_event,
-                              rollback_evidence=rollback_evidence, range_paths=range_paths,
-                              review=review, freeze_reason=freeze, feature_flags=flags,
+                              rollback_evidence=r3_rollback, range_paths=range_paths,
+                              review=review, freeze_reason=freeze,
                           )
                           for gate in (trusted_r3_gate, target_r3_gate)
                       ]
@@ -1546,16 +1553,17 @@ jobs:
     steps:
       # Founder 1A: without a reviewer, re-verify the GO evidence right before any
       # production side effect, under both the deployed and the target policy.
-      # auto-r3 carries no GO text; its machine evidence plus the exact-main CI gate below suffice.
+      # auto-r3 carries no GO text; its freeze and final-head review are re-checked instead (after the
+      # executor slot is held, #4359 review), plus the exact-main CI gate below.
       - name: Checkout target gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
+        if: ${{ needs.production-auto.result == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
           path: gate-target
           sparse-checkout: scripts/governance
       - name: Checkout deployed gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
+        if: ${{ needs.production-auto.result == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
@@ -1590,6 +1598,42 @@ jobs:
               if not go["ok"]:
                   raise SystemExit(f"Founder GO evidence no longer holds ({root}): {go['reason']}; nothing deployed")
           print("Founder GO evidence re-verified under the deployed and target policy")
+          PY
+      - name: Recheck R3 auto controls before production side effects
+        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode == 'auto-r3' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBERS: ${{ needs.classify-activation.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+
+          def api(path, *extra):
+              return json.loads(subprocess.check_output(["gh", "api", path, *extra], text=True))
+
+          # An older executor run may have failed while this one waited in the queue.
+          numbers = [n for n in os.environ["PR_NUMBERS"].split(",") if n.strip()]
+          if not numbers:
+              raise SystemExit("auto-r3 without PR numbers; nothing deployed")
+          for root in ("gate-trusted", "gate-target"):
+              spec = importlib.util.spec_from_file_location(f"{root}_gate", f"{root}/scripts/governance/autonomy_gate.py")
+              gate = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(gate)
+              freeze = gate.deploy_freeze_reason(repo=os.environ["REPO"], api=api)
+              if freeze is not None:
+                  raise SystemExit(f"deploy freeze since classification ({root}): {freeze}; nothing deployed")
+              review = gate.final_head_review_evidence(
+                  repo=os.environ["REPO"], pr_numbers=numbers, api=api,
+                  graphql=lambda query: api("graphql", "-f", f"query={query}"),
+              )
+              if review.get("ok") is not True:
+                  raise SystemExit(f"final-head review no longer holds ({root}): {review.get('reason')}; nothing deployed")
+          print("R3 freeze and final-head review re-verified under the deployed and target policy")
           PY
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

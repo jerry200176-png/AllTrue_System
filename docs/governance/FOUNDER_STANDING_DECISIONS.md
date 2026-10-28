@@ -43,6 +43,8 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 4. 「不只in-app意見啦 你要修正上線做功能都是 要擋的是外來的東西 或是想透過in-app回報攻擊我的系統的人」
 5. 「照這樣做 但你的整個流程要參考開源技術或是大公司 不能因為這樣就不嚴謹」
 
+2026-10-28 補充（Founder 對話原文）：「能不能不要一直讓我按approve 實現自動化」；Agent 提出完成 #4359／#4363（R3 通過自動控制即上線、上線後監看與自動回滾），保留非只新增型 migration、正式資料修改、credential 的人工關卡，Founder 選「做」。
+
 ### 1. 原則（通用，不限 in-app）
 
 - **Founder 指示的工程工作**（修 bug、做功能、上線）端到端進行：開發 → CI → review → 合併 → 部署 → 上線驗證，**不逐步等 Founder 按核准**。
@@ -53,8 +55,8 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 ### 2. 範圍：R3 application range 自動上線
 
 - **自動（不需 Founder 按）**：`deploy.yml` 的 application deploy／release train 範圍，今天只因含 R3（T3）PR 而停在 `awaiting-activation`，且同時成立：範圍內每個 PR 已合併進 main、provenance 完整、宣告有效、每個 PR 有 rollback 證據、目標 SHA 的 required CI 綠、範圍不改 `deploy.yml`／`autonomy_gate.py`，並通過第 3 條全部必要控制 → `mode=auto-r3`，走與 R0–R2 相同的 `production-auto`（無 reviewer）路徑。merge 自己的 run 即上線，不等 release train。
-- 可自動的 T3 效果：帳務／ledger 語意、隱私／legal 語意、runtime write、`SessionDeduction`／`SessionEntitlement`／`ApprovalSessionSync` 服務、`backend/routes/api.php`、敏感路徑超過檔數／行數上限、宣告 R3 的一般程式。
-- **仍停在 `production-activation`（Founder 按）**：範圍含任何 migration（`ADDITIVE_MIGRATION_AUTO_ACTIVATION = False`：`deploy.yml` 在 migration 後不能自動回滾程式，R5 維持）、資料修復路徑（`Console/Commands/Repair*`、`Services/Repair*`）或「不可逆／資料操作」語意、身分／credential 邊界（`Controllers/Auth`、`StudentIdentity`、`Http/Middleware/`、路徑含 credential／password／secret／token／permission、認證／權限語意）、release／control plane 路徑、不可檢視的 diff、provenance 不完整或宣告錯誤、分類器例外／API 錯誤、deploy freeze、缺 final-head review。`workflow_dispatch` 的 manual／`pop-bootstrap`／`parent-portal-smoke`／`phase1-3`（principal rotation）不變。其他 workflow（Phase C、case dump、資料修復）的 `production-activation` 不在本條範圍。
+- 可自動的 T3 效果：帳務／ledger 語意、隱私／legal 語意、runtime write、`SessionDeduction`／`SessionEntitlement`／`ApprovalSessionSync` 服務、敏感路徑超過檔數／行數上限、宣告 R3 的一般程式。
+- **仍停在 `production-activation`（Founder 按）**：範圍含任何 migration（`ADDITIVE_MIGRATION_AUTO_ACTIVATION = False`：`deploy.yml` 在 migration 後不能自動回滾程式，R5 維持）、資料修復路徑（`Console/Commands/Repair*`、`Services/Repair*`）或「不可逆／資料操作」語意、身分／credential 邊界（`Controllers/Auth`、`StudentIdentity`、`Http/Middleware/`、路徑含 credential／password／secret／token／permission、認證／權限語意）、`backend/routes/api.php`（路由授權變更無法由分類器排除）、release／control plane 路徑（含應用 PR 夾帶的控制面檔案）、改名來源為上述任一路徑、比對範圍被截斷（compare 只列出部分 commit）、Rollback 行沒有寫出可行的還原方式（例如「無法回復」）、不可檢視的 diff、provenance 不完整或宣告錯誤、分類器例外／API 錯誤、deploy freeze、缺 final-head review。`workflow_dispatch` 的 manual／`pop-bootstrap`／`parent-portal-smoke`／`phase1-3`（principal rotation）不變。其他 workflow（Phase C、case dump、資料修復）的 `production-activation` 不在本條範圍。
 - **Release train** 照舊運作，只載仍需 Founder 的範圍。
 - **取代**：只就「R3 application range 的上線」取代 2026-10-08 Q1 A（GO 文字可被任何 Agent 偽造的顧慮不適用：本路徑不讀任何 GO 文字，閘門是 CI＋分類器＋review metadata）、2026-10-14（二）第 4 條「含 T3 的部署每次由 Founder 批准」、2026-10-12 第 1 條的「部署不在此例外內」、2026-10-14 release train 對 R3 範圍的每班核准；若 #4351 合併，也取代其 2026-10-21（二）第 2(b) 條。其他條文不變。
 
@@ -68,7 +70,8 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 | (d) 驗證失敗自動回滾到上一版 | Flagger／Argo Rollouts／Spinnaker automated rollback | 既有 | `deploy.yml` L1645 `rollback_deploy`、L1734 `abort_deploy`（gate exit 20 → 回滾 PREV_COMMIT 並再驗舊版；有 migration 時 exit 13 不回滾——所以 migration 範圍不自動上線） |
 | (e) stop-the-line：main CI 紅，或上一次正式部署失敗／回滾／hold → 停止自動上線 | Google TAP「stop the line」／GitLab deploy freeze | **本 PR 新增** | `autonomy_gate.py` `deploy_freeze_reason`，`deploy.yml` L1023；之後一次 Founder 核准且成功的部署即解除 |
 | (f) 稽核紀錄：range、PR、tier、證據、結果 | SLSA provenance | **本 PR 新增**（結果沿用既有） | `deploy.yml` L1125（Release state summary）；結果見 deploy job 的 `state=production-verified` 或失敗摘要 |
-| (g) 暗啟動（gap #9，Founder 2026-10-21「你懷疑的這九點都把它規劃好補上」）：每個 PR 內文恰好一行 `Feature-Flag: <perfflags key> (default off)`（該 key 在目標版 `backend/config/perfflags.php` 為 `(bool) env('X', false)`，且 PR 新增行有用到它）或 `Feature-Flag: none — <理由>`（非使用者可見；改到 `frontend/src/` 即不成立）；缺漏／格式錯／key 不存在或預設開 → 回到 Founder 按 | LaunchDarkly／Unleash dark launch；Google flag-guarded launch | **新增** | `autonomy_gate.py` `feature_flag_evidence`、`decide_r3_auto_activation(feature_flags=…)` |
+| (g) 排隊後再查：取得正式部署 executor 後、任何正式副作用前，以已部署版與目標版 gate 重查 deploy freeze 與 final-head review（排隊期間前一次部署失敗即停） | Google TAP stop-the-line；Spinnaker pipeline precondition | **新增（2026-10-28）** | `deploy.yml` deploy job「Recheck R3 auto controls before production side effects」 |
+| 不採用：PR 自報的 `Feature-Flag:` 暗啟動（原 gap #9） | — | **移除（2026-10-28，待 Founder 合併前確認）** | 機器無法驗證 flag 真的包住變更、也讀不到正式站 `.env` 的實際值（Codex 3 個 P1）；且多數 R3 是修 bug 不適合 flag，會讓絕大多數 R3 仍需人工按。改由 (c)(d) 上線驗證＋自動回滾與 (g) 保護；runtime kill switch（DB flag）列 follow-up |
 | 雙政策：已部署版與目標版的 gate 都要同意 | two-person rule 的機器版（範圍不能自己審自己） | 既有模式沿用 | `deploy.yml` L1030 |
 
 已知缺口（follow-up，不阻擋）：runner 端獨立驗證（L2053）在 executor 已驗證成功後才失敗時只發警示、不自動回滾；canary／漸進式上線、error budget gating、DORA 指標尚未做。
