@@ -629,9 +629,9 @@
         </div>
 
         <div v-else class="tc-table-wrap">
-          <div class="acct-bulkbar" v-if="selectedReportIds.size > 0">
-            <span>已選取 {{ selectedReportIds.size }} 筆</span>
-            <button class="tc-btn tc-btn--ghost" @click="selectedReportIds = new Set()">取消選取</button>
+          <div class="acct-bulkbar" v-if="receiptSelection.count > 0">
+            <span>已選取 {{ receiptSelection.count }} 筆</span>
+            <button class="tc-btn tc-btn--ghost" @click="receiptSelection.clear()">取消選取</button>
             <button class="tc-btn tc-btn--csv" @click="exportSelectedAccountingCSV">
               <span class="material-symbols-outlined" style="font-size:16px">download</span>
               匯出已選取
@@ -647,7 +647,7 @@
               </select>
             </label>
             <label>
-              <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="行動版全選收據" />
+              <input type="checkbox" :checked="receiptSelection.all" :indeterminate.prop="receiptSelection.mixed" :disabled="receiptSelection.empty" @change="receiptSelection.toggleAll($event.target.checked)" aria-label="行動版全選收據" />
               全選
             </label>
           </div>
@@ -655,7 +655,7 @@
             <thead>
               <tr>
                 <th class="acct-col-check">
-                  <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="全選" />
+                  <AtSelectAll :selection="receiptSelection" hide-label :show-count="false" />
                 </th>
                 <th class="acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('payment_date')" @keydown.enter.prevent="toggleAccountingSort('payment_date')" @keydown.space.prevent="toggleAccountingSort('payment_date')">
                   繳費日期／收據編號
@@ -681,14 +681,14 @@
                 v-for="row in sortedAccountingRows"
                 :key="row.report_id"
                 class="acct-row-clickable"
-                :class="{ 'acct-row-selected': selectedReportIds.has(row.report_id) }"
+                :class="{ 'acct-row-selected': receiptSelection.has(row.report_id) }"
                 @click="row.status === 'voided' ? openLedgerForReport(row) : openReceiptByReport(row.report_id)"
               >
                 <td class="acct-col-check" @click.stop>
                   <input
                     type="checkbox"
-                    :checked="selectedReportIds.has(row.report_id)"
-                    @change="toggleAccountingRowSelected(row.report_id)"
+                    :checked="receiptSelection.has(row.report_id)"
+                    @change="receiptSelection.toggle(row.report_id)"
                     :aria-label="`選取 ${humanizeDocumentRef(row.receipt_no)}`"
                   />
                 </td>
@@ -1119,6 +1119,8 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import StudentBillingList from '../components/tuition/StudentBillingList.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSelectAll from '../components/design-system/AtSelectAll.vue';
+import { useSelection } from '../composables/useSelection';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -1229,7 +1231,8 @@ const accountingFilters = ref(defaultAccountingFilters());
 // patterns: click a header to sort, checkbox rows to bulk-export a subset).
 const accountingSortKey = ref('payment_date');
 const accountingSortDir = ref('desc');
-const selectedReportIds = ref(new Set());
+// Selections of receipts that leave the list (reload, filter) drop out on their own.
+const receiptSelection = useSelection(accountingRows, { key: 'report_id' });
 
 const ACCOUNTING_SORT_ACCESSORS = {
   payment_date: (r) => r.payment_date || '',
@@ -1264,21 +1267,6 @@ const sortedAccountingRows = computed(() => {
   });
 });
 
-const allAccountingSelected = computed(() => (
-  accountingRows.value.length > 0 && accountingRows.value.every((r) => selectedReportIds.value.has(r.report_id))
-));
-
-function toggleAccountingRowSelected(reportId) {
-  const next = new Set(selectedReportIds.value);
-  if (next.has(reportId)) next.delete(reportId); else next.add(reportId);
-  selectedReportIds.value = next;
-}
-
-function toggleSelectAllAccounting() {
-  selectedReportIds.value = allAccountingSelected.value
-    ? new Set()
-    : new Set(accountingRows.value.map((r) => r.report_id));
-}
 
 function downloadAccountingCsv(rows, filenameSuffix) {
   const bom = '﻿';
@@ -1293,7 +1281,7 @@ function downloadAccountingCsv(rows, filenameSuffix) {
 }
 
 function exportSelectedAccountingCSV() {
-  const rows = accountingRows.value.filter((r) => selectedReportIds.value.has(r.report_id));
+  const rows = accountingRows.value.filter((r) => receiptSelection.has(r.report_id));
   if (!rows.length) {
     showToast('請先勾選要匯出的收據', 'warning');
     return;
@@ -1977,7 +1965,7 @@ async function loadAlerts() {
 async function loadAccountingPayments() {
   accountingLoading.value = true;
   accountingError.value = '';
-  selectedReportIds.value = new Set();
+  receiptSelection.clear();
   try {
     const token = getToken();
     if (!token) { accountingError.value = '請先登入'; return; }

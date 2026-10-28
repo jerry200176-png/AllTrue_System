@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
@@ -240,7 +241,7 @@ defineExpose({ reload: load, loading });
       </form>
       <template #actions>
         <AtButton variant="secondary" shape="rect" :disabled="saving" @click="dialog = null">取消</AtButton>
-        <AtButton variant="primary" shape="rect" :loading="saving" :disabled="!canSave" @click="save">確定</AtButton>
+        <AtSubmitButton shape="rect" :pending="saving" :disabled="!canSave" pending-text="處理中…" @click="save">確定</AtSubmitButton>
       </template>
     </AtDialog>
   </div>

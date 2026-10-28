@@ -48,13 +48,14 @@
       <p v-if="error" class="submit-error" role="alert">請假登記失敗：{{ error }}</p>
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="!submitting && $emit('close')">取消</button>
-        <button class="primary" :disabled="!canSubmit || submitting" @click="$emit('submit')">{{ submitting ? '送出中…' : '確認請假' }}</button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="!canSubmit" pending-text="送出中…" @click="$emit('submit')">確認請假</AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../../design-system/AtSubmitButton.vue';
 import { computed, ref, watch } from 'vue';
 import SuccessorLeaveBlockers from '../../course-management/SuccessorLeaveBlockers.vue';
 import './calendarModalRwd.css';

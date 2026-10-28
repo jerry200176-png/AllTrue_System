@@ -10,20 +10,20 @@ describe('CalendarSubstituteLegacyModal', () => {
       props: { show: true, form, teachers: [{ id: 1, username: '李老師' }], submitting: false },
     });
     expect(w.find('option[value="1"]').text()).toBe('李老師');
-    expect(w.find('.primary').attributes('disabled')).toBeDefined();
+    expect(w.find('.at-submit').attributes('disabled')).toBeDefined();
   });
 
   it('enables submit when substitute selected', async () => {
     const w = mount(CalendarSubstituteLegacyModal, {
       props: { show: true, form: { ...form, substitute_teacher_id: '1' }, teachers: [{ id: 1, username: '李老師' }] },
     });
-    expect(w.find('.primary').attributes('disabled')).toBeUndefined();
+    expect(w.find('.at-submit').attributes('disabled')).toBeUndefined();
   });
 
   it('shows submitting label', () => {
     const w = mount(CalendarSubstituteLegacyModal, {
       props: { show: true, form: { ...form, substitute_teacher_id: '1' }, submitting: true },
     });
-    expect(w.find('.primary').text()).toContain('處理中');
+    expect(w.find('.at-submit').text()).toContain('處理中');
   });
 });
