@@ -134,9 +134,11 @@ class AccountingController extends Controller
         $stoppedStatuses = app(BillingPayableResolver::class)
             ->courseStatusesByStudentClassIds($stoppedCourses->pluck('ID')->all(), $stoppedCourses);
         $listedStopped = [];
+        // In-app #440 (Founder 2026-10-29): a plain pause that never started is not owed while paused (StudentClass::unstartedPauseIds).
+        $unstartedPauses = StudentClass::unstartedPauseIds($stoppedCourses->pluck('ID')->all());
         foreach ($stoppedCourses as $course) {
             $status = $stoppedStatuses[(int) $course->getAttribute('ID')] ?? null;
-            if ($status !== null && $this->stoppedCourseVisibleState($course, $status) !== null) {
+            if ($status !== null && !isset($unstartedPauses[(int) $course->getAttribute('ID')]) && $this->stoppedCourseVisibleState($course, $status) !== null) {
                 $listedStopped[] = (int) $course->getAttribute('ID');
             }
         }
