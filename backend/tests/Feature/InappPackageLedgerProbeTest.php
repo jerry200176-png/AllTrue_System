@@ -33,7 +33,7 @@ class InappPackageLedgerProbeTest extends TestCase
         'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
         'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'charged_since_package_not_debited', 'lists_capped'],
-        'unchargeable_session_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'last_status', 'deleted_at', 'session_date', 'start_time', 'slot_source', 'session_net', 'course_net', 'twin_session_id', 'twin_student_class_id', 'twin_status', 'twin_package_net', 'twin_course_net'],
+        'unchargeable_session_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'last_status', 'deleted_at', 'session_date', 'start_time', 'slot_source', 'session_net', 'course_net', 'twin_session_id', 'twin_student_class_id', 'twin_start_time', 'twin_status', 'twin_package_net', 'twin_course_net'],
         'shared_slot_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'session_date', 'start_time', 'course_net', 'slot_net'],
     ];
 
@@ -205,9 +205,15 @@ class InappPackageLedgerProbeTest extends TestCase
         $sameDay = $this->lesson($english, '2026-10-12', 'attended', '18:00');
         $this->charge($english, $sameDay, ['deduct']);
         $this->debit($pool, $english, $sameDay, 'attendance');
-        // A cancelled lesson still debited, no lesson left in its slot.
+        // A cancelled lesson still debited, no lesson left that day.
         $cancelled = $this->lesson($math, '2026-10-19', 'cancelled');
         $this->debit($pool, $math, $cancelled, 'attendance');
+        // A creation seed at the default start, deleted; its lesson lives on at the real start, debited too.
+        $seed = $this->lesson($english, '2026-10-22');
+        $this->debit($pool, $english, $seed, 'attended');
+        $seed->delete();
+        $real = $this->lesson($english, '2026-10-22', 'attended', '18:00');
+        $this->debit($pool, $english, $real, 'attendance');
         // One slot debited through both members.
         $first = $this->lesson($math, '2026-10-26');
         $second = $this->lesson($english, '2026-10-26');
@@ -221,15 +227,19 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame([[
             'class_session_id' => (int) $old->id, 'student_class_id' => (int) $math->ID, 'reason' => 'attended', 'delta' => -1, 'status' => 'deleted',
             'last_status' => 'attended', 'session_date' => '2026-10-05', 'start_time' => '16:00', 'slot_source' => 'audit', 'session_net' => -1, 'course_net' => 0,
-            'twin_session_id' => (int) $recreated->id, 'twin_student_class_id' => (int) $math->ID, 'twin_status' => 'completed', 'twin_package_net' => 0, 'twin_course_net' => 0,
+            'twin_session_id' => (int) $recreated->id, 'twin_student_class_id' => (int) $math->ID, 'twin_start_time' => '16:00', 'twin_status' => 'completed', 'twin_package_net' => 0, 'twin_course_net' => 0,
         ], [
             'class_session_id' => (int) $signedIn->id, 'student_class_id' => (int) $math->ID, 'reason' => 'attendance', 'delta' => -1, 'status' => 'deleted',
             'last_status' => null, 'session_date' => '2026-10-12', 'start_time' => null, 'slot_source' => 'sign_in', 'session_net' => -1, 'course_net' => 0,
-            'twin_session_id' => (int) $sameDay->id, 'twin_student_class_id' => (int) $english->ID, 'twin_status' => 'attended', 'twin_package_net' => -1, 'twin_course_net' => 1,
+            'twin_session_id' => (int) $sameDay->id, 'twin_student_class_id' => (int) $english->ID, 'twin_start_time' => '18:00', 'twin_status' => 'attended', 'twin_package_net' => -1, 'twin_course_net' => 1,
         ], [
             'class_session_id' => (int) $cancelled->id, 'student_class_id' => (int) $math->ID, 'reason' => 'attendance', 'delta' => -1, 'status' => 'cancelled',
             'last_status' => null, 'session_date' => '2026-10-19', 'start_time' => '16:00', 'slot_source' => 'session', 'session_net' => -1, 'course_net' => 0,
-            'twin_session_id' => null, 'twin_student_class_id' => null, 'twin_status' => null, 'twin_package_net' => null, 'twin_course_net' => null,
+            'twin_session_id' => null, 'twin_student_class_id' => null, 'twin_start_time' => null, 'twin_status' => null, 'twin_package_net' => null, 'twin_course_net' => null,
+        ], [
+            'class_session_id' => (int) $seed->id, 'student_class_id' => (int) $english->ID, 'reason' => 'attended', 'delta' => -1, 'status' => 'deleted',
+            'last_status' => 'attended', 'session_date' => '2026-10-22', 'start_time' => '16:00', 'slot_source' => 'audit', 'session_net' => -1, 'course_net' => 0,
+            'twin_session_id' => (int) $real->id, 'twin_student_class_id' => (int) $english->ID, 'twin_start_time' => '18:00', 'twin_status' => 'attended', 'twin_package_net' => -1, 'twin_course_net' => 0,
         ]], $rows);
         $this->assertNotNull($out['unchargeable_session_rows'][0]['deleted_at'], 'the audit row dates the deletion');
         $this->assertSame(
