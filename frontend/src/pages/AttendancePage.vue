@@ -1110,7 +1110,7 @@ import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
 import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
-import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../lib/leaveSuccessorShift.js';
+import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems, leaveWithRenewalShift } from '../lib/leaveSuccessorShift.js';
 import SuccessorLeaveBlockers from '../components/course-management/SuccessorLeaveBlockers.vue';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import { askConfirm, confirmState, settleConfirm } from '../composables/useConfirmDialog';
@@ -1130,6 +1130,21 @@ async function confirmSuccessorLeave(message) {
   const owner = confirmState.value;
   leaveConfirmOwner.value = owner;
   try { return await answer; } finally { if (leaveConfirmOwner.value === owner) leaveConfirmOwner.value = null; }
+}
+// An unmarked lesson (pending or make-up list) is where a director's leave can shift a pre-created renewal (#4578).
+// Resolves 'ordinary' to continue with the ordinary leave; any other value means this call already handled the lesson.
+async function leaveUnmarkedWithShift(sessionId, token, fail) {
+  leaveBlockers.value = [];
+  const owner = statusEditOwner.value;
+  try {
+    return await leaveWithRenewalShift({
+      role: props.userRole, sessionId, token, ask: confirmSuccessorLeave, owns: () => statusEditOwner.value === owner,
+      onBlocked: (plan) => { leaveBlockers.value = plan.blockers; leaveBlockerDate.value = plan.leave_session.date || ''; fail('續約順延有阻擋原因，這堂沒有請假；請看頁面上方的說明'); },
+    });
+  } catch (e) {
+    fail('請假失敗：' + (e.message || '網路錯誤'));
+    throw e;
+  }
 }
 function cancelLeaveConfirmation() { if (leaveConfirmOwner.value && confirmState.value === leaveConfirmOwner.value) settleConfirm(false); }
 onBeforeUnmount(() => { statusEditOwner.value += 1; cancelLeaveConfirmation(); });
@@ -1932,6 +1947,17 @@ async function doSubmitPendingMark(s, status) {
       pendingMarkMsg.value = msg; pendingMarkMsgType.value = 'error';
       throw new Error(msg);
     }
+    if (status === 'leave') {
+      const failPending = (msg) => { pendingMarkMsg.value = msg; pendingMarkMsgType.value = 'error'; };
+      const shift = await leaveUnmarkedWithShift(s.class_session_id, token, failPending);
+      if (shift === 'done') {
+        pendingMarkMsg.value = `已請假並順延續約：${s.student_name}`;
+        pendingMarkMsgType.value = 'success';
+        trackAdoptionEvent('attendance_marked', props.branchId, { role: props.userRole, status });
+        await Promise.all([fetchPendingSessions(), fetchRecords()]);
+      }
+      if (shift !== 'ordinary') return;
+    }
     const res = await fetch('/api/v1/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -2111,6 +2137,17 @@ const submitMakeupMark = async (s) => {
   try {
     const token = await getToken();
     if (!token) { makeupMsg.value = '請先登入'; makeupMsgType.value = 'error'; return; }
+    if (status === 'leave') {
+      const shift = await leaveUnmarkedWithShift(s.class_session_id, token, (msg) => { makeupMsg.value = msg; makeupMsgType.value = 'error'; });
+      if (shift === 'done') {
+        makeupMsg.value = `已補登請假並順延續約：${s.student_name}`;
+        makeupMsgType.value = 'success';
+        makeupSessions.value = makeupSessions.value.filter(r => r.class_session_id !== s.class_session_id);
+        makeupTotal.value = Math.max(0, makeupTotal.value - 1);
+        fetchRecords();
+      }
+      if (shift !== 'ordinary') return;
+    }
     const res = await fetch('/api/v1/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
