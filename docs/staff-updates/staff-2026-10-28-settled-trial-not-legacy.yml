@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-28-settled-trial-not-legacy
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 已結清清單不再誤標試聽費
+    summary: 帳務中心「已結清」不再把有繳費日期的試聽課標成「舊制無帳單」。
+    items:
+      - category: fixed
+        text: 試聽課建立時登記的試聽費不開帳單；「已結清」清單現在不會再把它標成「舊制無帳單」。
+    source_refs:
+      - "changelog:2026-10-28:settled-trial-not-legacy"
