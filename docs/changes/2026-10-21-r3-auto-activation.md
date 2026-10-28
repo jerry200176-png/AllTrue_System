@@ -17,4 +17,5 @@ compare range, a rename out of a protected path, a control-plane file inside an 
 `backend/routes/api.php`, or a Rollback line that names no reversal all keep the Founder gate;
 freeze and final-head review are re-checked after the executor slot is held; the last real
 deploy is searched past skipped runs. The self-declared `Feature-Flag:` gate (gap #9) is dropped:
-it could not be machine-verified and would have kept most R3 fixes on a manual click.
+it could not be machine-verified and would have kept most R3 fixes on a manual click (Founder 2026-10-28:
+「功能開關那條拿掉可以，繼續」).

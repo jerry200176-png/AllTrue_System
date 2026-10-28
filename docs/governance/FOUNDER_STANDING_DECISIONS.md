@@ -43,7 +43,7 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 4. 「不只in-app意見啦 你要修正上線做功能都是 要擋的是外來的東西 或是想透過in-app回報攻擊我的系統的人」
 5. 「照這樣做 但你的整個流程要參考開源技術或是大公司 不能因為這樣就不嚴謹」
 
-2026-10-28 補充（Founder 對話原文）：「能不能不要一直讓我按approve 實現自動化」；Agent 提出完成 #4359／#4363（R3 通過自動控制即上線、上線後監看與自動回滾），保留非只新增型 migration、正式資料修改、credential 的人工關卡，Founder 選「做」。
+2026-10-28 補充（Founder 對話原文）：「能不能不要一直讓我按approve 實現自動化」；Agent 提出完成 #4359／#4363（R3 通過自動控制即上線、上線後監看與自動回滾），保留非只新增型 migration、正式資料修改、credential 的人工關卡，Founder 選「做」；對移除自報 `Feature-Flag:` 暗啟動規則回覆「功能開關那條拿掉可以，繼續」。
 
 ### 1. 原則（通用，不限 in-app）
 
@@ -71,7 +71,7 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 | (e) stop-the-line：main CI 紅，或上一次正式部署失敗／回滾／hold → 停止自動上線 | Google TAP「stop the line」／GitLab deploy freeze | **本 PR 新增** | `autonomy_gate.py` `deploy_freeze_reason`，`deploy.yml` L1023；之後一次 Founder 核准且成功的部署即解除 |
 | (f) 稽核紀錄：range、PR、tier、證據、結果 | SLSA provenance | **本 PR 新增**（結果沿用既有） | `deploy.yml` L1125（Release state summary）；結果見 deploy job 的 `state=production-verified` 或失敗摘要 |
 | (g) 排隊後再查：取得正式部署 executor 後、任何正式副作用前，以已部署版與目標版 gate 重查 deploy freeze 與 final-head review（排隊期間前一次部署失敗即停） | Google TAP stop-the-line；Spinnaker pipeline precondition | **新增（2026-10-28）** | `deploy.yml` deploy job「Recheck R3 auto controls before production side effects」 |
-| 不採用：PR 自報的 `Feature-Flag:` 暗啟動（原 gap #9） | — | **移除（2026-10-28，待 Founder 合併前確認）** | 機器無法驗證 flag 真的包住變更、也讀不到正式站 `.env` 的實際值（Codex 3 個 P1）；且多數 R3 是修 bug 不適合 flag，會讓絕大多數 R3 仍需人工按。改由 (c)(d) 上線驗證＋自動回滾與 (g) 保護；runtime kill switch（DB flag）列 follow-up |
+| 不採用：PR 自報的 `Feature-Flag:` 暗啟動（原 gap #9） | — | **移除（Founder 2026-10-28 確認：「功能開關那條拿掉可以，繼續」）** | 機器無法驗證 flag 真的包住變更、也讀不到正式站 `.env` 的實際值（Codex 3 個 P1）；且多數 R3 是修 bug 不適合 flag，會讓絕大多數 R3 仍需人工按。改由 (c)(d) 上線驗證＋自動回滾與 (g) 保護；runtime kill switch（DB flag）列 follow-up |
 | 雙政策：已部署版與目標版的 gate 都要同意 | two-person rule 的機器版（範圍不能自己審自己） | 既有模式沿用 | `deploy.yml` L1030 |
 
 已知缺口（follow-up，不阻擋）：runner 端獨立驗證（L2053）在 executor 已驗證成功後才失敗時只發警示、不自動回滾；canary／漸進式上線、error budget gating、DORA 指標尚未做。
