@@ -1176,16 +1176,19 @@ const visibleReminders = computed(() => REMINDER_VIEWS.filter((x) => (!x.directo
   && !(reminderCount(x) === 0 && activeAccountingTab.value !== x.key)));
 const reminderLabel = (v) => { const n = reminderCount(v); return n ? `${v.label} ${n} 筆` : v.label; };
 const campusStudents = ref([]);
+let campusStudentsSeq = 0; // a slow reply for the previous campus must not refill the picker
 async function loadCampusStudents() {
+  const seq = ++campusStudentsSeq;
+  campusStudents.value = [];
   try {
     const params = new URLSearchParams({ per_page: '1000' });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     const resp = await authedFetch(`/api/v1/students?${params}`, { headers: { Accept: 'application/json' } });
     const json = await resp.json().catch(() => ({}));
     const list = Array.isArray(json) ? json : (json.data || []);
-    campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
+    if (seq === campusStudentsSeq) campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
   } catch {
-    campusStudents.value = [];
+    if (seq === campusStudentsSeq) campusStudents.value = [];
   }
 }
 // ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).

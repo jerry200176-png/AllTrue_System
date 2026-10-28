@@ -248,14 +248,14 @@ defineExpose({ reload: load, loading });
 .flp__bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px; }
 .flp__grow { flex: 1; }
 .flp__sec { margin: 16px 0 24px; overflow-x: auto; }
-.flp__hint { color: var(--ds-text-secondary); font-size: 13px; margin: 4px 0; }
+.flp__hint { color: var(--ds-text-secondary); font-size: var(--ds-font-size-md); margin: 4px 0; }
 .flp__neg { color: var(--ds-danger); }
 .flp__void td { color: var(--ds-text-secondary); text-decoration: line-through; }
 .flp__void td:last-child { text-decoration: none; }
 .flp__actions { display: flex; gap: 6px; }
 .flp__form { display: flex; flex-direction: column; gap: 12px; }
-.flp__field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-.flp__check { display: flex; gap: 6px; align-items: center; font-size: 14px; }
-.flp__students { border: 1px solid var(--ds-border); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.flp__field { display: flex; flex-direction: column; gap: 4px; font-size: var(--ds-font-size-base); }
+.flp__check { display: flex; gap: 6px; align-items: center; font-size: var(--ds-font-size-base); }
+.flp__students { border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
 .flp__list { max-height: 240px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; }
 </style>
