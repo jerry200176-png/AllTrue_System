@@ -45,8 +45,10 @@ Steps (a)–(c) → merge the PR → (d) → (e) → (f) → (g).
 ### Existing environments (documented exceptions)
 
 A job can declare only one environment. Jobs that already use `production-activation` keep it:
-`deploy.yml` `staged_principal_rotation`, the `pop-*.yml` repair jobs and the
-`staff-multirole-activation.yml` `pilot_grant` / `enable` / `disable` jobs. For those jobs:
+`deploy.yml` `staged_principal_rotation`, the `pop-*.yml` jobs that still read the SSH secrets under
+the reviewer (Telegram rotation, financial mount, and any repair job not yet split into a secret-free
+`founder-approval` job on `production-activation` plus an SSH job on `production-ssh`, Founder
+2026-10-28 A) and the `staff-multirole-activation.yml` `pilot_grant` / `enable` / `disable` jobs. For those jobs:
 
 - add the **same** SSH secrets (step c) to `production-activation` as environment secrets; and
 - set `production-activation` → Deployment branches and tags → Selected branches → `main` only, if
