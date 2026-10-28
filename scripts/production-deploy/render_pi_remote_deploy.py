@@ -21,6 +21,7 @@ PLACEHOLDERS = (
     "SMOKE_TEACHER_LOGIN",
     "SMOKE_TEACHER_PASSWORD",
     "SMOKE_BRANCH_ID",
+    "SENTRY_WATCH",
 )
 PATTERN = re.compile(r"@@DEPLOY_([A-Z0-9_]+)@@")
 # Feature-flag modes are pasted into the script's *_FLAG_MODE="..." lines: only these values may be.

@@ -110,6 +110,7 @@ jobs:
         run: |
           python3 scripts/tests/test_deploy_activation_state.py
           python3 scripts/tests/test_principal_rotation_grant_replay.py
+          python3 scripts/tests/test_post_deploy_watch.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -1047,6 +1048,17 @@ jobs:
                   # Founder Q1 A (2026-10-08): a GO line is plain text any agent on the owner
                   # token can write, so it never replaces the reviewer for an awaiting-activation
                   # (R3) range; only R0-R2 ranges activate without a human (#3797).
+              # Stop the line (#4363 review): after a failed, rolled-back, held or interrupted production
+              # deploy, no range activates on its own until a reviewed deploy succeeds. Unknown = frozen.
+              if mode == "auto":
+                  try:
+                      from scripts.governance.autonomy_gate import deploy_freeze_reason
+                      freeze_now = deploy_freeze_reason(repo=repo, api=gh_api)
+                  except Exception as exc:
+                      freeze_now = f"freeze state unavailable ({type(exc).__name__})"
+                  if freeze_now is not None:
+                      mode, reason, approval_eligible = "awaiting-activation", f"deploy freeze: {freeze_now}", True
+                  print(f"Deploy freeze: {freeze_now or 'none'}")
               # Founder 2026-10-21（二）之二: a range held only because it is R3 activates through
               # production-auto. Both the deployed and the target policy must accept it; an old
               # deployed policy without the rule, or any error, keeps the Founder reviewer.
@@ -1548,8 +1560,12 @@ jobs:
     environment: production-ssh
     # Bound the sole production executor so a lost SSH session cannot leave a
     # run waiting indefinitely. The remote script retains its existing
-    # rollback-on-error behavior before this runner-level deadline.
-    timeout-minutes: 30
+    # rollback-on-error behavior before this runner-level deadline. The 20-minute
+    # post-deploy watch (gap #3) runs inside the same executor, so the bound is
+    # deploy (~3-15 min) + verify/smoke (~3 min) + watch (20 min) + rollback margin.
+    timeout-minutes: 55
+    outputs:
+      rc: ${{ steps.deploy.outputs.rc }}
     # Serialize only the side-effecting executor. Read-only preflight and
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
@@ -1702,6 +1718,11 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -l -f ~/.ssh/deploy_key
 
+      # Post-deploy watch (gap #3): after verify + smoke pass, the [6/7] gate keeps watching for
+      # 20 min (health + deployment.json identity every 30 s, 4 consecutive failures = breach; a
+      # Sentry error-count spike vs the pre-deploy hour when the secret SENTRY_WATCH is set to
+      # "<org>/<project> <read-only token>"). A breach takes the same rollback-or-hold
+      # decision as a failed verify, so the rollback stays this executor's rollback_deploy.
       - name: Deploy
         id: deploy
         # The remote script is scripts/production-deploy/pi-remote-deploy.sh from the same commit as this
@@ -1721,6 +1742,7 @@ jobs:
           DEPLOY_SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
           DEPLOY_SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
           DEPLOY_SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
+          DEPLOY_SENTRY_WATCH: ${{ secrets.SENTRY_WATCH }}
         run: |
           rc=0
           remote_script="$(umask 077 && mktemp "${RUNNER_TEMP}/pi-remote-deploy.XXXXXX")"
@@ -1773,6 +1795,11 @@ jobs:
             echo "## state=production-verified"
             echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
             echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
+            echo ""
+            echo "## post-deploy watch"
+            echo "20-minute watch passed: health + deployment.json identity every 30 s, no 4 consecutive failures."
+            # The runner cannot see whether the Sentry query actually ran (#4363 review): point at the executor's own lines.
+            echo "Sentry error-count check: result is in the Deploy log (\`post-deploy watch:\` lines); not evaluated here."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize production verification failure
@@ -1792,6 +1819,59 @@ jobs:
             --rc "${RC:-1}" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Production deploy not verified::$(printf '%s' "$summary" | tail -n 1)"
+
+  # Gap #3: a failed production executor (rollback, rollback failure, hold, lost SSH, or the
+  # runner re-check failing) opens or appends ONE incident issue. IDs and SHAs only, no PII.
+  # The freeze needs no extra marker: the failed "Deploy to Production" job is what the
+  # deploy-freeze check (autonomy_gate.deploy_freeze_reason, #4359) reads.
+  deploy-incident:
+    name: Record production deploy incident
+    needs: [resolve-target, detect-deployable, deploy]
+    # A timeout or cancel ends the job as 'cancelled', possibly before rc is written (#4363 review).
+    if: ${{ always() && (needs.deploy.result == 'failure' || needs.deploy.result == 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout incident summarizer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/post-deploy-verify.py
+          sparse-checkout-cone-mode: false
+
+      - name: Open or append the deploy incident issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RC: ${{ needs.deploy.outputs.rc }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Production deploy incident (deploy.yml)"
+          if [[ "$RC" =~ ^[0-9]+$ ]]; then
+            body="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
+              --previous-sha "$PREVIOUS_SHA" --runner-verify failure)"
+          else
+            RC="unknown"
+            body="Executor result UNKNOWN: the Deploy job ended ${DEPLOY_RESULT} before reporting an exit code (timeout or cancel). Production may be on ${TARGET_SHA} or ${PREVIOUS_SHA}; check deployment.json before any further deploy."
+          fi
+          body="$(printf '%s\n\nRun: %s\nExecutor rc: %s\nRelease auto-activation is frozen until a reviewed deploy succeeds (RULEBOOK D8).\n' \
+            "$body" "$RUN_URL" "$RC")"
+          existing="$(gh api -X GET search/issues -f q="repo:${REPO} is:issue is:open in:title \"${title}\"" \
+            --jq "[.items[] | select(.title == \"${title}\")][0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh api "repos/${REPO}/issues/${existing}/comments" -f body="$body" --jq .html_url
+          else
+            gh api "repos/${REPO}/issues" -f title="$title" -f body="$body" --jq .html_url
+          fi
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke
