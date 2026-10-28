@@ -445,7 +445,8 @@
                         </div>
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
-                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: sessionSummaryCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
+                            <strong class="dates-panel-title">上課日期（{{ courseSessionSummaryText(c) }}）</strong>
+                          <button v-if="monthlySummaryState(c)?.status === 'error'" type="button" class="small primary" @click.stop="refreshMonthlySummary(c)">重新載入出席</button>
                             <span
                               v-if="sessionDataLoadFailed || planningStatusVisible(c)"
                               role="status"
@@ -632,7 +633,8 @@
                     <div class="detail-panel">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
-                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: sessionSummaryCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
+                          <strong class="dates-panel-title">上課日期（{{ courseSessionSummaryText(hc) }}）</strong>
+                          <button v-if="monthlySummaryState(hc)?.status === 'error'" type="button" class="small primary" @click.stop="refreshMonthlySummary(hc)">重新載入出席</button>
                         </div>
                         <div v-if="primarySessionUnits(hc).length > 0" class="dates-chip-grid">
                           <span
@@ -1423,6 +1425,8 @@ import {
   editabilityNextStepLabel,
 } from '../lib/courseEditability';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
+import { useMonthlyAttendanceSummary } from '../composables/course-management/useMonthlyAttendanceSummary';
+import { isSessionModeCourse } from '../lib/sessionPlanningStatus';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import { lessonPickerKey, useCourseRowActions } from '../composables/course-management/useCourseRowActions';
@@ -1729,6 +1733,45 @@ const {
 const sessionSummaryCount = (course) => isPackageMember(course)
   ? getCompletedSessionCount(course)
   : getUsedSessions(course);
+
+// A monthly summary is based on a complete per-course materialized read, not
+// entitlement fields or the date-limited list used for the visible chips.
+const monthlySummary = useMonthlyAttendanceSummary({ getToken: getAccessToken });
+const isMonthlySummaryCourse = (course) => !isPackageMember(course) && !isSessionModeCourse(course);
+const monthlySummaryState = (course) => isMonthlySummaryCourse(course)
+  ? monthlySummary.states.value[monthlySummary.keyFor(props.branchId, course?.id)]
+  : null;
+const refreshMonthlySummary = (course) => monthlySummary.refresh(props.branchId, course?.id);
+const courseSessionSummaryText = (course) => {
+  if (!isMonthlySummaryCourse(course)) {
+    return packageMemberSessionSummary(course, { completed: sessionSummaryCount(course), cancelled: cancelledSessionCount(course) }).text;
+  }
+  const state = monthlySummaryState(course);
+  if (!state || state.status === 'loading') return state?.count == null ? '出席載入中' : `更新中（上次已上 ${state.count} 堂）`;
+  if (state.status === 'error') return state.count == null ? '出席資料無法載入' : `更新失敗（上次已上 ${state.count} 堂）`;
+  return packageMemberSessionSummary(course, { completed: state.count, cancelled: state.cancelled }).text;
+};
+let watchedMonthly = new Map();
+let watchedMonthlyBranch = props.branchId;
+watch([expandedDates, sessionsByCourse, courses, () => props.branchId, coursesLoading], ([openIds, rowsByCourse, courseRows, branch, loading]) => {
+  if (branch !== watchedMonthlyBranch || loading) {
+    monthlySummary.clear();
+    watchedMonthly.clear();
+    watchedMonthlyBranch = branch;
+    if (loading) return;
+  }
+  const current = new Map();
+  for (const course of courseRows) {
+    if (!openIds.has(course.id) || !isMonthlySummaryCourse(course)) continue;
+    const key = monthlySummary.keyFor(branch, course.id);
+    const rows = rowsByCourse?.[String(course.id)];
+    current.set(key, { rows, course });
+    const previous = watchedMonthly.get(key);
+    if (!previous || previous.rows !== rows || previous.course !== course) refreshMonthlySummary(course);
+  }
+  for (const key of watchedMonthly.keys()) if (!current.has(key)) monthlySummary.cancel(key);
+  watchedMonthly = current;
+});
 
 function planningStatusFor(course) {
   return getSessionPlanningStatus(course, { sessionLoadFailed: false });
@@ -5519,6 +5562,7 @@ onMounted(() => {
   document.addEventListener('click', closeActionMenu);
 });
 onUnmounted(() => {
+  monthlySummary.dispose();
   document.removeEventListener('click', closeActionMenu);
   clearTimeout(_quickAddCheckTimer);
   quickAddCheckController?.abort();
