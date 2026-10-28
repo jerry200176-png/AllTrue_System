@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-29-leave-renewal-auto-shift
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: major
+    title: 請假時續約課自動往後排
+    summary: 請假補的那一堂撞到已排好的續約課時，先看哪些課會移，確認後才改。
+    items:
+      - category: added
+        text: 在課程管理、行事曆、出缺勤頁登記請假時，若補堂會撞到續約課，會先列出每堂續約課的新日期。
+      - category: added
+        text: 你按確認後才會改課表；不確認就什麼都不改，補堂不扣堂數。
+      - category: improved
+        text: 續約課有已上課、已扣堂、日期已過或時段衝突時，會列出原因並連到該課，這次不會改任何課。
+    source_refs:
+      - "changelog:2026-10-29:leave-renewal-auto-shift"
