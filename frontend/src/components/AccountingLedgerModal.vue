@@ -287,7 +287,7 @@
 
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
           <div v-if="allocContracts.length" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
-            <p id="ledger-pay-scope" class="ledger-muted ledger-sticky-pay__scope" data-testid="ledger-pay-scope">此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。</p>
+            <p id="ledger-pay-scope" class="ledger-muted ledger-sticky-pay__scope" data-testid="ledger-pay-scope">{{ payScopeText }}</p>
             <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" aria-describedby="ledger-pay-scope" @click="allocating = true">
               登記收款<small>{{ allocContracts.length > 1 ? `${allocContracts.length} 份合約` : allocContracts[0].subject }}</small>
             </button>
@@ -718,6 +718,18 @@ const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligati
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
   })
   .sort((a, b) => a.key.localeCompare(b.key) || a.id - b.id)));
+// In-app #437: the director opened a course with nothing to collect and the button collected another one; say so plainly.
+const payScopeText = computed(() => {
+  const opened = contractCourses.value.find(isOpenedCourse);
+  const subjects = [...new Set(allocContracts.value.map((c) => c.subject).filter(Boolean))].join('、');
+  if (!opened || allocContracts.value.some((c) => c.id === opened.id) || !subjects) {
+    return '此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。';
+  }
+  // Only say "nothing to collect" when it is true; a shared-package or pending course is just left out of this button.
+  return !(owedFor(opened.id) > 0) && (opened.paid || isWaivedContract(opened))
+    ? `你點開的「${opened.subject}」目前沒有要收的款；這個按鈕是登記「${subjects}」的收款，下一步可再確認科目與金額。`
+    : `這個按鈕是登記「${subjects}」的收款，不含你點開的「${opened.subject}」；「${opened.subject}」請看它自己的課程卡。`;
+});
 const allocating = ref(false);
 async function onAllocDone() {
   allocating.value = false;
