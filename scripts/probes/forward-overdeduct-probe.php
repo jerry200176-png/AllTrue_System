@@ -7,8 +7,8 @@
  * the existing calendar action 「改到其他合約」.
  *
  * Run only by .github/workflows/forward-overdeduct-probe.yml from main, the same way as inapp-package-ledger-probe.php:
- * The ledger net uses the same sources as SessionDeductionService; the generator note may carry appended audit
- * suffixes (e.g. '; revert-to-scheduled'), so it is matched as a prefix.
+ * Usage comes from SessionDeductionService::batchExpectedUsedSessionDiagnostics (ledger events, or minutes once a
+ * partial-duration lesson exists); the generator note is matched as a prefix ('; revert-to-scheduled' suffixes).
  * READ ONLY session, one rolled-back transaction, SELECTs only (ForwardOverdeductProbeTest asserts this). Output is ids,
  * counts and statuses: never names, amounts or notes (public repo, #3605).
  */
@@ -18,24 +18,42 @@ use Illuminate\Database\ConnectionInterface;
 /** @return array<string, mixed> */
 function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
 {
-    $rows = $db->select(
+    // Candidates: count courses holding a generated lesson (the note may carry appended audit suffixes).
+    $candidates = array_map(fn ($row) => (array) $row, $db->select(
         'SELECT sc.ID AS class_id, s.CampusID AS campus_id, sc.SessionCount AS session_count, sc.UsedSessions AS used_sessions,'
-        . ' l.net AS ledger_used, g.ids AS generated_session_ids, g.statuses AS generated_statuses,'
+        . ' sc.SessionDuration AS session_minutes, g.ids AS generated_session_ids, g.statuses AS generated_statuses,'
         . ' (SELECT GROUP_CONCAT(n.ID ORDER BY n.ID SEPARATOR \',\') FROM StudentClass n'
         . '   WHERE n.StudentID = sc.StudentID AND n.SubjectID = sc.SubjectID AND n.ID > sc.ID) AS later_course_ids'
         . ' FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID'
-        . ' JOIN (SELECT student_class_id, SUM(CASE WHEN event_type = \'deduct\' THEN 1 WHEN event_type = \'reverse\' THEN -1 ELSE 0 END) AS net'
-        . "   FROM session_deduction_ledger WHERE source IN ('attendance', 'retro_leave', 'status_adjust', 'duplicate_session')"
-        . ' GROUP BY student_class_id) l ON l.student_class_id = sc.ID'
         . ' JOIN (SELECT StudentClassID, GROUP_CONCAT(id ORDER BY SessionDate, id SEPARATOR \',\') AS ids,'
         . '   GROUP_CONCAT(LOWER(Status) ORDER BY SessionDate, id SEPARATOR \',\') AS statuses'
         . '   FROM ClassSession WHERE Note LIKE ? GROUP BY StudentClassID) g ON g.StudentClassID = sc.ID'
-        . " WHERE LOWER(sc.ScheduleMode) = 'count' AND sc.SessionCount > 0 AND l.net > sc.SessionCount"
-        . ' AND (? = 0 OR s.CampusID = ?)'
-        . ' ORDER BY s.CampusID, sc.ID LIMIT 200',
+        . " WHERE LOWER(sc.ScheduleMode) = 'count' AND sc.SessionCount > 0 AND (? = 0 OR s.CampusID = ?)"
+        . ' ORDER BY s.CampusID, sc.ID',
         ['系統向前生成 #1062%', $campusId, $campusId]
-    );
-    $courses = array_map(fn ($row) => (array) $row, $rows);
+    ));
+    // Usage exactly as the app counts it: ledger events, or ledger minutes once a partial-duration lesson exists.
+    $usage = [];
+    foreach (array_chunk(array_map(fn (array $c): int => (int) $c['class_id'], $candidates), 500) as $ids) {
+        $usage += \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($ids);
+    }
+    $courses = [];
+    foreach ($candidates as $c) {
+        $u = $usage[(int) $c['class_id']] ?? null;
+        $perSession = (int) $c['session_minutes'] >= 1 ? (int) $c['session_minutes'] : \App\Models\StudentClass::DEFAULT_SESSION_MINUTES;
+        $purchasedMinutes = (int) $c['session_count'] * $perSession;
+        $over = $u !== null && ($u['has_partial']
+            ? $u['ledger_net_minutes'] > $purchasedMinutes
+            : $u['uncapped_used'] > (int) $c['session_count']);
+        if (!$over || count($courses) >= 200) {
+            continue;
+        }
+        $courses[] = ['class_id' => $c['class_id'], 'campus_id' => $c['campus_id'], 'session_count' => $c['session_count'],
+            'used_sessions' => $c['used_sessions'], 'ledger_used' => $u['uncapped_used'], 'ledger_net_minutes' => $u['ledger_net_minutes'],
+            'purchased_minutes' => $purchasedMinutes, 'has_partial' => $u['has_partial'],
+            'generated_session_ids' => $c['generated_session_ids'], 'generated_statuses' => $c['generated_statuses'],
+            'later_course_ids' => $c['later_course_ids']];
+    }
     $byCampus = [];
     foreach ($courses as $course) {
         $byCampus[(int) $course['campus_id']] = ($byCampus[(int) $course['campus_id']] ?? 0) + 1;
@@ -46,8 +64,8 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
         'read_only' => true,
         'campus_id' => $campusId,
         'summary' => [
+            'candidates' => count($candidates),
             'courses' => count($courses),
-            'extra_deducts' => array_sum(array_map(fn (array $c): int => (int) $c['ledger_used'] - (int) $c['session_count'], $courses)),
             'by_campus' => $byCampus,
             'list_capped' => count($courses) >= 200,
         ],

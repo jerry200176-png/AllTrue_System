@@ -21,7 +21,8 @@ class ForwardOverdeductProbeTest extends TestCase
 
     private const PROBE = __DIR__ . '/../../../scripts/probes/forward-overdeduct-probe.php';
 
-    private const COURSE_KEYS = ['class_id', 'campus_id', 'session_count', 'used_sessions', 'ledger_used', 'generated_session_ids', 'generated_statuses', 'later_course_ids'];
+    private const COURSE_KEYS = ['class_id', 'campus_id', 'session_count', 'used_sessions', 'ledger_used', 'ledger_net_minutes', 'purchased_minutes',
+        'has_partial', 'generated_session_ids', 'generated_statuses', 'later_course_ids'];
 
     private int $teacherId;
 
@@ -49,7 +50,7 @@ class ForwardOverdeductProbeTest extends TestCase
         $this->deduct($within, $this->lesson($within, '2026-09-26', '系統向前生成 #1062'));
         $reversed = $this->course($this->student(17), 1);
         $this->deduct($reversed, $this->lesson($reversed, '2026-09-19'));
-        $gen = $this->lesson($reversed, '2026-09-26', '系統向前生成 #1062');
+        $gen = $this->lesson($reversed, '2026-09-26', '系統向前生成 #1062', 'cancelled');
         $this->deduct($reversed, $gen);
         $this->deduct($reversed, $gen, 'reverse');
         $manual = $this->course($this->student(17), 1);
@@ -57,7 +58,7 @@ class ForwardOverdeductProbeTest extends TestCase
         $this->deduct($manual, $this->lesson($manual, '2026-09-26'));
         // Review r1: a duplicate-session reversal already brought the net back to the quota.
         $dupFixed = $this->course($this->student(17), 1);
-        $dup = $this->lesson($dupFixed, '2026-09-19');
+        $dup = $this->lesson($dupFixed, '2026-09-19', '', 'cancelled');
         $this->deduct($dupFixed, $dup);
         $this->deduct($dupFixed, $this->lesson($dupFixed, '2026-09-26', '系統向前生成 #1062'));
         $this->deduct($dupFixed, $dup, 'reverse', 'duplicate_session');
@@ -66,6 +67,11 @@ class ForwardOverdeductProbeTest extends TestCase
         $this->deduct($suffixed, $this->lesson($suffixed, '2026-09-19'));
         $suffixedExtra = $this->lesson($suffixed, '2026-09-26', '系統向前生成 #1062; revert-to-scheduled');
         $this->deduct($suffixed, $suffixedExtra);
+        // Review r3: two 60-minute makeups plus a generated 120-minute lesson use exactly the 240 minutes bought.
+        $partial = $this->course($this->student(17), 2);
+        $this->deduct($partial, $this->lesson($partial, '2026-09-19'), 'deduct', 'attendance', 60);
+        $this->deduct($partial, $this->lesson($partial, '2026-09-20'), 'deduct', 'attendance', 60);
+        $this->deduct($partial, $this->lesson($partial, '2026-09-26', '系統向前生成 #1062'));
         $elsewhere = $this->course($this->student(9), 1);
         $this->deduct($elsewhere, $this->lesson($elsewhere, '2026-09-19'));
         $this->deduct($elsewhere, $this->lesson($elsewhere, '2026-09-26', '系統向前生成 #1062'));
@@ -78,11 +84,12 @@ class ForwardOverdeductProbeTest extends TestCase
 
         $this->assertEquals([
             'class_id' => $over->ID, 'campus_id' => 17, 'session_count' => 2, 'used_sessions' => 0, 'ledger_used' => 3,
+            'ledger_net_minutes' => 360, 'purchased_minutes' => 240, 'has_partial' => false,
             'generated_session_ids' => (string) $extra->id, 'generated_statuses' => 'attended', 'later_course_ids' => (string) $renewal->ID,
         ], $out['courses'][0]);
         $this->assertSame([(int) $over->ID, (int) $suffixed->ID], array_map(fn (array $c): int => (int) $c['class_id'], $out['courses']));
         $this->assertEquals($suffixedExtra->id, $out['courses'][1]['generated_session_ids']);
-        $this->assertSame(['courses' => 2, 'extra_deducts' => 2, 'by_campus' => [17 => 2], 'list_capped' => false], $out['summary']);
+        $this->assertSame(['candidates' => 6, 'courses' => 2, 'by_campus' => [17 => 2], 'list_capped' => false], $out['summary']);
         $this->assertSame([9 => 1, 17 => 2], forward_overdeduct_probe(DB::connection(), 0)['summary']['by_campus'], '0 scans every campus');
         foreach ($out['courses'] as $row) {
             $this->assertSame(self::COURSE_KEYS, array_keys($row));
@@ -133,20 +140,20 @@ class ForwardOverdeductProbeTest extends TestCase
         ]);
     }
 
-    private function lesson(StudentClass $course, string $date, string $note = ''): ClassSession
+    private function lesson(StudentClass $course, string $date, string $note = '', string $status = 'attended'): ClassSession
     {
         $id = DB::table('ClassSession')->insertGetId([
             'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00',
-            'Status' => 'attended', 'Note' => $note, 'created_at' => now(), 'updated_at' => now(),
+            'Status' => $status, 'Note' => $note, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
         return ClassSession::query()->findOrFail($id);
     }
 
-    private function deduct(StudentClass $course, ClassSession $lesson, string $event = 'deduct', string $source = 'attendance'): void
+    private function deduct(StudentClass $course, ClassSession $lesson, string $event = 'deduct', string $source = 'attendance', ?int $minutes = null): void
     {
         DB::table('session_deduction_ledger')->insert([
-            'student_class_id' => $course->ID, 'class_session_id' => $lesson->id, 'event_type' => $event, 'source' => $source,
+            'student_class_id' => $course->ID, 'class_session_id' => $lesson->id, 'event_type' => $event, 'source' => $source, 'minutes' => $minutes,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
