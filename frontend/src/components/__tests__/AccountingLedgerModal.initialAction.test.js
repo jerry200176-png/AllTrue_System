@@ -143,3 +143,24 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     w.unmount();
   });
 });
+
+// in-app #432 (Founder 2026-10-28, option A): a monthly contract with no open bill collects the month the server names
+// (courses[].collection_period, the same answer directorRecord checks), so the form shows that month and its amount.
+describe('學生帳務 · 月結依月份收款 (in-app #432)', () => {
+  it('the entry form for an unbilled monthly contract carries the server month and amount', async () => {
+    const monthly = course(11, { schedule_mode: 'date', charge: 8250, collection_period: { billing_period: '2026-08', amount: 1650 } });
+    const w = mountLedger({ courses: [monthly], props: { initialAction: 'record' } });
+    await flushPromises();
+    expect(w.findComponent(EntryStub).props('row')).toMatchObject({ id: 11, payable_status: 'unbilled', billing_period: '2026-08', estimated_amount: 1650 });
+    w.unmount();
+  });
+
+  it('an open bill still wins: its own period, no estimate', async () => {
+    const monthly = course(11, { schedule_mode: 'date', collection_period: { billing_period: '2026-08', amount: 1650 } });
+    const w = mountLedger({ courses: [monthly], invoices: [{ ...inv(1, 11), billing_period: '2026-09' }], props: { initialAction: 'record' } });
+    await flushPromises();
+    expect(w.findComponent(EntryStub).props('row')).toMatchObject({ invoice_id: 1, billing_period: '2026-09', payable_status: 'invoiced' });
+    expect(w.findComponent(EntryStub).props('row').estimated_amount).toBeUndefined();
+    w.unmount();
+  });
+});

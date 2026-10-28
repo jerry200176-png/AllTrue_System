@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-28-monthly-collect-by-calendar-month
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: major
+    title: 跨月的月結課可以分月收款
+    summary: 月結合約跨兩個月份時，系統先收最早還沒開帳單的月份，收完再收下一個月。
+    items:
+      - category: fixed
+        text: 跨月的月結課，登記收款、繳費單都先收最早還沒開帳單的月份，下一個月不會被擋成已收齊。
+      - category: improved
+        text: 學生帳務登記收款會寫出這次收哪個月和應收金額；金額不符時提示也會寫月份。
+      - category: improved
+        text: 單一月份合約、堂數制和共用方案的收款方式不變，既有帳單都沒有改。
+    source_refs:
+      - "changelog:2026-10-28:monthly-collect-by-calendar-month"

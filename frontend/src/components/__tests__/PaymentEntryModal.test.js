@@ -174,3 +174,12 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('PaymentEntryModal — monthly month by month (in-app #432)', () => {
+  it('an unbilled monthly row shows the month being collected and its amount', async () => {
+    const w = mount(PaymentEntryModal, { props: { show: false, row: { ...row, payable_status: 'unbilled', payable_amount: null, billing_period: '2026-08', estimated_amount: 1650 } } });
+    await w.setProps({ show: true }); await nextTick();
+    expect(w.find('.pe-info').text()).toContain('期別2026-08');
+    expect(w.find('.pe-info').text()).toContain('NT$ 1,650');
+  });
+});
