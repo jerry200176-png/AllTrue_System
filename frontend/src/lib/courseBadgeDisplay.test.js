@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { courseBadgeSessionLabel, sharedPackageSummaries } from './courseBadgeDisplay.js';
+import { courseBadgeSessionLabel, poolOverusedSessions, sharedPackageSummaries } from './courseBadgeDisplay.js';
 
 assert.equal(courseBadgeSessionLabel({ payment_type: 'session', sessions_purchased: 8, remaining_sessions: 3 }), '3堂');
 assert.equal(courseBadgeSessionLabel({ payment_type: 'session', sessions_purchased: 8, remaining_sessions: 0 }), '0堂');
@@ -18,3 +18,13 @@ assert.deepEqual(sharedPackageSummaries([member, member]), [{ id: 7, name: '共�
 assert.equal(sharedPackageSummaries([member, { ...member, package_remaining_sessions: 16 }])[0].remaining, null);
 assert.equal(sharedPackageSummaries([{ ...member, package_remaining_sessions: null }])[0].remaining, null);
 assert.deepEqual(sharedPackageSummaries([{ sessions_purchased: 25 }]), []);
+
+// In-app #419: a 16-session pool whose ledger used 17 reports 1 session over; unknown or within-total pools report 0.
+const [overused] = sharedPackageSummaries([{ ...member, package_total_sessions: 16, package_remaining_sessions: 0, package_used_sessions: 17 }]);
+assert.equal(poolOverusedSessions(overused), 1);
+assert.equal(poolOverusedSessions(sharedPackageSummaries([member])[0]), 0);
+assert.equal(poolOverusedSessions(sharedPackageSummaries([{ ...member, package_used_sessions: 25 }])[0]), 0);
+assert.equal(poolOverusedSessions(sharedPackageSummaries([{ ...member, package_used_sessions: null }])[0]), 0);
+assert.equal(poolOverusedSessions(sharedPackageSummaries([member, { ...member, package_used_sessions: 30 }])[0]), 0);
+// Monthly packages have total_sessions 0 but still write ledger rows: never "over".
+assert.equal(poolOverusedSessions(sharedPackageSummaries([{ ...member, package_total_sessions: 0, package_remaining_sessions: 0, package_used_sessions: 5 }])[0]), 0);
