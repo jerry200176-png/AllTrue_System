@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-paused-not-owed
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 暫停中的新合約不再算欠款
+    summary: 還沒上過課、也沒收費的暫停合約，暫停期間不列入未繳名單。
+    items:
+      - category: improved
+        text: 合約暫停、還沒上過任何一堂、也還沒開帳單或收款時，暫停期間不再出現在帳務中心的未繳名單。
+      - category: improved
+        text: 恢復上課後，這門課會依原本規則再列入；已結案或已有帳單的暫停合約不變。
+    source_refs:
+      - "changelog:2026-10-29:paused-not-owed"

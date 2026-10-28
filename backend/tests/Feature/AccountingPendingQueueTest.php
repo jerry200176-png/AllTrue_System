@@ -383,6 +383,8 @@ class AccountingPendingQueueTest extends TestCase
     public function test_unbilled_stopped_alert_carries_resolver_amounts_not_null(): void
     {
         $c = $this->course(['closed_reason' => null]); // no invoice, Charge 8800 => resolver unbilled
+        // #440: a pause that never started is not owed; this one taught a lesson before it was paused, so it still is.
+        \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => '2026-04-08', 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended']);
 
         $alert = $this->tuitionRow($c);
         $this->assertSame(8800, $alert['payable_amount']);

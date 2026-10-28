@@ -107,6 +107,8 @@ last_reviewed: 2026-10-15
 
 例外（F7 S3a）：`Stop=1` 的合約只要帳單解析結果（`BillingPayableResolver`）仍為未繳／部分繳／未開單且欠款 > 0，就以 `pending_reconciliation`（結案／待查帳）列入，不論 `closed_reason`（暫停中無 reason 者也算）；`waived`（確認不收）與已繳清者不列。進行中（`Stop=0`）合約的規則不變。
 
+**暫停中、還沒開始的合約不算欠款（in-app #440，Founder 2026-10-29 回覆「A」）**：F7 S3a 的例外再收窄一格——單純暫停（`Stop=1` 且沒有 `closed_reason`）、**從沒開始**的合約，暫停期間不列入欠款，恢復上課（`Stop=0`）後依一般規則再列入。「從沒開始」＝同時符合：`Paid` 不是 1；沒有任何未作廢帳單；沒有 `pending`／`confirmed` 繳費回報；沒有任何非 `cancelled` 的堂次（已上、已排、請假都算開始過）。已結案（任何 `closed_reason`）、共用方案成員、已有帳單／回報／堂次的暫停，維持 F7 S3a 原規則。唯一判斷：`StudentClass::unstartedPauseIds()`（批次，一次三個查詢），`AlertController::tuition` 與 `AccountingController::settledCourses` 共用；不改任何資料，不需 migration。
+
 ## 回歸時請測
 
 - 堂數制：已繳但剩 1～2 堂（或 0 堂）仍應出現。
