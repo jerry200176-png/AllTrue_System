@@ -455,6 +455,7 @@
       :error="leaveSubmitError" :submitting="leaveSubmitting"
       @close="closeLeaveModal"
       @submit="submitLeave" @retry-preview="refreshLeaveCascadePreview"
+      @navigate="closeLeaveModal(); emit('navigate', $event)"
     />
 
     <!-- ===== PRD 9c058f19：代課 V2 Modal + Toast + 批次請假 ===== -->
@@ -477,7 +478,7 @@
       :fetch-availability="fetchTeacherAvailability"
       @submitted="onBatchSubstituteSubmitted"
     />
-    <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
+    <ToastWithUndo ref="toastRef" />
 
     <!-- #740 Modals：舊版代課（feature flag 關閉時） -->
     <CalendarSubstituteLegacyModal
@@ -995,6 +996,8 @@ const {
 } = useCalendarLeaveExtra({
   supabase,
   branchId: computed(() => props.branchId),
+  userRole: computed(() => props.userRole),
+  onLeaveShiftSuccess: () => toastRef.value?.show?.({ title: '請假與續約順延已完成', variant: 'success', durationMs: 4000 }),
   showModal,
   modalForm,
   editingCourseId,

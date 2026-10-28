@@ -795,13 +795,16 @@ function openEntry(course, mode = 'record') {
   entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
+  // in-app #432: no open bill on a monthly contract → the month and amount the server will check (collection_period).
+  const collect = oldest ? null : course.collection_period;
   entryRow.value = {
     id: course.id,
     charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,
-    billing_period: oldest?.billing_period,
+    billing_period: oldest ? oldest.billing_period : collect?.billing_period,
+    ...(collect ? { estimated_amount: Number(collect.amount) } : {}),
     payable_status: oldest ? 'invoiced' : 'unbilled',
     payable_amount: oldest ? Number(oldest.outstanding_amount) : null,
     payable_outstanding: oldest ? Number(oldest.outstanding_amount) : null,

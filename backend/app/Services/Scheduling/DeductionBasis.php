@@ -31,6 +31,20 @@ final class DeductionBasis
         return in_array($value, self::all(), true);
     }
 
+    /**
+     * Pilot boundary (#3834): may a course at this campus newly opt in to `actual_duration`?
+     * Reads perfflags.actual_duration_campus_ids ("11,13", "*" = all, "" = none); campus 0 never passes.
+     */
+    public static function campusAllowed(int $campusId): bool
+    {
+        $raw = trim((string) config('perfflags.actual_duration_campus_ids', ''));
+        if ($campusId <= 0 || $raw === '') {
+            return false;
+        }
+
+        return $raw === '*' || in_array($campusId, array_map('intval', array_filter(array_map('trim', explode(',', $raw)), 'ctype_digit')), true);
+    }
+
     /** Comma-joined list for Laravel's `in:` validation rule. */
     public static function validationList(): string
     {
