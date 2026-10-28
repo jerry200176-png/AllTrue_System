@@ -265,20 +265,17 @@
       <template v-else>
         <!-- Batch action bar -->
         <div class="att-batch-bar">
-          <label class="att-check-all">
-            <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
-            <span>全選</span>
-          </label>
-          <button
-            v-if="selectedIds.length > 0"
-            class="primary small"
-            type="button"
-            :disabled="batchSubmitting"
-            @click="batchMarkAllPresent"
+          <AtSelectAll :selection="selection" unit="堂" />
+          <AtSubmitButton
+            v-if="selection.count > 0"
+            size="sm"
+            :action="batchMarkAllPresent"
+            pending-text="送出中…"
+            success-text="已到班"
           >
-            {{ batchSubmitting ? '送出中…' : `全部到班（${selectedIds.length}）` }}
-          </button>
-          <span v-if="selectedIds.length > 0" class="att-batch-hint">
+            全部到班（{{ selection.count }}）
+          </AtSubmitButton>
+          <span v-if="selection.count > 0" class="att-batch-hint">
             或逐列選擇其他狀態
           </span>
         </div>
@@ -298,13 +295,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in pendingSessions" :key="s.class_session_id" :class="{ 'att-row-selected': selectedSet.has(s.class_session_id) }">
+              <tr v-for="s in pendingSessions" :key="s.class_session_id" :class="{ 'att-row-selected': selection.has(s.class_session_id) }">
                 <td>
                   <input
                     type="checkbox"
-                    :checked="selectedSet.has(s.class_session_id)"
+                    :checked="selection.has(s.class_session_id)"
                     :aria-label="'選取' + (s.student_name || '未命名學生') + ' ' + s.start_time + '–' + s.end_time + (s.subject_name ? ' ' + s.subject_name : '') + ' 的點名堂次'"
-                    @change="toggleSelect(s.class_session_id)"
+                    @change="selection.toggle(s.class_session_id)"
                   />
                 </td>
                 <td class="att-time-range">{{ s.start_time }}–{{ s.end_time }}</td>
@@ -360,18 +357,18 @@
         </div>
 
         <!-- Mobile cards (hidden on desktop) -->
-        <div class="att-mobile-only att-cards" :style="selectedIds.length > 0 ? { paddingBottom: '72px' } : {}">
+        <div class="att-mobile-only att-cards" :style="selection.count > 0 ? { paddingBottom: '72px' } : {}">
           <div
             v-for="s in pendingSessions" :key="'m-' + s.class_session_id"
             class="att-card"
-            :class="{ 'att-card-selected': selectedSet.has(s.class_session_id) }"
+            :class="{ 'att-card-selected': selection.has(s.class_session_id) }"
           >
             <div class="att-card-top">
               <input
                 type="checkbox"
-                :checked="selectedSet.has(s.class_session_id)"
+                :checked="selection.has(s.class_session_id)"
                 :aria-label="'選取' + (s.student_name || '未命名學生') + ' ' + s.start_time + '–' + s.end_time + (s.subject_name ? ' ' + s.subject_name : '') + ' 的點名堂次'"
-                @change="toggleSelect(s.class_session_id)"
+                @change="selection.toggle(s.class_session_id)"
                 class="att-card-check"
               />
               <div class="att-card-info">
@@ -427,11 +424,9 @@
         </div>
 
         <!-- Sticky batch bar (mobile) -->
-        <div v-if="selectedIds.length > 0" class="att-sticky-batch att-mobile-only">
-          <span>已選 {{ selectedIds.length }} 堂</span>
-          <button type="button" class="primary small" :disabled="batchSubmitting" @click="batchMarkAllPresent">
-            {{ batchSubmitting ? '送出中…' : '全部到班' }}
-          </button>
+        <div v-if="selection.count > 0" class="att-sticky-batch att-mobile-only">
+          <span>已選 {{ selection.count }} 堂</span>
+          <AtSubmitButton size="sm" :action="batchMarkAllPresent" pending-text="送出中…" success-text="已到班">全部到班</AtSubmitButton>
         </div>
       </template>
 
@@ -1105,6 +1100,9 @@ import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
 import TeacherMonthlyAttendance from '../components/TeacherMonthlyAttendance.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSelectAll from '../components/design-system/AtSelectAll.vue';
+import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
+import { useSelection } from '../composables/useSelection';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
@@ -1459,10 +1457,7 @@ const todaySessionTotal = ref(0);
 const fetchError = ref('');
 
 // Batch selection
-const selectedIds = ref([]);
-const selectedSet = computed(() => new Set(selectedIds.value));
-const allSelected = computed(() => pendingSessions.value.length > 0 && selectedIds.value.length === pendingSessions.value.length);
-const batchSubmitting = ref(false);
+const selection = useSelection(pendingSessions, { key: 'class_session_id' });
 const batchResults = ref([]);
 
 const confirmDialog = reactive({ visible: false, title: '', body: '', onConfirm: () => {}, submitting: false, error: '' });
@@ -1789,24 +1784,6 @@ const filteredRecords = computed(() => {
   return list;
 });
 
-// --- Selection helpers ---
-function toggleSelectAll() {
-  if (allSelected.value) {
-    selectedIds.value = [];
-  } else {
-    selectedIds.value = pendingSessions.value.map(s => s.class_session_id);
-  }
-}
-
-function toggleSelect(id) {
-  const idx = selectedIds.value.indexOf(id);
-  if (idx >= 0) {
-    selectedIds.value = selectedIds.value.filter(x => x !== id);
-  } else {
-    selectedIds.value = [...selectedIds.value, id];
-  }
-}
-
 // 預設「到班」只用於送出，未點選前畫面不顯示為已記錄（避免像已完成）。
 const pendingMarkTouched = ref({});
 function isStatusChosen(sessionId, value) {
@@ -1912,10 +1889,6 @@ const fetchPendingSessions = async () => {
     const next = {};
     pending.forEach(r => { next[r.class_session_id] = pendingMarkStatus.value[r.class_session_id] || 'present'; });
     pendingMarkStatus.value = next;
-
-    // Prune selection for removed sessions
-    const validIds = new Set(pending.map(s => s.class_session_id));
-    selectedIds.value = selectedIds.value.filter(id => validIds.has(id));
   } catch (e) {
     console.error('fetchPendingSessions', e);
     pendingSessions.value = [];
@@ -2009,9 +1982,9 @@ async function doSubmitPendingMark(s, status) {
 }
 
 // Batch mark all selected as "present" using the backend batch API
+// Resolves true only when every selected session was marked; failed rows stay selected for retry.
 async function batchMarkAllPresent() {
-  if (selectedIds.value.length === 0) return;
-  batchSubmitting.value = true;
+  if (selection.count === 0) return;
   batchResults.value = [];
   pendingMarkMsg.value = '';
   try {
@@ -2021,7 +1994,7 @@ async function batchMarkAllPresent() {
     const sessionMap = {};
     pendingSessions.value.forEach(s => { sessionMap[s.class_session_id] = s; });
 
-    const items = selectedIds.value.map(id => {
+    const items = selection.keys.map(id => {
       const s = sessionMap[id];
       return {
         ClassSessionID: id,
@@ -2058,13 +2031,13 @@ async function batchMarkAllPresent() {
       pendingMarkMsgType.value = 'error';
     }
 
-    selectedIds.value = [];
+    // Marked sessions leave the pending list on refetch, which drops them from the selection.
     await Promise.all([fetchPendingSessions(), fetchRecords()]);
+    return json.success_count > 0 && !json.fail_count;
   } catch (e) {
     pendingMarkMsg.value = '批次送出失敗：網路錯誤';
     pendingMarkMsgType.value = 'error';
-  } finally {
-    batchSubmitting.value = false;
+    return false;
   }
 }
 
@@ -2778,12 +2751,6 @@ watch(() => props.branchId, () => {
   margin-bottom: 14px; padding: 10px 12px;
   background: var(--primary-bg, rgba(232,121,36,0.06)); border-radius: 10px;
 }
-.att-check-all {
-  display: flex; align-items: center; gap: 6px; cursor: pointer;
-  font-size: 13px; font-weight: 600; color: var(--text);
-  user-select: none;
-}
-.att-check-all input { width: 16px; height: 16px; accent-color: var(--primary); }
 .att-batch-hint { font-size: 12px; color: var(--text-light); }
 
 /* Status button group (replaces dropdown) */

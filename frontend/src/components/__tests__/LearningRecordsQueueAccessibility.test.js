@@ -81,7 +81,7 @@ describe('LearningRecords review queue accessibility', () => {
   it('names batch-selection checkboxes with review context', () => {
     const rowCheckboxes = [...source.matchAll(/<input[\s\S]*?type="checkbox"[\s\S]*?>/g)]
       .map((match) => match[0])
-      .filter((openingTag) => openingTag.includes('toggleRecordSelection(record.id)'));
+      .filter((openingTag) => openingTag.includes('selection.toggle(record.id)'));
 
     expect(rowCheckboxes).toHaveLength(2);
     for (const openingTag of rowCheckboxes) {
@@ -90,7 +90,7 @@ describe('LearningRecords review queue accessibility', () => {
       expect(openingTag).toContain('record.Subject || record.student_class_label || \'未分類\'');
     }
 
-    expect(source).toContain(':aria-label="allSelected ? \'取消全選本頁評量\' : \'全選本頁評量\'"');
+    expect(source).toContain('<AtSelectAll :selection="selection" label="全選本頁評量" hide-label :show-count="false" />');
   });
 
   it('distinguishes assessment completion from director review status on cards', () => {

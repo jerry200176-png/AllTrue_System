@@ -36,6 +36,31 @@
 
 ---
 
+## AtSubmitButton（#4488 完成按鈕反饋）
+
+```vue
+<AtSubmitButton :action="save" pending-text="儲存中…" success-text="已儲存" error-text="未儲存">儲存</AtSubmitButton>
+```
+
+- 包一層 `AtButton`（variant／size／shape 照傳）。idle → pending（轉圈、`aria-busy`、不能重送、寬度不跳）→ success／error → idle。
+- `action` **伺服器確認成功才 `return true`**；`return false` 顯示錯誤面；拋例外也顯示錯誤面；其他回傳值直接回 idle，不宣稱成功。詳細錯誤訊息仍由頁面顯示，輸入不清空。
+- 送出後會關閉的 modal 看不到成功面，仍有 pending 與錯誤面；成功提示照舊用頁面訊息。
+
+## AtSelectAll + useSelection（#4488 勾選聯動）
+
+```js
+const selection = useSelection(visibleRows, { key: 'id', canSelect: (r) => r.status === 'pending' });
+```
+```vue
+<AtSelectAll :selection="selection" label="全選本頁" />
+<input type="checkbox" :checked="selection.has(row.id)" @change="selection.toggle(row.id)">
+```
+
+- `visibleRows` 傳**畫面上看得到的清單**（篩選後）。不可選的列永遠不會被勾；篩選、分頁、重新整理後看不到的勾選自動移除，批次動作用 `selection.keys`。
+- 原生 checkbox：部分選取 = `indeterminate`（螢幕閱讀器讀 mixed），Space 可操作；點半勾 = 全選。表頭只放勾選框時用 `hide-label :show-count="false"`。
+
+---
+
 ## AtCard
 
 ```vue
