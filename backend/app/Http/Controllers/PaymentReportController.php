@@ -61,7 +61,7 @@ class PaymentReportController extends Controller
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
         $billingPeriod = $sc->getAttribute('ScheduleMode') === 'date'
-            ? $this->monthlyBilling->defaultPeriodFor($sc)
+            ? $this->monthlyBilling->collectionPeriodFor($sc)
             : null;
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -135,7 +135,7 @@ class PaymentReportController extends Controller
         $periodStart = null;
         $periodEnd = null;
         $billingPeriod = $sc->ScheduleMode === 'date'
-            ? $this->monthlyBilling->defaultPeriodFor($sc)
+            ? $this->monthlyBilling->collectionPeriodFor($sc)
             : null;
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -442,14 +442,15 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
-            if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+            if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($sc, $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse('paid');
             }
 
             $monthlyProjection = null;
+            $period = null;
             if ($sc && $sc->ScheduleMode === 'date') {
                 $period = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
-                    ? (string) $invoice->billing_period : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
+                    ? (string) $invoice->billing_period : $this->monthlyBilling->collectionPeriodFor($sc, $report->payment_date);
                 $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
                 $monthlyProjection = $invoice ? $this->invoiceProjection($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
@@ -472,9 +473,7 @@ class PaymentReportController extends Controller
                     'IssueDate'      => Carbon::today()->toDateString(),
                     'TotalAmount'    => (int) $report->reported_amount,
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
-                    'billing_period' => $sc?->ScheduleMode === 'date'
-                        ? $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date)
-                        : null,
+                    'billing_period' => $period, // in-app #432: the month checked above (date mode), else null
                 ], [], true);
                 } catch (BillingPeriodInvoiceExists) {
                     // Defense in depth: the lookup above attaches to any live invoice, so this is a race backstop.
@@ -719,14 +718,14 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
-            if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+            if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($lockedCourse, $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse('paid');
             }
 
             if ($sc->getAttribute('ScheduleMode') === 'date') {
                 $billingPeriod = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
-                    : $this->monthlyBilling->defaultPeriodFor($sc, $data['payment_date']);
+                    : $this->monthlyBilling->collectionPeriodFor($lockedCourse, $data['payment_date']);
                 $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
                 // Paid so far = Payment rows, never the stored PaidAmount (#3864 hotfix P1-b). A non-repriceable bill
                 // (paid/partial/has payments) keeps its fixed total: owe its projected outstanding (#3888 review).
@@ -735,7 +734,9 @@ class PaymentReportController extends Controller
                     : max(0, (int) $billing['charge'] - (int) ($projection['net_applied'] ?? 0));
                 if ((int) $data['amount'] !== $expectedAmount) {
                     return response()->json([
-                        'message' => sprintf('月結本期應收為 NT$%d，請重新載入繳費通知後再登記。', $expectedAmount),
+                        // in-app #432: name the month, so a director collecting month by month sees which one is due.
+                        'message' => sprintf('月結這次要收 %s，應收 NT$%d，請重新載入繳費通知後再登記。',
+                            Carbon::createFromFormat('!Y-m', $billingPeriod)->format('Y 年 n 月'), $expectedAmount),
                         'code' => 'monthly_amount_stale',
                         'expected_amount' => $expectedAmount,
                         'billing_period' => $billingPeriod,
@@ -1240,6 +1241,16 @@ class PaymentReportController extends Controller
             'accepted' => $accepted,
             'results' => $results,
         ], $accepted === count($results) ? 200 : 207);
+    }
+
+    /**
+     * in-app #432 (Founder 2026-10-28, option A): a paid monthly bill does not settle another calendar month whose
+     * countable lessons no bill covers yet, so "already paid" must not refuse that month. A legacy Paid flag with no
+     * paid bill keeps refusing (nothing shows which months it settled).
+     */
+    private function unbilledMonthStillOwed(StudentClass $sc, bool $hasPaidInvoice): bool
+    {
+        return $hasPaidInvoice && $this->monthlyBilling->unbilledPeriodFor($sc) !== null;
     }
 
     private function courseResolvedPaid(StudentClass $sc): bool

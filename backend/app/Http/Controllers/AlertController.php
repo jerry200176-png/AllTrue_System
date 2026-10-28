@@ -851,7 +851,7 @@ class AlertController extends Controller
         $billingPeriod = $mode === 'date'
             ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
                 ? (string) $openBillingPeriod
-                : $this->monthlyBilling->defaultPeriodFor($sc, $today))
+                : $this->monthlyBilling->collectionPeriodFor($sc, $today)) // in-app #432: oldest unbilled month first
             : null;
         $billing = $mode === 'date'
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
