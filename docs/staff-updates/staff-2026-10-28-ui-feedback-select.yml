@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-10-28-ui-feedback-select
+    published_at: "2026-10-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 儲存回饋與全選更清楚
+    summary: 儲存時會顯示處理中，確認後才顯示已儲存；全選會標示部分選取與已選筆數。
+    items:
+      - category: improved
+        text: 個人資料、科目設定與點名「全部到班」的按鈕，伺服器確認後才顯示已儲存，失敗會顯示未儲存。
+      - category: improved
+        text: 點名與評量審核的全選會顯示半勾與已選幾筆，只選畫面上看得到的項目。
+      - category: improved
+        text: 點名「全部到班」若有失敗，沒成功的堂次會保持勾選，方便再送一次。
+    source_refs:
+      - "changelog:2026-10-28:ui-feedback-select"
