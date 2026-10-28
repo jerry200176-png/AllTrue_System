@@ -1220,7 +1220,8 @@ jobs:
                 'reason' => $reason, 'void_tag' => $reason === 'invoice_void' ? $tag : null,
                 'report_amount' => (int)$r->reported_amount, 'confirmed_at' => $r->confirmed_at,
                 'invoice_updated_at' => $inv->updated_at ?? null, 'invoice_paid_stored' => $inv ? (int)$inv->PaidAmount : null,
-                'invoice_net' => (int)$pays->sum(fn ($p) => (int)$p->Amount),
+                // Invoice::netPaidSql sign rule: a void-method row is a reversal even when stored positive.
+                'invoice_net' => (int)$pays->sum(fn ($p) => (string)$p->Method === 'void' || (int)$p->Amount < 0 ? -abs((int)$p->Amount) : (int)$p->Amount),
                 'payments' => $pays->map(fn ($p) => ['id' => (int)$p->id, 'amount' => (int)$p->Amount, 'method' => (string)$p->Method,
                   'report_id' => $p->payment_report_id === null ? null : (int)$p->payment_report_id])->values()->all(),
                 'report_payment_invoice_id' => $r->payment_id ? $db::table('Payment')->where('id', $r->payment_id)->value('InvoiceID') : null,

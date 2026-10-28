@@ -87,6 +87,13 @@ class ConfirmedReportVoidBlockedCase(unittest.TestCase):
             self.assertNotIn(bad, block)
         self.assertNotRegex(block, r"=> \$note|=> \(string\)\$inv->Note|'note' =>")
 
+    def test_invoice_net_counts_a_positive_void_row_as_a_reversal(self):
+        block = case_block(render("confirmed_report_void_blocked").stdout, "confirmed_report_void_blocked")
+        net = re.search(r"'invoice_net' => \(int\)\$pays->sum\(fn \(\$p\) => (.*)\),\n", block).group(1)
+        # 10,000 cash then a positive 10,000 void row nets to zero (PaidStatusParityTest void_method_positive)
+        php = f"$s = 0; foreach ([[10000, 'cash'], [10000, 'void'], [500, 'transfer'], [-500, 'transfer']] as [$a, $m]) {{ $p = (object) ['Amount' => $a, 'Method' => $m]; $s += {net}; }} echo $s;"
+        self.assertEqual(subprocess.run(["php", "-r", php], capture_output=True, text=True, check=True).stdout, "0")
+
 
 class InApp414AmountSourceCase(unittest.TestCase):
     """#4155 / in-app #414: one campus-11 StudentClass, read-only, IDs/amounts/dates/statuses/enums only."""
