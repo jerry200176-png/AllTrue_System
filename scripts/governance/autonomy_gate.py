@@ -1358,8 +1358,9 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
                 if job.get("name") != DEPLOY_JOB_NAME or job.get("conclusion") in {"skipped", None}:
                     continue
                 # A stale-target refusal, GO recheck or SSH setup failure ends the job before the executor (#4560 review).
-                if not any(step.get("name") == DEPLOY_STEP_NAME and step.get("conclusion") not in {"skipped", None}
-                           for step in job.get("steps") or []):
+                # Skip only on positive proof the executor step was skipped; missing or unknown step data counts.
+                if any(step.get("name") == DEPLOY_STEP_NAME and step.get("conclusion") == "skipped"
+                       for step in job.get("steps") or []):
                     continue
                 if not job.get("completed_at"):
                     return f"deploy job in run {run.get('id')} has no completion time; state unknown"

@@ -2428,6 +2428,16 @@ class R3AutoActivationTest(unittest.TestCase):
                               "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
 
+    def test_a_failed_job_without_step_data_still_freezes(self):
+        # Security review on #4560: no positive proof that the executor was skipped = it may have run.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z"}]}
+        self.assertIn("stop the line", deploy_freeze_reason(repo="o/r", api=api))
+
     def test_deploy_freeze_looks_past_skipped_runs_within_a_bounded_window(self):
         # #4359 review: most deploy.yml runs skip the deploy job; look past them, but bounded (job deadline).
         def api(path, *extra):

@@ -346,7 +346,8 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("Executor result UNKNOWN", self.incident)
         self.assertIn("permissions:\n      actions: read\n      contents: read\n      issues: write\n", self.incident)
         # #4560 review F1/F9: no incident when the executor step never ran; summarizer from the default branch.
-        self.assertIn('if [ "$started" = "0" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then', self.incident)
+        self.assertIn('if [ "$skipped" = "1" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then', self.incident)
+        self.assertIn('.conclusion == "skipped"', self.incident)  # positive proof only; unknown still reports
         self.assertNotIn("ref: ${{ needs.resolve-target.outputs.target_sha }}", self.incident)
         self.assertNotIn("secrets.", self.incident)  # no SSH key or production secret in this job
         self.assertIn("rc: ${{ steps.deploy.outputs.rc }}", self.deploy)
