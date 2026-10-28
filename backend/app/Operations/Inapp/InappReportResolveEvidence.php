@@ -14,8 +14,11 @@ class InappReportResolveEvidence
     public const DEPLOY_WORKFLOW = '.github/workflows/deploy.yml';
     public const DEPLOY_JOB = 'Deploy to Production';
     private const SHA = '/^[0-9a-f]{40}$/';
-    /** Read-only GitHub token the deploy writes (0600) under storage/; anonymous REST allows only 60 calls an hour. */
-    public const TOKEN_FILE = 'app/pop/github-read-token';
+    /**
+     * Read-only GitHub token the deploy writes owner-only (0600) in storage/app/private, which the deploy never widens.
+     * The Pi-local executor (deploy account) reads it; a worker that cannot falls back to anonymous (60 calls an hour).
+     */
+    public const TOKEN_FILE = 'app/private/pop-github-read-token';
 
     /** @return list<string> the well-formed backend_sha and frontend_build_sha of the Pi's deployment manifest */
     public function deployedShas(): array
