@@ -3,7 +3,8 @@
 // Read-only AI triage tokens (Founder GO 2026-10-13); see docs/sop/BUG_INTAKE_TO_PRODUCTION.md.
 return [
     'ability' => 'bug-reports:read',
-    // Lifetime from creation; shortening it applies to existing tokens at once (fail-safe).
+    // Lifetime from creation, stored on each token when issued (#4021). Shortening applies to existing tokens
+    // at once (fail-safe); raising it applies to new tokens only and never extends or revives an issued one.
     'ttl_days' => (int) env('TRIAGE_TOKEN_TTL_DAYS', 90),
     // Recognizable secret prefix (like ghp_ / lin_api_) for logs and secret scanners.
     'secret_prefix' => 'alltrue_triage_',

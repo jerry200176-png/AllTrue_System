@@ -3,10 +3,36 @@
 
 title = "AllTrue publication gitleaks allowlist"
 
+# Without [extend] a repo config REPLACES the default rules (the required scan then ran with zero
+# rules); with it the pinned defaults stay on and the rules below are added (#4022).
+[extend]
+useDefault = true
+
+# Issued AI triage tokens: "<id>|alltrue_triage_<40 alnum>" (config/triage_tokens.php). The id is
+# optional so a pasted bare secret is caught too; the bare prefix alone is not.
+[[rules]]
+id = "alltrue-triage-token"
+description = "AllTrue read-only AI triage token"
+regex = '''(?:\d+\|)?alltrue_triage_[A-Za-z0-9]{40}(?:[^A-Za-z0-9]|$)'''
+keywords = ["alltrue_triage_"]
+
 [allowlist]
 description = "Known false positives after filter-repo + credential rotation"
 paths = [
   '''\.github/workflows/ci\.yml''',
   '''backend/\.env\.testing''',
   '''docs/archive/control-plane-shadow-v1/''',
+]
+# Test code is NOT skipped: every rule, the triage-token, PAT and AWS ones included, stays active on every path.
+# The default generic-api-key rule does trip on key-named literals in tests and on a few domain identifiers in app
+# code (full-history scan of main, 2026-10-28), so these regexes, each anchored to the WHOLE captured value, admit only
+# identifier-shaped values that no high-signal rule's secret can have. A new literal such as 'idempotency_key' =>
+# 'synthetic-4326' passes; a UUID or any random-looking value does not (name key-named test fixtures synthetic-...).
+regexes = [
+  '''^synthetic-[a-z0-9-]+$''',                           # test fixtures named on purpose: synthetic-4326
+  '''^promo-[a-z]+-[0-9]+$''',                            # GradePromotion test idempotency keys
+  '''^syn\.[a-z]+(?:\.[a-z0-9-]+)+\.v[0-9]+$''',        # TrueFit material keys: syn.eng.phonics.short-vowels.v1
+  '''^weekly_[0-9]+_segments$''',                         # TeacherEligibility pay component key
+  '''^perfFlags\.[A-Z][A-Z0-9_]*$''',                     # frontend feature-flag reference
+  '''^alltrue(?:-[a-z0-9]+)+-v[0-9]+$''',                 # domain tag: alltrue-ordinary-close-evidence-v1
 ]
