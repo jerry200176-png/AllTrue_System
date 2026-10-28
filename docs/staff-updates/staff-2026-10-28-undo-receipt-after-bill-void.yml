@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-undo-receipt-after-bill-void
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單作廢後，收據也能撤銷
+    summary: 帳單已更正作廢的收據，現在可以在收款紀錄撤銷；有收據的帳單會請你先撤銷收據。
+    items:
+      - category: fixed
+        text: 帳單已「更正並作廢」的收據，在收款紀錄按「撤銷」會成功，不會再出現「原帳單已作廢或歸屬不符」。
+      - category: improved
+        text: 帳單上還有已確認的收據時，請先在收款紀錄撤銷收據，再作廢帳單；這時帳務裡不會出現「更正並作廢」。
+    source_refs:
+      - "changelog:2026-10-28:undo-receipt-after-bill-void"
