@@ -156,7 +156,7 @@ class LegacyPaidFlagResolveTest extends TestCase
         // No bill and no session evidence: the stored charge still caps what a new bill may record (Codex P2).
         $this->backfill($token, $paid, ['amount' => 5000])->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 3000);
         $this->assertSame([0, 0], [Invoice::count(), PaymentReport::count()]);
-        $this->backfill($token, $paid, ['amount' => 3000, 'idempotency_key' => '7f0c2a4e-1b3d-4c5e-8f9a-0b1c2d3e4f51'])
+        $this->backfill($token, $paid, ['amount' => 3000, 'idempotency_key' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'synthetic-legacy-backfill-1')])
             ->assertOk()->assertJsonPath('status', 'confirmed');
         $invoice = Invoice::where('StudentClassID', $paid->ID)->sole();
         $this->assertSame([3000, 'paid', 1], [(int) $invoice->TotalAmount, (string) $invoice->Status, (int) $paid->fresh()->Paid]);
@@ -206,7 +206,7 @@ class LegacyPaidFlagResolveTest extends TestCase
         [$lead2, $sibling2, $package2] = $this->legacyPackage(1);
         Invoice::create(['StudentID' => $lead2->StudentID, 'StudentClassID' => $lead2->ID, 'IssueDate' => '2026-09-01',
             'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
-        $this->backfill($token, $lead2, ['amount' => 3000, 'idempotency_key' => '7f0c2a4e-1b3d-4c5e-8f9a-0b1c2d3e4f52'])->assertOk();
+        $this->backfill($token, $lead2, ['amount' => 3000, 'idempotency_key' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'synthetic-legacy-backfill-2')])->assertOk();
         $this->assertSame([false, 0, 0], [(bool) $package2->fresh()->paid, (int) $lead2->fresh()->Paid, (int) $sibling2->fresh()->Paid]);
     }
 
