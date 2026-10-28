@@ -57,3 +57,38 @@ describe('tuition slip amount (Founder Q2)', () => {
     expect([full.amount, full.amount_label]).toEqual([10000, '應繳費用']);
   });
 });
+
+describe('代收款 section (in-app #439)', () => {
+  const passThrough = [
+    { title: '數學講義', category: '書籍費', amount: 300, status: 'unpaid', paid_on: null },
+    { title: '模擬考教材', category: '教材費', amount: 200, status: 'paid', paid_on: '2026-07-10' },
+  ];
+
+  it('renders as its own section with the unpaid subtotal and the not-tuition line, tuition amount untouched', () => {
+    const doc = paymentSlipView({
+      invoice_id: 5, student_name: '甲', status: 'unpaid', remaining: 6000, total_amount: 6000, paid_amount: 0,
+      items: [{ description: '月結', amount: 6000 }], pass_through: passThrough, pass_through_unpaid_total: 300,
+    });
+    expect(doc.amount).toBe(6000);
+    expect(doc.items).toHaveLength(1);
+    const w = mount(BillingDocument, { props: { doc } });
+    const sec = w.get('[data-testid="slip-pass-through"]');
+    expect(sec.text()).toContain('代收款（非學費）');
+    expect(sec.findAll('li')).toHaveLength(2);
+    expect(sec.text()).toContain('數學講義');
+    expect(sec.text()).toContain('未繳');
+    expect(sec.text()).toContain('已繳 2026/07/10');
+    expect(sec.text()).toContain('代收款未繳合計NT$ 300');
+    expect(sec.text()).toContain('代收款由補習班代為收取轉付，不屬於學費');
+  });
+
+  it('is hidden when there are no pass-through rows, on both slip kinds and receipts', () => {
+    const tuition = paymentSlipView({ student_class_id: 1, schedule_mode: 'count', sessions: [], pass_through: [], pass_through_unpaid_total: 0 });
+    const invoice = paymentSlipView({ invoice_id: 2, items: [] });
+    for (const doc of [tuition, invoice]) {
+      expect(doc.pass_through).toBeNull();
+      expect(mount(BillingDocument, { props: { doc } }).find('[data-testid="slip-pass-through"]').exists()).toBe(false);
+    }
+    expect(paymentSlipView({ student_class_id: 1, schedule_mode: 'count', pass_through: passThrough, pass_through_unpaid_total: 300 }).pass_through.rows).toHaveLength(2);
+  });
+});

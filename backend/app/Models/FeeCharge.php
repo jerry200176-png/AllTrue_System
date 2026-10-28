@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -49,5 +50,36 @@ class FeeCharge extends Model
     public function status(): string
     {
         return $this->voided_at !== null ? 'voided' : ($this->paid_on !== null ? 'paid' : 'unpaid');
+    }
+
+    /**
+     * The tuition slip's separate 代收款 block: this student's charges in this campus that are unpaid, plus ones paid
+     * in $month ('YYYY-MM'; null or malformed = this month). Voided ones never show. Read-only and kept beside the
+     * tuition fields: nothing here is summed into a tuition total.
+     *
+     * @return array{pass_through: list<array{title: string, category: string, amount: int, status: string, paid_on: string|null}>, pass_through_unpaid_total: int}
+     */
+    public static function slipBlock(int $studentId, int $campusId, ?string $month): array
+    {
+        $first = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) $month)
+            ? Carbon::createFromFormat('Y-m-d', $month . '-01')->startOfMonth()
+            : Carbon::now()->startOfMonth();
+        $rows = static::query()
+            ->where('student_id', $studentId)->where('campus_id', $campusId)->whereNull('voided_at')
+            ->where(fn ($q) => $q->whereNull('paid_on')
+                ->orWhereBetween('paid_on', [$first->toDateString(), $first->copy()->endOfMonth()->toDateString()]))
+            ->orderBy('charged_on')->orderBy('id')
+            ->get();
+
+        return [
+            'pass_through' => $rows->map(fn (self $c) => [
+                'title' => (string) $c->title,
+                'category' => self::CATEGORIES[$c->category] ?? (string) $c->category,
+                'amount' => (int) $c->amount,
+                'status' => $c->status(),
+                'paid_on' => $c->paid_on?->toDateString(),
+            ])->all(),
+            'pass_through_unpaid_total' => (int) $rows->filter(fn (self $c) => $c->status() === 'unpaid')->sum('amount'),
+        ];
     }
 }

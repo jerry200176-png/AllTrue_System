@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null $StudentID
  * @property int|null $StudentClassID
  * @property int|null $InvoiceID
+ * @property string|null $billing_period
  * @property string|null $reported_by_name
  * @property mixed $payment_date
  * @property string|null $payment_method
@@ -35,6 +36,7 @@ class PaymentReport extends Model
         'StudentID',
         'StudentClassID',
         'InvoiceID',
+        'billing_period',
         'reported_by_name',
         'payment_date',
         'payment_method',
