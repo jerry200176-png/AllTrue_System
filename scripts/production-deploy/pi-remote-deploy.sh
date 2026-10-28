@@ -474,6 +474,6 @@ export SMOKE_TEACHER_PASSWORD="@@DEPLOY_SMOKE_TEACHER_PASSWORD@@"
 export SMOKE_BRANCH_ID="@@DEPLOY_SMOKE_BRANCH_ID@@"
 export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
 export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
-python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"
+SENTRY_WATCH="@@DEPLOY_SENTRY_WATCH@@" python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN" --watch-seconds 1200
 case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
 abort_deploy "health check 或 smoke test 失敗"
