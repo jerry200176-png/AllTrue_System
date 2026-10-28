@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-28-pass-through-fee-ledger
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 書籍費、雜費可以記在「代收代付」
+    summary: 帳務中心多了「代收代付」分頁，代收的書籍費、教材費、雜費和付給書商的錢都能記，和學費分開。
+    items:
+      - category: added
+        text: 帳務中心 →「代收代付」→「新增代收款」，可以一次幫整班學生記同一筆書籍費，之後逐筆按「收款」。
+      - category: added
+        text: 付給書商或廠商的錢按「記一筆代付」，每月對帳會列出各類別應收、已收、未收、已付出和結餘。
+      - category: improved
+        text: 代收款不是學費，不會變成學費帳單，也不會算進學收或營收。
+    source_refs:
+      - "changelog:2026-10-28:pass-through-fee-ledger"
