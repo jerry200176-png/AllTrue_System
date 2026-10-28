@@ -8,6 +8,7 @@ use App\Models\LearningRecord;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -269,6 +270,12 @@ class CourseLeaveCascadeSuccessorShiftService
         if ((string) ($successor->scheduling_policy ?? 'auto_recurrence') !== 'auto_recurrence'
             || $successor->isUsageSettlementLocked()) {
             $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => null, 'message' => '續約課程為手動排課或已結算，無法自動順延'];
+        }
+        // #4210 (Codex r4296589467): nextSuccessorSlot() steps by date, so a renewal with two slots on one weekday would
+        // skip that day's later slot. Rare; refuse rather than plan a week too late.
+        $weekdays = array_column(ContractSessionSchedule::resolveScheduleSlotsForRebuild($successor), 'weekday');
+        if (count($weekdays) !== count(array_unique($weekdays))) {
+            $blockers[] = ['type' => 'ineligible', 'course_id' => (int) $successor->ID, 'session_id' => null, 'message' => '續約課程同一天有兩個以上時段，無法自動順延，請手動調課'];
         }
         foreach ($chain as $row) {
             if ($reason = $this->ineligibleReason($row, $lock)) {

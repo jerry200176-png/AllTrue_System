@@ -106,6 +106,22 @@ class StaffCapabilityAuthorizer
     }
 
     /**
+     * @param list<int> $userIds
+     * @return list<int>
+     */
+    public function directorGrantHolderIds(array $userIds): array
+    {
+        if ($userIds === [] || !Schema::hasTable('user_capability_grants')) {
+            return [];
+        }
+
+        // Keep the capability and revocation predicate in sync with holdsDirectorGrant().
+        return UserCapabilityGrant::query()->whereIn('user_id', $userIds)
+            ->where('capability', self::CAP_DIRECTOR)->whereNull('revoked_at')
+            ->distinct()->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
      * #4433: the account is linked to one of these campuses through an approved UserCampus row (Approved = 1, or a legacy
      * NULL as in legacyCampusIds()), or through a legacy teacher_branches row at a campus where it has no UserCampus row.
      * A pending request (Approved = 0) is not a link, so it gives that campus's director no management.
