@@ -248,6 +248,21 @@ class LegacyPaidFlagResolveTest extends TestCase
         }
     }
 
+    /** Security review: a caller outside the campus is refused from the routing read, before any lock or write. */
+    public function test_a_cross_campus_request_for_a_shared_package_is_refused_without_taking_locks(): void
+    {
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        $other = $this->token('A', [2]);
+        $log = [];
+        DB::listen(function ($query) use (&$log) {
+            $log[] = strtolower($query->sql);
+        });
+        $this->clear($other, $sibling)->assertForbidden();
+        $this->backfill($other, $sibling)->assertForbidden();
+        $this->assertSame([], array_values(array_filter($log, fn ($sql) => str_contains($sql, ' for update') || str_starts_with($sql, 'update ') || str_starts_with($sql, 'insert into `payment'))));
+        $this->assertSame([true, 1, 1], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+    }
+
     /** @return array{0: StudentClass, 1: StudentClass, 2: CoursePackage} two members of one paid shared package, no payment record */
     private function legacyPackage(int $campusId): array
     {

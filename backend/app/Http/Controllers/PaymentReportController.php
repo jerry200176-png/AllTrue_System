@@ -792,11 +792,16 @@ class PaymentReportController extends Controller
     private function recordLegacyFlagBackfill(Request $request, array $data, int $courseId, ?int $userId)
     {
         $tokenHash = hash('sha256', "legacy-flag-backfill|{$courseId}|" . $data['idempotency_key']);
-        $lockIds = $this->legacyFlagCourseIds($courseId); // routing read, before the transaction (see lockLegacyFlagCourses)
+        // Routing read and campus refusal before the transaction, so a caller outside the campus never takes a lock.
+        $routing = StudentClass::query()->whereKey($courseId)->first(['ID', 'StudentID', 'PackageID']);
+        if ($denied = $this->legacyFlagAccessRefusal($request, $routing)) {
+            return $denied;
+        }
+        $lockIds = $this->legacyFlagCourseIds($routing);
 
         return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash, $lockIds) {
             [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds);
-            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
+            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) { // again on the locked row
                 return $denied;
             }
             $replay = PaymentReport::query()->where('StudentClassID', $courseId)->where('report_token_hash', $tokenHash)->first();
@@ -838,11 +843,16 @@ class PaymentReportController extends Controller
         $courseId = (int) $data['student_class_id'];
         $actorId = $request->attributes->get('auth_user')?->id;
 
-        $lockIds = $this->legacyFlagCourseIds($courseId); // routing read, before the transaction (see lockLegacyFlagCourses)
+        // Routing read and campus refusal before the transaction, so a caller outside the campus never takes a lock.
+        $routing = StudentClass::query()->whereKey($courseId)->first(['ID', 'StudentID', 'PackageID']);
+        if ($denied = $this->legacyFlagAccessRefusal($request, $routing)) {
+            return $denied;
+        }
+        $lockIds = $this->legacyFlagCourseIds($routing);
 
         return DB::transaction(function () use ($request, $data, $courseId, $actorId, $lockIds) {
             [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds);
-            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
+            if ($denied = $this->legacyFlagAccessRefusal($request, $course)) { // again on the locked row
                 return $denied;
             }
             $hasPayment = isset(app(BillingPayableResolver::class)->validPaymentEvidence([$courseId])['classes'][$courseId]);
@@ -937,29 +947,28 @@ class PaymentReportController extends Controller
 
     /**
      * The course plus its same-student package siblings, ascending: markPackagePaid() flags them all, so they share one
-     * legacy mark. Takes a course id (routing read, outside the transaction) or the locked course (a locking recheck).
+     * legacy mark. $lock = a locking recheck on the already locked course.
      *
      * @return int[]
      */
-    private function legacyFlagCourseIds(int|StudentClass $course): array
+    private function legacyFlagCourseIds(StudentClass $course, bool $lock = false): array
     {
-        $current = $course instanceof StudentClass;
-        $row = $current ? $course : StudentClass::query()->whereKey($course)->first(['ID', 'StudentID', 'PackageID']);
-        if (!$row || !$row->isPartOfPackage()) {
-            return [$current ? (int) $course->getKey() : (int) $course];
+        if (!$course->isPartOfPackage()) {
+            return [(int) $course->getKey()];
         }
 
-        return StudentClass::query()->where('PackageID', $row->PackageID)->where('StudentID', $row->StudentID)->orderBy('ID')
-            ->when($current, fn ($q) => $q->lockForUpdate())->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        return StudentClass::query()->where('PackageID', $course->PackageID)->where('StudentID', $course->StudentID)->orderBy('ID')
+            ->when($lock, fn ($q) => $q->lockForUpdate())->pluck('ID')->map(fn ($id) => (int) $id)->all();
     }
 
     /**
      * Everything a legacy-flag decision reads, locked before the first plain read, in confirm()'s order: the course and (shared
      * package) its same-student siblings by id, their pending/confirmed reports, the package row, then their live bills. A
      * concurrent confirm/void/record on any member has either committed before the checks run or waits for this transaction.
-     * $ids come from a routing read before the transaction (a plain read inside it would fix the snapshot before the waits).
+     * $ids come from a routing read before the transaction (a plain read inside it would fix the snapshot before the waits),
+     * after the campus check on that read: a caller outside the campus never reaches these locks.
      *
-     * @param int[] $ids legacyFlagCourseIds($courseId)
+     * @param int[] $ids legacyFlagCourseIds() of the routing read
      * @return array{0: ?StudentClass, 1: ?CoursePackage, 2: ?PaymentReport} course (null = missing), package, a standing report
      */
     private function lockLegacyFlagCourses(int $courseId, array $ids): array
@@ -969,7 +978,7 @@ class PaymentReportController extends Controller
         if (!$course) {
             return [null, null, null];
         }
-        if ($this->legacyFlagCourseIds($course) !== $ids) { // the package changed between the routing read and the locks
+        if ($this->legacyFlagCourseIds($course, true) !== $ids) { // the package changed between the routing read and the locks
             throw new HttpResponseException(response()->json(['message' => '這門課的共用方案剛被變更，請重新整理後再試。沒有變更任何資料。', 'code' => 'legacy_flag_membership_changed'], 409));
         }
         $reports = PaymentReport::query()->whereIn('StudentClassID', $ids)->whereIn('status', ['pending', 'confirmed'])->orderBy('id')->lockForUpdate()->get();
