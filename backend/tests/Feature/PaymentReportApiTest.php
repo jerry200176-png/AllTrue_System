@@ -2998,6 +2998,30 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('data.0.legacy_paid_without_invoice', true);
     }
 
+    /** In-app #428 / #438: #4339 exempted trials from 需核對 in the course list and alerts, not in 已結清. */
+    public function test_accounting_settled_courses_does_not_flag_a_trial_fee_recorded_by_date(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '試聽生']);
+        $sc = $this->createCountModeClass($student->id, [
+            'ClassType' => 'trial',
+            'Charge' => 500,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+            'RemainingSessions' => 1,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=試聽生')
+            ->assertOk()
+            ->assertJsonPath('data.0.student_class_id', $sc->ID)
+            ->assertJsonPath('data.0.legacy_paid_without_invoice', false)
+            ->assertJsonPath('summary.legacy_count', 0);
+    }
+
     public function test_accounting_settled_courses_marks_overpayment_exception(): void
     {
         $token = $this->createDirectorToken([1]);
