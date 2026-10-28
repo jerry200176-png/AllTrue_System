@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Campus;
+use App\Models\FeeCharge;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
@@ -631,7 +632,11 @@ class BillingController extends Controller
             'note'         => $invoice->Note,
             'items'        => $items,
             'sessions' => $sessions,
-        ]);
+        ] + FeeCharge::slipBlock( // #439: beside tuition, never in it
+            (int) $invoice->student->id,
+            (int) $invoice->student->CampusID,
+            $invoice->billing_period ?: substr((string) $invoice->IssueDate, 0, 7),
+        ));
     }
 
     /**
