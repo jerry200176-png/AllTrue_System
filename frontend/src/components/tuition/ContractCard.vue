@@ -189,9 +189,10 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
-// Server `current_contract_charge` (StudentClass.Charge); fall back to `charge` on older payloads.
+// Server `current_contract_charge` only (AccountingController::currentContractCharge). It is null for a monthly contract
+// or a package member, whose stored Charge is no contract price: in-app #432 showed a monthly Charge as 合約金額.
 const contractCharge = computed(() => {
-  const raw = props.course?.current_contract_charge ?? props.course?.charge;
+  const raw = props.course?.current_contract_charge;
   if (raw == null || raw === '') return null;
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : null;
