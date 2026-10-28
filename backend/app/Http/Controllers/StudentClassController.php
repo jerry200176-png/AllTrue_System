@@ -6810,7 +6810,7 @@ class StudentClassController extends Controller
                         'subject_type' => 'student_class',
                         'subject_id' => $sc->getKey(),
                         'campus_id' => (int) (optional($sc->student)->CampusID ?: 0) ?: null,
-                    ], ['previous_closed_reason' => $closedReason, 'reason_hash' => sha1($reopenReason)], true);
+                    ], ['reason_code' => $closedReason, 'reason_hash' => sha1($reopenReason)], true); // reason_code = the close being undone
                 }
                 $sc->setAttribute('Stop', 0);
                 $sc->closed_reason = null;

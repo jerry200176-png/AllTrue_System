@@ -5,13 +5,11 @@ updates:
       - director
     importance: digest
     title: 已結案的課改用續課繼續上
-    summary: 已結案的課按「恢復課程」不會重開，會提示改用「續課」；誤結案請通知超級管理員復原。
+    summary: 已結案的課按「恢復課程」不會重開，系統會說明要改用「續課」。
     items:
       - category: improved
-        text: 已結案的課按「恢復課程」會說明原因，並可直接按「前往續課」；過去的上課、繳費與結案紀錄都會保留。
+        text: 已結案的課按「恢復課程」會說明要改用「續課」；過去的上課、繳費與結案紀錄都會保留。
       - category: fixed
         text: 同一門課在兩個分頁同時結案與暫停時，結案狀態不會再被暫停蓋掉。
-      - category: improved
-        text: 不小心結案的課，超級管理員可以在「恢復課程」填寫原因後復原，系統會留下紀錄；只是暫停的課恢復方式不變。
     source_refs:
       - "changelog:2026-10-16:4188-pause-close-backend-guard"

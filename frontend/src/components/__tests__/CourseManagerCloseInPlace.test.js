@@ -83,10 +83,4 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
   it('any new list load clears a stale notice', () => {
     expect(source).toMatch(/const loadCourses = async \(page = 1\) => \{\s*const requestId = \+\+courseLoadRequestId;\s*closedCourseNotice\.value = null;/);
   });
-
-  it('恢復課程 on a closed course opens the existing renewal entry instead of resuming (#4188)', () => {
-    expect(source).toMatch(/askClosed: \(opts\) => askConfirm\(opts\),\s*openRenewal: \(course\) => openCommercialPurchaseEntry\(course\),\s*isSuperAdmin: \(\) => props\.userRole === 'super_admin',\s*\}\);/);
-    expect(drawerActions).toContain('resume: () => requestCoursePause(c)');
-    expect(drawerActions).toContain('purchase: () => openCommercialPurchaseEntry(c)');
-  });
 });

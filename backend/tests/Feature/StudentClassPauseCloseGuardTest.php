@@ -185,8 +185,9 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $fresh = $course->fresh();
         $this->assertSame(0, (int) $fresh->Stop);
         $this->assertNull($fresh->closed_reason);
-        $this->assertSame(1, \Illuminate\Support\Facades\DB::table('security_audit_events')
-            ->where('event_type', 'student_class.close_reopened')->count());
+        $audit = \Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'student_class.close_reopened')->get();
+        $this->assertCount(1, $audit);
+        $this->assertSame('settled', json_decode($audit[0]->metadata, true)['reason_code']); // the undone close survives in the audit
     }
 
     public function test_super_admin_cannot_reopen_a_waived_or_converted_close(): void
