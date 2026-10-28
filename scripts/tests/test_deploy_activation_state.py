@@ -2220,7 +2220,8 @@ class R3AutoActivationTest(unittest.TestCase):
         billing = self._record(4400, self.BILLING)
         for path in ("scripts/governance/gh_api_retry.py", ".github/actions/production-ssh-trust/action.yml",
                      "scripts/production-deploy/write_manifest.py", "scripts/post-deploy-verify.py",
-                     "scripts/post-merge-smoke.sh"):
+                     "scripts/post-merge-smoke.sh", "scripts/write-deployment-manifest.py",
+                     "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh"):
             with self.subTest(path=path):
                 result = self._decide([billing], range_paths=[self.BILLING, path])
                 self.assertFalse(result["ok"])
@@ -2231,7 +2232,8 @@ class R3AutoActivationTest(unittest.TestCase):
     def test_identity_paths_and_effects_outside_the_reviewer_list_keep_the_founder_gate(self):
         # Adversarial review on #4359 (F1): nested Auth controllers, role services, role sync / forceFill.
         for path in ("backend/app/Http/Controllers/Api/AuthController.php", "backend/app/Services/AuthSessionService.php",
-                     "backend/app/Services/RoleAssignment.php", "frontend/src/pages/LoginPage.vue"):
+                     "backend/app/Services/RoleAssignment.php", "frontend/src/pages/LoginPage.vue",
+                     "backend/app/Http/Controllers/UserAuthController.php", "backend/app/Services/StaffRoleSyncService.php"):
             with self.subTest(path=path):
                 result = self._decide([self._record(4413, path, self._diff(path, "$a = 1;", "$a = 2;"))])
                 self.assertFalse(result["ok"])
@@ -2247,6 +2249,16 @@ class R3AutoActivationTest(unittest.TestCase):
         result = self._decide([self._record(4400, self.BILLING)], renamed=True)
         self.assertFalse(result["ok"])
         self.assertIn("rename", result["reason"])
+        # Unknown rename state fails closed (adversarial review R3).
+        unknown = decide_r3_auto_activation([self._record(4400, self.BILLING)], event_name="workflow_run",
+                                            rollback_evidence=True, range_paths=[self.BILLING],
+                                            review=self.REVIEW_OK, freeze_reason=None)
+        self.assertFalse(unknown["ok"])
+        self.assertIn("rename", unknown["reason"])
+
+    def test_guardian_is_not_an_identity_path(self):
+        path = "backend/app/Models/Guardian.php"
+        self.assertTrue(self._decide([self._record(4415, path, self._diff(path, "$a = 1;", "$a = 2;"))])["ok"])
 
     def test_route_file_changes_keep_the_founder_gate(self):
         # #4359 review: authorization middleware changes in api.php cannot be ruled out by the classifier.
@@ -2434,7 +2446,9 @@ class R3AutoActivationTest(unittest.TestCase):
         self.assertIn("rollback_evidence=r3_rollback,", r3)
         self.assertIn("renamed=range_renamed,", r3)
         # Final-head review covers every PR in the range, and the recheck re-reads that same list.
-        self.assertIn('for record in attributed if record.get("number")', r3)
+        self.assertIn('r3_review_prs = sorted(range_prs | {str(pr["number"]) for pr in provenance["application_prs"]}, key=int)', r3)
+        self.assertIn("range_prs.add(str(pr_number))", classify)
+        self.assertLess(classify.index("range_prs.add(str(pr_number))"), classify.index("if pr_number in seen_reconciled_prs:"))
         self.assertIn("PR_NUMBERS: ${{ needs.classify-activation.outputs.r3_review_prs }}", workflow)
         self.assertIn("    timeout-minutes: 10 #", classify)
         self.assertLess(r3.index("has_actionable_rollback("), r3.index("r3_results = ["))

@@ -797,6 +797,8 @@ jobs:
               # Every path the range touches (Founder 2026-10-21 R3 auto); None once a commit is capped.
               range_paths = set()
               range_renamed = False
+              # Every merged PR in the range, including ones with no deployable path (R3 review covers them all).
+              range_prs = set()
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
                   if not commit_sha:
@@ -908,6 +910,7 @@ jobs:
                               print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
                       if len(recovered) == 1 and not merged_matches:
                           attributed.append(recovered[0])
+                          range_prs.add(str(recovered[0]["number"]))
                           seen_reconciled_prs.add(recovered[0]["number"])
                           attributed_commits.add(commit_sha)
                           continue
@@ -923,6 +926,7 @@ jobs:
                           or not candidate.get("merged_at")
                       ):
                           continue
+                      range_prs.add(str(pr_number))
                       if pr_number in seen_reconciled_prs:
                           attributed_commits.add(commit_sha)
                           continue
@@ -1061,8 +1065,7 @@ jobs:
                       graphql = lambda query: gh_api("graphql", "-f", f"query={query}")
                       # Every PR in the range, control-plane ones too: an unreviewed workflow change rides
                       # the same range (adversarial review on #4359). Unattributed commits already hold.
-                      r3_review_prs = sorted({str(record.get("number")) for record in attributed if record.get("number")}
-                                             | {str(pr["number"]) for pr in provenance["application_prs"]}, key=int)
+                      r3_review_prs = sorted(range_prs | {str(pr["number"]) for pr in provenance["application_prs"]}, key=int)
                       review = target_r3_gate.final_head_review_evidence(
                           repo=repo, pr_numbers=r3_review_prs, api=gh_api, graphql=graphql,
                       )

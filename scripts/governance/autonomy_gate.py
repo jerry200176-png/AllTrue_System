@@ -1194,7 +1194,11 @@ _R3_FOUNDER_ONLY_REASONS = {
 # What the deploy itself executes or trusts with production credentials: a change here could forge the
 # evidence or the verification of the very range it rides in (adversarial review on #4359).
 _R3_EXECUTION_PREFIXES = (".github/actions/", "scripts/governance/", "scripts/production-deploy/")
-_R3_EXECUTION_EXACT = {"scripts/post-deploy-verify.py", "scripts/post-merge-smoke.sh"}
+_R3_EXECUTION_EXACT = {
+    "scripts/post-deploy-verify.py", "scripts/post-merge-smoke.sh",
+    # pi-remote-deploy.sh resets /home/admin to the target and runs these from the range's own tree.
+    "scripts/write-deployment-manifest.py", "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh",
+}
 # Identity/privilege paths beyond the reviewer-only list: nested Auth controllers, role/guard services.
 _R3_IDENTITY_PATH_TERMS = (*_ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS, "auth", "identity", "role", "guard", "login")
 
@@ -1208,8 +1212,10 @@ def _r3_protected_path(path: str) -> str | None:
         return "production data repair"
     if path.startswith(_R3_EXECUTION_PREFIXES) or path in _R3_EXECUTION_EXACT:
         return "deploy execution or evidence path"
+    # CamelCase is split too (UserAuthController, StaffRoleSyncService); Guardian is the parent model, not a guard.
+    words = [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", path)]
     if path.startswith(("backend/", "frontend/")) and any(
-        part.startswith(term) for part in re.split(r"[/_.-]+", path.lower()) for term in _R3_IDENTITY_PATH_TERMS if part
+        word.startswith(term) and not word.startswith("guardian") for word in words for term in _R3_IDENTITY_PATH_TERMS
     ):
         return "identity/credential boundary"
     label = _r3_hold_label(path)
@@ -1340,7 +1346,7 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
 def decide_r3_auto_activation(
     records: Iterable[dict[str, object]], *, event_name: str, rollback_evidence: bool,
     range_paths: Iterable[str] | None, review: Mapping[str, object] | None = None,
-    freeze_reason: str | None = "freeze state not evaluated", renamed: bool = False,
+    freeze_reason: str | None = "freeze state not evaluated", renamed: bool | None = None,
 ) -> dict[str, object]:
     """Founder 2026-10-21（二）之二: may this held range activate through production-auto?
 
@@ -1375,8 +1381,8 @@ def decide_r3_auto_activation(
     applications = provenance.get("application_prs") or []
     if provenance.get("blocked") or not applications:
         return hold(f"provenance is not an application range: {provenance.get('reason')}")
-    if renamed:
-        return hold("range renames a file; a rename keeps the Founder gate")
+    if renamed is not False:  # unknown counts as renamed
+        return hold("range renames a file (or rename state unknown); a rename keeps the Founder gate")
     decision = decide_activation(
         event_name=event_name, deployable=True, classifier_available=True, machine_validated=True,
         machine_tier=provenance.get("tier_name"),
