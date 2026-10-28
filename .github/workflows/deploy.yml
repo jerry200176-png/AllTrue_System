@@ -749,26 +749,26 @@ jobs:
                   is_production_activation_sensitive_path,
                   parse_declaration,
                   reconcile_preexisting_pr_provenance,
-                  codex_confirms_head,
-                  declares_additive_migration,
+                  additive_activation_confirmed,
               )
 
-              def additive_confirmed(pr, paths):
-                  # Founder 2026-10-14（三）補充 #1: declared, and Codex's 👍 on the final head.
-                  if not declares_additive_migration(pr.get("body") or "") or not any(
-                      p.startswith("backend/database/migrations/") for p in paths
-                  ):
-                      return False
-                  n, flags = pr.get("number"), ("--paginate", "--slurp")
+              def additive_confirmed(pr, paths, patch):
+                  # #4590 review: the deployed policy's classifier (the one the automatic rollback loads) must
+                  # agree, plus full final-head review evidence; a missing deployed policy or any error is the click.
                   try:
-                      return codex_confirms_head(
-                          (pr.get("head") or {}).get("sha"),
-                          pages(gh_api(f"/repos/{repo}/issues/{n}/comments?per_page=100", *flags)),
-                          pages(gh_api(f"/repos/{repo}/pulls/{n}/reviews?per_page=100", *flags)),
-                          pages(gh_api(f"/repos/{repo}/issues/{n}/reactions?per_page=100", *flags)),
+                      import importlib.util
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_additive_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
                       )
-                  except (RuntimeError, ValueError):
+                      deployed = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(deployed)
+                      classify = deployed.additive_migration_paths
+                  except Exception:
                       return False
+                  return additive_activation_confirmed(
+                      repo=repo, number=pr.get("number"), body=pr.get("body") or "", paths=paths, patch=patch,
+                      api=gh_api, graphql=lambda query: gh_api("graphql", "-f", f"query={query}"), classify=classify,
+                  )
 
               base = os.environ["RUNTIME_BASE_SHA"]
               required_status_checks = active_main_required_status_checks(repo)
@@ -946,7 +946,7 @@ jobs:
                           **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
-                          "additive_confirmed": additive_confirmed(pr, actual_paths),
+                          "additive_confirmed": additive_confirmed(pr, actual_paths, actual_effect["patch"]),
                       })
                       attributed_commits.add(commit_sha)
               attributed.extend(aggregate_landed_pr_effects(landed_effects))
