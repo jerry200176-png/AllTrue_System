@@ -2156,7 +2156,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         names = [step.split("\n", 1)[0] for step in steps]
         self.assertEqual(
             ["Checkout post-deploy verifier", "Verify production independently from the runner",
-             "Record deployed and production-verified state", "Summarize production verification failure"],
+             "Record deployed and production-verified state", "Install the POP GitHub read token",
+             "Summarize production verification failure"],
             names,
         )
         # No `if:` override: the runner verification and the success marker run only when
@@ -2164,7 +2165,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         for step in steps[1:3]:
             self.assertNotRegex(step, r"(?m)^        if:")
             self.assertNotIn("continue-on-error", step)
-        self.assertIn("if: ${{ failure() && steps.deploy.outcome != 'skipped' }}", steps[3])
+        self.assertNotRegex(steps[3], r"(?m)^        if:")  # the read token is installed only after verification
+        self.assertIn("if: ${{ failure() && steps.deploy.outcome != 'skipped' }}", steps[4])
 
 
 class R3AutoActivationTest(unittest.TestCase):
@@ -3470,6 +3472,49 @@ class GhApiRetryTest(unittest.TestCase):
         error, calls, _, _ = self._call([self.EMPTY] * 5, attempts=5)
         self.assertIsInstance(error, RuntimeError)
         self.assertEqual(len(calls), 5)
+
+
+class PopGithubReadTokenInstallTest(unittest.TestCase):
+    """The deploy installs the POP_INAPP_GITHUB_TOKEN secret on the Pi over stdin (#4565), with a fake ssh."""
+
+    def _run(self, token):
+        script = DeployActivationWorkflowContractTest._step_script("Install the POP GitHub read token")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            private = tmp / "backend" / "storage" / "app" / "private"
+            private.mkdir(parents=True)
+            (tmp / "bin").mkdir()
+            # fake ssh: runs the remote command locally under tmp; records argv so the token never rides in it
+            (tmp / "bin" / "ssh").write_text(textwrap.dedent(f"""\
+                #!/usr/bin/env bash
+                printf '%s\\n' "$*" >> {tmp}/argv
+                cmd="${{@: -1}}"
+                exec bash -c "${{cmd//\\/home\\/admin/{tmp}}}"
+            """))
+            (tmp / "bin" / "ssh").chmod(0o755)
+            env = {**os.environ, "PATH": f"{tmp}/bin:{os.environ['PATH']}", "POP_GITHUB_READ_TOKEN": token,
+                   "DEPLOY_PI_SSH_USER": "admin", "DEPLOY_PI_SSH_HOST": "pi"}
+            done = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
+            file = private / "pop-github-read-token"
+            content = file.read_text() if file.exists() else None
+            mode = oct(file.stat().st_mode & 0o777) if file.exists() else None
+            argv = (tmp / "argv").read_text() if (tmp / "argv").exists() else ""
+            return done.returncode, content, mode, argv, sorted(p.name for p in private.iterdir())
+
+    def test_installs_owner_and_group_readable_without_putting_the_token_in_argv(self):
+        token = "github_pat_ABCdef0123456789_xyz"
+        rc, content, mode, argv, files = self._run(token)
+        self.assertEqual((rc, content, mode, files), (0, token, "0o640", ["pop-github-read-token"]))
+        self.assertNotIn(token, argv)
+
+    def test_no_secret_removes_the_file_and_a_malformed_one_fails_without_writing(self):
+        self.assertEqual(self._run("")[:3], (0, None, None))
+        rc, content, _, argv, files = self._run("x; rm -rf /")
+        self.assertEqual((rc, content, argv, files), (1, None, "", []))
+
+    def test_never_fails_the_deploy_job(self):
+        step = WORKFLOW.read_text(encoding="utf-8").split("      - name: Install the POP GitHub read token\n", 1)[1]
+        self.assertIn("        continue-on-error: true\n", step.split("        run: |", 1)[0])
 
 
 if __name__ == "__main__":
