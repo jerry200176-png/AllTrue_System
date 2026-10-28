@@ -1,8 +1,15 @@
+<script>
+// One in-flight run per action function, shared by every AtSubmitButton bound to it: a second
+// button for the same action, or one remounted by a tab switch, joins the run instead of starting
+// another write. Pass a stable function (a setup function, not an inline arrow) to get this.
+const runs = new WeakMap();
+</script>
+
 <script setup>
 // #4488 完成按鈕反饋: idle → pending → success | error → idle.
 // `action` must resolve `true` only after the server confirmed the write; `false` shows the
 // error face; anything else returns to idle without claiming success.
-import { onBeforeUnmount, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import AtButton from './AtButton.vue';
 
 defineOptions({ inheritAttrs: false });
@@ -26,12 +33,20 @@ function settle(next, ms) {
   timer = setTimeout(() => { state.value = 'idle'; }, ms);
 }
 
-async function run() {
-  if (state.value === 'pending' || props.disabled) return;
+function startOrJoin() {
+  const action = props.action;
+  if (!runs.has(action)) {
+    // .then() defers the call, so the entry exists before the run can settle and remove it.
+    runs.set(action, Promise.resolve().then(() => action()).finally(() => runs.delete(action)));
+  }
+  return runs.get(action);
+}
+
+async function track(run) {
   clearTimeout(timer);
   state.value = 'pending';
   try {
-    const ok = await props.action();
+    const ok = await run;
     if (ok === true) settle('success', SUCCESS_MS);
     else if (ok === false) settle('error', ERROR_MS);
     else state.value = 'idle';
@@ -41,6 +56,14 @@ async function run() {
   }
 }
 
+function onClick() {
+  if (state.value === 'pending' || props.disabled) return;
+  track(startOrJoin());
+}
+
+onMounted(() => {
+  if (runs.has(props.action)) track(runs.get(props.action));
+});
 onBeforeUnmount(() => clearTimeout(timer));
 </script>
 
@@ -51,7 +74,7 @@ onBeforeUnmount(() => clearTimeout(timer));
     :disabled="disabled"
     :aria-disabled="state === 'pending' ? 'true' : undefined"
     :aria-busy="state === 'pending' ? 'true' : undefined"
-    @click="run"
+    @click="onClick"
   >
     <!-- All faces share one grid cell, so the button keeps the widest face's width. Only the
          visible face names the button; the polite live region announces the state change. -->

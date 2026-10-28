@@ -47,6 +47,27 @@ describe('ProfileCenterPage save feedback', () => {
     expect(w.find('.section-msg.success').text()).toBe('基本資料已更新。');
   });
 
+  it('keeps one save in flight across a tab switch (no second updateMe)', async () => {
+    let resolve;
+    updateMe.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const w = await mountPage();
+    await saveButton(w).trigger('click');
+    await flushPromises();
+
+    await w.find('#profile-tab-security').trigger('click');
+    await w.find('#profile-tab-profile').trigger('click');
+    await flushPromises();
+    const again = saveButton(w);
+    expect(again.attributes('aria-busy')).toBe('true');
+    await again.trigger('click');
+    await flushPromises();
+    expect(updateMe).toHaveBeenCalledTimes(1);
+
+    resolve({ name: '主任', email: 'd@example.test' });
+    await flushPromises();
+    expect(face(saveButton(w))).toContain('已儲存');
+  });
+
   it('shows 未儲存 and keeps the error message when the server rejects', async () => {
     updateMe.mockRejectedValue(new Error('伺服器忙碌'));
     const w = await mountPage();

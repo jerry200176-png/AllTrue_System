@@ -43,6 +43,7 @@
 ```
 
 - 包一層 `AtButton`（variant／size／shape 照傳）。idle → pending（轉圈、`aria-busy`、不能重送、寬度不跳）→ success／error → idle。
+- `action` 是「動作層級」的：同一個函式同時只會跑一次，第二顆按鈕或切分頁後重新掛載的按鈕會接上同一次送出並顯示處理中（請傳 setup 裡的固定函式，不要傳 inline arrow）。
 - `action` **伺服器確認成功才 `return true`**；`return false` 顯示錯誤面；拋例外也顯示錯誤面；其他回傳值直接回 idle，不宣稱成功。詳細錯誤訊息仍由頁面顯示，輸入不清空。
 - 送出後會關閉的 modal 看不到成功面，仍有 pending 與錯誤面；成功提示照舊用頁面訊息。
 

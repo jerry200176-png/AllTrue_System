@@ -34,6 +34,7 @@ describe('AtSubmitButton', () => {
     expect(button.attributes('aria-disabled')).toBe('true');
     expect(activeFace(w)).toContain('儲存中…');
     await button.trigger('click');
+    await flushPromises();
     expect(action).toHaveBeenCalledTimes(1);
 
     call.resolve(true);
@@ -85,6 +86,44 @@ describe('AtSubmitButton', () => {
     expect(button.classes()).toEqual(expect.arrayContaining(['at-btn--danger', 'at-btn--rect']));
     await button.trigger('click');
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it('runs an action once when two buttons share it (desktop bar + mobile sticky bar)', async () => {
+    const call = deferred();
+    const action = vi.fn(() => call.promise);
+    const bar = mountButton(action);
+    const sticky = mountButton(action);
+    await bar.find('button').trigger('click');
+    await sticky.find('button').trigger('click');
+    await flushPromises();
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(sticky.find('button').attributes('aria-busy')).toBe('true');
+
+    call.resolve(true);
+    await flushPromises();
+    expect(activeFace(bar)).toContain('已儲存');
+    expect(activeFace(sticky)).toContain('已儲存');
+  });
+
+  it('a button remounted mid-run (tab switch) shows pending and cannot start a second run', async () => {
+    const call = deferred();
+    const action = vi.fn(() => call.promise);
+    const first = mountButton(action);
+    await first.find('button').trigger('click');
+    first.unmount();
+
+    const remounted = mountButton(action);
+    await flushPromises();
+    expect(remounted.find('button').attributes('aria-busy')).toBe('true');
+    await remounted.find('button').trigger('click');
+    expect(action).toHaveBeenCalledTimes(1);
+
+    call.resolve(true);
+    await flushPromises();
+    expect(activeFace(remounted)).toContain('已儲存');
+    await remounted.find('button').trigger('click');
+    await flushPromises();
+    expect(action).toHaveBeenCalledTimes(2);
   });
 
   it('renders a single <button> root so page styles and classes reach it', () => {
