@@ -9,16 +9,18 @@ gives `false`, which keeps the production-activation click (fail closed):
   creates or changes invoices, receipts or payments, or notifies parents);
 - mode is approve and the run is on refs/heads/main;
 - the approve run cites one dry-run run id, and that run (read through the API) is a successful
-  workflow_dispatch of the same workflow file on main, created within 24 h, whose SSH job logged
-  exactly one POP_DRY_RUN_EVIDENCE line with mode=dry-run, ok=true, blocked=0, that run id and the
-  same deployed backend SHA, scope and plan digest as this approve run.
+  workflow_dispatch of the same workflow file on main whose head_sha is in main's history (compare
+  with this run's main SHA: identical or ahead; a tag named `main` fails), created within 24 h, whose
+  SSH job logged exactly one POP_DRY_RUN_EVIDENCE line with mode=dry-run, ok=true, blocked=0, that
+  run id and the same deployed backend SHA, scope and plan digest as this approve run.
 
-The SSH job re-checks the fresh plan on the Pi before approving (same digest, blocked=0) and uses a
-`standing-a-auto-<workflow>-<digest12>` approval reference, which POP accepts only for the same
-operations (PopOperationService::STANDING_A_AUTO). The Pi verify step must pass or the run fails
+The primary control is the SSH job's re-check of a fresh plan on the Pi right before approval (state
+pinned to the same digest, no quarantined rows); the cited dry-run binds the approve to a reviewed
+run. The approval reference is `standing-a-auto-<workflow>-<digest12>`, which POP accepts only for the
+same operations (PopOperationService::STANDING_A_AUTO). The Pi verify step must pass or the run fails
 with the rollback snapshot kept.
 
-Usage (guard job): env REPO WORKFLOW MODE REF BACKEND_SHA SCOPE DIGEST DRY_RUN_ID GITHUB_OUTPUT,
+Usage (guard job): env REPO WORKFLOW MODE REF MAIN_SHA BACKEND_SHA SCOPE DIGEST DRY_RUN_ID GITHUB_OUTPUT,
 GH_TOKEN with actions:read. Stdlib only; always exits 0 so an evidence error falls back to the click.
 """
 import json
@@ -29,10 +31,6 @@ from datetime import datetime, timedelta, timezone
 
 # workflow file -> (name of its SSH job, whose log carries the dry-run evidence; allowed scope)
 APPEND_ONLY = {
-    # PackageLedgerNetRepairStrategy: inserts the exact-manifest package_session_ledger rows and recomputes the
-    # counters from the ledger; rollback deletes exactly those rows (exact_manifest_package_ledger_rows_insert_only).
-    "pop-package-ledger-net-repair-4455.yml": (
-        "Pi-local short-lived POP repair (package ledger net, #4455)", r"package-ledger-net-repair-4455"),
     # Td076HistoryPinsStrategy, r2 only: creates history-pin schedule rows; rollback deletes them
     # (campus_scoped_history_pin_rows_created_only). r1 changes row status, so it keeps the click.
     "pop-td076-occurrence-repairs.yml": (
@@ -77,10 +75,10 @@ def decide(*, workflow: str, mode: str, ref: str, backend_sha: str, scope: str, 
     if not run or str(run.get("id")) != dry_run_id:
         return False, "cited dry-run run was not found"
     created = _iso(run.get("created_at"))
-    if not (run.get("event") == "workflow_dispatch" and run.get("head_branch") == "main"
+    if not (run.get("event") == "workflow_dispatch" and run.get("head_branch") == "main" and run.get("on_main") is True
             and run.get("conclusion") == "success" and run.get("path") == f".github/workflows/{workflow}"
             and created is not None and timedelta(0) <= now - created <= WINDOW):
-        return False, "cited run is not a successful main workflow_dispatch of this workflow within 24 h"
+        return False, "cited run is not a successful workflow_dispatch of this workflow on main's history within 24 h"
     evidence = run.get("evidence") or []
     if len(evidence) != 1:
         return False, "cited run does not carry exactly one dry-run evidence line"
@@ -96,19 +94,24 @@ def _gh(path: str) -> str:
     return subprocess.run(["gh", "api", path], check=True, capture_output=True, text=True, timeout=60).stdout
 
 
-def collect_run(repo: str, workflow: str, run_id: str) -> dict:
+def collect_run(repo: str, workflow: str, run_id: str, main_sha: str) -> dict:
     run = json.loads(_gh(f"/repos/{repo}/actions/runs/{run_id}"))
+    head = str(run.get("head_sha") or "")
+    # By SHA, not the name `main` (a tag named main would shadow the branch): identical/ahead = head_sha is in main's history.
+    on_main = bool(re.fullmatch(r"[0-9a-f]{40}", head) and re.fullmatch(r"[0-9a-f]{40}", main_sha or "")) and \
+        json.loads(_gh(f"/repos/{repo}/compare/{head}...{main_sha}")).get("status") in ("identical", "ahead")
     jobs = json.loads(_gh(f"/repos/{repo}/actions/runs/{run_id}/jobs?per_page=50")).get("jobs") or []
     ssh = [job for job in jobs if job.get("name") == APPEND_ONLY[workflow][0] and job.get("conclusion") == "success"]
     evidence = parse_evidence(_gh(f"/repos/{repo}/actions/jobs/{ssh[0].get('id')}/logs")) if len(ssh) == 1 else []
-    return {key: run.get(key) for key in ("id", "created_at", "conclusion", "head_branch", "event", "path")} | {"evidence": evidence}
+    return {key: run.get(key) for key in ("id", "created_at", "conclusion", "head_branch", "event", "path")} \
+        | {"on_main": on_main, "evidence": evidence}
 
 
 def main(env=os.environ) -> int:
     try:
         workflow, mode, dry_run_id = env.get("WORKFLOW", ""), env.get("MODE", ""), env.get("DRY_RUN_ID", "")
         cite = workflow in APPEND_ONLY and mode == "approve" and re.fullmatch(r"[1-9][0-9]{0,19}", dry_run_id)
-        run = collect_run(env["REPO"], workflow, dry_run_id) if cite else None
+        run = collect_run(env["REPO"], workflow, dry_run_id, env.get("MAIN_SHA", "")) if cite else None
         ok, reason = decide(workflow=workflow, mode=mode, ref=env.get("REF", ""), backend_sha=env.get("BACKEND_SHA", ""),
                             scope=env.get("SCOPE", ""), digest=env.get("DIGEST", ""), dry_run_id=dry_run_id,
                             now=datetime.now(timezone.utc), run=run)

@@ -909,7 +909,6 @@ final class PopOperationService
      * matching dry-run (scripts/governance/pop_auto_approve.py APPEND_ONLY). Operation id => workflow stem.
      */
     private const STANDING_A_AUTO = [
-        'package-ledger-net-repair-4455' => 'pop-package-ledger-net-repair-4455',
         'td076-r2-history-pins-20261006' => 'pop-td076-occurrence-repairs',
     ];
 

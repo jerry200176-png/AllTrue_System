@@ -99,6 +99,7 @@ jobs:
           WORKFLOW: pop-td076-occurrence-repairs.yml
           MODE: ${{ inputs.mode }}
           REF: ${{ github.ref }}
+          MAIN_SHA: ${{ github.sha }}
           BACKEND_SHA: ${{ inputs.deployed_backend_sha }}
           SCOPE: ${{ inputs.repair }}:c${{ inputs.campus_id }}
           DIGEST: ${{ inputs.expected_digest }}

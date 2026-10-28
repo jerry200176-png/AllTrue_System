@@ -14,7 +14,7 @@ exception: it requires one authenticated `super_admin` approval carrying a
 `single_student_contract`, reversible, snapshot, rollback, and verification
 catalog invariants. Founder-scoped approvals elsewhere need a `founder-go-...` reference; the one exception
 (Founder 2026-10-28 A) is `standing-a-auto-<workflow>-<digest12>`, accepted only for
-`package-ledger-net-repair-4455` and `td076-r2-history-pins-20261006` (`PopOperationService::STANDING_A_AUTO`)
+`td076-r2-history-pins-20261006` (`PopOperationService::STANDING_A_AUTO`)
 after `scripts/governance/pop_auto_approve.py` matched the cited dry-run. The proposed reviewed monthly exception below has its own exact-case boundary. All other operations retain their catalog-defined quorum;
 the machine identity still cannot approve or execute.
 

@@ -18,8 +18,9 @@ sys.path.insert(0, str(ROOT))
 from scripts.governance import pop_auto_approve as auto  # noqa: E402
 
 LEDGER, TD076 = "pop-package-ledger-net-repair-4455.yml", "pop-td076-occurrence-repairs.yml"
-SCOPES = {LEDGER: "package-ledger-net-repair-4455", TD076: "r2:c11"}
+SCOPES = {TD076: "r2:c11"}
 SHA, DIGEST, NOW = "a" * 40, "b" * 64, datetime(2026, 10, 28, 12, 0, tzinfo=timezone.utc)
+HEAD, MAIN = "e" * 40, "f" * 40
 FA_IF = "if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' && needs.guard.outputs.auto_approve != 'true' }}"
 REPAIR_IF = (
     "if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') "
@@ -29,18 +30,18 @@ REPAIR_IF = (
 )
 
 
-def evidence(wf=LEDGER, **over):
+def evidence(wf=TD076, **over):
     return {"workflow": wf, "mode": "dry-run", "backend_sha": SHA, "scope": SCOPES[wf], "digest": DIGEST,
             "ok": True, "blocked": 0, "run_id": "7", **over}
 
 
-def run(wf=LEDGER, ev=None, **over):
-    return {"id": 7, "created_at": "2026-10-28T02:00:00Z", "conclusion": "success", "head_branch": "main",
+def run(wf=TD076, ev=None, **over):
+    return {"id": 7, "created_at": "2026-10-28T02:00:00Z", "conclusion": "success", "head_branch": "main", "on_main": True,
             "event": "workflow_dispatch", "path": f".github/workflows/{wf}",
             "evidence": [evidence(wf)] if ev is None else ev, **over}
 
 
-def decide(cited, wf=LEDGER, **over):
+def decide(cited, wf=TD076, **over):
     args = {"workflow": wf, "mode": "approve", "ref": "refs/heads/main", "backend_sha": SHA, "scope": SCOPES[wf],
             "digest": DIGEST, "dry_run_id": "7", "now": NOW}
     return auto.decide(**{"run": cited, **args, **over})[0]
@@ -76,11 +77,12 @@ class Decide(unittest.TestCase):
     def test_each_missing_input_refuses(self):
         for label, over in {
             "billing workflow": dict(workflow="pop-unbilled-backlog-catchup.yml"),
+            "closed package-ledger case": dict(workflow=LEDGER),
             "dry-run mode": dict(mode="dry-run"),
             "not main": dict(ref="refs/heads/feature"),
             "short sha": dict(backend_sha="a" * 39),
             "empty digest": dict(digest=""),
-            "other scope": dict(scope="package-ledger"),
+            "other scope": dict(scope="package-ledger-net-repair-4455"),
             "no cited run id": dict(dry_run_id=""),
             "cited id is not a number": dict(dry_run_id="7 "),
             "other cited id": dict(dry_run_id="8"),
@@ -100,8 +102,10 @@ class Decide(unittest.TestCase):
             "no timezone": dict(created_at="2026-10-28T02:00:00"),
             "failed": dict(conclusion="failure"),
             "other branch": dict(head_branch="feature"),
+            "not in main's history (e.g. a tag named main)": dict(on_main=False),
+            "history unknown": dict(on_main=None),
             "push": dict(event="push"),
-            "other workflow": dict(path=f".github/workflows/{TD076}"),
+            "other workflow": dict(path=f".github/workflows/{LEDGER}"),
             "other run": dict(id=8),
         }.items():
             self.assertFalse(decide(run(**over)), label)
@@ -117,7 +121,7 @@ class Decide(unittest.TestCase):
             "plan not ok": [evidence(ok=False)],
             "ok as text": [evidence(ok="true")],
             "approve log": [evidence(mode="approve")],
-            "other workflow": [evidence(workflow=TD076)],
+            "other workflow": [evidence(workflow=LEDGER)],
             "evidence of another run": [evidence(run_id="8")],
             "missing digest": [evidence(digest=None)],
             "malformed": [{}],
@@ -134,8 +138,8 @@ class Decide(unittest.TestCase):
         self.assertEqual(auto.parse_evidence("x POP_DRY_RUN_EVIDENCE " + json.dumps(evidence())), [])
 
     def test_main_fails_closed_and_reads_only_the_cited_run(self):
-        env = {"WORKFLOW": LEDGER, "MODE": "approve", "REPO": "o/r", "REF": "refs/heads/main", "BACKEND_SHA": SHA,
-               "SCOPE": SCOPES[LEDGER], "DIGEST": DIGEST, "DRY_RUN_ID": "7"}
+        env = {"WORKFLOW": TD076, "MODE": "approve", "REPO": "o/r", "REF": "refs/heads/main", "MAIN_SHA": MAIN,
+               "BACKEND_SHA": SHA, "SCOPE": SCOPES[TD076], "DIGEST": DIGEST, "DRY_RUN_ID": "7"}
         with tempfile.NamedTemporaryFile("r+") as out, \
                 mock.patch.object(auto, "collect_run", side_effect=subprocess.CalledProcessError(1, "gh")):
             auto.main({**env, "GITHUB_OUTPUT": out.name})
@@ -145,24 +149,27 @@ class Decide(unittest.TestCase):
                 auto.main({**env, **over, "GITHUB_OUTPUT": out.name})
                 collect.assert_not_called()
                 self.assertEqual(out.read(), "auto_approve=false\n", over)
-        responses = {
-            "/repos/o/r/actions/runs/7": json.dumps(run()),
-            "/repos/o/r/actions/runs/7/jobs?per_page=50": json.dumps(
-                {"jobs": [{"id": 9, "name": auto.APPEND_ONLY[LEDGER][0], "conclusion": "success"}]}),
-            "/repos/o/r/actions/jobs/9/logs": "2026-10-28T02:00:03.1Z POP_DRY_RUN_EVIDENCE " + json.dumps(evidence()),
-        }
-        with tempfile.NamedTemporaryFile("r+") as out, mock.patch.object(auto, "_gh", side_effect=responses.__getitem__), \
-                mock.patch.object(auto, "datetime", wraps=datetime) as clock:
-            clock.now.return_value = NOW
-            auto.main({**env, "GITHUB_OUTPUT": out.name})
-            self.assertEqual(out.read(), "auto_approve=true\n")
+        api_run = {k: v for k, v in run().items() if k not in ("on_main", "evidence")} | {"head_sha": HEAD}
+        for status, want in (("ahead", "true"), ("identical", "true"), ("diverged", "false"), ("behind", "false")):
+            responses = {  # a dry-run dispatched on a tag named `main` off main's history compares as diverged/behind
+                "/repos/o/r/actions/runs/7": json.dumps(api_run),
+                f"/repos/o/r/compare/{HEAD}...{MAIN}": json.dumps({"status": status}),
+                "/repos/o/r/actions/runs/7/jobs?per_page=50": json.dumps(
+                    {"jobs": [{"id": 9, "name": auto.APPEND_ONLY[TD076][0], "conclusion": "success"}]}),
+                "/repos/o/r/actions/jobs/9/logs": "2026-10-28T02:00:03.1Z POP_DRY_RUN_EVIDENCE " + json.dumps(evidence()),
+            }
+            with tempfile.NamedTemporaryFile("r+") as out, mock.patch.object(auto, "_gh", side_effect=responses.__getitem__), \
+                    mock.patch.object(auto, "datetime", wraps=datetime) as clock:
+                clock.now.return_value = NOW
+                auto.main({**env, "GITHUB_OUTPUT": out.name})
+                self.assertEqual(out.read(), f"auto_approve={want}\n", status)
 
 
 class Workflows(unittest.TestCase):
     def test_only_the_allowlist_uses_the_auto_path(self):
         users = sorted(p.name for p in WORKFLOWS.glob("*.yml") if "pop_auto_approve.py" in p.read_text())
         self.assertEqual(users, sorted(auto.APPEND_ONLY))
-        self.assertEqual(set(auto.APPEND_ONLY), {LEDGER, TD076})  # widening this list is a reviewed control-plane change
+        self.assertEqual(set(auto.APPEND_ONLY), {TD076})  # widening this list is a reviewed control-plane change
 
     def test_gate_and_ssh_job_environments(self):
         for wf, (job_name, _) in auto.APPEND_ONLY.items():
@@ -177,6 +184,7 @@ class Workflows(unittest.TestCase):
             self.assertIn(REPAIR_IF, ssh, wf)
             self.assertIn("    permissions:\n      actions: read\n      contents: read\n", guard, wf)
             self.assertIn("DRY_RUN_ID: ${{ inputs.dry_run_run_id }}\n        run: python3 scripts/governance/pop_auto_approve.py", guard, wf)
+            self.assertIn("MAIN_SHA: ${{ github.sha }}\n", guard, wf)
 
     def test_approve_never_runs_without_a_click_or_this_attempts_evidence(self):
         res = ("success", "skipped", "failure")
@@ -193,8 +201,7 @@ class Workflows(unittest.TestCase):
                 self.assertTrue(clicked or evidenced, v)
 
     def test_remote_auto_path_rechecks_then_exits_before_approval_otherwise(self):
-        refs = {LEDGER: 'APPROVAL_REF="standing-a-auto-pop-package-ledger-net-repair-4455-${DIGEST:0:12}"',
-                TD076: '[[ "$REPAIR" == r2 ]] || exit 1; APPROVAL_REF="standing-a-auto-pop-td076-occurrence-repairs-${DIGEST:0:12}"'}
+        refs = {TD076: '[[ "$REPAIR" == r2 ]] || exit 1; APPROVAL_REF="standing-a-auto-pop-td076-occurrence-repairs-${DIGEST:0:12}"'}
         for wf, ref in refs.items():
             ssh = jobs((WORKFLOWS / wf).read_text())["repair"]
             recheck, exit_at = ssh.index('if [[ "$AUTO" == true ]]; then\n            python3'), ssh.index('if [[ "$MODE" != approve ]]; then')
@@ -209,9 +216,6 @@ class Workflows(unittest.TestCase):
 
     def test_dry_run_evidence_printed_by_each_workflow_is_what_decide_accepts(self):
         plans = {
-            LEDGER: lambda blocked: {"ok": blocked == 0, "errors": [] if blocked == 0 else ["row_x"], "state": "before",
-                                     "digest": DIGEST, "counts": {"rows": 54, "to_insert": 54, "done": 0, "blocked": blocked, "packages": 1},
-                                     "packages": {"5": {"remaining_before": 3, "remaining_after": 2, "ledger_net_before": 0, "ledger_net_after": -1}}},
             TD076: lambda blocked: {"ok": True, "errors": [], "state": "unpinned", "digest": DIGEST, "campus_id": 11,
                                     "counts": {"actions": {"pin": 2}, "quarantine": {"no_teacher": blocked} if blocked else []},
                                     "manifest": {"actions": [{"type": "pin", "class_session_id": 4}], "quarantine": []}},

@@ -169,20 +169,20 @@ final class PopOperationCatalogTest extends TestCase
         $service = new PopOperationService($catalog);
         $check = new ReflectionMethod($service, 'assertFounderApprovalReference');
         $d = 'abcdef012345';
-        $check->invoke($service, $catalog->operation('package-ledger-net-repair-4455'), "standing-a-auto-pop-package-ledger-net-repair-4455-$d");
         $check->invoke($service, $catalog->operation('td076-r2-history-pins-20261006'), "standing-a-auto-pop-td076-occurrence-repairs-$d");
         $refused = [
             ['td076-r1-collision-keepers-20261006', "standing-a-auto-pop-td076-occurrence-repairs-$d"],
             ['unbilled-backlog-catchup-20261006', "standing-a-auto-pop-unbilled-backlog-catchup-$d"],
-            ['package-ledger-net-repair-4455', "standing-a-auto-pop-td076-occurrence-repairs-$d"],
-            ['package-ledger-net-repair-4455', 'standing-a-auto-pop-package-ledger-net-repair-4455-ABCDEF012345'],
-            ['package-ledger-net-repair-4455', "standing-a-auto-pop-package-ledger-net-repair-4455-$d\n"],
+            ['package-ledger-net-repair-4455', "standing-a-auto-pop-package-ledger-net-repair-4455-$d"],
+            ['td076-r2-history-pins-20261006', "standing-a-auto-pop-package-ledger-net-repair-4455-$d"],
+            ['td076-r2-history-pins-20261006', 'standing-a-auto-pop-td076-occurrence-repairs-ABCDEF012345'],
+            ['td076-r2-history-pins-20261006', "standing-a-auto-pop-td076-occurrence-repairs-$d\n"],
             ['td076-r2-history-pins-20261006', "Standing-A-Auto-pop-td076-occurrence-repairs-$d"],
         ];
         preg_match_all('/^  ([a-z0-9-]+):\s*$/m', (string) file_get_contents($path), $ids);
         self::assertGreaterThan(10, count($ids[1]));
-        foreach (array_diff($ids[1], ['package-ledger-net-repair-4455', 'td076-r2-history-pins-20261006']) as $id) {
-            $refused[] = [$id, "standing-a-auto-pop-package-ledger-net-repair-4455-$d"]; // founder-scoped or not
+        foreach (array_diff($ids[1], ['td076-r2-history-pins-20261006']) as $id) {
+            $refused[] = [$id, "standing-a-auto-pop-td076-occurrence-repairs-$d"]; // founder-scoped or not
         }
         foreach ($refused as [$id, $reference]) {
             $thrown = false; // not self::fail() in the try: PHPUnit's own failure is a RuntimeException too
