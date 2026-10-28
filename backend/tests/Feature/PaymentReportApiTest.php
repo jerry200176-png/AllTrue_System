@@ -2100,6 +2100,42 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('confirmed', $report->fresh()->status);
     }
 
+    public function test_void_undoes_a_receipt_whose_bill_was_corrected_and_voided(): void
+    {
+        // In-app #436: 更正並作廢 reversed the bill's money but left the receipt confirmed and impossible to undo.
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8800, 'PayDate' => '2026-04-10']);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -8800, 'PaidAt' => '2026-04-20', 'Method' => 'void', 'Note' => '帳單例外沖銷作廢：重複帳單']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'transfer',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-after-exception-void'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '帳單已更正作廢',
+        ])->assertOk();
+
+        $this->assertSame('voided', $report->fresh()->status);
+        // The bill's money was already reversed once; no second reversal.
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->where('Method', 'void')->count());
+        $this->assertSame('void', $invoice->fresh()->Status);
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+    }
+
     public function test_void_refuses_missing_invoice_when_invoice_id_is_set(): void
     {
         $token = $this->createDirectorToken([1]);

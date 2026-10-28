@@ -1583,19 +1583,29 @@ class PaymentReportController extends Controller
 
             $invoiceId = $report->getAttribute('InvoiceID');
             $invoice = null;
+            $alreadyReversed = false;
             // Strict non-null: InvoiceID=0 must not take the legacy null path (truthy check would).
             if ($invoiceId !== null) {
                 $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
                 if (!$invoice
-                    || (string) $invoice->Status === 'void'
                     || (int) $invoice->StudentClassID !== (int) $sc->ID
                     || (int) $invoice->StudentID !== $reportStudentId) {
                     return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
                 }
-                $invoice->payments()->lockForUpdate()->get();
+                $payments = $invoice->payments()->lockForUpdate()->get();
+                if ((string) $invoice->Status === 'void') {
+                    // In-app #436: 更正並作廢 voided the bill and reversed all of its money but left this receipt
+                    // confirmed. Undo the receipt alone; a second reversal would take the money back twice.
+                    // A void bill that still holds money stays refused (Invoice::netPaidSql rule).
+                    $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
+                    if ($net > 0) {
+                        return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+                    }
+                    $alreadyReversed = true;
+                }
             }
 
-            if ($invoice) {
+            if ($invoice && !$alreadyReversed) {
                 Payment::create([
                     'InvoiceID'         => $invoice->id,
                     'Amount'            => -$originalAmount,
@@ -1615,8 +1625,9 @@ class PaymentReportController extends Controller
 
             $scPaid = 0;
             // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
+            // A reversed void bill (#436) clears it too: the resolver would read the stale flag itself as paid.
             // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
-            if ($invoice && $this->courseResolvedPaid($sc)) {
+            if ($invoice && !$alreadyReversed && $this->courseResolvedPaid($sc)) {
                 $scPaid = (int) $sc->Paid;
             } else {
                 $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];

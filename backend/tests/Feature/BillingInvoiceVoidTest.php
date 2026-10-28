@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -310,6 +311,44 @@ class BillingInvoiceVoidTest extends TestCase
         $res->assertOk()
             ->assertJsonPath('invoices.0.can_direct_void', false)
             ->assertJsonPath('invoices.0.can_exception_void', true);
+    }
+
+    public function test_exception_void_waits_until_a_confirmed_receipt_is_undone(): void
+    {
+        // In-app #436: voiding the bill first left its receipt confirmed, still counted and impossible to undo.
+        $token = $this->createToken('A', [1]);
+        [$student, $course, $invoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'paid',
+            'PaidAmount' => 13200,
+            'TotalAmount' => 13200,
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 13200,
+            'PaidAt' => '2026-04-27 12:00:00',
+            'Method' => 'transfer',
+        ]);
+        PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'transfer',
+            'reported_amount' => 13200, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'exception-void-confirmed-receipt'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}")
+            ->assertOk()
+            ->assertJsonPath('invoices.0.can_exception_void', false);
+        $this->withHeaders($headers)->postJson("/api/v1/invoices/{$invoice->id}/exception-void", [
+            'reason' => '帳單開錯要重開',
+        ])->assertStatus(422)->assertJsonPath('code', 'confirmed_receipt_on_invoice');
+
+        $this->assertSame('paid', $invoice->fresh()->Status);
+        $this->assertSame(0, Payment::where('InvoiceID', $invoice->id)->where('Method', 'void')->count());
     }
 
     public function test_teacher_cannot_void_invoice(): void

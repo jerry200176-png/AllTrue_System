@@ -6,6 +6,7 @@ use App\Models\Campus;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingPeriodInvoiceExists;
@@ -429,6 +430,14 @@ class BillingController extends Controller
 
             if ($status === 'void') {
                 return response()->json(['message' => '此帳單已作廢。'], 422);
+            }
+
+            // In-app #436: voiding the bill under a confirmed receipt left the receipt counted and impossible to undo.
+            if (PaymentReport::query()->where('InvoiceID', $invoice->id)->where('status', 'confirmed')->exists()) {
+                return response()->json([
+                    'message' => '這張帳單還有已確認的收據，請先在收款紀錄撤銷收據，再作廢帳單。',
+                    'code' => 'confirmed_receipt_on_invoice',
+                ], 422);
             }
 
             $payments = Payment::where('InvoiceID', $invoice->id)
