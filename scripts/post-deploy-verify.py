@@ -422,6 +422,8 @@ def watch(args, sentry=None, check=None, count=None, sleep=time.sleep, clock=tim
             now = wall()
             current = count(sentry, wall_start, now)
             reason = sentry_spike(baseline, baseline_minutes, current, (now - wall_start) / 60.0, args.spike)
+            if reason and any(recent):  # health is failing too: a health breach (rollback), not Sentry-only (hold)
+                return f"{sum(recent)} of the last {len(recent)} health/identity checks failed and {reason}"
             if reason:
                 return reason
             if current is not None:

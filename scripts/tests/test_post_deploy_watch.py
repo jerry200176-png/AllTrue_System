@@ -163,6 +163,15 @@ class WatchLoopTest(unittest.TestCase):
         self.assertEqual(60 * 60, end - start)
         self.assertEqual(1_800_000_000.0 - 15 * 60, end)
 
+    def test_a_sentry_spike_with_failing_health_is_not_sentry_only(self):
+        # Security review on #4560: only a pure Sentry breach may hold instead of rolling back.
+        def counts(start, end, clock):
+            return 6 if end < clock.wall_now - 60 else 50
+        breach, _, _, _ = run_watch(watch_args(), [["blip"], []], sentry={"token": "t"}, counts=counts)
+        self.assertIsNotNone(breach)
+        self.assertFalse(breach.startswith("Sentry "))
+        self.assertIn("health/identity checks failed and Sentry errors 50", breach)
+
     def test_baseline_window_follows_the_arguments(self):
         _, calls, _, _ = run_watch(watch_args(sentry_baseline_minutes=30, sentry_baseline_gap_minutes=5), [[]],
                                    sentry={"token": "t"}, counts=lambda s, e, c: 0)
