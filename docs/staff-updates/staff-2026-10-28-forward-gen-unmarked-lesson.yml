@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 買 8 堂不再被自動多排第 9 堂
+    title: 買八堂不再被自動多排第九堂
     summary: 最後一堂還沒點名時，系統不再自動多排一堂；堂數用完的歷史課程不再顯示「恢復課程」。
     items:
       - category: fixed
