@@ -140,6 +140,13 @@ class ProfileController extends Controller
         // Pre-load branch assignments for all users
         $allCampusRows = DB::table('UserCampus')->get()->groupBy('UserID');
 
+        // The same grant predicate used for account writes, fetched once for the returned teachers.
+        $grantHolders = function ($users) use ($role) {
+            if ($role === 'super_admin') return [];
+            $ids = $users->where('type', 'T')->pluck('id')->map(fn ($id) => (int) $id)->all();
+            return array_fill_keys(app(StaffCapabilityAuthorizer::class)->directorGrantHolderIds($ids), true);
+        };
+
         $buildTeacherExtras = function ($userCollection) {
             $userIds = $userCollection->pluck('id')->all();
             $teacherIds = $userCollection->where('type', 'T')->pluck('id')->all();
@@ -196,6 +203,7 @@ class ProfileController extends Controller
             $user = $query->first();
             if (!$user) return response()->json(['error' => ['message' => 'Not found']], 404);
             $teacherExtras = $buildTeacherExtras(collect([$user]));
+            $holders = $grantHolders(collect([$user]));
             $allCampusRowsForSingle = DB::table('UserCampus')->get()->groupBy('UserID');
             $out = [
                 'id'              => $user->id,
@@ -219,6 +227,7 @@ class ProfileController extends Controller
                 $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
                 $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
             }
+            $out += $this->directorGrantManagementHint($request, $user, $holders);
             return response()->json(self::redactTeacherPii($out, $pinUnlocked));
         }
 
@@ -265,7 +274,8 @@ class ProfileController extends Controller
         if ($perPage === 'all') {
             $users = $query->get();
             $teacherExtras = $buildTeacherExtras($users);
-            $users->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked, $reviewScope, $request) {
+            $holders = $grantHolders($users);
+            $users->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked, $reviewScope, $request, $holders) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
@@ -289,12 +299,13 @@ class ProfileController extends Controller
                     $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
                     $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
                 }
-                return self::redactTeacherPii($out, $pinUnlocked);
+                return self::redactTeacherPii($out + $this->directorGrantManagementHint($request, $user, $holders), $pinUnlocked);
             });
         } else {
             $users = $query->paginate(min((int) ($perPage ?? 50), 200));
             $teacherExtras = $buildTeacherExtras($users->getCollection());
-            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked, $reviewScope, $request) {
+            $holders = $grantHolders(collect($users->items()));
+            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked, $reviewScope, $request, $holders) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
@@ -318,7 +329,7 @@ class ProfileController extends Controller
                     $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
                     $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
                 }
-                return self::redactTeacherPii($out, $pinUnlocked);
+                return self::redactTeacherPii($out + $this->directorGrantManagementHint($request, $user, $holders), $pinUnlocked);
             });
         }
 
@@ -1293,6 +1304,24 @@ class ProfileController extends Controller
         $caller = $request->attributes->get('auth_user');
 
         return $caller !== null && (int) $caller->id === $userId;
+    }
+
+    private function directorGrantBlocksManagement(Request $request, int $userId, array $holders): bool
+    {
+        if ((string) ($request->attributes->get('auth_role') ?? '') === 'super_admin') return false;
+        $authUser = $request->attributes->get('auth_user');
+        if (is_object($authUser) && (int) ($authUser->id ?? 0) === $userId) return false;
+
+        return isset($holders[$userId]);
+    }
+
+    private function directorGrantManagementHint(Request $request, $user, array $holders): array
+    {
+        $blocked = (string) $user->type === 'T' && $this->directorGrantBlocksManagement($request, (int) $user->id, $holders);
+        return [
+            'profile_management_blocked_by_director_grant' => $blocked,
+            'profile_management_block_reason' => $blocked ? 'director_grant_holder' : null,
+        ];
     }
 
     private function canManageTeacher(Request $request, int $teacherUserId): bool

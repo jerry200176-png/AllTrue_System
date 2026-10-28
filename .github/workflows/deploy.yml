@@ -1775,6 +1775,37 @@ jobs:
             echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Read-only GitHub token for the in-app resolve evidence (#4565), from the production-ssh secret
+      # POP_INAPP_GITHUB_TOKEN: sent over stdin (never argv, never printed) to storage/app/private, which
+      # deploy-storage-perms.sh never widens; mode 640 with the storage group, so the web worker can read it
+      # where it can write storage. No secret removes the file (back to anonymous reads, 60 calls an hour).
+      # Runs only after production is verified, and never fails the deploy job: the resolve evidence
+      # itself requires that job to succeed.
+      - name: Install the POP GitHub read token
+        continue-on-error: true
+        env:
+          DEPLOY_PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          DEPLOY_PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          POP_GITHUB_READ_TOKEN: ${{ secrets.POP_INAPP_GITHUB_TOKEN }}
+        run: |
+          pi() { ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            "${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" "set -eu; d=/home/admin/backend/storage/app/private; f=\"\$d/pop-github-read-token\"; $1"; }
+          if [ -z "$POP_GITHUB_READ_TOKEN" ]; then
+            pi 'rm -f "$f"'
+            echo "no POP_INAPP_GITHUB_TOKEN: token file removed"
+            exit 0
+          fi
+          if ! [[ "$POP_GITHUB_READ_TOKEN" =~ ^[A-Za-z0-9_]{20,255}$ ]]; then
+            echo "::warning::POP_INAPP_GITHUB_TOKEN is not a GitHub token; not installed"
+            exit 1
+          fi
+          printf '%s' "$POP_GITHUB_READ_TOKEN" | pi '
+            test ! -L "$d"; test ! -L "$f"
+            t="$(umask 077 && mktemp "$d/.pop-github-read-token.XXXXXX")"; cat > "$t"
+            chgrp "$(stat -c %g /home/admin/backend/storage)" "$t" 2>/dev/null && chmod 640 "$t"
+            mv -f "$t" "$f"'
+          echo "POP GitHub read token installed"
+
       - name: Summarize production verification failure
         if: ${{ failure() && steps.deploy.outcome != 'skipped' }}
         env:
