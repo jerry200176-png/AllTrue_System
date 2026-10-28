@@ -238,6 +238,7 @@ export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對：舊資料標記已收�
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
 // Founder GO 2026-10-21: on the ledger card the director gets the next step, not a dead-end label.
 export const LEGACY_FLAG_ACTION_HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
+export const LEGACY_CONFIRMED_REPORT_HELP = '這門課已有確認過的收款回報，請先在學生帳務的「收款紀錄」核對。';
 // The ledger shortcut and card must use the same existing backfill eligibility.
 export const canResolveLegacyPaidFlag = (course, {
   legacyUnverified, canResolveLegacy, isMonthly, waived, pendingReport, sharedFollower,

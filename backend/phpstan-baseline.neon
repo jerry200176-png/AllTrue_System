@@ -550,18 +550,6 @@ parameters:
 			path: app/Services/EnrollmentService.php
 
 		-
-			message: '#^Offset ''count'' on array\{count\: int, students\: array\<int, string\>\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Services/ExceptionWorkflowCandidateGenerator.php
-
-		-
-			message: '#^Offset ''students'' on array\{count\: int, students\: array\<int, string\>\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Services/ExceptionWorkflowCandidateGenerator.php
-
-		-
 			message: '#^Parameter \#1 \$array \(array\{0\: ''老師此時段尚有容量''\|''老師此時段無其他學生'', 1\?\: non\-falsy\-string\}\) of array_values is already a list, call has no effect\.$#'
 			identifier: arrayValues.list
 			count: 1

@@ -2082,6 +2082,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             harness = textwrap.dedent(r"""
                 set -uo pipefail
                 MIGRATION_RAN=0
+                PDV=fixture PREV_COMMIT=fixture TARGET_SHA=fixture
+                # This legacy harness tests backup/migrate outcomes, not range parsing.
+                # The new focused sandbox exercises the real parser against real Git ranges.
+                python3() { printf '1\n'; }
                 abort_deploy() { echo "abort" >> "$TRACE"; exit 1; }
                 mysqldump() { printf '%s\n' "$BACKUP_OUTPUT"; }
                 php() {
@@ -2779,7 +2783,9 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         self.assertEqual(self.pdv.RC_HELD_MIGRATION, rc)
         self.assertIn('--migration-ran "$MIG_HARD$MIGRATION_RAN"', self.workflow)
         self.assertIn('[ -n "$MIG_HARD" ]', self.workflow)
-        self.assertIn('pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" = 1 ] || MIG_HARD=hard', self.workflow)
+        rejection = self.workflow.split('pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" != 1 ]; then', 1)[1].split('  fi', 1)[0]
+        self.assertIn('abort_deploy "Pending migration is outside the reviewed range', rejection)
+        self.assertLess(self.workflow.index(rejection), self.workflow.index('BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_'))
 
     def test_abort_asks_the_captured_verifier_whether_the_range_is_additive(self):
         abort = self.workflow.split("abort_deploy() {", 1)[1].split("\n          }", 1)[0]

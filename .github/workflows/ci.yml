@@ -53,6 +53,24 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Record actual runner core rate limit
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 15s gh api /rate_limit --jq '.resources.core | {limit, remaining, used, reset}' > "$RUNNER_TEMP/metadata-core-rate.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from scripts.governance.gh_conditional_transport import core_rate_evidence
+          evidence = core_rate_evidence(json.loads((Path(os.environ["RUNNER_TEMP"]) / "metadata-core-rate.json").read_text()))
+          print(f"::notice title=Actual Actions caller quota::core_limit={evidence['limit']} remaining={evidence['remaining']} used={evidence['used']} reset={evidence['reset']}; caller=GITHUB_TOKEN; not a full-history benchmark")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("Actual Actions GITHUB_TOKEN core quota: " + json.dumps(evidence) + "\n")
+          PY
+
       - name: Validate GitHub Actions workflows with pinned actionlint
         run: |
           # Full-repository parser/expression lint is bounded and does not invoke
@@ -99,6 +117,7 @@ jobs:
           python3 -m unittest scripts.tests.test_monitor_alert_notify
           python3 -m unittest scripts.tests.test_autonomous_convergence
           python3 -m unittest scripts.tests.test_deploy_activation_state.GhApiRetryTest
+          python3 -m unittest scripts.tests.test_gh_conditional_transport
           # #4207: keep calendar-course-acceptance workflow_run names coupled to deploy.yml
           python3 -m unittest scripts.tests.test_deploy_activation_state.DeployActivationWorkflowContractTest.test_calendar_course_acceptance_listens_for_deploy_run_identities
           python3 scripts/tests/test_required_php_checks.py
@@ -183,6 +202,8 @@ jobs:
             ui_foundation:
               - 'frontend/src/components/design-system/**'
               - 'frontend/src/pages/NotificationsCenter.vue'
+              - 'frontend/src/pages/DirectorAccountsPage.vue'
+              - 'frontend/e2e/director-accounts-clarity.spec.js'
               - 'frontend/src/pages/StudentsList.vue'
               # axe gate dependency (Dependabot bumps of @axe-core/playwright)
               - 'frontend/package.json'
