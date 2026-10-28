@@ -2418,6 +2418,23 @@ class R3AutoActivationTest(unittest.TestCase):
                               "steps": [{"name": "Deploy", "conclusion": "failure"}]}]}
         self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
 
+    def test_a_failed_deploy_freezes_while_its_run_is_still_open(self):
+        # #4560 review: the incident job keeps the failed run in progress after the executor slot is released.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                if "status=completed" in path:
+                    return {"workflow_runs": [{"id": 10}]}
+                return {"workflow_runs": [{"id": 30, "status": "in_progress"}, {"id": 10}]}
+            if "/runs/30/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                                  "steps": [{"name": "Deploy", "conclusion": "failure"}]},
+                                 {"name": "Record failed deploy", "status": "queued", "conclusion": None}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+        self.assertIn("run 30", deploy_freeze_reason(repo="o/r", api=api))
+
     def test_a_job_that_failed_before_the_executor_step_does_not_freeze(self):
         # #4560 review F1: a stale-target refusal or GO recheck fails the job with the Deploy step skipped.
         def api(path, *extra):

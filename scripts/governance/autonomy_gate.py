@@ -1350,7 +1350,8 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
     # The newest *deploy job* by completion time decides, not run order: an older run can be re-run later.
     latest = None
     for page in range(1, _FREEZE_LOOKBACK_PAGES + 1):
-        runs = (api(f"/repos/{repo}/actions/workflows/deploy.yml/runs?status=completed&per_page=100&page={page}")
+        # Every status: a failed deploy job decides while its incident job still keeps the run open (#4560 review).
+        runs = (api(f"/repos/{repo}/actions/workflows/deploy.yml/runs?per_page=100&page={page}")
                 or {}).get("workflow_runs") or []
         for run in runs:
             # A run last updated before the newest deploy found cannot hold a later one (re-runs bump updated_at).
