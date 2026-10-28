@@ -7,6 +7,8 @@
  * the existing calendar action 「改到其他合約」.
  *
  * Run only by .github/workflows/forward-overdeduct-probe.yml from main, the same way as inapp-package-ledger-probe.php:
+ * The ledger net uses the same sources as SessionDeductionService; the generator note may carry appended audit
+ * suffixes (e.g. '; revert-to-scheduled'), so it is matched as a prefix.
  * READ ONLY session, one rolled-back transaction, SELECTs only (ForwardOverdeductProbeTest asserts this). Output is ids,
  * counts and statuses: never names, amounts or notes (public repo, #3605).
  */
@@ -23,15 +25,15 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
         . '   WHERE n.StudentID = sc.StudentID AND n.SubjectID = sc.SubjectID AND n.ID > sc.ID) AS later_course_ids'
         . ' FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID'
         . ' JOIN (SELECT student_class_id, SUM(CASE WHEN event_type = \'deduct\' THEN 1 WHEN event_type = \'reverse\' THEN -1 ELSE 0 END) AS net'
-        . "   FROM session_deduction_ledger WHERE source IN ('attendance', 'retro_leave', 'status_adjust') GROUP BY student_class_id) l"
-        . '   ON l.student_class_id = sc.ID'
+        . "   FROM session_deduction_ledger WHERE source IN ('attendance', 'retro_leave', 'status_adjust', 'duplicate_session')"
+        . ' GROUP BY student_class_id) l ON l.student_class_id = sc.ID'
         . ' JOIN (SELECT StudentClassID, GROUP_CONCAT(id ORDER BY SessionDate, id SEPARATOR \',\') AS ids,'
         . '   GROUP_CONCAT(LOWER(Status) ORDER BY SessionDate, id SEPARATOR \',\') AS statuses'
-        . '   FROM ClassSession WHERE Note = ? GROUP BY StudentClassID) g ON g.StudentClassID = sc.ID'
+        . '   FROM ClassSession WHERE Note LIKE ? GROUP BY StudentClassID) g ON g.StudentClassID = sc.ID'
         . " WHERE LOWER(sc.ScheduleMode) = 'count' AND sc.SessionCount > 0 AND l.net > sc.SessionCount"
         . ' AND (? = 0 OR s.CampusID = ?)'
         . ' ORDER BY s.CampusID, sc.ID LIMIT 200',
-        ['系統向前生成 #1062', $campusId, $campusId]
+        ['系統向前生成 #1062%', $campusId, $campusId]
     );
     $courses = array_map(fn ($row) => (array) $row, $rows);
     $byCampus = [];

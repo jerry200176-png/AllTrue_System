@@ -55,6 +55,17 @@ class ForwardOverdeductProbeTest extends TestCase
         $manual = $this->course($this->student(17), 1);
         $this->deduct($manual, $this->lesson($manual, '2026-09-19'));
         $this->deduct($manual, $this->lesson($manual, '2026-09-26'));
+        // Review r1: a duplicate-session reversal already brought the net back to the quota.
+        $dupFixed = $this->course($this->student(17), 1);
+        $dup = $this->lesson($dupFixed, '2026-09-19');
+        $this->deduct($dupFixed, $dup);
+        $this->deduct($dupFixed, $this->lesson($dupFixed, '2026-09-26', '系統向前生成 #1062'));
+        $this->deduct($dupFixed, $dup, 'reverse', 'duplicate_session');
+        // Review r2: an attendance correction appends a suffix to the generator note.
+        $suffixed = $this->course($this->student(17), 1);
+        $this->deduct($suffixed, $this->lesson($suffixed, '2026-09-19'));
+        $suffixedExtra = $this->lesson($suffixed, '2026-09-26', '系統向前生成 #1062; revert-to-scheduled');
+        $this->deduct($suffixed, $suffixedExtra);
         $elsewhere = $this->course($this->student(9), 1);
         $this->deduct($elsewhere, $this->lesson($elsewhere, '2026-09-19'));
         $this->deduct($elsewhere, $this->lesson($elsewhere, '2026-09-26', '系統向前生成 #1062'));
@@ -69,9 +80,10 @@ class ForwardOverdeductProbeTest extends TestCase
             'class_id' => $over->ID, 'campus_id' => 17, 'session_count' => 2, 'used_sessions' => 0, 'ledger_used' => 3,
             'generated_session_ids' => (string) $extra->id, 'generated_statuses' => 'attended', 'later_course_ids' => (string) $renewal->ID,
         ], $out['courses'][0]);
-        $this->assertCount(1, $out['courses']);
-        $this->assertSame(['courses' => 1, 'extra_deducts' => 1, 'by_campus' => [17 => 1], 'list_capped' => false], $out['summary']);
-        $this->assertSame([9 => 1, 17 => 1], forward_overdeduct_probe(DB::connection(), 0)['summary']['by_campus'], '0 scans every campus');
+        $this->assertSame([(int) $over->ID, (int) $suffixed->ID], array_map(fn (array $c): int => (int) $c['class_id'], $out['courses']));
+        $this->assertEquals($suffixedExtra->id, $out['courses'][1]['generated_session_ids']);
+        $this->assertSame(['courses' => 2, 'extra_deducts' => 2, 'by_campus' => [17 => 2], 'list_capped' => false], $out['summary']);
+        $this->assertSame([9 => 1, 17 => 2], forward_overdeduct_probe(DB::connection(), 0)['summary']['by_campus'], '0 scans every campus');
         foreach ($out['courses'] as $row) {
             $this->assertSame(self::COURSE_KEYS, array_keys($row));
         }
@@ -131,10 +143,10 @@ class ForwardOverdeductProbeTest extends TestCase
         return ClassSession::query()->findOrFail($id);
     }
 
-    private function deduct(StudentClass $course, ClassSession $lesson, string $event = 'deduct'): void
+    private function deduct(StudentClass $course, ClassSession $lesson, string $event = 'deduct', string $source = 'attendance'): void
     {
         DB::table('session_deduction_ledger')->insert([
-            'student_class_id' => $course->ID, 'class_session_id' => $lesson->id, 'event_type' => $event, 'source' => 'attendance',
+            'student_class_id' => $course->ID, 'class_session_id' => $lesson->id, 'event_type' => $event, 'source' => $source,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
