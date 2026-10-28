@@ -14,7 +14,7 @@ const noLock = { run: (_course, fn) => fn(), isPending: () => false };
 // (resolves true when chosen) and `openRenewal` opens the page's existing renewal entry.
 export function useCoursePause({ onChanged, notify = (msg) => alert(msg), courseLock = noLock }) {
   // Read from the same argument so the #4159 signature line stays as merged.
-  const { askClosed = null, openRenewal = null } = arguments[0] || {};
+  const { askClosed = null, openRenewal = null, isSuperAdmin = () => false, askReason = (msg) => window.prompt(msg) } = arguments[0] || {};
   const target = ref(null);
   const submitting = ref(false);
   const cancelRemaining = ref(true);
@@ -32,6 +32,11 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
     if (course?.closed_reason === 'converted_trial') { notify(CONVERTED_TRIAL_RESUME_MESSAGE); return; }
     // Waived (確認不收) is terminal: no renewal offer; same wording as the server's refusal.
     if (course?.closed_reason === 'waived') { notify('此合約已確認不收，不能恢復或變更狀態'); return; }
+    // Founder 2026-10-28: a super admin may undo a mistaken close, with a reason (server audits it).
+    if (isSuperAdmin()) {
+      const reason = String(askReason('這門課已經結案。超級管理員可以「復原結案」（會留下稽核紀錄）；要改用續課請按取消。\n請輸入復原原因：') || '').trim();
+      if (reason) { await courseLock.run(course, () => send(course, reason)); return; }
+    }
     if (!askClosed || !openRenewal) { notify(CLOSED_COURSE_RESUME_MESSAGE); return; }
     const goRenew = await askClosed({
       title: '這門課已經結案', message: CLOSED_COURSE_RESUME_MESSAGE, confirmLabel: '前往續課', cancelLabel: '關閉',
@@ -55,8 +60,8 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
     await courseLock.run(course, () => send(course));
   }
 
-  async function send(course) {
-    const paused = course.status === 'inactive';
+  async function send(course, reopenReason = '') {
+    const paused = course.status === 'inactive' || !!reopenReason;
     const action = paused ? '恢復' : '暫停';
     submitting.value = true;
     try {
@@ -65,6 +70,7 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
 
       const body = { action: paused ? 'resume' : 'pause' };
       if (!paused) body.cancel_remaining = !!cancelRemaining.value;
+      if (reopenReason) body.reopen_reason = reopenReason;
 
       const res = await authedFetch(`/api/v1/student-classes/${course.id}/pause`, {
         method: 'POST',
@@ -73,7 +79,7 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
         body: JSON.stringify(body),
       }, token);
       const json = await res.json().catch(() => ({}));
-      if (!res.ok && json.error_code === 'course_closed_use_renewal') {
+      if (!res.ok && json.error_code === 'course_closed_use_renewal' && !reopenReason) {
         // The list was stale: the course closed elsewhere. Explain it with the server's close reason
         // (a trial converted elsewhere must not be sent back to conversion), then reload.
         target.value = null;

@@ -6676,6 +6676,7 @@ class StudentClassController extends Controller
         $reason = $request->input('reason'); // 'completed' or null
         $cancelRemaining = $request->boolean('cancel_remaining', true);
         $forfeitRemaining = $request->boolean('forfeit_remaining', false);
+        $reopenReason = trim((string) $request->input('reopen_reason', ''));
 
         // #4188: only the supported close reasons may skip the committed-close guard below; any other
         // value would fall through to a plain pause and clear closed_reason.
@@ -6789,13 +6790,27 @@ class StudentClassController extends Controller
                 }
                 // #4188: never reopen a committed close in place; continuing is 續課 (a new period),
                 // a mistaken close is reported to an admin. Past lessons, payments and the close stay as they are.
-                if ($this->courseCloseCommitted($sc)) {
+                // Founder 2026-10-28: a mistaken close is undone by a super admin only, with a reason, audited.
+                $closedReason = (string) ($sc->getAttribute('closed_reason') ?? '');
+                $superAdminReopen = $request->attributes->get('auth_role') === 'super_admin'
+                    && $reopenReason !== '' && mb_strlen($reopenReason) <= 500
+                    && !in_array($closedReason, ['waived', 'converted_trial'], true);
+                if ($this->courseCloseCommitted($sc) && !$superAdminReopen) {
                     DB::rollBack();
                     return response()->json([
                         'message' => '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請用「回報問題」通知系統管理員處理。過去的上課、繳費與結案紀錄都會保留。',
                         'error_code' => 'course_closed_use_renewal',
                         'closed_reason' => $sc->getAttribute('closed_reason'),
                     ], 409);
+                }
+                if ($this->courseCloseCommitted($sc)) {
+                    SecurityAuditEvent::append('student_class.close_reopened', 'success', [
+                        'actor_type' => 'user',
+                        'actor_id' => $request->attributes->get('auth_user')?->id,
+                        'subject_type' => 'student_class',
+                        'subject_id' => $sc->getKey(),
+                        'campus_id' => (int) (optional($sc->student)->CampusID ?: 0) ?: null,
+                    ], ['previous_closed_reason' => $closedReason, 'reason_hash' => sha1($reopenReason)], true);
                 }
                 $sc->setAttribute('Stop', 0);
                 $sc->closed_reason = null;

@@ -169,6 +169,49 @@ class StudentClassPauseCloseGuardTest extends TestCase
     }
 
     /** @return array{0: string, 1: StudentClass} */
+    /** Founder 2026-10-28: only a super admin undoes a mistaken close, with a reason; audited. */
+    public function test_super_admin_reopens_a_committed_close_with_a_reason(): void
+    {
+        [$director, $course] = $this->fixture();
+        $this->close($director, $course)->assertOk();
+        $this->assertSame('settled', $course->fresh()->closed_reason);
+        // A director keeps the 續課 answer, even with a reason.
+        $this->lifecycle($director, $course, ['action' => 'resume', 'reopen_reason' => '按錯結案'])->assertStatus(409)
+            ->assertJsonPath('error_code', 'course_closed_use_renewal');
+        $admin = $this->createSuperAdminToken();
+        // A super admin without a reason is refused too.
+        $this->lifecycle($admin, $course, ['action' => 'resume'])->assertStatus(409);
+        $this->lifecycle($admin, $course, ['action' => 'resume', 'reopen_reason' => '主任按錯結案'])->assertOk();
+        $fresh = $course->fresh();
+        $this->assertSame(0, (int) $fresh->Stop);
+        $this->assertNull($fresh->closed_reason);
+        $this->assertSame(1, \Illuminate\Support\Facades\DB::table('security_audit_events')
+            ->where('event_type', 'student_class.close_reopened')->count());
+    }
+
+    public function test_super_admin_cannot_reopen_a_waived_or_converted_close(): void
+    {
+        $admin = $this->createSuperAdminToken();
+        foreach (['waived', 'converted_trial'] as $closed) {
+            [, $course] = $this->fixture(['Stop' => 1, 'closed_reason' => $closed]);
+            // waived is settlement-locked (422); converted_trial keeps the 續課 answer (409).
+            $this->assertContains($this->lifecycle($admin, $course, ['action' => 'resume', 'reopen_reason' => '測試'])->status(), [409, 422]);
+            $this->assertSame($closed, $course->fresh()->closed_reason);
+        }
+    }
+
+    private function createSuperAdminToken(): string
+    {
+        $user = User::create([
+            'LoginName' => 'pause-guard-sa-' . uniqid() . '@example.com', 'Name' => '超級管理員',
+            'PSW' => 'secret', 'type' => 'S', 'phone' => '0900000001',
+        ]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+
+        return $token;
+    }
+
     private function fixture(array $overrides = []): array
     {
         $campus = Campus::factory()->create();

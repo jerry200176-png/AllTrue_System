@@ -212,6 +212,30 @@ describe('useCoursePause on a closed course', () => {
     expect(authedFetch).not.toHaveBeenCalled();
   });
 
+  it('a super admin with a reason reopens the close (Founder 2026-10-28); without one gets the 續課 answer', async () => {
+    authedFetch.mockResolvedValueOnce(res(true, { message: '課程已恢復，可重新排課。' }));
+    const askClosed = vi.fn(async () => false);
+    const p = useCoursePause({ onChanged, notify, askClosed, openRenewal: vi.fn(), isSuperAdmin: () => true, askReason: () => ' 主任按錯 ' });
+    await p.request(closed);
+    expect(JSON.parse(authedFetch.mock.calls[0][1].body)).toEqual({ action: 'resume', reopen_reason: '主任按錯' });
+    expect(askClosed).not.toHaveBeenCalled();
+    expect(onChanged).toHaveBeenCalled();
+
+    authedFetch.mockReset();
+    const q = useCoursePause({ onChanged, notify, askClosed, openRenewal: vi.fn(), isSuperAdmin: () => true, askReason: () => null });
+    await q.request(closed);
+    expect(authedFetch).not.toHaveBeenCalled();
+    expect(askClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it('a director is never asked for a reopen reason', async () => {
+    const askReason = vi.fn(() => 'x');
+    const p = useCoursePause({ onChanged, notify, askClosed: vi.fn(async () => false), openRenewal: vi.fn(), askReason });
+    await p.request(closed);
+    expect(askReason).not.toHaveBeenCalled();
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+
   it('closing the message opens nothing', async () => {
     const openRenewal = vi.fn();
     const askClosed = vi.fn(async () => false);
