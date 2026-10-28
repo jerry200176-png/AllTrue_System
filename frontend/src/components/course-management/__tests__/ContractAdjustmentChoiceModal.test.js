@@ -70,7 +70,7 @@ describe('ContractAmendmentModal', () => {
   it('requires a preview before confirming and shows the independent no-target flow', async () => {
     const wrapper = mount(ContractAmendmentModal, { props: { show: true, course } });
     expect(wrapper.text()).toContain('不需要目標課程');
-    expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('button.at-submit').attributes('disabled')).toBeDefined();
 
     await wrapper.find('#amendment-new-count').setValue(3);
     await wrapper.find('button.secondary').trigger('click');
@@ -126,10 +126,10 @@ describe('ContractAmendmentRevertModal', () => {
     expect(wrapper.text()).toContain('7 堂');
     expect(wrapper.text()).toContain('8 堂');
     expect(wrapper.text()).toContain('尚未排課');
-    expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('button.at-submit').attributes('disabled')).toBeDefined();
 
     await wrapper.find('#revert-reason').setValue('主任誤操作');
-    await wrapper.find('button.primary').trigger('click');
+    await wrapper.find('button.at-submit').trigger('click');
     expect(wrapper.emitted('submit')).toEqual([['主任誤操作']]);
   });
 });

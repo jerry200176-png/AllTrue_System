@@ -131,4 +131,34 @@ describe('AtSubmitButton', () => {
     expect(w.element.tagName).toBe('BUTTON');
     expect(w.classes()).toEqual(expect.arrayContaining(['at-btn', 'at-submit', 'page-cta']));
   });
+
+  it('parent-owned saving: shows pending from the prop and blocks clicks and form submits while pending', async () => {
+    const onClick = vi.fn();
+    const onSubmit = vi.fn((e) => e.preventDefault());
+    const host = {
+      components: { AtSubmitButton },
+      props: ['pending'],
+      setup: () => ({ onClick, onSubmit }),
+      template: '<form @submit="onSubmit"><AtSubmitButton type="submit" :pending="pending" pending-text="送出中…" @click="onClick">確認</AtSubmitButton></form>',
+    };
+    const w = mount(host, { props: { pending: false }, attachTo: document.body });
+    const button = w.find('button');
+    expect(activeFace(w)).toBe('確認');
+    expect(w.text()).not.toContain('已完成');
+    button.element.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await w.setProps({ pending: true });
+    expect(button.attributes('aria-busy')).toBe('true');
+    expect(activeFace(w)).toContain('送出中…');
+    button.element.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await w.setProps({ pending: false });
+    expect(activeFace(w)).toBe('確認');
+    expect(button.attributes('aria-busy')).toBeUndefined();
+    w.unmount();
+  });
 });

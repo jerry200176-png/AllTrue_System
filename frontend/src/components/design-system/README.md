@@ -46,6 +46,7 @@
 - `action` 是「動作層級」的：同一個函式同時只會跑一次，第二顆按鈕或切分頁後重新掛載的按鈕會接上同一次送出並顯示處理中（請傳 setup 裡的固定函式，不要傳 inline arrow）。
 - `action` **伺服器確認成功才 `return true`**；`return false` 顯示錯誤面；拋例外也顯示錯誤面；其他回傳值直接回 idle，不宣稱成功。詳細錯誤訊息仍由頁面顯示，輸入不清空。
 - 送出後會關閉的 modal 看不到成功面，仍有 pending 與錯誤面；成功提示照舊用頁面訊息。
+- **父層持有送出狀態**（modal 只 emit、由父層 composable 寫入）：不傳 `action`，改 `:pending="submitting" @click="$emit('submit')"`。只用 pending 面（轉圈、`aria-busy`、寬度不跳、pending 時點擊與 form submit 都被擋）；成功由父層關閉 modal，錯誤由 modal 自己的訊息顯示。`:disabled` 只放「還不能送」的條件，不要再放 `submitting`。
 
 ## AtSelectAll + useSelection（#4488 勾選聯動）
 

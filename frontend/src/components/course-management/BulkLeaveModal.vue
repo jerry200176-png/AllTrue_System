@@ -41,17 +41,20 @@
       </div>
       <div class="actions">
         <button class="ghost" @click="$emit('close')">關閉</button>
-        <button
-          class="primary"
+        <AtSubmitButton
+          shape="rect"
+          :pending="submitting"
+          :disabled="!form.start_date || !form.end_date || !impactAccepted"
+          pending-text="處理中…"
           @click="$emit('submit')"
-          :disabled="!form.start_date || !form.end_date || !impactAccepted || submitting"
-        >{{ submitting ? '處理中…' : '確認批次請假' }}</button>
+        >確認批次請假</AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed, ref, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { formatBulkLeaveSkippedLine } from '../../lib/studentClassDisplay';
