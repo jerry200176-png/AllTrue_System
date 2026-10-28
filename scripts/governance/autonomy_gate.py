@@ -273,17 +273,18 @@ _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
 _MIGRATION_PREFIX = "backend/database/migrations/"
-# Founder 2026-10-14（三）補充 #1: identity/authz and billing tables never take the
-# additive path, whatever the change (matched on every table the file names).
+# Founder 2026-10-14（三）補充 #1: identity/authz tables never take the additive
+# path, whatever the change (matched on every table the file names). Founder
+# 2026-10-28 A removed the billing tables (invoice, payment, ledger, package,
+# contract/StudentClass, ...) from this list; identity, auth, permission,
+# credential, token, security, PII and control tables stay excluded.
 # The author's `Additive-Migration: yes` declaration and Codex's confirmation on
 # the final head carry the rest of the judgement; this list is not meant to be
 # a complete vocabulary of sensitive data.
 _ADDITIVE_EXCLUDED_TABLE_RE = re.compile(
     r"user|role|permission|capabilit|auth|token|password|login|guardian|identity|parent|binding|"
-    r"apiclient|api_client|security|grant|teacher|"
-    r"invoice|payment|payroll|salary|billing|ledger|charge|pric|deduct|entitlement|refund|bank|"
-    r"accounting|dunning|rate_card|package|contract|tuition|fee|cash|allowance|coverage|correction|"
-    r"studentclass|student_class|^student$|singin|rfid|swipe|pop_|system_setting|_members|"
+    r"apiclient|api_client|security|grant|teacher|credential|secret|bank|"
+    r"^student$|singin|rfid|swipe|pop_|system_setting|_members|"
     r"pii|legal|medical|national|personal|consent|export",
     re.IGNORECASE,
 )
@@ -598,11 +599,12 @@ def _migration_body_is_additive(source: str) -> bool:
     return bool(_MIGRATION_SKELETON_RE.fullmatch(code))
 
 
-# Merge classification treats additive migrations as T2 now. Activation stays
-# Founder-gated until deploy.yml can roll code back after an additive
-# migration (today any migration in range holds with exit 12/13); the PR that
-# adds that rollback flips this flag.
-ADDITIVE_MIGRATION_AUTO_ACTIVATION = False
+# Founder 2026-10-28 A: a declared additive-only migration also activates without
+# the click when ``additive_activation_confirmed`` holds (final-head review, and the
+# deployed policy's classifier agrees, so the automatic code rollback of
+# post-deploy-verify.py range-additive and #4560's watch can act); any other
+# migration still holds with exit 12/13.
+ADDITIVE_MIGRATION_AUTO_ACTIVATION = True
 
 
 CODEX_REVIEWER = "chatgpt-codex-connector[bot]"
@@ -1323,6 +1325,33 @@ def final_head_review_evidence(
             ", ".join(f"#{n}" for n in numbers)}
 
 
+def additive_activation_confirmed(
+    *, repo: str, number: object, body: str, paths: Iterable[str], patch: str,
+    api: Callable[..., object], graphql: Callable[[str], object],
+    classify: Callable[[list[str], str], object] | None = None,
+) -> bool:
+    """May a declared additive migration activate without the click? (Founder 2026-10-14（三）補充 #1, 2026-10-28 A)
+
+    All of: the PR declares ``Additive-Migration: yes`` and the change adds migrations; ``classify``
+    (in deploy.yml: the *deployed* policy's ``additive_migration_paths``, the same one
+    post-deploy-verify.py ``range_additive`` loads for the automatic rollback; default: this module's)
+    accepts every one of them; and ``final_head_review_evidence`` (Codex no-findings on the exact head,
+    zero open threads). Missing evidence, disagreement or any error is False: the production-activation click.
+    """
+
+    paths = [str(path) for path in paths]
+    migrations = {path for path in paths if path.startswith(_MIGRATION_PREFIX)}
+    if not migrations or not declares_additive_migration(body or ""):
+        return False
+    try:
+        accepted = (classify or additive_migration_paths)(sorted(paths), patch)
+        if not isinstance(accepted, (set, frozenset)) or set(accepted) != migrations:
+            return False
+        return final_head_review_evidence(repo=repo, pr_numbers=[number], api=api, graphql=graphql).get("ok") is True
+    except Exception:  # noqa: BLE001 - any doubt keeps the click
+        return False
+
+
 DEPLOY_JOB_NAME = "Deploy to Production"
 _FREEZE_LOOKBACK_PAGES = 3  # x100 deploy.yml runs; job reads only for runs updated after the newest deploy found.
 DEPLOY_STEP_NAME = "Deploy"  # the executor step; a job that failed before it never touched production
@@ -1993,7 +2022,8 @@ def founder_go_approved_head(body: str, number: int, merged_at: datetime | None 
     return match.group(3)
 
 
-def commit_effective_class(body: str, files: object) -> int | None:
+def commit_effective_class(body: str, files: object,
+                           additive_ok: Callable[[list[str], str], bool] | None = None) -> int | None:
     """Effective class (max of machine, declared) via presubmit's own ``validate_declaration`` and patch format; None = unknown."""
 
     if not isinstance(files, list) or not files or len(files) >= _COMMIT_API_FILE_CAP:
@@ -2003,8 +2033,8 @@ def commit_effective_class(body: str, files: object) -> int | None:
     paths = [str(item["filename"]) for item in files]
     patch = "\n".join(f"diff --git a/{path} b/{path}\n{item['patch']}" for path, item in zip(paths, files))
     paths += [str(item["previous_filename"]) for item in files if item.get("previous_filename")]
-    # Release evidence never trusts the additive opt-in: it is not paired with Codex confirmation here.
-    result = validate_declaration(body, paths, patch, allow_additive=False)
+    # The additive opt-in counts only with the caller's full evidence (additive_activation_confirmed).
+    result = validate_declaration(body, paths, patch, allow_additive=bool(additive_ok and additive_ok(paths, patch)))
     if not result["valid"] or result["effective_tier"] not in TIER_VALUES:
         return None
     return TIER_VALUES[result["effective_tier"]]
@@ -2112,6 +2142,7 @@ def evaluate_founder_go_range(
         return {"ok": False, "missing": [], "reason": "target is not strictly ahead of production"}
     owner, name = repo.split("/", 1)
     details: dict[str, Mapping] = {}
+    numbers: dict[str, int] = {}  # merge commit -> PR, recorded as founder_go_release_evidence fetches each PR
 
     def detail(sha: str) -> Mapping:
         if sha not in details:
@@ -2125,7 +2156,15 @@ def evaluate_founder_go_range(
         )["data"]["repository"]["pullRequest"]
         pr["last_edited_at"] = edit["lastEditedAt"]
         pr["last_editor"] = (edit.get("editor") or {}).get("login")
+        numbers[str(pr.get("merge_commit_sha"))] = number
         return pr
+
+    def effective_class(sha: str, body: str) -> int | None:
+        # #4590 review: a declared additive migration is class 2 here only with the push path's evidence.
+        number = numbers.get(sha)
+        return commit_effective_class(body, detail(sha).get("files"), additive_ok=None if number is None else (
+            lambda paths, patch: additive_activation_confirmed(
+                repo=repo, number=number, body=body, paths=paths, patch=patch, api=api, graphql=graphql)))
 
     def scope_matches(approved: str, sha: str) -> bool:
         parents = detail(sha).get("parents") or []
@@ -2153,7 +2192,7 @@ def evaluate_founder_go_range(
             return {"ok": False, "missing": [], "reason": "range changes the gate policy or deploy workflow; reviewer required"}
     return founder_go_release_evidence(
         repo=repo, comparison=comparison, fetch_pr=fetch_pr,
-        effective_class=lambda sha, body: commit_effective_class(body, detail(sha).get("files")),
+        effective_class=effective_class,
         scope_matches=scope_matches,
     )
 
@@ -2385,6 +2424,7 @@ __all__ = [
     "decide_r3_auto_activation",
     "deploy_freeze_reason",
     "final_head_review_evidence",
+    "additive_activation_confirmed",
     "unresolved_review_threads",
     "is_founder_approval_eligible",
     "classify_production_runtime",
