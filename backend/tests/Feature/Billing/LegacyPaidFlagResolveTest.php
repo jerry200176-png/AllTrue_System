@@ -221,6 +221,33 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([1, 1], [(int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
     }
 
+    /**
+     * Security review: the shared-package decision reads reports and evidence only after every sibling course row, their reports,
+     * the package row and their bills are locked (confirm()'s order), so a concurrent confirm cannot slip past a snapshot read.
+     */
+    public function test_shared_package_actions_lock_siblings_reports_package_and_bills_before_any_read(): void
+    {
+        $token = $this->token('A', [1]);
+        $log = [];
+        DB::listen(function ($query) use (&$log) {
+            $log[] = strtolower($query->sql);
+        });
+        foreach (['clear', 'backfill'] as $action) {
+            [$lead, $sibling] = $this->legacyPackage(1);
+            Invoice::create(['StudentID' => $lead->StudentID, 'StudentClassID' => $sibling->ID, 'IssueDate' => '2026-09-01',
+                'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+            $log = [];
+            $action === 'clear' ? $this->clear($token, $sibling)->assertOk() : $this->backfill($token, $sibling)->assertOk();
+            $find = fn (string $from) => collect($log)->search(fn ($sql) => str_contains($sql, $from) && str_contains($sql, ' for update'));
+            $courses = $find('from `studentclass` where `id` in');
+            $locks = [$courses, $find('from `payment_reports`'), $find('from `course_packages`'), $find('from `invoice`')];
+            $this->assertSame($locks, collect($locks)->sort()->values()->all(), "$action: courses, reports, package, bills in that order");
+            $this->assertStringContainsString('order by `id` asc for update', $log[$courses], "$action: sibling rows locked by id");
+            $plainRead = collect($log)->skip($courses)->filter(fn ($sql) => !str_contains($sql, ' for update'))->keys()->first();
+            $this->assertGreaterThan($locks[3], $plainRead, "$action: nothing is read before every lock is held");
+        }
+    }
+
     /** @return array{0: StudentClass, 1: StudentClass, 2: CoursePackage} two members of one paid shared package, no payment record */
     private function legacyPackage(int $campusId): array
     {

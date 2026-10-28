@@ -11,6 +11,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
+use App\Support\DeadlockRetry;
 use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\InvoiceCorrectionLink;
 use App\Services\Billing\InvoiceIssuer;
@@ -791,19 +792,19 @@ class PaymentReportController extends Controller
     private function recordLegacyFlagBackfill(Request $request, array $data, int $courseId, ?int $userId)
     {
         $tokenHash = hash('sha256', "legacy-flag-backfill|{$courseId}|" . $data['idempotency_key']);
+        $lockIds = $this->legacyFlagCourseIds($courseId); // routing read, before the transaction (see lockLegacyFlagCourses)
 
-        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash) {
-            $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash, $lockIds) {
+            [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds);
             if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
                 return $denied;
             }
-            $package = $this->lockPackageForCourse($course); // course -> package, as confirm() locks them
             $replay = PaymentReport::query()->where('StudentClassID', $courseId)->where('report_token_hash', $tokenHash)->first();
             if ($replay && (int) $replay->reported_amount === (int) $data['amount'] && $replay->payment_method === $data['payment_method'] && $replay->payment_date?->toDateString() === Carbon::parse($data['payment_date'])->toDateString()) {
                 return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
                     'invoice_id' => $replay->InvoiceID, 'status' => $replay->status, 'replayed' => true]);
             }
-            if ($refusal = $this->legacyFlagRefusal($course)) {
+            if ($refusal = $this->legacyFlagRefusal($course, $standingReport)) {
                 return $refusal;
             }
             if ((int) $data['amount'] <= 0) {
@@ -820,7 +821,7 @@ class PaymentReportController extends Controller
             $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
 
             return response()->json(['status' => 'confirmed'] + (array) $confirmed->getData(true));
-        });
+        }, DeadlockRetry::ATTEMPTS); // a deadlock with a concurrent confirm re-runs: the replay key makes that safe
     }
 
     /**
@@ -837,17 +838,18 @@ class PaymentReportController extends Controller
         $courseId = (int) $data['student_class_id'];
         $actorId = $request->attributes->get('auth_user')?->id;
 
-        return DB::transaction(function () use ($request, $data, $courseId, $actorId) {
-            $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+        $lockIds = $this->legacyFlagCourseIds($courseId); // routing read, before the transaction (see lockLegacyFlagCourses)
+
+        return DB::transaction(function () use ($request, $data, $courseId, $actorId, $lockIds) {
+            [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds);
             if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
                 return $denied;
             }
-            $package = $this->lockPackageForCourse($course);
             $hasPayment = isset(app(BillingPayableResolver::class)->validPaymentEvidence([$courseId])['classes'][$courseId]);
             if (!$course->isEffectivelyPaid() && !$hasPayment) { // a member can be paid by its package's mark alone
                 return response()->json(['message' => '這門課已經是未繳，不需要再改', 'student_class_id' => $courseId, 'replayed' => true]);
             }
-            if ($refusal = $this->legacyFlagRefusal($course)) {
+            if ($refusal = $this->legacyFlagRefusal($course, $standingReport)) {
                 return $refusal;
             }
             $cleared = $this->dropLegacyPaidMarks($course, $package);
@@ -862,7 +864,7 @@ class PaymentReportController extends Controller
             ]);
 
             return response()->json(['message' => '已改成未繳', 'student_class_id' => $courseId]);
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /**
@@ -898,9 +900,9 @@ class PaymentReportController extends Controller
      * Both legacy-flag actions apply to a course of any mode (count or monthly, single or in a shared package) whose `paid`
      * rests on the legacy Paid / package paid mark alone: marked paid, no net payment on any non-void bill of it or its
      * package (BillingPayableResolver::validPaymentEvidence, the #4114 rule) and no pending or confirmed payment report
-     * on it or its package. Caller holds the course row lock.
+     * on it or its package. Caller holds the locks of lockLegacyFlagCourses() and passes the report it returned.
      */
-    private function legacyFlagRefusal(StudentClass $course)
+    private function legacyFlagRefusal(StudentClass $course, ?PaymentReport $standingReport)
     {
         $id = (int) $course->getKey();
         $refuse = fn (string $message, string $code) => response()->json(['message' => $message . '沒有變更任何資料。', 'code' => $code], 422);
@@ -922,11 +924,8 @@ class PaymentReportController extends Controller
         if (isset(app(BillingPayableResolver::class)->validPaymentEvidence([$id])['classes'][$id])) {
             return $refuse('這門課已有收款紀錄，不是只有舊標記；請重新整理後在學生帳務核對。', 'legacy_flag_has_payment');
         }
-        // A package's members share one paid mark, so a report on any of them counts; only the sole course's row is locked
-        // (a sibling's report lock would invert confirm()'s order, see directorRecord).
-        $ids = $this->legacyFlagCourseIds($course);
-        $report = PaymentReport::query()->whereIn('StudentClassID', $ids)->whereIn('status', ['pending', 'confirmed'])
-            ->when(count($ids) === 1, fn ($q) => $q->lockForUpdate())->first();
+        // A package's members share one paid mark, so a report on any of them counts (read under lock by lockLegacyFlagCourses).
+        $report = $standingReport;
         if ($report) {
             return $report->status === 'pending'
                 ? $refuse('這門課有待核對的繳費回報，請先確認入帳或退回那筆回報。', 'pending_report_exists')
@@ -936,15 +935,48 @@ class PaymentReportController extends Controller
         return null;
     }
 
-    /** The course plus its same-student package siblings: markPackagePaid() flags them all, so they share one legacy mark. @return int[] */
-    private function legacyFlagCourseIds(StudentClass $course): array
+    /**
+     * The course plus its same-student package siblings, ascending: markPackagePaid() flags them all, so they share one
+     * legacy mark. Takes a course id (routing read, outside the transaction) or the locked course (a locking recheck).
+     *
+     * @return int[]
+     */
+    private function legacyFlagCourseIds(int|StudentClass $course): array
     {
-        if (!$course->isPartOfPackage()) {
-            return [(int) $course->getKey()];
+        $current = $course instanceof StudentClass;
+        $row = $current ? $course : StudentClass::query()->whereKey($course)->first(['ID', 'StudentID', 'PackageID']);
+        if (!$row || !$row->isPartOfPackage()) {
+            return [$current ? (int) $course->getKey() : (int) $course];
         }
 
-        return StudentClass::query()->where('PackageID', $course->PackageID)->where('StudentID', $course->StudentID)
-            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        return StudentClass::query()->where('PackageID', $row->PackageID)->where('StudentID', $row->StudentID)->orderBy('ID')
+            ->when($current, fn ($q) => $q->lockForUpdate())->pluck('ID')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * Everything a legacy-flag decision reads, locked before the first plain read, in confirm()'s order: the course and (shared
+     * package) its same-student siblings by id, their pending/confirmed reports, the package row, then their live bills. A
+     * concurrent confirm/void/record on any member has either committed before the checks run or waits for this transaction.
+     * $ids come from a routing read before the transaction (a plain read inside it would fix the snapshot before the waits).
+     *
+     * @param int[] $ids legacyFlagCourseIds($courseId)
+     * @return array{0: ?StudentClass, 1: ?CoursePackage, 2: ?PaymentReport} course (null = missing), package, a standing report
+     */
+    private function lockLegacyFlagCourses(int $courseId, array $ids): array
+    {
+        StudentClass::query()->whereIn('ID', $ids)->orderBy('ID')->lockForUpdate()->pluck('ID');
+        $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first(); // a lone model, as the callers always used
+        if (!$course) {
+            return [null, null, null];
+        }
+        if ($this->legacyFlagCourseIds($course) !== $ids) { // the package changed between the routing read and the locks
+            throw new HttpResponseException(response()->json(['message' => '這門課的共用方案剛被變更，請重新整理後再試。沒有變更任何資料。', 'code' => 'legacy_flag_membership_changed'], 409));
+        }
+        $reports = PaymentReport::query()->whereIn('StudentClassID', $ids)->whereIn('status', ['pending', 'confirmed'])->orderBy('id')->lockForUpdate()->get();
+        $package = $this->lockPackageForCourse($course);
+        Invoice::query()->whereIn('StudentClassID', $ids)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate()->pluck('id');
+
+        return [$course, $package, $reports->firstWhere('status', 'pending') ?? $reports->first()];
     }
 
     /** The legacy mark off (void()/撤銷收款 semantics): the course and, for a package, its paid mark and every member's. @return int courses changed */
