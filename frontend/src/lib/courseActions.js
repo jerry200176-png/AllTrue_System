@@ -8,13 +8,9 @@
  */
 import { DUAL_TEACHER_COPY_LABEL, RENEW_LESSONS_LABEL } from './courseIntent.js';
 
-/** Only a paused/closed course can resume; a history row that merely used up its lessons cannot (#4515). */
-export const canResumeCourse = (course) => String(course?.status || '').toLowerCase() === 'inactive'
-  && course?.closed_reason !== 'waived';
-
 export function courseActions(course, caps = {}) {
   const paused = String(course?.status || '').toLowerCase() === 'inactive';
-  const canResume = canResumeCourse(course);
+  const canResume = paused && course?.closed_reason !== 'waived';
   // 排課 (openManualSessionModal) is the row's former first-class button; 補課／補登 / 新增月結堂次 the More item.
   const schedule = (caps.isManualOccurrence || caps.isSession || caps.isMonthly)
     ? { id: 'manual-session', label: caps.isManualOccurrence ? '＋新增下一堂' : caps.isMonthly ? '排月結' : '排課' }
