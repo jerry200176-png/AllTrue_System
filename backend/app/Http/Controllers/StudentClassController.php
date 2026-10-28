@@ -6796,8 +6796,11 @@ class StudentClassController extends Controller
                     && $reopenReason !== '' && mb_strlen($reopenReason) <= 500
                     && !in_array($closedReason, ['waived', 'converted_trial'], true);
                 // A 月結 (date-mode) course stores every plain pause as a close (completed, or settled_pending while
-                // unpaid), so its stored reason cannot tell a pause from a close: its resume stays as before #4188.
-                $closeToReopen = $this->courseCloseCommitted($sc) && (string) ($sc->ScheduleMode ?? 'count') === 'count';
+                // unpaid), so those two reasons cannot tell a monthly pause from a close: they resume as before #4188.
+                // Every other close (settled, converted_trial, ...) stays guarded on monthly courses too.
+                $monthlyPause = (string) ($sc->ScheduleMode ?? 'count') !== 'count'
+                    && in_array($closedReason, ['completed', 'settled_pending'], true);
+                $closeToReopen = $this->courseCloseCommitted($sc) && !$monthlyPause;
                 if ($closeToReopen && !$superAdminReopen) {
                     DB::rollBack();
                     return response()->json([

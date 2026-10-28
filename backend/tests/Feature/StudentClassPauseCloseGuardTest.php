@@ -157,6 +157,12 @@ class StudentClassPauseCloseGuardTest extends TestCase
             $this->assertNull($course->closed_reason);
         }
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'student_class.close_reopened')->count());
+
+        // An explicit 結案 (settled) of a monthly course stays guarded.
+        [$token, $course] = $this->fixture(['ScheduleMode' => 'date', 'EndDate' => '2026-12-31']);
+        $this->close($token, $course)->assertOk();
+        $this->assertSame('settled', $course->fresh()->closed_reason);
+        $this->lifecycle($token, $course, ['action' => 'resume'])->assertStatus(409)->assertJsonPath('error_code', 'course_closed_use_renewal');
     }
 
     public function test_unsupported_reason_cannot_bypass_the_close_guard(): void
