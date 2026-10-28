@@ -60,6 +60,13 @@ return [
     // back off is a complete rollback with no data migration.
     'actual_duration_deduction_enabled' => (bool) env('PERF_ACTUAL_DURATION_DEDUCTION', false),
 
+    // Pilot boundary for that feature (Founder GO 2026-10-13, #3834): the campuses where a course may NEWLY opt in
+    // to deduction_basis=actual_duration. "11,13" = 新莊分校 + 新莊中平分校 (campus ids as in frontend useBranches),
+    // "*" = every campus, "" = none. An unknown campus (0) never passes. Creating or editing a course at any other
+    // campus answers 422. Courses that already are actual_duration are not touched by this list, so deploying it
+    // only narrows what can be created and changes no balance.
+    'actual_duration_campus_ids' => env('PERF_ACTUAL_DURATION_CAMPUS_IDS', '11,13'),
+
     // Multi-guardian (Student 1:N). Flag gates staff UX + Portal canonical authZ
     // (guardians/student_guardians). Dual-write runs whenever tables exist.
     // Flag off ⇒ Portal/LINE auth falls back to verified SLB + legacy parent_phone.
