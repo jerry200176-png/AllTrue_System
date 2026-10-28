@@ -210,6 +210,11 @@ class ScheduleController extends Controller
             }
         }
 
+        // In-app #441: the teacher a row names must be a teacher of the caller's campuses (a teacher token is already pinned to self).
+        if ($role !== 'teacher' && $effectiveTeacherId > 0
+            && ($refusal = app(\App\Services\SubstituteService::class)->assignableTeacherRefusal($effectiveTeacherId, (int) ($courseMeta->TeacherID ?? 0), $campusIds))) {
+            return response()->json($refusal, 422);
+        }
         if ($effectiveTeacherId > 0) {
             $data['teacher_id'] = $effectiveTeacherId;
         }
@@ -1147,7 +1152,7 @@ class ScheduleController extends Controller
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass')
                 ->where('ID', $courseId)
-                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
+                ->select(['TeacherID', 'ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
                 ->first();
             if ($courseMeta) {
                 if (empty($merged['class_type'])) {
@@ -1157,6 +1162,12 @@ class ScheduleController extends Controller
                     $effectiveRoomId = (int) $courseMeta->room_id;
                 }
             }
+        }
+
+        // In-app #441: a changed owner must be a teacher of the caller's campuses; the row's current owner and the contract teacher stay valid.
+        if ($role !== 'teacher' && isset($data['teacher_id']) && (int) $data['teacher_id'] !== (int) $schedule->teacher_id
+            && ($refusal = app(\App\Services\SubstituteService::class)->assignableTeacherRefusal((int) $data['teacher_id'], (int) ($courseMeta->TeacherID ?? 0), $campusIds))) {
+            return response()->json($refusal, 422);
         }
 
         $boundaryResponse = $this->validateDateModeScheduleBoundary(
