@@ -33,6 +33,8 @@ class InappPackageLedgerProbeTest extends TestCase
         'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
         'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'charged_since_package_not_debited', 'lists_capped'],
+        'unchargeable_session_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'last_status', 'deleted_at', 'session_date', 'start_time', 'slot_source', 'session_net', 'course_net', 'twin_session_id', 'twin_student_class_id', 'twin_status', 'twin_package_net', 'twin_course_net'],
+        'shared_slot_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'session_date', 'start_time', 'course_net', 'slot_net'],
     ];
 
     private int $teacherId;
@@ -185,6 +187,58 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertOnlyAllowedKeys($out);
     }
 
+    public function test_a_named_package_lists_each_debit_on_a_lesson_not_taught_with_the_live_lesson_in_its_slot(): void
+    {
+        [$pool, [$math, $english]] = $this->pool(1, 30, 2, null, 'one_on_two');
+        // Debited, then deleted through the model (audited) and re-created with a new id, completed and not charged.
+        $old = $this->lesson($math, '2026-10-05');
+        $this->debit($pool, $math, $old, 'attended');
+        $old->delete();
+        $recreated = $this->lesson($math, '2026-10-05', 'completed');
+        // Made before the schedule audit existed and removed by a bulk query: only its sign-in date is left.
+        $signedIn = $this->lesson($math, '2026-10-12');
+        $this->debit($pool, $math, $signedIn, 'attendance');
+        DB::table('StudentSingIn')->insert(['StudentID' => $math->StudentID, 'StudentClassID' => $math->ID, 'ClassSessionID' => $signedIn->id,
+            'SignInDT' => '2026-10-12 16:05:00', 'Status' => 'present']);
+        DB::table('schedule_audit_logs')->where('session_id', $signedIn->id)->delete();
+        DB::table('ClassSession')->where('id', $signedIn->id)->delete();
+        $sameDay = $this->lesson($english, '2026-10-12', 'attended', '18:00');
+        $this->charge($english, $sameDay, ['deduct']);
+        $this->debit($pool, $english, $sameDay, 'attendance');
+        // A cancelled lesson still debited, no lesson left in its slot.
+        $cancelled = $this->lesson($math, '2026-10-19', 'cancelled');
+        $this->debit($pool, $math, $cancelled, 'attendance');
+        // One slot debited through both members.
+        $first = $this->lesson($math, '2026-10-26');
+        $second = $this->lesson($english, '2026-10-26');
+        $this->charge($math, $first, ['deduct']);
+        $this->debit($pool, $math, $first, 'attendance');
+        $this->debit($pool, $english, $second, 'attended');
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, (int) $pool->id);
+        $this->assertOnlyAllowedKeys($out);
+        $rows = array_map(fn (array $r): array => array_diff_key($r, array_flip(['package_id', 'ledger_id', 'created_at', 'deleted_at'])), $out['unchargeable_session_rows']);
+        $this->assertSame([[
+            'class_session_id' => (int) $old->id, 'student_class_id' => (int) $math->ID, 'reason' => 'attended', 'delta' => -1, 'status' => 'deleted',
+            'last_status' => 'attended', 'session_date' => '2026-10-05', 'start_time' => '16:00', 'slot_source' => 'audit', 'session_net' => -1, 'course_net' => 0,
+            'twin_session_id' => (int) $recreated->id, 'twin_student_class_id' => (int) $math->ID, 'twin_status' => 'completed', 'twin_package_net' => 0, 'twin_course_net' => 0,
+        ], [
+            'class_session_id' => (int) $signedIn->id, 'student_class_id' => (int) $math->ID, 'reason' => 'attendance', 'delta' => -1, 'status' => 'deleted',
+            'last_status' => null, 'session_date' => '2026-10-12', 'start_time' => null, 'slot_source' => 'sign_in', 'session_net' => -1, 'course_net' => 0,
+            'twin_session_id' => (int) $sameDay->id, 'twin_student_class_id' => (int) $english->ID, 'twin_status' => 'attended', 'twin_package_net' => -1, 'twin_course_net' => 1,
+        ], [
+            'class_session_id' => (int) $cancelled->id, 'student_class_id' => (int) $math->ID, 'reason' => 'attendance', 'delta' => -1, 'status' => 'cancelled',
+            'last_status' => null, 'session_date' => '2026-10-19', 'start_time' => '16:00', 'slot_source' => 'session', 'session_net' => -1, 'course_net' => 0,
+            'twin_session_id' => null, 'twin_student_class_id' => null, 'twin_status' => null, 'twin_package_net' => null, 'twin_course_net' => null,
+        ]], $rows);
+        $this->assertNotNull($out['unchargeable_session_rows'][0]['deleted_at'], 'the audit row dates the deletion');
+        $this->assertSame(
+            [[(int) $first->id, 'attendance', 1, -2], [(int) $second->id, 'attended', 0, -2]],
+            array_map(fn (array $r): array => [$r['class_session_id'], $r['reason'], $r['course_net'], $r['slot_net']], $out['shared_slot_rows'])
+        );
+        $this->assertArrayNotHasKey('unchargeable_session_rows', inapp_package_ledger_probe(DB::connection(), 1, 0, true), 'rows only for a named package');
+    }
+
     public function test_the_production_entry_point_runs_in_a_read_only_transaction_and_writes_nothing(): void
     {
         $source = (string) file_get_contents(self::PROBE);
@@ -244,10 +298,10 @@ class InappPackageLedgerProbeTest extends TestCase
         return [$package, $courses];
     }
 
-    private function lesson(StudentClass $course, string $date, string $status = 'attended'): ClassSession
+    private function lesson(StudentClass $course, string $date, string $status = 'attended', string $start = '16:00'): ClassSession
     {
         return ClassSession::create([
-            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => $status,
+            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => $start, 'EndTime' => date('H:i', strtotime($start) + 7200), 'Status' => $status,
         ]);
     }
 
