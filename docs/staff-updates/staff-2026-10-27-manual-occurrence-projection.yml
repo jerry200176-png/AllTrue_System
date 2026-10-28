@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-27-manual-occurrence-projection
+    published_at: "2026-10-27"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 手動逐堂課程的預排顯示
+    summary: 手動逐堂課程不再顯示未安排的週期預排。
+    items:
+      - category: fixed
+        text: 手動逐堂課程只依既有安排顯示堂次，避免中間週出現預排。
+    source_refs:
+      - "changelog:2026-10-27:manual-occurrence-projection"
