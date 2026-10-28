@@ -1324,7 +1324,7 @@ def final_head_review_evidence(
 
 
 DEPLOY_JOB_NAME = "Deploy to Production"
-_FREEZE_LOOKBACK_PAGES = 3  # x100 deploy.yml runs; stops at the first page with a deploy. Older = unknown = frozen.
+_FREEZE_LOOKBACK_PAGES = 3  # x100 deploy.yml runs; job reads only for runs updated after the newest deploy found.
 DEPLOY_STEP_NAME = "Deploy"  # the executor step; a job that failed before it never touched production
 
 
@@ -1353,6 +1353,9 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
         runs = (api(f"/repos/{repo}/actions/workflows/deploy.yml/runs?status=completed&per_page=100&page={page}")
                 or {}).get("workflow_runs") or []
         for run in runs:
+            # A run last updated before the newest deploy found cannot hold a later one (re-runs bump updated_at).
+            if latest is not None and run.get("updated_at") and str(run["updated_at"]) <= str(latest[0]):
+                continue
             jobs = api(f"/repos/{repo}/actions/runs/{run.get('id')}/jobs?per_page=100")
             for job in (jobs or {}).get("jobs") or []:
                 if job.get("name") != DEPLOY_JOB_NAME or job.get("conclusion") in {"skipped", None}:
@@ -1366,7 +1369,7 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
                     return f"deploy job in run {run.get('id')} has no completion time; state unknown"
                 if latest is None or str(job["completed_at"]) > str(latest[0]):
                     latest = (job["completed_at"], run.get("id"), job.get("conclusion"))
-        if latest is not None or len(runs) < 100:
+        if len(runs) < 100:
             break
     if latest is not None:
         if latest[2] == "success":

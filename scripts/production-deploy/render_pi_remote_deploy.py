@@ -36,9 +36,13 @@ def render(template, environ):
     invalid = [name for name in FLAG_PLACEHOLDERS if environ.get(f"DEPLOY_{name}", "") not in FLAG_VALUES]
     if invalid:
         raise ValueError(f"feature-flag value not unchanged/on/off: {', '.join(invalid)}")
-    # Pasted inside a double-quoted shell string on the Pi: no quote, $, backtick or backslash may reach it.
-    if not re.fullmatch(r"[A-Za-z0-9 /_.:@-]*", environ.get("DEPLOY_SENTRY_WATCH", "")):
-        raise ValueError("SENTRY_WATCH has characters outside [A-Za-z0-9 /_.:@-]")
+    environ = dict(environ)
+    # Pasted inside a double-quoted shell string on the Pi. The Sentry check is optional: a value that could
+    # break out of the quotes is dropped (Sentry skipped), never pasted and never a reason to block the deploy.
+    if re.search(r'["$`\\\r\n]', environ.get("DEPLOY_SENTRY_WATCH", "")):
+        print("::warning::SENTRY_WATCH has a quote, $, backtick, backslash or newline; Sentry check skipped",
+              file=sys.stderr)
+        environ["DEPLOY_SENTRY_WATCH"] = ""
     return PATTERN.sub(lambda m: environ.get(f"DEPLOY_{m.group(1)}", ""), template)
 
 

@@ -227,6 +227,11 @@ class GateWatchTest(unittest.TestCase):
         rc, _ = self.run_gate(self.gate_args(migration_ran="1"), "spike", migrations="1", additive="1")
         self.assertEqual(PDV.RC_GATE_ROLLBACK, rc)
 
+    def test_a_sentry_only_breach_holds_and_never_rolls_back(self):
+        # #4560 review N4: event fields are client-supplied, so they cannot force a rollback.
+        rc, _ = self.run_gate(self.gate_args(), "Sentry errors 50 in 5.0 min (10.00/min) exceed 5x baseline")
+        self.assertEqual(PDV.RC_HELD_MIGRATION, rc)
+
     def test_clean_watch_passes(self):
         rc, _ = self.run_gate(self.gate_args(), None)
         self.assertEqual(0, rc)
@@ -366,6 +371,12 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn('freeze_now = f"freeze state unavailable ({type(exc).__name__})"', block)  # unknown = frozen
         self.assertIn('mode, reason, approval_eligible = "awaiting-activation", f"deploy freeze: {freeze_now}", True', block)
         self.assertLess(classify.index("# Stop the line (#4363 review)"), classify.index("emit(mode, decision"))
+
+    def test_the_freeze_step_name_matches_the_executor_step(self):
+        # #4560 review N1: a renamed step would silently make every failed deploy look "never ran".
+        import scripts.governance.autonomy_gate as gate
+        self.assertIn(f"      - name: {gate.DEPLOY_STEP_NAME}\n        id: deploy\n", self.deploy)
+        self.assertIn(f'select(.name == "{gate.DEPLOY_STEP_NAME}" and .conclusion == "skipped")', self.incident)
 
     def test_contract_test_runs_this_file(self):
         self.assertIn("python3 scripts/tests/test_post_deploy_watch.py", self.workflow)

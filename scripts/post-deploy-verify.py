@@ -267,6 +267,10 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
         breach = (watch_fn or watch)(watch_args, sentry=sentry_config_from_env(os.environ))
         if breach:
             print(f"::error::post-deploy watch breach: {breach}")
+            if breach.startswith("Sentry "):
+                # Event fields are client-supplied: a Sentry-only breach holds and alerts, never rolls back.
+                print("::error::Sentry-only breach: held for review; no automatic rollback.")
+                return RC_HELD_MIGRATION
             ok = False
     if ok:
         print("🚀 部署完成 — Health + identity + Smoke test 全通過")
@@ -371,7 +375,9 @@ def sentry_error_count(config: dict, start: float, end: float, timeout: float = 
         value = payload["data"][0]["count()"]
         return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
     except Exception as error:  # noqa: BLE001 - Sentry outages must not roll production back
-        print(f"post-deploy watch: Sentry query failed ({error.__class__.__name__}); counted as unknown")
+        status = getattr(error, "code", None)  # an HTTP 400 here means Sentry rejected the query fields
+        print(f"post-deploy watch: Sentry query failed ({error.__class__.__name__}"
+              f"{f' HTTP {status}' if status else ''}); counted as unknown")
         return None
 
 

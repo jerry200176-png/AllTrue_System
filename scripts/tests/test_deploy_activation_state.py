@@ -2,7 +2,9 @@
 
 from pathlib import Path
 import argparse
+import io
 import json
+from contextlib import redirect_stderr
 import os
 import subprocess
 import tempfile
@@ -1734,12 +1736,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             for bad in ("ON", "true", "1", " on", "off\n", 'on"; touch x; "'):
                 with self.assertRaises(ValueError):
                     renderer.render(script, {f"DEPLOY_{name}": bad})
-        # #4560 review F9: SENTRY_WATCH lands in a double-quoted shell string on the Pi.
-        self.assertIn('SENTRY_WATCH="https://de.sentry.io acme backend_tok-1"',
-                      renderer.render(script, {"DEPLOY_SENTRY_WATCH": "https://de.sentry.io acme backend_tok-1"}))
-        for bad in ('tok"; touch x; "', "tok$(id)", "tok`id`", "tok\\"):
-            with self.assertRaises(ValueError):
-                renderer.render(script, {"DEPLOY_SENTRY_WATCH": bad})
+        # #4560 review F9/N3: SENTRY_WATCH lands in a double-quoted shell string on the Pi; a value that could
+        # break out is dropped (Sentry skipped), base64 '+'/'=' are kept, and the deploy is never blocked.
+        good = "https://de.sentry.io acme sntrys_abc+def="
+        self.assertIn(f'SENTRY_WATCH="{good}"', renderer.render(script, {"DEPLOY_SENTRY_WATCH": good}))
+        for bad in ('tok"; touch x; "', "tok$(id)", "tok`id`", "tok\\", "tok\nx"):
+            with redirect_stderr(io.StringIO()):
+                rendered = renderer.render(script, {"DEPLOY_SENTRY_WATCH": bad})
+            self.assertIn('SENTRY_WATCH=""', rendered)
+            self.assertNotIn(bad, rendered)
         out = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(REMOTE_DEPLOY)], capture_output=True,
                              env={**os.environ, "DEPLOY_POP_INAPP_STANDING_POLICY": "ON"})
         self.assertEqual(1, out.returncode)
@@ -2428,6 +2433,24 @@ class R3AutoActivationTest(unittest.TestCase):
                               "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
 
+    def test_freeze_reads_only_runs_updated_after_the_newest_deploy_but_catches_a_later_rerun(self):
+        # #4560 review N5/N6: skip runs that cannot hold a newer deploy; an old run re-run later is still read.
+        read = []
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 30, "updated_at": "2026-10-28T03:00:00Z"},
+                                          {"id": 20, "updated_at": "2026-10-28T00:30:00Z"},
+                                          {"id": 10, "updated_at": "2026-10-28T05:00:00Z"}]}  # an old run re-run later
+            run = int(path.split("/runs/")[1].split("/")[0])
+            read.append(run)
+            ok = {30: ("success", "2026-10-28T03:00:00Z"), 10: ("failure", "2026-10-28T05:00:00Z")}.get(run, ("failure", "2026-10-28T00:30:00Z"))
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": ok[0], "completed_at": ok[1],
+                              "steps": [{"name": "Deploy", "conclusion": ok[0]}]}]}
+        self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
+        self.assertEqual([30, 10], read)  # run 20 last changed before the 03:00 deploy: not read
+
     def test_a_failed_job_without_step_data_still_freezes(self):
         # Security review on #4560: no positive proof that the executor was skipped = it may have run.
         def api(path, *extra):
@@ -2528,7 +2551,7 @@ class R3AutoActivationTest(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
         r3 = classify[classify.index('r3 = {"ok": False, "reason": "not evaluated"}'):]
-        self.assertIn('if mode == "awaiting-activation" and approval_eligible:', r3)
+        self.assertIn('if mode == "awaiting-activation" and approval_eligible and freeze_now is None:', r3)
         self.assertIn("for gate in (trusted_r3_gate, target_r3_gate)", r3)
         self.assertIn('r3 = next((result for result in r3_results if not result["ok"]), r3_results[0])', r3)
         self.assertIn('r3 = {"ok": False, "reason": f"R3 auto evidence unavailable ({type(exc).__name__})"}', r3)

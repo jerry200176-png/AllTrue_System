@@ -1050,6 +1050,7 @@ jobs:
                   # (R3) range; only R0-R2 ranges activate without a human (#3797).
               # Stop the line (#4363 review): after a failed, rolled-back, held or interrupted production
               # deploy, no range activates on its own until a reviewed deploy succeeds. Unknown = frozen.
+              freeze_now = None
               if mode == "auto":
                   try:
                       import functools
@@ -1077,7 +1078,8 @@ jobs:
               # deployed policy without the rule, or any error, keeps the Founder reviewer.
               r3 = {"ok": False, "reason": "not evaluated"}
               r3_review_prs = []
-              if mode == "awaiting-activation" and approval_eligible:
+              # A range frozen above stays with the Founder reviewer; skip the second scan (#4560 review N5).
+              if mode == "awaiting-activation" and approval_eligible and freeze_now is None:
                   try:
                       import importlib.util
                       import scripts.governance.autonomy_gate as target_r3_gate
