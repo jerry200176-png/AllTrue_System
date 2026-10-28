@@ -2245,6 +2245,19 @@ class R3AutoActivationTest(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertIn("authentication/privilege", result["reason"])
 
+    def test_controller_local_authorization_changes_keep_the_founder_gate(self):
+        # #4359 review: e.g. PaymentReportController::studentCampusRefusal widened to every campus.
+        path = "backend/app/Http/Controllers/PaymentReportController.php"
+        for removed, added in (
+            ("if (!in_array($campusId, $request->attributes->get('auth_campus_ids', []), true)) {", "if (false) {"),
+            ("return response()->json(['message' => 'Forbidden'], 403);", "// allowed"),
+            ("if ($role !== 'super_admin') {", "if (true) {"),
+        ):
+            with self.subTest(removed=removed):
+                result = self._decide([self._record(4416, path, self._diff(path, removed, added))])
+                self.assertFalse(result["ok"])
+                self.assertIn("authorization check changed", result["reason"])
+
     def test_a_range_with_a_rename_keeps_the_founder_gate(self):
         result = self._decide([self._record(4400, self.BILLING)], renamed=True)
         self.assertFalse(result["ok"])

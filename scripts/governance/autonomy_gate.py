@@ -1160,6 +1160,10 @@ def classify_activation_scope(
     )
     if any("not inspectable" in reason for reason in reasons):
         auto_activation_holds.append("sensitive diff is not inspectable")
+    # Controller-local authorization (campus scoping, role checks, 403 refusals) is the permission boundary too
+    # (#4359 review). Only R3 auto-activation holds on it; the R0-R2 tier is unchanged.
+    if runtime_paths and _R3_AUTHZ_CHANGE_RE.search(changed_code):
+        auto_activation_holds.append("authorization check changed")
 
     return {
         "machine_minimum_tier": minimum,
@@ -1185,6 +1189,11 @@ _R3_AUTO_ACTIVATION_PREFIXES = (
     "backend/app/Services/ApprovalSessionSync",
 )
 _R3_AUTO_ACTIVATION_EFFECTS = {"billing/ledger semantics", "privacy/legal boundary", "runtime write"}
+_R3_AUTHZ_CHANGE_RE = re.compile(
+    r"auth_(?:campus_ids|role|user|user_id|teacher_id)|campus_?refusal|\bforbidden\b|\b40[13]\b|isdirectorrole|"
+    r"super_admin|->\s*can\s*\(|\bauthorize\s*\(|\bpolic(?:y|ies)\b|gate::|middleware\s*\(",
+    re.I,
+)
 _R3_FOUNDER_ONLY_REASONS = {
     "effective tier T3 requires Founder activation",
     "production-side-effect boundary requires protected activation",
