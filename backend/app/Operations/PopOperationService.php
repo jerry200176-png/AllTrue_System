@@ -904,9 +904,26 @@ final class PopOperationService
         return ['policy'];
     }
 
+    /**
+     * Founder 2026-10-28 A: internal append-only repairs whose workflow approves without the click after a
+     * matching dry-run (scripts/governance/pop_auto_approve.py APPEND_ONLY). Operation id => workflow stem.
+     */
+    private const STANDING_A_AUTO = [
+        'package-ledger-net-repair-4455' => 'pop-package-ledger-net-repair-4455',
+        'td076-r2-history-pins-20261006' => 'pop-td076-occurrence-repairs',
+    ];
+
     /** @param array<string,mixed> $entry */
     private function assertFounderApprovalReference(array $entry, string $reference): void
     {
+        if (str_starts_with(strtolower($reference), 'standing-a-auto-')) {
+            $stem = self::STANDING_A_AUTO[(string) ($entry['id'] ?? '')] ?? null;
+            if ($stem === null || !preg_match('/^standing-a-auto-' . preg_quote($stem, '/') . '-[0-9a-f]{12}$/D', $reference)) {
+                throw new RuntimeException('Standing-A automatic approval is limited to the reviewed append-only operations; fail closed.');
+            }
+
+            return;
+        }
         if (($entry['founder_approval_required'] ?? false) !== true) {
             return;
         }

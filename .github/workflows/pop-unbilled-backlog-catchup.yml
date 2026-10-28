@@ -1,8 +1,7 @@
 name: Founder POP unbilled-backlog catch-up (per campus)
 # Dispatch adapter for POP operation unbilled-backlog-catchup-20261006 (runbook RM-UNBILLED-BACKLOG-CATCHUP-20261006).
 # dry-run (expected_digest empty) is read-only: it drafts a POP request and prints state, digest, totals and ids-only rows (no names).
-# dry-run runs on production-ssh with no click. approve needs the reviewed digest and waits for the Founder (production-activation
-# gate job) unless scripts/governance/pop_auto_approve.py finds a matching append-only dry-run (Founder 2026-10-28 A); execution stays on the Pi scheduler.
+# Jerry must dispatch it (production-activation environment). approve needs the reviewed digest; execution stays on the Pi scheduler.
 on:
   workflow_dispatch:
     inputs:
@@ -40,12 +39,6 @@ jobs:
     name: Validate exact unbilled-backlog catch-up gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      auto_approve: ${{ steps.auto.outputs.auto_approve }}
-      attempt: ${{ github.run_attempt }}
     steps:
       - name: Reject scope or confirmation drift
         env:
@@ -67,50 +60,14 @@ jobs:
             [[ "$CONFIRM" == "APPROVE_UNBILLED_BACKLOG_$CAMPUS" ]] || { echo '::error::confirm must be APPROVE_UNBILLED_BACKLOG_<campus_id>'; exit 1; }
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA campus=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
-      - name: Checkout append-only evidence check
-        if: ${{ inputs.mode == 'approve' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          sparse-checkout: |
-            scripts/governance/pop_auto_approve.py
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-      - name: Check append-only auto-approve evidence (fails closed to the Founder click)
-        id: auto
-        if: ${{ inputs.mode == 'approve' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          WORKFLOW: pop-unbilled-backlog-catchup.yml
-          MODE: ${{ inputs.mode }}
-          REF: ${{ github.ref }}
-          BACKEND_SHA: ${{ inputs.deployed_backend_sha }}
-          SCOPE: ${{ inputs.campus_id }}
-          DIGEST: ${{ inputs.expected_digest }}
-          RUN_ID: ${{ github.run_id }}
-        run: python3 scripts/governance/pop_auto_approve.py
-  founder-approval:
-    # Founder 2026-10-28 A: approve waits for the Founder click unless the append-only evidence check passed.
-    name: Founder approval (approve mode without append-only evidence)
-    needs: guard
-    if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' && needs.guard.outputs.auto_approve != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment:
-      name: production-activation
-    outputs:
-      attempt: ${{ github.run_attempt }}
-    steps:
-      - run: echo "Founder approved approve mode for run attempt ${{ github.run_attempt }}"
   catchup:
     name: Pi-local short-lived POP unbilled-backlog catch-up
-    needs: [guard, founder-approval]
-    # dry-run: no click. approve: this attempt's Founder approval, or this attempt's append-only evidence on main.
-    if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt) || (inputs.mode == 'approve' && needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' && needs.guard.outputs.attempt == github.run_attempt && github.ref == 'refs/heads/main')) }}
+    needs: guard
+    if: ${{ needs.guard.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: production-ssh
+      name: production-activation
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,14 +92,12 @@ jobs:
           CAMPUS: ${{ inputs.campus_id }}
           DIGEST: ${{ inputs.expected_digest }}
           RUN_ID: ${{ github.run_id }}
-          AUTO: ${{ needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' && 'true' || 'false' }}
         run: |
           set -euo pipefail
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CAMPUS" =~ ^[1-9][0-9]{0,5}$ ]] && [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$AUTO" == true || "$AUTO" == false ]]
           SSH_DIR="$RUNNER_TEMP/pop-backlog-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
@@ -151,14 +106,13 @@ jobs:
           ssh -i "$SSH_DIR/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' CAMPUS='$CAMPUS' DIGEST='$DIGEST' RUN_ID='$RUN_ID' AUTO='$AUTO' bash -s" <<'REMOTE'
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' CAMPUS='$CAMPUS' DIGEST='$DIGEST' RUN_ID='$RUN_ID' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
           OPERATION=unbilled-backlog-catchup-20261006; REF=repair-unbilled-backlog-catchup-20261006; AUDIT=pop.unbilled_backlog_catchup
           APPROVAL_REF="founder-go-backlog-c$CAMPUS-${DIGEST:0:12}"
-          if [[ "$AUTO" == true ]]; then APPROVAL_REF="founder-go-standing-a-backlog-c$CAMPUS-${DIGEST:0:12}"; fi  # Founder 2026-10-28 A, no click
           WORK_DIR="$(mktemp -d /tmp/pop-backlog.XXXXXX)"
           TOKEN=''
           cleanup() {
@@ -206,8 +160,8 @@ jobs:
           echo "request created/reused: request_id=$REQUEST_ID operation=$OPERATION"
           dry_run="$WORK_DIR/dry-run.json"
           dry_status="$(post_human "/api/v1/pop/operations/requests/$REQUEST_ID/dry-run" '{}' "$dry_run")"
-          MODE="$MODE" TARGET_SHA="$TARGET_SHA" CAMPUS="$CAMPUS" RUN_ID="$RUN_ID" python3 - "$dry_run" <<'PY' || echo "dry_run response unparsable"
-          import json, os, re, sys
+          python3 - "$dry_run" <<'PY' || echo "dry_run response unparsable"
+          import json, re, sys
           body = json.load(open(sys.argv[1]))
           data = body.get('data', body)
           plan = data.get('plan', data.get('result', data)) if isinstance(data, dict) else {}
@@ -218,25 +172,13 @@ jobs:
           for r in plan.get('manifest') or []:
               print('row contract=%s student=%s campus=%s month=%s lessons=%s amount=%s status=%s reason=%s' % tuple(
                   re.sub(r'[^A-Za-z0-9_.-]', '?', str(r.get(k))) for k in ('contract_id', 'student_id', 'campus_id', 'month', 'lessons', 'amount', 'status', 'reason')))
-          if os.environ['MODE'] == 'dry-run':
-              # Read by scripts/governance/pop_auto_approve.py; blocked = rows needing a human (not ready/skipped).
-              rows = plan.get('manifest') if isinstance(plan.get('manifest'), list) else None
-              blocked = None if rows is None else sum(1 for r in rows if not isinstance(r, dict) or r.get('status') not in ('ready', 'skipped'))
-              digest = plan.get('digest') if re.fullmatch(r'[0-9a-f]{64}', str(plan.get('digest'))) else None
-              print('POP_DRY_RUN_EVIDENCE ' + json.dumps({'workflow': 'pop-unbilled-backlog-catchup.yml', 'mode': 'dry-run',
-                  'backend_sha': os.environ['TARGET_SHA'], 'scope': os.environ['CAMPUS'], 'digest': digest, 'blocked': blocked,
-                  'ok': plan.get('ok') is True and not plan.get('errors'), 'run_id': os.environ['RUN_ID']}, sort_keys=True))
           PY
           [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
           if [[ "$MODE" == approve ]]; then
             python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d=d.get("data", d); p=d.get("plan", d.get("result", d)); sys.exit(0 if p.get("state") == "pinned" else 1)' "$dry_run" \
               || { echo '::error::approve requires the pinned dry-run to report state=pinned (digest must match the live manifest)'; exit 1; }
           fi
-          if [[ "$AUTO" == true ]]; then
-            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d=d.get("data", d); p=d.get("plan", d.get("result", d)); rows=p.get("manifest"); sys.exit(0 if p.get("ok") is True and not p.get("errors") and isinstance(rows, list) and all(isinstance(r, dict) and r.get("status") in ("ready", "skipped") for r in rows) else 1)' "$dry_run" \
-              || { echo '::error::append-only auto approve refused: the fresh plan has errors or rows that need a human (blocked>0)'; exit 1; }
-          fi
-          if [[ "$MODE" != approve ]]; then
+          if [[ "$MODE" == dry-run ]]; then
             echo "dry-run only: no approval issued"
             exit 0
           fi
@@ -282,7 +224,7 @@ jobs:
               print('execute=succeeded verify=succeeded audit=verified rollback_snapshot=present')
               raise SystemExit(0)
           if body.get('request_status') in {'failed', 'verification_failed', 'rolled_back'} or verify.get('result') in {'failed', 'verification_failed'}:
-              print('::error::Pi-local execute/verify failed (the POP rollback snapshot is kept): request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'missing'), verify.get('result', 'pending')))
+              print('pi_local=failed request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'missing'), verify.get('result', 'pending')))
               raise SystemExit(1)
           print('pi_local=pending request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'pending'), verify.get('result', 'pending')))
           raise SystemExit(2)

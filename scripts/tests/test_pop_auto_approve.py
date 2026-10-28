@@ -1,4 +1,4 @@
-"""Founder 2026-10-28 A (b): append-only POP approve without a click only on fresh, matching dry-run evidence."""
+"""Founder 2026-10-28 A (b): internal append-only POP approve without a click only on a cited, fresh, matching dry-run."""
 import itertools
 import json
 import os
@@ -8,19 +8,20 @@ import sys
 import tempfile
 import textwrap
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
+WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT))
 from scripts.governance import pop_auto_approve as auto  # noqa: E402
 
-WF = "pop-unbilled-backlog-catchup.yml"
-WORKFLOW = ROOT / ".github" / "workflows" / WF
+LEDGER, TD076 = "pop-package-ledger-net-repair-4455.yml", "pop-td076-occurrence-repairs.yml"
+SCOPES = {LEDGER: "package-ledger-net-repair-4455", TD076: "r2:c11"}
 SHA, DIGEST, NOW = "a" * 40, "b" * 64, datetime(2026, 10, 28, 12, 0, tzinfo=timezone.utc)
 FA_IF = "if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' && needs.guard.outputs.auto_approve != 'true' }}"
-CATCHUP_IF = (
+REPAIR_IF = (
     "if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') "
     "|| (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt) "
     "|| (inputs.mode == 'approve' && needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' "
@@ -28,22 +29,21 @@ CATCHUP_IF = (
 )
 
 
-def evidence(**over):
-    ev = {"workflow": WF, "mode": "dry-run", "backend_sha": SHA, "scope": "15", "digest": DIGEST,
-          "ok": True, "blocked": 0, "run_id": "7"}
-    return {**ev, **over}
+def evidence(wf=LEDGER, **over):
+    return {"workflow": wf, "mode": "dry-run", "backend_sha": SHA, "scope": SCOPES[wf], "digest": DIGEST,
+            "ok": True, "blocked": 0, "run_id": "7", **over}
 
 
-def run(ev=None, **over):
-    base = {"id": 7, "created_at": "2026-10-28T02:00:00Z", "conclusion": "success", "head_branch": "main",
-            "event": "workflow_dispatch", "path": f".github/workflows/{WF}", "evidence": [evidence()] if ev is None else ev}
-    return {**base, **over}
+def run(wf=LEDGER, ev=None, **over):
+    return {"id": 7, "created_at": "2026-10-28T02:00:00Z", "conclusion": "success", "head_branch": "main",
+            "event": "workflow_dispatch", "path": f".github/workflows/{wf}",
+            "evidence": [evidence(wf)] if ev is None else ev, **over}
 
 
-def decide(runs, **over):
-    args = {"workflow": WF, "mode": "approve", "ref": "refs/heads/main", "backend_sha": SHA, "scope": "15",
-            "digest": DIGEST, "now": NOW}
-    return auto.decide(**{"runs": runs, **args, **over})[0]
+def decide(cited, wf=LEDGER, **over):
+    args = {"workflow": wf, "mode": "approve", "ref": "refs/heads/main", "backend_sha": SHA, "scope": SCOPES[wf],
+            "digest": DIGEST, "dry_run_id": "7", "now": NOW}
+    return auto.decide(**{"run": cited, **args, **over})[0]
 
 
 def jobs(text):
@@ -68,27 +68,32 @@ def evaluate(expr, **values):
 
 
 class Decide(unittest.TestCase):
-    def test_matching_fresh_dry_run_approves(self):
-        self.assertTrue(decide([run()]))
-        self.assertTrue(decide([run(created_at="2026-10-27T12:00:00Z")]))  # exactly 24 h
+    def test_cited_matching_fresh_dry_run_approves(self):
+        for wf in auto.APPEND_ONLY:
+            self.assertTrue(decide(run(wf), wf), wf)
+        self.assertTrue(decide(run(created_at="2026-10-27T12:00:00Z")))  # exactly 24 h
 
-    def test_each_missing_condition_refuses(self):
-        refusals = {
-            "not allowlisted": dict(workflow="pop-past-scheduled-cancel.yml"),
+    def test_each_missing_input_refuses(self):
+        for label, over in {
+            "billing workflow": dict(workflow="pop-unbilled-backlog-catchup.yml"),
             "dry-run mode": dict(mode="dry-run"),
             "not main": dict(ref="refs/heads/feature"),
             "short sha": dict(backend_sha="a" * 39),
             "empty digest": dict(digest=""),
-            "bad scope": dict(scope="0"),
+            "other scope": dict(scope="package-ledger"),
+            "no cited run id": dict(dry_run_id=""),
+            "cited id is not a number": dict(dry_run_id="7 "),
+            "other cited id": dict(dry_run_id="8"),
             "other backend sha": dict(backend_sha="c" * 40),
             "other digest": dict(digest="d" * 64),
-            "other campus": dict(scope="16"),
-        }
-        for label, over in refusals.items():
-            self.assertFalse(decide([run()], **over), label)
-        self.assertFalse(decide([]), "no runs")
+        }.items():
+            self.assertFalse(decide(run(), **over), label)
+        self.assertFalse(decide(None), "cited run missing")
+        self.assertFalse(decide(run(TD076, [evidence(TD076, scope="r1:c11")]), TD076, scope="r1:c11"), "td076 r1")
+        self.assertFalse(decide(run(TD076, [evidence(TD076, scope="r2:c0")]), TD076, scope="r2:c0"), "campus 0")
+        self.assertFalse(decide(run(TD076, [evidence(TD076, scope="r2:c12")]), TD076), "other campus")
 
-    def test_run_metadata_must_be_a_fresh_successful_main_dispatch(self):
+    def test_cited_run_must_be_a_fresh_successful_main_dispatch_of_this_workflow(self):
         for label, over in {
             "older than 24 h": dict(created_at="2026-10-27T11:59:59Z"),
             "future": dict(created_at="2026-10-28T12:00:01Z"),
@@ -96,9 +101,10 @@ class Decide(unittest.TestCase):
             "failed": dict(conclusion="failure"),
             "other branch": dict(head_branch="feature"),
             "push": dict(event="push"),
-            "other workflow": dict(path=".github/workflows/pop-past-scheduled-cancel.yml"),
+            "other workflow": dict(path=f".github/workflows/{TD076}"),
+            "other run": dict(id=8),
         }.items():
-            self.assertFalse(decide([run(**over)]), label)
+            self.assertFalse(decide(run(**over)), label)
 
     def test_evidence_must_be_exactly_one_clean_dry_run_line(self):
         for label, ev in {
@@ -111,57 +117,66 @@ class Decide(unittest.TestCase):
             "plan not ok": [evidence(ok=False)],
             "ok as text": [evidence(ok="true")],
             "approve log": [evidence(mode="approve")],
-            "other workflow": [evidence(workflow="pop-td076-occurrence-repairs.yml")],
-            "other run": [evidence(run_id="8")],
+            "other workflow": [evidence(workflow=TD076)],
+            "evidence of another run": [evidence(run_id="8")],
             "missing digest": [evidence(digest=None)],
             "malformed": [{}],
         }.items():
-            self.assertFalse(decide([run(ev)]), label)
+            self.assertFalse(decide(run(ev=ev)), label)
 
     def test_parse_reads_github_log_lines_only(self):
         line = "POP_DRY_RUN_EVIDENCE " + json.dumps(evidence(), sort_keys=True)
         log = "﻿2026-10-28T02:00:01.1Z Current runner\n" \
               "2026-10-28T02:00:02.1Z \x1b[36;1mprint('POP_DRY_RUN_EVIDENCE ' + json.dumps({}))\x1b[0m\n" \
-              f"2026-10-28T02:00:03.1Z {line}\r\n2026-10-28T02:00:04.1Z row contract=1 status=ready\n"
+              f"2026-10-28T02:00:03.1Z {line}\r\n2026-10-28T02:00:04.1Z package=5 remaining 3->2\n"
         self.assertEqual(auto.parse_evidence(log), [evidence()])
         self.assertEqual(auto.parse_evidence("2026-10-28T02:00:03.1Z POP_DRY_RUN_EVIDENCE {not json}\n"), [{}])
         self.assertEqual(auto.parse_evidence("x POP_DRY_RUN_EVIDENCE " + json.dumps(evidence())), [])
 
-    def test_main_fails_closed_on_any_error(self):
+    def test_main_fails_closed_and_reads_only_the_cited_run(self):
+        env = {"WORKFLOW": LEDGER, "MODE": "approve", "REPO": "o/r", "REF": "refs/heads/main", "BACKEND_SHA": SHA,
+               "SCOPE": SCOPES[LEDGER], "DIGEST": DIGEST, "DRY_RUN_ID": "7"}
         with tempfile.NamedTemporaryFile("r+") as out, \
-                mock.patch.object(auto, "collect_runs", side_effect=subprocess.CalledProcessError(1, "gh")):
-            auto.main({"WORKFLOW": WF, "MODE": "approve", "REPO": "o/r", "REF": "refs/heads/main",
-                       "BACKEND_SHA": SHA, "SCOPE": "15", "DIGEST": DIGEST, "GITHUB_OUTPUT": out.name})
+                mock.patch.object(auto, "collect_run", side_effect=subprocess.CalledProcessError(1, "gh")):
+            auto.main({**env, "GITHUB_OUTPUT": out.name})
             self.assertEqual(out.read(), "auto_approve=false\n")
-        with tempfile.NamedTemporaryFile("r+") as out, mock.patch.object(auto, "collect_runs") as collect:
-            auto.main({"WORKFLOW": WF, "MODE": "dry-run", "GITHUB_OUTPUT": out.name})
-            collect.assert_not_called()
-            self.assertEqual(out.read(), "auto_approve=false\n")
+        for over in ({"MODE": "dry-run"}, {"DRY_RUN_ID": ""}, {"WORKFLOW": "pop-unbilled-backlog-catchup.yml"}):
+            with tempfile.NamedTemporaryFile("r+") as out, mock.patch.object(auto, "collect_run") as collect:
+                auto.main({**env, **over, "GITHUB_OUTPUT": out.name})
+                collect.assert_not_called()
+                self.assertEqual(out.read(), "auto_approve=false\n", over)
+        responses = {
+            "/repos/o/r/actions/runs/7": json.dumps(run()),
+            "/repos/o/r/actions/runs/7/jobs?per_page=50": json.dumps(
+                {"jobs": [{"id": 9, "name": auto.APPEND_ONLY[LEDGER][0], "conclusion": "success"}]}),
+            "/repos/o/r/actions/jobs/9/logs": "2026-10-28T02:00:03.1Z POP_DRY_RUN_EVIDENCE " + json.dumps(evidence()),
+        }
+        with tempfile.NamedTemporaryFile("r+") as out, mock.patch.object(auto, "_gh", side_effect=responses.__getitem__), \
+                mock.patch.object(auto, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = NOW
+            auto.main({**env, "GITHUB_OUTPUT": out.name})
+            self.assertEqual(out.read(), "auto_approve=true\n")
 
 
-class Workflow(unittest.TestCase):
-    def setUp(self):
-        self.text = WORKFLOW.read_text()
-        self.jobs = jobs(self.text)
-
+class Workflows(unittest.TestCase):
     def test_only_the_allowlist_uses_the_auto_path(self):
-        users = sorted(p.name for p in (ROOT / ".github" / "workflows").glob("*.yml") if "pop_auto_approve.py" in p.read_text())
+        users = sorted(p.name for p in WORKFLOWS.glob("*.yml") if "pop_auto_approve.py" in p.read_text())
         self.assertEqual(users, sorted(auto.APPEND_ONLY))
-        for name, job_name in auto.APPEND_ONLY.items():
-            text = (ROOT / ".github" / "workflows" / name).read_text()
-            self.assertIn(f"    name: {job_name}\n", text, name)
-            self.assertIn(f"WORKFLOW: {name}\n", text, name)
+        self.assertEqual(set(auto.APPEND_ONLY), {LEDGER, TD076})  # widening this list is a reviewed control-plane change
 
     def test_gate_and_ssh_job_environments(self):
-        guard, gate, ssh = self.jobs["guard"], self.jobs["founder-approval"], self.jobs["catchup"]
-        self.assertIn("    environment:\n      name: production-activation\n", gate)
-        self.assertIn(FA_IF, gate)
-        self.assertNotIn("secrets.", gate)
-        self.assertIn("    environment:\n      name: production-ssh\n", ssh)
-        self.assertIn(CATCHUP_IF, ssh)
-        self.assertIn("    permissions:\n      actions: read\n      contents: read\n", guard)
-        self.assertNotIn("secrets.", guard)
-        self.assertEqual(guard.count("if: ${{ inputs.mode == 'approve' }}"), 2)
+        for wf, (job_name, _) in auto.APPEND_ONLY.items():
+            j = jobs((WORKFLOWS / wf).read_text())
+            guard, gate, ssh = j["guard"], j["founder-approval"], j["repair"]
+            self.assertIn(f"    name: {job_name}\n", ssh, wf)
+            self.assertIn(f"WORKFLOW: {wf}\n", guard, wf)
+            self.assertIn("    environment:\n      name: production-activation\n", gate, wf)
+            self.assertIn(FA_IF, gate, wf)
+            self.assertNotIn("secrets.", gate + guard, wf)
+            self.assertIn("    environment:\n      name: production-ssh\n", ssh, wf)
+            self.assertIn(REPAIR_IF, ssh, wf)
+            self.assertIn("    permissions:\n      actions: read\n      contents: read\n", guard, wf)
+            self.assertIn("DRY_RUN_ID: ${{ inputs.dry_run_run_id }}\n        run: python3 scripts/governance/pop_auto_approve.py", guard, wf)
 
     def test_approve_never_runs_without_a_click_or_this_attempts_evidence(self):
         res = ("success", "skipped", "failure")
@@ -172,42 +187,48 @@ class Workflow(unittest.TestCase):
             v = dict(mode=mode, guard=guard, fa=fa, fa_attempt=fa_a, attempt=a, auto=auto_ok, guard_attempt=g_a, ref=ref)
             if (fa == "skipped") == evaluate(FA_IF, **v):
                 continue  # unreachable: the gate job is skipped exactly when its condition is false
-            if evaluate(CATCHUP_IF, **v) and mode.lower() == "approve":
+            if evaluate(REPAIR_IF, **v) and mode.lower() == "approve":
                 clicked = fa == "success" and fa_a == a
                 evidenced = fa == "skipped" and auto_ok == "true" and g_a == a and ref == "refs/heads/main"
                 self.assertTrue(clicked or evidenced, v)
 
-    def test_remote_auto_path_rechecks_and_exits_before_approval_otherwise(self):
-        ssh = self.jobs["catchup"]
-        approvals = ssh.index("/approvals")
-        self.assertLess(ssh.index('if [[ "$AUTO" == true ]]; then\n            python3'), ssh.index('if [[ "$MODE" != approve ]]; then'))
-        self.assertLess(ssh.index('if [[ "$MODE" != approve ]]; then'), approvals)
-        self.assertIn('[[ "$AUTO" == true || "$AUTO" == false ]]', ssh)
-        self.assertIn('APPROVAL_REF="founder-go-standing-a-backlog-c', ssh)  # POP requires a founder-go- prefix
-        self.assertIn("AUTO: ${{ needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' && 'true' || 'false' }}", ssh)
-        self.assertIn("::error::Pi-local execute/verify failed (the POP rollback snapshot is kept)", ssh)
+    def test_remote_auto_path_rechecks_then_exits_before_approval_otherwise(self):
+        refs = {LEDGER: 'APPROVAL_REF="standing-a-auto-pop-package-ledger-net-repair-4455-${DIGEST:0:12}"',
+                TD076: '[[ "$REPAIR" == r2 ]] || exit 1; APPROVAL_REF="standing-a-auto-pop-td076-occurrence-repairs-${DIGEST:0:12}"'}
+        for wf, ref in refs.items():
+            ssh = jobs((WORKFLOWS / wf).read_text())["repair"]
+            recheck, exit_at = ssh.index('if [[ "$AUTO" == true ]]; then\n            python3'), ssh.index('if [[ "$MODE" != approve ]]; then')
+            self.assertLess(recheck, exit_at, wf)
+            self.assertLess(exit_at, ssh.index("/approvals"), wf)
+            self.assertIn(f'if [[ "$AUTO" == true ]]; then {ref}; fi', ssh, wf)
+            self.assertEqual(ssh.count("standing-a-auto-"), 1, wf)
+            self.assertIn('[[ "$AUTO" == true || "$AUTO" == false ]]', ssh, wf)
+            self.assertIn("AUTO='$AUTO' bash -s", ssh, wf)
+            self.assertIn("AUTO: ${{ needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' && 'true' || 'false' }}", ssh, wf)
+            self.assertIn("::error::Pi-local execute/verify failed (the POP rollback snapshot is kept)", ssh, wf)
 
-    def test_dry_run_evidence_printed_by_the_workflow_is_accepted(self):
-        ssh = self.jobs["catchup"]
-        start = ssh.index('python3 - "$dry_run" <<\'PY\'')
-        script = textwrap.dedent(ssh[ssh.index("\n", start) + 1:ssh.index("\n          PY\n", start)])
-        rows = [{"contract_id": 1, "student_id": 2, "campus_id": 15, "month": "2026-09", "lessons": 3, "amount": 900,
-                 "status": "ready", "reason": None}, {"status": "skipped", "reason": "already_billed"}]
-        cases = {
-            "clean": ("dry-run", rows, True),
-            "needs director amount": ("dry-run", rows + [{"status": "needs_director_amount"}], False),
-            "approve run prints no evidence": ("approve", rows, False),
+    def test_dry_run_evidence_printed_by_each_workflow_is_what_decide_accepts(self):
+        plans = {
+            LEDGER: lambda blocked: {"ok": blocked == 0, "errors": [] if blocked == 0 else ["row_x"], "state": "before",
+                                     "digest": DIGEST, "counts": {"rows": 54, "to_insert": 54, "done": 0, "blocked": blocked, "packages": 1},
+                                     "packages": {"5": {"remaining_before": 3, "remaining_after": 2, "ledger_net_before": 0, "ledger_net_after": -1}}},
+            TD076: lambda blocked: {"ok": True, "errors": [], "state": "unpinned", "digest": DIGEST, "campus_id": 11,
+                                    "counts": {"actions": {"pin": 2}, "quarantine": {"no_teacher": blocked} if blocked else []},
+                                    "manifest": {"actions": [{"type": "pin", "class_session_id": 4}], "quarantine": []}},
         }
-        for label, (mode, manifest, accepted) in cases.items():
-            with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
-                json.dump({"data": {"plan": {"ok": True, "errors": [], "state": "unpinned", "digest": DIGEST,
-                                             "totals": {}, "manifest": manifest}}}, f)
-                f.flush()
-                env = {**os.environ, "MODE": mode, "TARGET_SHA": SHA, "CAMPUS": "15", "RUN_ID": "7"}
-                out = subprocess.run([sys.executable, "-", f.name], input=script, text=True, capture_output=True,
-                                     env=env, check=True).stdout
-            log = "".join(f"2026-10-28T02:00:0{i}.1Z {line}\n" for i, line in enumerate(out.splitlines()))
-            self.assertEqual(decide([run(auto.parse_evidence(log))]), accepted, label)
+        for wf, plan in plans.items():
+            ssh = jobs((WORKFLOWS / wf).read_text())["repair"]
+            start = ssh.index("python3 - \"$dry_run\" <<'PY'")
+            script = textwrap.dedent(ssh[ssh.index("\n", start) + 1:ssh.index("\n          PY\n", start)])
+            for mode, blocked, accepted in (("dry-run", 0, True), ("dry-run", 1, False), ("approve", 0, False)):
+                with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
+                    json.dump({"data": {"plan": plan(blocked)}}, f)
+                    f.flush()
+                    env = {**os.environ, "MODE": mode, "TARGET_SHA": SHA, "CAMPUS": "11", "REPAIR": "r2", "RUN_ID": "7"}
+                    out = subprocess.run([sys.executable, "-", f.name], input=script, text=True, capture_output=True,
+                                         env=env, check=True).stdout
+                log = "".join(f"2026-10-28T02:00:0{i}.1Z {line}\n" for i, line in enumerate(out.splitlines()))
+                self.assertEqual(decide(run(wf, auto.parse_evidence(log)), wf), accepted, (wf, mode, blocked))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ name: Founder POP package ledger net repair (#4455)
 # Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
 # The operation spans campuses, so draft/dry-run use that super_admin session (the POP machine identity is
 # campus-scoped). dry-run is read-only; approve waits for Pi-local execute + verify.
+# Founder 2026-10-28 A: dry-run runs on production-ssh with no click. approve waits for the Founder (production-activation
+# gate job) unless it cites a matching dry-run that scripts/governance/pop_auto_approve.py accepts (append-only, no click).
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +23,16 @@ on:
         description: Full backend SHA currently in production (deployment.json backend_sha)
         required: true
         type: string
+      expected_digest:
+        description: Approve without a click only - the 64-hex plan digest the cited dry-run printed
+        required: false
+        type: string
+        default: ''
+      dry_run_run_id:
+        description: Approve without a click only - run id of a successful dry-run of this workflow on main within 24 h
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -32,30 +44,75 @@ jobs:
     name: Validate exact package-ledger-net-repair gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      auto_approve: ${{ steps.auto.outputs.auto_approve }}
+      attempt: ${{ github.run_attempt }}
     steps:
       - name: Reject scope or confirmation drift
         env:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
           INPUT_SHA: ${{ inputs.deployed_backend_sha }}
+          DIGEST: ${{ inputs.expected_digest }}
+          DRY_RUN_ID: ${{ inputs.dry_run_run_id }}
         run: |
           set -euo pipefail
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
+          [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ && "$DRY_RUN_ID" =~ ^([1-9][0-9]{0,19})?$ ]] || { echo '::error::expected_digest / dry_run_run_id malformed'; exit 1; }
           if [[ "$MODE" == dry-run ]]; then
             [[ "$CONFIRM" == DRY_RUN_PACKAGE_LEDGER_NET_REPAIR_4455 ]] || exit 1
           else
             [[ "$CONFIRM" == APPROVE_PACKAGE_LEDGER_NET_REPAIR_4455 ]] || exit 1
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_54_ledger_rows"
+      - name: Checkout append-only evidence check
+        if: ${{ inputs.mode == 'approve' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/governance/pop_auto_approve.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Check append-only auto-approve evidence (fails closed to the Founder click)
+        id: auto
+        if: ${{ inputs.mode == 'approve' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: pop-package-ledger-net-repair-4455.yml
+          MODE: ${{ inputs.mode }}
+          REF: ${{ github.ref }}
+          BACKEND_SHA: ${{ inputs.deployed_backend_sha }}
+          SCOPE: package-ledger-net-repair-4455
+          DIGEST: ${{ inputs.expected_digest }}
+          DRY_RUN_ID: ${{ inputs.dry_run_run_id }}
+        run: python3 scripts/governance/pop_auto_approve.py
+  founder-approval:
+    # Founder 2026-10-28 A: approve waits for the Founder click unless the append-only evidence check passed.
+    name: Founder approval (approve mode without append-only evidence)
+    needs: guard
+    if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' && needs.guard.outputs.auto_approve != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production-activation
+    outputs:
+      attempt: ${{ github.run_attempt }}
+    steps:
+      - run: echo "Founder approved approve mode for run attempt ${{ github.run_attempt }}"
   repair:
     name: Pi-local short-lived POP repair (package ledger net, #4455)
-    needs: guard
-    if: ${{ needs.guard.result == 'success' }}
+    needs: [guard, founder-approval]
+    # dry-run: no click. approve: this attempt's Founder approval, or this attempt's append-only evidence on main.
+    if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt) || (inputs.mode == 'approve' && needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' && needs.guard.outputs.attempt == github.run_attempt && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: production-activation
+      name: production-ssh
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,11 +134,15 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           MODE: ${{ inputs.mode }}
           TARGET_SHA: ${{ inputs.deployed_backend_sha }}
+          DIGEST: ${{ inputs.expected_digest }}
+          RUN_ID: ${{ github.run_id }}
+          AUTO: ${{ needs.founder-approval.result == 'skipped' && needs.guard.outputs.auto_approve == 'true' && 'true' || 'false' }}
         run: |
           set -euo pipefail
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[0-9]+$ ]] && [[ "$AUTO" == true || "$AUTO" == false ]]
           SSH_DIR="$RUNNER_TEMP/pop-package-ledger-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
@@ -90,13 +151,15 @@ jobs:
           ssh -i "$SSH_DIR/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' DIGEST='$DIGEST' RUN_ID='$RUN_ID' AUTO='$AUTO' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
           OPERATION=package-ledger-net-repair-4455
           APPROVAL_REF=founder-go-package-ledger-net-repair-4455
+          # Founder 2026-10-28 A, no click: POP accepts this prefix only for the reviewed append-only operations.
+          if [[ "$AUTO" == true ]]; then APPROVAL_REF="standing-a-auto-pop-package-ledger-net-repair-4455-${DIGEST:0:12}"; fi
           WORK_DIR="$(mktemp -d /tmp/pop-package-ledger.XXXXXX)"
           TOKEN=''
           cleanup() {
@@ -145,7 +208,7 @@ jobs:
           dry_run="$WORK_DIR/dry-run.json"
           dry_status="$(post_human "/api/v1/pop/operations/requests/$REQUEST_ID/dry-run" '{}' "$dry_run")"
           python3 - "$dry_run" <<'PY' || echo "dry_run response unparsable"
-          import json, re, sys
+          import json, os, re, sys
           body = json.load(open(sys.argv[1]))
           data = body.get('data', body)
           plan = data.get('plan', data.get('result', data)) if isinstance(data, dict) else {}
@@ -156,9 +219,19 @@ jobs:
           for pid, p in sorted((plan.get('packages') or {}).items(), key=lambda kv: int(kv[0])):
               if isinstance(p, dict) and all(isinstance(p.get(k), int) for k in ('remaining_before', 'remaining_after', 'ledger_net_before', 'ledger_net_after')):
                   print('package=%d remaining %d->%d ledger_net %d->%d' % (int(pid), p['remaining_before'], p['remaining_after'], p['ledger_net_before'], p['ledger_net_after']))
+          if os.environ['MODE'] == 'dry-run':  # read by scripts/governance/pop_auto_approve.py
+              print('POP_DRY_RUN_EVIDENCE ' + json.dumps({'workflow': 'pop-package-ledger-net-repair-4455.yml', 'mode': 'dry-run',
+                  'backend_sha': os.environ['TARGET_SHA'], 'scope': 'package-ledger-net-repair-4455', 'run_id': os.environ['RUN_ID'],
+                  'digest': plan.get('digest') if re.fullmatch(r'[0-9a-f]{64}', str(plan.get('digest'))) else None,
+                  'blocked': counts.get('blocked') if type(counts.get('blocked')) is int else None,
+                  'ok': plan.get('ok') is True and not plan.get('errors')}, sort_keys=True))
           PY
           [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
-          if [[ "$MODE" == dry-run ]]; then
+          if [[ "$AUTO" == true ]]; then
+            python3 -c 'import json,os,sys; d=json.load(open(sys.argv[1])); d=d.get("data", d); p=d.get("plan", d.get("result", d)); b=(p.get("counts") or {}).get("blocked"); sys.exit(0 if p.get("ok") is True and not p.get("errors") and p.get("digest") == os.environ["DIGEST"] and type(b) is int and b == 0 else 1)' "$dry_run" \
+              || { echo '::error::append-only auto approve refused: the fresh plan digest changed or the plan has errors / blocked rows'; exit 1; }
+          fi
+          if [[ "$MODE" != approve ]]; then
             echo "dry-run only: no approval issued"
             exit 0
           fi
@@ -204,7 +277,7 @@ jobs:
               print('pi_execute=succeeded pi_verify=succeeded audit=verified rollback_snapshot=present')
               raise SystemExit(0)
           if body.get('request_status') in {'failed', 'verification_failed', 'rolled_back'} or verify.get('result') in {'failed', 'verification_failed'}:
-              print('pi_local=failed request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'missing'), verify.get('result', 'pending')))
+              print('::error::Pi-local execute/verify failed (the POP rollback snapshot is kept): request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'missing'), verify.get('result', 'pending')))
               raise SystemExit(1)
           print('pi_local=pending request_status=%s execute=%s verify=%s' % (body.get('request_status'), execute.get('result', 'pending'), verify.get('result', 'pending')))
           raise SystemExit(2)

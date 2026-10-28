@@ -160,6 +160,39 @@ final class PopOperationCatalogTest extends TestCase
         $roles->invoke($service, $entry);
     }
 
+    public function test_standing_a_auto_reference_is_accepted_only_for_the_reviewed_append_only_operations(): void
+    {
+        $path = dirname(__DIR__, 3) . '/operations/catalog.yaml';
+        $catalog = new PopOperationCatalog($path);
+        $service = new PopOperationService($catalog);
+        $check = new ReflectionMethod($service, 'assertFounderApprovalReference');
+        $d = 'abcdef012345';
+        $check->invoke($service, $catalog->operation('package-ledger-net-repair-4455'), "standing-a-auto-pop-package-ledger-net-repair-4455-$d");
+        $check->invoke($service, $catalog->operation('td076-r2-history-pins-20261006'), "standing-a-auto-pop-td076-occurrence-repairs-$d");
+        $refused = [
+            ['td076-r1-collision-keepers-20261006', "standing-a-auto-pop-td076-occurrence-repairs-$d"],
+            ['unbilled-backlog-catchup-20261006', "standing-a-auto-pop-unbilled-backlog-catchup-$d"],
+            ['package-ledger-net-repair-4455', "standing-a-auto-pop-td076-occurrence-repairs-$d"],
+            ['package-ledger-net-repair-4455', 'standing-a-auto-pop-package-ledger-net-repair-4455-ABCDEF012345'],
+            ['package-ledger-net-repair-4455', "standing-a-auto-pop-package-ledger-net-repair-4455-$d\n"],
+            ['td076-r2-history-pins-20261006', "Standing-A-Auto-pop-td076-occurrence-repairs-$d"],
+        ];
+        preg_match_all('/^  ([a-z0-9-]+):\s*$/m', (string) file_get_contents($path), $ids);
+        self::assertGreaterThan(10, count($ids[1]));
+        foreach (array_diff($ids[1], ['package-ledger-net-repair-4455', 'td076-r2-history-pins-20261006']) as $id) {
+            $refused[] = [$id, "standing-a-auto-pop-package-ledger-net-repair-4455-$d"]; // founder-scoped or not
+        }
+        foreach ($refused as [$id, $reference]) {
+            $thrown = false; // not self::fail() in the try: PHPUnit's own failure is a RuntimeException too
+            try {
+                $check->invoke($service, $catalog->operation($id), $reference);
+            } catch (RuntimeException) {
+                $thrown = true;
+            }
+            self::assertTrue($thrown, "$id must refuse $reference");
+        }
+    }
+
     public function test_founder_scoped_policy_is_supported_only_for_the_safe_course_repair_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
