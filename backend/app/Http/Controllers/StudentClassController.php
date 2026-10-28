@@ -6576,6 +6576,16 @@ class StudentClassController extends Controller
                 ], 422);
             }
 
+            // #3834 pilot boundary: only a NEW opt-in is refused outside the pilot campuses; editing a course that is
+            // already actual_duration is never blocked here.
+            if ($basis === DeductionBasis::ACTUAL_DURATION && !$studentClass->isActualDurationBasis()
+                && !DeductionBasis::campusAllowed((int) Student::query()->whereKey($studentClass->StudentID)->value('CampusID'))) {
+                return response()->json([
+                    'message' => '依實際時長扣堂目前僅在試辦分校開放',
+                    'errors' => ['deduction_basis' => ['此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。']],
+                ], 422);
+            }
+
             // D4: actual-duration courses cannot live in a shared CoursePackage, whose
             // pool ledger can only represent whole ±1 lessons (TD-059).
             if ($basis === DeductionBasis::ACTUAL_DURATION && $studentClass->isPartOfPackage()) {

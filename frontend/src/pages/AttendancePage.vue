@@ -10,6 +10,8 @@
         <AtButton variant="secondary" shape="rect" icon="refresh" @click="refreshAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
+    <SuccessorLeaveBlockers :blockers="leaveBlockers" :date="leaveBlockerDate" @navigate="emit('navigate-context', $event)" />
+    <ConfirmDialogHost />
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
     <div v-if="!isTeacher" class="att-tabs at-tabs" role="tablist" aria-label="出缺勤工作區">
@@ -1110,13 +1112,30 @@ import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
 import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
+import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../lib/leaveSuccessorShift.js';
+import SuccessorLeaveBlockers from '../components/course-management/SuccessorLeaveBlockers.vue';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
+import { askConfirm, confirmState, settleConfirm } from '../composables/useConfirmDialog';
 
 const props = defineProps({
   branchId: [String, Number],
   userRole: String,
   userId: [String, Number],
 });
-const emit = defineEmits(['navigate', 'navigate-learning']);
+const emit = defineEmits(['navigate', 'navigate-learning', 'navigate-context']);
+const leaveBlockers = ref([]);
+const leaveBlockerDate = ref('');
+const leaveConfirmOwner = ref(null);
+const statusEditOwner = ref(0);
+async function confirmSuccessorLeave(message) {
+  const answer = askConfirm({ title: '請假與續約順延影響', message, confirmLabel: '確認請假與順延' });
+  const owner = confirmState.value;
+  leaveConfirmOwner.value = owner;
+  try { return await answer; } finally { if (leaveConfirmOwner.value === owner) leaveConfirmOwner.value = null; }
+}
+function cancelLeaveConfirmation() { if (leaveConfirmOwner.value && confirmState.value === leaveConfirmOwner.value) settleConfirm(false); }
+onBeforeUnmount(() => { statusEditOwner.value += 1; cancelLeaveConfirmation(); });
+watch(() => [props.branchId, props.userRole], () => { statusEditOwner.value += 1; cancelLeaveConfirmation(); leaveBlockers.value = []; leaveBlockerDate.value = ''; }, { flush: 'sync' });
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorOrAdmin = computed(() => props.userRole === 'director' || props.userRole === 'super_admin');
@@ -2174,11 +2193,17 @@ const submitMakeupMark = async (s) => {
 };
 
 const saveStatusEdit = async (record) => {
+  if (record._saving) return;
   if (record._newStatus === record.Status) { record._editing = false; return; }
+  const context = { owner: statusEditOwner.value, branch: props.branchId, role: props.userRole,
+    session: record.ClassSessionID, course: record.StudentClassID, status: record.Status, nextStatus: record._newStatus };
+  const ownsEdit = () => statusEditOwner.value === context.owner && props.branchId === context.branch
+    && props.userRole === context.role && record.ClassSessionID === context.session
+    && record.StudentClassID === context.course && record.Status === context.status && record._newStatus === context.nextStatus;
   record._saving = true;
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token || !ownsEdit()) return;
     if (!record.ClassSessionID) {
       alert('此記錄缺少堂次關聯，無法修改狀態');
       record._saving = false;
@@ -2186,7 +2211,31 @@ const saveStatusEdit = async (record) => {
     }
 
     if (record._newStatus === 'leave') {
+      leaveBlockers.value = [];
       const isAttended = ['present', 'late'].includes(String(record.Status || '').toLowerCase());
+      if (!isAttended) {
+        const plan = await previewSuccessorLeave({ role: context.role, sessionId: context.session, token });
+        if (!ownsEdit()) return;
+        if (plan) {
+          const effects = successorImpactItems(plan).join('\n');
+          if (!plan.eligible) {
+            leaveBlockers.value = plan.blockers;
+            leaveBlockerDate.value = plan.leave_session.date || '';
+            return;
+          }
+          if (!await confirmSuccessorLeave(effects)) return;
+          if (!ownsEdit()) return;
+          await applySuccessorLeave(plan, { token });
+          if (!ownsEdit()) return;
+          record.Status = 'leave';
+          record.status_label = '請假';
+          record._editing = false;
+          pendingMarkMsg.value = '請假與續約順延已完成';
+          pendingMarkMsgType.value = 'success';
+          await Promise.all([fetchPendingSessions(), fetchRecords()]);
+          return;
+        }
+      }
       const confirmMsg = isAttended
         ? `此堂已登記到班，確定要補請假？\n（將作廢出缺勤記錄與評量記錄、沖回堂數；未來既有上課日不變，僅於尾端補回一堂）`
         : `確定要將此堂標記為「請假」？\n未來既有上課日不變，系統僅於尾端補回一堂。`;
