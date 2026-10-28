@@ -18,6 +18,68 @@ class ScheduleGuardrailsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_pure_teacher_capacity_decision_allows_targeted_trial_until_third_seat(): void
+    {
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        $slot = ['day_of_week' => 3, 'start_time' => '15:00', 'end_time' => '17:00'];
+        $overlaps = [
+            ['student_id' => 101, 'class_type' => 'trial', 'trial_target_class_type' => 'one_on_three', 'start_time' => '15:00', 'end_time' => '17:00'],
+            ['student_id' => 102, 'class_type' => 'trial', 'trial_target_class_type' => 'one_on_three', 'start_time' => '15:00', 'end_time' => '17:00'],
+        ];
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $allowed = $guard->teacherCapacityDecision('trial', $slot, $overlaps, 'one_on_three');
+        $this->assertTrue($allowed['allowed']);
+        $this->assertSame(2, $allowed['distinct_students']);
+        $this->assertNull($allowed['conflict']);
+
+        $blocked = $guard->teacherCapacityDecision('trial', $slot, [...$overlaps, [
+            'student_id' => 103, 'class_type' => 'trial', 'trial_target_class_type' => 'one_on_three', 'start_time' => '15:00', 'end_time' => '17:00',
+        ]], 'one_on_three');
+        $this->assertFalse($blocked['allowed']);
+        $this->assertSame(3, $blocked['distinct_students']);
+        $this->assertSame(3, $blocked['conflict']['allowed_students']);
+        $this->assertSame([], $queries);
+    }
+
+    public function test_teacher_capacity_context_batches_targets_across_dates_and_the_incoming_course(): void
+    {
+        $teacher = $this->createTeacher(1, 'teacher-capacity-batch@example.com');
+        $ids = [];
+        foreach (['one_on_three', 'one_on_two', 'one_on_three'] as $i => $target) {
+            $ids[] = $this->insertTrialCourse($this->createStudent(1, '批次試聽' . $i)->id, $teacher, $target);
+        }
+        $entry = fn ($id) => ['class_type' => 'trial', 'course_id' => $id, 'student_id' => $id,
+            'start_time' => '15:00', 'end_time' => '17:00'];
+        $entries = ['2026-04-15' => [$entry($ids[0])], '2026-04-16' => [$entry($ids[1])]];
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $context = $guard->prepareTeacherCapacityContext($entries, $ids[2]);
+            $queries = DB::getQueryLog();
+            $this->assertCount(1, $queries);
+            $this->assertStringContainsString('trial_target_class_type', $queries[0]['query']);
+            $this->assertEqualsCanonicalizing($ids, $queries[0]['bindings']);
+            $this->assertSame('one_on_three', $context['incoming_trial_target']);
+            $this->assertSame('one_on_two', $context['entries_by_date']['2026-04-16'][0]['trial_target_class_type']);
+            DB::flushQueryLog();
+            $this->assertSame($context, $guard->prepareTeacherCapacityContext($entries, $ids[2]));
+            foreach ($context['entries_by_date'] as $rows) {
+                $this->assertTrue($guard->teacherCapacityDecision('trial', [
+                    'start_time' => '15:00', 'end_time' => '17:00',
+                ], $rows, $context['incoming_trial_target'])['allowed']);
+            }
+            $this->assertSame([], DB::getQueryLog());
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+    }
+
     public function test_one_on_two_third_student_is_blocked_on_same_slot(): void
     {
         $token = $this->createDirectorToken([1], 'director-guard-a@example.com');

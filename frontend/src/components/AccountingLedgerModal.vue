@@ -287,7 +287,8 @@
 
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
           <div v-if="allocContracts.length" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
-            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" @click="allocating = true">
+            <p id="ledger-pay-scope" class="ledger-muted ledger-sticky-pay__scope" data-testid="ledger-pay-scope">此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。</p>
+            <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" aria-describedby="ledger-pay-scope" @click="allocating = true">
               登記收款<small>{{ allocContracts.length > 1 ? `${allocContracts.length} 份合約` : allocContracts[0].subject }}</small>
             </button>
           </div>
@@ -1044,6 +1045,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-sticky-pay{position:sticky;bottom:-32px;margin:16px -22px -32px;padding:10px 22px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface,var(--ds-canvas));border-top:1px solid var(--ds-border);z-index:2}
 .ledger-sticky-pay__btn{width:100%;min-height:48px;border:0;border-radius:10px;background:var(--ds-cta);color:var(--ds-on-cta);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
 .ledger-sticky-pay__btn small{margin-left:8px;font-weight:400;opacity:.85}
+.ledger-sticky-pay__scope{margin:0 0 6px}
 .ledger-table-wrap{overflow-x:visible}
 .ledger-table,.ledger-table tbody,.ledger-table tr,.ledger-table td{display:block;width:100%;box-sizing:border-box}
 .ledger-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}

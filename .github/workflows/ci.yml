@@ -202,6 +202,8 @@ jobs:
             ui_foundation:
               - 'frontend/src/components/design-system/**'
               - 'frontend/src/pages/NotificationsCenter.vue'
+              - 'frontend/src/pages/DirectorAccountsPage.vue'
+              - 'frontend/e2e/director-accounts-clarity.spec.js'
               - 'frontend/src/pages/StudentsList.vue'
               # axe gate dependency (Dependabot bumps of @axe-core/playwright)
               - 'frontend/package.json'

@@ -53,3 +53,14 @@ export function assertDirectorDashboardTelemetry(payload) {
     for (const key of meta.decision_keys) expect(key).toMatch(/^[a-z0-9_-]{1,80}$/i);
   }
 }
+
+// Establish the real homepage producer before navigation can cancel its lazy mount.
+export async function openStudentsAfterDashboardOpened(page, telemetry, branchId) {
+  await expect.poll(() => telemetry.some((payload) => (
+    payload.event === 'dashboard_opened'
+    && payload.branch_id === branchId
+    && payload.meta?.role === 'director'
+    && payload.meta?.page === 'director-dashboard'
+  )), { message: 'validated dashboard_opened must be observed before leaving the director dashboard' }).toBe(true);
+  await page.getByRole('button', { name: '學生管理', exact: true }).click();
+}
