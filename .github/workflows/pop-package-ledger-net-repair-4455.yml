@@ -1,6 +1,8 @@
 name: Founder POP package ledger net repair (#4455)
 # governance-capability: pop-controlled
 # Case adapter for POP operation package-ledger-net-repair-4455 (Founder decision 2026-10-23, #4455, PR #4456).
+# Round 1 (52 rows) ran on 2026-10-28 (run 40650089714). This adapter now drafts round 2: the 39-row over-debit manifest
+# (PackageLedgerNetRepairManifest::rows(2)) under its own decision reference and idempotency key.
 # Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
 # The operation spans campuses, so draft/dry-run use that super_admin session (the POP machine identity is
 # campus-scoped). dry-run is read-only; approve waits for Pi-local execute + verify.
@@ -47,7 +49,7 @@ jobs:
           else
             [[ "$CONFIRM" == APPROVE_PACKAGE_LEDGER_NET_REPAIR_4455 ]] || exit 1
           fi
-          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_54_ledger_rows"
+          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_round2_39_ledger_rows"
   repair:
     name: Pi-local short-lived POP repair (package ledger net, #4455)
     needs: guard
@@ -127,8 +129,8 @@ jobs:
             curl -sS --proto '=https' --tlsv1.2 -H "Authorization: Bearer $TOKEN" \
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
-          # Exact catalog-bound parameters; the 54-row manifest lives in code (PackageLedgerNetRepairManifest).
-          PARAMETERS_JSON='{"parameters":{"decision_reference":"repair-package-ledger-net-4455"},"idempotency_key":"founder-package-ledger-net-repair-4455"}'
+          # Exact catalog-bound parameters; the round 2 manifest (39 rows) lives in code (PackageLedgerNetRepairManifest::rows(2)).
+          PARAMETERS_JSON='{"parameters":{"decision_reference":"repair-package-ledger-overdebit-4455"},"idempotency_key":"founder-package-ledger-overdebit-repair-4455"}'
           draft="$WORK_DIR/draft.json"
           draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
           [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }

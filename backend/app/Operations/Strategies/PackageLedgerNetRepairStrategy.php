@@ -14,19 +14,26 @@ use RuntimeException;
  * row, class B (debited as `attended` + `attendance`) one +1 row, reason `repair_4455` (one per session under the unique
  * key; marks the row done). Any other mismatch fails the plan closed. Counters are recomputed from the ledger; rollback
  * deletes exactly the inserted rows. Output carries ids and counts only.
+ * Round 2 (`decision_reference` REF_R2, reason `repair_4455_r2`): class R brings a lesson's package net back to 0 with one
+ * row of minus its net (+1 for a cancelled or deleted lesson still debited or a group slot's second debit, -1 for a stray
+ * credit), only while the lesson is not course-charged and the rest of its slot (the lesson's own course on a per-lesson
+ * package) then nets -1 if a lesson there is attended, late or course-charged, else 0 (Founder 2026-10-23 rule 1).
  */
 final class PackageLedgerNetRepairStrategy
 {
     public const REASON = 'repair_4455';
+    public const REASON_R2 = 'repair_4455_r2';
     private const REF = 'repair-package-ledger-net-4455';
+    private const REF_R2 = 'repair-package-ledger-overdebit-4455';
     private const GROUP_TYPES = ['one_on_two', 'one_on_three', 'one_on_many', 'tutoring']; // PackageDeductionService::groupSlot()
     private const TAUGHT = ['attended', 'completed', 'late'];
 
     public function plan(array $parameters): array
     {
-        $live = $this->inspect();
+        $round = ($parameters['decision_reference'] ?? null) === self::REF_R2 ? 2 : 1;
+        $live = $this->inspect($round);
         $rowErrors = $this->rowErrors($live);
-        $errors = ($parameters['decision_reference'] ?? null) === self::REF ? [] : ['case_parameters_mismatch'];
+        $errors = in_array($parameters['decision_reference'] ?? null, [self::REF, self::REF_R2], true) ? [] : ['case_parameters_mismatch'];
         $errors = [...$errors, ...array_merge(...array_values($rowErrors))];
         $states = $delta = [];
         foreach ($live['rows'] as $key => $r) {
@@ -45,7 +52,7 @@ final class PackageLedgerNetRepairStrategy
         return ['ok' => $errors === [], 'errors' => $errors, 'state' => $errors === [] && $n['insert'] === 0 ? 'after' : 'before',
             'counts' => ['rows' => count($states), 'to_insert' => $n['insert'], 'done' => $n['done'], 'blocked' => $n['blocked'],
                 'packages' => count($packages)],
-            'digest' => hash('sha256', json_encode($out, JSON_THROW_ON_ERROR))] + $out;
+            'digest' => hash('sha256', json_encode($out, JSON_THROW_ON_ERROR)), 'round' => $round] + $out;
     }
 
     public function execute(array $plan, array $context): array
@@ -55,10 +62,11 @@ final class PackageLedgerNetRepairStrategy
             throw new RuntimeException('package_ledger_plan_not_ready');
         }
 
-        $members = $this->memberCourseIds(); // read before the transaction: its first statement must be a lock (REPEATABLE READ)
-        return DB::transaction(function () use ($requestId, $members): array {
-            $this->lockPackages($members);
-            $live = $this->inspect(true);
+        $round = (int) ($plan['round'] ?? 1);
+        $members = $this->memberCourseIds($round); // read before the transaction: its first statement must be a lock (REPEATABLE READ)
+        return DB::transaction(function () use ($requestId, $members, $round): array {
+            $this->lockPackages($members, $round);
+            $live = $this->inspect($round, true);
             $errors = array_merge(...array_values($this->rowErrors($live)));
             if ($errors !== []) {
                 throw new RuntimeException('package_ledger_drift:' . implode(',', array_slice($errors, 0, 20)));
@@ -76,7 +84,7 @@ final class PackageLedgerNetRepairStrategy
                 }
                 $owned[$key] = (int) DB::table('package_session_ledger')->insertGetId([
                     'package_id' => $r['package_id'], 'student_class_id' => $r['student_class_id'],
-                    'class_session_id' => $r['class_session_id'], 'delta' => $r['delta'], 'reason' => self::REASON,
+                    'class_session_id' => $r['class_session_id'], 'delta' => $r['delta'], 'reason' => $live['reason'],
                     'recorded_by' => null, 'note' => '#4455 class ' . $r['class'], 'request_id' => $requestId,
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
@@ -88,17 +96,17 @@ final class PackageLedgerNetRepairStrategy
             }
 
             return ['ok' => true, 'inserted' => array_sum($written), 'already_applied' => $written === [],
-                'snapshot' => ['rows' => $owned, 'packages' => $prior]];
+                'snapshot' => ['rows' => $owned, 'packages' => $prior, 'round' => $round]];
         }, 3);
     }
 
     public function verify(array $plan, array $result): array
     {
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
-        $live = $this->inspect();
+        $live = $this->inspect((int) ($plan['round'] ?? 1));
         foreach ($live['rows'] as $r) {
             if ($r['repair_id'] === null) $errors[] = "not_repaired_{$r['class_session_id']}";
-            if ($r['net'] !== -1) $errors[] = "net_{$r['class_session_id']}"; // A: slot or lesson net; B: lesson net
+            if ($r['net'] !== $r['target']) $errors[] = "net_{$r['class_session_id']}"; // A: slot or lesson net; B: lesson net; R: lesson net 0
         }
         foreach ($live['packages'] as $id => $p) {
             $remaining = $p === null ? -1 : max(0, $p['total'] + $p['net']);
@@ -113,25 +121,26 @@ final class PackageLedgerNetRepairStrategy
     public function rollback(array $snapshot, array $context): array
     {
         $ids = $snapshot['rows'] ?? null;
+        $round = (int) ($snapshot['round'] ?? 1);
         $keys = array_map(fn (array $m): string => "{$m['class']}:{$m['package_id']}:{$m['class_session_id']}",
-            PackageLedgerNetRepairManifest::rows());
+            PackageLedgerNetRepairManifest::rows($round));
         if (!is_array($ids) || array_diff(array_keys($ids), $keys) !== []
             || array_filter($ids, fn ($id): bool => !is_int($id) || $id <= 0) !== []) {
             throw new RuntimeException('package_ledger_rollback_snapshot_invalid');
         }
 
-        $members = $this->memberCourseIds();
-        return DB::transaction(function () use ($ids, $members): array {
-            $this->lockPackages($members);
-            $live = $this->inspect(true);
+        $members = $this->memberCourseIds($round);
+        return DB::transaction(function () use ($ids, $members, $round): array {
+            $this->lockPackages($members, $round);
+            $live = $this->inspect($round, true);
             $skipped = $touched = [];
             foreach ($ids as $key => $id) {
                 $r = $live['rows'][$key];
-                if ($r['repair_id'] !== $id || $r['net'] !== -1) {
+                if ($r['repair_id'] !== $id || $r['net'] !== $r['target']) {
                     $skipped[] = $key; // moved on since the repair: deleting would leave a wrong net, so leave it alone
                     continue;
                 }
-                if (DB::table('package_session_ledger')->where('id', $id)->where('reason', self::REASON)
+                if (DB::table('package_session_ledger')->where('id', $id)->where('reason', $live['reason'])
                     ->where('package_id', $r['package_id'])->where('class_session_id', $r['class_session_id'])->delete() !== 1) {
                     throw new RuntimeException("package_ledger_rollback_row_{$id}");
                 }
@@ -161,20 +170,20 @@ final class PackageLedgerNetRepairStrategy
      * course of the manifest packages, then the packages, in id order, so no attendance write on them runs meanwhile.
      */
     /** @param list<int|string> $members read before the transaction; locked by primary key in id order (no gap locks) */
-    private function lockPackages(array $members): void
+    private function lockPackages(array $members, int $round): void
     {
         DB::table('StudentClass')->whereIn('ID', $members)->orderBy('ID')->lockForUpdate()->pluck('ID');
-        DB::table('course_packages')->whereIn('id', $this->packageIds())->orderBy('id')->lockForUpdate()->pluck('id');
+        DB::table('course_packages')->whereIn('id', $this->packageIds($round))->orderBy('id')->lockForUpdate()->pluck('id');
     }
 
-    private function memberCourseIds(): array
+    private function memberCourseIds(int $round): array
     {
-        return DB::table('StudentClass')->whereIn('PackageID', $this->packageIds())->pluck('ID')->all();
+        return DB::table('StudentClass')->whereIn('PackageID', $this->packageIds($round))->pluck('ID')->all();
     }
 
-    private function packageIds(): array
+    private function packageIds(int $round): array
     {
-        return array_values(array_unique(array_column(PackageLedgerNetRepairManifest::rows(), 'package_id')));
+        return array_values(array_unique(array_column(PackageLedgerNetRepairManifest::rows($round), 'package_id')));
     }
 
     /** @param array<int, int|string> $packageIds */
@@ -196,12 +205,15 @@ final class PackageLedgerNetRepairStrategy
      * package's class A slot (PackageDeductionService::slotNet()), else the session. `$current` (execute, rollback): the
      * ledgers are read with shared locks, so a snapshot taken by the POP transaction before the row locks cannot hide a
      * write committed meanwhile (#4454); ClassSession rows are never locked.
-     * @return array{rows: array<string, array<string, mixed>>, packages: array<int, array{group: bool, total: int, remaining: int, used: int, net: int}|null>}
+     * @return array{rows: array<string, array<string, mixed>>, packages: array<int, array{group: bool, total: int, remaining: int, used: int, net: int}|null>, reason: string}
      */
-    private function inspect(bool $current = false): array
+    private function inspect(int $round, bool $current = false): array
     {
         $read = fn ($query) => $current ? $query->sharedLock() : $query;
-        $manifest = PackageLedgerNetRepairManifest::rows();
+        $reason = $round === 2 ? self::REASON_R2 : self::REASON;
+        $manifest = PackageLedgerNetRepairManifest::rows($round);
+        $courseNet = fn (int $cs): int => (int) $read(DB::table('session_deduction_ledger')->where('class_session_id', $cs))
+            ->selectRaw("COALESCE(SUM(CASE WHEN event_type = 'deduct' THEN 1 WHEN event_type = 'reverse' THEN -1 ELSE 0 END), 0) AS net")->value('net');
         $packages = [];
         foreach (array_unique(array_column($manifest, 'package_id')) as $id) {
             $p = DB::table('course_packages')->where('id', $id)->first(['class_type', 'total_sessions', 'remaining_sessions', 'used_sessions']);
@@ -216,12 +228,29 @@ final class PackageLedgerNetRepairStrategy
             [$pkg, $cs] = [(int) $m['package_id'], (int) $m['class_session_id']];
             $ledger = $read(DB::table('package_session_ledger')->where('package_id', $pkg)->where('class_session_id', $cs))
                 ->orderBy('id')->get(['id', 'student_class_id', 'reason', 'delta', 'request_id']);
-            $repair = $ledger->firstWhere('reason', self::REASON);
+            $repair = $ledger->firstWhere('reason', $reason);
             $r = ['class' => $m['class'], 'package_id' => $pkg, 'class_session_id' => $cs, 'expected_scope' => $m['scope'],
-                'delta' => $m['class'] === 'A' ? -1 : 1, 'repair_id' => $repair ? (int) $repair->id : null,
+                'delta' => match ($m['class']) { 'A' => -1, 'R' => -(int) $m['net'], default => 1 }, 'target' => $m['class'] === 'R' ? 0 : -1,
+                'repair_id' => $repair ? (int) $repair->id : null,
                 'repair_request_id' => $repair ? (string) $repair->request_id : null, 'net' => (int) $ledger->sum('delta'), 'scope' => 'session',
                 'session_net' => (int) $ledger->sum('delta')];
-            if ($m['class'] === 'B') {
+            if ($m['class'] === 'R') {
+                // The lesson as found (or `deleted`), its course charge, and the rest of its slot: the package's member
+                // lessons at the manifest slot (group types) or the same course's (per lesson), ledger nets read current.
+                $s = DB::table('ClassSession')->where('id', $cs)->first(['SessionDate', 'StartTimeHM', 'Status']);
+                $r['student_class_id'] = (int) ($ledger->where('reason', '!=', $reason)->last()->student_class_id ?? 0);
+                [$date, $hm] = explode(' ', $m['slot']);
+                $rest = DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
+                    ->where('sc.PackageID', $pkg)->where('c.SessionDate', $date)->where('c.StartTimeHM', $hm)->where('c.id', '!=', $cs)
+                    ->when($m['scope'] === 'session', fn ($q) => $q->where('c.StudentClassID', $r['student_class_id']))
+                    ->orderBy('c.id')->get(['c.id', 'c.Status'])
+                    ->map(fn ($l): array => ['id' => (int) $l->id, 'charged' => in_array(strtolower(trim((string) $l->Status)), ['attended', 'late'], true)
+                        || $courseNet((int) $l->id) > 0, 'net' => (int) $read(DB::table('package_session_ledger')->where('package_id', $pkg)
+                        ->where('class_session_id', $l->id))->sum('delta')])->all();
+                $r += ['status' => $s ? strtolower(trim((string) $s->Status)) : 'deleted', 'expected_status' => $m['status'], 'found_net' => (int) $m['net'],
+                    'slot' => "{$pkg}|{$m['slot']}", 'slot_moved' => $s !== null && "{$s->SessionDate} {$s->StartTimeHM}" !== $m['slot'],
+                    'course_net' => $courseNet($cs), 'rest' => $rest];
+            } elseif ($m['class'] === 'B') {
                 // The ClassSession row may be gone; the two ledger rows themselves are the precondition.
                 $r['others'] = $ledger->where('reason', '!=', self::REASON)
                     ->map(fn ($l): string => $l->reason . ':' . (int) $l->delta)->sort()->values()->all();
@@ -245,13 +274,16 @@ final class PackageLedgerNetRepairStrategy
             $rows["{$m['class']}:{$pkg}:{$cs}"] = $r;
         }
 
-        return ['rows' => $rows, 'packages' => $packages];
+        return ['rows' => $rows, 'packages' => $packages, 'reason' => $reason];
     }
 
     /** @return array<string, list<string>> row key => failed preconditions (a row already repaired by this operation has none) */
     private function rowErrors(array $live): array
     {
-        $out = $slots = [];
+        $out = $slots = $reversed = [];
+        foreach ($live['rows'] as $r) {
+            if ($r['class'] === 'R') $reversed[$r['slot']][] = $r['class_session_id'];
+        }
         foreach ($live['rows'] as $key => $r) {
             $cs = $r['class_session_id'];
             $e = [];
@@ -259,6 +291,15 @@ final class PackageLedgerNetRepairStrategy
                 $e[] = "package_missing_{$cs}";
             } elseif ($r['repair_id'] !== null) {
                 // done: reported and skipped
+            } elseif ($r['class'] === 'R') {
+                if ($live['packages'][$r['package_id']]['group'] !== ($r['expected_scope'] === 'slot')) $e[] = "r_scope_{$cs}";
+                if ($r['status'] !== $r['expected_status'] || $r['slot_moved']) $e[] = "r_status_{$cs}";
+                if (!in_array($r['found_net'], [-1, 1], true) || $r['net'] !== $r['found_net']) $e[] = "r_net_{$cs}";
+                if ($r['course_net'] > 0) $e[] = "r_course_net_{$cs}"; // still charged on its course: the package follows (rule 1)
+                // After every reversal in this slot, the slot keeps one debit if a lesson there is charged, else none.
+                $rest = array_filter($r['rest'], fn (array $l): bool => !in_array($l['id'], $reversed[$r['slot']], true));
+                $charged = array_filter($rest, fn (array $l): bool => $l['charged']) !== [];
+                if (array_sum(array_column($rest, 'net')) !== ($charged ? -1 : 0)) $e[] = "r_slot_net_{$cs}";
             } elseif ($r['class'] === 'B') {
                 if ($r['net'] !== -2) $e[] = "b_net_{$cs}";
                 if ($r['others'] !== ['attendance:-1', 'attended:-1']) $e[] = "b_rows_{$cs}";
