@@ -22,16 +22,16 @@ paths = [
   '''\.github/workflows/ci\.yml''',
   '''backend/\.env\.testing''',
   '''docs/archive/control-plane-shadow-v1/''',
-  # Test code and fixtures: the default generic-api-key rule trips on every "idempotency_key" / "token" literal there.
-  # ci-preflight still scans every diff for AWS keys, private keys, GitHub PATs and triage tokens, whatever the path.
-  '''(^|/)tests?/''',
-  '''(^|/)__tests__/''',
-  '''\.(test|spec)\.[a-z]+$''',
 ]
-# generic-api-key false positives in app code (full-history scan of main, 2026-10-28): domain identifiers
-# beside a "key" word, not credentials. Each regex is anchored to the whole captured value and admits only
-# identifier shapes, never a random-looking string.
+# Test code is NOT skipped: every rule, the triage-token, PAT and AWS ones included, stays active on every path.
+# The default generic-api-key rule does trip on key-named literals in tests and on a few domain identifiers in app
+# code (full-history scan of main, 2026-10-28), so these regexes, each anchored to the WHOLE captured value, admit only
+# identifier-shaped values that no high-signal rule's secret can have. A new literal such as 'idempotency_key' =>
+# 'synthetic-4326' or a UUID passes; a random-looking value does not. (UUID shaped keys exist, e.g. Heroku; this stack uses none.)
 regexes = [
+  '''^synthetic-[a-z0-9-]+$''',                           # test fixtures named on purpose: synthetic-4326
+  '''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$''',  # UUID idempotency keys in tests
+  '''^promo-[a-z]+-[0-9]+$''',                            # GradePromotion test idempotency keys
   '''^syn\.[a-z]+(?:\.[a-z0-9-]+)+\.v[0-9]+$''',        # TrueFit material keys: syn.eng.phonics.short-vowels.v1
   '''^weekly_[0-9]+_segments$''',                         # TeacherEligibility pay component key
   '''^perfFlags\.[A-Z][A-Z0-9_]*$''',                     # frontend feature-flag reference
