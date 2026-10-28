@@ -3,6 +3,39 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-28（二）之二（正式啟用只留真正危險的按鈕；對話中選「A」）
+
+> Founder 原話經協調 session 轉達（本 PR 的 session 未直接看到對話），**請 Founder 逐字核對**。
+
+### Founder 原話（逐字）
+
+1. 「為什麼要一直按 我想把他拔掉」
+2. Agent 提出 A／B 兩案後回覆：「A」
+
+**A 的內容**：只有真正危險的動作保留 `production-activation` 的 Founder 按鈕——刪除／改名／變更資料表或欄位、刪除資料、金鑰／credential／權限，以及部署／閘門規則本身的變更。其他一律自動。
+
+### 1. 保留 Founder 按（不變）
+
+- 會 drop／rename／change 表或欄位，或在 migration 裡寫資料的 migration（R5）。
+- 刪除正式資料：POP 策略的 execute 會刪除、作廢或覆寫既有資料列（非 append-only 的資料修復），以及沒有 rollback snapshot 的修復。
+- 金鑰／credential／權限：credential rotation（含 staged DB principal rotation、`pop-bootstrap`）、`pop-telegram-webhook-secret.yml`、`pop-mount-reviewed-financial-once.yml`、身分／auth／權限／credential／token／security／PII 表的 migration、identity／authz 邊界。
+- 部署／閘門規則本身：`deploy.yml`、`autonomy_gate.py` 與 2026-10-21（二）之二第 2 條所列的控制面範圍，包括實作本決定的 PR（合併後第一次部署仍按一次）。
+- 任何必要證據缺少、無法判定或 API 錯誤：退回 Founder 按（fail closed），不是放行。
+
+### 2. 不再按（各在實作 PR 合併到 main 後才生效；在那之前照舊按）
+
+| 項目 | 自動的條件 | 實作位置 |
+|---|---|---|
+| (a) `pop-*.yml` 的 `mode=dry-run` | 只建 POP draft＋dry-run，不發 approval；只在 main；跑在 main-only、無 reviewer 的 environment；`mode=approve` 走不到這條路 | 各 `pop-*.yml` |
+| (b) append-only 資料修復的 `mode=approve` | workflow 列在唯一一份審查過的 allowlist；24 小時內有同一 workflow、同 `deployed_backend_sha`、同範圍、同 plan digest 的成功 dry-run，且 blocked=0；approve 當下在 Pi 重算的 digest 相同；Pi verify 必須通過，否則保留 rollback snapshot、run 明確失敗 | allowlist 與證據檢查（`scripts/governance/`） |
+| (c) 帳務表上的只新增型 migration | `Additive-Migration: yes`＋結構檢查＋Codex 在最終 head 確認（2026-10-14（三）補充第 1 條）；身分／auth／權限／credential／token／security／PII 表照舊排除；#4560（上線後監看＋自動回滾 code）合併後才做 | `autonomy_gate.py` `_ADDITIVE_EXCLUDED_TABLE_RE` |
+
+case dump 本來就不用按，不變。
+
+### 3. 取代範圍
+
+只就上表 (a)–(c) 取代：2026-10-14（三）補充第 1 條的「帳務表一律排除」；2026-10-12 第 2 條、2026-10-21（二）第 2(c) 條、2026-10-21（二）之二第 1 條中「正式資料修改／修復仍須 Founder」對 (b) 的部分。其他條文不變；2026-10-14（二）第 5 條（控制面變更經審查後才合併）照舊，每個實作 PR 先經獨立 adversarial review。
+
 ## 2026-10-28（二）（規範順暢化；對話中「我觉得现有的很多架构可以用你觉得最顺畅的方式去重构我们目前的规范。」）
 
 1. **授權**：Agent 可以用最順暢的方式重整流程與規範，移除「拖慢、但不擋事故」的步驟；仍以小 PR 交付，計畫見 `docs/plans/2026-10-28-governance-smoothing.md`。本條**不**放寬只限 Founder 的事：正式資料修改、production migration、credential、不可逆操作。
