@@ -602,7 +602,7 @@ class MonthlyBillingSlipTest extends TestCase
         return [$student, $course];
     }
 
-    public function test_count_mode_slip_uses_contract_charge_when_stored_charge_is_stale(): void
+    public function test_count_mode_slip_uses_stored_charge_even_when_rate_times_count_differs(): void
     {
         $token = $this->createDirectorToken('director-count-stale-charge@example.com');
         $student = Student::create([
@@ -646,7 +646,7 @@ class MonthlyBillingSlipTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('schedule_mode', 'count')
             ->assertJsonPath('remaining_sessions', 0)
-            ->assertJsonPath('charge', 4000);
+            ->assertJsonPath('charge', 8000); // Founder Q3 (2026-10-11): Charge is the amount; Rate x count is only a list for directors to confirm
     }
 
     private function createDirectorToken(string $loginName = 'director-monthly@example.com'): string

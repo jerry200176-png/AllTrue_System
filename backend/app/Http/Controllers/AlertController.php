@@ -601,18 +601,19 @@ class AlertController extends Controller
     }
 
     /**
-     * Count-course alerts must use the contract price, not a stale Charge
-     * snapshot. Historical renewals could copy a previous total into Charge,
-     * making an 8-session course at 1,650 display as 24,750 instead of 13,200
-     * (#230). Charge remains stored for audit; this is the director-facing
-     * effective amount used for status and collection decisions.
+     * Founder Q3 (2026-10-11): a count-mode contract with no invoice owes StudentClass.Charge on every screen, the amount
+     * ContractMoneyVerdict reports for it (this used to be Rate x sessions, #230). Where the two differ the director
+     * confirms the contract. Two shapes keep the Rate x sessions figure, as an ESTIMATE only: a package member (its package
+     * owns the amount; unchanged) and Charge = 0 beside a rate ("not filled in", the Verdict reads review_required), which
+     * would otherwise drop out of the queue. The tuition slip never prices that second shape (see tuitionSlipData).
      */
     private function countModeCharge(StudentClass $course): int
     {
+        $charge = max(0, (int) ($course->Charge ?? 0));
         $rate = (float) ($course->Rate ?? 0);
         $sessions = max(0, (int) ($course->SessionCount ?? 0));
-        if ($rate <= 0 || $sessions <= 0) {
-            return max(0, (int) ($course->Charge ?? 0));
+        if (($charge > 0 && !$course->isPartOfPackage()) || $rate <= 0 || $sessions <= 0) {
+            return $charge;
         }
 
         $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
@@ -815,6 +816,12 @@ class AlertController extends Controller
         if ($settlement === 'free') {
             return response()->json(['message' => '這門課是免費課程，不需要繳費單'], 422);
         }
+        // Founder 2026-10-14: a count-mode contract whose Charge is empty ("not filled in") is never priced from Rate on a slip
+        // a parent can download; the queue row keeps its estimate until a director fills in the Charge.
+        if ($settlement === 'review_required' && ($sc->ScheduleMode ?? 'count') === 'count' && !$sc->isPartOfPackage()
+            && (int) ($sc->getAttribute('Charge') ?? 0) <= 0) {
+            return response()->json(['message' => '金額待確認，請先確認應收金額'], 422);
+        }
         $settled = in_array($settlement, ['unpaid', 'partial', 'unbilled'], true)
             ? false
             : ($settlement === 'paid' || (int) ($sc->getAttribute('Paid') ?? 0) === 1 || $sc->isEffectivelyPaid());
@@ -856,9 +863,7 @@ class AlertController extends Controller
         $billing = $mode === 'date'
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
             : [
-                // Count-mode alerts already use the contract price rather than
-                // a stale historical Charge snapshot. Keep the tuition slip on
-                // that same canonical display path (in-app #275).
+                // Same amount as the queue row and the Verdict (Founder Q3): the stored Charge.
                 'charge' => $this->countModeCharge($sc),
                 'period_sessions' => null,
                 'period_start' => null,

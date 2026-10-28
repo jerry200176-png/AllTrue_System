@@ -52,9 +52,8 @@ class ContractMoneyCallersAgreeTest extends TestCase
         $course = $c['course'];
         if ($c['date']) {
             $course->update(['settlement_day' => 15]); // monthly contracts only reach the alert list with a settlement day
-        } elseif (!$c['trial']) {
-            $course->update(['Rate' => 1000]); // Rate x SessionCount == Charge; amended-price drift is a separate decision
         }
+        // Rate (1500) x SessionCount (10) != Charge (10000) on purpose: Charge is the amount everywhere (Founder Q3).
         $course = $course->fresh();
         $id = (int) $course->ID;
         $v = app(ContractMoneyVerdict::class)->forCourse($course);
@@ -76,6 +75,8 @@ class ContractMoneyCallersAgreeTest extends TestCase
                 $answers['alerts'] = "paid_amount {$row['paid_amount']} but verdict applied {$v->applied}";
             } elseif ($v->source === 'invoice' && (int) $row['outstanding'] !== $v->outstanding) {
                 $answers['alerts'] = "outstanding {$row['outstanding']} but verdict {$v->outstanding}";
+            } elseif ($v->status === 'unbilled' && !$c['date'] && !$c['package'] && (int) $row['outstanding'] !== $v->outstanding) { // a package member's amount is its package's
+                $answers['alerts'] = "unbilled outstanding {$row['outstanding']} but verdict {$v->outstanding}";
             }
         }
         if (!$row && $class === 'owing' && !$c['date'] && !$c['package'] && $v->source === 'invoice' && $v->outstanding > 0) {
@@ -119,6 +120,9 @@ class ContractMoneyCallersAgreeTest extends TestCase
             $slip = $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/$id")->status();
             if (($slip === 422) !== ($class === 'settled')) {
                 $answers['slip'] = "answers $slip but verdict {$v->status}";
+            } elseif ($slip === 200 && $v->status === 'unbilled' && !$c['date'] && !$c['package']
+                && (int) $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/$id")->json('charge') !== $v->outstanding) {
+                $answers['slip'] = 'unbilled slip charge differs from verdict ' . $v->outstanding;
             }
         }
 
