@@ -65,7 +65,13 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->confirm($this->record($sc, 1650)->assertOk()->json('report_id'));
         $this->assertSame([['2026-08', 1650]], $this->bills($sc));
 
-        // August is paid; September still has countable lessons, so "already paid" must not refuse.
+        // August is paid; the slip and the drawer form move on to September (#4573 review).
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$sc->ID}")->assertOk()
+            ->assertJsonPath('billing_period', '2026-09')->assertJsonPath('charge', 4950);
+        $ledger = collect($this->api('getJson', "/api/v1/accounting/ledger?student_class_id={$sc->ID}")->assertOk()->json('courses'));
+        $this->assertSame(['billing_period' => '2026-09', 'amount' => 4950], $ledger->firstWhere('id', $sc->ID)['collection_period']);
+
+        // September still has countable lessons, so "already paid" must not refuse.
         $this->confirm($this->record($sc, 4950)->assertOk()->json('report_id'));
         $this->assertSame([['2026-08', 1650], ['2026-09', 4950]], $this->bills($sc));
 
