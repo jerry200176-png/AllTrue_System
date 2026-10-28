@@ -369,19 +369,7 @@ class LeaveSuccessorShiftTest extends TestCase
                 $undo->rollBack();
             }
             DB::purge('q9_stale_undo');
-            DB::transaction(function () use ($userId) {
-                $courseIds = [$this->old, $this->renewal];
-                $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id');
-                DB::table('schedule_audit_logs')->whereIn('session_id', $sessionIds)->delete();
-                DB::table('StudentSingIn')->whereIn('StudentClassID', $courseIds)->delete();
-                DB::table('schedules')->whereIn('student_course_id', $courseIds)->delete(); // the committed leave marker
-                DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
-                DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
-                DB::table('auth_tokens')->where('user_id', $userId)->delete();
-                DB::table('UserCampus')->where('UserID', $userId)->delete();
-                DB::table('User')->where('id', $userId)->delete();
-                DB::table('Student')->where('id', self::STUDENT)->delete();
-            });
+            $this->purgeCommittedFixtures((int) $userId);
             // Keep RefreshDatabase's existing teardown transaction balanced.
             DB::beginTransaction();
         }
@@ -744,18 +732,7 @@ class LeaveSuccessorShiftTest extends TestCase
                 $apply->rollBack();
             }
             DB::purge('shift_mode_current');
-            DB::transaction(function () use ($userId) {
-                $courseIds = [$this->old, $this->renewal];
-                DB::table('schedule_audit_logs')->whereIn('session_id', DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id'))->delete();
-                DB::table('schedules')->whereIn('student_course_id', $courseIds)->delete();
-                DB::table('StudentSingIn')->whereIn('StudentClassID', $courseIds)->delete();
-                DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
-                DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
-                DB::table('auth_tokens')->where('user_id', $userId)->delete();
-                DB::table('UserCampus')->where('UserID', $userId)->delete();
-                DB::table('User')->where('id', $userId)->delete();
-                DB::table('Student')->where('id', self::STUDENT)->delete();
-            });
+            $this->purgeCommittedFixtures((int) $userId);
             DB::beginTransaction(); // Keep RefreshDatabase's teardown transaction balanced.
         }
     }
@@ -955,17 +932,158 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame($before, $this->fingerprint());
     }
 
+    /** #4210 P2-1: what blocks a renewal lesson, and what does not (a voided sign-in is not attendance). @dataProvider renewalRules */
+    public function test_renewal_lesson_and_contract_rules(string $kind, ?string $message): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        match ($kind) {
+            'live sign-in' => $this->signIn($this->renewal, $this->sessions['2026-12-08'], null),
+            'voided sign-in' => $this->signIn($this->renewal, $this->sessions['2026-12-08'], '2026-10-31 18:00:00'),
+            'settled renewal' => DB::table('StudentClass')->where('ID', $this->renewal)->update(['settlement_locked_at' => now()]),
+            'past-dated lesson' => $this->moveClockTo('2026-12-05 10:00:00'), // the 12-01 lesson is still scheduled
+        };
+        $before = $this->undoSnapshot();
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('eligible', $message === null);
+        if ($message === null) {
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertOk()->assertJsonPath('applied', true);
+            $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
+
+            return;
+        }
+        $this->assertSame([$message], array_column($preview->json('blockers'), 'message'));
+        $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])->assertStatus(422);
+        $this->assertSame($before, $this->undoSnapshot());
+    }
+
+    /** @return array<string, array{string, ?string}> */
+    public static function renewalRules(): array
+    {
+        return [
+            'live sign-in' => ['live sign-in', '續約堂次已有出缺勤紀錄'],
+            'voided sign-in' => ['voided sign-in', null],
+            'settled renewal' => ['settled renewal', '續約課程為手動排課或已結算，無法自動順延'],
+            'past-dated lesson' => ['past-dated lesson', '續約堂次日期已過'],
+        ];
+    }
+
+    /** #4210 P3-1: apply locks the chosen renewal and its lessons only, not every course of the student and subject. */
+    public function test_apply_locks_only_the_chosen_renewal(): void
+    {
+        $later = $this->course(self::STUDENT, '2027-01-05', '2027-01-26');
+        foreach (['2027-01-05', '2027-01-12'] as $d) {
+            $this->lesson($later, $d);
+        }
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('successor_course_id', $this->renewal)->json('preview_token');
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk();
+            $locks = array_values(array_filter(DB::getQueryLog(), fn ($q) => str_ends_with(strtolower(trim($q['query'])), 'for update')));
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+        $this->assertNotEmpty($locks);
+        foreach ($locks as $lock) {
+            $this->assertNotContains($later, $lock['bindings'], $lock['query']);
+            if (str_contains($lock['query'], 'from `StudentClass`')) {
+                $this->assertStringContainsString('`ID` = ?', $lock['query'], 'a StudentClass lock must name one course');
+            }
+        }
+        $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
+        $this->assertSame(['2027-01-05', '2027-01-12'], $this->liveDates($later));
+    }
+
+    /** A deadlock victim is retried whole: the apply re-plans under locks and writes once. */
+    public function test_a_deadlock_retries_the_whole_apply_and_writes_once(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $token = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->json('preview_token');
+        $userId = (int) AuthToken::query()->where('token', $this->token)->value('user_id');
+        $this->assertSame(1, DB::transactionLevel());
+        DB::commit(); // Laravel retries a deadlock only for the outermost transaction.
+        $connection = DB::connection();
+        $dispatcher = $connection->getEventDispatcher();
+        $events = clone $dispatcher;
+        $connection->setEventDispatcher($events);
+        $attempts = 0;
+        $events->listen(\Illuminate\Database\Events\QueryExecuted::class, function ($query) use (&$attempts) {
+            if (str_starts_with($query->sql, 'update `ClassSession` set') && ++$attempts === 1) {
+                throw new \PDOException('Deadlock found when trying to get lock', 40001);
+            }
+        });
+        try {
+            $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertOk()->assertJsonPath('applied', true);
+            $this->assertGreaterThan(1, $attempts);
+            $this->assertSame(1, DB::table('StudentSingIn')->where('ClassSessionID', $leaveId)->count());
+            $this->assertSame(1, DB::table('schedules')->where('student_course_id', $this->old)->where('status', 'leave')->count());
+            $this->assertSame(5, DB::table('ClassSession')->where('StudentClassID', $this->old)->count());
+            $this->assertSame(['2026-12-08', '2026-12-15', '2026-12-22', '2026-12-29'], $this->liveDates($this->renewal));
+        } finally {
+            $connection->setEventDispatcher($dispatcher);
+            $this->purgeCommittedFixtures($userId);
+            DB::beginTransaction(); // Keep RefreshDatabase's teardown transaction balanced.
+        }
+    }
+
+    /** #4210 (checklist: not checked by the review): another campus's students never show in the preview, whatever it blocks on. */
+    public function test_another_campus_never_surfaces_in_the_preview(): void
+    {
+        DB::table('Student')->insert(['id' => 88413, 'name' => 'S88413', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1]);
+        $this->lesson($this->course(88413, '2026-12-29', '2026-12-29'), '2026-12-29');
+        $leaveId = $this->sessions['2026-11-17'];
+        $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
+        $apply = $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')]);
+        foreach ([$preview, $apply] as $response) {
+            $this->assertStringNotContainsString('S88413', $response->getContent());
+            $this->assertStringNotContainsString('"campus', strtolower($response->getContent()));
+        }
+        $fixed = ['授課老師在此時段已有其他課程，請先核對課表', '教室在此時段已有其他課程，請先核對課表', '學生在此時段已有其他課程'];
+        foreach ($preview->json('blockers') as $blocker) {
+            $this->assertContains($blocker['message'], $fixed);
+        }
+    }
+
+    /** For tests that must commit (two connections, a deadlock retry): remove what setUp and the apply wrote. */
+    private function purgeCommittedFixtures(int $userId): void
+    {
+        DB::transaction(function () use ($userId) {
+            $courseIds = DB::table('StudentClass')->where('StudentID', self::STUDENT)->pluck('ID')->all();
+            DB::table('schedule_audit_logs')->whereIn('session_id', DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id'))->delete();
+            DB::table('schedules')->whereIn('student_course_id', $courseIds)->delete();
+            DB::table('StudentSingIn')->whereIn('StudentClassID', $courseIds)->delete();
+            DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
+            DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
+            DB::table('auth_tokens')->where('user_id', $userId)->delete();
+            DB::table('UserCampus')->where('UserID', $userId)->delete();
+            DB::table('User')->where('id', $userId)->delete();
+            DB::table('Student')->where('id', self::STUDENT)->delete();
+        });
+    }
+
     private function seedLeaveEvidence(int $sessionId, string $kind): void
     {
         match ($kind) {
             'ledger' => SessionDeductionLedger::create(['student_class_id' => $this->old, 'class_session_id' => $sessionId,
                 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]),
             'settled' => DB::table('StudentClass')->where('ID', $this->old)->update(['settlement_locked_at' => now()]),
-            default => DB::table('StudentSingIn')->insert(['StudentClassID' => $this->old, 'ClassSessionID' => $sessionId,
-                'StudentID' => self::STUDENT, 'TeacherID' => self::TEACHER, 'CampusID' => 1, 'PersonType' => 'student',
-                'Status' => 'present', 'SessionDeducted' => false, 'SignInDT' => '2026-11-17 19:00:00', 'SignOutDT' => '2026-11-17 21:00:00',
-                'MDT' => now(), 'VoidedAt' => $kind === 'voided' ? '2026-10-31 18:00:00' : null, 'VoidReason' => $kind === 'voided' ? 'historical correction' : null]),
+            default => $this->signIn($this->old, $sessionId, $kind === 'voided' ? '2026-10-31 18:00:00' : null),
         };
+    }
+
+    private function moveClockTo(string $when): void
+    {
+        Carbon::setTestNow(Carbon::parse($when, 'Asia/Taipei'));
+        DB::table('auth_tokens')->update(['expires_at' => now()->addYear()]);
+    }
+
+    private function signIn(int $courseId, int $sessionId, ?string $voidedAt): void
+    {
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $courseId, 'ClassSessionID' => $sessionId,
+            'StudentID' => self::STUDENT, 'TeacherID' => self::TEACHER, 'CampusID' => 1, 'PersonType' => 'student',
+            'Status' => 'present', 'SessionDeducted' => false, 'SignInDT' => '2026-11-17 19:00:00', 'SignOutDT' => '2026-11-17 21:00:00',
+            'MDT' => now(), 'VoidedAt' => $voidedAt, 'VoidReason' => $voidedAt ? 'historical correction' : null]);
     }
 
     private function undoSnapshot(): string
@@ -985,6 +1103,9 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertTrue($blockers->isNotEmpty(), (string) json_encode($preview->json('blockers')));
         if ($sessionId !== null) {
             $this->assertSame($sessionId, $blockers->first()['session_id']);
+        }
+        foreach (['S88411', 'R410'] as $secret) { // another student's name, a classroom's name
+            $this->assertStringNotContainsString($secret, $preview->getContent());
         }
         // Q9(a): every blocker names the course (and lesson, when one moves) the director opens to fix it.
         $this->assertContains($blockers->first()['course_id'] ?? null, [$this->old, $this->renewal]);
