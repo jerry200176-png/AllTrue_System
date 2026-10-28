@@ -78,6 +78,16 @@ class CaseDumpPhpLint(unittest.TestCase):
             self.assertNotIn(bad, block)
 
 
+class ConfirmedReportVoidBlockedCase(unittest.TestCase):
+    """in-app #436: fleet scan, read-only, never prints Invoice Note text (only the void tag)."""
+
+    def test_read_only_and_note_reduced_to_a_tag(self):
+        block = case_block(render("confirmed_report_void_blocked").stdout, "confirmed_report_void_blocked")
+        for bad in WRITE_MARKERS:
+            self.assertNotIn(bad, block)
+        self.assertNotRegex(block, r"=> \$note|=> \(string\)\$inv->Note|'note' =>")
+
+
 class InApp414AmountSourceCase(unittest.TestCase):
     """#4155 / in-app #414: one campus-11 StudentClass, read-only, IDs/amounts/dates/statuses/enums only."""
 

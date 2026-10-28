@@ -25,6 +25,7 @@ on:
           - unbilled_monthly_sessions
           - f7_prod_discrepancy
           - paid_flag_open_invoice
+          - confirmed_report_void_blocked
           - swipe_line_path
           - class_sessions_explain_319
           - substitute_calendar_xinzhuang
@@ -136,7 +137,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -1188,6 +1189,49 @@ jobs:
             // New in the queue: active count-mode contracts with more than 2 lessons left (the others were listed already).
             $out['newly_listed_ids'] = array_values(array_map(fn ($r) => $r['id'], array_filter($rows, fn ($r) => $r['mode'] === 'count' && !$r['stopped'] && $r['remaining'] > 2)));
             $out['r28_shape_ids'] = array_values(array_map(fn ($r) => $r['id'], array_filter($rows, fn ($r) => $r['has_paid_period'])));
+            $out['rows'] = $rows;
+          }} elseif ($case === 'confirmed_report_void_blocked') {{
+            // in-app #436: confirmed payment reports that PaymentReportController::void refuses as void_invoice_mismatch,
+            // with the same ownership checks. IDs, enums, dates and amounts only; the Invoice Note is reduced to the tag
+            // of the action that voided it, never its free text. No writes.
+            $rows = [];
+            $reports = $db::table('payment_reports')->where('status', 'confirmed')->orderBy('id')
+              ->get(['id', 'StudentID', 'StudentClassID', 'InvoiceID', 'payment_id', 'reported_amount', 'confirmed_at']);
+            foreach ($reports as $r) {{
+              $sc = $db::table('StudentClass')->where('ID', (int)$r->StudentClassID)->first(['ID', 'StudentID', 'Paid']);
+              $inv = $r->InvoiceID === null ? null : $db::table('Invoice')->where('id', $r->InvoiceID)->first(['id', 'StudentID', 'StudentClassID', 'Status', 'PaidAmount', 'Note', 'updated_at']);
+              $reason = null;
+              if (!$sc) $reason = 'no_course';
+              elseif ((int)$sc->StudentID !== (int)$r->StudentID) $reason = 'course_other_student';
+              elseif ($r->InvoiceID !== null && !$inv) $reason = 'invoice_missing';
+              elseif ($inv && (string)$inv->Status === 'void') $reason = 'invoice_void';
+              elseif ($inv && (int)$inv->StudentClassID !== (int)$sc->ID) $reason = 'invoice_other_course';
+              elseif ($inv && (int)$inv->StudentID !== (int)$r->StudentID) $reason = 'invoice_other_student';
+              if ($reason === null) continue;
+              $note = (string)($inv->Note ?? '');
+              $tag = strpos($note, '[exception-void:') !== false ? 'exception_void'
+                : (preg_match('/code=([a-z_]+)/', $note, $m) ? 'void_code:'.$m[1]
+                : (strpos($note, '[void:') !== false ? 'void'
+                : (strpos($note, '刪除，帳單作廢') !== false ? 'contract_deleted'
+                : (strpos($note, '約定費用更正→#') !== false ? 'agreed_fee_correction' : ($note === '' ? 'none' : 'other')))));
+              $pays = $inv ? $db::table('Payment')->where('InvoiceID', $inv->id)->orderBy('id')->get(['id', 'Amount', 'Method', 'payment_report_id']) : collect();
+              $rows[] = ['report_id' => (int)$r->id, 'campus_id' => (int)$db::table('Student')->where('id', $r->StudentID)->value('CampusID'),
+                'student_class_id' => (int)$r->StudentClassID, 'invoice_id' => $r->InvoiceID === null ? null : (int)$r->InvoiceID,
+                'reason' => $reason, 'void_tag' => $reason === 'invoice_void' ? $tag : null,
+                'report_amount' => (int)$r->reported_amount, 'confirmed_at' => $r->confirmed_at,
+                'invoice_updated_at' => $inv->updated_at ?? null, 'invoice_paid_stored' => $inv ? (int)$inv->PaidAmount : null,
+                'invoice_net' => (int)$pays->sum(fn ($p) => (int)$p->Amount),
+                'payments' => $pays->map(fn ($p) => ['id' => (int)$p->id, 'amount' => (int)$p->Amount, 'method' => (string)$p->Method,
+                  'report_id' => $p->payment_report_id === null ? null : (int)$p->payment_report_id])->values()->all(),
+                'report_payment_invoice_id' => $r->payment_id ? $db::table('Payment')->where('id', $r->payment_id)->value('InvoiceID') : null,
+                'course_paid' => $sc ? (int)$sc->Paid : null,
+                'course_live_invoice_ids' => $sc ? $db::table('Invoice')->where('StudentClassID', $sc->ID)->where('Status', '!=', 'void')
+                  ->orderBy('id')->pluck('id')->map(fn ($i) => (int)$i)->all() : []];
+            }}
+            $out['confirmed_reports'] = $reports->count();
+            $out['count'] = count($rows);
+            $out['by_reason'] = array_count_values(array_column($rows, 'reason'));
+            $out['by_void_tag'] = array_count_values(array_filter(array_column($rows, 'void_tag')));
             $out['rows'] = $rows;
           }} elseif ($case === 'f7_prod_discrepancy') {{
             // Read-only F7 S0 prod-snapshot discrepancy report (packet section 7): run the S1 resolver
