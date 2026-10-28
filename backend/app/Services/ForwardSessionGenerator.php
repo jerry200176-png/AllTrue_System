@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\ClassSession;
 use App\Models\StudentClass;
+use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -63,10 +65,10 @@ class ForwardSessionGenerator
 
         // A past lesson not yet marked still holds one of the remaining sessions (it can be marked
         // late or moved). Ignoring it added a 9th lesson to an 8-lesson course (#4515, course 2739).
-        $remaining -= DB::table('ClassSession')
-            ->where('StudentClassID', $studentClassId)
-            ->whereRaw("LOWER(Status) = 'scheduled'")
-            ->count();
+        // Rows already deducted or on leave are excluded by the shared rule (counted elsewhere).
+        $active = ClassSession::query()->where('StudentClassID', $studentClassId)
+            ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
+        $remaining -= ContractSessionSchedule::partitionExcessScheduledRows($active, 0)['past_unrecorded']->count();
         if ($remaining <= 0) {
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'remaining sessions already held by unmarked past sessions', 'slots' => []];
         }

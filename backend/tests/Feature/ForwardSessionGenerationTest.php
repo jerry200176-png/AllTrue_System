@@ -106,6 +106,20 @@ class ForwardSessionGenerationTest extends TestCase
         $this->assertCount(2, $this->gen->planCourse($sc2, 4, $this->today)['slots']);
     }
 
+    public function test_past_scheduled_row_already_deducted_does_not_hold_twice(): void
+    {
+        // #4552 review: a legacy `scheduled` row with a positive ledger net is already in RemainingSessions.
+        $sc = $this->course(remaining: 1);
+        $this->sess($sc, '2026-06-29', '16:00:00', '18:00:00', 'attended');
+        $this->sess($sc, '2026-07-06', '16:00:00', '18:00:00', 'scheduled');
+        $used = (int) DB::table('ClassSession')->where('StudentClassID', $sc)->where('SessionDate', '2026-07-06')->value('id');
+        DB::table('session_deduction_ledger')->insert([
+            'student_class_id' => $sc, 'class_session_id' => $used, 'event_type' => 'deduct', 'source' => 'attendance',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertCount(1, $this->gen->planCourse($sc, 4, $this->today)['slots']);
+    }
+
     public function test_command_dry_run_is_read_only(): void
     {
         $sc = $this->course(remaining: 4);
