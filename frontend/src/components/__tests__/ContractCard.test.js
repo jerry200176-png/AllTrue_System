@@ -105,6 +105,18 @@ describe('ContractCard', () => {
     expect(w.find('[data-testid="contract-rate-note"]').exists()).toBe(true);
   });
 
+  // in-app #432: the server sends current_contract_charge = null for a monthly contract or a package member
+  // (AccountingController::currentContractCharge). Their stored Charge is no contract price, so the card shows none.
+  it.each([
+    ['monthly', { schedule_mode: 'date', charge: 8250 }],
+    ['package member', { schedule_mode: 'count', package_id: 3, charge: 4400 }],
+  ])('shows no 合約金額 for a %s contract, whatever its stored Charge', async (_, course) => {
+    authedFetch.mockResolvedValue(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9, current_contract_charge: null, ...course } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-charge"]').exists()).toBe(false);
+  });
+
   it('monthly mode: no 剩 counter, pay line inside each month heading', async () => {
     authedFetch.mockResolvedValue(respond({ ...COVERAGE, schedule_mode: 'date', unscheduled_count: 0, sessions: [
       { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'paid' },
@@ -691,7 +703,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
   });
 
   it('(2) legacy Paid flag without any receipt or payment: neutral note, never 已收清 or a 繳費日 amount', async () => {
-    const w = await mountWith({ courses: [{ id: 2, subject: '數學', paid: true, paid_at: null, charge: 6000 }] });
+    const w = await mountWith({ courses: [{ id: 2, subject: '數學', paid: true, paid_at: null, charge: 6000, current_contract_charge: 6000 }] });
     expect(card(w).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     expect(card(w).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card(w).text()).not.toContain('已收清');
