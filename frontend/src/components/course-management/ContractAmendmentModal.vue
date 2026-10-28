@@ -50,15 +50,16 @@
 
       <div class="actions">
         <button class="ghost" :disabled="submitting || loadingPreview" @click="$emit('close')">取消</button>
-        <button class="primary" :disabled="submitting || loadingPreview || !preview || !reason || preview.new_session_count !== newSessionCount" @click="onSubmit">
-          {{ submitting ? '處理中…' : '確認提前結束' }}
-        </button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="loadingPreview || !preview || !reason || preview.new_session_count !== newSessionCount" pending-text="處理中…" @click="onSubmit">
+          確認提前結束
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed, ref, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 

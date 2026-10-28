@@ -39,7 +39,7 @@ describe('MonthlyBatchRenewModal requests', () => {
     const endDate = JSON.parse(init.body).end_date;
 
     authedFetch.mockResolvedValueOnce(res(true, {}));
-    await w.find('button.primary').trigger('click');
+    await w.find('button.at-submit').trigger('click');
     await flushPromises();
     expect(authedFetch).toHaveBeenLastCalledWith('/api/v1/student-classes/7/renew-monthly', {
       method: 'POST', credentials: 'include', headers: JSON_HEADERS,

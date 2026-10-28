@@ -1,11 +1,13 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
+import AtSelectAll from '../design-system/AtSelectAll.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import { authedFetch, getAccessToken } from '../../lib/authedFetch';
 import { useMonthlyRenewal } from '../../composables/course-management/useMonthlyRenewal';
+import { useSelection } from '../../composables/useSelection';
 
 // 本月待開帳單: system proposes next-period bills, director confirms.
 // Confirm reuses the existing renew-monthly request (useMonthlyRenewal.submit).
@@ -23,7 +25,6 @@ const monthOffset = ref(0);
 const loading = ref(false);
 const error = ref('');
 const items = ref([]);
-const selected = ref([]);
 const confirmOpen = ref(false);
 const running = ref(false);
 const results = ref({}); // student_class_id -> { ok, message }
@@ -37,9 +38,10 @@ const ready = computed(() => items.value.filter((r) => r.status === 'ready'));
 const blocked = computed(() => items.value.filter((r) => r.status === 'blocked'));
 const lapsed = computed(() => items.value.filter((r) => r.status === 'lapsed_no_lessons'));
 const isPast = (r) => !r.proposed_end_date || r.proposed_end_date <= todayYmd();
-const pickedRows = computed(() => ready.value.filter((r) => selected.value.includes(r.student_class_id) && !isPast(r)));
+// Past-period rows can't be opened here, so select-all skips them and the header can still read "all".
+const selection = useSelection(ready, { key: 'student_class_id', canSelect: (r) => !isPast(r) });
+const pickedRows = computed(() => ready.value.filter((r) => selection.keys.includes(r.student_class_id)));
 const pickedTotal = computed(() => pickedRows.value.reduce((s, r) => s + Number(r.amount || 0), 0));
-const allSelected = computed(() => ready.value.length > 0 && ready.value.every((r) => selected.value.includes(r.student_class_id)));
 
 async function load() {
   loading.value = true;
@@ -53,16 +55,12 @@ async function load() {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || `載入失敗（${res.status}）`);
     items.value = json.data || [];
-    selected.value = [];
+    selection.clear();
   } catch (e) {
     error.value = e.message || '載入失敗';
   } finally {
     loading.value = false;
   }
-}
-
-function toggleAll(checked) {
-  selected.value = checked ? ready.value.filter((r) => !isPast(r)).map((r) => r.student_class_id) : [];
 }
 
 async function confirmRows(rows) {
@@ -112,13 +110,13 @@ defineExpose({ reload: load, loading });
         <table class="tc-table">
           <thead>
             <tr>
-              <th><input type="checkbox" aria-label="全選" :checked="allSelected" @change="toggleAll($event.target.checked)" /></th>
+              <th><AtSelectAll :selection="selection" hide-label :show-count="false" /></th>
               <th>學生</th><th>科目</th><th>新一期期間</th><th>堂數</th><th>金額</th><th>繳費期限</th><th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="r in ready" :key="r.student_class_id">
-              <td><input v-model="selected" type="checkbox" :value="r.student_class_id" :disabled="isPast(r)" :aria-label="`選取 ${r.student_name}`" /></td>
+              <td><input type="checkbox" :checked="selection.has(r.student_class_id)" :disabled="isPast(r)" :aria-label="`選取 ${r.student_name}`" @change="selection.toggle(r.student_class_id)" /></td>
               <td>{{ r.student_name }}</td>
               <td>{{ r.subject }}</td>
               <td>{{ r.proposed_start_date }} ~ {{ r.proposed_end_date }}</td>

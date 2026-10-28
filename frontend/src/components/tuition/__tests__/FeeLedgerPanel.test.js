@@ -28,7 +28,9 @@ const res = (body, ok = true, status = 200) => ({ ok, status, json: async () => 
 let wrapper;
 const mountIt = (props = { branchId: 5, students }) => mount(FeeLedgerPanel, { props, global: { stubs: { teleport: true } } });
 // Exact label; an icon button's text starts with its material-symbols ligature name (e.g. "add").
-const btn = (t) => wrapper.findAll('button').find((b) => b.text().trim().replace(/^[a-z_]+/, '').trim() === t);
+// AtSubmitButton keeps its pending face in the DOM (stable width); read only the visible face.
+const face = (b) => (b.find('.at-submit__face.is-on').exists() ? b.find('.at-submit__face.is-on') : b);
+const btn = (t) => wrapper.findAll('button').find((b) => face(b).text().trim().replace(/^[a-z_]+/, '').trim() === t);
 const posts = () => mockFetch.mock.calls.filter(([, init]) => init?.method === 'POST').map(([u, init]) => [u, JSON.parse(init.body)]);
 
 beforeEach(() => {

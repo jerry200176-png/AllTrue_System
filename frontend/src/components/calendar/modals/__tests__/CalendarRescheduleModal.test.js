@@ -23,7 +23,7 @@ describe('CalendarRescheduleModal', () => {
     expect(w.emitted('new-start-change')).toHaveLength(1);
   });
 
-  it('shows in-dialog error and disables submit while submitting', () => {
+  it('shows in-dialog error and disables submit while submitting', async () => {
     const w = mount(CalendarRescheduleModal, {
       props: {
         show: true,
@@ -34,8 +34,10 @@ describe('CalendarRescheduleModal', () => {
       },
     });
     expect(w.find('[role="alert"]').text()).toContain('此時段已有：小華');
-    expect(w.find('button.primary').attributes('disabled')).toBeDefined();
-    expect(w.find('button.primary').text()).toContain('調課中');
+    expect(w.find('button.at-submit').attributes('aria-disabled')).toBe('true');
+    expect(w.find('button.at-submit .is-on').text()).toContain('調課中');
+    await w.find('button.at-submit').trigger('click');
+    expect(w.emitted('submit')).toBeUndefined();
   });
 
   it('shows a possible conflict as a warning while leaving the final check to the API', () => {
@@ -50,6 +52,6 @@ describe('CalendarRescheduleModal', () => {
     expect(w.text()).toContain('送出前提醒');
     expect(w.text()).toContain('英文（16:00～18:00）');
     expect(w.text()).toContain('可能有衝堂');
-    expect(w.find('button.primary').attributes('disabled')).toBeUndefined();
+    expect(w.find('button.at-submit').attributes('disabled')).toBeUndefined();
   });
 });
