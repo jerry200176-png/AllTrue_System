@@ -786,21 +786,24 @@
       </div>
 
       <div v-else class="lr-groups">
-        <details
+        <AtDisclosureCard
           v-for="(group) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
+          :stacked="group.records.length > 1"
           :open="openGroupKeys.has(group.key)"
-          @toggle="onGroupToggle(group.key, $event)"
+          @update:open="setGroupOpen(group.key, $event)"
         >
-          <summary class="lr-group-summary">
-            <div class="lr-group-title">
-              <button
-                type="button"
-                class="lr-group-student lr-group-student-btn"
-                :title="`點此只載入 ${group.student_name} 的全部記錄`"
-                @click.stop.prevent="filterByStudent(group.student_name)"
-              >{{ group.student_name }}</button>
+          <template #actions>
+            <button
+              type="button"
+              class="lr-group-student lr-group-student-btn"
+              :title="`點此只載入 ${group.student_name} 的全部記錄`"
+              @click="filterByStudent(group.student_name)"
+            >{{ group.student_name }}</button>
+          </template>
+          <template #summary>
+            <span class="lr-group-title">
               <span class="lr-group-count">{{ group.records.length }} 筆</span>
               <span v-if="group.pending_count > 0" class="lr-group-pending">{{ group.pending_count }} 待處理</span>
               <span v-if="group.unfilled_body_count > 0" class="lr-group-unfilled">{{ group.unfilled_body_count }} 未填</span>
@@ -809,9 +812,9 @@
                 <span v-if="group.oldest_date === group.newest_date">{{ group.oldest_date }}</span>
                 <span v-else>{{ group.oldest_date }} ～ {{ group.newest_date }}</span>
               </span>
-            </div>
+            </span>
             <span class="lr-group-hint">展開 / 收合</span>
-          </summary>
+          </template>
 
           <div class="lr-subject-subgroups">
             <div
@@ -961,7 +964,7 @@
               </div>
             </div>
           </div>
-        </details>
+        </AtDisclosureCard>
       </div>
 
       <!-- Load More / Load All (slide-up fade once fully loaded). -->
@@ -1540,6 +1543,7 @@ import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSelectAll from '../components/design-system/AtSelectAll.vue';
+import AtDisclosureCard from '../components/design-system/AtDisclosureCard.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
@@ -2087,8 +2091,8 @@ watch(filteredGroupedRecords, (groups) => {
     if (i === 0 || groups.length === 1) openGroupKeys.value.add(g.key);
   });
 }, { immediate: true });
-function onGroupToggle(key, event) {
-  if (event.target.open) openGroupKeys.value.add(key);
+function setGroupOpen(key, open) {
+  if (open) openGroupKeys.value.add(key);
   else openGroupKeys.value.delete(key);
 }
 
@@ -6297,27 +6301,15 @@ select.lr-input {
   min-width: 200px;
 }
 
+/* AtDisclosureCard: head/body round their own corners; no overflow clip, so the stacked edges show. */
 .lr-group {
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
   background: var(--card-bg);
 }
 
-.lr-group-summary {
-  list-style: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  cursor: pointer;
+.lr-group :deep(.at-disclosure__head) {
   background: var(--ds-canvas-soft);
-  border-bottom: 1px solid var(--border);
-}
-
-.lr-group-summary::-webkit-details-marker {
-  display: none;
 }
 
 .lr-group-title {
@@ -6400,10 +6392,6 @@ select.lr-input {
 .lr-group-date-range-label {
   font-size: 11px;
   opacity: 0.7;
-}
-
-.lr-group[open] .lr-group-summary {
-  background: var(--ds-canvas-soft);
 }
 
 /* ── Subject Subgroup (FR-004) ── */
@@ -8558,19 +8546,19 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   border-radius: var(--ios-radius);
   box-shadow: var(--ios-shadow);
   border: none;
-  overflow: hidden;
 }
-.lr-page--teacher .lr-group-summary {
+.lr-page--teacher .lr-group.is-open :deep(.at-disclosure__head) {
+  border-bottom-color: var(--ios-separator);
+}
+.lr-page--teacher .lr-group :deep(.at-disclosure__head) {
   padding: 12px 16px;
   background: var(--ios-surface);
-  border-bottom: 1px solid var(--ios-separator);
   font-family: var(--ios-font);
-  font-size: 13px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ios-label-secondary);
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  cursor: pointer;
 }
 .lr-page--teacher .lr-group-detail {
   border-top: none;
@@ -8748,13 +8736,9 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   border-radius: 12px;
   box-shadow: var(--ds-shadow-1);
 }
-.lr-page:not(.lr-page--teacher) .lr-group-summary,
-.lr-page:not(.lr-page--teacher) .lr-group[open] .lr-group-summary {
+.lr-page:not(.lr-page--teacher) .lr-group :deep(.at-disclosure__head) {
   padding: 14px 16px;
   background: var(--ds-canvas);
-}
-.lr-page:not(.lr-page--teacher) .lr-group-summary {
-  border-bottom-color: var(--ds-hairline);
 }
 .lr-page:not(.lr-page--teacher) .lr-subject-subgroups {
   padding: 10px 12px 14px;
