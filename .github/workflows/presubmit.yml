@@ -154,7 +154,6 @@ jobs:
       # 排除：lock files, migration seed 純資料
       # ─────────────────────────────────────────────
       - name: "[CHECK 2a] PR size check self-test"
-        if: ${{ env.LQ_BATCH != 'true' }}
         run: python3 scripts/tests/test_presubmit_size_gate.py
 
       - name: "[CHECK 2] PR size check (≤ 700 logic lines; tests/docs ≤ 1500 total)"
