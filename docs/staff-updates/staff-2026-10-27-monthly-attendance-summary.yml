@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-monthly-attendance-summary
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 月結課程出席摘要
+    summary: 月結課程的上課日期摘要會依出席紀錄顯示已上堂數。
+    items:
+      - category: fixed
+        text: 出席資料讀取失敗時會提示重新載入，不再誤顯示已上零堂。
+    source_refs:
+      - "changelog:2026-10-27:monthly-attendance-summary"
