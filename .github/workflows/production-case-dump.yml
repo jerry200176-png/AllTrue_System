@@ -816,6 +816,28 @@ jobs:
                       'to' => substr((string)$x->to_date, 0, 10) . ' ' . substr((string)$x->to_time, 0, 5), 'actor_id' => $x->actor_id === null ? null : (int)$x->actor_id,
                       'reason' => (string)$x->reason, 'created_at' => (string)$x->created_at])->values()->all() : []];
               }})->values()->all();
+              // What assigned the 13:00 rows to someone else, or touched them (in-app #441): the slots' schedules rows, any substitute notice
+              // for the sessions, and the audit events of those classes since 2026-10-20 (event type and time only).
+              $sessionIds = $trio->pluck('id')->map(fn ($i) => (int)$i)->all();
+              $classIds = $trio->pluck('student_class_id')->map(fn ($i) => (int)$i)->unique()->values()->all();
+              $out['campuses']['9']['trio_schedule_rows'] = $db::table('schedules')->whereIn('student_course_id', $classIds)
+                ->whereBetween('schedule_date', ['2026-10-24', '2026-11-07'])->orderBy('student_course_id')->orderBy('schedule_date')->orderBy('id')
+                ->get(['id', 'student_course_id', 'schedule_date', 'start_time', 'status', 'type', 'teacher_id', 'original_schedule_id', 'created_at', 'updated_at as changed_at'])
+                ->map(fn ($x) => ['id' => (int)$x->id, 'class_id' => (int)$x->student_course_id, 'date' => substr((string)$x->schedule_date, 0, 10), 'start' => substr((string)$x->start_time, 0, 5),
+                  'status' => (string)$x->status, 'type' => $x->type, 'teacher_id' => $x->teacher_id === null ? null : (int)$x->teacher_id,
+                  'original_schedule_id' => $x->original_schedule_id === null ? null : (int)$x->original_schedule_id,
+                  'created_at' => (string)$x->created_at, 'changed_at' => (string)$x->changed_at])->values()->all();
+              $out['campuses']['9']['trio_substitute_notices'] = $db::table('Notifications')
+                ->whereIn('SourceKey', array_map(fn ($i) => 'substitute:' . $i, $sessionIds))
+                ->get(['id', 'SourceKey', 'ResolvedAt', 'created_at'])
+                ->map(fn ($x) => ['id' => (int)$x->id, 'session_id' => (int)substr((string)$x->SourceKey, 11), 'resolved_at' => $x->ResolvedAt === null ? null : (string)$x->ResolvedAt,
+                  'created_at' => (string)$x->created_at])->values()->all();
+              $refs = [];
+              foreach ($classIds as $cid) {{ $refs[\\App\\Models\\SecurityAuditEvent::ref('student_class', $cid)] = $cid; }}
+              $out['campuses']['9']['trio_audit_events'] = $db::table('security_audit_events')->whereIn('subject_ref', array_keys($refs))
+                ->where('occurred_at', '>=', '2026-10-20')->orderBy('occurred_at')->get(['event_type', 'outcome', 'subject_ref', 'occurred_at'])
+                ->map(fn ($x) => ['class_id' => $refs[$x->subject_ref] ?? null, 'event_type' => (string)$x->event_type, 'outcome' => (string)$x->outcome,
+                  'occurred_at' => (string)$x->occurred_at])->values()->all();
             }}
           }} elseif ($case === 'occurrence_identity_health') {{
             // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
