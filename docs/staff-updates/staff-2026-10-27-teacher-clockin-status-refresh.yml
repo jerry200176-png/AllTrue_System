@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-teacher-clockin-status-refresh
+    published_at: "2026-10-27"
+    audiences:
+      - teacher
+    importance: digest
+    title: 今日打卡狀態提示
+    summary: 工作台會更新打卡狀態，載入失敗時提示重新整理。
+    items:
+      - category: fixed
+        text: 無法取得打卡狀態時，不再誤顯示尚未打卡。
+    source_refs:
+      - "changelog:2026-10-27:teacher-clockin-status-refresh"
