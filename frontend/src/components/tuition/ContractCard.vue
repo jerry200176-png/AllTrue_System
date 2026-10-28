@@ -60,8 +60,8 @@
       <template v-else>
         <textarea v-model="draft" rows="3" aria-label="合約備註" data-testid="contract-memo-input" />
         <div class="contract__memo-actions">
-          <button type="button" :disabled="saving" data-testid="contract-memo-save" @click="saveMemo">{{ saving ? '儲存中…' : '儲存' }}</button>
-          <button type="button" :disabled="saving" @click="editing = false">取消</button>
+          <AtSubmitButton size="sm" shape="rect" :pending="saving" pending-text="儲存中…" data-testid="contract-memo-save" @click="saveMemo">儲存</AtSubmitButton>
+          <AtButton size="sm" shape="rect" variant="secondary" :disabled="saving" @click="editing = false">取消</AtButton>
         </div>
       </template>
       <p v-if="memoError" class="contract__error">{{ memoError }}</p>
@@ -117,6 +117,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
 import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';

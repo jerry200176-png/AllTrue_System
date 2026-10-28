@@ -56,7 +56,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
-          <button class="primary" @click="$emit('do-retro-leave')" :disabled="submitting">確認補請假</button>
+          <AtSubmitButton shape="rect" :pending="submitting" pending-text="處理中…" @click="$emit('do-retro-leave')">確認補請假</AtSubmitButton>
         </div>
       </div>
 
@@ -76,7 +76,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
-          <button class="primary" @click="$emit('do-substitute')" :disabled="submitting || !form.substitute_teacher_id">確認代課</button>
+          <AtSubmitButton shape="rect" :pending="submitting" :disabled="!form.substitute_teacher_id" pending-text="處理中…" @click="$emit('do-substitute')">確認代課</AtSubmitButton>
         </div>
       </div>
 
@@ -105,7 +105,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
-          <button class="primary" @click="$emit('do-reschedule')" :disabled="submitting || !form.new_date">確認調課</button>
+          <AtSubmitButton shape="rect" :pending="submitting" :disabled="!form.new_date" pending-text="調課中…" @click="$emit('do-reschedule')">確認調課</AtSubmitButton>
         </div>
       </div>
 
@@ -152,7 +152,7 @@
         <small v-else class="field-note">修改後評量表的結束時間也會同步；按堂計費：時段調整不影響本堂費用與課程總費用。</small>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
-          <button class="primary" @click="onSaveClick" :disabled="submitting || !!timeRangeError">儲存</button>
+          <AtSubmitButton shape="rect" :pending="submitting" :disabled="!!timeRangeError" pending-text="儲存中…" @click="onSaveClick">儲存</AtSubmitButton>
         </div>
       </div>
 
@@ -167,6 +167,7 @@
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed } from 'vue';
 import LessonPickerSelect from './LessonPickerSelect.vue';
 import { askConfirm } from '../../composables/useConfirmDialog';

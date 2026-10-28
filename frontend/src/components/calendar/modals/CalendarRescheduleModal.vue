@@ -44,15 +44,16 @@
       <div v-if="error" class="dialog-error" role="alert">{{ error }}</div>
       <div class="actions">
         <button class="ghost" type="button" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" type="button" :disabled="submitting || !form.new_date" @click="$emit('submit')">
-          {{ submitting ? '調課中…' : '確認調課' }}
-        </button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="!form.new_date" pending-text="調課中…" @click="$emit('submit')">
+          確認調課
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../../design-system/AtSubmitButton.vue';
 import './calendarModalRwd.css';
 import { RESCHEDULE_ACTION_DESC } from '../../../lib/scheduleDisplay';
 

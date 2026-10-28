@@ -109,17 +109,20 @@
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button
-          class="primary"
-          :disabled="submitting || selectedIds.length === 0 || !targetCourseId || (hasRecoverySelection && !recoveryReason)"
+        <AtSubmitButton
+          shape="rect"
+          :pending="submitting"
+          :disabled="selectedIds.length === 0 || !targetCourseId || (hasRecoverySelection && !recoveryReason)"
+          pending-text="搬移中…"
           @click="onSubmit"
-        >{{ submitting ? '搬移中…' : `搬移 ${selectedIds.length} 堂` }}</button>
+        >搬移 {{ selectedIds.length }} 堂</AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 

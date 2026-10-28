@@ -36,17 +36,20 @@
       </div>
       <div class="actions">
         <button class="ghost" @click="$emit('close')">取消</button>
-        <button
-          class="primary"
-          :disabled="submitting || !form.substitute_teacher_id"
+        <AtSubmitButton
+          shape="rect"
+          :pending="submitting"
+          :disabled="!form.substitute_teacher_id"
+          pending-text="處理中…"
           @click="$emit('submit')"
-        >{{ submitting ? '處理中…' : '確認代課' }}</button>
+        >確認代課</AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../../design-system/AtSubmitButton.vue';
 import './calendarModalRwd.css';
 
 defineProps({

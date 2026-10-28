@@ -75,15 +75,16 @@
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" :disabled="submitting || !canSubmitMonthlyRenewal(form, finalEndDate)" @click="$emit('submit', finalEndDate)">
-          {{ submitting ? '建立中…' : '建立新一期' }}
-        </button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="!canSubmitMonthlyRenewal(form, finalEndDate)" pending-text="建立中…" @click="$emit('submit', finalEndDate)">
+          建立新一期
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { addMonthsToPeriodEnd, canSubmitMonthlyRenewal, nextPeriodEnd } from '../../lib/monthlyRenewalPreview';
