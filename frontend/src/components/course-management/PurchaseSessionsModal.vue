@@ -41,15 +41,16 @@
       </div>
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" :disabled="submitting" @click="$emit('submit')">
-          {{ submitting ? '處理中…' : submitLabel }}
-        </button>
+        <AtSubmitButton shape="rect" :pending="submitting" pending-text="處理中…" @click="$emit('submit')">
+          {{ submitLabel }}
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 

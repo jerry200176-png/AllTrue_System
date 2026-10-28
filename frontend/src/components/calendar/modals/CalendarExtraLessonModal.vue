@@ -86,13 +86,20 @@
       </div>
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="!submitting && $emit('close')">取消</button>
-        <button class="primary" :disabled="!canSubmit" @click="handleSubmit">{{ checking ? '檢查中…' : '確認加課' }}</button>
+        <AtSubmitButton
+          shape="rect"
+          :pending="submitting || checking"
+          :disabled="!canSubmit && !submitting && !checking"
+          :pending-text="checking ? '檢查中…' : '送出中…'"
+          @click="handleSubmit"
+        >確認加課</AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../../design-system/AtSubmitButton.vue';
 import { computed } from 'vue';
 import './calendarModalRwd.css';
 import SearchableSelect from '../../SearchableSelect.vue';

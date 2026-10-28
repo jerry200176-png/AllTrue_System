@@ -9,13 +9,17 @@ const runs = new WeakMap();
 // #4488 完成按鈕反饋: idle → pending → success | error → idle.
 // `action` must resolve `true` only after the server confirmed the write; `false` shows the
 // error face; anything else returns to idle without claiming success.
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+// Parent-owned saving (a modal that emits and lets its parent write): omit `action`, bind
+// `:pending="submitting"` and listen to @click. Only the pending face applies; the parent closes
+// the modal on success or shows its own error.
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AtButton from './AtButton.vue';
 
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps({
-  action: { type: Function, required: true },
+  action: { type: Function, default: null },
+  pending: { type: Boolean, default: false },
   icon: { type: String, default: '' },
   pendingText: { type: String, default: '' },
   successText: { type: String, default: '已完成' },
@@ -23,10 +27,13 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
 });
 
+const emit = defineEmits(['click']);
+
 const SUCCESS_MS = 1600;
 const ERROR_MS = 3200;
 const state = ref('idle');
 let timer;
+const shown = computed(() => (props.pending ? 'pending' : state.value));
 
 function settle(next, ms) {
   state.value = next;
@@ -56,13 +63,15 @@ async function track(run) {
   }
 }
 
-function onClick() {
-  if (state.value === 'pending' || props.disabled) return;
-  track(startOrJoin());
+function onClick(event) {
+  // aria-disabled keeps focus, so also stop a pending/disabled click from submitting its form.
+  if (shown.value === 'pending' || props.disabled) { event?.preventDefault(); return; }
+  if (props.action) track(startOrJoin());
+  else emit('click', event);
 }
 
 onMounted(() => {
-  if (runs.has(props.action)) track(runs.get(props.action));
+  if (props.action && runs.has(props.action)) track(runs.get(props.action));
 });
 onBeforeUnmount(() => clearTimeout(timer));
 </script>
@@ -70,28 +79,28 @@ onBeforeUnmount(() => clearTimeout(timer));
 <template>
   <AtButton
     v-bind="$attrs"
-    :class="['at-submit', `at-submit--${state}`]"
+    :class="['at-submit', `at-submit--${shown}`]"
     :disabled="disabled"
-    :aria-disabled="state === 'pending' ? 'true' : undefined"
-    :aria-busy="state === 'pending' ? 'true' : undefined"
+    :aria-disabled="shown === 'pending' ? 'true' : undefined"
+    :aria-busy="shown === 'pending' ? 'true' : undefined"
     @click="onClick"
   >
     <!-- All faces share one grid cell, so the button keeps the widest face's width. Only the
          visible face names the button; the polite live region announces the state change. -->
     <span class="at-submit__stack" aria-live="polite">
-      <span class="at-submit__face" :class="{ 'is-on': state === 'idle' }">
+      <span class="at-submit__face" :class="{ 'is-on': shown === 'idle' }">
         <span v-if="icon" class="material-symbols-outlined at-submit__icon" aria-hidden="true">{{ icon }}</span>
         <slot />
       </span>
-      <span class="at-submit__face" :class="{ 'is-on': state === 'pending' }">
+      <span class="at-submit__face" :class="{ 'is-on': shown === 'pending' }">
         <span class="material-symbols-outlined at-submit__icon at-submit__spin" aria-hidden="true">progress_activity</span>
         <template v-if="pendingText">{{ pendingText }}</template>
         <slot v-else />
       </span>
-      <span class="at-submit__face" :class="{ 'is-on': state === 'success' }">
+      <span v-if="action" class="at-submit__face" :class="{ 'is-on': shown === 'success' }">
         <span class="material-symbols-outlined at-submit__icon" aria-hidden="true">check</span>{{ successText }}
       </span>
-      <span class="at-submit__face" :class="{ 'is-on': state === 'error' }">
+      <span v-if="action" class="at-submit__face" :class="{ 'is-on': shown === 'error' }">
         <span class="material-symbols-outlined at-submit__icon" aria-hidden="true">error</span>{{ errorText }}
       </span>
     </span>
