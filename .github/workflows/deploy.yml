@@ -1598,14 +1598,14 @@ jobs:
       # auto-r3 carries no GO text; its freeze and final-head review are re-checked instead (after the
       # executor slot is held, #4359 review), plus the exact-main CI gate below.
       - name: Checkout target gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
           path: gate-target
           sparse-checkout: scripts/governance
       - name: Checkout deployed gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
@@ -1676,6 +1676,35 @@ jobs:
               if review.get("ok") is not True:
                   raise SystemExit(f"final-head review no longer holds ({root}): {review.get('reason')}; nothing deployed")
           print("R3 freeze and final-head review re-verified under the deployed and target policy")
+          PY
+      - name: Recheck the deploy freeze before an unattended deploy
+        # #4560 review: a run classified while an earlier deploy was still in its 20-minute watch saw no
+        # freeze; that deploy may have failed or rolled back while this one waited for the executor slot.
+        if: ${{ needs.classify-activation.outputs.mode == 'auto' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+
+          def api(path, *extra):
+              return json.loads(subprocess.check_output(["gh", "api", path, *extra], text=True))
+
+          for root in ("gate-trusted", "gate-target"):
+              spec = importlib.util.spec_from_file_location(f"{root}_freeze", f"{root}/scripts/governance/autonomy_gate.py")
+              gate = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(gate)
+              if not hasattr(gate, "deploy_freeze_reason"):
+                  continue  # a deployed policy older than the freeze has none to apply
+              freeze = gate.deploy_freeze_reason(repo=os.environ["REPO"], api=api)
+              if freeze is not None:
+                  raise SystemExit(f"deploy freeze since classification ({root}): {freeze}; nothing deployed")
+          print("Deploy freeze re-checked under the deployed and target policy: none")
           PY
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

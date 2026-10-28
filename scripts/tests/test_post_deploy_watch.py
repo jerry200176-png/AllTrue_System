@@ -20,6 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))  # `python3 scripts/tests/...` (contract-test job) puts only scripts/tests on the path
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy.yml"
 REMOTE_DEPLOY = ROOT / "scripts" / "production-deploy" / "pi-remote-deploy.sh"
 
@@ -386,6 +387,19 @@ class WorkflowWiringTest(unittest.TestCase):
         import scripts.governance.autonomy_gate as gate
         self.assertIn(f"      - name: {gate.DEPLOY_STEP_NAME}\n        id: deploy\n", self.deploy)
         self.assertIn(f'select(.name == "{gate.DEPLOY_STEP_NAME}" and .conclusion == "skipped")', self.incident)
+
+    def test_an_unattended_deploy_rechecks_the_freeze_after_taking_the_executor_slot(self):
+        # #4560 review: classified during an earlier deploy's watch, which may fail before this run deploys.
+        start = self.deploy.index("      - name: Recheck the deploy freeze before an unattended deploy")
+        step = self.deploy[start:self.deploy.index("\n      - name: ", start + 10)]
+        self.assertIn("if: ${{ needs.classify-activation.outputs.mode == 'auto' }}", step)
+        self.assertIn('for root in ("gate-trusted", "gate-target"):', step)
+        self.assertIn('raise SystemExit(f"deploy freeze since classification ({root}): {freeze}; nothing deployed")', step)
+        self.assertLess(start, self.deploy.index("      - name: Deploy\n        id: deploy\n"))
+        for name in ("target", "deployed"):
+            self.assertIn(f"Checkout {name} gate policy for Founder GO recheck\n"
+                          "        if: ${{ needs.production-auto.result == 'success' || "
+                          "needs.classify-activation.outputs.mode == 'auto' }}", self.deploy)
 
     def test_contract_test_runs_this_file(self):
         self.assertIn("python3 scripts/tests/test_post_deploy_watch.py", self.workflow)
