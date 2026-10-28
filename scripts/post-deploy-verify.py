@@ -348,8 +348,10 @@ def _iso(epoch: float) -> str:
 
 def sentry_error_count(config: dict, start: float, end: float, timeout: float = 10.0, opener=None) -> int | None:
     """Error events in [start, end) for the configured project; None on any failure (never a breach)."""
+    # Server (PHP SDK) events only: the browser DSN is public, so its events must never drive a rollback.
+    # ponytail: a spoofed php event sent with a shared DSN still counts; keep the browser DSN in another project.
     query = urllib.parse.urlencode({
-        "field": "count()", "query": f"event.type:error project:{config['project']}",
+        "field": "count()", "query": f"event.type:error platform.name:php project:{config['project']}",
         "start": _iso(start), "end": _iso(end), "dataset": "errors", "referrer": "alltrue.post-deploy-watch",
     })
     url = f"{config['base']}/api/0/organizations/{urllib.parse.quote(config['org'])}/events/?{query}"

@@ -293,6 +293,7 @@ class SentryClientTest(unittest.TestCase):
         self.assertTrue(captured["url"].startswith("https://sentry.io/api/0/organizations/acme/events/?"))
         self.assertIn("project%3Abackend", captured["url"])
         self.assertIn("event.type%3Aerror", captured["url"])
+        self.assertIn("platform.name%3Aphp", captured["url"])  # browser (public DSN) events never count
         self.assertEqual("Bearer tok", captured["auth"])
 
         def broken(request, timeout):
