@@ -217,7 +217,7 @@ class CourseLeaveCascadeSuccessorShiftService
             DB::table('StudentClass')->where('ID', $plan['successor_course_id'])->update(['EndDate' => $plan['successor_end_date']]);
 
             return $plan + ['applied' => true];
-        });
+        }, 3); // A deadlock victim retries the whole atomic re-plan under locks; a retry never replays a partial write.
     }
 
     /** @return array<string, mixed> */
@@ -356,9 +356,9 @@ class CourseLeaveCascadeSuccessorShiftService
     }
 
     /**
-     * The earliest live renewal starting after the leave, with its live lessons. Apply reads the whole
-     * same-student, same-subject candidate set with current locking reads and judges every row with the
-     * same isSuccessorCandidate() as preview, so no separate locked re-check can drift from it (#4210 review).
+     * The earliest live renewal starting after the leave, with its live lessons. The scan reads without locks; apply
+     * then locks only the chosen renewal and its lessons and judges it again, on the current rows, by the same
+     * isSuccessorCandidate() as preview, so no separate locked re-check can drift from it (#4210 P3-1 review).
      *
      * @return array{0: ?StudentClass, 1: Collection<int, ClassSession>}
      */
@@ -369,21 +369,33 @@ class CourseLeaveCascadeSuccessorShiftService
             ->where('SubjectID', (int) $old->SubjectID)
             ->where('ID', '!=', (int) $old->ID)
             ->orderBy('ID')
-            ->when($lock, fn ($q) => $q->lockForUpdate())
             ->get()
             ->filter(fn (StudentClass $candidate) => $this->isSuccessorCandidate($candidate));
         $best = [null, collect()];
         foreach ($candidates as $candidate) {
-            $chain = $this->sessions((int) $candidate->ID, $lock)
-                ->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values();
+            $chain = $this->liveLessons((int) $candidate->ID, false);
             $start = $chain->isEmpty() ? null : Carbon::parse($chain->first()->SessionDate)->toDateString();
             if ($start !== null && $start > $leaveDate
                 && ($best[0] === null || $start < Carbon::parse($best[1]->first()->SessionDate)->toDateString())) {
                 $best = [$candidate, $chain];
             }
         }
+        if (!$lock || $best[0] === null) {
+            return $best;
+        }
+        $chosen = StudentClass::query()->whereKey((int) $best[0]->ID)
+            ->where('StudentID', (int) $old->StudentID)->where('SubjectID', (int) $old->SubjectID) // a subject edited since the scan disqualifies it
+            ->lockForUpdate()->first();
+        $chain = $this->liveLessons((int) $best[0]->ID, true);
 
-        return $best;
+        return $chosen && $this->isSuccessorCandidate($chosen) && $chain->isNotEmpty()
+            && Carbon::parse($chain->first()->SessionDate)->toDateString() > $leaveDate ? [$chosen, $chain] : [null, collect()];
+    }
+
+    /** @return Collection<int, ClassSession> */
+    private function liveLessons(int $courseId, bool $lock): Collection
+    {
+        return $this->sessions($courseId, $lock)->filter(fn ($s) => strtolower((string) $s->Status) !== 'cancelled')->values();
     }
 
     /** A live count-mode contract; legacy blank or NULL modes are count, as everywhere else. */
