@@ -175,13 +175,22 @@ class AccountingController extends Controller
             ->get()
             ->groupBy('StudentClassID');
 
-        $rows = $courses->map(function (StudentClass $course) use ($invoiceMap, $reportMap, $stoppedStatuses) {
+        // The one 舊制無帳單 evidence rule of the course list and alerts (#4114): payment on any bill of the course or of its
+        // shared package, so a paid package's other members are not flagged and a flag here always has a ledger action.
+        $evidence = app(BillingPayableResolver::class)->validPaymentEvidence(
+            $courseIds,
+            [],
+            $request->attributes->get('auth_role') === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])),
+        );
+
+        $rows = $courses->map(function (StudentClass $course) use ($invoiceMap, $reportMap, $stoppedStatuses, $evidence) {
             $invoices = $invoiceMap->get((int) $course->ID, collect());
             $reports = $reportMap->get((int) $course->ID, collect());
             [$invoiceTotal, $appliedTotal, $overpaidTotal, $outstandingTotal] = $this->invoiceTotals($invoices);
 
             // Same trial exemption as the course list and alerts (#4339): a trial fee recorded by date never gets an invoice.
-            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1 && !$course->isTrialFeeRecordedByDate();
+            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1 && !$course->isTrialFeeRecordedByDate()
+                && !isset($evidence['classes'][(int) $course->ID]);
             $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
             $status = $stoppedStatuses[(int) $course->getAttribute('ID')] ?? null;
             $state = $status !== null && (int) $course->getAttribute('Stop') === 1 ? $this->stoppedCourseVisibleState($course, $status) : null;

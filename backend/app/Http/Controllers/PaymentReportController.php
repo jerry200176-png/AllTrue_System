@@ -797,6 +797,7 @@ class PaymentReportController extends Controller
             if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
                 return $denied;
             }
+            $package = $this->lockPackageForCourse($course); // course -> package, as confirm() locks them
             $replay = PaymentReport::query()->where('StudentClassID', $courseId)->where('report_token_hash', $tokenHash)->first();
             if ($replay && (int) $replay->reported_amount === (int) $data['amount'] && $replay->payment_method === $data['payment_method'] && $replay->payment_date?->toDateString() === Carbon::parse($data['payment_date'])->toDateString()) {
                 return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
@@ -814,8 +815,7 @@ class PaymentReportController extends Controller
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
             if (!$this->courseResolvedPaid($course)) { // a partial payment leaves money owed: drop the flag, as void() does
-                $course->refresh()->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null]
-                    + ($course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
+                $this->dropLegacyPaidMarks($course->refresh(), $package);
             }
             $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
 
@@ -842,15 +842,15 @@ class PaymentReportController extends Controller
             if ($denied = $this->legacyFlagAccessRefusal($request, $course)) {
                 return $denied;
             }
+            $package = $this->lockPackageForCourse($course);
             $hasPayment = isset(app(BillingPayableResolver::class)->validPaymentEvidence([$courseId])['classes'][$courseId]);
-            if ((int) ($course->Paid ?? 0) !== 1 && !$hasPayment) {
+            if (!$course->isEffectivelyPaid() && !$hasPayment) { // a member can be paid by its package's mark alone
                 return response()->json(['message' => '這門課已經是未繳，不需要再改', 'student_class_id' => $courseId, 'replayed' => true]);
             }
             if ($refusal = $this->legacyFlagRefusal($course)) {
                 return $refusal;
             }
-            $reopen = $course->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
-            $course->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null] + $reopen);
+            $cleared = $this->dropLegacyPaidMarks($course, $package);
             // What is owed now: an open bill's balance (the resolver's), else the contract amount (as AlertController).
             $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$courseId])[$courseId] ?? [];
             $owed = ($status['source'] ?? null) === 'invoice' ? (int) $status['outstanding'] : (int) ($course->Charge ?? 0);
@@ -858,6 +858,7 @@ class PaymentReportController extends Controller
                 'reason_code' => 'legacy_paid_flag_cleared',
                 'reason_hash' => hash('sha256', trim((string) $data['reason'])),
                 'outstanding_amount' => $owed,
+                'row_count' => $cleared, // courses whose mark came off: more than 1 only for a shared package
             ]);
 
             return response()->json(['message' => '已改成未繳', 'student_class_id' => $courseId]);
@@ -894,9 +895,10 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * Both legacy-flag actions apply only to a single count-mode course whose `paid` rests on StudentClass.Paid alone:
-     * Paid=1, no net payment on any non-void bill (BillingPayableResolver::validPaymentEvidence, the #4114 rule) and no
-     * pending or confirmed payment report. Caller holds the course row lock.
+     * Both legacy-flag actions apply to a course of any mode (count or monthly, single or in a shared package) whose `paid`
+     * rests on the legacy Paid / package paid mark alone: marked paid, no net payment on any non-void bill of it or its
+     * package (BillingPayableResolver::validPaymentEvidence, the #4114 rule) and no pending or confirmed payment report
+     * on it or its package. Caller holds the course row lock.
      */
     private function legacyFlagRefusal(StudentClass $course)
     {
@@ -911,16 +913,20 @@ class PaymentReportController extends Controller
         if ((int) ($course->Charge ?? 0) <= 0 && (float) ($course->Rate ?? 0) <= 0) { // 0 元 courses are out of scope
             return $refuse('這門課沒有設定收費金額，不需要補登或改未繳；若要收費請先到課程管理設定費用。', 'legacy_flag_zero_fee');
         }
-        if ((string) ($course->ScheduleMode ?? 'count') !== 'count' || $course->isPartOfPackage() || $course->isTrialFeeRecordedByDate()) {
-            return $refuse('目前只有單一堂數制正式課程可以在這裡處理舊「已收」標記；月結、共用方案或已記錄繳費日期的試聽請到學生帳務逐筆核對。', 'legacy_flag_count_only');
+        if ($course->isTrialFeeRecordedByDate()) {
+            return $refuse('這是已記錄繳費日期的試聽費，依設計不開帳單，不是舊資料，不需要補登或改未繳。', 'legacy_flag_trial_fee');
         }
-        if ((int) ($course->Paid ?? 0) !== 1) {
+        if (!$course->isEffectivelyPaid()) { // Paid=1, or the shared package's paid mark
             return $refuse('這門課沒有「已收」標記，請重新整理。', 'legacy_flag_not_set');
         }
         if (isset(app(BillingPayableResolver::class)->validPaymentEvidence([$id])['classes'][$id])) {
             return $refuse('這門課已有收款紀錄，不是只有舊標記；請重新整理後在學生帳務核對。', 'legacy_flag_has_payment');
         }
-        $report = PaymentReport::query()->where('StudentClassID', $id)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->first();
+        // A package's members share one paid mark, so a report on any of them counts; only the sole course's row is locked
+        // (a sibling's report lock would invert confirm()'s order, see directorRecord).
+        $ids = $this->legacyFlagCourseIds($course);
+        $report = PaymentReport::query()->whereIn('StudentClassID', $ids)->whereIn('status', ['pending', 'confirmed'])
+            ->when(count($ids) === 1, fn ($q) => $q->lockForUpdate())->first();
         if ($report) {
             return $report->status === 'pending'
                 ? $refuse('這門課有待核對的繳費回報，請先確認入帳或退回那筆回報。', 'pending_report_exists')
@@ -928,6 +934,30 @@ class PaymentReportController extends Controller
         }
 
         return null;
+    }
+
+    /** The course plus its same-student package siblings: markPackagePaid() flags them all, so they share one legacy mark. @return int[] */
+    private function legacyFlagCourseIds(StudentClass $course): array
+    {
+        if (!$course->isPartOfPackage()) {
+            return [(int) $course->getKey()];
+        }
+
+        return StudentClass::query()->where('PackageID', $course->PackageID)->where('StudentID', $course->StudentID)
+            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /** The legacy mark off (void()/撤銷收款 semantics): the course and, for a package, its paid mark and every member's. @return int courses changed */
+    private function dropLegacyPaidMarks(StudentClass $course, ?CoursePackage $package): int
+    {
+        $members = StudentClass::query()->whereIn('ID', $this->legacyFlagCourseIds($course))->get();
+        foreach ($members as $member) {
+            $member->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null]
+                + ($member->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
+        }
+        $package?->refresh()->forceFill(['paid' => false, 'paid_at' => null])->save();
+
+        return $members->count();
     }
 
     /** @param array<string, int|string> $metadata no free text: a reason is stored only as its hash */

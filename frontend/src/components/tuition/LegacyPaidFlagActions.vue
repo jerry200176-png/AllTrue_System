@@ -10,6 +10,7 @@
     </template>
 
     <AtDialog :open="clearOpen && !hasConfirmedReport" title="改成未繳" size="sm" :title-id="`legacy-clear-title-${courseId}`" @close="clearOpen = false">
+      <p v-if="sharedPackage" class="legacy__note" data-testid="legacy-shared-note">{{ LEGACY_SHARED_PACKAGE_NOTE }}</p>
       <p class="legacy__note">只把舊的「已收」標記拿掉，這門課會變成未繳：有帳單就依帳單未收額、沒有帳單就依合約金額列入收款。不會動任何帳單或收款紀錄。</p>
       <label class="legacy__label" :for="`legacy-reason-${courseId}`">原因 <span aria-hidden="true">*</span></label>
       <AtTextarea :id="`legacy-reason-${courseId}`" v-model="reason" :rows="2" data-testid="legacy-clear-reason" />
@@ -28,13 +29,15 @@ import AtButton from '../design-system/AtButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
 import { clearLegacyPaidFlag } from '../../lib/paymentActions.js';
-import { LEGACY_FLAG_ACTION_HELP, LEGACY_CONFIRMED_REPORT_HELP } from '../../lib/courseMoneyState.js';
+import { LEGACY_FLAG_ACTION_HELP, LEGACY_CONFIRMED_REPORT_HELP, LEGACY_SHARED_PACKAGE_NOTE } from '../../lib/courseMoneyState.js';
 
 // Founder GO 2026-10-21 (docs/DIRECTOR_PAYMENT_ALERT_RULES.md §只有舊「已收」標記): the 需核對 card says what to do next.
 const props = defineProps({
   courseId: { type: Number, required: true },
   // Existing same-course API report status; unrelated to receipt display amount/date.
   hasConfirmedReport: { type: Boolean, default: false },
+  // A shared package's members are one obligation: clearing the mark clears them all (server rule), so say so.
+  sharedPackage: { type: Boolean, default: false },
 });
 const emit = defineEmits(['backfill', 'resolved']);
 

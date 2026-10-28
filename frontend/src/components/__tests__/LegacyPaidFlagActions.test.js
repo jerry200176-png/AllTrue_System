@@ -46,13 +46,42 @@ describe('ContractCard legacy-flag actions', () => {
   });
   it.each([
     ['a role that cannot resolve', {}, { canResolveLegacy: false }],
-    ['a shared package member', { package_id: 3 }, {}],
-    ['a monthly contract', { schedule_mode: 'date' }, {}],
     ['a pending report', {}, { pendingReport: { report_id: 1, amount: 100 } }],
+    ['a tutoring course', { class_type: 'tutoring' }, {}],
   ])('keeps the plain 需核對 label for %s', async (_label, course, props) => {
     const w = await mountCard(course, props);
     expect(w.find('[data-testid="legacy-flag-actions"]').exists()).toBe(false);
+  });
+  // In-app #428 / #438: the label used to be a dead end for monthly and shared-package contracts.
+  it.each([
+    ['a monthly contract', { schedule_mode: 'date', charge: 3000, current_contract_charge: null }],
+    ['the lead card of a shared package', { package_id: 3 }],
+    ['a monthly contract in a package', { schedule_mode: 'date', package_id: 3 }],
+  ])('offers both actions on %s', async (_label, course) => {
+    const w = await mountCard(course);
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
+    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
+    expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(true);
+    await w.find('[data-testid="legacy-backfill-open"]').trigger('click');
+    expect(w.emitted('legacy-backfill')[0][0].id).toBe(9);
+  });
+  it('tells a shared package that 改成未繳 clears every member, and a single course nothing extra', async () => {
+    const shared = await mountCard({ package_id: 3 });
+    await shared.find('[data-testid="legacy-clear-open"]').trigger('click');
+    await flushPromises();
+    expect(q('legacy-shared-note').textContent).toBe('這門課屬於共用方案：方案內所有課程會一起改成未繳。');
+    wrapper.unmount();
+    document.body.innerHTML = '';
+    const single = await mountCard({});
+    await single.find('[data-testid="legacy-clear-open"]').trigger('click');
+    await flushPromises();
+    expect(q('legacy-clear-reason')).not.toBeNull();
+    expect(q('legacy-shared-note')).toBeNull();
+  });
+  it('a follower card of a shared package points to the lead card instead of offering actions', async () => {
+    const w = await mountCard({ package_id: 3 }, { sharedFollower: true, sharedLeadSubject: '英文' });
+    expect(w.find('[data-testid="legacy-flag-actions"]').exists()).toBe(false);
+    expect(w.find('[data-testid="contract-shared-follower"]').text()).toBe('共用方案，請到「英文」卡處理收款');
   });
 });
 

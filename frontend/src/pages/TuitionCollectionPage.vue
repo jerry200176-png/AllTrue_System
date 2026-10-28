@@ -795,6 +795,7 @@
         <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
           舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
           請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+          確定是舊標記：在繳費明細的課程卡，已收過就按「已收過，補登收款」，其實沒收就按「其實沒收，改成未繳」（月結、共用方案也一樣）。
         </p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">

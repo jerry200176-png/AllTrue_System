@@ -98,6 +98,15 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(true);
   });
 
+  it('a confirmed report on a shared-package sibling closes the lead card like the server does', async () => {
+    const pkg = { ...course, package_id: 3 };
+    const w = await mountLedger([{ ...receipt, student_class_id: 3, payment_date: null }], { body: { courses: [pkg, { ...pkg, id: 3, subject: '同方案' }] } });
+    const lead = w.find('[data-testid="contract-card-2"]');
+    expect(lead.find('[data-testid="legacy-flag-help"]').text()).toContain('收款紀錄');
+    expect(lead.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
+    expect(lead.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+  });
+
   it('a valid receipt retains its date, amount and existing payment display', async () => {
     const w = await mountLedger([receipt]);
     expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/01/01　NT$ 6,000');
