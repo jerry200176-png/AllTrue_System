@@ -365,8 +365,8 @@ class StudentClass extends Model
 
     /**
      * In-app #440 (Founder 2026-10-29, option A): a plain pause (Stop=1, no close reason) of a contract that never started is
-     * not owed while paused and is listed again on resume. "Never started" = no payment (Paid flag, bill or payment report) and no
-     * session other than a cancelled one (held, scheduled or on leave). Closed contracts (any closed_reason) and shared-package
+     * not owed while paused and is listed again on resume. "Never started" = no payment (Paid flag, bill or payment report), no
+     * session other than a cancelled one (held, scheduled or on leave) and no observed taught lesson (legacy sign-ins, orphan assessments). Closed contracts (any closed_reason) and shared-package
      * members keep the F7 S3a rule (the package carries the obligation). One batch rule for every list that shows owed money.
      *
      * @param int[] $courseIds
@@ -393,6 +393,13 @@ class StudentClass extends Model
         );
         foreach ($started as $id) {
             unset($ids[(int) $id]);
+        }
+        // Taught lessons that never got a ClassSession link (legacy sign-ins, approved orphan assessments) are usage too: the same
+        // authoritative evidence the deduction count reads (SessionDeductionService::batchObservedUsedSessions).
+        foreach (\App\Services\SessionDeductionService::batchObservedUsedSessions(array_keys($ids)) as $id => $used) {
+            if ((int) $used > 0) {
+                unset($ids[(int) $id]);
+            }
         }
 
         return $ids;

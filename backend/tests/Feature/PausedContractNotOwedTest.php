@@ -8,6 +8,7 @@ use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
+use App\Models\StudentSignIn;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
@@ -106,6 +107,9 @@ class PausedContractNotOwedTest extends TestCase
                 'payment_date' => '2026-10-16', 'payment_method' => 'cash', 'reported_amount' => 3000, 'status' => 'pending',
                 'report_token_hash' => hash('sha256', uniqid('t', true)), 'token_expires_at' => Carbon::now()->addDay()]),
             'closed contract' => $c->update(['closed_reason' => 'completed']),
+            'legacy taught lesson without a session link' => StudentSignIn::create(['StudentClassID' => $c->ID, 'StudentID' => $c->StudentID, 'TeacherID' => 99,
+                'RecordedByUserID' => 99, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-10-17 16:05:00', 'MDT' => now(),
+                'ClassSessionID' => null, 'Status' => 'present', 'SessionDeducted' => 1]),
         };
 
         $this->assertNotNull($this->listedInTuition($c), $case);
@@ -115,7 +119,8 @@ class PausedContractNotOwedTest extends TestCase
 
     public static function startedPauses(): array
     {
-        return array_map(fn ($c) => [$c], ['held session', 'scheduled session left on the pause', 'leave session', 'open bill', 'pending payment report', 'closed contract']);
+        return array_map(fn ($c) => [$c], ['held session', 'scheduled session left on the pause', 'leave session', 'open bill', 'pending payment report', 'closed contract',
+            'legacy taught lesson without a session link']);
     }
 
     public function test_a_voided_bill_does_not_count_as_a_bill(): void
