@@ -722,9 +722,13 @@ const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligati
 const payScopeText = computed(() => {
   const opened = contractCourses.value.find(isOpenedCourse);
   const subjects = [...new Set(allocContracts.value.map((c) => c.subject).filter(Boolean))].join('、');
-  return opened && !allocContracts.value.some((c) => c.id === opened.id) && subjects
+  if (!opened || allocContracts.value.some((c) => c.id === opened.id) || !subjects) {
+    return '此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。';
+  }
+  // Only say "nothing to collect" when it is true; a shared-package or pending course is just left out of this button.
+  return !(owedFor(opened.id) > 0) && (opened.paid || isWaivedContract(opened))
     ? `你點開的「${opened.subject}」目前沒有要收的款；這個按鈕是登記「${subjects}」的收款，下一步可再確認科目與金額。`
-    : '此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。';
+    : `這個按鈕是登記「${subjects}」的收款，不含你點開的「${opened.subject}」；「${opened.subject}」請看它自己的課程卡。`;
 });
 const allocating = ref(false);
 async function onAllocDone() {

@@ -78,6 +78,23 @@ describe('帳務面板 · 標出並捲到你點開的那門課 (in-app #396)', (
     w.unmount();
   });
 
+  it('#4559 review: an opened course left out of the batch while it still owes is not called settled', async () => {
+    const w = await mountLedger({
+      studentClassId: 42,
+      // 英文 and 理化 share package 9 and both owe, so neither joins the batch (#3892); only 數學 does.
+      courses: [course(11, '數學'), { ...course(42, '英文'), package_id: 9 }, { ...course(7, '理化'), package_id: 9 }],
+      invoices: [
+        { id: 55, student_class_id: 11, status: 'unpaid', outstanding_amount: 800, total_amount: 800, payments: [] },
+        { id: 56, student_class_id: 42, status: 'unpaid', outstanding_amount: 600, total_amount: 600, payments: [] },
+        { id: 57, student_class_id: 7, status: 'unpaid', outstanding_amount: 600, total_amount: 600, payments: [] },
+      ],
+    });
+    const text = w.find('[data-testid="ledger-pay-scope"]').text();
+    expect(text).not.toContain('沒有要收的款');
+    expect(text).toContain('不含你點開的「英文」');
+    w.unmount();
+  });
+
   it('#437: when the opened course itself can be collected, the generic scope line stays', async () => {
     const w = await mountLedger({ studentClassId: 11, courses: [course(11, '數學'), { ...course(42, '英文'), paid: true }] });
     expect(w.get('[data-testid="ledger-pay-scope"]').text()).toContain('不限於點開的課程');
