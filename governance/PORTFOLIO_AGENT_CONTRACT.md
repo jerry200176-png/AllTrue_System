@@ -28,7 +28,9 @@ minimum that travels with each governed repository.
   until the deploy path can roll code back after it),
   billing or entitlement semantics, identity/authentication/authorization,
   destructive or irreversible actions, backup restore, security-sensitive
-  credential changes, or major product/brand direction.
+  credential changes, or major product/brand direction. AllTrue narrows these
+  stops (Founder 2026-10-28, `docs/governance/FOUNDER_STANDING_DECISIONS.md`):
+  each relaxation applies only after its automatic control merges.
 - AllTrue remains in active but bounded product development. A draft RFC or
   spinout proposal does not impose a global feature freeze.
 - Agents may triage and close issues when the Evidence Contract is satisfied;
