@@ -44,14 +44,28 @@ jobs:
             [[ "$CONFIRM" == APPROVE_INVOICE1997_STALE_VALUES_20261008 ]] || exit 1
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_invoice_1997_three_values"
+  founder-approval:
+    # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
+    name: Founder approval (approve mode only)
+    needs: guard
+    if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production-activation
+    outputs:
+      attempt: ${{ github.run_attempt }}
+    steps:
+      - run: echo "Founder approved approve mode for run attempt ${{ github.run_attempt }}"
   repair:
     name: Pi-local short-lived POP repair (invoice 1997 stale values)
-    needs: guard
-    if: ${{ needs.guard.result == 'success' }}
+    needs: [guard, founder-approval]
+    # dry-run: production-ssh with no click. approve: only after this attempt's Founder approval (a re-run needs a new click).
+    if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: production-activation
+      name: production-ssh
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -152,7 +166,7 @@ jobs:
           print('manifest=%s' % json.dumps(plan.get('manifest'), sort_keys=True, separators=(',', ':')))
           PY
           [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
-          if [[ "$MODE" == dry-run ]]; then
+          if [[ "$MODE" != approve ]]; then
             echo "dry-run only: no approval issued"
             exit 0
           fi
