@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-28-ledger-collect-scope-names
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 收款按鈕會寫出是收哪門課
+    summary: 點開的課已收清時，底部收款按鈕會直接說明它收的是哪一門課。
+    items:
+      - category: improved
+        text: 學生帳務中，點開的課已收清時，「登記收款」上方會寫出這個按鈕實際收的是哪一門課。
+    source_refs:
+      - "changelog:2026-10-28:ledger-collect-scope-names"
