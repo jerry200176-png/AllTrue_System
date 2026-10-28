@@ -19,6 +19,12 @@ export const fromPinned = (nodes, pins, repo) => (nodes || []).filter((c) => {
   return c.checkSuite?.repository?.nameWithOwner === repo;
 });
 
+// A land-queue batch tip is tested only by dispatched runs, and GitHub gives such a commit no statusCheckRollup
+// (null), so the batch waited for its 2-hour timeout although every required check was green. Read the same check
+// runs through the commit's check suites, in the rollup's node shape, so fromPinned applies unchanged.
+export const suiteRuns = (commit) => (commit?.checkSuites?.nodes || []).flatMap((s) =>
+  (s?.checkRuns?.nodes || []).map((r) => ({ __typename: 'CheckRun', ...r, checkSuite: { app: s.app, repository: s.repository } })));
+
 // Authors whose branches may be executed by batch CI (dispatch runs PR code with repo secrets).
 export const TRUSTED_AUTHORS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
@@ -186,10 +192,14 @@ const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pul
 const QC = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{statusCheckRollup{contexts(first:100){nodes{
     __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}`;
 
+const QS = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{checkSuites(first:50){nodes{
+    app{databaseId} repository{nameWithOwner} checkRuns(first:100){nodes{name conclusion status startedAt}}}}}}}}`;
+
 function rollupFor(sha) {
   const [o, r] = REPO.split('/');
-  const c = JSON.parse(gh('api', 'graphql', '-f', `query=${QC}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`)).data.repository.object;
-  return fromPinned(c?.statusCheckRollup?.contexts.nodes, PINS, REPO);
+  const q = (query) => JSON.parse(gh('api', 'graphql', '-f', `query=${query}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`)).data.repository.object;
+  const nodes = q(QC)?.statusCheckRollup?.contexts.nodes ?? suiteRuns(q(QS));
+  return fromPinned(nodes, PINS, REPO);
 }
 
 // Separate query so a failure yields "unknown" (no merge) instead of aborting the whole queue run.
