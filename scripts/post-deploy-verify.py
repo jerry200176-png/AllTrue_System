@@ -35,6 +35,7 @@ Stdlib only: it runs on the Pi and on a bare GitHub-hosted runner.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
 import re
@@ -286,6 +287,7 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
 
 # --- post-deploy watch (gap #3; Argo Rollouts AnalysisRun / Flagger / SRE canary analysis) ---
 
+FLAP_WINDOW, FLAP_FAILURES = 12, 8
 SENTRY_TOKEN_ENV = "SENTRY_WATCH"
 DEFAULT_SENTRY_API = "https://sentry.io"
 _SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
@@ -346,6 +348,11 @@ def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(epoch))
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
 def sentry_error_count(config: dict, start: float, end: float, timeout: float = 10.0, opener=None) -> int | None:
     """Error events in [start, end) for the configured project; None on any failure (never a breach)."""
     # Server (PHP SDK) events only: the browser DSN is public, so its events must never drive a rollback.
@@ -358,7 +365,8 @@ def sentry_error_count(config: dict, start: float, end: float, timeout: float = 
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {config['token']}",
                                                   "User-Agent": USER_AGENT})
     try:
-        with (opener or urllib.request.urlopen)(request, timeout=timeout) as response:  # noqa: S310 - https base checked
+        # No redirects: urllib would forward the Bearer token to another host.
+        with (opener or urllib.request.build_opener(_NoRedirect).open)(request, timeout=timeout) as response:  # noqa: S310
             payload = json.loads(response.read(65536).decode("utf-8"))
         value = payload["data"][0]["count()"]
         return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
@@ -390,14 +398,18 @@ def watch(args, sentry=None, check=None, count=None, sleep=time.sleep, clock=tim
     print(f"post-deploy watch: {args.watch_seconds:g}s, health + identity every {args.watch_interval:g}s, "
           f"breach after {args.watch_failures} consecutive failures")
     streak, checks, next_sentry = 0, 0, start + args.sentry_every
+    recent = collections.deque(maxlen=FLAP_WINDOW)  # a flapping site never fails 4 in a row (#4560 review)
     while True:
         problems = check()
         checks += 1
         streak = next_failure_streak(streak, problems)
+        recent.append(bool(problems))
         if problems:
             print(f"post-deploy watch: check {checks} failed ({streak}/{args.watch_failures}): {'; '.join(problems)}")
         if streak >= args.watch_failures:
             return f"{streak} consecutive failed health/identity checks: {'; '.join(problems)}"
+        if sum(recent) >= FLAP_FAILURES:
+            return f"{sum(recent)} of the last {len(recent)} health/identity checks failed: {'; '.join(problems) or 'flapping'}"
         last = clock() + args.watch_interval > end
         if baseline is not None and (clock() >= next_sentry or last):
             next_sentry += args.sentry_every

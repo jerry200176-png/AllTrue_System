@@ -88,6 +88,8 @@ _DEPLOYABLE_EXACT = {
 _DEPLOY_EXECUTOR_PATHS = frozenset({
     "scripts/production-deploy/pi-remote-deploy.sh",
     "scripts/production-deploy/render_pi_remote_deploy.py",
+    # The gate and 20-minute watch that judge a release (#4560 review): never self-judged by an auto range.
+    "scripts/post-deploy-verify.py",
 })
 
 _WORKFLOW_ONLY_PREFIXES = (
@@ -914,7 +916,7 @@ def is_production_activation_sensitive_path(path: str) -> bool:
         return False
     if normalized.startswith(".github/workflows/"):
         return normalized not in _SAFE_NON_PRODUCTION_WORKFLOWS
-    if any(normalized.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES):
+    if normalized in _DEPLOY_EXECUTOR_PATHS or any(normalized.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES):
         return True
     lowered = normalized.lower()
     path_parts = re.split(r"[/_.-]+", lowered)
@@ -1020,7 +1022,7 @@ def classify_scope(
         ) or (path == "frontend/package.json" and "test:e2e" in patch):
             minimum = max(minimum, 3)
             reasons.append(f"production smoke control path: {path}")
-        elif any(path.startswith(prefix) for prefix in _T3_PREFIXES):
+        elif path in _DEPLOY_EXECUTOR_PATHS or any(path.startswith(prefix) for prefix in _T3_PREFIXES):
             minimum = max(minimum, 3)
             reasons.append(f"protected path: {path}")
         elif not non_runtime_only and path.startswith("frontend/src/"):
@@ -1078,7 +1080,8 @@ def classify_activation_scope(
     ]
     always_founder_paths = [
         path for path in sensitive_paths
-        if any(path.startswith(prefix) for prefix in _ALWAYS_FOUNDER_ACTIVATION_PREFIXES)
+        if path in _DEPLOY_EXECUTOR_PATHS
+        or any(path.startswith(prefix) for prefix in _ALWAYS_FOUNDER_ACTIVATION_PREFIXES)
         or any(
             part.startswith(term)
             for part in re.split(r"[/_.-]+", path.lower())
@@ -1321,7 +1324,8 @@ def final_head_review_evidence(
 
 
 DEPLOY_JOB_NAME = "Deploy to Production"
-_FREEZE_LOOKBACK_PAGES = 1  # x100 deploy.yml runs (~3-5 days); older = unknown = frozen. Bounded for the job deadline.
+_FREEZE_LOOKBACK_PAGES = 3  # x100 deploy.yml runs; stops at the first page with a deploy. Older = unknown = frozen.
+DEPLOY_STEP_NAME = "Deploy"  # the executor step; a job that failed before it never touched production
 
 
 def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None:
@@ -1353,11 +1357,15 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
             for job in (jobs or {}).get("jobs") or []:
                 if job.get("name") != DEPLOY_JOB_NAME or job.get("conclusion") in {"skipped", None}:
                     continue
+                # A stale-target refusal, GO recheck or SSH setup failure ends the job before the executor (#4560 review).
+                if not any(step.get("name") == DEPLOY_STEP_NAME and step.get("conclusion") not in {"skipped", None}
+                           for step in job.get("steps") or []):
+                    continue
                 if not job.get("completed_at"):
                     return f"deploy job in run {run.get('id')} has no completion time; state unknown"
                 if latest is None or str(job["completed_at"]) > str(latest[0]):
                     latest = (job["completed_at"], run.get("id"), job.get("conclusion"))
-        if len(runs) < 100:
+        if latest is not None or len(runs) < 100:
             break
     if latest is not None:
         if latest[2] == "success":

@@ -1052,8 +1052,21 @@ jobs:
               # deploy, no range activates on its own until a reviewed deploy succeeds. Unknown = frozen.
               if mode == "auto":
                   try:
-                      from scripts.governance.autonomy_gate import deploy_freeze_reason
-                      freeze_now = deploy_freeze_reason(repo=repo, api=gh_api)
+                      import functools
+                      import importlib.util
+                      import scripts.governance.autonomy_gate as target_freeze_gate
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_freeze_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
+                      )
+                      trusted_freeze_gate = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(trusted_freeze_gate)
+                      # Deployed and target copies both judge, so a range cannot drop its own freeze (#4560 review);
+                      # a deployed policy that predates the freeze has none to apply. One cached API view for both.
+                      cached_api = functools.lru_cache(maxsize=None)(gh_api)
+                      freeze_now = next((reason for reason in (
+                          gate.deploy_freeze_reason(repo=repo, api=cached_api)
+                          for gate in (trusted_freeze_gate, target_freeze_gate) if hasattr(gate, "deploy_freeze_reason")
+                      ) if reason is not None), None)
                   except Exception as exc:
                       freeze_now = f"freeze state unavailable ({type(exc).__name__})"
                   if freeze_now is not None:
@@ -1562,8 +1575,8 @@ jobs:
     # run waiting indefinitely. The remote script retains its existing
     # rollback-on-error behavior before this runner-level deadline. The 20-minute
     # post-deploy watch (gap #3) runs inside the same executor, so the bound is
-    # deploy (~3-15 min) + verify/smoke (~3 min) + watch (20 min) + rollback margin.
-    timeout-minutes: 55
+    # deploy (~3-15 min) + verify/smoke (~3 min) + watch (20 min) + a full rollback (~15 min) + margin.
+    timeout-minutes: 80
     outputs:
       rc: ${{ steps.deploy.outputs.rc }}
     # Serialize only the side-effecting executor. Read-only preflight and
@@ -1832,13 +1845,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:
+      # The default branch's summarizer, never the failing release's copy, runs next to an issues:write token.
       - name: Checkout incident summarizer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.resolve-target.outputs.target_sha }}
           persist-credentials: false
           sparse-checkout: |
             scripts/post-deploy-verify.py
@@ -1856,6 +1870,14 @@ jobs:
         run: |
           set -euo pipefail
           title="Production deploy incident (deploy.yml)"
+          # Failed before the executor step (stale target, GO/R3 recheck, SSH setup): nothing reached the Pi.
+          started="$(gh api "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "Deploy to Production") | .steps[]? | select(.name == "Deploy" and .conclusion != null and .conclusion != "skipped")] | length')" \
+            || started="unknown"
+          if [ "$started" = "0" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then
+            echo "Deploy step never ran; production untouched, no incident."
+            exit 0
+          fi
           if [[ "$RC" =~ ^[0-9]+$ ]]; then
             body="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
               --previous-sha "$PREVIOUS_SHA" --runner-verify failure)"

@@ -124,13 +124,20 @@ class WatchLoopTest(unittest.TestCase):
             self.assertEqual(1 + failures, calls["checks"])
 
     def test_intermittent_failures_pass_the_window(self):
-        results = [["blip"], [], ["blip"], ["blip"], [], ["blip"]] * 10
+        results = [["blip"], [], ["blip"], [], [], []] * 10
         breach, calls, out, clock = run_watch(watch_args(watch_failures=3), results)
         self.assertIsNone(breach)
         self.assertIn("post-deploy watch: OK", out)
         # 600 s at 30 s intervals: checks at 0, 30, ..., 600 (both ends of the window), then it ends.
         self.assertEqual(21, calls["checks"])
         self.assertLessEqual(clock.mono, 600)
+
+    def test_a_flapping_site_breaches_without_four_in_a_row(self):
+        # #4560 review F4: 3 failures out of every 4 checks never reach 4 consecutive ones.
+        breach, calls, _, _ = run_watch(watch_args(watch_failures=4), [["down"], ["down"], ["down"], []] * 20)
+        self.assertIsNotNone(breach)
+        self.assertRegex(breach, r"^8 of the last \d+ health/identity checks failed")
+        self.assertLessEqual(calls["checks"], 12)
 
     def test_window_length_follows_the_arguments(self):
         for seconds, interval, expected in ((120, 30, 5), (300, 60, 6), (1200, 30, 41)):
@@ -337,7 +344,10 @@ class WorkflowWiringTest(unittest.TestCase):
                       self.incident)
         self.assertIn('if [[ "$RC" =~ ^[0-9]+$ ]]; then', self.incident)
         self.assertIn("Executor result UNKNOWN", self.incident)
-        self.assertIn("permissions:\n      contents: read\n      issues: write\n", self.incident)
+        self.assertIn("permissions:\n      actions: read\n      contents: read\n      issues: write\n", self.incident)
+        # #4560 review F1/F9: no incident when the executor step never ran; summarizer from the default branch.
+        self.assertIn('if [ "$started" = "0" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then', self.incident)
+        self.assertNotIn("ref: ${{ needs.resolve-target.outputs.target_sha }}", self.incident)
         self.assertNotIn("secrets.", self.incident)  # no SSH key or production secret in this job
         self.assertIn("rc: ${{ steps.deploy.outputs.rc }}", self.deploy)
         self.assertNotIn("issues: write", self.deploy)
@@ -348,7 +358,10 @@ class WorkflowWiringTest(unittest.TestCase):
         classify = self.workflow[self.workflow.index("  classify-activation:\n"):self.workflow.index("  release-state:\n")]
         block = classify[classify.index("# Stop the line (#4363 review)"):classify.index("# Founder 2026-10-21（二）之二: a range held")]
         self.assertIn('if mode == "auto":', block)
-        self.assertIn("deploy_freeze_reason(repo=repo, api=gh_api)", block)
+        self.assertIn("gate.deploy_freeze_reason(repo=repo, api=cached_api)", block)
+        # #4560 review F3: the deployed (trusted) policy judges too, so a range cannot drop its own freeze.
+        self.assertIn('"trusted-policy/scripts/governance/autonomy_gate.py"', block)
+        self.assertIn("for gate in (trusted_freeze_gate, target_freeze_gate)", block)
         self.assertIn('freeze_now = f"freeze state unavailable ({type(exc).__name__})"', block)  # unknown = frozen
         self.assertIn('mode, reason, approval_eligible = "awaiting-activation", f"deploy freeze: {freeze_now}", True', block)
         self.assertLess(classify.index("# Stop the line (#4363 review)"), classify.index("emit(mode, decision"))
