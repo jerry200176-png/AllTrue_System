@@ -254,6 +254,9 @@ _FOUNDER_EFFECT_PATTERNS = (
         r"(?:link|unlink|bind|unbind|associate|merge|split)[_-]?(?:identity|guardian)|"
         r"(?:identity|guardian)[_-]?(?:link|unlink|bind|unbind|associate|merge|split))\b)",
     )),
+    ("authentication/privilege boundary", re.compile(
+        r"createtoken|forcefill\s*\(|hash::make|gate::|->\s*roles\s*\(\s*\)|syncroles|givepermission", re.I,
+    )),
     ("privacy/legal boundary", re.compile(
         r"\b(?:pii|personal\s+data|privacy|gdpr|legal|consent|retention)\b",
     )),
@@ -805,7 +808,7 @@ def _patch_is_inspectable(paths: list[str], patch: str) -> bool:
 
 
 def _founder_effects(changed_code: str, *, include_runtime_write: bool = True) -> list[str]:
-    effects = [label for label, pattern in _FOUNDER_EFFECT_PATTERNS if pattern.search(changed_code)]
+    effects = list(dict.fromkeys(label for label, pattern in _FOUNDER_EFFECT_PATTERNS if pattern.search(changed_code)))
     if not include_runtime_write:
         effects = [effect for effect in effects if effect != "runtime write"]
     if effects and _BROAD_MUTATION_RE.search(changed_code):
@@ -931,6 +934,26 @@ def parse_declaration(body: str) -> tuple[int | None, int | None]:
     risk = RISK_VALUES[risk_match.group(1)] if risk_match else None
     tier = TIER_VALUES[tier_match.group(1)] if tier_match else None
     return risk, tier
+
+
+_ROLLBACK_ACTION_RE = re.compile(r"\b(?:revert|redeploy|roll\s*back)\b|還原|回滾|回復", re.I)
+_ROLLBACK_NEGATIVE_RE = re.compile(
+    r"\b(?:impossible|irreversible|not\s+(?:possible|reversible|revertable|undoable)|cannot|can't|no\s+rollback|"
+    r"manual(?:ly)?\s+(?:data\s+)?(?:repair|fix|cleanup))\b|無法|不可逆|不能|手動(?:修|處理|回復)|資料修復",
+    re.I,
+)
+
+
+def has_actionable_rollback(body: str) -> bool:
+    """auto-r3 (#4359 review): the Rollback line names a reversal and does not say it cannot be undone."""
+
+    # Hygiene, not a security control: the line is author text. Ignore commented-out or fenced lines.
+    text = re.sub(r"<!--.*?-->|```.*?```", "", (body or "").replace("’", "'"), flags=re.DOTALL)
+    match = _ROLLBACK_RE.search(text)
+    if not match or not has_rollback_evidence(text):
+        return False
+    value = match.group(1)
+    return bool(_ROLLBACK_ACTION_RE.search(value)) and not _ROLLBACK_NEGATIVE_RE.search(value)
 
 
 def has_rollback_evidence(body: str) -> bool:
@@ -1126,6 +1149,22 @@ def classify_activation_scope(
             minimum = max(minimum, 2)
             reasons.append("product semantic marker in runtime diff: " + ", ".join(sorted(set(matched_t2))))
 
+    # Founder 2026-10-21（二）之二: what an R3 range may NOT auto-activate with (migration, data
+    # repair, identity/credential, control plane, uninspectable). Machine-derived, never from text.
+    auto_activation_holds = [
+        f"{_r3_hold_label(path)}: {path}" for path in always_founder_paths
+        if not any(path.startswith(prefix) for prefix in _R3_AUTO_ACTIVATION_PREFIXES)
+    ]
+    auto_activation_holds.extend(
+        f"effect: {effect}" for effect in founder_effects if effect not in _R3_AUTO_ACTIVATION_EFFECTS
+    )
+    if any("not inspectable" in reason for reason in reasons):
+        auto_activation_holds.append("sensitive diff is not inspectable")
+    # Controller-local authorization (campus scoping, role checks, 403 refusals) is the permission boundary too
+    # (#4359 review). Only R3 auto-activation holds on it; the R0-R2 tier is unchanged.
+    if runtime_paths and _R3_AUTHZ_CHANGE_RE.search(changed_code):
+        auto_activation_holds.append("authorization check changed")
+
     return {
         "machine_minimum_tier": minimum,
         "tier_name": f"T{minimum}",
@@ -1135,7 +1174,268 @@ def classify_activation_scope(
         "protected_activation": activation_class == "founder-required",
         "runtime_paths": runtime_paths,
         "reasons": reasons or ["non-deployable or read-only change"],
+        "auto_activation_holds": auto_activation_holds,
     }
+
+
+# Founder 2026-10-21（二）之二「不要一直要我批准 很煩 反正我都按同意」: an application range that is
+# held only because it is R3 activates through production-auto. These Founder-required paths and
+# effects may ride that path; every other one (migration, data repair, identity/credential,
+# release/control plane) keeps the production-activation reviewer.
+R3_APPLICATION_AUTO_ACTIVATION = True
+_R3_AUTO_ACTIVATION_PREFIXES = (
+    "backend/app/Services/SessionDeduction",
+    "backend/app/Services/SessionEntitlement",
+    "backend/app/Services/ApprovalSessionSync",
+)
+_R3_AUTO_ACTIVATION_EFFECTS = {"billing/ledger semantics", "privacy/legal boundary", "runtime write"}
+_R3_AUTHZ_CHANGE_RE = re.compile(
+    r"auth_(?:campus_ids|role|user|user_id|teacher_id)|campus_?refusal|\bforbidden\b|\b40[13]\b|isdirectorrole|"
+    r"super_admin|->\s*can\s*\(|\bauthorize\s*\(|\bpolic(?:y|ies)\b|gate::|middleware\s*\(",
+    re.I,
+)
+_R3_FOUNDER_ONLY_REASONS = {
+    "effective tier T3 requires Founder activation",
+    "production-side-effect boundary requires protected activation",
+}
+
+
+# What the deploy itself executes or trusts with production credentials: a change here could forge the
+# evidence or the verification of the very range it rides in (adversarial review on #4359).
+_R3_EXECUTION_PREFIXES = (
+    ".github/actions/", "scripts/governance/", "scripts/production-deploy/", "scripts/production-operations/",
+)
+_R3_EXECUTION_EXACT = {
+    "scripts/post-deploy-verify.py", "scripts/post-merge-smoke.sh",
+    # post-merge-smoke.sh sources/runs these from the deployed tree during verification.
+    "scripts/smoke-api.sh", "scripts/smoke-auth-lib.sh",
+    # pi-remote-deploy.sh resets /home/admin to the target and runs these from the range's own tree.
+    "scripts/write-deployment-manifest.py", "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh",
+}
+# Identity/privilege paths beyond the reviewer-only list: nested Auth controllers, role/guard services.
+_R3_IDENTITY_PATH_TERMS = (*_ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS, "auth", "identity", "role", "guard", "login")
+
+
+def _r3_protected_path(path: str) -> str | None:
+    """Label of a path no R3 auto range may carry, current or rename source (#4359 review); else None."""
+
+    if path.startswith(_MIGRATION_PREFIX):
+        return "migration"
+    if path.startswith(("backend/app/Console/Commands/Repair", "backend/app/Services/Repair")):
+        return "production data repair"
+    if path.startswith(_R3_EXECUTION_PREFIXES) or path in _R3_EXECUTION_EXACT:
+        return "deploy execution or evidence path"
+    # Separator split OR CamelCase split (UserAuthController), so the CamelCase pass only ever adds matches.
+    # Guardian (the parent model) is not a `guard`; every other term still applies to it.
+    words = set(re.split(r"[/_.-]+", path.lower())) | {
+        w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", path)
+    }
+    is_test = path.startswith(("backend/tests/", "frontend/e2e/")) or "/__tests__/" in path or bool(
+        re.search(r"\.(?:test|spec)\.[cm]?[jt]s$", path))
+    if path.startswith(("backend/", "frontend/")) and not is_test and any(
+        word.startswith(term) and not (term == "guard" and word.startswith("guardian"))
+        for word in words if word for term in _R3_IDENTITY_PATH_TERMS
+    ):
+        return "identity/credential boundary"
+    label = _r3_hold_label(path)
+    return label if label == "identity/credential boundary" else None
+
+
+def _r3_hold_label(path: str) -> str:
+    if path.startswith(_MIGRATION_PREFIX):
+        return "migration (deploy.yml cannot roll code back after it)"
+    if path.startswith(("backend/app/Console/Commands/Repair", "backend/app/Services/Repair")):
+        return "production data repair"
+    if path.startswith(("backend/app/Http/Controllers/Auth", "backend/app/Http/Controllers/StudentIdentity",
+                        "backend/app/Http/Middleware/")) or any(
+        part.startswith(term) for part in re.split(r"[/_.-]+", path.lower())
+        for term in _ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS if part
+    ):
+        return "identity/credential boundary"
+    return "release/control plane"
+
+
+def unresolved_review_threads(conn: object) -> int | None:
+    """Open threads in a ``reviewThreads(first:100)`` connection; None when unknown.
+
+    Same rule as ``.github/scripts/land-queue.mjs`` ``unresolvedCount``: a thread is open until it
+    is resolved and replied to (2+ comments); a second page or a missing count is unknown.
+    """
+
+    if not isinstance(conn, Mapping) or not isinstance(conn.get("nodes"), list):
+        return None
+    if (conn.get("pageInfo") or {}).get("hasNextPage") is not False:
+        return None
+    open_threads = 0
+    for thread in conn["nodes"]:
+        replies = ((thread or {}).get("comments") or {}).get("totalCount")
+        if not isinstance(replies, int) or isinstance(replies, bool):
+            return None
+        if thread.get("isResolved") is not True or replies < 2:
+            open_threads += 1
+    return open_threads
+
+
+def final_head_review_evidence(
+    *, repo: str, pr_numbers: Iterable[object], api: Callable[..., object], graphql: Callable[[str], object],
+) -> dict[str, object]:
+    """Independent review on the final head of every PR ("LGTM on the final patch set").
+
+    Codex's explicit no-findings confirmation of the PR's exact merged head
+    (``codex_confirms_head``) and zero open review threads. API errors propagate to the caller,
+    which fails closed; anything missing here is a hold.
+    """
+
+    owner, name = repo.split("/", 1)
+    numbers = [int(str(number)) for number in pr_numbers]
+    if not numbers:
+        return {"ok": False, "reason": "no PRs to review"}
+    flags = ("--paginate", "--slurp")
+
+    def flat(value: object) -> list:
+        if not isinstance(value, list):
+            return []
+        return [item for page in value for item in (page if isinstance(page, list) else [page])]
+
+    for number in numbers:
+        pr = api(f"/repos/{repo}/pulls/{number}")
+        head = ((pr or {}).get("head") or {}).get("sha")
+        if not codex_confirms_head(
+            head,
+            flat(api(f"/repos/{repo}/issues/{number}/comments?per_page=100", *flags)),
+            flat(api(f"/repos/{repo}/pulls/{number}/reviews?per_page=100", *flags)),
+            flat(api(f"/repos/{repo}/issues/{number}/reactions?per_page=100", *flags)),
+        ):
+            return {"ok": False, "reason": f"PR #{number}: no Codex no-findings confirmation on its final head"}
+        threads = graphql(
+            f'{{repository(owner:{json.dumps(owner)},name:{json.dumps(name)}){{pullRequest(number:{number})'
+            '{reviewThreads(first:100){nodes{isResolved comments{totalCount}} pageInfo{hasNextPage}}}}}'
+        )
+        conn = (((threads or {}).get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+        open_threads = unresolved_review_threads(conn.get("reviewThreads"))
+        if open_threads != 0:
+            state = "unknown" if open_threads is None else str(open_threads)
+            return {"ok": False, "reason": f"PR #{number}: open review threads {state}"}
+    return {"ok": True, "reason": "final-head Codex review with no open threads on " +
+            ", ".join(f"#{n}" for n in numbers)}
+
+
+DEPLOY_JOB_NAME = "Deploy to Production"
+_FREEZE_LOOKBACK_PAGES = 1  # x100 deploy.yml runs (~3-5 days); older = unknown = frozen. Bounded for the job deadline.
+
+
+def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None:
+    """Stop the line: None only when main CI is green and the last production deploy succeeded.
+
+    The newest decided ``CI — PHPUnit Tests`` run on main must be a success, and the newest
+    deploy.yml run whose ``Deploy to Production`` job ran must have succeeded (a failed,
+    rolled-back or held deploy freezes auto-activation until a reviewed deploy succeeds).
+    API errors propagate (the caller fails closed); an unknown state is a freeze.
+    """
+
+    ci = api(f"/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=20")
+    decided = [
+        run for run in ((ci or {}).get("workflow_runs") or [])
+        if run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") not in {"cancelled", "skipped", None}
+        and run.get("event") in {"push", "workflow_dispatch"}  # same events resolve-target trusts
+    ]
+    if not decided:
+        return "main CI state unknown"
+    if decided[0].get("conclusion") != "success":
+        return f"main CI is red (run {decided[0].get('id')}: {decided[0].get('conclusion')})"
+    # The newest *deploy job* by completion time decides, not run order: an older run can be re-run later.
+    latest = None
+    for page in range(1, _FREEZE_LOOKBACK_PAGES + 1):
+        runs = (api(f"/repos/{repo}/actions/workflows/deploy.yml/runs?status=completed&per_page=100&page={page}")
+                or {}).get("workflow_runs") or []
+        for run in runs:
+            jobs = api(f"/repos/{repo}/actions/runs/{run.get('id')}/jobs?per_page=100")
+            for job in (jobs or {}).get("jobs") or []:
+                if job.get("name") != DEPLOY_JOB_NAME or job.get("conclusion") in {"skipped", None}:
+                    continue
+                if not job.get("completed_at"):
+                    return f"deploy job in run {run.get('id')} has no completion time; state unknown"
+                if latest is None or str(job["completed_at"]) > str(latest[0]):
+                    latest = (job["completed_at"], run.get("id"), job.get("conclusion"))
+        if len(runs) < 100:
+            break
+    if latest is not None:
+        if latest[2] == "success":
+            return None
+        return (f"previous production deploy (run {latest[1]}) ended {latest[2]}; "
+                "stop the line until a reviewed deploy succeeds")
+    return f"no production deploy in the last {_FREEZE_LOOKBACK_PAGES * 100} deploy runs; state unknown"
+
+
+def decide_r3_auto_activation(
+    records: Iterable[dict[str, object]], *, event_name: str, rollback_evidence: bool,
+    range_paths: Iterable[str] | None, review: Mapping[str, object] | None = None,
+    freeze_reason: str | None = "freeze state not evaluated", renamed: bool | None = None,
+) -> dict[str, object]:
+    """Founder 2026-10-21（二）之二: may this held range activate through production-auto?
+
+    ``ok`` only when the classifier (re-run here on the raw attributed records) holds the range
+    solely because it is T3, its provenance is complete, every PR has rollback evidence, no PR
+    carries a migration, data-repair, identity/credential or control-plane hold, and no commit in
+    the range touches the gate policy, no range path (rename sources included) is a migration,
+    data-repair, identity/credential or deploy-execution path, no file is renamed, the line is
+    not frozen (``deploy_freeze_reason``) and every PR in the range (application and control
+    plane) has final-head review (``final_head_review_evidence``; the caller passes them all). Freeze and review are re-checked by the deploy job after it
+    holds the executor slot, together with exact-main CI. Fails closed.
+    """
+
+    def hold(reason: str) -> dict[str, object]:
+        return {"ok": False, "reason": reason}
+
+    if not R3_APPLICATION_AUTO_ACTIVATION:
+        return hold("R3 auto-activation is disabled")
+    if event_name not in {"workflow_run", "repository_dispatch", "schedule"}:
+        return hold(f"event {event_name!r} keeps the Founder gate")
+    if range_paths is None:
+        return hold("range path evidence is incomplete")
+    paths = {str(path).replace("\\", "/") for path in range_paths if path}
+    if not paths:
+        return hold("range path evidence is empty")
+    if paths & _GATE_POLICY_PATHS:
+        return hold("range changes the gate policy or deploy workflow; reviewer required")
+    protected = sorted(f"{label}: {path}" for path in paths if (label := _r3_protected_path(path)))
+    if protected:
+        return hold("Founder-gated path in range: " + "; ".join(protected))
+    provenance = classify_activation_provenance(records)
+    applications = provenance.get("application_prs") or []
+    if provenance.get("blocked") or not applications:
+        return hold(f"provenance is not an application range: {provenance.get('reason')}")
+    if renamed is not False:  # unknown counts as renamed
+        return hold("range renames a file (or rename state unknown); a rename keeps the Founder gate")
+    decision = decide_activation(
+        event_name=event_name, deployable=True, classifier_available=True, machine_validated=True,
+        machine_tier=provenance.get("tier_name"),
+        declared_risk=f"R{provenance.get('declared_risk')}", declared_tier=f"T{provenance.get('declared_tier')}",
+        protected_activation=bool(provenance.get("protected_activation")),
+        ci_success=True, rollback_evidence=rollback_evidence,
+    )
+    if (
+        decision["decision"] != "awaiting-activation"
+        or decision["effective_tier"] != "T3"
+        or decision["reason"] not in _R3_FOUNDER_ONLY_REASONS
+    ):
+        return hold(f"not held only for R3: {decision['reason']}")
+    if not rollback_evidence:
+        return hold("rollback evidence missing")
+    holds = [
+        f"PR #{pr['number']} {item}" for pr in applications
+        for item in ((pr.get("scope") or {}).get("auto_activation_holds", ["scope unavailable"]))
+    ]
+    if holds:
+        return hold("Founder-gated effect: " + "; ".join(holds))
+    if freeze_reason is not None:
+        return hold(f"deploy freeze: {freeze_reason}")
+    if not isinstance(review, Mapping) or review.get("ok") is not True:
+        return hold(f"final-head review: {(review or {}).get('reason', 'not evaluated')}")
+    numbers = ", ".join(f"#{pr['number']}" for pr in applications)
+    return {"ok": True, "reason": f"R3 auto (Founder 2026-10-21): PRs {numbers}; tier T3; "
+            "no migration/data-repair/identity/credential effect; rollback evidence; "
+            f"{review.get('reason')}; no deploy freeze"}
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -1522,6 +1822,7 @@ def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict
             "number": str(number),
             "provenance_state": provenance_state,
             "scope": scope,
+            "paths": paths,
         })
         minimum = max(minimum, int(scope["machine_minimum_tier"]))
 
@@ -1981,10 +2282,12 @@ def auto_environment_is_valid(
 ) -> bool:
     """Accept the reviewer-less ``production-auto`` Environment only with verified 1A evidence.
 
+    For ``auto-r3`` the caller passes the R3 classifier evidence (Founder 2026-10-21) as ``go_evidence``.
+
     Manual exceptional phases never use it; they keep ``production-activation``.
     """
 
-    if go_evidence != "verified" or mode not in {"auto", "auto-founder-go"}:
+    if go_evidence != "verified" or mode not in {"auto", "auto-founder-go", "auto-r3"}:
         return False
     if event_name == "workflow_dispatch":
         if phase != "release-train":
@@ -2066,6 +2369,10 @@ __all__ = [
     "declares_additive_migration",
     "decide_activation",
     "decide_manual_activation",
+    "decide_r3_auto_activation",
+    "deploy_freeze_reason",
+    "final_head_review_evidence",
+    "unresolved_review_threads",
     "is_founder_approval_eligible",
     "classify_production_runtime",
     "wait_for_exact_successful_provenance",
