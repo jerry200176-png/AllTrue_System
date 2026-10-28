@@ -456,6 +456,24 @@ class SubstituteService
     }
 
     /**
+     * In-app #441: a schedules row owned by an id that is not a teacher of a campus the caller manages makes the lesson vanish from
+     * every teacher's workbench while directors still see it (a course id was once stored as the teacher). Same rule as the single
+     * and batch substitute endpoints (teacherBoundToAny); the contract teacher is always accepted (ownership unchanged).
+     * Returns a 422 body, or null when the teacher may be written.
+     *
+     * @param  int[]  $managedCampusIds  caller's campuses; empty = super_admin (any campus binding)
+     * @return array{message: string, code: string}|null
+     */
+    public function assignableTeacherRefusal(int $teacherId, int $contractTeacherId, array $managedCampusIds): ?array
+    {
+        if ($teacherId <= 0 || $teacherId === $contractTeacherId || $this->teacherBoundToAny($teacherId, $managedCampusIds)) {
+            return null;
+        }
+
+        return ['message' => '所選老師不是您管理分校的老師，不能指派這堂課。沒有變更任何資料。', 'code' => 'teacher_not_assignable'];
+    }
+
+    /**
      * 代課成功後建立家長站內通知（Type=substitute）。
      *
      * 會存：學生、科目、時段、原老師、代課老師、原因。
