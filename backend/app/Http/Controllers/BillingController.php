@@ -433,7 +433,9 @@ class BillingController extends Controller
             }
 
             // In-app #436: voiding the bill under a confirmed receipt left the receipt counted and impossible to undo.
-            if (PaymentReport::query()->where('InvoiceID', $invoice->id)->where('status', 'confirmed')->exists()) {
+            // A locking (current) read: a plain read keeps this transaction's earlier snapshot and could miss a receipt
+            // confirmed while this request waited for the course lock.
+            if (PaymentReport::query()->where('InvoiceID', $invoice->id)->where('status', 'confirmed')->lockForUpdate()->get(['id'])->isNotEmpty()) {
                 return response()->json([
                     'message' => '這張帳單還有已確認的收據，請先在收款紀錄撤銷收據，再作廢帳單。',
                     'code' => 'confirmed_receipt_on_invoice',

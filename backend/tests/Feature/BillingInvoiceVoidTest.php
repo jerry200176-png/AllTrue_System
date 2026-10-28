@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class BillingInvoiceVoidTest extends TestCase
@@ -343,9 +344,13 @@ class BillingInvoiceVoidTest extends TestCase
         $this->withHeaders($headers)->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}")
             ->assertOk()
             ->assertJsonPath('invoices.0.can_exception_void', false);
+        $sql = [];
+        DB::listen(function ($query) use (&$sql) { $sql[] = $query->sql; });
         $this->withHeaders($headers)->postJson("/api/v1/invoices/{$invoice->id}/exception-void", [
             'reason' => '帳單開錯要重開',
         ])->assertStatus(422)->assertJsonPath('code', 'confirmed_receipt_on_invoice');
+        // A current read: a receipt confirmed while this request waited for the course lock is still seen.
+        $this->assertNotEmpty(preg_grep('/from `payment_reports`.* for update$/i', $sql));
 
         $this->assertSame('paid', $invoice->fresh()->Status);
         $this->assertSame(0, Payment::where('InvoiceID', $invoice->id)->where('Method', 'void')->count());

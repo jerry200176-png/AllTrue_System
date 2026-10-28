@@ -1625,9 +1625,12 @@ class PaymentReportController extends Controller
 
             $scPaid = 0;
             // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
-            // A reversed void bill (#436) clears it too: the resolver would read the stale flag itself as paid.
+            // A reversed void bill (#436) clears it too unless a live bill backs the settlement: with no live bill the
+            // resolver would read the stale flag itself as paid.
             // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
-            if ($invoice && !$alreadyReversed && $this->courseResolvedPaid($sc)) {
+            $ledgerBacked = $invoice && (!$alreadyReversed || Invoice::query()->where('StudentClassID', $sc->ID)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists());
+            if ($ledgerBacked && $this->courseResolvedPaid($sc)) {
                 $scPaid = (int) $sc->Paid;
             } else {
                 $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];

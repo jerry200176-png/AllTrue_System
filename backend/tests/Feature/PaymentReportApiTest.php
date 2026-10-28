@@ -2136,6 +2136,48 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, (int) $sc->fresh()->Paid);
     }
 
+    public function test_void_after_bill_void_keeps_a_settlement_a_live_bill_backs(): void
+    {
+        // #4563 review: the course was billed and paid again after the old bill was voided; undoing the old
+        // receipt must not reopen the settlement the replacement bill fully backs.
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8800, 'PayDate' => '2026-04-25', 'closed_reason' => 'settled']);
+        $old = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+        $payment = Payment::create(['InvoiceID' => $old->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $old->id, 'Amount' => -8800, 'PaidAt' => '2026-04-20', 'Method' => 'void', 'Note' => '帳單例外沖銷作廢：重開']);
+        $new = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-21', 'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid',
+        ]);
+        Payment::create(['InvoiceID' => $new->id, 'Amount' => 8800, 'PaidAt' => '2026-04-25', 'Method' => 'cash']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $old->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'transfer',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-after-bill-void-replacement'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '舊帳單已作廢重開',
+        ])->assertOk();
+
+        $this->assertSame('voided', $report->fresh()->status);
+        $this->assertSame(1, Payment::where('InvoiceID', $old->id)->where('Method', 'void')->count());
+        $fresh = $sc->fresh();
+        $this->assertSame(1, (int) $fresh->Paid);
+        $this->assertSame('settled', $fresh->closed_reason);
+    }
+
     public function test_void_refuses_missing_invoice_when_invoice_id_is_set(): void
     {
         $token = $this->createDirectorToken([1]);
