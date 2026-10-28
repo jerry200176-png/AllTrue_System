@@ -185,8 +185,104 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
             || count($candidates) >= 200,
     ], $targets);
 
+    if ($packageId > 0 && $targets === [$packageId]) {
+        $result += inapp_package_ledger_rows($rows, $packageId, $chargeable);
+    }
+
     // The summary first, so a long all-packages output cannot push it out of a truncated job summary.
     return array_slice($result, 0, 5, true) + ['summary' => $summary] + $result;
+}
+
+/**
+ * One named package, row by row (#4455 over-debits): every ledger row on a lesson that is not chargeable or no longer
+ * exists, joined to each live chargeable member lesson in the same (date, start) slot (one output row per such lesson,
+ * twin_* null when there is none), and every ledger row of a slot debited through more than one lesson. A deleted
+ * lesson's slot comes from its last schedule audit snapshot, else the date of its sign-in (start unknown: twins match on
+ * the date alone). course_net: the lesson's course ledger deduct minus reverse.
+ *
+ * @param list<string> $chargeable
+ * @return array{unchargeable_session_rows: list<array<string, mixed>>, shared_slot_rows: list<array<string, mixed>>}
+ */
+function inapp_package_ledger_rows(callable $rows, int $packageId, array $chargeable): array
+{
+    $courseNet = fn (string $id): string => "(SELECT COALESCE(SUM(CASE WHEN d.event_type = 'deduct' THEN 1 WHEN d.event_type = 'reverse' THEN -1"
+        . " ELSE 0 END), 0) FROM session_deduction_ledger d WHERE d.class_session_id = $id)";
+    $ledger = $rows(
+        'SELECT l.id AS ledger_id, l.class_session_id, l.student_class_id, l.reason, l.delta, l.created_at, c.id AS live_id,'
+        . ' LOWER(c.Status) AS status, c.SessionDate AS session_date, SUBSTRING(c.StartTime, 1, 5) AS start_time, '
+        . $courseNet('l.class_session_id') . ' AS course_net'
+        . ' FROM package_session_ledger l LEFT JOIN ClassSession c ON c.id = l.class_session_id'
+        . ' WHERE l.package_id = ? AND l.class_session_id IS NOT NULL ORDER BY l.id',
+        [$packageId]
+    );
+    $gone = array_values(array_unique(array_map(fn (array $r): int => (int) $r['class_session_id'], array_filter($ledger, fn (array $r): bool => $r['live_id'] === null))));
+    $known = [];
+    if ($gone !== []) {
+        $in = implode(',', array_fill(0, count($gone), '?'));
+        foreach ($rows("SELECT ClassSessionID AS id, MIN(DATE(SignInDT)) AS session_date FROM StudentSingIn WHERE ClassSessionID IN ($in) GROUP BY ClassSessionID", $gone) as $r) {
+            $known[(int) $r['id']] = ['session_date' => (string) $r['session_date'], 'start_time' => null, 'last_status' => null, 'deleted_at' => null, 'slot_source' => 'sign_in'];
+        }
+        // The newest audit row: a deletion keeps the lesson in old_data (new_data null), a new or edited lesson in new_data.
+        $field = fn (string $key): string => "JSON_UNQUOTE(JSON_EXTRACT(COALESCE(a.new_data, a.old_data), '$.$key'))";
+        foreach ($rows(
+            'SELECT a.session_id AS id, SUBSTRING(' . $field('SessionDate') . ', 1, 10) AS session_date, SUBSTRING(' . $field('StartTime') . ', 1, 5) AS start_time,'
+            . ' LOWER(' . $field('Status') . ') AS last_status, CASE WHEN a.new_data IS NULL THEN a.created_at END AS deleted_at'
+            . " FROM schedule_audit_logs a WHERE a.id IN (SELECT MAX(id) FROM schedule_audit_logs WHERE session_id IN ($in) GROUP BY session_id)",
+            $gone
+        ) as $r) {
+            $known[(int) $r['id']] = ['session_date' => $r['session_date'], 'start_time' => $r['start_time'], 'last_status' => $r['last_status'],
+                'deleted_at' => $r['deleted_at'], 'slot_source' => 'audit'];
+        }
+    }
+    $lessons = $rows(
+        'SELECT c.id, c.StudentClassID AS student_class_id, c.SessionDate AS session_date, SUBSTRING(c.StartTime, 1, 5) AS start_time,'
+        . ' LOWER(c.Status) AS status, (SELECT COALESCE(SUM(p.delta), 0) FROM package_session_ledger p WHERE p.package_id = ? AND p.class_session_id = c.id) AS package_net, '
+        . $courseNet('c.id') . ' AS course_net FROM ClassSession c JOIN StudentClass sc ON sc.ID = c.StudentClassID'
+        . ' WHERE sc.PackageID = ? AND LOWER(c.Status) IN (' . implode(',', array_fill(0, count($chargeable), '?')) . ') ORDER BY c.id',
+        [$packageId, $packageId, ...$chargeable]
+    );
+    $sessionNet = [];
+    foreach ($ledger as $r) {
+        $sessionNet[(int) $r['class_session_id']] = ($sessionNet[(int) $r['class_session_id']] ?? 0) + (int) $r['delta'];
+    }
+    $at = fn (array $r): array => $r['live_id'] !== null
+        ? ['status' => (string) $r['status'], 'last_status' => null, 'deleted_at' => null, 'session_date' => (string) $r['session_date'],
+            'start_time' => (string) $r['start_time'], 'slot_source' => 'session']
+        : ['status' => 'deleted'] + ($known[(int) $r['class_session_id']]
+            ?? ['last_status' => null, 'deleted_at' => null, 'session_date' => null, 'start_time' => null, 'slot_source' => null]);
+    $unchargeable = $slots = [];
+    foreach ($ledger as $r) {
+        $cs = (int) $r['class_session_id'];
+        $where = $at($r);
+        $row = ['package_id' => $packageId, 'ledger_id' => (int) $r['ledger_id'], 'class_session_id' => $cs, 'student_class_id' => (int) $r['student_class_id'],
+            'reason' => (string) $r['reason'], 'delta' => (int) $r['delta'], 'created_at' => (string) $r['created_at'], 'status' => $where['status'],
+            'last_status' => $where['last_status'], 'deleted_at' => $where['deleted_at'], 'session_date' => $where['session_date'],
+            'start_time' => $where['start_time'], 'slot_source' => $where['slot_source'], 'session_net' => $sessionNet[$cs], 'course_net' => (int) $r['course_net']];
+        if ($where['session_date'] !== null && $where['start_time'] !== null) {
+            $slots[$where['session_date'] . ' ' . $where['start_time']][] = $row;
+        }
+        if (in_array($where['status'], $chargeable, true)) {
+            continue;
+        }
+        $twins = array_filter($lessons, fn (array $l): bool => (int) $l['id'] !== $cs && $where['session_date'] !== null
+            && (string) $l['session_date'] === $where['session_date'] && ($where['start_time'] === null || (string) $l['start_time'] === $where['start_time']));
+        foreach ($twins ?: [null] as $l) {
+            $unchargeable[] = $row + ['twin_session_id' => $l ? (int) $l['id'] : null, 'twin_student_class_id' => $l ? (int) $l['student_class_id'] : null,
+                'twin_status' => $l['status'] ?? null, 'twin_package_net' => $l ? (int) $l['package_net'] : null, 'twin_course_net' => $l ? (int) $l['course_net'] : null];
+        }
+    }
+    $shared = [];
+    foreach ($slots as $slotRows) {
+        if (count(array_unique(array_column($slotRows, 'class_session_id'))) > 1) {
+            $net = array_sum(array_column($slotRows, 'delta'));
+            foreach ($slotRows as $row) {
+                $shared[] = array_intersect_key($row, array_flip(['package_id', 'session_date', 'start_time', 'ledger_id', 'class_session_id', 'student_class_id',
+                    'status', 'reason', 'delta', 'created_at', 'course_net'])) + ['slot_net' => $net];
+            }
+        }
+    }
+
+    return ['unchargeable_session_rows' => $unchargeable, 'shared_slot_rows' => $shared];
 }
 
 if (PHP_SAPI === 'cli' && getenv('INAPP_PACKAGE_LEDGER_PROBE') === '1') {
