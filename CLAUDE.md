@@ -1,7 +1,7 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
 > 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
-> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）。Pi SSH 只准唯讀（見 R6）。
+> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）；哪些按鈕可以不按，只以同檔 2026-10-28（二）之二為準（此處不摘要）。Pi SSH 只准唯讀（見 R6）。
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
@@ -50,7 +50,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions |
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
-| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表與帳務表除外；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），但在 `deploy.yml` 支援其失敗時自動回滾 code 之前，上線仍走 Founder 批准；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
+| R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表與帳務表除外，帳務表依 2026-10-28（二）之二在 #4560 合併後移出排除；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），但在 `deploy.yml` 支援其失敗時自動回滾 code 之前，上線仍走 Founder 批准；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
 | R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
