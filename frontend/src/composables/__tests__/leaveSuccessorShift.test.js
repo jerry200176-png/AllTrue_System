@@ -34,6 +34,14 @@ describe('in-app410 successor leave API boundary', () => {
   expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({class_session_id:11});
   await expect(previewSuccessorLeave({role:'director',courseId:1,date:'2026-12-01',start:'',request,resolve})).rejects.toThrow('堂次');
  });
+ it('#4216 r: finds an off-half-hour lesson from the rounded calendar time, still only when unique', async () => {
+  const request=vi.fn(async()=>({ok:true,json:async()=>({...plan,leave_session:{id:21}})}));
+  const resolve=vi.fn().mockResolvedValue({items:[{id:21,studentClassId:1,date:'2026-12-01',startTime:'17:15',isProjected:false}]});
+  expect((await previewSuccessorLeave({role:'director',courseId:1,date:'2026-12-01',start:'17:30',request,resolve})).leave_session.id).toBe(21);
+  expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({class_session_id:21});
+  const two=vi.fn().mockResolvedValue({items:[{id:21,studentClassId:1,date:'2026-12-01',startTime:'17:15',isProjected:false},{id:22,studentClassId:1,date:'2026-12-01',startTime:'17:40',isProjected:false}]});
+  await expect(previewSuccessorLeave({role:'director',courseId:1,date:'2026-12-01',start:'17:30',request,resolve:two})).rejects.toThrow('堂次');
+ });
  it('falls back only for explicit non-applicability and rejects malformed plans', async () => {
   const opts={role:'director',sessionId:11};
   expect(await previewSuccessorLeave({...opts,request:vi.fn().mockResolvedValue(response({applicable:false}))})).toBeNull();

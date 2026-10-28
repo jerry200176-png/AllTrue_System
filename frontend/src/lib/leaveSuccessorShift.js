@@ -1,4 +1,5 @@
 import { fetchClassSessions } from './classSessionsApi.js';
+import { normalizeTimeTo30 } from './calendarFormat.js';
 
 const headers = token => ({ Accept: 'application/json', 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) });
 async function post(path, payload, { token, request = fetch }) {
@@ -27,8 +28,11 @@ export async function previewSuccessorLeave({ role, sessionId, courseId, date, s
   if (!['director', 'super_admin'].includes(role)) return null;
   if (!Number(sessionId)) {
     const result = await resolve({ token, branchId, studentClassId: Number(courseId), start: date, end: date });
-    const matches = result.items.filter(row => !row.isProjected && row.id && row.studentClassId === Number(courseId)
-      && row.date === date && row.startTime === String(start || '').slice(0, 5));
+    const hhmm = String(start || '').slice(0, 5);
+    const sameDay = result.items.filter(row => !row.isProjected && row.id && row.studentClassId === Number(courseId) && row.date === date);
+    let matches = sameDay.filter(row => row.startTime === hhmm);
+    // The calendar modal rounds a 17:15 lesson to 17:30; match the rounded cell, still exactly one.
+    if (!matches.length && hhmm) matches = sameDay.filter(row => normalizeTimeTo30(row.startTime) === hhmm);
     if (matches.length !== 1) throw new Error('無法確認唯一堂次，請重新整理課表後再試');
     sessionId = matches[0].id;
   }
