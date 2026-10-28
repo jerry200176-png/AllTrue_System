@@ -148,6 +148,9 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->count());
 
         $paid = $this->legacyCourse(1, $monthly);
+        // No bill and no session evidence: the stored charge still caps what a new bill may record (Codex P2).
+        $this->backfill($token, $paid, ['amount' => 5000])->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 3000);
+        $this->assertSame([0, 0], [Invoice::count(), PaymentReport::count()]);
         $this->backfill($token, $paid, ['amount' => 3000, 'idempotency_key' => '7f0c2a4e-1b3d-4c5e-8f9a-0b1c2d3e4f51'])
             ->assertOk()->assertJsonPath('status', 'confirmed');
         $invoice = Invoice::where('StudentClassID', $paid->ID)->sole();
@@ -246,6 +249,45 @@ class LegacyPaidFlagResolveTest extends TestCase
             $plainRead = collect($log)->skip($courses)->filter(fn ($sql) => !str_contains($sql, ' for update'))->keys()->first();
             $this->assertGreaterThan($locks[3], $plainRead, "$action: nothing is read before every lock is held");
         }
+    }
+
+    /** Codex P1: a stale PackageID pointing at another student's or campus's package must never have its paid mark changed. */
+    public function test_a_stale_package_id_to_a_foreign_package_is_refused(): void
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1);
+        $foreign = $this->legacyCourse(2);
+        $package = CoursePackage::create(['student_id' => $foreign->StudentID, 'campus_id' => 2, 'name' => 'F', 'billing_mode' => 'count',
+            'total_sessions' => 16, 'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 550, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'paid_at' => '2026-03-01', 'stop' => false, 'enabled' => true]);
+        $course->update(['PackageID' => $package->id]);
+        $this->clear($token, $course)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_package_mismatch');
+        $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_package_mismatch');
+        $this->assertSame([true, 1, 1], [(bool) $package->fresh()->paid, (int) $course->fresh()->Paid, (int) $foreign->fresh()->Paid]);
+        $this->assertSame([0, 0], [Invoice::count(), PaymentReport::count()]);
+    }
+
+    /** Codex P2: paying one member's bill must not keep the whole package marked paid while a sibling still owes. */
+    public function test_backfill_drops_the_package_marks_while_a_sibling_still_owes(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        Invoice::create(['StudentID' => $sibling->StudentID, 'StudentClassID' => $sibling->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->backfill($token, $lead, ['amount' => 8800])->assertOk();
+        $this->assertSame([false, 0, 0], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+    }
+
+    /** Codex P2: the ledger tells the card about any package membership (monthly members have package_id null there). */
+    public function test_ledger_flags_a_monthly_package_member_for_the_clear_warning(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, , $package] = $this->legacyPackage(1);
+        $lead->update(['ScheduleMode' => 'date']);
+        $course = collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$lead->ID}")->assertOk()->json('courses'))->firstWhere('id', $lead->ID);
+        $this->assertSame([null, true], [$course['package_id'], $course['in_package']]);
+        $plain = $this->legacyCourse(1);
+        $this->assertFalse(collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$plain->ID}")->json('courses'))->firstWhere('id', $plain->ID)['in_package']);
     }
 
     /** Security review: a caller outside the campus is refused from the routing read, before any lock or write. */

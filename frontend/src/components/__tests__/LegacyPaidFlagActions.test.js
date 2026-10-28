@@ -56,7 +56,8 @@ describe('ContractCard legacy-flag actions', () => {
   it.each([
     ['a monthly contract', { schedule_mode: 'date', charge: 3000, current_contract_charge: null }],
     ['the lead card of a shared package', { package_id: 3 }],
-    ['a monthly contract in a package', { schedule_mode: 'date', package_id: 3 }],
+    // The ledger sends package_id null for a monthly member and in_package true (AccountingController::ledger).
+    ['a monthly contract in a package', { schedule_mode: 'date', package_id: null, in_package: true }],
   ])('offers both actions on %s', async (_label, course) => {
     const w = await mountCard(course);
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
@@ -70,6 +71,14 @@ describe('ContractCard legacy-flag actions', () => {
     await shared.find('[data-testid="legacy-clear-open"]').trigger('click');
     await flushPromises();
     expect(q('legacy-shared-note').textContent).toBe('這門課屬於共用方案：方案內所有課程會一起改成未繳。');
+    wrapper.unmount();
+    document.body.innerHTML = '';
+    wrapper.unmount();
+    document.body.innerHTML = '';
+    const monthlyMember = await mountCard({ schedule_mode: 'date', package_id: null, in_package: true });
+    await monthlyMember.find('[data-testid="legacy-clear-open"]').trigger('click');
+    await flushPromises();
+    expect(q('legacy-shared-note')).not.toBeNull();
     wrapper.unmount();
     document.body.innerHTML = '';
     const single = await mountCard({});

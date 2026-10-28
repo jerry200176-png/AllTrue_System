@@ -815,12 +815,24 @@ class PaymentReportController extends Controller
             if ((int) $data['amount'] <= 0) {
                 return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
             }
+            if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
+                // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the period's charge.
+                $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->defaultPeriodFor($course, $data['payment_date']))['charge'];
+                if ((int) $data['amount'] > $limit) {
+                    return response()->json(['message' => sprintf('月結本期應收為 NT$%d，補登金額不可超過。沒有登記任何款項。', $limit),
+                        'code' => 'monthly_amount_stale', 'expected_amount' => $limit], 422);
+                }
+            }
             $report = $this->createPendingReport($course, $data, null, $tokenHash);
             $confirmed = $this->confirm($request, $report->id, true); // the backfill already holds the course lock
             if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
-            if (!$this->courseResolvedPaid($course)) { // a partial payment leaves money owed: drop the flag, as void() does
+            // Money still owed on this course or, in a shared package, on any member's bill: drop the mark, as void() does.
+            $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($lockIds);
+            $owes = ($statuses[$courseId]['status'] ?? null) !== 'paid'
+                || collect($lockIds)->contains(fn ($id) => in_array($statuses[$id]['status'] ?? null, ['unpaid', 'partial'], true));
+            if ($owes) {
                 $this->dropLegacyPaidMarks($course->refresh(), $package);
             }
             $this->auditLegacyFlag($course, $userId, 'student_class.legacy_paid_flag_backfill', ['reason_code' => 'legacy_paid_flag_backfill']);
@@ -984,6 +996,11 @@ class PaymentReportController extends Controller
         $reports = PaymentReport::query()->whereIn('StudentClassID', $ids)->whereIn('status', ['pending', 'confirmed'])->orderBy('id')->lockForUpdate()->get();
         $package = $this->lockPackageForCourse($course);
         Invoice::query()->whereIn('StudentClassID', $ids)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->orderBy('id')->lockForUpdate()->pluck('id');
+        // A stale PackageID can point at another student's or campus's package: its paid mark is not this caller's to change.
+        if ($package && ((int) $package->student_id !== (int) $course->StudentID
+            || (int) $package->campus_id !== (int) DB::table('Student')->where('id', $course->StudentID)->value('CampusID'))) {
+            throw new HttpResponseException(response()->json(['message' => '這門課指向的共用方案不屬於同一位學生或分校，請先核對課程的方案歸屬。沒有變更任何資料。', 'code' => 'legacy_flag_package_mismatch'], 422));
+        }
 
         return [$course, $package, $reports->firstWhere('status', 'pending') ?? $reports->first()];
     }

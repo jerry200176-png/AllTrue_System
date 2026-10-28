@@ -815,6 +815,9 @@ class AccountingController extends Controller
                 // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
                 'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
                     ? (int) $class->PackageID : null,
+                // In-app #428/#438: any PackageID (monthly members too, unlike package_id above), for the legacy-flag clear
+                // warning: that action clears the package and every same-student member.
+                'in_package' => (int) ($class->PackageID ?? 0) > 0,
                 // In-app #425: same 金額待確認 verdict as the tuition list (TuitionDocActions keeps 繳費單 disabled). Read-only.
                 'amount_pending_confirmation' => in_array((int) $class->ID, $amountPendingIds, true),
                 ];
