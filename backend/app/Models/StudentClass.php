@@ -285,12 +285,16 @@ class StudentClass extends Model
         return max(0, (int) ($this->Charge ?? 0));
     }
 
-    /** Rate x SessionCount (Rate x TotalHours when rate_unit is hour): the base Charge is compared with (G-009). */
+    /** What Rate multiplies: TotalHours when rate_unit is hour, else SessionCount. */
+    public function pricedQuantity(): int
+    {
+        return (string) $this->rate_unit === 'hour' ? (int) $this->TotalHours : (int) ($this->SessionCount ?? 0);
+    }
+
+    /** Rate x pricedQuantity(): the base Charge is compared with (G-009). */
     public function rateTimesQuantity(): int
     {
-        $quantity = (string) $this->rate_unit === 'hour' ? (int) $this->TotalHours : (int) ($this->SessionCount ?? 0);
-
-        return (int) round((float) ($this->Rate ?? 0) * $quantity);
+        return (int) round((float) ($this->Rate ?? 0) * $this->pricedQuantity());
     }
 
     /**

@@ -101,6 +101,9 @@ class StudentClassLookupController extends Controller
             'enabled' => (int) ($c->Stop ?? 0) !== 1,
             'charge' => $charge, 'rate' => $rate,
             'sessions' => $c->SessionCount === null ? null : (int) $c->SessionCount,
+            // What the rate multiplies: hours for an hourly contract (rate_unit = hour), else the session count.
+            'rate_unit' => (string) $c->rate_unit === 'hour' ? 'hour' : 'session',
+            'quantity' => $base === null ? null : $c->pricedQuantity(),
             'rate_x_sessions' => $base,
             'has_invoice' => $invoiceCount > 0,
             'money_note' => implode('；', $notes),

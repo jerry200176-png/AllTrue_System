@@ -46,7 +46,7 @@ final class StudentClassLookupTest extends TestCase
         $c = $rows[$count->ID];
         $this->assertSame(
             ['id', 'found', 'campus_id', 'campus_name', 'student_id', 'student_name', 'subject', 'teacher_name', 'schedule_mode', 'start_date', 'end_date',
-                'enabled', 'charge', 'rate', 'sessions', 'rate_x_sessions', 'has_invoice', 'money_note'],
+                'enabled', 'charge', 'rate', 'sessions', 'rate_unit', 'quantity', 'rate_x_sessions', 'has_invoice', 'money_note'],
             array_keys($c),
         );
         $this->assertSame([true, $this->campus->id, $this->campus->name, 'Synthetic Student', $teacher->Name, 'count', '2026-09-01', '2027-01-31', true],
@@ -64,6 +64,18 @@ final class StudentClassLookupTest extends TestCase
         $this->assertStringContainsString(['paid' => '已收', 'free' => '免費／贈送', 'partial' => '繳了一部分', 'unpaid' => '未繳', 'unbilled' => '尚未開帳單', 'review_required' => '需核對'][$verdicts[$monthly->ID]->status], $m['money_note']);
 
         $this->assertSame([7200, 7200, false, '尚未開帳單'], [$rows[$same->ID]['charge'], $rows[$same->ID]['rate_x_sessions'], $rows[$same->ID]['has_invoice'], $rows[$same->ID]['money_note']]);
+    }
+
+    public function test_an_hourly_contract_multiplies_the_rate_by_hours_not_sessions(): void
+    {
+        $hourly = $this->course(['rate_unit' => 'hour', 'Rate' => 750, 'TotalHours' => 16, 'SessionCount' => 8, 'Charge' => 12000]);
+        $perSession = $this->course(['Rate' => 900, 'TotalHours' => 16, 'SessionCount' => 8, 'Charge' => 7200]);
+
+        $rows = collect($this->getJson(self::URL . "?ids={$hourly->ID},{$perSession->ID}", $this->as($this->user('S')))->assertOk()->json('data'))->keyBy('id');
+
+        $this->assertSame(['hour', 16, 8, 12000, 12000], [$rows[$hourly->ID]['rate_unit'], $rows[$hourly->ID]['quantity'], $rows[$hourly->ID]['sessions'], $rows[$hourly->ID]['rate_x_sessions'], $rows[$hourly->ID]['charge']]);
+        $this->assertSame(['session', 8, 7200], [$rows[$perSession->ID]['rate_unit'], $rows[$perSession->ID]['quantity'], $rows[$perSession->ID]['rate_x_sessions']]);
+        $this->assertStringNotContainsString('單價×堂數不同', $rows[$hourly->ID]['money_note']);
     }
 
     public function test_only_super_admin_may_look_up_contracts(): void

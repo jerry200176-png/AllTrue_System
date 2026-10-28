@@ -18,10 +18,11 @@ vi.mock('../../lib/profileService', () => ({
 // Synthetic rows only.
 const countRow = {
   id: 101, found: true, campus_id: 7, campus_name: '測試分校', student_id: 5, student_name: '測試學生', subject: '數學', teacher_name: '測試老師',
-  schedule_mode: 'count', start_date: '2026-09-01', end_date: '2027-01-31', enabled: true, charge: 8800, rate: 900, sessions: 8, rate_x_sessions: 7200,
+  schedule_mode: 'count', start_date: '2026-09-01', end_date: '2027-01-31', enabled: true, charge: 8800, rate: 900, sessions: 8, rate_unit: 'session', quantity: 8, rate_x_sessions: 7200,
   has_invoice: true, money_note: '未繳；總費用與單價×堂數不同',
 };
-const monthlyRow = { ...countRow, id: 102, schedule_mode: 'date', end_date: null, enabled: false, charge: null, sessions: null, rate_x_sessions: null, money_note: '尚未開帳單' };
+const monthlyRow = { ...countRow, id: 102, schedule_mode: 'date', end_date: null, enabled: false, charge: null, sessions: null, quantity: null, rate_x_sessions: null, money_note: '尚未開帳單' };
+const hourlyRow = { ...countRow, id: 103, rate_unit: 'hour', rate: 750, sessions: 8, quantity: 16, charge: 12000, rate_x_sessions: 12000, money_note: '未繳' };
 
 function stubFetch(data, { ok = true, status = 200, body } = {}) {
   const calls = [];
@@ -65,7 +66,7 @@ describe('ContractLookupPanel', () => {
     expect(rows).toHaveLength(3);
     expect(rows[0].text()).toContain('測試學生');
     expect(rows[0].text()).toContain('NT$ 8,800');
-    expect(rows[0].text()).toContain('900 × 8 = NT$ 7,200');
+    expect(rows[0].text()).toContain('900 × 8 堂 = NT$ 7,200');
     expect(rows[0].text()).toContain('未繳；總費用與單價×堂數不同');
     expect(rows[1].text()).toContain('已停課');
     expect(rows[1].text()).toContain('—'); // monthly: no single total, no rate x sessions
@@ -75,6 +76,15 @@ describe('ContractLookupPanel', () => {
     expect(cards[0].text()).toContain('目前總費用');
     expect(cards[0].text()).toContain('NT$ 8,800');
     expect(cards[2].text()).toContain('找不到這個編號');
+  });
+
+  it('shows hours, not sessions, for an hourly contract (table and card)', async () => {
+    stubFetch([hourlyRow]);
+    const w = mountPanel();
+    await search(w, '103');
+    expect(w.get('[data-testid="lookup-row"]').text()).toContain('750 × 16 小時 = NT$ 12,000');
+    expect(w.get('[data-testid="lookup-card"]').text()).toContain('750 × 16 小時 = NT$ 12,000');
+    expect(w.get('[data-testid="lookup-row"]').text()).not.toContain('750 × 8');
   });
 
   it('opens the existing student billing for that contract in its own campus', async () => {

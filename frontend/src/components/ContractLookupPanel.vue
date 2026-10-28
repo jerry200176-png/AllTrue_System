@@ -94,7 +94,7 @@ const ledgerCampusId = ref(null);
 
 const money = (n) => (n == null ? '—' : `NT$ ${Number(n).toLocaleString('zh-TW')}`);
 const period = (r) => `${r.start_date || '—'} ~ ${r.end_date || '—'}`;
-const formula = (r) => (r.rate_x_sessions == null ? '—' : `${r.rate} × ${r.sessions} = ${money(r.rate_x_sessions)}`);
+const formula = (r) => (r.rate_x_sessions == null ? '—' : `${r.rate} × ${r.quantity}${r.rate_unit === 'hour' ? ' 小時' : ' 堂'} = ${money(r.rate_x_sessions)}`);
 const cardFields = (r) => [
   ['分校', r.campus_name || '—'], ['學生', r.student_name || '—'], ['科目', r.subject], ['老師', r.teacher_name || '—'],
   ['期間', period(r) + (r.enabled ? '' : '（已停課）')], ['目前總費用', money(r.charge)], ['單價×堂數', formula(r)], ['備註', r.money_note || '—'],
