@@ -58,7 +58,7 @@
     </div>
 
     <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
-      <button v-if="activeAccountingTab !== 'students' && activeAccountingTab !== 'payments'" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
+      <button v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
         v-for="v in visibleReminders"
         :key="v.key"
@@ -754,6 +754,10 @@
       <MonthlyDraftsPanel ref="monthlyDrafts" :branch-id="branchId" />
     </section>
 
+    <section v-if="activeAccountingTab === 'fees' && canVoid" id="tuition-accounting-panel-fees" role="tabpanel" aria-labelledby="tuition-accounting-tab-fees" tabindex="0">
+      <FeeLedgerPanel ref="feeLedger" :branch-id="branchId" :students="campusStudents" />
+    </section>
+
     <section
       v-if="activeAccountingTab === 'settled'"
       id="tuition-accounting-panel-settled"
@@ -1107,6 +1111,7 @@ import { authedFetch } from '../lib/authedFetch.js';
 import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
+import FeeLedgerPanel from '../components/tuition/FeeLedgerPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import TuitionDocActions from '../components/TuitionDocActions.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
@@ -1155,6 +1160,8 @@ const actionLoading = ref(null);
 const ACCOUNTING_TABS = [
   { key: 'students', label: '學生', icon: 'groups' },
   { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
+  // In-app #439: pass-through fees have their own ledger, so they get their own tab, not a tuition list filter.
+  { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
 ];
 const REMINDER_VIEWS = [
   { key: 'receivables', label: '待處理清單' },
@@ -1170,16 +1177,19 @@ const visibleReminders = computed(() => REMINDER_VIEWS.filter((x) => (!x.directo
   && !(reminderCount(x) === 0 && activeAccountingTab.value !== x.key)));
 const reminderLabel = (v) => { const n = reminderCount(v); return n ? `${v.label} ${n} 筆` : v.label; };
 const campusStudents = ref([]);
+let campusStudentsSeq = 0; // a slow reply for the previous campus must not refill the picker
 async function loadCampusStudents() {
+  const seq = ++campusStudentsSeq;
+  campusStudents.value = [];
   try {
     const params = new URLSearchParams({ per_page: '1000' });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     const resp = await authedFetch(`/api/v1/students?${params}`, { headers: { Accept: 'application/json' } });
     const json = await resp.json().catch(() => ({}));
     const list = Array.isArray(json) ? json : (json.data || []);
-    campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
+    if (seq === campusStudentsSeq) campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
   } catch {
-    campusStudents.value = [];
+    if (seq === campusStudentsSeq) campusStudents.value = [];
   }
 }
 // ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).
@@ -1198,6 +1208,7 @@ function openLedgerForStudent(r) {
 }
 const monthlyReview = ref(null);
 const monthlyDrafts = ref(null);
+const feeLedger = ref(null);
 const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
@@ -1293,7 +1304,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1650,6 +1661,8 @@ function openReceiptByReport(reportId) {
 function refreshActiveTab() {
   if (activeAccountingTab.value === 'monthly-drafts') {
     monthlyDrafts.value?.reload();
+  } else if (activeAccountingTab.value === 'fees') {
+    feeLedger.value?.reload();
   } else if (activeAccountingTab.value === 'monthly-review') {
     monthlyReview.value?.reload();
   } else if (activeAccountingTab.value === 'receivables' || activeAccountingTab.value === 'students') {
@@ -2524,6 +2537,7 @@ async function openSessionDetail(row) {
 
 // ═══ Watchers ═══
 watch(() => props.branchId, () => {
+  loadCampusStudents();
   refreshActiveTab();
 }, { flush: 'post' });
 
@@ -2571,7 +2585,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
-  if (tab === 'monthly-review' || tab === 'monthly-drafts') return;
+  if (tab === 'monthly-review' || tab === 'monthly-drafts' || tab === 'fees') return;
   if (tab === 'receivables' || tab === 'students') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {

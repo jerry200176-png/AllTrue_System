@@ -448,6 +448,12 @@ class PaymentReportController extends Controller
             if ($sc && $sc->ScheduleMode === 'date') {
                 $period = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period : $this->monthlyBilling->collectionPeriodFor($sc, $report->payment_date);
+                // #4574: the month moved since 登記收款 (attendance or bills changed); never bill this payment to another month.
+                if ($report->billing_period !== null && $report->billing_period !== $period) {
+                    return response()->json(['message' => sprintf('登記時收的是 %s，現在要先收 %s（出席或帳單有變動）。這筆沒有入帳，請退回後重新登記。',
+                        Carbon::createFromFormat('!Y-m', $report->billing_period)->format('Y 年 n 月'), Carbon::createFromFormat('!Y-m', $period)->format('Y 年 n 月')),
+                        'code' => 'monthly_period_changed', 'billing_period' => $period, 'recorded_billing_period' => $report->billing_period], 422);
+                }
                 $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
                 $monthlyProjection = $invoice ? $this->invoiceProjection($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
@@ -760,7 +766,8 @@ class PaymentReportController extends Controller
                 ], 422);
             }
 
-            $report = $this->createPendingReport($lockedCourse, $data, $invoice?->id);
+            // #4574: keep the month checked above (monthly, no bill yet) so confirm can refuse if it moves.
+            $report = $this->createPendingReport($lockedCourse, $data, $invoice?->id, null, $invoice ? null : ($billingPeriod ?? null));
 
             Log::info('PaymentReport director-record pending', [
                 'report_id'  => $report->id,
@@ -1027,12 +1034,13 @@ class PaymentReportController extends Controller
     }
 
     /** The 已回報、待核對 report director-record writes (also the first step of the legacy-flag backfill). @param array<string, mixed> $data */
-    private function createPendingReport(StudentClass $sc, array $data, ?int $invoiceId, ?string $tokenHash = null): PaymentReport
+    private function createPendingReport(StudentClass $sc, array $data, ?int $invoiceId, ?string $tokenHash = null, ?string $billingPeriod = null): PaymentReport
     {
         return PaymentReport::create([
             'StudentID'         => $sc->StudentID,
             'StudentClassID'    => $sc->ID,
             'InvoiceID'         => $invoiceId,
+            'billing_period'    => $billingPeriod,
             'reported_by_name'  => (string) $sc->student?->name,
             'payment_date'      => $data['payment_date'],
             'payment_method'    => $data['payment_method'],
