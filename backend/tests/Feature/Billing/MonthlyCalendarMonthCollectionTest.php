@@ -6,6 +6,7 @@ use App\Http\Controllers\PaymentReportController;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -104,6 +105,22 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $bill->items()->create(['StudentClassID' => $sc->ID, 'Description' => 'cycle', 'Amount' => 3300, 'PeriodStart' => '2026-08-28', 'PeriodEnd' => '2026-09-27']);
         $this->assertNull($billing->unbilledPeriodFor($sc));
         $this->assertSame('2026-09', $billing->collectionPeriodFor($sc, '2026-10-23'));
+    }
+
+    public function test_confirm_refuses_when_the_collection_month_moved_after_record(): void
+    {
+        // #4574: record checks September (August has no countable lesson yet); an August lesson is then marked attended.
+        // Equal monthly amounts pass every amount guard, so confirm must refuse instead of billing the payment to August.
+        $sc = $this->course('2026-08-31', '2026-09-30', ['2026-08-31' => 'scheduled', '2026-09-07' => 'attended']);
+        $reportId = $this->record($sc, 1650)->assertOk()->json('report_id');
+        $this->assertSame('2026-09', PaymentReport::findOrFail($reportId)->billing_period);
+
+        ClassSession::query()->where('StudentClassID', $sc->ID)->whereDate('SessionDate', '2026-08-31')->update(['Status' => 'attended']);
+        $refused = $this->api('putJson', "/api/v1/payment-reports/{$reportId}/confirm")->assertStatus(422)
+            ->assertJsonPath('code', 'monthly_period_changed')->assertJsonPath('billing_period', '2026-08');
+        $this->assertStringContainsString('2026 年 9 月', $refused->json('message'));
+        $this->assertSame([], $this->bills($sc));
+        $this->assertSame('pending', PaymentReport::findOrFail($reportId)->status);
     }
 
     public function test_pay_link_names_the_owing_bill_before_an_unbilled_month(): void

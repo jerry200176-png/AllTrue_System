@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-monthly-record-keeps-its-month
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 月結收款不會記錯月份
+    summary: 登記後若要收的月份變了，確認入帳會擋下，請退回後重新登記。
+    items:
+      - category: fixed
+        text: 跨月的月結課登記收款後，若補登出席讓最早要收的月份變了，確認入帳會擋下，不會把錢記到別的月份。
+      - category: improved
+        text: 擋下時會寫出登記時收的月份和現在要收的月份；退回後重新登記即可。
+    source_refs:
+      - "changelog:2026-10-28:monthly-record-keeps-its-month"
