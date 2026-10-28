@@ -38,6 +38,7 @@
           <li v-for="item in impactItems" :key="item">{{ item }}</li>
         </ul>
         <p v-if="previewError" class="preview-error" role="alert">{{ previewError }}</p>
+        <SuccessorLeaveBlockers :blockers="impactPreview?.blockers || []" :date="impactPreview?.date || form.schedule_date" @navigate="$emit('navigate', $event)" />
         <button v-if="previewError" type="button" class="ghost preview-retry" @click="$emit('retry-preview')">重新取得預覽</button>
         <label v-if="previewReady" class="impact-confirm">
           <input v-model="impactAccepted" type="checkbox" />
@@ -55,6 +56,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import SuccessorLeaveBlockers from '../../course-management/SuccessorLeaveBlockers.vue';
 import './calendarModalRwd.css';
 
 const props = defineProps({
@@ -70,7 +72,7 @@ const props = defineProps({
   error: { type: String, default: '' },
   submitting: { type: Boolean, default: false },
 });
-defineEmits(['close', 'submit', 'retry-preview']);
+defineEmits(['close', 'submit', 'retry-preview', 'navigate']);
 const impactAccepted = ref(false);
 const impactItems = computed(() => {
   const items = props.impactPreview?.items;
