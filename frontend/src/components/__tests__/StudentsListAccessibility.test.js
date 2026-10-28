@@ -10,8 +10,8 @@ const nativeButtonTags = [...source.matchAll(/<button\b(?:[^>"']|"[^"]*"|'[^']*'
 describe('StudentsList row disclosure accessibility', () => {
   it('uses a named shared button for student import', () => {
     expect(source).not.toContain('<label class="button-outline">');
-    expect(source).toContain('<AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">');
-    expect(source).toContain('aria-label="匯入學生名單"');
+    expect(source).toContain('<AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入名單（學生）" @click="openImportDialog">');
+    expect(source).toContain('aria-label="匯入名單（學生）"');
     expect(source).toContain('@click="openImportDialog"');
     expect(source).toContain('ref="importInput"');
     expect(source).toContain('class="student-import-input"');
@@ -21,7 +21,7 @@ describe('StudentsList row disclosure accessibility', () => {
   });
 
   it('offers a header-only import template without changing the import flow', () => {
-    expect(source).toContain('aria-label="下載學生名單匯入範例"');
+    expect(source).toContain('aria-label="下載範例（學生名單匯入）"');
     expect(source).toContain('@click="downloadImportTemplate"');
     expect(source).toContain('const downloadImportTemplate = () => {');
     expect(source).toContain('學生姓名,年級,學校,手機');
@@ -51,6 +51,6 @@ describe('StudentsList row disclosure accessibility', () => {
   it('provides an explicit course and enrollment disclosure button in each row', () => {
     expect(source).toContain('class="btn-course-disclosure"');
     expect(source).toContain('課程/購課');
-    expect(source).toContain('收合課程與加購明細');
+    expect(source).toContain('收合課程與續課明細');
   });
 });

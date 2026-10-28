@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Support\DeadlockRetry;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -44,17 +45,120 @@ class SessionDeductionService
     /**
      * Observable "已用堂數" per course: max of (扣點出缺勤、已完成堂次狀態、無綁定堂次之已核准評量筆數)。
      * 已核准但綁定 ClassSession 的評量不計入：堂次仍 scheduled 時須以點名／核課為準，避免與出缺勤待點名矛盾。
+     * The three evidence queries and their distinct keys live in observedUsageSources(), shared with
+     * batchObservedUsedSessionEvidence(), so a count and its lesson list cannot drift apart.
      *
      * @param  array<int|string>  $studentClassIds
      * @return array<int,int> student_class_id => used count (not capped by SessionCount)
      */
     public static function batchObservedUsedSessions(array $studentClassIds): array
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds), fn ($id) => $id > 0)));
+        $ids = self::normalizeClassIds($studentClassIds);
         if ($ids === []) {
             return [];
         }
 
+        $counts = [];
+        foreach (self::observedUsageSources($ids) as $source => [$query, $keyExpr]) {
+            $counts[$source] = $query
+                ->groupBy($source === 'deducted' ? 'StudentSingIn.StudentClassID' : 'StudentClassID')
+                ->selectRaw(($source === 'deducted' ? 'StudentSingIn.StudentClassID' : 'StudentClassID') . ", COUNT(DISTINCT {$keyExpr}) as c")
+                ->pluck('c', 'StudentClassID');
+        }
+
+        $out = [];
+        foreach ($ids as $id) {
+            $a = max(0, (int) ($counts['deducted'][$id] ?? 0));
+            $b = max(0, (int) ($counts['completed'][$id] ?? 0));
+            $d = max(0, (int) ($counts['orphan'][$id] ?? 0));
+            $out[$id] = max($a, $b, $d);
+        }
+
+        return $out;
+    }
+
+    /**
+     * The lessons behind batchObservedUsedSessions(): for each course, the rows of the
+     * evidence source that wins the max (same queries, same distinct keys), so
+     * count($evidence[$id]) === batchObservedUsedSessions()[$id] by construction.
+     * Read-only (in-app #418 parent portal lesson dates).
+     *
+     * @param  array<int|string>  $studentClassIds
+     * @return array<int, list<array{source:string, date:?string, start:?string, end:?string, status:?string}>>
+     */
+    public static function batchObservedUsedSessionEvidence(array $studentClassIds): array
+    {
+        $ids = self::normalizeClassIds($studentClassIds);
+        if ($ids === []) {
+            return [];
+        }
+
+        $columns = [
+            'deducted' => [
+                'StudentSingIn.StudentClassID', 'StudentSingIn.SignInDT', 'StudentSingIn.Status as row_status',
+                'sign_in_cs.SessionDate as row_date', 'sign_in_cs.StartTime as row_start', 'sign_in_cs.EndTime as row_end',
+            ],
+            'completed' => ['StudentClassID', 'Status as row_status', 'SessionDate as row_date', 'StartTime as row_start', 'EndTime as row_end'],
+            'orphan' => ['StudentClassID', 'SessionDate as row_date', 'StartTime as row_start', 'EndTime as row_end'],
+        ];
+        $sets = [];
+        foreach (self::observedUsageSources($ids) as $source => [$query, $keyExpr]) {
+            $query->select($columns[$source])->selectRaw("{$keyExpr} as evidence_key");
+            if ($source === 'deducted') {
+                // Several sign-ins can share a session; the latest (MAX id) is authoritative
+                // (BackfillSessionStatus), and the first row per key wins below.
+                $query->orderByDesc('StudentSingIn.id');
+            }
+            // toBase(): plain rows (scopes still applied) — only the selected columns are read.
+            foreach ($query->toBase()->get() as $row) {
+                $vals = (array) $row;
+                $classId = (int) ($vals['StudentClassID'] ?? 0);
+                $key = (string) ($vals['evidence_key'] ?? '');
+                $signInDt = isset($vals['SignInDT']) ? (string) $vals['SignInDT'] : null;
+                $date = $vals['row_date'] ?? $signInDt;
+                $sets[$source][$classId][$key] ??= [
+                    'source' => $source,
+                    'date' => $date !== null ? substr((string) $date, 0, 10) : null,
+                    'start' => isset($vals['row_start'])
+                        ? (string) $vals['row_start']
+                        : ($signInDt !== null ? substr($signInDt, 11, 8) : null),
+                    'end' => isset($vals['row_end']) ? (string) $vals['row_end'] : null,
+                    'status' => isset($vals['row_status']) ? (string) $vals['row_status'] : null,
+                ];
+            }
+        }
+
+        $out = [];
+        foreach ($ids as $id) {
+            $best = [];
+            foreach (['deducted', 'completed', 'orphan'] as $source) {
+                $candidate = $sets[$source][$id] ?? [];
+                if (count($candidate) > count($best)) {
+                    $best = $candidate;
+                }
+            }
+            if ($best !== []) {
+                $out[$id] = array_values($best);
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<int> */
+    private static function normalizeClassIds(array $studentClassIds): array
+    {
+        return array_values(array_unique(array_filter(array_map('intval', $studentClassIds), fn ($id) => $id > 0)));
+    }
+
+    /**
+     * Single definition of the observed-usage evidence: source => [query, distinct-key SQL].
+     *
+     * @param  list<int>  $ids
+     * @return array<string, array{0: mixed, 1: string}> query builder (Eloquent; typed mixed because larastan cannot resolve the active() scope), distinct-key SQL
+     */
+    private static function observedUsageSources(array $ids): array
+    {
         $today = Carbon::today()->toDateString();
 
         $deducted = StudentSignIn::query()
@@ -71,18 +175,12 @@ class SessionDeductionService
                                 'scheduled', 'rescheduled', 'absent',
                             ]);
                     });
-            })
-            ->groupBy('StudentSingIn.StudentClassID')
-            ->selectRaw('StudentSingIn.StudentClassID, COUNT(DISTINCT COALESCE(NULLIF(StudentSingIn.ClassSessionID, 0), StudentSingIn.id)) as c')
-            ->pluck('c', 'StudentClassID');
+            });
 
         $completedSessions = ClassSession::query()
             ->whereIn('StudentClassID', $ids)
             ->whereIn('Status', ['completed', 'attended', 'late'])
-            ->whereDate('SessionDate', '<=', $today)
-            ->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, COUNT(*) as c')
-            ->pluck('c', 'StudentClassID');
+            ->whereDate('SessionDate', '<=', $today);
 
         // Orphan LRs (no ClassSessionID): count by date+StartTime to avoid
         // undercounting multi-slot days.
@@ -95,20 +193,13 @@ class SessionDeductionService
             ->where(function ($q) {
                 $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0);
             })
-            ->whereNotNull('SessionDate')
-            ->groupBy('StudentClassID')
-            ->selectRaw("StudentClassID, COUNT(DISTINCT {$orphanDateTimeExpr}) as c")
-            ->pluck('c', 'StudentClassID');
+            ->whereNotNull('SessionDate');
 
-        $out = [];
-        foreach ($ids as $id) {
-            $a = max(0, (int) ($deducted[$id] ?? 0));
-            $b = max(0, (int) ($completedSessions[$id] ?? 0));
-            $d = max(0, (int) ($approvedLrOrphan[$id] ?? 0));
-            $out[$id] = max($a, $b, $d);
-        }
-
-        return $out;
+        return [
+            'deducted' => [$deducted, 'COALESCE(NULLIF(StudentSingIn.ClassSessionID, 0), StudentSingIn.id)'],
+            'completed' => [$completedSessions, 'ClassSession.id'],
+            'orphan' => [$approvedLrOrphan, $orphanDateTimeExpr],
+        ];
     }
 
     /**
@@ -328,7 +419,7 @@ class SessionDeductionService
             );
 
             return true;
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /**
@@ -379,7 +470,7 @@ class SessionDeductionService
             );
 
             return true;
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     /** Net ledger events for one session: deduct(+1) − reverse(−1). */
@@ -547,7 +638,11 @@ class SessionDeductionService
     {
         try {
             $resolvedClassSessionId = $classSessionId ?: (int) ($signIn->ClassSessionID ?? 0);
-            if ($signIn && $signIn->SessionDeducted) {
+            // #4455: the sign-in flag is a cache of the ledger. Trust it only when the lesson really carries
+            // a debit; a flagged sign-in whose lesson has a ledger net of 0 (stale flag) is debited below.
+            // A sign-in without a lesson has no per-lesson net, so its flag still decides.
+            if ($signIn && $signIn->SessionDeducted
+                && ($resolvedClassSessionId <= 0 || self::sessionLedgerNet((int) $sc->ID, $resolvedClassSessionId) > 0)) {
                 self::syncCounters($sc);
                 return false;
             }
@@ -573,17 +668,24 @@ class SessionDeductionService
                 }
 
                 $deducted = $wrote;
-            });
+            }, DeadlockRetry::ATTEMPTS);
 
             self::recomputeCounters($sc->ID);
             return $deducted;
         } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0 && DeadlockRetry::causedBy($e)) {
+                throw $e; // the server already rolled back the caller's transaction: let it roll back and re-run (#4470)
+            }
+            // Callers record attendance even when the debit fails (the swipe paths then raise a staff
+            // alert), so this does not rethrow; it must not be silent either: log with context and report.
             \Illuminate\Support\Facades\Log::error('session_deduct_on_attendance_failed', [
                 'student_class_id' => $sc->ID,
                 'sign_in_id'       => $signIn?->id,
                 'class_session_id' => $classSessionId ?: ($signIn->ClassSessionID ?? null),
+                'exception'        => get_class($e),
                 'error'            => $e->getMessage(),
             ]);
+            report($e);
             return false;
         }
     }

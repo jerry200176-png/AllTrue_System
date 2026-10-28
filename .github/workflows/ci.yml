@@ -53,6 +53,24 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Record actual runner core rate limit
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 15s gh api /rate_limit --jq '.resources.core | {limit, remaining, used, reset}' > "$RUNNER_TEMP/metadata-core-rate.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from scripts.governance.gh_conditional_transport import core_rate_evidence
+          evidence = core_rate_evidence(json.loads((Path(os.environ["RUNNER_TEMP"]) / "metadata-core-rate.json").read_text()))
+          print(f"::notice title=Actual Actions caller quota::core_limit={evidence['limit']} remaining={evidence['remaining']} used={evidence['used']} reset={evidence['reset']}; caller=GITHUB_TOKEN; not a full-history benchmark")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("Actual Actions GITHUB_TOKEN core quota: " + json.dumps(evidence) + "\n")
+          PY
+
       - name: Validate GitHub Actions workflows with pinned actionlint
         run: |
           # Full-repository parser/expression lint is bounded and does not invoke
@@ -75,19 +93,38 @@ jobs:
           node scripts/ci/staff-identity-merge-workflow.test.mjs
           node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/ci/staff-multirole-activation-workflow.test.mjs
+          node scripts/ci/agreed-fee-allowlist-activation-workflow.test.mjs
+          # #4135 / #1387: required CI must enforce workflow secret-echo (gitleaks-style fail-closed).
+          # Already in `npm run test:gov`; without this step, main CI never ran the guard.
+          node scripts/ci/workflow-secret-echo.test.mjs
           node --test scripts/ci/production-secret-triggers.test.mjs
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
+          node --test scripts/tests/repo-hygiene.test.mjs
+          python3 scripts/tests/test_branch_hygiene.py
+          node --test scripts/tests/actions-cost-report.test.mjs
+          python3 -m venv "$RUNNER_TEMP/credential-expiry-test-venv"
+          "$RUNNER_TEMP/credential-expiry-test-venv/bin/python" -m pip install --disable-pip-version-check -r scripts/requirements-credential-expiry.txt
+          "$RUNNER_TEMP/credential-expiry-test-venv/bin/python" -m unittest scripts.tests.test_credential_expiry
           node scripts/governance/check-production-workflow-inventory.mjs
+          python3 scripts/ci/workflow_expression_size.py
           python3 scripts/tests/test_governance_simplification.py
           python3 -m unittest scripts.tests.test_pr_declaration_gate
+          python3 -m unittest scripts.tests.test_pop_mount_policy_probe
           python3 -m unittest scripts.tests.test_additive_migration_gate
           python3 -m unittest scripts.tests.test_ui_smoke_gate
+          python3 -m unittest scripts.tests.test_monitor_alert_notify
           python3 -m unittest scripts.tests.test_autonomous_convergence
+          python3 -m unittest scripts.tests.test_deploy_activation_state.GhApiRetryTest
+          python3 -m unittest scripts.tests.test_gh_conditional_transport
+          # #4207: keep calendar-course-acceptance workflow_run names coupled to deploy.yml
+          python3 -m unittest scripts.tests.test_deploy_activation_state.DeployActivationWorkflowContractTest.test_calendar_course_acceptance_listens_for_deploy_run_identities
           python3 scripts/tests/test_required_php_checks.py
           python3 scripts/tests/test_evidence_contract_timeouts.py
+          python3 scripts/tests/test_principal_rotation_grant_replay.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
+          bash scripts/tests/verify-db-backup.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
 
@@ -122,6 +159,13 @@ jobs:
 
       - name: Test production SSH host trust contract
         run: bash scripts/tests/production-ssh-trust.test.sh
+
+      # #4312: atomic POP mount stage + guard --self-test (fail paths keep LIVE contents/owner/mode)
+      - name: Test POP mount atomic stage and remote guards
+        run: bash scripts/pop-mount-atomic-stage.test.sh
+
+      - name: Test deploy storage permissions keep storage/app/private restricted
+        run: bash scripts/tests/deploy-storage-perms.test.sh
 
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
@@ -158,6 +202,8 @@ jobs:
             ui_foundation:
               - 'frontend/src/components/design-system/**'
               - 'frontend/src/pages/NotificationsCenter.vue'
+              - 'frontend/src/pages/DirectorAccountsPage.vue'
+              - 'frontend/e2e/director-accounts-clarity.spec.js'
               - 'frontend/src/pages/StudentsList.vue'
               # axe gate dependency (Dependabot bumps of @axe-core/playwright)
               - 'frontend/package.json'
@@ -179,10 +225,22 @@ jobs:
               - 'frontend/src/pages/TeacherEligibilityPage.vue'
               - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
               - 'frontend/e2e/teacher-eligibility-playwright.config.js'
+              # 科目設定 (subject-settings-clarity.spec.js runs in the ui-foundation suite)
+              - 'frontend/src/pages/SubjectSettingsPage.vue'
+              - 'frontend/e2e/subject-settings-clarity.spec.js'
               # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
               - 'frontend/e2e/tuition-*-clarity.spec.js'
               - 'frontend/src/{pages/TuitionCollectionPage.vue,components/TuitionDocActions.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
               - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
+              # #4180: sidebar search / hub tabs (ui-foundation-sidebar-navigation.spec.js) and the 課程查找 payment
+              # entry (ui-foundation-course-payment-entry.spec.js), incl. the helpers the production acceptance shares
+              - 'frontend/src/App.vue'
+              - 'frontend/src/lib/navigationRegistry.js'
+              - 'frontend/e2e/fixtures/openPageFromSidebarSearch.js'
+              - 'frontend/src/pages/CourseManagement.vue'
+              - 'frontend/e2e/fixtures/coursePaymentEntry.js'
+              - 'frontend/e2e/fixtures/{dismissOverlays,latestGetJson}.js'
+              - 'frontend/src/lib/{roleCapabilities,paymentStatus}.js'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
@@ -226,7 +284,8 @@ jobs:
     # GitHub rulesets do not treat a path-skipped required job as satisfied.
     # Keep the real suite and its existing threshold; never synthesize a pass.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Full coverage already takes >13m; retain room for runner/setup variance.
+    timeout-minutes: 25
     # Non-sensitive password for the ephemeral CI-only MySQL service.
     env:
       DB_PASSWORD: ci-ephemeral
@@ -255,7 +314,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: "8.2"
           extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype, pcov

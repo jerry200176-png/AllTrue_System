@@ -1,3 +1,5 @@
+import { incomingClassConflict } from './slotOccupancy.js';
+
 const CLASS_CAPACITY = {
   one_on_one: 1,
   one_on_two: 2,
@@ -14,7 +16,7 @@ const CLASS_LABEL = {
   trial: '試聽',
 };
 
-const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
+const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused']);
 
 function hm(value) {
   const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
@@ -65,7 +67,10 @@ function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, excepti
   const hasNonOccupyingException = (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
     String(exception?.student_course_id ?? exception?.studentClassId ?? exception?.student_class_id ?? '') === courseId
       && String(exception?.schedule_date || exception?.session_date || exception?.date || '').slice(0, 10) === date
-      && NON_OCCUPYING_STATUSES.has(String(exception?.status || exception?.Status || '').toLowerCase()),
+      && NON_OCCUPYING_STATUSES.has(String(exception?.status || exception?.Status || '').toLowerCase())
+      && (String(exception?.status || exception?.Status || '').toLowerCase() !== 'voided'
+        || (hm(exception?.start_time || exception?.StartTime) != null
+          && hm(exception?.start_time || exception?.StartTime) === hm(course.start_time))),
   );
 
   // A leave exception is the date-level source of truth. The materialized
@@ -78,8 +83,12 @@ function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, excepti
     const sameDate = rows.filter((row) =>
       String(row?.session_date || row?.SessionDate || row?.date || '').slice(0, 10) === date,
     );
-    if (sameDate.length > 0) {
-      return sameDate.every((row) =>
+    const sameOccurrence = sameDate.filter((row) => {
+      const start = hm(row?.start_time || row?.StartTime);
+      return start == null || start === hm(course.start_time);
+    });
+    if (sameOccurrence.length > 0) {
+      return sameOccurrence.every((row) =>
         NON_OCCUPYING_STATUSES.has(String(row?.status || '').toLowerCase()),
       );
     }
@@ -120,15 +129,34 @@ export function buildReschedulePreview({
     return courseIsOnDate(course, date, day) && overlaps(start, end, course);
   });
 
+  const currentMatches = (Array.isArray(courses) ? courses : []).filter(
+    (course) => courseIdFor(course) === String(currentCourseId),
+  );
+  const incomingTrialTarget = currentMatches.length === 1
+    && String(currentMatches[0]?.class_type || currentMatches[0]?.ClassType || '') === 'trial'
+    ? currentMatches[0]?.trial_target_class_type ?? null
+    : null;
   const uniqueStudents = new Set(candidates.map((course) => String(course.student_id ?? course.id)));
   const existingTypes = candidates.map((course) => String(course.class_type || course.ClassType || 'one_on_one'));
   const capacity = CLASS_CAPACITY[classType] || 1;
   let blocked = false;
   let reason = '';
+  let displayUniqueStudents = uniqueStudents.size;
 
   if (classType === 'trial') {
-    blocked = existingTypes.filter((type) => type === 'trial').length > 0;
-    reason = blocked ? '試聽時段已有安排' : '';
+    const trialConflict = incomingClassConflict({
+      incomingType: 'trial',
+      incomingTrialTarget,
+      overlappingCourses: candidates,
+      requestedSpan: { startTime, endTime },
+    });
+    blocked = trialConflict.blocked;
+    displayUniqueStudents = trialConflict.unique;
+    reason = trialConflict.reason === 'absolute'
+      ? '老師同時段已達 3 位學生上限'
+      : trialConflict.reason === 'trial'
+        ? '試聽時段已有安排'
+        : '';
   } else if (existingTypes.includes('one_on_one')) {
     blocked = true;
     reason = '已有一對一課程';
@@ -147,7 +175,8 @@ export function buildReschedulePreview({
     message: blocked
       ? `目前載入的排課顯示${reason}；送出時系統會再做最後檢查。`
       : candidates.length
-        ? `目前時段已有 ${uniqueStudents.size} 位學生；依${CLASS_LABEL[classType] || '課程'}規則可安排。`
+        ? `目前時段已有 ${displayUniqueStudents} 位學生；依${CLASS_LABEL[classType] || '課程'}規則可安排。`
         : '目前載入的排課沒有發現衝堂。送出時系統仍會再做最後檢查。',
   };
 }
+

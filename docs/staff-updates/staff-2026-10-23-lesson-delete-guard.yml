@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-23-lesson-delete-guard
+    published_at: "2026-10-23"
+    audiences:
+      - director
+    importance: digest
+    title: 改開課日保留已扣堂堂次
+    summary: 改課程開課日時，已扣堂或已點名的堂次會保留，堂數與套裝餘額不再跑掉。
+    items:
+      - category: fixed
+        text: 改開課日時，已扣過堂數的堂次（含套裝課）留在原日期，不再被刪掉後重建成未扣堂。
+      - category: improved
+        text: 已點名（出席、遲到、缺席、請假）的堂次也保留；只有還沒上、沒扣堂的堂次依新開課日重排。
+    source_refs:
+      - "changelog:2026-10-23:lesson-delete-guard"

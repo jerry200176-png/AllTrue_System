@@ -676,7 +676,7 @@
 | 優先級 | P3 |
 | 發現日期 | 2026-08-07 |
 | 發現來源 | 追查 `Pi Health Monitor`／`bugs:verify-reproductions` 連續紅燈（#170）過程中，CI 的 `Composer audit (security)` 步驟被 4 個新公開的 `league/commonmark` HIGH 嚴重度 DoS advisory（GHSA-mh25-x5hq-wrqp 等）擋下，經 reachability review 確認本專案完全不觸發該套件（僅為 `laravel/framework` 內建 Markdown 郵件功能的可選 transitive dependency，本專案未使用該功能），比照既有的 `GHSA-5vg9-5847-vvmq` accepted-risk 先例加入 `composer.json` 的 `audit.ignore`。 |
-| 影響模組 | `backend/composer.json` 的 `config.audit.ignore` 清單（目前共 5 條：`GHSA-5vg9-5847-vvmq` + 本次新增 4 條 commonmark advisory） |
+| 影響模組 | `backend/composer.json` 的 `config.audit.ignore` 清單（目前共 6 條：`GHSA-5vg9-5847-vvmq`、4 條 commonmark advisory，以及 2026-10-24 新增的 `GHSA-f9x3-7vq9-cph6`（CRITICAL TokenGuard，Laravel 8 無修補；本專案沒有 `config/auth.php`、不建立任何 Laravel guard，不可達）） |
 | 描述 | `audit.ignore` 是「當下判斷不可達、暫時接受」的風險，不是「永久解決」——但目前這份清單沒有任何複查機制：一旦加進去，除非有人手動想起來去看，否則會無限期留著，即使日後情境變了（例如真的加了 Markdown mail 功能，或 `league/commonmark` 因為是 `laravel/framework` 綁定帶入而無法用 `composer remove` 直接移除，只能等框架升級或改版才可能連帶消失）。大公司的漏洞管理平台（如 Snyk／Dependabot 的 waiver 機制）通常強制每條 accepted-risk 要有 owner 與到期日／複查觸發點，而不是靜默的黑名單。目前本專案唯一的先例（`GHSA-5vg9-5847-vvmq`）綁定了 `#977`（Laravel 8 EOL 遷移）作為複查時機，但這是巧合式的，不是制度化的做法。 |
 | 建議做法 | (1) 短期：`league/commonmark` 的 4 條新 ignore 比照 `GHSA-5vg9-5847-vvmq` 的模式，同樣綁定 `#977`（Laravel 8 EOL 遷移）——升級/更換框架時一併重新評估是否仍不可達、是否該套件仍被帶入。(2) 中期：`docs-integrity-check.mjs` 或另開一個輕量 CI 腳本，每次 `composer audit` 有新的 ignore 被新增時，強制 commit message／PR body 要包含 reachability review 日期與理由（目前是慣例，非強制）。(3) 長期：評估是否比照 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 的模式，開一份 `SECURITY_ACCEPTED_RISK.md` 集中列出所有 accepted-risk 條目 + 複查頻率，而不是分散在各個 `composer.json`／未來可能出現的 `package.json` audit-ignore 裡各自為政。 |
 | 清償成本估計 | 低（短期作法本身已在本次一併完成；中長期作法各約半天） |

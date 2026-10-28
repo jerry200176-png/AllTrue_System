@@ -16,10 +16,9 @@
     <button
       type="button"
       class="th-clockin-card card"
+      aria-describedby="teacher-clockin-status"
       :class="clockinCardClass"
       @click="goAttendance"
-      aria-labelledby="teacher-clockin-title"
-      aria-describedby="teacher-clockin-status"
     >
 
       <!-- Header row: icon + title + badge + arrow -->
@@ -31,11 +30,11 @@
           <span id="teacher-clockin-title" class="th-clockin-title">今日打卡狀態</span>
           <span id="teacher-clockin-status" class="th-clockin-badge" :class="clockinBadgeClass" aria-live="polite">{{ clockinBadgeLabel }}</span>
         </div>
-        <span class="material-symbols-outlined th-clockin-arrow">chevron_right</span>
+        <span class="material-symbols-outlined th-clockin-arrow" aria-hidden="true">chevron_right</span>
       </div>
 
       <!-- Body: two time chips side by side -->
-      <div class="th-clockin-chips" v-if="!clockinLoading">
+      <div class="th-clockin-chips" v-if="!clockinLoading && !clockinError">
         <!-- 簽到 chip -->
         <div class="th-clockin-chip">
           <span class="th-chip-label">簽到</span>
@@ -56,14 +55,16 @@
       </div>
 
       <!-- Skeleton while loading -->
-      <div class="th-clockin-chips" v-else aria-hidden="true">
+      <div class="th-clockin-chips" v-else-if="clockinLoading" aria-hidden="true">
         <div class="th-clockin-chip th-chip-skeleton"></div>
         <div class="th-clockin-chip th-chip-skeleton"></div>
       </div>
 
+      <div v-else class="th-clockin-hint">打卡狀態無法載入，請稍後重新整理。</div>
+
       <!-- Hint: first class time -->
-      <div class="th-clockin-hint" v-if="!clockinLoading && clockinRecord.first_class_start_time">
-        <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">schedule</span>
+      <div class="th-clockin-hint" v-if="!clockinLoading && !clockinError && clockinRecord.first_class_start_time">
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:13px;vertical-align:-2px">schedule</span>
         第一堂課：{{ clockinRecord.first_class_start_time }}
       </div>
     </button>
@@ -396,7 +397,7 @@ const props = defineProps({
   initialEngagement: { type: Object, default: null },
 });
 
-const emit = defineEmits(['navigate', 'navigate-learning']);
+const emit = defineEmits(['navigate', 'navigate-learning', 'navigate-exam']);
 
 const getToken = async () => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -448,10 +449,14 @@ function refreshTeacherStreakUi() {
 
 // ── Teacher clock-in status ──
 const clockinLoading = ref(true);
+const clockinError = ref(false);
 const clockinRecord  = ref({});
+let clockinLoadSequence = 0;
 
 const clockinBadgeClass = computed(() => {
+  if (clockinLoading.value || clockinError.value) return 'th-badge-warn';
   const s = clockinRecord.value.status;
+  if ((s === 'normal' || s === 'late') && !clockinRecord.value.sign_in_dt) return 'th-badge-warn';
   if (!s || s === 'no_record') return 'th-badge-warn';
   if (s === 'normal') return 'th-badge-ok';
   if (s === 'late')   return 'th-badge-late';
@@ -459,16 +464,21 @@ const clockinBadgeClass = computed(() => {
 });
 
 const clockinBadgeLabel = computed(() => {
-  const s = clockinRecord.value.status;
-  if (!s || s === 'no_record') return '尚未打卡';
-  if (s === 'normal') return clockinRecord.value.sign_out_dt ? '已完成' : '上班中';
+  if (clockinLoading.value) return '確認中';
+  if (clockinError.value) return '無法確認';
+  const { status: s, sign_in_dt: signedIn, sign_out_dt: signedOut } = clockinRecord.value;
+  if (s === 'no_record' && !signedIn && !signedOut) return '尚未打卡';
+  if ((s === 'normal' || s === 'late') && !signedIn) return '待確認';
+  if (s === 'normal') return signedOut ? '已完成' : '上班中';
   if (s === 'late')   return '遲到';
   return '待確認';
 });
 
 // Card-level status class: controls left border colour
 const clockinCardClass = computed(() => {
+  if (clockinLoading.value || clockinError.value) return 'th-ckin-empty';
   const s = clockinRecord.value.status;
+  if ((s === 'normal' || s === 'late') && !clockinRecord.value.sign_in_dt) return 'th-ckin-empty';
   if (!s || s === 'no_record') return 'th-ckin-empty';
   if (s === 'late')   return 'th-ckin-late';
   if (s === 'normal') return clockinRecord.value.sign_out_dt ? 'th-ckin-done' : 'th-ckin-working';
@@ -477,7 +487,9 @@ const clockinCardClass = computed(() => {
 
 // Icon wrap colour class
 const clockinIconWrapClass = computed(() => {
+  if (clockinLoading.value || clockinError.value) return 'th-icon-empty';
   const s = clockinRecord.value.status;
+  if ((s === 'normal' || s === 'late') && !clockinRecord.value.sign_in_dt) return 'th-icon-empty';
   if (!s || s === 'no_record') return 'th-icon-empty';
   if (s === 'late')   return 'th-icon-late';
   if (s === 'normal') return clockinRecord.value.sign_out_dt ? 'th-icon-done' : 'th-icon-working';
@@ -485,15 +497,28 @@ const clockinIconWrapClass = computed(() => {
 });
 
 async function fetchClockinStatus() {
+  const sequence = ++clockinLoadSequence;
   clockinLoading.value = true;
+  clockinError.value = false;
   try {
     const token = await getToken();
     const res = await fetch('/api/v1/teacher-attendance/today', {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) clockinRecord.value = await res.json();
-  } catch { /* silent */ } finally {
-    clockinLoading.value = false;
+    if (!res.ok) throw new Error('clock-in status unavailable');
+    const record = await res.json();
+    if (!record || typeof record !== 'object' || Array.isArray(record)
+      || (!record.status && !record.sign_in_dt && !record.sign_out_dt)) {
+      throw new Error('invalid clock-in status');
+    }
+    if (sequence !== clockinLoadSequence) return;
+    clockinRecord.value = record;
+  } catch {
+    if (sequence !== clockinLoadSequence) return;
+    clockinRecord.value = {};
+    clockinError.value = true;
+  } finally {
+    if (sequence === clockinLoadSequence) clockinLoading.value = false;
   }
 }
 
@@ -568,6 +593,38 @@ async function fetchAwaitingReplyCount() {
     awaitingReplyLoadError.value = '家長回覆資料暫時無法載入';
   } finally {
     awaitingReplyLoading.value = false;
+  }
+}
+
+// ── Pending exam grades (published rounds with incomplete students) ──
+const pendingExams = ref([]);
+const pendingExamsLoadError = ref('');
+let pendingExamsLoadSequence = 0;
+
+async function fetchPendingExams() {
+  const requestSequence = ++pendingExamsLoadSequence;
+  pendingExamsLoadError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) {
+      pendingExamsLoadError.value = '段考待登資料暫時無法載入';
+      return;
+    }
+    const res = await fetch('/api/v1/me/exam-pending-summary', {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    if (requestSequence !== pendingExamsLoadSequence) return;
+    if (!res.ok) {
+      pendingExams.value = [];
+      pendingExamsLoadError.value = '段考待登資料暫時無法載入';
+      return;
+    }
+    const json = await res.json().catch(() => ({}));
+    pendingExams.value = Array.isArray(json?.data?.rounds) ? json.data.rounds : [];
+  } catch {
+    if (requestSequence !== pendingExamsLoadSequence) return;
+    pendingExams.value = [];
+    pendingExamsLoadError.value = '段考待登資料暫時無法載入';
   }
 }
 
@@ -799,6 +856,7 @@ const teacherTasks = computed(() => buildTeacherTasks({
   pendingLearning: todayPendingEvents.value,
   overdueLearning: overdueRecords.value,
   awaitingReplies: [{ count: Math.max(Number(props.unreadFeedbackCount || 0), Number(awaitingReplyCount.value || 0)) }],
+  pendingExams: pendingExams.value,
 }));
 const teacherTaskCount = computed(() => countTeacherTasks(teacherTasks.value));
 
@@ -832,11 +890,12 @@ const teacherTasksPartialError = computed(() => {
   if (awaitingReplyLoadError.value && teacherTasksHasNonFeedbackWork.value) {
     messages.push(awaitingReplyLoadError.value);
   }
+  if (pendingExamsLoadError.value) messages.push(pendingExamsLoadError.value);
   return messages.length > 0 ? `${messages.join('。')}。` : '';
 });
 
 function teacherTaskTypeLabel(type) {
-  return ({ attendance: '出缺勤', learning: '學習評量', feedback: '家長回饋' }[type] || '待辦');
+  return ({ attendance: '出缺勤', learning: '學習評量', feedback: '家長回饋', exam: '段考成績' }[type] || '待辦');
 }
 
 function focusTeacherWorkQueue(event) {
@@ -854,6 +913,14 @@ function openTeacherTask(task) {
   }
   if (task.type === 'feedback') {
     goParentMessages();
+    return;
+  }
+  if (task.type === 'exam') {
+    const row = task.source || {};
+    emit('navigate-exam', {
+      examRoundId: row.exam_round_id ?? row.id ?? task.target?.examRoundId ?? null,
+      campusId: row.campus_id ?? row.campusId ?? null,
+    });
     return;
   }
   if (task.type === 'learning') {
@@ -933,6 +1000,7 @@ async function refreshAll() {
     fetchPendingAttendance(),
     fetchAwaitingReplyCount(),
     fetchOverdueLearning(),
+    fetchPendingExams(),
     loadWeekSchedule(),
     fetchClockinStatus(),
   ]);
@@ -949,6 +1017,8 @@ function startPolling() {
       fetchPendingAttendance();
       fetchOverdueLearning();
       fetchAwaitingReplyCount();
+      fetchPendingExams();
+      fetchClockinStatus();
     }
   }, POLL_INTERVAL);
 }
@@ -964,6 +1034,8 @@ function onVisibilityChange() {
     fetchPendingAttendance();
     fetchAwaitingReplyCount();
     fetchOverdueLearning();
+    fetchPendingExams();
+    fetchClockinStatus();
   }
 }
 
@@ -1036,7 +1108,14 @@ onMounted(() => {
   refreshEngagementUi();
   setupEngagementReducedMotion();
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), loadWeekSchedule(), fetchAwaitingReplyCount(), fetchClockinStatus()]);
+  Promise.all([
+    fetchPendingAttendance(),
+    fetchOverdueLearning(),
+    fetchPendingExams(),
+    loadWeekSchedule(),
+    fetchAwaitingReplyCount(),
+    fetchClockinStatus(),
+  ]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener(TEACHER_STREAK_REFRESH_EVENT, onTeacherStreakRefreshEvent);
@@ -1047,6 +1126,7 @@ watch(weekOffset, () => loadWeekSchedule());
 watch(() => props.branchId, () => {
   fetchPendingAttendance();
   fetchOverdueLearning();
+  fetchPendingExams();
 });
 watch(() => props.teacherBranchIds, () => {
   // The login payload can name only the current campus while /me later
@@ -1056,6 +1136,7 @@ watch(() => props.teacherBranchIds, () => {
   loadWeekSchedule();
 }, { deep: true });
 onBeforeUnmount(() => {
+  clockinLoadSequence++;
   overdueLoadSequence++;
   weekLoadSequence++;
   stopPolling();

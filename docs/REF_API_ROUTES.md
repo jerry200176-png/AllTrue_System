@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 506 api/* routes · generated 2026-10-14
+> Source: `php artisan route:list --json` · 529 api/* routes · generated 2026-10-18
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -43,7 +43,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (25)
+## /api/v1/admin (30)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -56,6 +56,9 @@
 | DELETE | `api/v1/admin/campuses/{id}` | `AdminCampusController@destroy` | role |
 | GET | `api/v1/admin/duplicate-sessions/p2-review` | `AdminDuplicateSessionController@p2Review` | role+campus |
 | PATCH | `api/v1/admin/duplicate-sessions/p2-review/{groupId}` | `AdminDuplicateSessionController@patchP2Review` | role+campus |
+| GET | `api/v1/admin/pop-inapp-agent-clients` | `PopInappApiClientController@index` | role |
+| POST | `api/v1/admin/pop-inapp-agent-clients` | `PopInappApiClientController@store` | role |
+| DELETE | `api/v1/admin/pop-inapp-agent-clients/{id}` | `PopInappApiClientController@destroy` | role |
 | POST | `api/v1/admin/qa/parent-fixture` | `ParentPortalTestFixtureController@ensure` | role |
 | POST | `api/v1/admin/qa/parent-fixture/session` | `ParentPortalTestFixtureController@session` | role |
 | GET | `api/v1/admin/reconcile` | `AdminReconcileController@index` | role |
@@ -69,6 +72,8 @@
 | GET | `api/v1/admin/teachers/duplicates` | `TeacherDuplicateController@index` | role |
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
+| POST | `api/v1/admin/triage-contract-links` | `TriageContractLinkController@store` | role |
+| DELETE | `api/v1/admin/triage-contract-links/{id}` | `TriageContractLinkController@destroy` | role |
 | GET | `api/v1/admin/triage-tokens` | `TriageTokenController@index` | role |
 | POST | `api/v1/admin/triage-tokens` | `TriageTokenController@store` | role |
 | DELETE | `api/v1/admin/triage-tokens/{id}` | `TriageTokenController@destroy` | role |
@@ -351,6 +356,19 @@
 |--------|-----|--------|------|
 | POST | `api/v1/enrollments` | `EnrollmentController@store` | role+campus |
 
+## /api/v1/exam-rounds (8)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/exam-rounds` | `ExamRoundController@index` | role+campus |
+| POST | `api/v1/exam-rounds` | `ExamRoundController@store` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}` | `ExamRoundController@show` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/close` | `ExamRoundController@close` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}/progress` | `ExamRoundController@progress` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/publish` | `ExamRoundController@publish` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/scores` | `ExamRoundController@upsertScores` | role+campus |
+| GET | `api/v1/exam-rounds/{examRound}/students` | `ExamRoundController@students` | role+campus |
+
 ## /api/v1/exception-workflows (6)
 
 | Method | URI | Action | Auth |
@@ -506,14 +524,14 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
-| GET | `api/v1/line/notify-settings` | `LineWebhookController@notifySettings` | role |
-| PUT | `api/v1/line/notify-settings` | `LineWebhookController@saveNotifySettings` | role |
-| POST | `api/v1/line/settings` | `LineWebhookController@saveSettings` | role |
-| GET | `api/v1/line/status` | `LineWebhookController@status` | role |
+| GET | `api/v1/line/notify-settings` | `LineWebhookController@notifySettings` | role+campus |
+| PUT | `api/v1/line/notify-settings` | `LineWebhookController@saveNotifySettings` | role+campus |
+| POST | `api/v1/line/settings` | `LineWebhookController@saveSettings` | role+campus |
+| GET | `api/v1/line/status` | `LineWebhookController@status` | role+campus |
 | POST | `api/v1/line/webhook` | `LineWebhookController@handleDomainBased` | public |
 | POST | `api/v1/line/webhook/{campusId}` | `LineWebhookController@handle` | public |
 
-## /api/v1/me (16)
+## /api/v1/me (17)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -521,6 +539,7 @@
 | PUT | `api/v1/me` | `AuthController@updateMe` | public |
 | POST | `api/v1/me/avatar` | `AuthController@uploadAvatar` | public |
 | GET | `api/v1/me/awaiting-reply-count` | `LearningRecordFeedbackController@awaitingReplyCount` | role+campus |
+| GET | `api/v1/me/exam-pending-summary` | `ExamRoundController@pendingSummary` | role+campus |
 | GET | `api/v1/me/learning-pending-summary` | `LearningRecordController@teacherPendingBadgeSummary` | role+campus |
 | GET | `api/v1/me/learning-progress-summary` | `LearningRecordController@teacherLearningProgressSummary` | role+campus |
 | GET | `api/v1/me/notification-preferences` | `AuthController@notificationPreferences` | public |
@@ -572,7 +591,7 @@
 | POST | `api/v1/parent/login-line` | `ParentPortalController@loginWithLine` | public |
 | GET | `api/v1/parent/notification-preferences` | `ParentPortalController@getNotificationPreferences` | public |
 | PUT | `api/v1/parent/notification-preferences` | `ParentPortalController@setNotificationPreferences` | public |
-| GET | `api/v1/parent/payment-message/{studentId}` | `ParentPortalController@paymentMessage` | role |
+| GET | `api/v1/parent/payment-message/{studentId}` | `ParentPortalController@paymentMessage` | role+campus |
 | GET | `api/v1/parent/resolve-liff` | `ParentPortalController@resolveLiff` | public |
 | POST | `api/v1/parent/sessions/{sessionId}/leave` | `ParentPortalController@requestLeave` | public |
 | POST | `api/v1/parent/switch-student` | `ParentPortalController@switchStudent` | public |
@@ -587,7 +606,7 @@
 | PUT | `api/v1/part-time-rate-cards/{id}` | `PartTimeRateCardController@update` | role+campus+pin |
 | DELETE | `api/v1/part-time-rate-cards/{id}` | `PartTimeRateCardController@destroy` | role+campus+pin |
 
-## /api/v1/payment-reports (8)
+## /api/v1/payment-reports (9)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -595,6 +614,7 @@
 | POST | `api/v1/payment-reports/confirm-batch` | `PaymentReportController@confirmBatch` | role+campus |
 | POST | `api/v1/payment-reports/director-record` | `PaymentReportController@directorRecord` | role+campus |
 | POST | `api/v1/payment-reports/director-record-batch` | `PaymentReportController@directorRecordBatch` | role+campus |
+| POST | `api/v1/payment-reports/legacy-flag-clear` | `PaymentReportController@clearLegacyFlag` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/confirm` | `PaymentReportController@confirm` | role+campus |
 | GET | `api/v1/payment-reports/{id}/receipt` | `PaymentReportController@receipt` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/reject` | `PaymentReportController@reject` | role+campus |
@@ -609,7 +629,7 @@
 | POST | `api/v1/pending-swipes/{pendingSwipe}/assign-student` | `PendingSwipeController@assignStudent` | role+campus |
 | POST | `api/v1/pending-swipes/{pendingSwipe}/match` | `PendingSwipeController@match` | role+campus |
 
-## /api/v1/pop (5)
+## /api/v1/pop (6)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -617,9 +637,10 @@
 | POST | `api/v1/pop/machine/operations/{operationId}/draft` | `PopOperationController@storeMachineDraft` | role |
 | POST | `api/v1/pop/operations/requests/{requestId}/approvals` | `PopOperationController@approve` | role+campus |
 | POST | `api/v1/pop/operations/requests/{requestId}/dry-run` | `PopOperationController@dryRun` | role+campus |
+| GET | `api/v1/pop/operations/requests/{requestId}/status` | `PopOperationController@status` | role+campus |
 | POST | `api/v1/pop/operations/{operationId}/draft` | `PopOperationController@storeDraft` | role+campus |
 
-## /api/v1/profiles (6)
+## /api/v1/profiles (8)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -628,6 +649,8 @@
 | POST | `api/v1/profiles/bulk-teachers` | `ProfileController@bulkTeachers` | role+campus |
 | PUT | `api/v1/profiles/{id}` | `ProfileController@update` | role+campus |
 | DELETE | `api/v1/profiles/{id}` | `ProfileController@destroy` | role+campus |
+| POST | `api/v1/profiles/{id}/campus-links/{campusId}/approve` | `ProfileController@approveCampusLink` | role+campus |
+| POST | `api/v1/profiles/{id}/campus-links/{campusId}/reject` | `ProfileController@rejectCampusLink` | role+campus |
 | POST | `api/v1/profiles/{id}/reset-password` | `ProfileController@resetPassword` | role+campus |
 
 ## /api/v1/question-bank-items (5)
@@ -696,7 +719,7 @@
 |--------|-----|--------|------|
 | POST | `api/v1/schedule-import/preview` | `ScheduleImportController@preview` | role+campus |
 
-## /api/v1/schedules (11)
+## /api/v1/schedules (13)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -705,6 +728,8 @@
 | POST | `api/v1/schedules/bulk-leave` | `ScheduleController@bulkHolidayLeave` | role+campus |
 | POST | `api/v1/schedules/leave-by-session` | `ScheduleController@leaveBySession` | role+campus |
 | POST | `api/v1/schedules/leave-cascade-preview` | `ScheduleController@leaveCascadePreview` | role+campus |
+| POST | `api/v1/schedules/leave-successor-shift/apply` | `ScheduleLeaveSuccessorShiftController@apply` | role+campus |
+| POST | `api/v1/schedules/leave-successor-shift/preview` | `ScheduleLeaveSuccessorShiftController@preview` | role+campus |
 | POST | `api/v1/schedules/retro-leave` | `ScheduleController@retroLeave` | role+campus |
 | POST | `api/v1/schedules/undo-leave-by-session` | `ScheduleController@undoLeaveBySession` | role+campus |
 | PUT | `api/v1/schedules/{schedule}` | `ScheduleController@update` | role+campus |
@@ -718,7 +743,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
-## /api/v1/student-classes (38)
+## /api/v1/student-classes (40)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -734,6 +759,8 @@
 | DELETE | `api/v1/student-classes/{studentClass}` | `StudentClassController@destroy` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session` | `StudentClassController@addSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session/check` | `StudentClassController@checkAddSession` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/agreed-fee-correction/apply` | `AgreedFeeCorrectionController@apply` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/agreed-fee-correction/preview` | `AgreedFeeCorrectionController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
@@ -890,13 +917,14 @@
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
 
-## /api/v1/triage (3)
+## /api/v1/triage (4)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/triage/bug-reports` | `TriageBugReportController@index` | auth |
 | GET | `api/v1/triage/bug-reports/{id}` | `TriageBugReportController@show` | auth |
 | GET | `api/v1/triage/bug-reports/{id}/attachments/{attachmentId}` | `TriageBugReportController@attachment` | auth |
+| GET | `api/v1/triage/student-classes/{id}/billing-snapshot` | `TriageBillingSnapshotController@show` | auth |
 
 ## /api/v1/truefit (12)
 

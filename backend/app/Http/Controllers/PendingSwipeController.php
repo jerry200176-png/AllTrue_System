@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\PendingSwipe;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\AttendanceEffectsService;
+use App\Services\SessionDeductionService;
+use App\Services\StudentPresenceBackfillService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -76,6 +79,18 @@ class PendingSwipeController extends Controller
         }
 
         return DB::transaction(function () use ($pendingSwipe, $data) {
+            // Locking reads first, before any plain read fixes this transaction's REPEATABLE READ snapshot
+            // (#4454): the swipe row stops a double submit; the course row, then its shared package row (the
+            // locks the ledger writers take, in their order) serialize two swipes matched to one lesson or to
+            // one group-package slot, so the sign-in, ledger and slot reads below see the other match once it
+            // commits. Keep these statements first.
+            if (!PendingSwipe::query()->whereKey($pendingSwipe->getKey())->lockForUpdate()->first()) {
+                return response()->json(['message' => 'Swipe already matched'], 409);
+            }
+            $packageId = (int) StudentClass::query()->whereKey((int) $data['StudentClassID'])->lockForUpdate()->value('PackageID');
+            if ($packageId > 0) {
+                CoursePackage::query()->whereKey($packageId)->lockForUpdate()->first();
+            }
             $authUser = request()->attributes->get('auth_user');
             $studentClass = StudentClass::findOrFail($data['StudentClassID']);
             if ((int) $studentClass->StudentID !== (int) $pendingSwipe->StudentID) {
@@ -84,6 +99,7 @@ class PendingSwipeController extends Controller
 
             $swipeAt = Carbon::parse($pendingSwipe->SwipeAt);
             $session = null;
+            $createdFromSwipe = false;
 
             if (!empty($data['ClassSessionID'])) {
                 $session = ClassSession::findOrFail($data['ClassSessionID']);
@@ -98,6 +114,7 @@ class PendingSwipeController extends Controller
 
                 if (!$session) {
                     $session = $this->createSessionFromSwipe($studentClass, $swipeAt);
+                    $createdFromSwipe = true;
                 }
             }
 
@@ -126,6 +143,20 @@ class PendingSwipeController extends Controller
             ]);
 
             AttendanceEffectsService::applySessionStatus($session, $status === 'late' ? 'late' : 'present');
+
+            // #4455 class D: a matched swipe is attendance, so it debits through the same entry point as
+            // calendar attendance and the RFID swipe (course ledger, then the package ledger), net-idempotent.
+            // Only a lesson that is now attended/late debits, as in calendar attendance; a `completed` or
+            // other lesson keeps today's behaviour (whether `completed` debits is a pending billing decision).
+            // Only a real lesson debits: one passed in or found on that date for this course. A session
+            // createSessionFromSwipe() just made up is not a lesson (RFC_RFID_CAMPUS_PRESENCE_V1 §0: an
+            // unmatched swipe is self-study, no deduction).
+            if (!$createdFromSwipe && in_array(strtolower((string) $session->Status), ['attended', 'late'], true)) {
+                SessionDeductionService::deductOnAttendance($studentClass, $signIn);
+                $campusId = (int) ($pendingSwipe->CampusID
+                    ?? Student::query()->whereKey((int) $pendingSwipe->StudentID)->value('CampusID') ?? 0);
+                StudentPresenceBackfillService::alertIfNotDeducted($signIn, $campusId);
+            }
 
             $pendingSwipe->delete();
 
@@ -196,7 +227,11 @@ class PendingSwipeController extends Controller
             return null;
         }
 
-        if ($pendingSwipe->CampusID !== null && !in_array((int) $pendingSwipe->CampusID, $campusIds, true)) {
+        // A swipe without a campus falls back to its student's campus; with neither it is not listed to directors either.
+        $campusId = $pendingSwipe->CampusID !== null
+            ? (int) $pendingSwipe->CampusID
+            : (int) (Student::query()->whereKey((int) ($pendingSwipe->StudentID ?? 0))->value('CampusID') ?? 0);
+        if (!in_array($campusId, array_map('intval', (array) $campusIds), true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

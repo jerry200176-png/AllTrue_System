@@ -164,6 +164,15 @@ assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已收');
 assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
 // #4114 (Founder Q3): paid by the legacy flag alone is its own neutral wording, only when the server says so.
 assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '需核對：舊資料標記已收，缺付款紀錄');
+assert.equal(M.isWaivedContract({ waived: true, paid: false }), true);
+// #4150 round 3: reversal netting mirrors BillingPayableResolver::latestUnreversedReceiptDate.
+assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', report_id: 5 }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', report_id: 5 }]), null);
+assert.deepEqual(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash' }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void' }, { id: 3, paid_at: '2026-09-20', amount: 6000, method: 'cash' }]), { date: '2026-09-20', amount: 6000 });
+// a reversal cannot reverse a later repayment, and an orphan reversal (no earlier receipt) still nets the invoice to zero
+assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-07', amount: -6000, method: 'void' }, { id: 2, paid_at: '2026-09-20', amount: 6000, method: 'cash' }]), null);
+assert.deepEqual(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-01', amount: 3000, method: 'cash' }, { id: 2, paid_at: '2026-09-05', amount: 3000, method: 'cash', report_id: 8 }, { id: 3, paid_at: '2026-09-06', amount: -3000, method: 'void', report_id: 8 }]), { date: '2026-09-01', amount: 3000 });
+assert.equal(M.latestStandingPayment([]), null);
+assert.equal(M.isWaivedContract({ paid: true, stop: true, closed_reason: null }), false);
 assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid', legacy_paid_flag_only: true }), true);
 assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid' }), false, 'older payloads keep 已收');
 
@@ -221,10 +230,16 @@ for (const [name, c, unified, cm, sl] of closedCases) {
 assert.equal(M.closedReason(null), null);
 assert.deepEqual(['settled', 'settled_pending', 'waived', 'contract_amended', 'completed', 'converted_trial', 'x', null].map(M.isClosedReason),
   [true, true, true, true, true, true, false, false]);
-const hist = (reason) => ({ closed_reason: reason });
-assert.deepEqual(['settled', 'completed', 'waived', 'settled_pending', 'contract_amended', 'converted_trial', null].map((r) => M.isHistoryCourse(hist(r))),
-  [true, true, true, false, false, false, false], 'CourseManagement set');
-assert.deepEqual(['settled', 'completed', 'waived', 'settled_pending', 'contract_amended', 'converted_trial', null].map((r) => M.isHistoryCourse(hist(r), { includePending: true })),
-  [true, true, true, true, false, false, false], 'StudentsList set adds settled_pending');
+// in-app #427: history is the server's verdict (history_reason / is_active_course); the client only reads it.
+assert.equal(M.courseHistoryReason({ history_reason: 'completed' }), 'completed');
+assert.equal(M.courseHistoryReason({ closed_reason: 'settled' }), null, 'no server flag, no client re-derivation');
+assert.equal(M.isActiveCourse({ is_active_course: true }), true);
+assert.equal(M.isActiveCourse({ is_active_course: false, history_reason: null }), false);
+// Degraded fallback rows (no server verdict) keep only their recorded closure.
+assert.equal(M.courseHistoryReason({ _noncanonical: true, closed_reason: 'settled', status: 'inactive' }), 'settled');
+assert.equal(M.isActiveCourse({ _noncanonical: true, status: 'active' }), true);
+assert.equal(M.isActiveCourse({ _noncanonical: true, status: 'inactive' }), false);
+assert.deepEqual(['settled_pending', 'completed', 'converted_trial', null].map((r) => M.isCourseManagementHistory({ history_reason: r })),
+  [false, true, true, false], 'CourseManagement keeps 待對帳結案 in its working list');
 
 console.log('courseMoneyState passed');

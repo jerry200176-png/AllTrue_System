@@ -6,6 +6,8 @@
  * Pure: the page passes capabilities it already computes, so this never re-derives billing or
  * scheduling rules. Item ids are the existing CourseManagement action names (onCourseManagerAction).
  */
+import { DUAL_TEACHER_COPY_LABEL, RENEW_LESSONS_LABEL } from './courseIntent.js';
+
 /**
  * #4188: the course's close has committed (inactive with a stored closed_reason), the same rule the
  * server applies on the locked row. Such a course is not resumed in place: the server refuses
@@ -35,7 +37,7 @@ export function courseActions(course, caps = {}) {
       : caps.isSession
         ? { id: 'quick-add', label: '補課／補登', ...(caps.canQuickAdd ? {} : { disabled: true, reason: caps.quickAddReason || '' }) }
         : null;
-  const purchase = { id: 'purchase', label: caps.purchaseLabel || '續約／加購' };
+  const purchase = { id: 'purchase', label: caps.purchaseLabel || RENEW_LESSONS_LABEL };
 
   const fallback = { id: caps.fallback === 'manage' ? 'manage' : 'edit', label: caps.fallback === 'manage' ? '管理課程' : '編輯' };
   let primary = fallback;
@@ -52,7 +54,7 @@ export function courseActions(course, caps = {}) {
       schedule,
       extra,
       { id: 'transfer', label: '轉課' },
-      { id: 'duplicate', label: '換師複製' },
+      { id: 'duplicate', label: DUAL_TEACHER_COPY_LABEL },
     ] },
     { id: 'billing', label: '帳務', items: [
       purchase,

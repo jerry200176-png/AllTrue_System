@@ -20,7 +20,7 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
   const cancelRemaining = ref(true);
   const isResume = computed(() => target.value?.status === 'inactive');
   const impacts = computed(() => isResume.value
-    ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
+    ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '恢復成功時，會接回因暫停、結案或停用而取消的排課；其他另行取消的堂次不會一併恢復']
     : [
         cancelRemaining.value ? '取消未來尚未上課堂次' : '不取消剩餘排課（堂次仍會留在行事曆）',
         '暫停期間不排新課、不計入待辦',

@@ -1,8 +1,8 @@
 # Request: single bug detail dump (read-only)
 
-bug_id: 247
+bug_id: 394
 
-Purpose: Phase A triage for in-app bug #247 linked to GitHub #2179. Obtain the current description, attachments, comments, status logs, and reporter's complete history/cross-campus record per CHAT_BUG_SYSTEM.md §3.6 before proposing a root cause.
+Purpose: Phase-C closeout evidence for in-app #394 (GitHub #3980). Fixes #4121/#4128 already ancestors of production; paired queue kickoff 2026-10-19T11:12:00Z. No new code change in this PR beyond allowlist.
 **No writes.**
 
 # kickoff 2026-08-31T08:09:30+08:00 — re-trigger the paired queue/detail evidence after restoring the main CI→deploy event chain; target in-app bug #247
