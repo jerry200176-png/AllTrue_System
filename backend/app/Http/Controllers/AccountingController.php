@@ -667,7 +667,9 @@ class AccountingController extends Controller
                 'status' => $status,
                 'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->isMarkedFreeGift() && $paymentRows->isEmpty()))
                     && $paidAmount <= 0 && $netApplied <= 0,
-                'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0),
+                // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.
+                'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
+                    && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed'),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
