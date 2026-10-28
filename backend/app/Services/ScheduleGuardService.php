@@ -1725,7 +1725,7 @@ class ScheduleGuardService
     }
 
     /**
-     * Load StudentClass meta needed for occupancy provenance (ClassType/room/TeacherID).
+     * Load StudentClass meta needed for occupancy provenance (ClassType/room/TeacherID/Stop).
      *
      * @param  list<int>  $courseIds
      * @return array<int, object>
@@ -1737,7 +1737,7 @@ class ScheduleGuardService
             return [];
         }
         $courseMeta = [];
-        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
+        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID', 'Stop'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
             $courseMeta[(int) $meta->ID] = $meta;
         }
 
@@ -1764,6 +1764,12 @@ class ScheduleGuardService
         }
         $contractTeacherId = (int) ($courseMeta->TeacherID ?? 0);
         $type = strtolower(trim((string) ($row->type ?? '')));
+        // A stopped course's unlinked normal projection is no longer a
+        // reservation, even when no ClassSession was materialized. Preserve
+        // extra and linked rows: their independent occupancy is ambiguous.
+        if ((int) ($courseMeta->Stop ?? 0) === 1 && $type === 'normal' && (int) ($row->original_schedule_id ?? 0) <= 0) {
+            return false;
+        }
         $isExtra = $type === 'extra' || $type === 'makeup';
         // Preserve #4245: a normal leftover of a contract-teacher edit is not
         // evidence of a substitute. Legal extras and linked destinations are.

@@ -931,6 +931,17 @@ class LeaveSuccessorShiftTest extends TestCase
         return ['teacher' => ['teacher'], 'director of another campus' => ['other_campus']];
     }
 
+    /** #4210 (Codex r4296589467): a renewal with two slots on one weekday is refused, not planned a week late. */
+    public function test_a_renewal_with_two_slots_on_one_weekday_is_refused(): void
+    {
+        DB::table('StudentClass')->where('ID', $this->renewal)->update(['week1' => 2, 'time1' => '15:00:00', 'duration1' => 120]);
+        $before = $this->fingerprint();
+        $preview = $this->shift('preview', ['class_session_id' => $this->sessions['2026-11-17']])->assertOk();
+        $preview->assertJsonPath('eligible', false);
+        $this->assertContains('續約課程同一天有兩個以上時段，無法自動順延，請手動調課', array_column($preview->json('blockers'), 'message'));
+        $this->assertSame($before, $this->fingerprint());
+    }
+
     private function seedLeaveEvidence(int $sessionId, string $kind): void
     {
         match ($kind) {
