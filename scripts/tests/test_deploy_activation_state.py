@@ -2187,12 +2187,12 @@ class R3AutoActivationTest(unittest.TestCase):
     REVIEW_OK = {"ok": True, "reason": "final-head Codex review with no open threads on #4400"}
 
     def _decide(self, records, rollback_evidence=True, range_paths=None, event_name="workflow_run",
-                review=REVIEW_OK, freeze_reason=None):
+                review=REVIEW_OK, freeze_reason=None, renamed=False):
         if range_paths is None:
             range_paths = [path for record in records for path in record["paths"]]
         return decide_r3_auto_activation(records, event_name=event_name,
                                          rollback_evidence=rollback_evidence, range_paths=range_paths,
-                                         review=review, freeze_reason=freeze_reason)
+                                         review=review, freeze_reason=freeze_reason, renamed=renamed)
 
     def test_a_rename_out_of_a_protected_path_keeps_the_founder_gate(self):
         # #4359 review: the rename source is classified, not only the destination.
@@ -2213,7 +2213,40 @@ class R3AutoActivationTest(unittest.TestCase):
         record["paths"] = [self.BILLING, ".github/actions/production-ssh-trust/action.yml"]
         result = self._decide([record], range_paths=record["paths"])
         self.assertFalse(result["ok"])
-        self.assertIn("control", result["reason"])
+        self.assertIn("deploy execution", result["reason"])
+
+    def test_deploy_execution_paths_anywhere_in_the_range_keep_the_founder_gate(self):
+        # Adversarial review on #4359: a separate control-plane PR can change what the deploy runs or trusts.
+        billing = self._record(4400, self.BILLING)
+        for path in ("scripts/governance/gh_api_retry.py", ".github/actions/production-ssh-trust/action.yml",
+                     "scripts/production-deploy/write_manifest.py", "scripts/post-deploy-verify.py",
+                     "scripts/post-merge-smoke.sh"):
+            with self.subTest(path=path):
+                result = self._decide([billing], range_paths=[self.BILLING, path])
+                self.assertFalse(result["ok"])
+                self.assertIn("deploy execution", result["reason"])
+        # Other workflows do not hold by path; the caller requires final-head review of every PR instead.
+        self.assertTrue(self._decide([billing], range_paths=[self.BILLING, ".github/workflows/ci.yml"])["ok"])
+
+    def test_identity_paths_and_effects_outside_the_reviewer_list_keep_the_founder_gate(self):
+        # Adversarial review on #4359 (F1): nested Auth controllers, role services, role sync / forceFill.
+        for path in ("backend/app/Http/Controllers/Api/AuthController.php", "backend/app/Services/AuthSessionService.php",
+                     "backend/app/Services/RoleAssignment.php", "frontend/src/pages/LoginPage.vue"):
+            with self.subTest(path=path):
+                result = self._decide([self._record(4413, path, self._diff(path, "$a = 1;", "$a = 2;"))])
+                self.assertFalse(result["ok"])
+                self.assertIn("identity/credential", result["reason"])
+        for code in ("$user->roles()->sync($ids);", "$user->forceFill(['role' => 'director'])->save();",
+                     "$token = $user->createToken('x');", "Gate::define('x', fn () => true);"):
+            with self.subTest(code=code):
+                result = self._decide([self._record(4414, self.BILLING, self._diff(self.BILLING, "$a = 1;", code))])
+                self.assertFalse(result["ok"])
+                self.assertIn("authentication/privilege", result["reason"])
+
+    def test_a_range_with_a_rename_keeps_the_founder_gate(self):
+        result = self._decide([self._record(4400, self.BILLING)], renamed=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("rename", result["reason"])
 
     def test_route_file_changes_keep_the_founder_gate(self):
         # #4359 review: authorization middleware changes in api.php cannot be ruled out by the classifier.
@@ -2227,7 +2260,8 @@ class R3AutoActivationTest(unittest.TestCase):
         self.assertTrue(has_actionable_rollback("Rollback: 正常 revert 後重新部署"))
         for body in ("Rollback: impossible; manual data repair required", "Rollback: cannot be undone",
                      "Rollback: 無法回復", "Rollback: n/a", "Rollback: tbd", "no rollback line",
-                     "Rollback: keep the new data"):
+                     "Rollback: keep the new data", "Rollback: can’t be undone", "Rollback: not undoable",
+                     "<!-- Rollback: revert this PR -->\nRollback: n/a", "```\nRollback: revert this PR\n```"):
             with self.subTest(body=body):
                 self.assertFalse(has_actionable_rollback(body))
 
@@ -2284,8 +2318,8 @@ class R3AutoActivationTest(unittest.TestCase):
         def api_for(ci, deploy_job):
             def api(path, *extra):
                 if "/workflows/ci.yml/runs" in path:
-                    return {"workflow_runs": [{"id": 9, "name": "CI — PHPUnit Tests", "conclusion": "cancelled"}]
-                            + [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": c} for c in ci]}
+                    return {"workflow_runs": [{"id": 9, "name": "CI — PHPUnit Tests", "conclusion": "cancelled", "event": "push"}]
+                            + [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": c, "event": "workflow_dispatch"} for c in ci]}
                 if "/workflows/deploy.yml/runs" in path:
                     return {"workflow_runs": [{"id": 2}, {"id": 1}]}
                 if path.endswith("/runs/2/jobs?per_page=100"):
@@ -2297,19 +2331,29 @@ class R3AutoActivationTest(unittest.TestCase):
         self.assertIn("unknown", deploy_freeze_reason(repo="o/r", api=api_for([], "success")))
         self.assertIn("stop the line", deploy_freeze_reason(repo="o/r", api=api_for(["success"], "failure")))
         self.assertIn("unknown", deploy_freeze_reason(repo="o/r", api=api_for(["success"], "skipped")))
+        # A pull_request run on a branch named main must not mask a red main run (adversarial review F7).
+        def masked(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 10, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "pull_request"},
+                                          {"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "failure", "event": "push"}]}
+            return api_for(["success"], "success")(path, *extra)
+        self.assertIn("main CI is red", deploy_freeze_reason(repo="o/r", api=masked))
 
-    def test_deploy_freeze_looks_past_a_full_page_of_skipped_runs(self):
-        # #4359 review: most deploy.yml runs skip the deploy job; page until the last real one.
+    def test_deploy_freeze_looks_past_skipped_runs_within_a_bounded_window(self):
+        # #4359 review: most deploy.yml runs skip the deploy job; look past them, but bounded (job deadline).
         def api(path, *extra):
             if "/workflows/ci.yml/runs" in path:
-                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success"}]}
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
             if "/workflows/deploy.yml/runs" in path:
                 page = int(path.rsplit("page=", 1)[1])
                 return {"workflow_runs": [{"id": page * 1000 + i} for i in range(100)]}
             run = int(path.split("/runs/")[1].split("/")[0])
-            ran = run == 2000 + 37
+            ran = run == real_run
             return {"jobs": [{"name": "Deploy to Production", "conclusion": "success" if ran else "skipped"}]}
+        real_run = 1000 + 97  # the 98th run back, after 97 skipped ones
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+        real_run = 2000 + 3  # beyond the window: unknown, so frozen
+        self.assertIn("state unknown", deploy_freeze_reason(repo="o/r", api=api))
 
     def test_all_r3_billing_range_with_green_ci_activates_automatically(self):
         records = [self._record(4400, self.BILLING),
@@ -2388,6 +2432,11 @@ class R3AutoActivationTest(unittest.TestCase):
         self.assertIn('mode, reason, approval_eligible = "auto-r3", r3["reason"], False', r3)
         self.assertIn("review=review, freeze_reason=freeze,", r3)
         self.assertIn("rollback_evidence=r3_rollback,", r3)
+        self.assertIn("renamed=range_renamed,", r3)
+        # Final-head review covers every PR in the range, and the recheck re-reads that same list.
+        self.assertIn('for record in attributed if record.get("number")', r3)
+        self.assertIn("PR_NUMBERS: ${{ needs.classify-activation.outputs.r3_review_prs }}", workflow)
+        self.assertIn("    timeout-minutes: 10 #", classify)
         self.assertLess(r3.index("has_actionable_rollback("), r3.index("r3_results = ["))
         # A capped compare (more than 250 commits) never reaches classification.
         self.assertIn('if comparison.get("total_commits") != len(comparison.get("commits") or []):', classify)

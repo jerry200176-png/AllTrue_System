@@ -254,6 +254,9 @@ _FOUNDER_EFFECT_PATTERNS = (
         r"(?:link|unlink|bind|unbind|associate|merge|split)[_-]?(?:identity|guardian)|"
         r"(?:identity|guardian)[_-]?(?:link|unlink|bind|unbind|associate|merge|split))\b)",
     )),
+    ("authentication/privilege boundary", re.compile(
+        r"createtoken|forcefill\s*\(|hash::make|gate::|->\s*roles\s*\(\s*\)|syncroles|givepermission", re.I,
+    )),
     ("privacy/legal boundary", re.compile(
         r"\b(?:pii|personal\s+data|privacy|gdpr|legal|consent|retention)\b",
     )),
@@ -805,7 +808,7 @@ def _patch_is_inspectable(paths: list[str], patch: str) -> bool:
 
 
 def _founder_effects(changed_code: str, *, include_runtime_write: bool = True) -> list[str]:
-    effects = [label for label, pattern in _FOUNDER_EFFECT_PATTERNS if pattern.search(changed_code)]
+    effects = list(dict.fromkeys(label for label, pattern in _FOUNDER_EFFECT_PATTERNS if pattern.search(changed_code)))
     if not include_runtime_write:
         effects = [effect for effect in effects if effect != "runtime write"]
     if effects and _BROAD_MUTATION_RE.search(changed_code):
@@ -935,7 +938,7 @@ def parse_declaration(body: str) -> tuple[int | None, int | None]:
 
 _ROLLBACK_ACTION_RE = re.compile(r"\b(?:revert|redeploy|roll\s*back)\b|還原|回滾|回復", re.I)
 _ROLLBACK_NEGATIVE_RE = re.compile(
-    r"\b(?:impossible|irreversible|not\s+(?:possible|reversible|revertable)|cannot|can't|no\s+rollback|"
+    r"\b(?:impossible|irreversible|not\s+(?:possible|reversible|revertable|undoable)|cannot|can't|no\s+rollback|"
     r"manual(?:ly)?\s+(?:data\s+)?(?:repair|fix|cleanup))\b|無法|不可逆|不能|手動(?:修|處理|回復)|資料修復",
     re.I,
 )
@@ -944,10 +947,12 @@ _ROLLBACK_NEGATIVE_RE = re.compile(
 def has_actionable_rollback(body: str) -> bool:
     """auto-r3 (#4359 review): the Rollback line names a reversal and does not say it cannot be undone."""
 
-    match = _ROLLBACK_RE.search(body or "")
-    if not match or not has_rollback_evidence(body):
+    # Hygiene, not a security control: the line is author text. Ignore commented-out or fenced lines.
+    text = re.sub(r"<!--.*?-->|```.*?```", "", (body or "").replace("’", "'"), flags=re.DOTALL)
+    match = _ROLLBACK_RE.search(text)
+    if not match or not has_rollback_evidence(text):
         return False
-    value = re.sub(r"<!--.*?-->", "", match.group(1), flags=re.DOTALL)
+    value = match.group(1)
     return bool(_ROLLBACK_ACTION_RE.search(value)) and not _ROLLBACK_NEGATIVE_RE.search(value)
 
 
@@ -1186,6 +1191,14 @@ _R3_FOUNDER_ONLY_REASONS = {
 }
 
 
+# What the deploy itself executes or trusts with production credentials: a change here could forge the
+# evidence or the verification of the very range it rides in (adversarial review on #4359).
+_R3_EXECUTION_PREFIXES = (".github/actions/", "scripts/governance/", "scripts/production-deploy/")
+_R3_EXECUTION_EXACT = {"scripts/post-deploy-verify.py", "scripts/post-merge-smoke.sh"}
+# Identity/privilege paths beyond the reviewer-only list: nested Auth controllers, role/guard services.
+_R3_IDENTITY_PATH_TERMS = (*_ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS, "auth", "identity", "role", "guard", "login")
+
+
 def _r3_protected_path(path: str) -> str | None:
     """Label of a path no R3 auto range may carry, current or rename source (#4359 review); else None."""
 
@@ -1193,6 +1206,12 @@ def _r3_protected_path(path: str) -> str | None:
         return "migration"
     if path.startswith(("backend/app/Console/Commands/Repair", "backend/app/Services/Repair")):
         return "production data repair"
+    if path.startswith(_R3_EXECUTION_PREFIXES) or path in _R3_EXECUTION_EXACT:
+        return "deploy execution or evidence path"
+    if path.startswith(("backend/", "frontend/")) and any(
+        part.startswith(term) for part in re.split(r"[/_.-]+", path.lower()) for term in _R3_IDENTITY_PATH_TERMS if part
+    ):
+        return "identity/credential boundary"
     label = _r3_hold_label(path)
     return label if label == "identity/credential boundary" else None
 
@@ -1277,7 +1296,7 @@ def final_head_review_evidence(
 
 
 DEPLOY_JOB_NAME = "Deploy to Production"
-_FREEZE_LOOKBACK_PAGES = 3  # x100 deploy.yml runs; most runs skip the deploy job (#4359 review)
+_FREEZE_LOOKBACK_PAGES = 1  # x100 deploy.yml runs (~3-5 days); older = unknown = frozen. Bounded for the job deadline.
 
 
 def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None:
@@ -1293,6 +1312,7 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
     decided = [
         run for run in ((ci or {}).get("workflow_runs") or [])
         if run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") not in {"cancelled", "skipped", None}
+        and run.get("event") in {"push", "workflow_dispatch"}  # same events resolve-target trusts
     ]
     if not decided:
         return "main CI state unknown"
@@ -1320,7 +1340,7 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
 def decide_r3_auto_activation(
     records: Iterable[dict[str, object]], *, event_name: str, rollback_evidence: bool,
     range_paths: Iterable[str] | None, review: Mapping[str, object] | None = None,
-    freeze_reason: str | None = "freeze state not evaluated",
+    freeze_reason: str | None = "freeze state not evaluated", renamed: bool = False,
 ) -> dict[str, object]:
     """Founder 2026-10-21（二）之二: may this held range activate through production-auto?
 
@@ -1328,9 +1348,9 @@ def decide_r3_auto_activation(
     solely because it is T3, its provenance is complete, every PR has rollback evidence, no PR
     carries a migration, data-repair, identity/credential or control-plane hold, and no commit in
     the range touches the gate policy, no range path (rename sources included) is a migration,
-    data-repair or identity/credential path, no application PR touches a control-plane path, the
-    line is not frozen (``deploy_freeze_reason``) and every PR has final-head review
-    (``final_head_review_evidence``). Freeze and review are re-checked by the deploy job after it
+    data-repair, identity/credential or deploy-execution path, no file is renamed, the line is
+    not frozen (``deploy_freeze_reason``) and every PR in the range (application and control
+    plane) has final-head review (``final_head_review_evidence``; the caller passes them all). Freeze and review are re-checked by the deploy job after it
     holds the executor slot, together with exact-main CI. Fails closed.
     """
 
@@ -1355,10 +1375,8 @@ def decide_r3_auto_activation(
     applications = provenance.get("application_prs") or []
     if provenance.get("blocked") or not applications:
         return hold(f"provenance is not an application range: {provenance.get('reason')}")
-    mixed = sorted(f"PR #{pr['number']}: {path}" for pr in applications
-                   for path in (pr.get("paths") or []) if is_control_plane_path(str(path)))
-    if mixed:
-        return hold("application PR also changes the control plane: " + "; ".join(mixed))
+    if renamed:
+        return hold("range renames a file; a rename keeps the Founder gate")
     decision = decide_activation(
         event_name=event_name, deployable=True, classifier_available=True, machine_validated=True,
         machine_tier=provenance.get("tier_name"),

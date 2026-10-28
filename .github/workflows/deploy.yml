@@ -538,7 +538,7 @@ jobs:
     needs: [resolve-target, detect-deployable]
     if: ${{ needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10 # R3 evidence pages GitHub APIs (review, freeze); a timeout holds every deploy
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       approval_eligible: ${{ steps.classify.outputs.approval_eligible }}
@@ -548,6 +548,7 @@ jobs:
       go_evidence: ${{ steps.classify.outputs.go_evidence }}
       go_reason: ${{ steps.classify.outputs.go_reason }}
       r3_evidence: ${{ steps.classify.outputs.r3_evidence }}
+      r3_review_prs: ${{ steps.classify.outputs.r3_review_prs }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -795,6 +796,7 @@ jobs:
               provenance_complete = True
               # Every path the range touches (Founder 2026-10-21 R3 auto); None once a commit is capped.
               range_paths = set()
+              range_renamed = False
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
                   if not commit_sha:
@@ -807,6 +809,7 @@ jobs:
                       continue
                   # A rename's source path is classified too: moving a file out of a protected path is a protected change.
                   actual_paths = [p for item in actual_files for p in (item.get("filename", ""), item.get("previous_filename")) if p]
+                  range_renamed = range_renamed or any(item.get("previous_filename") for item in actual_files)
                   if range_paths is not None and len(actual_files) < 300:
                       range_paths.update(p for item in actual_files for p in (item.get("filename"), item.get("previous_filename")) if p)
                   else:
@@ -1044,6 +1047,7 @@ jobs:
               # production-auto. Both the deployed and the target policy must accept it; an old
               # deployed policy without the rule, or any error, keeps the Founder reviewer.
               r3 = {"ok": False, "reason": "not evaluated"}
+              r3_review_prs = []
               if mode == "awaiting-activation" and approval_eligible:
                   try:
                       import importlib.util
@@ -1055,9 +1059,12 @@ jobs:
                       spec.loader.exec_module(trusted_r3_gate)
                       # Compensating controls for the removed click: final-head review and stop-the-line.
                       graphql = lambda query: gh_api("graphql", "-f", f"query={query}")
+                      # Every PR in the range, control-plane ones too: an unreviewed workflow change rides
+                      # the same range (adversarial review on #4359). Unattributed commits already hold.
+                      r3_review_prs = sorted({str(record.get("number")) for record in attributed if record.get("number")}
+                                             | {str(pr["number"]) for pr in provenance["application_prs"]}, key=int)
                       review = target_r3_gate.final_head_review_evidence(
-                          repo=repo, pr_numbers=[pr["number"] for pr in provenance["application_prs"]],
-                          api=gh_api, graphql=graphql,
+                          repo=repo, pr_numbers=r3_review_prs, api=gh_api, graphql=graphql,
                       )
                       freeze = target_r3_gate.deploy_freeze_reason(repo=repo, api=gh_api)
                       # auto-r3 needs a reversal the Rollback line actually names (#4359 review).
@@ -1071,7 +1078,7 @@ jobs:
                           gate.decide_r3_auto_activation(
                               attributed, event_name=classify_event,
                               rollback_evidence=r3_rollback, range_paths=range_paths,
-                              review=review, freeze_reason=freeze,
+                              review=review, freeze_reason=freeze, renamed=range_renamed,
                           )
                           for gate in (trusted_r3_gate, target_r3_gate)
                       ]
@@ -1086,6 +1093,7 @@ jobs:
                   output.write(f"go_evidence={'verified' if go['ok'] else 'missing'}\n")
                   output.write(f"go_reason={go['reason']}\n")
                   output.write(f"r3_evidence={'verified' if r3['ok'] is True else 'missing'}\n")
+                  output.write(f"r3_review_prs={','.join(r3_review_prs) if r3['ok'] is True else ''}\n")
           except Exception as exc:
               # Keep fail-closed. Surface exception class so empty/truncated GitHub
               # JSON bodies are diagnosable without weakening approval eligibility.
@@ -1604,7 +1612,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBERS: ${{ needs.classify-activation.outputs.pr_number }}
+          PR_NUMBERS: ${{ needs.classify-activation.outputs.r3_review_prs }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
