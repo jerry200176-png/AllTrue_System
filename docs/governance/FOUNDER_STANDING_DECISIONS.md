@@ -3,6 +3,13 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-10-28（二）（規範順暢化；對話中「我觉得现有的很多架构可以用你觉得最顺畅的方式去重构我们目前的规范。」）
+
+1. **授權**：Agent 可以用最順暢的方式重整流程與規範，移除「拖慢、但不擋事故」的步驟；仍以小 PR 交付，計畫見 `docs/plans/2026-10-28-governance-smoothing.md`。本條**不**放寬只限 Founder 的事：正式資料修改、production migration、credential、不可逆操作。
+2. **批次合併**（對話中選「開啟批次 (Recommended)」）：main-protection ruleset 關掉 strict up-to-date（其他保護與 8 個必過檢查不變），land-queue 改為最多 4 個一批、合在一起整批測過才合。復原：把 `strict_required_status_checks_policy` 改回 `true`，land-queue 會自動停用批次。
+3. **PR 大小**：700 行上限只算邏輯程式（測試、文件不算），另設全部 1500 行上限（presubmit CHECK 2）。
+4. **in-app 修好自動結案**（對話中選「部署並打開開關 (Recommended)」）：`POP_INAPP_STANDING_POLICY=on`（ADR-POP-015），隨 2026-10-28 的 application deploy 帶上。
+
 ## 2026-10-21（二）
 
 ### 1. In-app 公開回覆與 Phase A 回寫不再逐次核准（Founder 對話原文：「回覆幹嘛還要我核准啦」）
