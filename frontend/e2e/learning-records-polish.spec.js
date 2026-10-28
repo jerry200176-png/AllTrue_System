@@ -91,8 +91,8 @@ for (const viewport of viewports) {
       await expect(page.locator('.lr-table-scroll .fill-badge').filter({ hasText: '評量內容未填' }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.locator('.lr-table-scroll .status-tag').filter({ hasText: /^審核：/ }).first()).toBeVisible();
 
-      const pendingGroup = page.locator('details.lr-group').filter({ hasText: '測試學生甲' });
-      await pendingGroup.locator('summary .lr-group-hint').click();
+      const pendingGroup = page.locator('.lr-group').filter({ hasText: '測試學生甲' });
+      await pendingGroup.locator('.at-disclosure__toggle').click();
       await expect(pendingGroup.locator('.fill-badge').filter({ hasText: '評量內容未填' })).toBeVisible({ timeout: 15_000 });
       await expect(pendingGroup.locator('.status-tag').filter({ hasText: '審核：待主任核准' })).toBeVisible();
       await assertDirectorStatusTypography(pendingGroup);
@@ -107,3 +107,44 @@ for (const viewport of viewports) {
     await page.locator('.lr-page').screenshot({ path: `/tmp/learning-records-polish-${viewport.name}.png` });
   });
 }
+
+// Student groups exist only in the desktop list view; phones always get flat record cards (#417).
+test('#4488 student group cards expand in place from the keyboard @1440', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openLearningPilot(page, viewports[1]);
+  await page.getByRole('button', { name: '列表', exact: true }).click();
+  await page.locator('#lr-review-tab-all').click();
+  const group = page.locator('.lr-group').filter({ hasText: '測試學生甲' });
+  const toggle = group.locator('.at-disclosure__toggle');
+  const body = group.locator('.at-disclosure__body');
+  await expect(group).toBeVisible({ timeout: 15_000 });
+  // The name still filters by student and is its own button beside the toggle.
+  await expect(group.getByRole('button', { name: '測試學生甲', exact: true })).toBeVisible();
+  await expect(toggle.locator('button')).toHaveCount(0);
+
+  // Reach the toggle with Tab from the name button, as a keyboard user would.
+  await group.getByRole('button', { name: '測試學生甲', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(toggle).toBeFocused();
+  if (await toggle.getAttribute('aria-expanded') === 'true') await page.keyboard.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(body).toHaveAttribute('inert', '');
+  await expect(group.locator('.lr-table-scroll')).toBeHidden();
+  // Collapsed card keeps its count and status, shows stacked edges, and keeps a visible focus ring.
+  await expect(group.locator('.lr-group-count')).toHaveText('2 筆');
+  await expect(group.locator('.lr-group-pending')).toBeVisible();
+  await expect(toggle).toBeFocused();
+  expect(await toggle.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
+  expect(await group.evaluate((el) => getComputedStyle(el, '::after').opacity)).toBe('1');
+
+  await page.keyboard.press('Space');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(group.locator('.lr-table-scroll').first()).toBeVisible();
+  expect(await group.evaluate((el) => getComputedStyle(el, '::after').opacity)).toBe('0');
+  // Reduced motion: no height slide (the global rule leaves at most 0.01ms).
+  expect(Number.parseFloat(await body.evaluate((el) => getComputedStyle(el).transitionDuration))).toBeLessThan(0.001);
+
+  await page.keyboard.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toBeFocused();
+});

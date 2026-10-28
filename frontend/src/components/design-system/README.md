@@ -62,6 +62,22 @@ const selection = useSelection(visibleRows, { key: 'id', canSelect: (r) => r.sta
 
 ---
 
+## AtDisclosureCard（#4488 疊卡展開）
+
+```vue
+<AtDisclosureCard v-model:open="isOpen" :stacked="items.length > 1">
+  <template #actions><button type="button" @click="filterBy(name)">{{ name }}</button></template>
+  <template #summary><span>{{ items.length }} 筆</span><span>{{ pending }} 待處理</span></template>
+  明細內容
+</AtDisclosureCard>
+```
+
+- 展開鈕是真的 `<button>`（`aria-expanded`／`aria-controls`），取代 `<details>`；收合時 `#summary` 的筆數與狀態仍顯示，明細 `inert` 但不卸載（輸入內容保留）。
+- 標題列其他按鈕放 `#actions`（在展開鈕旁、不巢狀），並當展開鈕名稱的一部分；收合時焦點若在明細裡會回到展開鈕。
+- `stacked`：收合時卡片下緣露出兩層疊卡邊；展開時淡出。高度用 `grid-template-rows` 0fr→1fr，減少動態時不滑動。
+
+---
+
 ## AtCard
 
 ```vue
