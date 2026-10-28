@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
  *           `fixed_session` when the column is null (see the accessor below).
  * @property array<string, mixed>|null $pricing_snapshot Immutable transaction pricing snapshot.
  * @property \App\Models\Student|null $student
+ * @property \App\Models\User|null $teacher
  * @property \App\Models\CoursePackage|null $coursePackage
  * @property int|null $ID
  * @property int $StudentID
@@ -268,6 +269,32 @@ class StudentClass extends Model
     {
         $packageId = (int) ($this->getAttribute('PackageID') ?? 0);
         return $packageId > 0;
+    }
+
+    /**
+     * The contract's current Charge for a count-mode, non-package course. Charge already follows rate and
+     * count edits, keeps renewal discounts and session_charge deltas, so an issued bill that still equals it is
+     * not flagged. Null for every other course. Read-only (#4115).
+     */
+    public function currentContractCharge(): ?int
+    {
+        if ((string) ($this->ScheduleMode ?? 'count') !== 'count' || $this->isPartOfPackage()) {
+            return null;
+        }
+
+        return max(0, (int) ($this->Charge ?? 0));
+    }
+
+    /** What Rate multiplies: TotalHours when rate_unit is hour, else SessionCount. */
+    public function pricedQuantity(): int
+    {
+        return (string) $this->rate_unit === 'hour' ? (int) $this->TotalHours : (int) ($this->SessionCount ?? 0);
+    }
+
+    /** Rate x pricedQuantity(): the base Charge is compared with (G-009). */
+    public function rateTimesQuantity(): int
+    {
+        return (int) round((float) ($this->Rate ?? 0) * $this->pricedQuantity());
     }
 
     /**
