@@ -111,3 +111,16 @@ it('drops a slow reply for the previous campus and clears its rows on switch', a
   expect(wrapper.text()).toContain('六號分校學生');
   expect(wrapper.text()).not.toContain('王小明');
 });
+
+it('blocks a charge for more than 200 students with a clear message', async () => {
+  const many = Array.from({ length: 201 }, (_, i) => ({ id: i + 1, name: `學生${i + 1}` }));
+  wrapper = mountIt({ branchId: 5, students: many });
+  await flushPromises();
+  await btn('新增代收款').trigger('click');
+  wrapper.vm.picked.push(...many.map((s) => s.id));
+  wrapper.vm.form.title = '講義';
+  wrapper.vm.form.amount = 100;
+  await flushPromises();
+  expect(wrapper.text()).toContain('一次最多 200 位');
+  expect(wrapper.vm.canSave).toBe(false);
+});

@@ -80,11 +80,12 @@ function open(kind, row = null) {
   dialog.value = { kind, row };
 }
 
+const MAX_PICK = 200; // the API takes at most 200 students per request
 const DIALOG_TITLES = { charge: '新增代收款', payout: '記一筆代付', pay: '登記收款', 'void-charge': '作廢代收款', 'void-payout': '作廢代付' };
 const canSave = computed(() => {
   const f = form.value;
   const k = dialog.value?.kind;
-  if (k === 'charge') return picked.value.length > 0 && f.title.trim() && Number(f.amount) > 0;
+  if (k === 'charge') return picked.value.length > 0 && picked.value.length <= MAX_PICK && f.title.trim() && Number(f.amount) > 0;
   if (k === 'payout') return f.title.trim() && Number(f.amount) > 0 && f.date;
   if (k === 'pay') return Boolean(f.date && f.method);
   return Boolean(f.reason.trim());
@@ -219,7 +220,8 @@ defineExpose({ reload: load, loading });
           <div class="flp__list">
             <label v-for="s in shownStudents" :key="s.id" class="flp__check"><input v-model="picked" type="checkbox" :value="s.id" /> {{ s.name }}</label>
           </div>
-          <p v-if="picked.length && Number(form.amount) > 0" class="flp__hint">會建立 {{ picked.length }} 筆，共 {{ money(picked.length * Number(form.amount)) }}。</p>
+          <p v-if="picked.length > MAX_PICK" class="flp__hint" role="alert">一次最多 {{ MAX_PICK }} 位，請分批建立。</p>
+          <p v-else-if="picked.length && Number(form.amount) > 0" class="flp__hint">會建立 {{ picked.length }} 筆，共 {{ money(picked.length * Number(form.amount)) }}。</p>
         </fieldset>
 
         <template v-if="dialog.kind === 'pay'">
