@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-28-legacy-flag-every-mode
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 月結與共用方案也能清掉「需核對」
+    summary: 標記已收卻沒有收款紀錄的月結、共用方案課程，現在也能補登收款或改成未繳。
+    items:
+      - category: fixed
+        text: 月結、共用方案的合約卡，現在和堂數制一樣有「已收過，補登收款」與「其實沒收，改成未繳」。
+      - category: improved
+        text: 共用方案改成未繳時，方案內所有課程會一起改成未繳；其他成員卡會指向主卡。
+      - category: fixed
+        text: 「已結清」清單不再把付清的共用方案成員標成「舊制無帳單」。
+    source_refs:
+      - "changelog:2026-10-28:legacy-flag-every-mode"

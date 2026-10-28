@@ -3022,6 +3022,29 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('summary.legacy_count', 0);
     }
 
+    /** In-app #428 / #438: the same evidence rule as the course list, so a label here always has an action in the ledger. */
+    public function test_accounting_settled_courses_does_not_flag_a_paid_package_member_whose_payment_sits_on_its_sibling(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '共用方案生']);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 16,
+            'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 550, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => true, 'paid_at' => '2026-04-10', 'stop' => false, 'enabled' => true,
+        ]);
+        $lead = $this->createCountModeClass($student->id, ['Paid' => 1, 'PayDate' => '2026-04-10', 'PackageID' => $package->id]);
+        $follower = $this->createCountModeClass($student->id, ['Paid' => 1, 'PayDate' => '2026-04-10', 'PackageID' => $package->id, 'SubjectID' => 2]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $lead->ID, 'IssueDate' => '2026-04-10',
+            'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+
+        $rows = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=共用方案生')
+            ->assertOk()->assertJsonPath('summary.legacy_count', 0)->json('data');
+        $this->assertSame([false, false], collect($rows)->whereIn('student_class_id', [$lead->ID, $follower->ID])->pluck('legacy_paid_without_invoice')->all());
+    }
+
     public function test_accounting_settled_courses_marks_overpayment_exception(): void
     {
         $token = $this->createDirectorToken([1]);
