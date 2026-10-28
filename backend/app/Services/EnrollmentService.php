@@ -491,6 +491,15 @@ class EnrollmentService
             return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
         }
 
+        // #3834 pilot boundary: refuse rather than mint a course whose contract says "bill by clock time" at a campus
+        // outside the Founder-approved pilot.
+        if ($actualDurationOptIn && !DeductionBasis::campusAllowed($targetCampusId)) {
+            return response()->json([
+                'message' => '依實際時長扣堂目前僅在試辦分校開放',
+                'errors' => ['deduction_basis' => ['此分校尚未開放依實際時長扣堂，請改用「每次上課扣一堂」。']],
+            ], 422);
+        }
+
         $teacherHasCampus = UserCampus::where('UserID', (int) $data['teacher_id'])
             ->where('CampusID', $targetCampusId)
             ->exists();

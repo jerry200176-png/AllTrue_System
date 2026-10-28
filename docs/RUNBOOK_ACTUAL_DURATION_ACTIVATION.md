@@ -40,6 +40,7 @@ last_reviewed: 2026-07-31
 | 開關 | 位置 | 意義 | 預設 |
 |---|---|---|---|
 | `PERF_ACTUAL_DURATION_DEDUCTION` | Pi `/home/admin/backend/.env` → `config/perfflags.php` | 這個環境有沒有這個功能 | **false** |
+| `PERF_ACTUAL_DURATION_CAMPUS_IDS` | `config/perfflags.php` → `actual_duration_campus_ids`（可由 `.env` 覆寫） | 哪些分校可以**新開**這個選項（試辦名單，#3834） | **`11,13`**（新莊分校、新莊中平分校）；`*`＝全部；空白＝全部不開 |
 | `StudentClass.deduction_basis` | 每門課一列 | 這門課要不要用 | `fixed_session` |
 | `ACTUAL_DURATION_DEDUCTION_ENABLED` | `frontend/src/lib/perfFlags.js`（編譯期） | 建課表單要不要顯示這個選項 | **false** |
 
@@ -127,6 +128,17 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
    - `session_deduction_ledger.minutes` 記到的是分鐘，不是堂數
    - 額度用盡後點名依然成功（D5：超額不擋點名）
    - 扣堂後修改標準堂長回 422（`BillingContractLockGuard`）
+
+---
+
+## 3P. 試辦：只讓新莊分校、新莊中平分校新開（#3834，Founder 2026-10-13 核准）
+
+環境旗標是全站的、`deduction_basis` 是每門課的，兩者都擋不住「別的分校主任也選了這個選項」，所以加分校名單 `perfflags.actual_duration_campus_ids`（預設 `11,13`；分校 ID 取自 `frontend/src/lib/useBranches.js`，未查正式 DB）。
+
+- **只管「新開」**：`POST class-sessions/batch` 對名單外分校的 `actual_duration` 回 422；`PUT student-classes/{id}` 把名單外分校的課**改成** `actual_duration` 回 422。已經是 `actual_duration` 的課照常編輯、照常扣堂——名單不改任何既有課的扣堂口徑或剩餘堂數，所以部署它不需要先處理既有課，也沒有資料要核對。續課、拆約、家教複製都是從已存在的課複製，沿用來源課的設定。
+- **部署前後（唯讀）**：`Actions → Actual-Duration Billing Activation (Founder-gated) → verify_backend`。確認 `effective-campus-ids=11,13`；`actual-duration-course-campus-ids` 列出每門既有 `actual_duration` 課的分校。名單外若有既有課，**程式不處理**：由 Founder 決定要保留（維持現狀）或請該校主任改約（資料更正走原流程）。
+- **收回或擴大**：改 `config/perfflags.php` 的預設名單，走 PR → CI → `deploy.yml`（空白＝全部不開、`*`＝全部）；不得 SSH 手動改 `.env`。要讓既有的名單外課也改回整堂扣，請走 §4 關旗標（全站）；本名單不做這件事。
+- 前端建課表單仍對所有分校顯示這個選項；名單外分校送出時會看到 422 訊息。
 
 ---
 
