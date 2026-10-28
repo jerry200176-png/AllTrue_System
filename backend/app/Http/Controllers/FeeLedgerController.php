@@ -33,8 +33,10 @@ class FeeLedgerController extends Controller
             $charges->whereNull('paid_on')->whereNull('voided_at');
             $payouts->whereRaw('1 = 0');
         } else {
-            $start = Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth()->toDateString();
-            $end = Carbon::createFromFormat('Y-m', $data['month'])->endOfMonth()->toDateString();
+            // '!' zeroes the unparsed fields: without it the 31st of today rolls 2026-09 into October.
+            $month = Carbon::createFromFormat('!Y-m', $data['month']);
+            $start = $month->copy()->startOfMonth()->toDateString();
+            $end = $month->copy()->endOfMonth()->toDateString();
             $charges->whereBetween('charged_on', [$start, $end]);
             $payouts->whereBetween('paid_on', [$start, $end]);
         }
@@ -68,11 +70,23 @@ class FeeLedgerController extends Controller
             return response()->json(['message' => '有學生不在這個分校，請重新選擇。', 'code' => 'student_not_in_campus'], 422);
         }
         $userId = (int) $request->attributes->get('auth_user')->id;
-        $created = DB::transaction(fn () => collect($ids)->map(fn (int $id) => FeeCharge::create([
-            'campus_id' => $campusId, 'student_id' => $id, 'category' => $data['category'], 'title' => trim($data['title']),
-            'amount' => (int) $data['amount'], 'charged_on' => $data['charged_on'] ?? Carbon::today()->toDateString(),
-            'created_by' => $userId,
-        ])));
+        $created = DB::transaction(function () use ($ids, $campusId, $data, $userId) {
+            // Same Student row lock (id order) as StudentController's purge, so a concurrent delete can't slip between
+            // its money check and this insert; re-check inside the lock.
+            $locked = DB::table('Student')->whereIn('id', $ids)->where('CampusID', $campusId)->orderBy('id')->lockForUpdate()->pluck('id');
+            if ($locked->count() !== count($ids)) {
+                return null;
+            }
+
+            return collect($ids)->map(fn (int $id) => FeeCharge::create([
+                'campus_id' => $campusId, 'student_id' => $id, 'category' => $data['category'], 'title' => trim($data['title']),
+                'amount' => (int) $data['amount'], 'charged_on' => $data['charged_on'] ?? Carbon::today()->toDateString(),
+                'created_by' => $userId,
+            ]));
+        });
+        if ($created === null) {
+            return response()->json(['message' => '有學生不在這個分校，請重新選擇。', 'code' => 'student_not_in_campus'], 422);
+        }
 
         return response()->json(['charges' => $created->map(fn (FeeCharge $c) => $this->chargeRow($c->load('student:id,name')))], 201);
     }

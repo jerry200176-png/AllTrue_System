@@ -99,6 +99,30 @@ class FeeLedgerApiTest extends TestCase
         $this->postJson("/api/v1/fee-charges/{$september}/pay", ['paid_on' => '2026-10-29', 'method' => 'cash'], $this->headers)->assertStatus(422);
     }
 
+    public function test_a_short_month_is_not_read_as_the_current_month_on_the_31st(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-31 10:00:00'));
+        $this->headers = $this->director($this->campus); // the setUp token expired on the 29th
+        $september = $this->charge(null, null, ['charged_on' => '2026-09-15']);
+        $this->charge(null, null, ['charged_on' => '2026-10-20']);
+
+        $this->getJson("/api/v1/fee-ledger?campus_id={$this->campus}&month=2026-09", $this->headers)
+            ->assertOk()->assertJsonCount(1, 'charges')->assertJsonPath('charges.0.id', $september);
+    }
+
+    public function test_a_student_with_fee_history_cannot_be_deleted(): void
+    {
+        $id = $this->charge();
+        $student = (int) FeeCharge::find($id)->student_id;
+        $this->postJson("/api/v1/fee-charges/{$id}/void", ['reason' => '登記錯'], $this->headers)->assertOk();
+
+        $this->deleteJson("/api/v1/students/{$student}", [], $this->headers)->assertStatus(422);
+        $this->postJson('/api/v1/students/bulk-delete', ['student_ids' => [$student]], $this->headers)
+            ->assertStatus(422)->assertJsonPath('paid_student_ids', [$student]);
+        $this->assertNotNull(Student::find($student));
+        $this->assertSame('代收測試學生', $this->getJson("/api/v1/fee-ledger?campus_id={$this->campus}&month=2026-10", $this->headers)->json('charges.0.student_name'));
+    }
+
     private function charge(?array $headers = null, ?int $campus = null, array $extra = []): int
     {
         $campus ??= $this->campus;

@@ -323,7 +323,9 @@ class StudentController extends Controller
                 // Student-level history that has no contract id (self-study sign-ins, dunning, continuity groups).
                 || DB::table('StudentSingIn')->where('StudentID', $studentId)->exists()
                 || DB::table('dunning_events')->where('student_id', $studentId)->exists()
-                || DB::table('course_contract_groups')->where('student_id', $studentId)->exists();
+                || DB::table('course_contract_groups')->where('student_id', $studentId)->exists()
+                // Pass-through fees (代收, #439), voided ones included: the row is the only record of who was charged.
+                || DB::table('fee_charges')->where('student_id', $studentId)->exists();
             if ($history) {
                 $out[] = $studentId;
             }
