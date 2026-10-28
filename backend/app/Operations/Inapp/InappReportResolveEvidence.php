@@ -111,14 +111,6 @@ class InappReportResolveEvidence
     }
 
     /** @param array<string,int|string> $query */
-    private static function fileToken(): ?string
-    {
-        $path = storage_path(self::TOKEN_FILE);
-        $token = is_file($path) && is_readable($path) ? trim((string) file_get_contents($path)) : '';
-
-        return preg_match('/^[A-Za-z0-9_]{20,255}$/', $token) === 1 ? $token : null;
-    }
-
     private function github(string $path, array $query = []): ?array
     {
         $repo = (string) config('pop_inapp.github_repo');
@@ -126,8 +118,9 @@ class InappReportResolveEvidence
         try {
             $request = Http::timeout(10)->acceptJson();
             // Read live, never from config: a cached config must not snapshot the credential (#2833, GitHubIssueController).
+            $token = env('GITHUB_TOKEN');
             // Config is cached in production, so a .env value never reaches env(); the deploy writes the token file instead.
-            $token = env('GITHUB_TOKEN') ?: self::fileToken();
+            $token = $token ?: self::fileToken();
             if (is_string($token) && $token !== '') $request = $request->withToken($token);
             $response = $request->get("https://api.github.com/repos/{$repo}/{$path}", $query);
             $json = $response->successful() ? $response->json() : null;
@@ -136,5 +129,13 @@ class InappReportResolveEvidence
         } catch (Throwable) {
             return null;
         }
+    }
+
+    private static function fileToken(): ?string
+    {
+        $path = storage_path(self::TOKEN_FILE);
+        $token = is_file($path) && is_readable($path) ? trim((string) file_get_contents($path)) : '';
+
+        return preg_match('/^[A-Za-z0-9_]{20,255}$/', $token) === 1 ? $token : null;
     }
 }
