@@ -74,7 +74,9 @@
       panel-class="subject-dialog"
       @close="showModal = false"
     >
-        <div class="form-group">
+        <!-- Enter submits through the form's default button (the save button below), so the
+             keyboard and click paths share one pending guard. -->
+        <form id="subject-form" class="form-group" @submit.prevent>
           <label for="subject-name">科目名稱 <span class="required">*</span></label>
           <input
             id="subject-name"
@@ -82,14 +84,13 @@
             placeholder="例如：程式設計"
             maxlength="16"
             aria-describedby="subject-name-hint"
-            @keydown.enter="submit"
           />
           <span id="subject-name-hint" class="form-hint">最多 16 個字。</span>
-        </div>
+        </form>
         <p v-if="formError" class="error-text">{{ formError }}</p>
         <template #actions>
           <AtButton shape="rect" variant="ghost" @click="showModal = false">取消</AtButton>
-          <AtSubmitButton shape="rect" :disabled="!formName.trim()" :action="submit" pending-text="處理中…" success-text="已儲存" error-text="未儲存">
+          <AtSubmitButton type="submit" form="subject-form" shape="rect" :disabled="!formName.trim()" :action="submit" pending-text="處理中…" success-text="已儲存" error-text="未儲存">
             儲存
           </AtSubmitButton>
         </template>
