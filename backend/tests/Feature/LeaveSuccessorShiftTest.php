@@ -230,6 +230,28 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame($before, $this->fingerprint(), 'capability preview must not write or alter plan identity');
     }
 
+    /** In-app #433: a plain leave/cancel of the last lesson whose tail lands on the renewal said 「改選其他日期／時間」. */
+    public function test_plain_leave_or_cancel_into_the_renewal_slot_explains_the_tail(): void
+    {
+        $last = $this->sessions['2026-11-24'];
+        $before = $this->fingerprint();
+        $responses = [
+            $this->withHeaders(['Authorization' => 'Bearer ' . $this->token])
+                ->postJson('/api/v1/schedules/leave-by-session', ['class_session_id' => $last]),
+            $this->withHeaders(['Authorization' => 'Bearer ' . $this->token])
+                ->patchJson('/api/v1/class-sessions/' . $last, ['status' => 'cancelled']),
+        ];
+        foreach ($responses as $response) {
+            $response->assertStatus(422)
+                ->assertJsonPath('code', 'student_slot_conflict')
+                ->assertJsonPath('session_date', '2026-12-01')
+                ->assertJsonPath('conflict_course_id', $this->renewal);
+            $this->assertStringContainsString('順延到 2026-12-01 19:00', (string) $response->json('message'));
+            $this->assertStringNotContainsString('請改選其他日期', (string) $response->json('message'));
+        }
+        $this->assertSame($before, $this->fingerprint(), 'nothing is written');
+    }
+
     public function test_not_applicable_when_the_tail_fits_before_the_renewal(): void
     {
         DB::table('ClassSession')->where('StudentClassID', $this->renewal)->delete();
