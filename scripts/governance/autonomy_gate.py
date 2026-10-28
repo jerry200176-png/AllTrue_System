@@ -1202,7 +1202,9 @@ _R3_FOUNDER_ONLY_REASONS = {
 
 # What the deploy itself executes or trusts with production credentials: a change here could forge the
 # evidence or the verification of the very range it rides in (adversarial review on #4359).
-_R3_EXECUTION_PREFIXES = (".github/actions/", "scripts/governance/", "scripts/production-deploy/")
+_R3_EXECUTION_PREFIXES = (
+    ".github/actions/", "scripts/governance/", "scripts/production-deploy/", "scripts/production-operations/",
+)
 _R3_EXECUTION_EXACT = {
     "scripts/post-deploy-verify.py", "scripts/post-merge-smoke.sh",
     # pi-remote-deploy.sh resets /home/admin to the target and runs these from the range's own tree.
@@ -1221,10 +1223,14 @@ def _r3_protected_path(path: str) -> str | None:
         return "production data repair"
     if path.startswith(_R3_EXECUTION_PREFIXES) or path in _R3_EXECUTION_EXACT:
         return "deploy execution or evidence path"
-    # CamelCase is split too (UserAuthController, StaffRoleSyncService); Guardian is the parent model, not a guard.
-    words = [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", path)]
+    # Separator split OR CamelCase split (UserAuthController), so the CamelCase pass only ever adds matches.
+    # Guardian (the parent model) is not a `guard`; every other term still applies to it.
+    words = set(re.split(r"[/_.-]+", path.lower())) | {
+        w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", path)
+    }
     if path.startswith(("backend/", "frontend/")) and any(
-        word.startswith(term) and not word.startswith("guardian") for word in words for term in _R3_IDENTITY_PATH_TERMS
+        word.startswith(term) and not (term == "guard" and word.startswith("guardian"))
+        for word in words if word for term in _R3_IDENTITY_PATH_TERMS
     ):
         return "identity/credential boundary"
     label = _r3_hold_label(path)

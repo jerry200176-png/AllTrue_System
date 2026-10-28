@@ -2229,6 +2229,22 @@ class R3AutoActivationTest(unittest.TestCase):
         # Other workflows do not hold by path; the caller requires final-head review of every PR instead.
         self.assertTrue(self._decide([billing], range_paths=[self.BILLING, ".github/workflows/ci.yml"])["ok"])
 
+    def test_every_script_the_remote_deploy_runs_is_a_deploy_execution_path(self):
+        # Drift guard: a new script called by pi-remote-deploy.sh must join _R3_EXECUTION_*.
+        remote = (ROOT / "scripts/production-deploy/pi-remote-deploy.sh").read_text(encoding="utf-8")
+        called = {m.removeprefix("/home/admin/") for m in re.findall(r"(?:/home/admin/)?scripts/[A-Za-z0-9_./-]+", remote)}
+        self.assertTrue(called)
+        for path in sorted(called):
+            with self.subTest(path=path):
+                result = self._decide([self._record(4400, self.BILLING)], range_paths=[self.BILLING, path])
+                self.assertFalse(result["ok"])
+
+    def test_guardian_paths_still_match_the_other_identity_terms(self):
+        for path in ("backend/app/Services/GuardianAuthService.php", "backend/app/Http/Controllers/guardian_login.php"):
+            with self.subTest(path=path):
+                result = self._decide([self._record(4417, path, self._diff(path, "$a = 1;", "$a = 2;"))])
+                self.assertIn("identity/credential", result["reason"])
+
     def test_identity_paths_and_effects_outside_the_reviewer_list_keep_the_founder_gate(self):
         # Adversarial review on #4359 (F1): nested Auth controllers, role services, role sync / forceFill.
         for path in ("backend/app/Http/Controllers/Api/AuthController.php", "backend/app/Services/AuthSessionService.php",
