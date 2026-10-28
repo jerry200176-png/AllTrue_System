@@ -159,7 +159,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
-- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- Presubmit size: 700 logic lines (tests, docs, generated and baseline excluded) and 1500 lines in all; split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
 - Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (AGENTS.md §PR review; `docs/governance/FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
