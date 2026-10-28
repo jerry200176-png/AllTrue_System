@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { courseActions } from '../../lib/courseActions.js';
+import { canResumeCourse, courseActions } from '../../lib/courseActions.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const ids = (model) => model.groups.flatMap((g) => g.items.map((i) => i.id));
 const session = { id: 1, status: 'active' };
@@ -98,5 +100,19 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     const m = courseActions({ id: 2, status: 'active' }, {});
     expect(m.groups.every((g) => g.items.length > 0)).toBe(true);
     expect(new Set(ids(m)).size).toBe(ids(m).length);
+  });
+});
+
+describe('canResumeCourse — history menu shares the row rule (#4515)', () => {
+  it('only a paused, non-waived course can resume; a used-up active course cannot', () => {
+    expect(canResumeCourse({ status: 'inactive' })).toBe(true);
+    expect(canResumeCourse({ status: 'inactive', closed_reason: 'waived' })).toBe(false);
+    // Course 2739: lessons used up (history 'completed') but never paused — 恢復 opened a 暫停 dialog.
+    expect(canResumeCourse({ status: 'active', history_reason: 'completed' })).toBe(false);
+  });
+
+  it('the history card menu uses canResumeCourse', () => {
+    const page = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
+    expect(page).toContain('<button v-if="canResumeCourse(hc)" class="action-dropdown-item action-dropdown-resume"');
   });
 });

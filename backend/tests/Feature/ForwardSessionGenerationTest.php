@@ -89,6 +89,23 @@ class ForwardSessionGenerationTest extends TestCase
         $this->assertStringContainsString('upcoming', $plan['reason']);
     }
 
+    public function test_past_unmarked_session_holds_a_remaining_session(): void
+    {
+        // #4515 (course 2739): last lesson passed unmarked, RemainingSessions still 1 → the
+        // 03:45 run added a 9th lesson; the unmarked one was later moved and both got deducted.
+        $sc = $this->course(remaining: 1);
+        $this->sess($sc, '2026-06-29', '16:00:00', '18:00:00', 'attended');
+        $this->sess($sc, '2026-07-06', '16:00:00', '18:00:00', 'scheduled');
+        $plan = $this->gen->planCourse($sc, 4, $this->today);
+        $this->assertSame('skip', $plan['status']);
+        $this->assertSame([], $plan['slots']);
+
+        $sc2 = $this->course(remaining: 3);
+        $this->sess($sc2, '2026-06-29', '16:00:00', '18:00:00', 'attended');
+        $this->sess($sc2, '2026-07-06', '16:00:00', '18:00:00', 'scheduled');
+        $this->assertCount(2, $this->gen->planCourse($sc2, 4, $this->today)['slots']);
+    }
+
     public function test_command_dry_run_is_read_only(): void
     {
         $sc = $this->course(remaining: 4);

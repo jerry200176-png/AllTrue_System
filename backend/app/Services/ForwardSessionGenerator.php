@@ -61,6 +61,16 @@ class ForwardSessionGenerator
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'already has an upcoming session', 'slots' => []];
         }
 
+        // A past lesson not yet marked still holds one of the remaining sessions (it can be marked
+        // late or moved). Ignoring it added a 9th lesson to an 8-lesson course (#4515, course 2739).
+        $remaining -= DB::table('ClassSession')
+            ->where('StudentClassID', $studentClassId)
+            ->whereRaw("LOWER(Status) = 'scheduled'")
+            ->count();
+        if ($remaining <= 0) {
+            return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'remaining sessions already held by unmarked past sessions', 'slots' => []];
+        }
+
         // Derive cadence from the last up-to-6 non-cancelled sessions.
         $recent = DB::table('ClassSession')
             ->where('StudentClassID', $studentClassId)
