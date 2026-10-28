@@ -27,10 +27,9 @@ paths = [
 # The default generic-api-key rule does trip on key-named literals in tests and on a few domain identifiers in app
 # code (full-history scan of main, 2026-10-28), so these regexes, each anchored to the WHOLE captured value, admit only
 # identifier-shaped values that no high-signal rule's secret can have. A new literal such as 'idempotency_key' =>
-# 'synthetic-4326' or a UUID passes; a random-looking value does not. (UUID shaped keys exist, e.g. Heroku; this stack uses none.)
+# 'synthetic-4326' passes; a UUID or any random-looking value does not (name key-named test fixtures synthetic-...).
 regexes = [
   '''^synthetic-[a-z0-9-]+$''',                           # test fixtures named on purpose: synthetic-4326
-  '''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$''',  # UUID idempotency keys in tests
   '''^promo-[a-z]+-[0-9]+$''',                            # GradePromotion test idempotency keys
   '''^syn\.[a-z]+(?:\.[a-z0-9-]+)+\.v[0-9]+$''',        # TrueFit material keys: syn.eng.phonics.short-vowels.v1
   '''^weekly_[0-9]+_segments$''',                         # TeacherEligibility pay component key
