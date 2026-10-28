@@ -176,13 +176,22 @@ class AccountingController extends Controller
             ->get()
             ->groupBy('StudentClassID');
 
-        $rows = $courses->map(function (StudentClass $course) use ($invoiceMap, $reportMap, $stoppedStatuses) {
+        // The one 舊制無帳單 evidence rule of the course list and alerts (#4114): payment on any bill of the course or of its
+        // shared package, so a paid package's other members are not flagged and a flag here always has a ledger action.
+        $evidence = app(BillingPayableResolver::class)->validPaymentEvidence(
+            $courseIds,
+            [],
+            $request->attributes->get('auth_role') === 'super_admin' ? null : array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])),
+        );
+
+        $rows = $courses->map(function (StudentClass $course) use ($invoiceMap, $reportMap, $stoppedStatuses, $evidence) {
             $invoices = $invoiceMap->get((int) $course->ID, collect());
             $reports = $reportMap->get((int) $course->ID, collect());
             [$invoiceTotal, $appliedTotal, $overpaidTotal, $outstandingTotal] = $this->invoiceTotals($invoices);
 
             // Same trial exemption as the course list and alerts (#4339): a trial fee recorded by date never gets an invoice.
-            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1 && !$course->isTrialFeeRecordedByDate();
+            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1 && !$course->isTrialFeeRecordedByDate()
+                && !isset($evidence['classes'][(int) $course->ID]);
             $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
             $status = $stoppedStatuses[(int) $course->getAttribute('ID')] ?? null;
             $state = $status !== null && (int) $course->getAttribute('Stop') === 1 ? $this->stoppedCourseVisibleState($course, $status) : null;
@@ -809,6 +818,9 @@ class AccountingController extends Controller
                 // Monthly ('date') members stay separate: each is billed and recorded by its own period subtotal (#3892 review).
                 'package_id' => (int) ($class->PackageID ?? 0) > 0 && strtolower((string) ($class->ScheduleMode ?? 'count')) !== 'date'
                     ? (int) $class->PackageID : null,
+                // In-app #428/#438: any PackageID (monthly members too, unlike package_id above), for the legacy-flag clear
+                // warning: that action clears the package and every same-student member.
+                'in_package' => (int) ($class->PackageID ?? 0) > 0,
                 // In-app #425: same 金額待確認 verdict as the tuition list (TuitionDocActions keeps 繳費單 disabled). Read-only.
                 'amount_pending_confirmation' => in_array((int) $class->ID, $amountPendingIds, true),
                 // in-app #432: the month and amount 登記收款 collects when no bill of this monthly contract still owes.

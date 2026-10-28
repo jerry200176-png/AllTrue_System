@@ -238,12 +238,15 @@ export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對：舊資料標記已收�
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
 // Founder GO 2026-10-21: on the ledger card the director gets the next step, not a dead-end label.
 export const LEGACY_FLAG_ACTION_HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
+export const LEGACY_SHARED_PACKAGE_NOTE = '這門課屬於共用方案：方案內所有課程會一起改成未繳。';
 export const LEGACY_CONFIRMED_REPORT_HELP = '這門課已有確認過的收款回報，請先在學生帳務的「收款紀錄」核對。';
-// The ledger shortcut and card must use the same existing backfill eligibility.
+// The ledger shortcut and card must use the same existing backfill eligibility. In-app #428/#438: every course mode
+// (count or monthly, single or in a shared package) resolves the same two ways; a shared package acts on its lead
+// card (sharedFollower cards point to it) and the server clears or records the package as one obligation.
 export const canResolveLegacyPaidFlag = (course, {
-  legacyUnverified, canResolveLegacy, isMonthly, waived, pendingReport, sharedFollower,
+  legacyUnverified, canResolveLegacy, waived, pendingReport, sharedFollower,
 } = {}) => Boolean(legacyUnverified && canResolveLegacy && course?.paid === true
-  && course.class_type !== 'tutoring' && !course.package_id && !course.free_gift_settled && !isMonthly && !waived
+  && course.class_type !== 'tutoring' && !course.free_gift_settled && !waived
   && !pendingReport && !sharedFollower);
 export const ENDED_PENDING_LABEL = '課已結束，尚未收款';
 export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';
