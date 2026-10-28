@@ -2221,7 +2221,8 @@ class R3AutoActivationTest(unittest.TestCase):
         for path in ("scripts/governance/gh_api_retry.py", ".github/actions/production-ssh-trust/action.yml",
                      "scripts/production-deploy/write_manifest.py", "scripts/post-deploy-verify.py",
                      "scripts/post-merge-smoke.sh", "scripts/write-deployment-manifest.py",
-                     "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh"):
+                     "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh",
+                     "scripts/smoke-api.sh", "scripts/smoke-auth-lib.sh"):
             with self.subTest(path=path):
                 result = self._decide([billing], range_paths=[self.BILLING, path])
                 self.assertFalse(result["ok"])
@@ -2231,13 +2232,23 @@ class R3AutoActivationTest(unittest.TestCase):
 
     def test_every_script_the_remote_deploy_runs_is_a_deploy_execution_path(self):
         # Drift guard: a new script called by pi-remote-deploy.sh must join _R3_EXECUTION_*.
-        remote = (ROOT / "scripts/production-deploy/pi-remote-deploy.sh").read_text(encoding="utf-8")
+        remote = "".join((ROOT / f).read_text(encoding="utf-8") for f in (
+            "scripts/production-deploy/pi-remote-deploy.sh", "scripts/post-merge-smoke.sh", "scripts/post-deploy-verify.py"))
         called = {m.removeprefix("/home/admin/") for m in re.findall(r"(?:/home/admin/)?scripts/[A-Za-z0-9_./-]+", remote)}
+        called |= {f"scripts/{name}" for name in re.findall(r"\$SCRIPT_DIR/([A-Za-z0-9_.-]+)", remote)}
         self.assertTrue(called)
         for path in sorted(called):
             with self.subTest(path=path):
                 result = self._decide([self._record(4400, self.BILLING)], range_paths=[self.BILLING, path])
                 self.assertFalse(result["ok"])
+
+    def test_test_files_are_not_identity_paths(self):
+        # Codex on #4359: a regression test named after a guard is not a production identity boundary.
+        billing = self._record(4400, self.BILLING)
+        for path in ("backend/tests/Unit/ScheduleGuardSummaryTest.php", "frontend/src/lib/__tests__/authRole.test.js",
+                     "frontend/e2e/login.spec.js"):
+            with self.subTest(path=path):
+                self.assertTrue(self._decide([billing], range_paths=[self.BILLING, path])["ok"])
 
     def test_guardian_paths_still_match_the_other_identity_terms(self):
         for path in ("backend/app/Services/GuardianAuthService.php", "backend/app/Http/Controllers/guardian_login.php"):
@@ -2365,7 +2376,8 @@ class R3AutoActivationTest(unittest.TestCase):
                     return {"workflow_runs": [{"id": 2}, {"id": 1}]}
                 if path.endswith("/runs/2/jobs?per_page=100"):
                     return {"jobs": [{"name": "Deploy to Production", "conclusion": "skipped"}]}
-                return {"jobs": [{"name": "Deploy to Production", "conclusion": deploy_job}]}
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": deploy_job,
+                                  "completed_at": "2026-10-28T01:00:00Z"}]}
             return api
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api_for(["success"], "success")))
         self.assertIn("main CI is red", deploy_freeze_reason(repo="o/r", api=api_for(["failure"], "success")))
@@ -2380,6 +2392,18 @@ class R3AutoActivationTest(unittest.TestCase):
             return api_for(["success"], "success")(path, *extra)
         self.assertIn("main CI is red", deploy_freeze_reason(repo="o/r", api=masked))
 
+    def test_deploy_freeze_uses_the_newest_deploy_job_by_completion_time(self):
+        # Codex on #4359: an older run re-run after a newer successful deploy must still freeze.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}, {"id": 10}]}  # newest run first
+            if "/runs/20/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z"}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z"}]}
+        self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
+
     def test_deploy_freeze_looks_past_skipped_runs_within_a_bounded_window(self):
         # #4359 review: most deploy.yml runs skip the deploy job; look past them, but bounded (job deadline).
         def api(path, *extra):
@@ -2390,7 +2414,8 @@ class R3AutoActivationTest(unittest.TestCase):
                 return {"workflow_runs": [{"id": page * 1000 + i} for i in range(100)]}
             run = int(path.split("/runs/")[1].split("/")[0])
             ran = run == real_run
-            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success" if ran else "skipped"}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success" if ran else "skipped",
+                              "completed_at": "2026-10-28T01:00:00Z"}]}
         real_run = 1000 + 97  # the 98th run back, after 97 skipped ones
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
         real_run = 2000 + 3  # beyond the window: unknown, so frozen

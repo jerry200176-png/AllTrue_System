@@ -1207,6 +1207,8 @@ _R3_EXECUTION_PREFIXES = (
 )
 _R3_EXECUTION_EXACT = {
     "scripts/post-deploy-verify.py", "scripts/post-merge-smoke.sh",
+    # post-merge-smoke.sh sources/runs these from the deployed tree during verification.
+    "scripts/smoke-api.sh", "scripts/smoke-auth-lib.sh",
     # pi-remote-deploy.sh resets /home/admin to the target and runs these from the range's own tree.
     "scripts/write-deployment-manifest.py", "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh",
 }
@@ -1228,7 +1230,9 @@ def _r3_protected_path(path: str) -> str | None:
     words = set(re.split(r"[/_.-]+", path.lower())) | {
         w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", path)
     }
-    if path.startswith(("backend/", "frontend/")) and any(
+    is_test = path.startswith(("backend/tests/", "frontend/e2e/")) or "/__tests__/" in path or bool(
+        re.search(r"\.(?:test|spec)\.[cm]?[jt]s$", path))
+    if path.startswith(("backend/", "frontend/")) and not is_test and any(
         word.startswith(term) and not (term == "guard" and word.startswith("guardian"))
         for word in words if word for term in _R3_IDENTITY_PATH_TERMS
     ):
@@ -1339,22 +1343,27 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
         return "main CI state unknown"
     if decided[0].get("conclusion") != "success":
         return f"main CI is red (run {decided[0].get('id')}: {decided[0].get('conclusion')})"
+    # The newest *deploy job* by completion time decides, not run order: an older run can be re-run later.
+    latest = None
     for page in range(1, _FREEZE_LOOKBACK_PAGES + 1):
         runs = (api(f"/repos/{repo}/actions/workflows/deploy.yml/runs?status=completed&per_page=100&page={page}")
                 or {}).get("workflow_runs") or []
         for run in runs:
             jobs = api(f"/repos/{repo}/actions/runs/{run.get('id')}/jobs?per_page=100")
-            ran = [
-                job for job in ((jobs or {}).get("jobs") or [])
-                if job.get("name") == DEPLOY_JOB_NAME and job.get("conclusion") not in {"skipped", None}
-            ]
-            if ran:
-                if ran[0].get("conclusion") == "success":
-                    return None
-                return (f"previous production deploy (run {run.get('id')}) ended {ran[0].get('conclusion')}; "
-                        "stop the line until a reviewed deploy succeeds")
+            for job in (jobs or {}).get("jobs") or []:
+                if job.get("name") != DEPLOY_JOB_NAME or job.get("conclusion") in {"skipped", None}:
+                    continue
+                if not job.get("completed_at"):
+                    return f"deploy job in run {run.get('id')} has no completion time; state unknown"
+                if latest is None or str(job["completed_at"]) > str(latest[0]):
+                    latest = (job["completed_at"], run.get("id"), job.get("conclusion"))
         if len(runs) < 100:
             break
+    if latest is not None:
+        if latest[2] == "success":
+            return None
+        return (f"previous production deploy (run {latest[1]}) ended {latest[2]}; "
+                "stop the line until a reviewed deploy succeeds")
     return f"no production deploy in the last {_FREEZE_LOOKBACK_PAGES * 100} deploy runs; state unknown"
 
 
