@@ -22,6 +22,7 @@ use App\Http\Controllers\BindingController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
+use App\Http\Controllers\StudentClassLookupController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StudentGuardianController;
 use App\Http\Controllers\ParentPortalTestFixtureController;
@@ -1008,6 +1009,8 @@ Route::prefix('v1')->group(function () {
         // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
         Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
         Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');
+        // #3868: readable rows for engineering contract ids (read-only, <= 50 ids, audited).
+        Route::get('admin/student-classes/lookup', [StudentClassLookupController::class, 'index']);
     });
 
     // ── Duplicate Sessions P2 Review (director + super_admin) ──
