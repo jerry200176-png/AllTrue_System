@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-forward-gen-unmarked-lesson
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 買八堂不再被自動多排第九堂
+    summary: 最後一堂還沒點名時，系統不再自動多排一堂；堂數用完的歷史課程不再顯示「恢復課程」。
+    items:
+      - category: fixed
+        text: 堂數制課程的最後一堂過了還沒點名時，夜間自動排課不會再多排一堂，避免之後多扣一堂。
+      - category: fixed
+        text: 堂數用完的歷史課程不再顯示「恢復課程」（原本按下會跳出暫停視窗）；要繼續上課請用「續購」。
+    source_refs:
+      - "changelog:2026-10-28:forward-gen-unmarked-lesson"

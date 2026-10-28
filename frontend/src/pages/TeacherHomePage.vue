@@ -16,10 +16,9 @@
     <button
       type="button"
       class="th-clockin-card card"
+      aria-describedby="teacher-clockin-status"
       :class="clockinCardClass"
       @click="goAttendance"
-      aria-labelledby="teacher-clockin-title"
-      aria-describedby="teacher-clockin-status"
     >
 
       <!-- Header row: icon + title + badge + arrow -->
@@ -31,11 +30,11 @@
           <span id="teacher-clockin-title" class="th-clockin-title">今日打卡狀態</span>
           <span id="teacher-clockin-status" class="th-clockin-badge" :class="clockinBadgeClass" aria-live="polite">{{ clockinBadgeLabel }}</span>
         </div>
-        <span class="material-symbols-outlined th-clockin-arrow">chevron_right</span>
+        <span class="material-symbols-outlined th-clockin-arrow" aria-hidden="true">chevron_right</span>
       </div>
 
       <!-- Body: two time chips side by side -->
-      <div class="th-clockin-chips" v-if="!clockinLoading">
+      <div class="th-clockin-chips" v-if="!clockinLoading && !clockinError">
         <!-- 簽到 chip -->
         <div class="th-clockin-chip">
           <span class="th-chip-label">簽到</span>
@@ -56,14 +55,16 @@
       </div>
 
       <!-- Skeleton while loading -->
-      <div class="th-clockin-chips" v-else aria-hidden="true">
+      <div class="th-clockin-chips" v-else-if="clockinLoading" aria-hidden="true">
         <div class="th-clockin-chip th-chip-skeleton"></div>
         <div class="th-clockin-chip th-chip-skeleton"></div>
       </div>
 
+      <div v-else class="th-clockin-hint">打卡狀態無法載入，請稍後重新整理。</div>
+
       <!-- Hint: first class time -->
-      <div class="th-clockin-hint" v-if="!clockinLoading && clockinRecord.first_class_start_time">
-        <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">schedule</span>
+      <div class="th-clockin-hint" v-if="!clockinLoading && !clockinError && clockinRecord.first_class_start_time">
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:13px;vertical-align:-2px">schedule</span>
         第一堂課：{{ clockinRecord.first_class_start_time }}
       </div>
     </button>
@@ -448,10 +449,14 @@ function refreshTeacherStreakUi() {
 
 // ── Teacher clock-in status ──
 const clockinLoading = ref(true);
+const clockinError = ref(false);
 const clockinRecord  = ref({});
+let clockinLoadSequence = 0;
 
 const clockinBadgeClass = computed(() => {
+  if (clockinLoading.value || clockinError.value) return 'th-badge-warn';
   const s = clockinRecord.value.status;
+  if ((s === 'normal' || s === 'late') && !clockinRecord.value.sign_in_dt) return 'th-badge-warn';
   if (!s || s === 'no_record') return 'th-badge-warn';
   if (s === 'normal') return 'th-badge-ok';
   if (s === 'late')   return 'th-badge-late';
@@ -459,16 +464,21 @@ const clockinBadgeClass = computed(() => {
 });
 
 const clockinBadgeLabel = computed(() => {
-  const s = clockinRecord.value.status;
-  if (!s || s === 'no_record') return '尚未打卡';
-  if (s === 'normal') return clockinRecord.value.sign_out_dt ? '已完成' : '上班中';
+  if (clockinLoading.value) return '確認中';
+  if (clockinError.value) return '無法確認';
+  const { status: s, sign_in_dt: signedIn, sign_out_dt: signedOut } = clockinRecord.value;
+  if (s === 'no_record' && !signedIn && !signedOut) return '尚未打卡';
+  if ((s === 'normal' || s === 'late') && !signedIn) return '待確認';
+  if (s === 'normal') return signedOut ? '已完成' : '上班中';
   if (s === 'late')   return '遲到';
   return '待確認';
 });
 
 // Card-level status class: controls left border colour
 const clockinCardClass = computed(() => {
+  if (clockinLoading.value || clockinError.value) return 'th-ckin-empty';
   const s = clockinRecord.value.status;
+  if ((s === 'normal' || s === 'late') && !clockinRecord.value.sign_in_dt) return 'th-ckin-empty';
   if (!s || s === 'no_record') return 'th-ckin-empty';
   if (s === 'late')   return 'th-ckin-late';
   if (s === 'normal') return clockinRecord.value.sign_out_dt ? 'th-ckin-done' : 'th-ckin-working';
@@ -477,7 +487,9 @@ const clockinCardClass = computed(() => {
 
 // Icon wrap colour class
 const clockinIconWrapClass = computed(() => {
+  if (clockinLoading.value || clockinError.value) return 'th-icon-empty';
   const s = clockinRecord.value.status;
+  if ((s === 'normal' || s === 'late') && !clockinRecord.value.sign_in_dt) return 'th-icon-empty';
   if (!s || s === 'no_record') return 'th-icon-empty';
   if (s === 'late')   return 'th-icon-late';
   if (s === 'normal') return clockinRecord.value.sign_out_dt ? 'th-icon-done' : 'th-icon-working';
@@ -485,15 +497,28 @@ const clockinIconWrapClass = computed(() => {
 });
 
 async function fetchClockinStatus() {
+  const sequence = ++clockinLoadSequence;
   clockinLoading.value = true;
+  clockinError.value = false;
   try {
     const token = await getToken();
     const res = await fetch('/api/v1/teacher-attendance/today', {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) clockinRecord.value = await res.json();
-  } catch { /* silent */ } finally {
-    clockinLoading.value = false;
+    if (!res.ok) throw new Error('clock-in status unavailable');
+    const record = await res.json();
+    if (!record || typeof record !== 'object' || Array.isArray(record)
+      || (!record.status && !record.sign_in_dt && !record.sign_out_dt)) {
+      throw new Error('invalid clock-in status');
+    }
+    if (sequence !== clockinLoadSequence) return;
+    clockinRecord.value = record;
+  } catch {
+    if (sequence !== clockinLoadSequence) return;
+    clockinRecord.value = {};
+    clockinError.value = true;
+  } finally {
+    if (sequence === clockinLoadSequence) clockinLoading.value = false;
   }
 }
 
@@ -993,6 +1018,7 @@ function startPolling() {
       fetchOverdueLearning();
       fetchAwaitingReplyCount();
       fetchPendingExams();
+      fetchClockinStatus();
     }
   }, POLL_INTERVAL);
 }
@@ -1009,6 +1035,7 @@ function onVisibilityChange() {
     fetchAwaitingReplyCount();
     fetchOverdueLearning();
     fetchPendingExams();
+    fetchClockinStatus();
   }
 }
 
@@ -1109,6 +1136,7 @@ watch(() => props.teacherBranchIds, () => {
   loadWeekSchedule();
 }, { deep: true });
 onBeforeUnmount(() => {
+  clockinLoadSequence++;
   overdueLoadSequence++;
   weekLoadSequence++;
   stopPolling();

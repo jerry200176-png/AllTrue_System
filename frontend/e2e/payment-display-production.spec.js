@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import {
-  FREE_GIFT_LABEL, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, WAIVED_LABEL,
+  FREE_GIFT_LABEL, LEGACY_FLAG_UNVERIFIED_LABEL, LEGACY_CONFIRMED_REPORT_HELP, TUITION_STATUS_CONFIG, WAIVED_LABEL,
 } from '../src/lib/courseMoneyState.js';
 import { formatCourseRef } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
@@ -39,6 +39,8 @@ const UNPAID_LABEL = TUITION_STATUS_CONFIG.unpaid.label;
 const UI_STUDENTS = 6;
 const LEDGER_SCAN = 24;
 const LEDGER_CASES = 4;
+// Report attachment356 identifies this course; use it only if already in the director's scoped list.
+const REPORTED_LEGACY_COURSE_ID = 2237;
 const SHORT = { timeout: 5_000 };
 
 function readSession() {
@@ -99,14 +101,21 @@ function ledgerFacts(ledger, courseById) {
     const noStanding = !receipt && invoices.every((inv) => netOf(inv) <= 0);
     const listed = courseById.get(Number(c.id));
     const tutoring = listed ? isTutoring(listed) : null;
+    const reports = (ledger.receipts || []).filter((r) => Number(r.student_class_id) === Number(c.id));
+    const legacyNoStanding = noStanding && c.waived !== true && c.free_gift_settled !== true
+      && Boolean(c.paid_at || c.paid) && tutoring === false;
     return {
       id: Number(c.id),
       subject: String(c.subject || ''),
       waived: c.waived === true,
       tutoring,
       netZeroReversed: noStanding && invoices.some((inv) => (inv.payments || []).length > 0),
-      legacyNoStanding: noStanding && c.waived !== true && c.free_gift_settled !== true
-        && Boolean(c.paid_at || c.paid) && tutoring === false,
+      legacyNoStanding,
+      // API evidence, never button visibility: the existing ordinary legacy gate would offer these
+      // actions, except that a same-course confirmed report requires receipt review instead (#4506).
+      confirmedLegacyChoice: legacyNoStanding && c.paid === true && !c.package_id && c.schedule_mode === 'count'
+        && ledger.scope?.no_payment_obligation !== true && !reports.some((r) => r.status === 'pending')
+        && reports.some((r) => r.status === 'confirmed'),
     };
   });
 }
@@ -180,7 +189,10 @@ async function ledgerScan(request) {
   const byId = new Map(courses.map((row) => [idOf(row), row]));
   const likely = (row) => row?.closed_reason === 'waived' || row?.legacy_paid_flag_only === true;
   const scan = { waived: [], legacy: [], reversed: [], scanned: 0 };
-  for (const studentId of studentsFirst(courses, likely, LEDGER_SCAN)) {
+  const reported = BRANCH_ID === 15 ? courses.find((row) => idOf(row) === REPORTED_LEGACY_COURSE_ID) : null;
+  const candidates = [...new Set([studentIdOf(reported), ...studentsFirst(courses, likely, LEDGER_SCAN)])]
+    .filter((id) => id > 0).slice(0, LEDGER_SCAN);
+  for (const studentId of candidates) {
     const facts = ledgerFacts(await apiGet(request, `/api/v1/accounting/ledger?student_id=${studentId}`), byId);
     scan.scanned += 1;
     if (facts.some((f) => f.waived && f.tutoring !== true)) scan.waived.push(studentId);
@@ -451,6 +463,11 @@ test.describe('production acceptance — payment display (#4150)', () => {
     await openCourseFinder(page);
     const counts = { ledgers_scanned: scan.scanned, students_with_case: scan[rule].length, ledgers_opened: 0, cases_checked: 0, students_not_listed: 0 };
     const violations = [];
+    const confirmedLegacyCourseIds = [];
+    if (rule === 'legacy') {
+      counts.confirmed_legacy_cases_checked = 0;
+      counts.reported_course_confirmed_cases_checked = 0;
+    }
     for (const studentId of scan[rule].slice(0, LEDGER_CASES)) {
       const group = names.get(studentId) ? await openBillingTab(page, studentId, names.get(studentId)) : null;
       if (!group) { counts.students_not_listed += 1; continue; }
@@ -486,6 +503,17 @@ test.describe('production acceptance — payment display (#4150)', () => {
           const text = await card.innerText(SHORT);
           if ((await card.locator('[data-testid="contract-legacy-unverified"]').innerText(SHORT).catch(() => '')).trim() !== LEGACY_FLAG_UNVERIFIED_LABEL) violations.push({ course_id: fact.id, problem: 'legacy_without_review_note' });
           if (text.includes('繳費日') || text.includes('已收清')) violations.push({ course_id: fact.id, problem: 'legacy_reads_as_paid' });
+          if (fact.confirmedLegacyChoice) {
+            counts.confirmed_legacy_cases_checked += 1;
+            confirmedLegacyCourseIds.push(fact.id);
+            if (BRANCH_ID === 15 && fact.id === REPORTED_LEGACY_COURSE_ID) counts.reported_course_confirmed_cases_checked += 1;
+            try {
+              await expect(card.getByTestId('legacy-flag-help')).toHaveText(LEGACY_CONFIRMED_REPORT_HELP, SHORT);
+              await expect(card.locator('[data-testid="legacy-backfill-open"], [data-testid="legacy-clear-open"]')).toHaveCount(0, SHORT);
+            } catch {
+              violations.push({ course_id: fact.id, problem: 'confirmed_legacy_offers_actions_or_lacks_receipt_guidance' });
+            }
+          }
         }
         if (rule === 'reversed' && fact.netZeroReversed) {
           counts.cases_checked += 1;
@@ -524,8 +552,11 @@ test.describe('production acceptance — payment display (#4150)', () => {
     }
     counts.blocked_post_reads = await guard.blockedPostReads();
     coverage(counts);
+    if (rule === 'legacy' && counts.confirmed_legacy_cases_checked === 0) note('not-exercised', 'confirmed_legacy_condition');
+    if (rule === 'legacy' && counts.reported_course_confirmed_cases_checked === 0) note('not-exercised', 'source431_reported_course');
     ruleCoverage({ waived: 'waived', legacy: 'legacy_only', reversed: 'net_zero_reversal' }[rule], counts.cases_checked);
-    await test.info().attach(`ledger-${rule}-coverage.json`, { body: JSON.stringify({ branch_id: BRANCH_ID, ...counts, violations }), contentType: 'application/json' });
+    await test.info().attach(`ledger-${rule}-coverage.json`, { body: JSON.stringify({ branch_id: BRANCH_ID, ...counts,
+      confirmed_legacy_course_ids: confirmedLegacyCourseIds, violations }), contentType: 'application/json' });
     await guard.assertNoWrites();
     expect(violations, `ledger rule ${rule} (course ids only)`).toEqual([]);
     test.skip(counts.cases_checked === 0, `not-exercised: no ${rule} case among ${scan.scanned} scanned ledgers`);

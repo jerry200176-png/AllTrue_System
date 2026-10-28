@@ -136,9 +136,11 @@ test.describe('Director Accounts real Vue page', () => {
 for (const width of [390,1440]) {
   test(`pending campus save retains original target and blocks dismissal at ${width}`,async ({page})=>{
     let release;const held=new Promise(r=>{release=r;});const writes=[];
+    let releaseReload;const reloadHeld=new Promise(r=>{releaseReload=r;});let saved=false;
     await page.route('**/api/v1/**',async route=>{
       const r=route.request();const path=new URL(r.url()).pathname;
-      if(r.method()==='PUT'){writes.push({method:r.method(),path,body:r.postDataJSON(),authorization:r.headers().authorization});await held;return route.fulfill({status:200,contentType:'application/json',body:'{}'});}
+      if(r.method()==='PUT'){writes.push({method:r.method(),path,body:r.postDataJSON(),authorization:r.headers().authorization});await held;saved=true;return route.fulfill({status:200,contentType:'application/json',body:'{}'});}
+      if(r.method()==='GET'&&path==='/api/v1/directors'&&saved)await reloadHeld;
       const data=path==='/api/v1/directors'?[{id:101,name:'主任甲',account:'a@example.test',campus_ids:[1],campus_names:['合成校一']},{id:102,name:'主任乙',account:'b@example.test',campus_ids:[2],campus_names:['合成校二']}]:path==='/api/v1/campuses'?[{id:1,name:'合成校一'},{id:2,name:'合成校二'}]:[];
       return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
     });
@@ -155,8 +157,15 @@ for (const width of [390,1440]) {
     await page.getByRole('button',{name:'編輯分校'}).nth(1).dispatchEvent('click');await expect(dialog).toContainText('主任甲');
     await dialog.getByRole('button',{name:'儲存'}).dispatchEvent('click');expect(writes).toHaveLength(1);
     for(let i=0;i<10;i++){await page.keyboard.press('Tab');expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);}
-    release();await expect(dialog).toBeHidden();await expect(page.getByRole('status')).toContainText('已更新「主任甲」');
-    expect(writes).toEqual([{method:'PUT',path:'/api/v1/directors/101/campuses',body:{campus_ids:[1]},authorization:'Bearer synthetic-test-token'}]);
+    release();
+    try{
+      await expect(dialog).toBeHidden();
+      // Keep the real post-save reload pending: its loading status coexists with success.
+      await expect(page.getByRole('status')).toHaveCount(2);
+      await expect(page.getByRole('status').filter({hasText:'已更新「主任甲」的分校'})).toHaveText('已更新「主任甲」的分校');
+      expect(writes).toEqual([{method:'PUT',path:'/api/v1/directors/101/campuses',body:{campus_ids:[1]},authorization:'Bearer synthetic-test-token'}]);
+    }finally{releaseReload();}
+    await expect(page.getByRole('status')).toHaveCount(1);
   });
 }
 
