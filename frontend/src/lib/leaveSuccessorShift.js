@@ -63,3 +63,18 @@ export async function applySuccessorLeave(plan, options = {}) {
   if (result.applied !== true && result.already_applied !== true) throw new Error('未確認請假完成，請重新整理課表');
   return result;
 }
+
+/**
+ * One preview, confirm, apply pass for a director leaving a lesson that has no attendance row yet (#4578).
+ * 'ordinary': no shift applies, use the ordinary leave. 'stopped': blocked, declined or the page moved on; nothing was
+ * written. 'done': applied. A refused or stale apply throws the server's message for the page to report.
+ */
+export async function leaveWithRenewalShift({ role, sessionId, token, request, ask, onBlocked, owns = () => true }) {
+  const plan = await previewSuccessorLeave({ role, sessionId, token, request });
+  if (!owns()) return 'stopped';
+  if (!plan) return 'ordinary';
+  if (!plan.eligible) { onBlocked(plan); return 'stopped'; }
+  if (!await ask(successorImpactItems(plan).join('\n')) || !owns()) return 'stopped';
+  await applySuccessorLeave(plan, { token, request });
+  return 'done';
+}
