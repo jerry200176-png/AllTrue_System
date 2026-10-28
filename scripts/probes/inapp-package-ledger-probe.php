@@ -195,10 +195,11 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
 
 /**
  * One named package, row by row (#4455 over-debits): every ledger row on a lesson that is not chargeable or no longer
- * exists, joined to each live chargeable member lesson in the same (date, start) slot (one output row per such lesson,
- * twin_* null when there is none), and every ledger row of a slot debited through more than one lesson. A deleted
- * lesson's slot comes from its last schedule audit snapshot, else the date of its sign-in (start unknown: twins match on
- * the date alone). course_net: the lesson's course ledger deduct minus reverse.
+ * exists, joined to each live chargeable member lesson on the same date at any start (one output row per such lesson,
+ * twin_* null when there is none; a package creation seed sits at a default start, so its re-created lesson can be at
+ * another; twin_start_time tells the same slot apart), and every ledger row of a slot debited through more than one
+ * lesson. A deleted lesson's slot comes from its last schedule audit snapshot, else the date of its sign-in (start
+ * unknown). course_net: the lesson's course ledger deduct minus reverse.
  *
  * @param list<string> $chargeable
  * @return array{unchargeable_session_rows: list<array<string, mixed>>, shared_slot_rows: list<array<string, mixed>>}
@@ -265,10 +266,11 @@ function inapp_package_ledger_rows(callable $rows, int $packageId, array $charge
             continue;
         }
         $twins = array_filter($lessons, fn (array $l): bool => (int) $l['id'] !== $cs && $where['session_date'] !== null
-            && (string) $l['session_date'] === $where['session_date'] && ($where['start_time'] === null || (string) $l['start_time'] === $where['start_time']));
+            && (string) $l['session_date'] === $where['session_date']);
         foreach ($twins ?: [null] as $l) {
             $unchargeable[] = $row + ['twin_session_id' => $l ? (int) $l['id'] : null, 'twin_student_class_id' => $l ? (int) $l['student_class_id'] : null,
-                'twin_status' => $l['status'] ?? null, 'twin_package_net' => $l ? (int) $l['package_net'] : null, 'twin_course_net' => $l ? (int) $l['course_net'] : null];
+                'twin_start_time' => $l['start_time'] ?? null, 'twin_status' => $l['status'] ?? null, 'twin_package_net' => $l ? (int) $l['package_net'] : null,
+                'twin_course_net' => $l ? (int) $l['course_net'] : null];
         }
     }
     $shared = [];
