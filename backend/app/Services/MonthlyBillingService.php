@@ -65,6 +65,63 @@ class MonthlyBillingService
     }
 
     /**
+     * in-app #432 (Founder 2026-10-28, option A): the month a payment with no open bill collects for. A monthly contract
+     * that spans calendar months is billed month by month, oldest unbilled month first; otherwise today's rule.
+     * Shared by 登記收款 (directorRecord), confirm, the tuition slip, the pay link and the ledger's drawer form.
+     *
+     * @param  Collection<int, Invoice>|null  $invoices  this contract's non-void bills with items, when already loaded
+     */
+    public function collectionPeriodFor(Model $course, \DateTimeInterface|string|null $anchor = null, ?Collection $invoices = null): string
+    {
+        return $this->unbilledPeriodFor($course, $invoices) ?? $this->defaultPeriodFor($course, $anchor);
+    }
+
+    /**
+     * The oldest calendar month inside a monthly contract whose countable lessons (attended/completed/late) no non-void
+     * bill of the contract covers, or null. A bill covers its item service range (serviceRangeForCourse), else its
+     * billing_period month. Null (today's rule) whenever coverage is unclear, so no lesson can be billed twice: a bill
+     * without a readable period, a month partly covered, or a month that already carries a bill under another range.
+     *
+     * @param  Collection<int, Invoice>|null  $invoices  this contract's non-void bills with items, when already loaded
+     */
+    public function unbilledPeriodFor(Model $course, ?Collection $invoices = null): ?string
+    {
+        $id = (int) $course->getKey();
+        $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
+        $end = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : null;
+        if ((string) $course->getAttribute('ScheduleMode') !== 'date' || (int) ($course->getAttribute('PackageID') ?? 0) > 0 || !$start || !$end) {
+            return null;
+        }
+        $invoices ??= Invoice::query()->where('StudentClassID', $id)
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')->get();
+        $ranges = [];
+        foreach ($invoices as $invoice) {
+            $period = (string) $invoice->billing_period;
+            if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+                return null;
+            }
+            $month = Carbon::createFromFormat('!Y-m', $period);
+            [$from, $to] = $this->serviceRangeForCourse($invoice, $id);
+            $ranges[] = [$period, $from ?? $month->copy()->startOfMonth()->toDateString(), $to ?? $month->copy()->endOfMonth()->toDateString()];
+        }
+        $preloaded = $this->preloadedSessions[$id] ?? null;
+        $dates = ($preloaded !== null
+            ? $preloaded->filter(fn (ClassSession $s) => in_array(strtolower(rtrim((string) $s->Status)), self::BILLABLE_STATUSES, true))->pluck('SessionDate')
+            : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate'))
+            ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => $date >= $start && $date <= $end)->sort();
+        foreach ($dates->groupBy(fn (string $date) => substr($date, 0, 7))->sortKeys() as $month => $monthDates) {
+            $covered = $monthDates->filter(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->count();
+            if ($covered === $monthDates->count()) {
+                continue;
+            }
+
+            return $covered === 0 && !collect($ranges)->contains(fn ($r) => $r[0] === $month) ? (string) $month : null;
+        }
+
+        return null;
+    }
+
+    /**
      * Calculate one explicit billing period. Invoice readers must use the
      * invoice period, not today's month, otherwise a historical invoice can
      * display a different month's session count.

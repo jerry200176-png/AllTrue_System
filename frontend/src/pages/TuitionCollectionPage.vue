@@ -58,7 +58,7 @@
     </div>
 
     <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
-      <button v-if="activeAccountingTab !== 'students' && activeAccountingTab !== 'payments'" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
+      <button v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
         v-for="v in visibleReminders"
         :key="v.key"
@@ -629,9 +629,9 @@
         </div>
 
         <div v-else class="tc-table-wrap">
-          <div class="acct-bulkbar" v-if="selectedReportIds.size > 0">
-            <span>已選取 {{ selectedReportIds.size }} 筆</span>
-            <button class="tc-btn tc-btn--ghost" @click="selectedReportIds = new Set()">取消選取</button>
+          <div class="acct-bulkbar" v-if="receiptSelection.count > 0">
+            <span>已選取 {{ receiptSelection.count }} 筆</span>
+            <button class="tc-btn tc-btn--ghost" @click="receiptSelection.clear()">取消選取</button>
             <button class="tc-btn tc-btn--csv" @click="exportSelectedAccountingCSV">
               <span class="material-symbols-outlined" style="font-size:16px">download</span>
               匯出已選取
@@ -647,7 +647,7 @@
               </select>
             </label>
             <label>
-              <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="行動版全選收據" />
+              <input type="checkbox" :checked="receiptSelection.all" :indeterminate.prop="receiptSelection.mixed" :disabled="receiptSelection.empty" @change="receiptSelection.toggleAll($event.target.checked)" aria-label="行動版全選收據" />
               全選
             </label>
           </div>
@@ -655,7 +655,7 @@
             <thead>
               <tr>
                 <th class="acct-col-check">
-                  <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="全選" />
+                  <AtSelectAll :selection="receiptSelection" hide-label :show-count="false" />
                 </th>
                 <th class="acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('payment_date')" @keydown.enter.prevent="toggleAccountingSort('payment_date')" @keydown.space.prevent="toggleAccountingSort('payment_date')">
                   繳費日期／收據編號
@@ -681,14 +681,14 @@
                 v-for="row in sortedAccountingRows"
                 :key="row.report_id"
                 class="acct-row-clickable"
-                :class="{ 'acct-row-selected': selectedReportIds.has(row.report_id) }"
+                :class="{ 'acct-row-selected': receiptSelection.has(row.report_id) }"
                 @click="row.status === 'voided' ? openLedgerForReport(row) : openReceiptByReport(row.report_id)"
               >
                 <td class="acct-col-check" @click.stop>
                   <input
                     type="checkbox"
-                    :checked="selectedReportIds.has(row.report_id)"
-                    @change="toggleAccountingRowSelected(row.report_id)"
+                    :checked="receiptSelection.has(row.report_id)"
+                    @change="receiptSelection.toggle(row.report_id)"
                     :aria-label="`選取 ${humanizeDocumentRef(row.receipt_no)}`"
                   />
                 </td>
@@ -754,6 +754,10 @@
       <MonthlyDraftsPanel ref="monthlyDrafts" :branch-id="branchId" />
     </section>
 
+    <section v-if="activeAccountingTab === 'fees' && canVoid" id="tuition-accounting-panel-fees" role="tabpanel" aria-labelledby="tuition-accounting-tab-fees" tabindex="0">
+      <FeeLedgerPanel ref="feeLedger" :branch-id="branchId" :students="campusStudents" />
+    </section>
+
     <section
       v-if="activeAccountingTab === 'settled'"
       id="tuition-accounting-panel-settled"
@@ -795,6 +799,7 @@
         <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
           舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
           請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+          確定是舊標記：在繳費明細的課程卡，已收過就按「已收過，補登收款」，其實沒收就按「其實沒收，改成未繳」（月結、共用方案也一樣）。
         </p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
@@ -1106,6 +1111,7 @@ import { authedFetch } from '../lib/authedFetch.js';
 import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
+import FeeLedgerPanel from '../components/tuition/FeeLedgerPanel.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import TuitionDocActions from '../components/TuitionDocActions.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
@@ -1114,6 +1120,8 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import StudentBillingList from '../components/tuition/StudentBillingList.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSelectAll from '../components/design-system/AtSelectAll.vue';
+import { useSelection } from '../composables/useSelection';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -1154,6 +1162,8 @@ const actionLoading = ref(null);
 const ACCOUNTING_TABS = [
   { key: 'students', label: '學生', icon: 'groups' },
   { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
+  // In-app #439: pass-through fees have their own ledger, so they get their own tab, not a tuition list filter.
+  { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
 ];
 const REMINDER_VIEWS = [
   { key: 'receivables', label: '待處理清單' },
@@ -1169,16 +1179,19 @@ const visibleReminders = computed(() => REMINDER_VIEWS.filter((x) => (!x.directo
   && !(reminderCount(x) === 0 && activeAccountingTab.value !== x.key)));
 const reminderLabel = (v) => { const n = reminderCount(v); return n ? `${v.label} ${n} 筆` : v.label; };
 const campusStudents = ref([]);
+let campusStudentsSeq = 0; // a slow reply for the previous campus must not refill the picker
 async function loadCampusStudents() {
+  const seq = ++campusStudentsSeq;
+  campusStudents.value = [];
   try {
     const params = new URLSearchParams({ per_page: '1000' });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     const resp = await authedFetch(`/api/v1/students?${params}`, { headers: { Accept: 'application/json' } });
     const json = await resp.json().catch(() => ({}));
     const list = Array.isArray(json) ? json : (json.data || []);
-    campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
+    if (seq === campusStudentsSeq) campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
   } catch {
-    campusStudents.value = [];
+    if (seq === campusStudentsSeq) campusStudents.value = [];
   }
 }
 // ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).
@@ -1197,6 +1210,7 @@ function openLedgerForStudent(r) {
 }
 const monthlyReview = ref(null);
 const monthlyDrafts = ref(null);
+const feeLedger = ref(null);
 const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
@@ -1218,7 +1232,8 @@ const accountingFilters = ref(defaultAccountingFilters());
 // patterns: click a header to sort, checkbox rows to bulk-export a subset).
 const accountingSortKey = ref('payment_date');
 const accountingSortDir = ref('desc');
-const selectedReportIds = ref(new Set());
+// Selections of receipts that leave the list (reload, filter) drop out on their own.
+const receiptSelection = useSelection(accountingRows, { key: 'report_id' });
 
 const ACCOUNTING_SORT_ACCESSORS = {
   payment_date: (r) => r.payment_date || '',
@@ -1253,21 +1268,6 @@ const sortedAccountingRows = computed(() => {
   });
 });
 
-const allAccountingSelected = computed(() => (
-  accountingRows.value.length > 0 && accountingRows.value.every((r) => selectedReportIds.value.has(r.report_id))
-));
-
-function toggleAccountingRowSelected(reportId) {
-  const next = new Set(selectedReportIds.value);
-  if (next.has(reportId)) next.delete(reportId); else next.add(reportId);
-  selectedReportIds.value = next;
-}
-
-function toggleSelectAllAccounting() {
-  selectedReportIds.value = allAccountingSelected.value
-    ? new Set()
-    : new Set(accountingRows.value.map((r) => r.report_id));
-}
 
 function downloadAccountingCsv(rows, filenameSuffix) {
   const bom = '﻿';
@@ -1282,7 +1282,7 @@ function downloadAccountingCsv(rows, filenameSuffix) {
 }
 
 function exportSelectedAccountingCSV() {
-  const rows = accountingRows.value.filter((r) => selectedReportIds.value.has(r.report_id));
+  const rows = accountingRows.value.filter((r) => receiptSelection.has(r.report_id));
   if (!rows.length) {
     showToast('請先勾選要匯出的收據', 'warning');
     return;
@@ -1292,7 +1292,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1649,6 +1649,8 @@ function openReceiptByReport(reportId) {
 function refreshActiveTab() {
   if (activeAccountingTab.value === 'monthly-drafts') {
     monthlyDrafts.value?.reload();
+  } else if (activeAccountingTab.value === 'fees') {
+    feeLedger.value?.reload();
   } else if (activeAccountingTab.value === 'monthly-review') {
     monthlyReview.value?.reload();
   } else if (activeAccountingTab.value === 'receivables' || activeAccountingTab.value === 'students') {
@@ -1964,7 +1966,7 @@ async function loadAlerts() {
 async function loadAccountingPayments() {
   accountingLoading.value = true;
   accountingError.value = '';
-  selectedReportIds.value = new Set();
+  receiptSelection.clear();
   try {
     const token = getToken();
     if (!token) { accountingError.value = '請先登入'; return; }
@@ -2523,6 +2525,7 @@ async function openSessionDetail(row) {
 
 // ═══ Watchers ═══
 watch(() => props.branchId, () => {
+  loadCampusStudents();
   refreshActiveTab();
 }, { flush: 'post' });
 
@@ -2570,7 +2573,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
-  if (tab === 'monthly-review' || tab === 'monthly-drafts') return;
+  if (tab === 'monthly-review' || tab === 'monthly-drafts' || tab === 'fees') return;
   if (tab === 'receivables' || tab === 'students') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {

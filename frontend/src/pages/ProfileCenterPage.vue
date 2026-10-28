@@ -64,9 +64,9 @@
               <input id="pf-phone" v-model.trim="profileForm.phone" type="text" placeholder="09xxxxxxxx" />
             </div>
             <div class="actions">
-              <AtButton shape="rect" variant="primary" :disabled="savingProfile" :loading="savingProfile" @click="submitProfile">
-                {{ savingProfile ? '儲存中...' : '儲存基本資料' }}
-              </AtButton>
+              <AtSubmitButton shape="rect" :action="submitProfile" pending-text="儲存中…" success-text="已儲存" error-text="未儲存">
+                儲存基本資料
+              </AtSubmitButton>
             </div>
           </div>
         </div>
@@ -197,9 +197,9 @@
           </div>
 
           <div class="actions">
-            <AtButton shape="rect" variant="primary" :disabled="savingTeaching" :loading="savingTeaching" @click="submitTeaching">
-              {{ savingTeaching ? '儲存中...' : '儲存教學設定' }}
-            </AtButton>
+            <AtSubmitButton shape="rect" :action="submitTeaching" pending-text="儲存中…" success-text="已儲存" error-text="未儲存">
+              儲存教學設定
+            </AtSubmitButton>
           </div>
         </div>
       </section>
@@ -294,6 +294,7 @@
 
         <TriageTokenPanel v-if="isSuperAdmin" v-model:secret="triageSecret" v-model:pending="triagePending" :token="token" />
         <PopInappAgentKeyPanel v-if="isSuperAdmin" :token="token" @update:pending="popKeyPending = $event" />
+        <ContractLookupPanel v-if="isSuperAdmin" :token="token" />
       </section>
 
       <section v-if="activeTab === 'notifications'" id="profile-panel-notifications" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-notifications" tabindex="0">
@@ -348,9 +349,9 @@
         </div>
 
         <div class="actions">
-          <AtButton shape="rect" variant="primary" :disabled="savingPrefs" :loading="savingPrefs" @click="submitPrefs">
-            {{ savingPrefs ? '儲存中...' : '儲存通知偏好' }}
-          </AtButton>
+          <AtSubmitButton shape="rect" :action="submitPrefs" pending-text="儲存中…" success-text="已儲存" error-text="未儲存">
+            儲存通知偏好
+          </AtSubmitButton>
         </div>
       </section>
     </template>
@@ -360,10 +361,12 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import TriageTokenPanel from '../components/TriageTokenPanel.vue';
 import PopInappAgentKeyPanel from '../components/PopInappAgentKeyPanel.vue';
+import ContractLookupPanel from '../components/ContractLookupPanel.vue';
 import {
   getMe,
   getNotificationPrefs,
@@ -425,11 +428,8 @@ const avatarInputRef = ref(null);
 const showAvatarCrop = ref(false);
 const avatarCropSrc = ref('');
 
-const savingProfile = ref(false);
 const savingPassword = ref(false);
-const savingPrefs = ref(false);
 const uploadingAvatar = ref(false);
-const savingTeaching = ref(false);
 const revokingOtherSessions = ref(false);
 
 const profileMsg = ref(null);
@@ -715,14 +715,13 @@ async function submitProfile() {
   profileMsg.value = null;
   if (!profileForm.value.name) {
     profileMsg.value = { type: 'error', text: '請輸入姓名。' };
-    return;
+    return false;
   }
   if (!profileForm.value.email) {
     profileMsg.value = { type: 'error', text: '請輸入登入信箱。' };
-    return;
+    return false;
   }
 
-  savingProfile.value = true;
   try {
     const payload = {
       name: profileForm.value.name,
@@ -736,22 +735,21 @@ async function submitProfile() {
       email: data?.email || profileForm.value.email,
       avatar_url: data?.avatar_url || avatarUrl.value,
     });
+    return true;
   } catch (error) {
     profileMsg.value = { type: 'error', text: error.message || '儲存失敗。' };
-  } finally {
-    savingProfile.value = false;
+    return false;
   }
 }
 
 async function submitTeaching() {
   teachingMsg.value = null;
-  if (!isTeacher.value) return;
+  if (!isTeacher.value) return false;
   const branchId = Number(teachingForm.value.branch_id);
   if (!Number.isFinite(branchId) || branchId <= 0) {
     teachingMsg.value = { type: 'error', text: '請先選擇主分校。' };
-    return;
+    return false;
   }
-  savingTeaching.value = true;
   try {
     const payload = {
       branch_id: branchId,
@@ -773,10 +771,10 @@ async function submitTeaching() {
         ? '教學設定已更新。標示「待審核」的分校，要等該分校主任核准後才會生效。'
         : '教學設定已更新。',
     };
+    return true;
   } catch (error) {
     teachingMsg.value = { type: 'error', text: error.message || '教學設定更新失敗。' };
-  } finally {
-    savingTeaching.value = false;
+    return false;
   }
 }
 
@@ -827,15 +825,14 @@ async function submitPassword() {
 
 async function submitPrefs() {
   prefMsg.value = null;
-  savingPrefs.value = true;
   try {
     const res = await updateNotificationPrefs(props.token, prefs.value);
     prefs.value = { ...defaultPrefs(), ...(res?.data || {}) };
     prefMsg.value = { type: 'success', text: '通知偏好已儲存。' };
+    return true;
   } catch (error) {
     prefMsg.value = { type: 'error', text: error.message || '儲存通知偏好失敗。' };
-  } finally {
-    savingPrefs.value = false;
+    return false;
   }
 }
 

@@ -177,10 +177,51 @@ test.describe('Attendance clarity — real Director workflow', () => {
     expect(diagnostics.mutations).toEqual([]);
     await card.getByRole('button', { name: '確認', exact: true }).click();
     await expect.poll(() => diagnostics.mutations.filter(m => m.path === '/api/v1/attendance')).toHaveLength(1);
+    // The result survives the pending-list reload that follows every mark.
+    await expect(page.getByText('已核課：測試學生甲', { exact: false })).toBeVisible();
     expect(diagnostics.mutations.find(m => m.path === '/api/v1/attendance')).toEqual({
       path: '/api/v1/attendance', method: 'POST',
       body: { StudentID: 3101, StudentClassID: 4101, TeacherID: 9001, ClassSessionID: 9101, Status: 'late', mark_mode: 'arrival' },
     });
+  });
+
+  test('batch result 批次完成 stays visible after the pending list reloads', async ({ page }) => {
+    await openAttendance(page, 'dense', viewports[4]);
+    await page.route('**/api/v1/attendance/batch-mark', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ success_count: 5, fail_count: 0, results: [] }),
+    }));
+    await page.locator('.att-batch-bar input[type="checkbox"]').check();
+    await page.locator('.att-batch-bar button.at-submit').click();
+    await expect(page.getByText('批次完成：5 成功')).toBeVisible();
+    await expect(page.locator('.att-batch-bar button.at-submit')).toBeVisible();
+    await expect(page.getByText('批次完成：5 成功')).toBeVisible();
+  });
+
+  test('#4488 mobile batch bar and sticky bar send one batch when both are tapped', async ({ page }) => {
+    const diagnostics = await openAttendance(page, 'dense', viewports[0]);
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const batches = [];
+    await page.route('**/api/v1/attendance/batch-mark', async (route) => {
+      batches.push(route.request().postDataJSON());
+      await held;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success_count: 5, fail_count: 0, results: [] }) });
+    });
+    const selectAll = page.locator('.att-batch-bar input[type="checkbox"]');
+    await selectAll.check();
+    await expect(page.locator('.att-batch-bar')).toContainText('已選 5 堂');
+    const barButton = page.locator('.att-batch-bar button.at-submit');
+    const stickyButton = page.locator('.att-sticky-batch button.at-submit');
+    await barButton.click();
+    await expect(barButton).toHaveAttribute('aria-busy', 'true');
+    await stickyButton.click();
+    await expect(stickyButton).toHaveAttribute('aria-busy', 'true');
+    expect(batches).toHaveLength(1);
+    expect(batches[0].items).toHaveLength(5);
+    release();
+    await expect(page.locator('.att-batch-bar button.at-submit')).not.toHaveAttribute('aria-busy', 'true');
+    expect(batches).toHaveLength(1);
+    expect(diagnostics.consoleErrors).toEqual([]);
   });
 });
 

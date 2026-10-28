@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-stopped-course-slot-release
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 停課時段衝突修正
+    summary: 停課後的普通排課紀錄不再誤占時段。
+    items:
+      - category: fixed
+        text: 停課後可重新安排已釋放的普通排課時段。
+    source_refs:
+      - "changelog:2026-10-27:stopped-course-slot-release"

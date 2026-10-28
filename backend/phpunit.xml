@@ -35,5 +35,7 @@
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
         <env name="LOG_CHANNEL" value="stack" force="true"/>
+        <!-- #3834 pilot campus list: tests use campus 1, so every campus passes unless a test sets the list itself. -->
+        <env name="PERF_ACTUAL_DURATION_CAMPUS_IDS" value="*" force="true"/>
     </php>
 </phpunit>

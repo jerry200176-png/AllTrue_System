@@ -2100,6 +2100,84 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('confirmed', $report->fresh()->status);
     }
 
+    public function test_void_undoes_a_receipt_whose_bill_was_corrected_and_voided(): void
+    {
+        // In-app #436: 更正並作廢 reversed the bill's money but left the receipt confirmed and impossible to undo.
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8800, 'PayDate' => '2026-04-10']);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -8800, 'PaidAt' => '2026-04-20', 'Method' => 'void', 'Note' => '帳單例外沖銷作廢：重複帳單']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'transfer',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-after-exception-void'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '帳單已更正作廢',
+        ])->assertOk();
+
+        $this->assertSame('voided', $report->fresh()->status);
+        // The bill's money was already reversed once; no second reversal.
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->where('Method', 'void')->count());
+        $this->assertSame('void', $invoice->fresh()->Status);
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+    }
+
+    public function test_void_after_bill_void_keeps_a_settlement_a_live_bill_backs(): void
+    {
+        // #4563 review: the course was billed and paid again after the old bill was voided; undoing the old
+        // receipt must not reopen the settlement the replacement bill fully backs.
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8800, 'PayDate' => '2026-04-25', 'closed_reason' => 'settled']);
+        $old = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+        $payment = Payment::create(['InvoiceID' => $old->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $old->id, 'Amount' => -8800, 'PaidAt' => '2026-04-20', 'Method' => 'void', 'Note' => '帳單例外沖銷作廢：重開']);
+        $new = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-21', 'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid',
+        ]);
+        Payment::create(['InvoiceID' => $new->id, 'Amount' => 8800, 'PaidAt' => '2026-04-25', 'Method' => 'cash']);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $old->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'transfer',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-after-bill-void-replacement'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '舊帳單已作廢重開',
+        ])->assertOk();
+
+        $this->assertSame('voided', $report->fresh()->status);
+        $this->assertSame(1, Payment::where('InvoiceID', $old->id)->where('Method', 'void')->count());
+        $fresh = $sc->fresh();
+        $this->assertSame(1, (int) $fresh->Paid);
+        $this->assertSame('settled', $fresh->closed_reason);
+    }
+
     public function test_void_refuses_missing_invoice_when_invoice_id_is_set(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -2918,6 +2996,53 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('data.0.student_name', '吳艾潼')
             ->assertJsonPath('data.0.schedule_mode', 'count')
             ->assertJsonPath('data.0.legacy_paid_without_invoice', true);
+    }
+
+    /** In-app #428 / #438: #4339 exempted trials from 需核對 in the course list and alerts, not in 已結清. */
+    public function test_accounting_settled_courses_does_not_flag_a_trial_fee_recorded_by_date(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '試聽生']);
+        $sc = $this->createCountModeClass($student->id, [
+            'ClassType' => 'trial',
+            'Charge' => 500,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+            'RemainingSessions' => 1,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=試聽生')
+            ->assertOk()
+            ->assertJsonPath('data.0.student_class_id', $sc->ID)
+            ->assertJsonPath('data.0.legacy_paid_without_invoice', false)
+            ->assertJsonPath('summary.legacy_count', 0);
+    }
+
+    /** In-app #428 / #438: the same evidence rule as the course list, so a label here always has an action in the ledger. */
+    public function test_accounting_settled_courses_does_not_flag_a_paid_package_member_whose_payment_sits_on_its_sibling(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '共用方案生']);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 16,
+            'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 550, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => true, 'paid_at' => '2026-04-10', 'stop' => false, 'enabled' => true,
+        ]);
+        $lead = $this->createCountModeClass($student->id, ['Paid' => 1, 'PayDate' => '2026-04-10', 'PackageID' => $package->id]);
+        $follower = $this->createCountModeClass($student->id, ['Paid' => 1, 'PayDate' => '2026-04-10', 'PackageID' => $package->id, 'SubjectID' => 2]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $lead->ID, 'IssueDate' => '2026-04-10',
+            'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+
+        $rows = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=共用方案生')
+            ->assertOk()->assertJsonPath('summary.legacy_count', 0)->json('data');
+        $this->assertSame([false, false], collect($rows)->whereIn('student_class_id', [$lead->ID, $follower->ID])->pluck('legacy_paid_without_invoice')->all());
     }
 
     public function test_accounting_settled_courses_marks_overpayment_exception(): void

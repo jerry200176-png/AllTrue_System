@@ -137,7 +137,8 @@ class StudentClassTogglePauseAuthzTest extends TestCase
     public function test_resume_succeeds_for_director_in_same_campus(): void
     {
         $token = $this->createDirectorToken([1]);
-        $sc = $this->createStudentClassOnCampus(1, ['Stop' => 1, 'closed_reason' => 'settled']);
+        // Merely paused: a committed close is refused instead (#4188, StudentClassPauseCloseGuardTest).
+        $sc = $this->createStudentClassOnCampus(1, ['Stop' => 1]);
 
         $res = $this->postJson(
             "/api/v1/student-classes/{$sc->ID}/pause",
@@ -180,7 +181,6 @@ class StudentClassTogglePauseAuthzTest extends TestCase
         $sc = $this->createStudentClassOnCampus(1, [
             'TeacherID' => $this->lastTeacherUserId,
             'Stop' => 1,
-            'closed_reason' => 'settled',
         ]);
 
         $res = $this->postJson(

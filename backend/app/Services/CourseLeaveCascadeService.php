@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Exceptions\SlotOccupiedException;
+
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
@@ -726,6 +728,34 @@ class CourseLeaveCascadeService
      *
      * @return array{0:array,1:?string,2:?ClassSession}
      */
+    /**
+     * The leave/cancel tail goes through the single materializer. When the next slot is already the student's
+     * (e.g. a renewal), the generic 「請改選其他日期／時間」 made no sense: a leave never asked for a time (in-app #433).
+     *
+     * @param  array<string, mixed>  $slot
+     * @return array{session: ClassSession, created: bool}
+     */
+    private static function upsertTail(array $slot): array
+    {
+        try {
+            return app(ClassSessionMaterializationService::class)->upsertSlot($slot);
+        } catch (SlotOccupiedException $e) {
+            throw new SlotOccupiedException(
+                courseId: $e->courseId,
+                sessionDate: $e->sessionDate,
+                startTime: $e->startTime,
+                conflictSessionId: $e->conflictSessionId,
+                conflictStatus: $e->conflictStatus,
+                conflictSource: $e->conflictSource,
+                conflictCourseId: $e->conflictCourseId,
+                conflictScheduleId: $e->conflictScheduleId,
+                message: '請假／取消後，這堂要順延到 ' . $e->sessionDate . ' ' . substr($e->startTime, 0, 5)
+                    . '，但學生那個時段已有其他課程（常見是續課），所以沒有完成。請先把這堂調到其他時間，或先調整後面的課再試。',
+                responseCode: $e->responseCode,
+            );
+        }
+    }
+
     public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::query()->where('ID', $courseId)->first();
@@ -768,7 +798,7 @@ class CourseLeaveCascadeService
             $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $leaveSession->StartTime;
             $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $leaveSession->EndTime;
             $note = self::NOTE_AUTO_EXTENDED . ':ld=' . $normalizedLeaveDate . ':ls=' . (int) $leaveSession->id;
-            $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
+            $newSession = self::upsertTail([
                 'StudentClassID' => $courseId,
                 'SessionDate' => $appendDate,
                 'StartTime' => $appendStart,
@@ -983,7 +1013,7 @@ class CourseLeaveCascadeService
         $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
         $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $templateSession->StartTime;
         $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $templateSession->EndTime;
-        $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
+        $newSession = self::upsertTail([
             'StudentClassID' => $courseId,
             'SessionDate'    => $appendDate,
             'StartTime'      => $appendStart,

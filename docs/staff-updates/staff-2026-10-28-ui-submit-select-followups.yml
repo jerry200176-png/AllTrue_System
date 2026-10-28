@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-28-ui-submit-select-followups
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 對話框送出與全選更一致
+    summary: 行事曆、課務、帳務的送出按鈕送出中會轉圈且不能重按；帳單全選有半勾。
+    items:
+      - category: improved
+        text: 請假、調課、代課、加課、續期、登記收款等按鈕，送出中會轉圈並顯示處理中，不會被重按。
+      - category: improved
+        text: 本月待開帳單與收款紀錄的全選，部分勾選時顯示半勾，勾到一半也看得出來。
+      - category: fixed
+        text: 本月待開帳單全選後，表頭勾選框現在會正確顯示已全選。
+    source_refs:
+      - "changelog:2026-10-28:ui-submit-select-followups"

@@ -8,9 +8,19 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
-/** Read-only AI triage tokens: Sanctum row stores sha256 only; expiry = created_at + ttl_days. */
+/**
+ * Read-only AI triage tokens: Sanctum row stores sha256 only. Expiry is fixed at issue (#4021): the
+ * issuing ttl_days rides in `abilities` as "ttl_days:N" (Sanctum 2 has no expires_at column and the auth
+ * table stays untouched), and the effective lifetime is min(issued, current config), so a later config
+ * change can only shorten a token, never extend or revive one.
+ */
 final class TriageTokenService
 {
+    private const TTL_MARK = 'ttl_days:';
+
+    /** Rows issued before the mark existed: capped at the 2026-10-13 launch default ttl_days. */
+    private const LEGACY_MAX_TTL_DAYS = 90;
+
     public static function ability(): string
     {
         return (string) config('triage_tokens.ability');
@@ -44,7 +54,7 @@ final class TriageTokenService
             'tokenable_id' => $creator->getKey(),
             'name' => $name,
             'token' => hash('sha256', $secret),
-            'abilities' => [self::ability()],
+            'abilities' => [self::ability(), self::TTL_MARK . (int) config('triage_tokens.ttl_days')],
         ])->save();
 
         return ['token' => $pat->getKey() . '|' . $secret, 'record' => self::present($pat)];
@@ -54,6 +64,7 @@ final class TriageTokenService
     public static function list(): array
     {
         return self::query()->orderByDesc('id')->get()
+            ->filter(fn (PersonalAccessToken $pat) => self::hasOnlyTriageAbility($pat))
             ->map(fn (PersonalAccessToken $pat) => self::present($pat))
             ->values()->all();
     }
@@ -62,7 +73,7 @@ final class TriageTokenService
     {
         $pat = self::query()->whereKey($id)->first();
 
-        return $pat instanceof PersonalAccessToken ? $pat : null;
+        return $pat instanceof PersonalAccessToken && self::hasOnlyTriageAbility($pat) ? $pat : null;
     }
 
     /** Resolve "<id>|<secret>" to a triage token row (null when unknown or not a triage token). */
@@ -81,7 +92,9 @@ final class TriageTokenService
 
     public static function expiresAt(PersonalAccessToken $pat): Carbon
     {
-        return Carbon::parse($pat->getAttribute('created_at'))->addDays((int) config('triage_tokens.ttl_days'));
+        $days = min(self::issuedTtlDays($pat) ?? self::LEGACY_MAX_TTL_DAYS, (int) config('triage_tokens.ttl_days'));
+
+        return Carbon::parse($pat->getAttribute('created_at'))->addDays($days);
     }
 
     public static function isExpired(PersonalAccessToken $pat): bool
@@ -101,19 +114,44 @@ final class TriageTokenService
             && !in_array($owner->status, ['inactive', 'suspended'], true);
     }
 
+    /** The abilities, minus at most one ttl mark, must be exactly the triage ability. */
     private static function hasOnlyTriageAbility(PersonalAccessToken $pat): bool
     {
         $abilities = $pat->getAttribute('abilities');
+        if (!is_array($abilities)) {
+            return false;
+        }
+        $rest = array_values(array_filter($abilities, fn ($a) => !self::isTtlMark($a)));
 
-        return is_array($abilities) && array_values($abilities) === [self::ability()];
+        return $rest === [self::ability()] && count($abilities) - count($rest) <= 1;
     }
 
-    /** @return \Illuminate\Database\Eloquent\Builder<\Laravel\Sanctum\PersonalAccessToken> */
+    private static function isTtlMark(mixed $ability): bool
+    {
+        return is_string($ability) && preg_match('/^' . self::TTL_MARK . '\d{1,4}$/', $ability) === 1;
+    }
+
+    private static function issuedTtlDays(PersonalAccessToken $pat): ?int
+    {
+        foreach ((array) $pat->getAttribute('abilities') as $ability) {
+            if (self::isTtlMark($ability)) {
+                return (int) substr($ability, strlen(self::TTL_MARK));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Coarse SQL narrowing (the ability is always written first); hasOnlyTriageAbility() is the real check.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<\Laravel\Sanctum\PersonalAccessToken>
+     */
     private static function query(): \Illuminate\Database\Eloquent\Builder
     {
         return PersonalAccessToken::query()
             ->where('tokenable_type', User::class)
-            ->where('abilities', json_encode([self::ability()]));
+            ->where('abilities', 'like', '["' . self::ability() . '"%');
     }
 
     /** Never includes the secret or its hash. @return array<string, mixed> */

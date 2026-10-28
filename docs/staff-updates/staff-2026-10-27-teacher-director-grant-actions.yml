@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-teacher-director-grant-actions
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 老師帳號的操作限制先說明
+    summary: 管理其他具主任權限的老師帳號時，會先顯示限制與處理方式。
+    items:
+      - category: improved
+        text: 編輯、重設密碼、刪除與綁卡按鈕會停用，並顯示處理方式。
+    source_refs:
+      - "changelog:2026-10-27:teacher-director-grant-actions"

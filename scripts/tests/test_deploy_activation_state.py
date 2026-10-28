@@ -2,7 +2,9 @@
 
 from pathlib import Path
 import argparse
+import io
 import json
+from contextlib import redirect_stderr
 import os
 import subprocess
 import tempfile
@@ -44,6 +46,7 @@ def read_deploy_workflow():
     return workflow.replace(SSH_LINE, SSH_LINE + inline + "          ENDSSH\n")
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
+    has_actionable_rollback,
     aggregate_landed_pr_effects,
     auto_environment_is_valid,
     classify_activation_scope,
@@ -55,6 +58,10 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_manual_activation,
     environment_protection_is_valid,
     commit_effective_class,
+    decide_r3_auto_activation,
+    deploy_freeze_reason,
+    final_head_review_evidence,
+    unresolved_review_threads,
     effective_tier,
     evaluate_founder_go_range,
     founder_go_release_evidence,
@@ -1391,7 +1398,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         deploy_start = self.workflow.index("  deploy:\n")
         parent_smoke_start = self.workflow.index("  parent-portal-smoke:\n")
         deploy = self.workflow[deploy_start:parent_smoke_start]
-        self.assertIn("timeout-minutes: 30", deploy)
+        self.assertIn("timeout-minutes: 80", deploy)  # deploy + verify + 20-min post-deploy watch
         for option in (
             "-o BatchMode=yes",
             "-o ConnectTimeout=20",
@@ -1729,6 +1736,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             for bad in ("ON", "true", "1", " on", "off\n", 'on"; touch x; "'):
                 with self.assertRaises(ValueError):
                     renderer.render(script, {f"DEPLOY_{name}": bad})
+        # #4560 review F9/N3: SENTRY_WATCH lands in a double-quoted shell string on the Pi; a value that could
+        # break out is dropped (Sentry skipped), base64 '+'/'=' are kept, and the deploy is never blocked.
+        good = "https://de.sentry.io acme sntrys_abc+def="
+        self.assertIn(f'SENTRY_WATCH="{good}"', renderer.render(script, {"DEPLOY_SENTRY_WATCH": good}))
+        for bad in ('tok"; touch x; "', "tok$(id)", "tok`id`", "tok\\", "tok\nx"):
+            with redirect_stderr(io.StringIO()):
+                rendered = renderer.render(script, {"DEPLOY_SENTRY_WATCH": bad})
+            self.assertIn('SENTRY_WATCH=""', rendered)
+            self.assertNotIn(bad, rendered)
         out = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(REMOTE_DEPLOY)], capture_output=True,
                              env={**os.environ, "DEPLOY_POP_INAPP_STANDING_POLICY": "ON"})
         self.assertEqual(1, out.returncode)
@@ -2020,7 +2036,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
         expr = lambda source, names: {f"DEPLOY_{n.upper()}": f"${{{{ {source}.{n} }}}}" for n in names}
         self.assertEqual(expr("secrets", ("PI_SSH_USER", "PI_SSH_HOST", "SENTRY_DSN", "SMOKE_TEACHER_LOGIN",
-                                          "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID"))
+                                          "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID", "SENTRY_WATCH"))
                          | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1",
                                            "pop_inapp_standing_policy"))
                          | expr("needs.resolve-target.outputs", ("target_sha", "release_train")), env)
@@ -2146,12 +2162,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn(self.MIGRATION_START, deploy)
         self.assertNotIn("continue-on-error", deploy)
         self.assertNotIn("set +e", deploy)
-        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  parent-portal-smoke:", 1)[0]
+        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  deploy-incident:", 1)[0]
         steps = after.split("      - name: ")[1:]
         names = [step.split("\n", 1)[0] for step in steps]
         self.assertEqual(
             ["Checkout post-deploy verifier", "Verify production independently from the runner",
-             "Record deployed and production-verified state", "Summarize production verification failure"],
+             "Record deployed and production-verified state", "Install the POP GitHub read token",
+             "Summarize production verification failure"],
             names,
         )
         # No `if:` override: the runner verification and the success marker run only when
@@ -2159,7 +2176,442 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         for step in steps[1:3]:
             self.assertNotRegex(step, r"(?m)^        if:")
             self.assertNotIn("continue-on-error", step)
-        self.assertIn("if: ${{ failure() && steps.deploy.outcome != 'skipped' }}", steps[3])
+        self.assertNotRegex(steps[3], r"(?m)^        if:")  # the read token is installed only after verification
+        self.assertIn("if: ${{ failure() && steps.deploy.outcome != 'skipped' }}", steps[4])
+
+
+class R3AutoActivationTest(unittest.TestCase):
+    """Founder 2026-10-21（二）之二: an R3-only range activates through production-auto."""
+
+    BILLING = "backend/app/Http/Controllers/BillingController.php"
+    MIGRATION = "backend/database/migrations/2026_10_21_000000_add_note_to_invoices.php"
+
+    @staticmethod
+    def _diff(path, removed, added):
+        return f"diff --git a/{path} b/{path}\n+++ b/{path}\n@@ -20,1 +20,1 @@\n-{removed}\n+{added}\n"
+
+    def _record(self, number, path, patch=None, risk=3, tier=3):
+        if patch is None:
+            patch = self._diff(path, "return response()->json(['payment_status' => $status]);",
+                               "return response()->json(['payable_amount' => calculateCharge($course)]);")
+        return {"number": number, "merged_at": "2026-10-21T01:00:00Z", "paths": [path], "patch": patch,
+                "patch_complete": True, "declared_risk": risk, "declared_tier": tier}
+
+    REVIEW_OK = {"ok": True, "reason": "final-head Codex review with no open threads on #4400"}
+
+    def _decide(self, records, rollback_evidence=True, range_paths=None, event_name="workflow_run",
+                review=REVIEW_OK, freeze_reason=None, renamed=False):
+        if range_paths is None:
+            range_paths = [path for record in records for path in record["paths"]]
+        return decide_r3_auto_activation(records, event_name=event_name,
+                                         rollback_evidence=rollback_evidence, range_paths=range_paths,
+                                         review=review, freeze_reason=freeze_reason, renamed=renamed)
+
+    def test_a_rename_out_of_a_protected_path_keeps_the_founder_gate(self):
+        # #4359 review: the rename source is classified, not only the destination.
+        moved = "backend/app/Services/BillingGuard.php"
+        for source, label in (("backend/app/Http/Middleware/BillingGuard.php", "identity/credential"),
+                              ("backend/app/Console/Commands/RepairBilling.php", "production data repair"),
+                              (self.MIGRATION, "migration")):
+            with self.subTest(source=source):
+                record = self._record(4410, moved, self._diff(moved, "$a = 1;", "$a = 2;"))
+                record["paths"] = [moved, source]
+                result = self._decide([record], range_paths=[moved, source])
+                self.assertFalse(result["ok"])
+                self.assertIn(label, result["reason"])
+
+    def test_an_application_pr_that_also_changes_the_control_plane_keeps_the_founder_gate(self):
+        # #4359 review: e.g. the production SSH trust action rides an application PR.
+        record = self._record(4411, self.BILLING)
+        record["paths"] = [self.BILLING, ".github/actions/production-ssh-trust/action.yml"]
+        result = self._decide([record], range_paths=record["paths"])
+        self.assertFalse(result["ok"])
+        self.assertIn("deploy execution", result["reason"])
+
+    def test_deploy_execution_paths_anywhere_in_the_range_keep_the_founder_gate(self):
+        # Adversarial review on #4359: a separate control-plane PR can change what the deploy runs or trusts.
+        billing = self._record(4400, self.BILLING)
+        for path in ("scripts/governance/gh_api_retry.py", ".github/actions/production-ssh-trust/action.yml",
+                     "scripts/production-deploy/write_manifest.py", "scripts/post-deploy-verify.py",
+                     "scripts/post-merge-smoke.sh", "scripts/write-deployment-manifest.py",
+                     "scripts/verify-db-backup.sh", "scripts/deploy-storage-perms.sh",
+                     "scripts/smoke-api.sh", "scripts/smoke-auth-lib.sh"):
+            with self.subTest(path=path):
+                result = self._decide([billing], range_paths=[self.BILLING, path])
+                self.assertFalse(result["ok"])
+                # post-deploy-verify.py is gate policy itself since #4560 (review F5), held even earlier.
+                self.assertRegex(result["reason"], r"deploy execution|gate policy or deploy workflow")
+        # Other workflows do not hold by path; the caller requires final-head review of every PR instead.
+        self.assertTrue(self._decide([billing], range_paths=[self.BILLING, ".github/workflows/ci.yml"])["ok"])
+
+    def test_every_script_the_remote_deploy_runs_is_a_deploy_execution_path(self):
+        # Drift guard: a new script called by pi-remote-deploy.sh must join _R3_EXECUTION_*.
+        remote = "".join((ROOT / f).read_text(encoding="utf-8") for f in (
+            "scripts/production-deploy/pi-remote-deploy.sh", "scripts/post-merge-smoke.sh", "scripts/post-deploy-verify.py"))
+        called = {m.removeprefix("/home/admin/") for m in re.findall(r"(?:/home/admin/)?scripts/[A-Za-z0-9_./-]+", remote)}
+        called |= {f"scripts/{name}" for name in re.findall(r"\$SCRIPT_DIR/([A-Za-z0-9_.-]+)", remote)}
+        self.assertTrue(called)
+        for path in sorted(called):
+            with self.subTest(path=path):
+                result = self._decide([self._record(4400, self.BILLING)], range_paths=[self.BILLING, path])
+                self.assertFalse(result["ok"])
+
+    def test_test_files_are_not_identity_paths(self):
+        # Codex on #4359: a regression test named after a guard is not a production identity boundary.
+        billing = self._record(4400, self.BILLING)
+        for path in ("backend/tests/Unit/ScheduleGuardSummaryTest.php", "frontend/src/lib/__tests__/authRole.test.js",
+                     "frontend/e2e/login.spec.js"):
+            with self.subTest(path=path):
+                self.assertTrue(self._decide([billing], range_paths=[self.BILLING, path])["ok"])
+
+    def test_guardian_paths_still_match_the_other_identity_terms(self):
+        for path in ("backend/app/Services/GuardianAuthService.php", "backend/app/Http/Controllers/guardian_login.php"):
+            with self.subTest(path=path):
+                result = self._decide([self._record(4417, path, self._diff(path, "$a = 1;", "$a = 2;"))])
+                self.assertIn("identity/credential", result["reason"])
+
+    def test_identity_paths_and_effects_outside_the_reviewer_list_keep_the_founder_gate(self):
+        # Adversarial review on #4359 (F1): nested Auth controllers, role services, role sync / forceFill.
+        for path in ("backend/app/Http/Controllers/Api/AuthController.php", "backend/app/Services/AuthSessionService.php",
+                     "backend/app/Services/RoleAssignment.php", "frontend/src/pages/LoginPage.vue",
+                     "backend/app/Http/Controllers/UserAuthController.php", "backend/app/Services/StaffRoleSyncService.php"):
+            with self.subTest(path=path):
+                result = self._decide([self._record(4413, path, self._diff(path, "$a = 1;", "$a = 2;"))])
+                self.assertFalse(result["ok"])
+                self.assertIn("identity/credential", result["reason"])
+        for code in ("$user->roles()->sync($ids);", "$user->forceFill(['role' => 'director'])->save();",
+                     "$token = $user->createToken('x');", "Gate::define('x', fn () => true);"):
+            with self.subTest(code=code):
+                result = self._decide([self._record(4414, self.BILLING, self._diff(self.BILLING, "$a = 1;", code))])
+                self.assertFalse(result["ok"])
+                self.assertIn("authentication/privilege", result["reason"])
+
+    def test_controller_local_authorization_changes_keep_the_founder_gate(self):
+        # #4359 review: e.g. PaymentReportController::studentCampusRefusal widened to every campus.
+        path = "backend/app/Http/Controllers/PaymentReportController.php"
+        for removed, added in (
+            ("if (!in_array($campusId, $request->attributes->get('auth_campus_ids', []), true)) {", "if (false) {"),
+            ("return response()->json(['message' => 'Forbidden'], 403);", "// allowed"),
+            ("if ($role !== 'super_admin') {", "if (true) {"),
+        ):
+            with self.subTest(removed=removed):
+                result = self._decide([self._record(4416, path, self._diff(path, removed, added))])
+                self.assertFalse(result["ok"])
+                self.assertIn("authorization check changed", result["reason"])
+
+    def test_a_range_with_a_rename_keeps_the_founder_gate(self):
+        result = self._decide([self._record(4400, self.BILLING)], renamed=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("rename", result["reason"])
+        # Unknown rename state fails closed (adversarial review R3).
+        unknown = decide_r3_auto_activation([self._record(4400, self.BILLING)], event_name="workflow_run",
+                                            rollback_evidence=True, range_paths=[self.BILLING],
+                                            review=self.REVIEW_OK, freeze_reason=None)
+        self.assertFalse(unknown["ok"])
+        self.assertIn("rename", unknown["reason"])
+
+    def test_guardian_is_not_an_identity_path(self):
+        path = "backend/app/Models/Guardian.php"
+        self.assertTrue(self._decide([self._record(4415, path, self._diff(path, "$a = 1;", "$a = 2;"))])["ok"])
+
+    def test_route_file_changes_keep_the_founder_gate(self):
+        # #4359 review: authorization middleware changes in api.php cannot be ruled out by the classifier.
+        route = "backend/routes/api.php"
+        patch = self._diff(route, "Route::get('x', [A::class, 'x'])->middleware('role:director');",
+                           "Route::get('x', [A::class, 'x']);")
+        self.assertFalse(self._decide([self._record(4412, route, patch)])["ok"])
+
+    def test_actionable_rollback(self):
+        self.assertTrue(has_actionable_rollback("**Rollback:** revert this PR"))
+        self.assertTrue(has_actionable_rollback("Rollback: 正常 revert 後重新部署"))
+        for body in ("Rollback: impossible; manual data repair required", "Rollback: cannot be undone",
+                     "Rollback: 無法回復", "Rollback: n/a", "Rollback: tbd", "no rollback line",
+                     "Rollback: keep the new data", "Rollback: can’t be undone", "Rollback: not undoable",
+                     "<!-- Rollback: revert this PR -->\nRollback: n/a", "```\nRollback: revert this PR\n```"):
+            with self.subTest(body=body):
+                self.assertFalse(has_actionable_rollback(body))
+
+    def test_missing_final_head_review_or_a_freeze_keeps_the_founder_gate(self):
+        records = [self._record(4400, self.BILLING)]
+        self.assertTrue(self._decide(records)["ok"])
+        for review in (None, {"ok": False, "reason": "PR #4400: open review threads 1"}, {"ok": "yes"}):
+            with self.subTest(review=review):
+                self.assertFalse(self._decide(records, review=review)["ok"])
+        frozen = self._decide(records, freeze_reason="main CI is red (run 1: failure)")
+        self.assertFalse(frozen["ok"])
+        self.assertIn("deploy freeze", frozen["reason"])
+        # Defaults fail closed: a caller that evaluates neither control gets a hold.
+        self.assertFalse(decide_r3_auto_activation(records, event_name="workflow_run", rollback_evidence=True,
+                                                   range_paths=[self.BILLING])["ok"])
+
+    def test_unresolved_threads_match_the_land_queue_rule(self):
+        page = lambda nodes, more=False: {"nodes": nodes, "pageInfo": {"hasNextPage": more}}
+        thread = lambda resolved, replies: {"isResolved": resolved, "comments": {"totalCount": replies}}
+        self.assertEqual(unresolved_review_threads(page([])), 0)
+        self.assertEqual(unresolved_review_threads(page([thread(True, 2)])), 0)
+        self.assertEqual(unresolved_review_threads(page([thread(True, 1), thread(False, 3)])), 2)
+        self.assertIsNone(unresolved_review_threads(page([], more=True)))
+        self.assertIsNone(unresolved_review_threads(page([{"isResolved": True}])))
+        self.assertIsNone(unresolved_review_threads(None))
+
+    def test_final_head_review_requires_codex_on_the_merged_head_and_no_open_threads(self):
+        head = "a" * 40
+        summary = ("<!-- codex-pull-request-review-summary -->\n"
+                   f"✅ **Completed** <relative-time datetime=\"2026-10-21T01:00:00Z\">x</relative-time> | `{head[:7]}`")
+        codex = {"login": "chatgpt-codex-connector[bot]"}
+        threads = {"nodes": [], "pageInfo": {"hasNextPage": False}}
+
+        def run(reactions, conn=threads):
+            def api(path, *extra):
+                if path.endswith("/pulls/4400"):
+                    return {"head": {"sha": head}}
+                if "/issues/4400/comments" in path:
+                    return [[{"user": codex, "body": summary}]]
+                if "/reactions" in path:
+                    return [reactions]
+                return [[]]
+            graphql = lambda query: {"data": {"repository": {"pullRequest": {"reviewThreads": conn}}}}
+            return final_head_review_evidence(repo="o/r", pr_numbers=["4400"], api=api, graphql=graphql)
+
+        thumbs = [{"user": codex, "content": "+1", "created_at": "2026-10-21T02:00:00Z"}]
+        self.assertTrue(run(thumbs)["ok"])
+        self.assertFalse(run([])["ok"])
+        self.assertFalse(run(thumbs, {"nodes": [{"isResolved": False, "comments": {"totalCount": 1}}],
+                                      "pageInfo": {"hasNextPage": False}})["ok"])
+        self.assertFalse(run(thumbs, None)["ok"])
+
+    def test_deploy_freeze_stops_the_line_on_red_ci_or_a_failed_deploy(self):
+        def api_for(ci, deploy_job):
+            def api(path, *extra):
+                if "/workflows/ci.yml/runs" in path:
+                    return {"workflow_runs": [{"id": 9, "name": "CI — PHPUnit Tests", "conclusion": "cancelled", "event": "push"}]
+                            + [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": c, "event": "workflow_dispatch"} for c in ci]}
+                if "/workflows/deploy.yml/runs" in path:
+                    return {"workflow_runs": [{"id": 2}, {"id": 1}]}
+                if path.endswith("/runs/2/jobs?per_page=100"):
+                    return {"jobs": [{"name": "Deploy to Production", "conclusion": "skipped"}]}
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": deploy_job,
+                                  "completed_at": "2026-10-28T01:00:00Z", "steps": [{"name": "Deploy", "conclusion": deploy_job}]}]}
+            return api
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api_for(["success"], "success")))
+        self.assertIn("main CI is red", deploy_freeze_reason(repo="o/r", api=api_for(["failure"], "success")))
+        self.assertIn("unknown", deploy_freeze_reason(repo="o/r", api=api_for([], "success")))
+        self.assertIn("stop the line", deploy_freeze_reason(repo="o/r", api=api_for(["success"], "failure")))
+        self.assertIn("unknown", deploy_freeze_reason(repo="o/r", api=api_for(["success"], "skipped")))
+        # A pull_request run on a branch named main must not mask a red main run (adversarial review F7).
+        def masked(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 10, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "pull_request"},
+                                          {"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "failure", "event": "push"}]}
+            return api_for(["success"], "success")(path, *extra)
+        self.assertIn("main CI is red", deploy_freeze_reason(repo="o/r", api=masked))
+
+    def test_deploy_freeze_uses_the_newest_deploy_job_by_completion_time(self):
+        # Codex on #4359: an older run re-run after a newer successful deploy must still freeze.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}, {"id": 10}]}  # newest run first
+            if "/runs/20/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                                  "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "failure"}]}]}
+        self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_a_failed_deploy_freezes_while_its_run_is_still_open(self):
+        # #4560 review: the incident job keeps the failed run in progress after the executor slot is released.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                if "status=completed" in path:
+                    return {"workflow_runs": [{"id": 10}]}
+                return {"workflow_runs": [{"id": 30, "status": "in_progress"}, {"id": 10}]}
+            if "/runs/30/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                                  "steps": [{"name": "Deploy", "conclusion": "failure"}]},
+                                 {"name": "Record failed deploy", "status": "queued", "conclusion": None}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+        self.assertIn("run 30", deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_a_job_that_failed_before_the_executor_step_does_not_freeze(self):
+        # #4560 review F1: a stale-target refusal or GO recheck fails the job with the Deploy step skipped.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}, {"id": 10}]}
+            if "/runs/20/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                                  "steps": [{"name": "Production executor refused stale target", "conclusion": "failure"},
+                                            {"name": "Deploy", "conclusion": "skipped"}]}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_freeze_reads_only_runs_updated_after_the_newest_deploy_but_catches_a_later_rerun(self):
+        # #4560 review N5/N6: skip runs that cannot hold a newer deploy; an old run re-run later is still read.
+        read = []
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 30, "updated_at": "2026-10-28T03:00:00Z"},
+                                          {"id": 20, "updated_at": "2026-10-28T00:30:00Z"},
+                                          {"id": 10, "updated_at": "2026-10-28T05:00:00Z"}]}  # an old run re-run later
+            run = int(path.split("/runs/")[1].split("/")[0])
+            read.append(run)
+            ok = {30: ("success", "2026-10-28T03:00:00Z"), 10: ("failure", "2026-10-28T05:00:00Z")}.get(run, ("failure", "2026-10-28T00:30:00Z"))
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": ok[0], "completed_at": ok[1],
+                              "steps": [{"name": "Deploy", "conclusion": ok[0]}]}]}
+        self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
+        self.assertEqual([30, 10], read)  # run 20 last changed before the 03:00 deploy: not read
+
+    def test_a_failed_job_without_step_data_still_freezes(self):
+        # Security review on #4560: no positive proof that the executor was skipped = it may have run.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z"}]}
+        self.assertIn("stop the line", deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_deploy_freeze_looks_past_skipped_runs_within_a_bounded_window(self):
+        # #4359 review: most deploy.yml runs skip the deploy job; look past them, but bounded (job deadline).
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                page = int(path.rsplit("page=", 1)[1])
+                return {"workflow_runs": [{"id": page * 1000 + i} for i in range(100)]}
+            run = int(path.split("/runs/")[1].split("/")[0])
+            ran = run == real_run
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success" if ran else "skipped",
+                              "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success" if ran else "skipped"}]}]}
+        real_run = 1000 + 97  # the 98th run back, after 97 skipped ones
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+        real_run = 3000 + 3  # a quiet stretch (#4560 review F8): later pages are read when page 1 has no deploy
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+        real_run = 4000 + 3  # beyond the window: unknown, so frozen
+        self.assertIn("state unknown", deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_all_r3_billing_range_with_green_ci_activates_automatically(self):
+        records = [self._record(4400, self.BILLING),
+                   self._record(4401, "backend/app/Services/SessionDeduction/Deducter.php")]
+        # Today this range waits for the Founder reviewer...
+        provenance = classify_activation_provenance(records)
+        decision = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True, machine_validated=True,
+            machine_tier=provenance["tier_name"], declared_risk="R3", declared_tier="T3",
+            protected_activation=provenance["protected_activation"], ci_success=True, rollback_evidence=True)
+        self.assertEqual(decision["decision"], "awaiting-activation")
+        # ...and now activates with no click, on a merge run and on a release train alike.
+        for event in ("workflow_run", "repository_dispatch", "schedule"):
+            with self.subTest(event=event):
+                result = self._decide(records, event_name=event)
+                self.assertTrue(result["ok"], result["reason"])
+        self.assertFalse(self._decide(records, event_name="workflow_dispatch")["ok"])
+        self.assertTrue(auto_environment_is_valid(event_name="workflow_run", phase="", mode="auto-r3",
+                                                  go_evidence="verified", branch_names=["main"]))
+        self.assertFalse(auto_environment_is_valid(event_name="workflow_run", phase="", mode="auto-r3",
+                                                   go_evidence="missing", branch_names=["main"]))
+
+    def test_declared_r3_on_t2_code_activates_automatically(self):
+        patch = self._diff("frontend/src/pages/Home.vue", "<p>a</p>", "<p>b</p>")
+        self.assertTrue(self._decide([self._record(4402, "frontend/src/pages/Home.vue", patch)])["ok"])
+
+    def test_range_with_a_migration_still_waits_for_the_founder(self):
+        migration = self._record(4403, self.MIGRATION, "diff --git a/x b/x\n+Schema::table('invoices', fn () => null);\n")
+        for records in ([migration], [self._record(4400, self.BILLING), migration]):
+            with self.subTest(n=len(records)):
+                result = self._decide(records)
+                self.assertFalse(result["ok"])
+                self.assertIn("migration", result["reason"])
+
+    def test_data_repair_identity_and_control_plane_effects_still_wait(self):
+        cases = {
+            "backend/app/Console/Commands/RepairInvoices.php": "production data repair",
+            "backend/app/Http/Controllers/Auth/LoginController.php": "identity/credential",
+            "backend/app/Http/Middleware/CheckRole.php": "identity/credential",
+            "backend/app/Services/PasswordResetService.php": "identity/credential",
+        }
+        for path, label in cases.items():
+            with self.subTest(path=path):
+                result = self._decide([self._record(4404, path, self._diff(path, "$a = 1;", "$a = 2;"))])
+                self.assertFalse(result["ok"])
+                self.assertIn(label, result["reason"])
+        auth = self._diff(self.BILLING, "$a = 1;", "$user->assignRole($role);")
+        self.assertIn("authentication/privilege", self._decide([self._record(4405, self.BILLING, auth)])["reason"])
+
+    def test_incomplete_or_invalid_evidence_still_waits(self):
+        billing = self._record(4400, self.BILLING)
+        self.assertFalse(self._decide([billing], rollback_evidence=False)["ok"])
+        self.assertFalse(decide_r3_auto_activation([billing], event_name="workflow_run",
+                                                   rollback_evidence=True, range_paths=None)["ok"])
+        self.assertFalse(self._decide([billing], range_paths=[self.BILLING, "scripts/governance/autonomy_gate.py"])["ok"])
+        self.assertFalse(self._decide([billing], range_paths=[self.BILLING, ".github/workflows/deploy.yml"])["ok"])
+        self.assertFalse(self._decide([self._record(4400, self.BILLING, risk=2, tier=2)])["ok"])  # understated
+        self.assertFalse(self._decide([dict(billing, patch_complete=False)])["ok"])
+        self.assertFalse(self._decide([])["ok"])
+        uninspectable = self._record(4406, "frontend/src/pages/BillingStatus.vue", "")
+        self.assertFalse(self._decide([uninspectable])["ok"])
+
+    def test_r0_r2_ranges_are_not_turned_into_auto_r3(self):
+        patch = self._diff("frontend/src/pages/Home.vue", "<p>a</p>", "<p>b</p>")
+        result = self._decide([self._record(4407, "frontend/src/pages/Home.vue", patch, risk=1, tier=1)])
+        self.assertFalse(result["ok"])
+
+    def test_workflow_wiring_fails_closed_and_keeps_founder_gate_for_held_ranges(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
+        r3 = classify[classify.index('r3 = {"ok": False, "reason": "not evaluated"}'):]
+        self.assertIn('if mode == "awaiting-activation" and approval_eligible and freeze_now is None:', r3)
+        self.assertIn("for gate in (trusted_r3_gate, target_r3_gate)", r3)
+        self.assertIn('r3 = next((result for result in r3_results if not result["ok"]), r3_results[0])', r3)
+        self.assertIn('r3 = {"ok": False, "reason": f"R3 auto evidence unavailable ({type(exc).__name__})"}', r3)
+        self.assertIn('mode, reason, approval_eligible = "auto-r3", r3["reason"], False', r3)
+        self.assertIn("review=review, freeze_reason=freeze,", r3)
+        self.assertIn("rollback_evidence=r3_rollback,", r3)
+        self.assertIn("renamed=range_renamed,", r3)
+        # Final-head review covers every PR in the range, and the recheck re-reads that same list.
+        self.assertIn('r3_review_prs = sorted(range_prs | {str(pr["number"]) for pr in provenance["application_prs"]}, key=int)', r3)
+        self.assertIn("range_prs.add(str(pr_number))", classify)
+        self.assertLess(classify.index("range_prs.add(str(pr_number))"), classify.index("if pr_number in seen_reconciled_prs:"))
+        self.assertIn("PR_NUMBERS: ${{ needs.classify-activation.outputs.r3_review_prs }}", workflow)
+        self.assertIn("    timeout-minutes: 10 #", classify)
+        self.assertLess(r3.index("has_actionable_rollback("), r3.index("r3_results = ["))
+        # A capped compare (more than 250 commits) never reaches classification.
+        self.assertIn('if comparison.get("total_commits") != len(comparison.get("commits") or []):', classify)
+        self.assertIn('item.get("previous_filename")) if p]', classify)
+        self.assertLess(r3.index("final_head_review_evidence("), r3.index("r3_results = ["))
+        self.assertLess(r3.index("deploy_freeze_reason("), r3.index("r3_results = ["))
+        self.assertLess(r3.index('"auto-r3"'), r3.index("emit(mode,"))
+        # A classifier exception emits awaiting-activation before any R3 evaluation.
+        except_block = classify[classify.index("          except Exception as exc:\n              # Keep fail-closed"):]
+        self.assertNotIn("auto-r3", except_block)
+        self.assertIn('"awaiting-activation"', except_block)
+        auto = workflow[workflow.index("  production-auto:\n"):workflow.index("  deploy:\n")]
+        self.assertIn("(needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence == 'verified')", auto)
+        deploy = workflow[workflow.index("  deploy:\n"):]
+        self.assertIn("(needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence == 'verified' && needs.production-auto.result == 'success')", deploy.split("\n")[3])
+        self.assertEqual(deploy.count("needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3'"), 1)
+        # Freeze and final-head review are re-checked after the executor slot is held, before side effects.
+        recheck = deploy[deploy.index("      - name: Recheck R3 auto controls before production side effects"):]
+        self.assertIn("needs.classify-activation.outputs.mode == 'auto-r3'", recheck.split("\n")[1])
+        self.assertIn("gate.deploy_freeze_reason(", recheck)
+        self.assertIn("gate.final_head_review_evidence(", recheck)
+        self.assertLess(deploy.index("Recheck R3 auto controls"), deploy.index("Checkout pinned SSH trust helper"))
+        # Held ranges still go to the reviewer and the release train; auto-r3 never does.
+        gate = workflow[workflow.index("  production-activation:\n"):workflow.index("  production-auto:\n")]
+        self.assertNotIn("auto-r3", gate)
+        kick = workflow[workflow.index("  release-train-kick:\n"):workflow.index("  production-activation:\n")]
+        self.assertIn("needs.classify-activation.outputs.mode == 'awaiting-activation'", kick)
+        self.assertNotIn("auto-r3", kick)
 
 
 class FounderGoAutoActivationTest(unittest.TestCase):
@@ -2357,7 +2809,8 @@ class FounderGoAutoActivationTest(unittest.TestCase):
 
         executor = sorted(gate._DEPLOY_EXECUTOR_PATHS)
         self.assertEqual({"scripts/production-deploy/pi-remote-deploy.sh",
-                          "scripts/production-deploy/render_pi_remote_deploy.py"}, set(executor))
+                          "scripts/production-deploy/render_pi_remote_deploy.py",
+                          "scripts/post-deploy-verify.py"}, set(executor))  # #4560 review F5
         deploy = ".github/workflows/deploy.yml"
         patch = lambda path: f"diff --git a/{path} b/{path}\n@@ -1 +1 @@\n-echo old\n+echo new\n"
         for path in executor:
@@ -3097,6 +3550,49 @@ class GhApiRetryTest(unittest.TestCase):
         error, calls, _, _ = self._call([self.EMPTY] * 5, attempts=5)
         self.assertIsInstance(error, RuntimeError)
         self.assertEqual(len(calls), 5)
+
+
+class PopGithubReadTokenInstallTest(unittest.TestCase):
+    """The deploy installs the POP_INAPP_GITHUB_TOKEN secret on the Pi over stdin (#4565), with a fake ssh."""
+
+    def _run(self, token):
+        script = DeployActivationWorkflowContractTest._step_script("Install the POP GitHub read token")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            private = tmp / "backend" / "storage" / "app" / "private"
+            private.mkdir(parents=True)
+            (tmp / "bin").mkdir()
+            # fake ssh: runs the remote command locally under tmp; records argv so the token never rides in it
+            (tmp / "bin" / "ssh").write_text(textwrap.dedent(f"""\
+                #!/usr/bin/env bash
+                printf '%s\\n' "$*" >> {tmp}/argv
+                cmd="${{@: -1}}"
+                exec bash -c "${{cmd//\\/home\\/admin/{tmp}}}"
+            """))
+            (tmp / "bin" / "ssh").chmod(0o755)
+            env = {**os.environ, "PATH": f"{tmp}/bin:{os.environ['PATH']}", "POP_GITHUB_READ_TOKEN": token,
+                   "DEPLOY_PI_SSH_USER": "admin", "DEPLOY_PI_SSH_HOST": "pi"}
+            done = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
+            file = private / "pop-github-read-token"
+            content = file.read_text() if file.exists() else None
+            mode = oct(file.stat().st_mode & 0o777) if file.exists() else None
+            argv = (tmp / "argv").read_text() if (tmp / "argv").exists() else ""
+            return done.returncode, content, mode, argv, sorted(p.name for p in private.iterdir())
+
+    def test_installs_owner_and_group_readable_without_putting_the_token_in_argv(self):
+        token = "github_pat_ABCdef0123456789_xyz"
+        rc, content, mode, argv, files = self._run(token)
+        self.assertEqual((rc, content, mode, files), (0, token, "0o640", ["pop-github-read-token"]))
+        self.assertNotIn(token, argv)
+
+    def test_no_secret_removes_the_file_and_a_malformed_one_fails_without_writing(self):
+        self.assertEqual(self._run("")[:3], (0, None, None))
+        rc, content, _, argv, files = self._run("x; rm -rf /")
+        self.assertEqual((rc, content, argv, files), (1, None, "", []))
+
+    def test_never_fails_the_deploy_job(self):
+        step = WORKFLOW.read_text(encoding="utf-8").split("      - name: Install the POP GitHub read token\n", 1)[1]
+        self.assertIn("        continue-on-error: true\n", step.split("        run: |", 1)[0])
 
 
 if __name__ == "__main__":

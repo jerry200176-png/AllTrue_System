@@ -19,19 +19,19 @@ describe('monthly renewal period review', () => {
 
   it.each(['loading', 'error'])('prevents submitting while preview is %s', async (status) => {
     const wrapper = mount(RenewMonthlyModal, { props: { show: true, form: { ...form(), preview_status: status } } });
-    expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
-    await wrapper.get('button.primary').trigger('click'); expect(wrapper.emitted('submit')).toBeUndefined();
+    expect(wrapper.get('button.at-submit').attributes('disabled')).toBeDefined();
+    await wrapper.get('button.at-submit').trigger('click'); expect(wrapper.emitted('submit')).toBeUndefined();
     wrapper.unmount();
   });
 
   it('prevents submitting a blocked or different-date preview', async () => {
     const wrapper = mount(RenewMonthlyModal, { props: { show: true, form: { ...form(), preview_blocked: true }, warnings: [{ code: 'outside', message: '請先核對已上堂次' }] } });
-    expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('button.at-submit').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[role="alert"]').text()).toContain('請先核對已上堂次');
     await wrapper.setProps({ form: { ...form(), preview_end_date: '2026-10-31' } });
-    expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('button.at-submit').attributes('disabled')).toBeDefined();
     await wrapper.setProps({ form: form() });
-    expect(wrapper.get('button.primary').attributes('disabled')).toBeUndefined();
+    expect(wrapper.get('button.at-submit').attributes('disabled')).toBeUndefined();
     wrapper.unmount();
   });
 });

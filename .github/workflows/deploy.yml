@@ -110,6 +110,7 @@ jobs:
         run: |
           python3 scripts/tests/test_deploy_activation_state.py
           python3 scripts/tests/test_principal_rotation_grant_replay.py
+          python3 scripts/tests/test_post_deploy_watch.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -538,7 +539,7 @@ jobs:
     needs: [resolve-target, detect-deployable]
     if: ${{ needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10 # R3 evidence pages GitHub APIs (review, freeze); a timeout holds every deploy
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       approval_eligible: ${{ steps.classify.outputs.approval_eligible }}
@@ -547,6 +548,8 @@ jobs:
       reason: ${{ steps.classify.outputs.reason }}
       go_evidence: ${{ steps.classify.outputs.go_evidence }}
       go_reason: ${{ steps.classify.outputs.go_reason }}
+      r3_evidence: ${{ steps.classify.outputs.r3_evidence }}
+      r3_review_prs: ${{ steps.classify.outputs.r3_review_prs }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -746,26 +749,26 @@ jobs:
                   is_production_activation_sensitive_path,
                   parse_declaration,
                   reconcile_preexisting_pr_provenance,
-                  codex_confirms_head,
-                  declares_additive_migration,
+                  additive_activation_confirmed,
               )
 
-              def additive_confirmed(pr, paths):
-                  # Founder 2026-10-14（三）補充 #1: declared, and Codex's 👍 on the final head.
-                  if not declares_additive_migration(pr.get("body") or "") or not any(
-                      p.startswith("backend/database/migrations/") for p in paths
-                  ):
-                      return False
-                  n, flags = pr.get("number"), ("--paginate", "--slurp")
+              def additive_confirmed(pr, paths, patch):
+                  # #4590 review: the deployed policy's classifier (the one the automatic rollback loads) must
+                  # agree, plus full final-head review evidence; a missing deployed policy or any error is the click.
                   try:
-                      return codex_confirms_head(
-                          (pr.get("head") or {}).get("sha"),
-                          pages(gh_api(f"/repos/{repo}/issues/{n}/comments?per_page=100", *flags)),
-                          pages(gh_api(f"/repos/{repo}/pulls/{n}/reviews?per_page=100", *flags)),
-                          pages(gh_api(f"/repos/{repo}/issues/{n}/reactions?per_page=100", *flags)),
+                      import importlib.util
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_additive_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
                       )
-                  except (RuntimeError, ValueError):
+                      deployed = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(deployed)
+                      classify = deployed.additive_migration_paths
+                  except Exception:
                       return False
+                  return additive_activation_confirmed(
+                      repo=repo, number=pr.get("number"), body=pr.get("body") or "", paths=paths, patch=patch,
+                      api=gh_api, graphql=lambda query: gh_api("graphql", "-f", f"query={query}"), classify=classify,
+                  )
 
               base = os.environ["RUNTIME_BASE_SHA"]
               required_status_checks = active_main_required_status_checks(repo)
@@ -773,6 +776,11 @@ jobs:
               files = comparison.get("files") or []
               if not files:
                   emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
+                  sys.exit(0)
+              # The unpaginated compare caps `commits` (250): an omitted commit is never classified (#4359 review).
+              if comparison.get("total_commits") != len(comparison.get("commits") or []):
+                  emit("awaiting-activation", "unknown", "none",
+                       f"runtime range lists {len(comparison.get('commits') or [])} of {comparison.get('total_commits')} commits; fail closed")
                   sys.exit(0)
 
               # Attribute the undeployed range to each merged PR before
@@ -787,6 +795,11 @@ jobs:
               seen_reconciled_prs = set()
               attributed_commits = set()
               provenance_complete = True
+              # Every path the range touches (Founder 2026-10-21 R3 auto); None once a commit is capped.
+              range_paths = set()
+              range_renamed = False
+              # Every merged PR in the range, including ones with no deployable path (R3 review covers them all).
+              range_prs = set()
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
                   if not commit_sha:
@@ -797,7 +810,13 @@ jobs:
                   if not isinstance(actual_files, list):
                       provenance_complete = False
                       continue
-                  actual_paths = [item.get("filename", "") for item in actual_files]
+                  # A rename's source path is classified too: moving a file out of a protected path is a protected change.
+                  actual_paths = [p for item in actual_files for p in (item.get("filename", ""), item.get("previous_filename")) if p]
+                  range_renamed = range_renamed or any(item.get("previous_filename") for item in actual_files)
+                  if range_paths is not None and len(actual_files) < 300:
+                      range_paths.update(p for item in actual_files for p in (item.get("filename"), item.get("previous_filename")) if p)
+                  else:
+                      range_paths = None
                   actual_patch_parts = []
                   actual_patch_complete = True
                   for item in actual_files:
@@ -892,6 +911,7 @@ jobs:
                               print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
                       if len(recovered) == 1 and not merged_matches:
                           attributed.append(recovered[0])
+                          range_prs.add(str(recovered[0]["number"]))
                           seen_reconciled_prs.add(recovered[0]["number"])
                           attributed_commits.add(commit_sha)
                           continue
@@ -907,6 +927,7 @@ jobs:
                           or not candidate.get("merged_at")
                       ):
                           continue
+                      range_prs.add(str(pr_number))
                       if pr_number in seen_reconciled_prs:
                           attributed_commits.add(commit_sha)
                           continue
@@ -925,7 +946,7 @@ jobs:
                           **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
-                          "additive_confirmed": additive_confirmed(pr, actual_paths),
+                          "additive_confirmed": additive_confirmed(pr, actual_paths, actual_effect["patch"]),
                       })
                       attributed_commits.add(commit_sha)
               attributed.extend(aggregate_landed_pr_effects(landed_effects))
@@ -1027,10 +1048,82 @@ jobs:
                   # Founder Q1 A (2026-10-08): a GO line is plain text any agent on the owner
                   # token can write, so it never replaces the reviewer for an awaiting-activation
                   # (R3) range; only R0-R2 ranges activate without a human (#3797).
+              # Stop the line (#4363 review): after a failed, rolled-back, held or interrupted production
+              # deploy, no range activates on its own until a reviewed deploy succeeds. Unknown = frozen.
+              freeze_now = None
+              if mode == "auto":
+                  try:
+                      import functools
+                      import importlib.util
+                      import scripts.governance.autonomy_gate as target_freeze_gate
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_freeze_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
+                      )
+                      trusted_freeze_gate = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(trusted_freeze_gate)
+                      # Deployed and target copies both judge, so a range cannot drop its own freeze (#4560 review);
+                      # a deployed policy that predates the freeze has none to apply. One cached API view for both.
+                      cached_api = functools.lru_cache(maxsize=None)(gh_api)
+                      freeze_now = next((reason for reason in (
+                          gate.deploy_freeze_reason(repo=repo, api=cached_api)
+                          for gate in (trusted_freeze_gate, target_freeze_gate) if hasattr(gate, "deploy_freeze_reason")
+                      ) if reason is not None), None)
+                  except Exception as exc:
+                      freeze_now = f"freeze state unavailable ({type(exc).__name__})"
+                  if freeze_now is not None:
+                      mode, reason, approval_eligible = "awaiting-activation", f"deploy freeze: {freeze_now}", True
+                  print(f"Deploy freeze: {freeze_now or 'none'}")
+              # Founder 2026-10-21（二）之二: a range held only because it is R3 activates through
+              # production-auto. Both the deployed and the target policy must accept it; an old
+              # deployed policy without the rule, or any error, keeps the Founder reviewer.
+              r3 = {"ok": False, "reason": "not evaluated"}
+              r3_review_prs = []
+              # A range frozen above stays with the Founder reviewer; skip the second scan (#4560 review N5).
+              if mode == "awaiting-activation" and approval_eligible and freeze_now is None:
+                  try:
+                      import importlib.util
+                      import scripts.governance.autonomy_gate as target_r3_gate
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_r3_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
+                      )
+                      trusted_r3_gate = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(trusted_r3_gate)
+                      # Compensating controls for the removed click: final-head review and stop-the-line.
+                      graphql = lambda query: gh_api("graphql", "-f", f"query={query}")
+                      # Every PR in the range, control-plane ones too: an unreviewed workflow change rides
+                      # the same range (adversarial review on #4359). Unattributed commits already hold.
+                      r3_review_prs = sorted(range_prs | {str(pr["number"]) for pr in provenance["application_prs"]}, key=int)
+                      review = target_r3_gate.final_head_review_evidence(
+                          repo=repo, pr_numbers=r3_review_prs, api=gh_api, graphql=graphql,
+                      )
+                      freeze = target_r3_gate.deploy_freeze_reason(repo=repo, api=gh_api)
+                      # auto-r3 needs a reversal the Rollback line actually names (#4359 review).
+                      r3_rollback = all(
+                          target_r3_gate.has_actionable_rollback(
+                              gh_api(f"/repos/{repo}/pulls/{pr['number']}").get("body") or ""
+                          )
+                          for pr in provenance["application_prs"]
+                      )
+                      r3_results = [
+                          gate.decide_r3_auto_activation(
+                              attributed, event_name=classify_event,
+                              rollback_evidence=r3_rollback, range_paths=range_paths,
+                              review=review, freeze_reason=freeze, renamed=range_renamed,
+                          )
+                          for gate in (trusted_r3_gate, target_r3_gate)
+                      ]
+                      r3 = next((result for result in r3_results if not result["ok"]), r3_results[0])
+                  except Exception as exc:
+                      r3 = {"ok": False, "reason": f"R3 auto evidence unavailable ({type(exc).__name__})"}
+                  print(f"R3 auto-activation evidence: ok={r3['ok']} {r3['reason']}")
+                  if r3["ok"] is True:
+                      mode, reason, approval_eligible = "auto-r3", r3["reason"], False
               emit(mode, decision["effective_tier"], pr_number, reason, approval_eligible)
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"go_evidence={'verified' if go['ok'] else 'missing'}\n")
                   output.write(f"go_reason={go['reason']}\n")
+                  output.write(f"r3_evidence={'verified' if r3['ok'] is True else 'missing'}\n")
+                  output.write(f"r3_review_prs={','.join(r3_review_prs) if r3['ok'] is True else ''}\n")
           except Exception as exc:
               # Keep fail-closed. Surface exception class so empty/truncated GitHub
               # JSON bodies are diagnosable without weakening approval eligibility.
@@ -1063,6 +1156,11 @@ jobs:
           RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
           GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
           GO_REASON: ${{ needs.classify-activation.outputs.go_reason }}
+          R3_EVIDENCE: ${{ needs.classify-activation.outputs.r3_evidence }}
+          PR_NUMBER: ${{ needs.classify-activation.outputs.pr_number }}
+          TIER: ${{ needs.classify-activation.outputs.tier }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           FLAG_CHANGES: ${{ needs.resolve-target.outputs.flag_changes }}
           REPO: ${{ github.repository }}
@@ -1101,6 +1199,22 @@ jobs:
                 echo "This state is not deployed. ${GO_REASON}; it activates through production-auto with no manual approval (Founder 1A)."
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
+            auto-r3)
+              if [[ "$R3_EVIDENCE" != "verified" ]]; then
+                echo "## state=blocked" >> "$GITHUB_STEP_SUMMARY"
+                echo "::error::auto-r3 without verified R3 evidence; fail closed." >&2
+                exit 1
+              fi
+              # Audit trail (SLSA-style provenance): range, PRs, tier, evidence; the deploy job records the outcome.
+              {
+                echo "## state=ready (R3, no Founder click)"
+                echo "This state is not deployed. It activates through production-auto with no manual approval (Founder 2026-10-21)."
+                echo "- Range: \`${RUNTIME_BASE_SHA:-unknown}\`...\`${TARGET_SHA}\`"
+                echo "- PRs: ${PR_NUMBER:-unknown}; tier: ${TIER:-unknown}; event: ${EVENT_NAME}; run: ${RUN_URL}"
+                echo "- Evidence: ${REASON}"
+                echo "- CI on the exact target SHA is re-checked by the deploy job before the executor; outcome is recorded in its summary (state=production-verified or the rollback summary)."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
             awaiting-activation)
               if [[ "$APPROVAL_ELIGIBLE" != "true" ]]; then
                 {
@@ -1113,7 +1227,7 @@ jobs:
               if [[ "$RELEASE_TRAIN" != "true" ]]; then
                 {
                   echo "## state=queued-for-release-train"
-                  echo "Not deployed. Founder-gated changes ride the next release train (12:17 and 18:17 Asia/Taipei; if GitHub drops the scheduled run, the next merge after the window starts it). While one is pending, later R0-R2 merges wait for that train too."
+                  echo "Not deployed. Founder-gated changes (migration, data repair, identity/credential, control plane, or incomplete evidence) ride the next release train (12:17 and 18:17 Asia/Taipei; if GitHub drops the scheduled run, the next merge after the window starts it). While one is pending, later R0-R2 merges wait for that train too."
                   echo "Reason: ${REASON}"
                   echo "Founder GO evidence: ${GO_REASON:-unavailable}"
                 } >> "$GITHUB_STEP_SUMMARY"
@@ -1401,9 +1515,9 @@ jobs:
     name: Evidence-gated production activation (no reviewer)
     needs: [resolve-target, detect-deployable, classify-activation]
     # Founder 1A (2026-10-07): replaces the manual approve only when classify verified that
-    # every merged PR in the production...target range is R0-R2 or carries a Founder GO line.
-    # Anything else keeps the reviewer-gated production-activation job above.
-    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.go_evidence == 'verified' && (needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')) }}
+    # every merged PR in the production...target range is R0-R2 or carries a Founder GO line, or
+    # (Founder 2026-10-21) for an R3 range with complete classifier evidence (auto-r3). Else: reviewer.
+    if: ${{ always() && needs.classify-activation.result == 'success' && ((needs.classify-activation.outputs.go_evidence == 'verified' && (needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true'))) || (needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence == 'verified')) }}
     environment:
       name: production-auto
     runs-on: ubuntu-latest
@@ -1423,7 +1537,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PHASE: ${{ inputs.phase || '' }}
           MODE: ${{ needs.classify-activation.outputs.mode }}
-          GO_EVIDENCE: ${{ needs.classify-activation.outputs.go_evidence }}
+          GO_EVIDENCE: ${{ needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence || needs.classify-activation.outputs.go_evidence }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -1448,21 +1562,25 @@ jobs:
               event_name=os.environ["EVENT_NAME"], phase=os.environ["PHASE"],
               mode=os.environ["MODE"], go_evidence=os.environ["GO_EVIDENCE"], branch_names=names,
           ):
-              raise SystemExit(f"production-auto refused: main-only policy and verified GO evidence required (branches={names})")
-          print("production-auto verified: main-only environment, Founder GO evidence verified")
+              raise SystemExit(f"production-auto refused: main-only policy and verified GO/R3 evidence required (branches={names})")
+          print(f"production-auto verified: main-only environment, {os.environ['MODE']} evidence verified")
           PY
 
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation, production-auto]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true') || ((needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')) && needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success') || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true') || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && ((needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train != 'true') || ((needs.classify-activation.outputs.mode == 'auto-founder-go' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true')) && needs.classify-activation.outputs.go_evidence == 'verified' && needs.production-auto.result == 'success') || (needs.classify-activation.outputs.mode == 'auto-r3' && needs.classify-activation.outputs.r3_evidence == 'verified' && needs.production-auto.result == 'success') || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'auto' && needs.resolve-target.outputs.release_train == 'true') || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
     environment: production-ssh
     # Bound the sole production executor so a lost SSH session cannot leave a
     # run waiting indefinitely. The remote script retains its existing
-    # rollback-on-error behavior before this runner-level deadline.
-    timeout-minutes: 30
+    # rollback-on-error behavior before this runner-level deadline. The 20-minute
+    # post-deploy watch (gap #3) runs inside the same executor, so the bound is
+    # deploy (~3-15 min) + verify/smoke (~3 min) + watch (20 min) + a full rollback (~15 min) + margin.
+    timeout-minutes: 80
+    outputs:
+      rc: ${{ steps.deploy.outputs.rc }}
     # Serialize only the side-effecting executor. Read-only preflight and
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
@@ -1477,22 +1595,24 @@ jobs:
     steps:
       # Founder 1A: without a reviewer, re-verify the GO evidence right before any
       # production side effect, under both the deployed and the target policy.
+      # auto-r3 carries no GO text; its freeze and final-head review are re-checked instead (after the
+      # executor slot is held, #4359 review), plus the exact-main CI gate below.
       - name: Checkout target gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
           path: gate-target
           sparse-checkout: scripts/governance
       - name: Checkout deployed gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           path: gate-trusted
           sparse-checkout: scripts/governance
       - name: Recheck Founder GO evidence before production side effects
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -1520,6 +1640,71 @@ jobs:
               if not go["ok"]:
                   raise SystemExit(f"Founder GO evidence no longer holds ({root}): {go['reason']}; nothing deployed")
           print("Founder GO evidence re-verified under the deployed and target policy")
+          PY
+      - name: Recheck R3 auto controls before production side effects
+        if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode == 'auto-r3' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBERS: ${{ needs.classify-activation.outputs.r3_review_prs }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+
+          def api(path, *extra):
+              return json.loads(subprocess.check_output(["gh", "api", path, *extra], text=True))
+
+          # An older executor run may have failed while this one waited in the queue.
+          numbers = [n for n in os.environ["PR_NUMBERS"].split(",") if n.strip()]
+          if not numbers:
+              raise SystemExit("auto-r3 without PR numbers; nothing deployed")
+          for root in ("gate-trusted", "gate-target"):
+              spec = importlib.util.spec_from_file_location(f"{root}_gate", f"{root}/scripts/governance/autonomy_gate.py")
+              gate = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(gate)
+              freeze = gate.deploy_freeze_reason(repo=os.environ["REPO"], api=api)
+              if freeze is not None:
+                  raise SystemExit(f"deploy freeze since classification ({root}): {freeze}; nothing deployed")
+              review = gate.final_head_review_evidence(
+                  repo=os.environ["REPO"], pr_numbers=numbers, api=api,
+                  graphql=lambda query: api("graphql", "-f", f"query={query}"),
+              )
+              if review.get("ok") is not True:
+                  raise SystemExit(f"final-head review no longer holds ({root}): {review.get('reason')}; nothing deployed")
+          print("R3 freeze and final-head review re-verified under the deployed and target policy")
+          PY
+      - name: Recheck the deploy freeze before an unattended deploy
+        # #4560 review: a run classified while an earlier deploy was still in its 20-minute watch saw no
+        # freeze; that deploy may have failed or rolled back while this one waited for the executor slot.
+        if: ${{ needs.classify-activation.outputs.mode == 'auto' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+
+          def api(path, *extra):
+              return json.loads(subprocess.check_output(["gh", "api", path, *extra], text=True))
+
+          for root in ("gate-trusted", "gate-target"):
+              spec = importlib.util.spec_from_file_location(f"{root}_freeze", f"{root}/scripts/governance/autonomy_gate.py")
+              gate = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(gate)
+              if not hasattr(gate, "deploy_freeze_reason"):
+                  continue  # a deployed policy older than the freeze has none to apply
+              freeze = gate.deploy_freeze_reason(repo=os.environ["REPO"], api=api)
+              if freeze is not None:
+                  raise SystemExit(f"deploy freeze since classification ({root}): {freeze}; nothing deployed")
+          print("Deploy freeze re-checked under the deployed and target policy: none")
           PY
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1577,6 +1762,11 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -l -f ~/.ssh/deploy_key
 
+      # Post-deploy watch (gap #3): after verify + smoke pass, the [6/7] gate keeps watching for
+      # 20 min (health + deployment.json identity every 30 s, 4 consecutive failures = breach; a
+      # Sentry error-count spike vs the pre-deploy hour when the secret SENTRY_WATCH is set to
+      # "<org>/<project> <read-only token>"). A breach takes the same rollback-or-hold
+      # decision as a failed verify, so the rollback stays this executor's rollback_deploy.
       - name: Deploy
         id: deploy
         # The remote script is scripts/production-deploy/pi-remote-deploy.sh from the same commit as this
@@ -1596,6 +1786,7 @@ jobs:
           DEPLOY_SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
           DEPLOY_SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
           DEPLOY_SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
+          DEPLOY_SENTRY_WATCH: ${{ secrets.SENTRY_WATCH }}
         run: |
           rc=0
           remote_script="$(umask 077 && mktemp "${RUNNER_TEMP}/pi-remote-deploy.XXXXXX")"
@@ -1648,7 +1839,43 @@ jobs:
             echo "## state=production-verified"
             echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
             echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
+            echo ""
+            echo "## post-deploy watch"
+            echo "20-minute watch passed: health + deployment.json identity every 30 s, no 4 consecutive failures."
+            # The runner cannot see whether the Sentry query actually ran (#4363 review): point at the executor's own lines.
+            echo "Sentry error-count check: result is in the Deploy log (\`post-deploy watch:\` lines); not evaluated here."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Read-only GitHub token for the in-app resolve evidence (#4565), from the production-ssh secret
+      # POP_INAPP_GITHUB_TOKEN: sent over stdin (never argv, never printed) to storage/app/private, which
+      # deploy-storage-perms.sh never widens; mode 640 with the storage group, so the web worker can read it
+      # where it can write storage. No secret removes the file (back to anonymous reads, 60 calls an hour).
+      # Runs only after production is verified, and never fails the deploy job: the resolve evidence
+      # itself requires that job to succeed.
+      - name: Install the POP GitHub read token
+        continue-on-error: true
+        env:
+          DEPLOY_PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          DEPLOY_PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          POP_GITHUB_READ_TOKEN: ${{ secrets.POP_INAPP_GITHUB_TOKEN }}
+        run: |
+          pi() { ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            "${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" "set -eu; d=/home/admin/backend/storage/app/private; f=\"\$d/pop-github-read-token\"; $1"; }
+          if [ -z "$POP_GITHUB_READ_TOKEN" ]; then
+            pi 'rm -f "$f"'
+            echo "no POP_INAPP_GITHUB_TOKEN: token file removed"
+            exit 0
+          fi
+          if ! [[ "$POP_GITHUB_READ_TOKEN" =~ ^[A-Za-z0-9_]{20,255}$ ]]; then
+            echo "::warning::POP_INAPP_GITHUB_TOKEN is not a GitHub token; not installed"
+            exit 1
+          fi
+          printf '%s' "$POP_GITHUB_READ_TOKEN" | pi '
+            test ! -L "$d"; test ! -L "$f"
+            t="$(umask 077 && mktemp "$d/.pop-github-read-token.XXXXXX")"; cat > "$t"
+            chgrp "$(stat -c %g /home/admin/backend/storage)" "$t" 2>/dev/null && chmod 640 "$t"
+            mv -f "$t" "$f"'
+          echo "POP GitHub read token installed"
 
       - name: Summarize production verification failure
         if: ${{ failure() && steps.deploy.outcome != 'skipped' }}
@@ -1667,6 +1894,69 @@ jobs:
             --rc "${RC:-1}" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Production deploy not verified::$(printf '%s' "$summary" | tail -n 1)"
+
+  # Gap #3: a failed production executor (rollback, rollback failure, hold, lost SSH, or the
+  # runner re-check failing) opens or appends ONE incident issue. IDs and SHAs only, no PII.
+  # The freeze needs no extra marker: the failed "Deploy to Production" job is what the
+  # deploy-freeze check (autonomy_gate.deploy_freeze_reason, #4359) reads.
+  deploy-incident:
+    name: Record production deploy incident
+    needs: [resolve-target, detect-deployable, deploy]
+    # A timeout or cancel ends the job as 'cancelled', possibly before rc is written (#4363 review).
+    if: ${{ always() && (needs.deploy.result == 'failure' || needs.deploy.result == 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      # The default branch's summarizer, never the failing release's copy, runs next to an issues:write token.
+      - name: Checkout incident summarizer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/post-deploy-verify.py
+          sparse-checkout-cone-mode: false
+
+      - name: Open or append the deploy incident issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RC: ${{ needs.deploy.outputs.rc }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Production deploy incident (deploy.yml)"
+          # Failed before the executor step (stale target, GO/R3 recheck, SSH setup): nothing reached the Pi.
+          # Only positive proof (the Deploy step concluded skipped) suppresses the incident; unknown reports it.
+          skipped="$(gh api "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "Deploy to Production") | .steps[]? | select(.name == "Deploy" and .conclusion == "skipped")] | length')" \
+            || skipped="unknown"
+          if [ "$skipped" = "1" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then
+            echo "Deploy step never ran; production untouched, no incident."
+            exit 0
+          fi
+          if [[ "$RC" =~ ^[0-9]+$ ]]; then
+            body="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
+              --previous-sha "$PREVIOUS_SHA" --runner-verify failure)"
+          else
+            RC="unknown"
+            body="Executor result UNKNOWN: the Deploy job ended ${DEPLOY_RESULT} before reporting an exit code (timeout or cancel). Production may be on ${TARGET_SHA} or ${PREVIOUS_SHA}; check deployment.json before any further deploy."
+          fi
+          body="$(printf '%s\n\nRun: %s\nExecutor rc: %s\nRelease auto-activation is frozen until a reviewed deploy succeeds (RULEBOOK D8).\n' \
+            "$body" "$RUN_URL" "$RC")"
+          existing="$(gh api -X GET search/issues -f q="repo:${REPO} is:issue is:open in:title \"${title}\"" \
+            --jq "[.items[] | select(.title == \"${title}\")][0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh api "repos/${REPO}/issues/${existing}/comments" -f body="$body" --jq .html_url
+          else
+            gh api "repos/${REPO}/issues" -f title="$title" -f body="$body" --jq .html_url
+          fi
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke

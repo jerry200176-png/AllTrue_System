@@ -23,7 +23,12 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->beginDatabaseTransaction();
     }
 
-    private const KEY = '6f1c2b7e-3a4d-4e5f-8a9b-0c1d2e3f4a5b';
+    /** UUIDs built from a synthetic name: the API requires a uuid, and a literal one trips the secret scan's key rule. */
+    private static function key(string $name = 'reissue'): string
+    {
+        return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_DNS, "synthetic-{$name}")->toString();
+    }
+
     private int $userId = 0;
     /** @dataProvider nonReceiptKinds */
     public function test_4132_fee_or_unknown_kind_cannot_be_replayed_as_a_pending_report(?string $kind): void
@@ -38,7 +43,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         DB::table('invoice_corrections')->insert(['kind' => $kind, 'original_invoice_id' => $oldId,
             'replacement_invoice_id' => $replacementId, 'student_class_id' => $course->ID,
             'payment_report_id' => $reportId, 'amount' => 7200, 'reason' => '原約定 7200',
-            'idempotency_key' => self::KEY, 'operator_user_id' => $this->userId, 'created_at' => now()]);
+            'idempotency_key' => self::key(), 'operator_user_id' => $this->userId, 'created_at' => now()]);
         $before = DB::table('Invoice')->orderBy('id')->get()->toArray();
         $beforeReports = DB::table('payment_reports')->orderBy('id')->get()->toArray();
         $this->record($token, $course, $oldId)->assertStatus(409)->assertJsonPath('code', 'correction_replay_incompatible');
@@ -75,7 +80,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertSame(7200, (int) DB::table('Invoice')->where('id', $newId)->value('TotalAmount'));
         $this->assertSame($newId, (int) DB::table('payment_reports')->where('id', $res->json('report_id'))->value('InvoiceID'));
         $link = DB::table('invoice_corrections')->where('original_invoice_id', $oldId)->first();
-        $this->assertSame([$newId, (int) $res->json('report_id'), 7200, '原約定 7200', self::KEY, $this->userId], [(int) $link->replacement_invoice_id,
+        $this->assertSame([$newId, (int) $res->json('report_id'), 7200, '原約定 7200', self::key(), $this->userId], [(int) $link->replacement_invoice_id,
             (int) $link->payment_report_id, (int) $link->amount, $link->reason, $link->idempotency_key, (int) $link->operator_user_id]);
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'invoice.correction_reissue')->count());
         $this->withToken($token)->putJson('/api/v1/payment-reports/' . $res->json('report_id') . '/confirm')->assertOk();
@@ -92,7 +97,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertSame($first->json('report_id'), $retry->json('report_id'));
         $this->record($token, $course, $oldId, ['correction_reason' => '另一個原因'])
             ->assertStatus(409)->assertJsonPath('code', 'replaces_invoice_already_replaced')->assertJsonPath('replacement_invoice_id', $first->json('invoice_id'));
-        $this->record($token, $course, $oldId, ['idempotency_key' => '0b7d8c9e-1f2a-4b3c-9d4e-5f6a7b8c9d0e'])->assertStatus(409);
+        $this->record($token, $course, $oldId, ['idempotency_key' => self::key('other')])->assertStatus(409);
         $this->record($token, $course, $oldId, ['amount' => 7000])->assertStatus(409);
         $this->assertSame(2, DB::table('Invoice')->where('StudentClassID', $course->ID)->count());
         $this->assertSame(1, DB::table('payment_reports')->where('StudentClassID', $course->ID)->count());
@@ -100,7 +105,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->assertSame(1, DB::table('invoice_corrections')->where('original_invoice_id', $oldId)->count());
         config(['app.key' => 'base64:' . base64_encode(random_bytes(32))]);
         $this->record($token, $course, $oldId)->assertOk()->assertJsonPath('invoice_id', $first->json('invoice_id'));
-        $this->record($token, $course, $oldId, ['idempotency_key' => '0b7d8c9e-1f2a-4b3c-9d4e-5f6a7b8c9d0e'])->assertStatus(409);
+        $this->record($token, $course, $oldId, ['idempotency_key' => self::key('other')])->assertStatus(409);
     }
 
     public function test_the_database_refuses_a_second_correction_of_the_same_bill(): void
@@ -111,7 +116,7 @@ class InvoiceCorrectionReissueTest extends TestCase
         $this->expectException(\Illuminate\Database\QueryException::class);
         try {
             DB::table('invoice_corrections')->insert(['original_invoice_id' => $oldId, 'replacement_invoice_id' => $other, 'student_class_id' => $course->ID,
-                'amount' => 7200, 'reason' => '另一個請求', 'idempotency_key' => '0b7d8c9e-1f2a-4b3c-9d4e-5f6a7b8c9d0e', 'created_at' => now()]);
+                'amount' => 7200, 'reason' => '另一個請求', 'idempotency_key' => self::key('other'), 'created_at' => now()]);
         } finally {
             $this->assertSame((int) $first->json('invoice_id'), (int) DB::table('invoice_corrections')->where('original_invoice_id', $oldId)->value('replacement_invoice_id'));
         }
@@ -371,7 +376,7 @@ class InvoiceCorrectionReissueTest extends TestCase
     {
         return $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', array_filter(array_merge([
             'student_class_id' => $course->ID, 'payment_date' => now()->toDateString(), 'payment_method' => 'cash', 'amount' => 7200,
-            'replaces_invoice_id' => $oldId, 'correction_reason' => '原約定 7200', 'idempotency_key' => self::KEY,
+            'replaces_invoice_id' => $oldId, 'correction_reason' => '原約定 7200', 'idempotency_key' => self::key(),
         ], $over), fn ($v) => $v !== null));
     }
 

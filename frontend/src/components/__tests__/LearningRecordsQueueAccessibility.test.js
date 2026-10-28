@@ -81,7 +81,7 @@ describe('LearningRecords review queue accessibility', () => {
   it('names batch-selection checkboxes with review context', () => {
     const rowCheckboxes = [...source.matchAll(/<input[\s\S]*?type="checkbox"[\s\S]*?>/g)]
       .map((match) => match[0])
-      .filter((openingTag) => openingTag.includes('toggleRecordSelection(record.id)'));
+      .filter((openingTag) => openingTag.includes('selection.toggle(record.id)'));
 
     expect(rowCheckboxes).toHaveLength(2);
     for (const openingTag of rowCheckboxes) {
@@ -90,7 +90,7 @@ describe('LearningRecords review queue accessibility', () => {
       expect(openingTag).toContain('record.Subject || record.student_class_label || \'未分類\'');
     }
 
-    expect(source).toContain(':aria-label="allSelected ? \'取消全選本頁評量\' : \'全選本頁評量\'"');
+    expect(source).toContain('<AtSelectAll :selection="selection" label="全選本頁評量" hide-label :show-count="false" />');
   });
 
   it('distinguishes assessment completion from director review status on cards', () => {
@@ -112,5 +112,16 @@ describe('LearningRecords review queue accessibility', () => {
     expect(tableSlice).not.toContain('{{ statusLabel(record.Status) }}');
     expect(source).toContain('評量內容：未填／已填');
     expect(source).toContain('審核：待主任核准／老師需修改／已核准／已退回');
+  });
+
+  it('#4488 student groups are disclosure cards: name filter beside the toggle, not nested in a summary', () => {
+    const start = source.indexOf('<AtDisclosureCard');
+    const group = source.slice(start, source.indexOf('<template #summary>', start));
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(source).not.toContain('<details\n          v-for="(group) in filteredGroupedRecords"');
+    expect(group).toContain(':open="openGroupKeys.has(group.key)"');
+    expect(group).toContain('@update:open="setGroupOpen(group.key, $event)"');
+    expect(group).toContain('<template #actions>');
+    expect(group).toContain('@click="filterByStudent(group.student_name)"');
   });
 });

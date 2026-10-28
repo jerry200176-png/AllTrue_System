@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 import { CODEX_LOGIN, REVIEW_CHECK, decodeEntities, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 
@@ -157,6 +157,22 @@ test('staleReason: batch survives only if main, every member head and readiness 
   const notReady = cur(...ms); notReady.get(1).ready = false;
   assert.match(staleReason(ms, 'b', 'b', notReady), /#1 no longer ready/);
   assert.match(staleReason([{ n: 1, sha: '' }], 'b', 'b', cur(m(1))), /head moved/); // head not pinned by a merge parent
+});
+
+test('suiteRuns: a dispatch-only batch tip (no statusCheckRollup) is judged from its check suites', () => {
+  // 2026-10-28: batch chore/land-queue-batch-40631598403 had every required check green and waited for the timeout.
+  const suite = (id, repo, runs) => ({ app: { databaseId: id }, repository: { nameWithOwner: repo }, checkRuns: { nodes: runs } });
+  const commit = { checkSuites: { nodes: [
+    suite(15368, 'o/r', [{ name: 'A', conclusion: 'SUCCESS', status: 'COMPLETED', startedAt: '2026-10-28T04:20:00Z' }]),
+    suite(15368, 'o/r', [{ name: 'B', conclusion: 'SUCCESS', status: 'COMPLETED', startedAt: '2026-10-28T04:21:00Z' }]),
+    suite(999, 'o/r', [{ name: 'C', conclusion: 'SUCCESS', status: 'COMPLETED' }]), // another app never counts
+    suite(15368, 'evil/fork', [{ name: 'C', conclusion: 'SUCCESS', status: 'COMPLETED' }]),
+    { app: { databaseId: 1 }, repository: { nameWithOwner: 'o/r' }, checkRuns: { nodes: [] } }, // queued third-party suite
+  ] } };
+  const pins = new Map([['A', 15368], ['B', 15368], ['C', 15368]]);
+  assert.deepEqual(checkStates(fromPinned(suiteRuns(commit), pins, 'o/r'), ['A', 'B', 'C']), { A: 'pass', B: 'pass', C: 'pending' });
+  assert.equal(batchVerdict(checkStates(fromPinned(suiteRuns(commit), pins, 'o/r'), ['A', 'B']), 0), 'land');
+  assert.deepEqual(suiteRuns(null), []);
 });
 
 test('fromPinned: only check runs of the pinned app from this repo count, pinned or not', () => {

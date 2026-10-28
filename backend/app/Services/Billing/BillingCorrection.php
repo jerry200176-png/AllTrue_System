@@ -109,6 +109,22 @@ final class BillingCorrection
         return ['payments' => $payments, 'reports' => $reports];
     }
 
+    private function zeroChargeRefusal(): array
+    {
+        return [
+            'message' => '費用不能更正成 0 元，沒有變更任何資料。這張帳單若不該收，請到學生帳務作廢；有設定費用的課程不能改成「免費／贈送」。',
+            'code' => 'billing_correction_zero_forbidden',
+        ];
+    }
+
+    private function freeGiftRefusal(): array
+    {
+        return [
+            'message' => '此課程有「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」帳單，請先在帳務作廢該帳單再更正費用。',
+            'code' => 'billing_correction_free_gift_locked',
+        ];
+    }
+
     /** Locked unpaid count-mode write; aborts with the same 404/409 responses the controller used. @return array<string, mixed> */
     public function applyCountCorrection(StudentClass $studentClass, int $newCount, int $newCharge, string $reason, int $oldCount, int $oldCharge, string $confirmationToken, ?int $actorId): array
     {
@@ -125,6 +141,10 @@ final class BillingCorrection
                     'message' => '此課程在處理期間已被標記收款，請重新整理後再操作。',
                     'code' => 'billing_correction_paid_locked',
                 ], 409));
+            }
+
+            if ($newCharge === 0) {
+                abort(response()->json($this->zeroChargeRefusal(), 422));
             }
 
             $lockedSessions = ClassSession::query()
@@ -211,6 +231,10 @@ final class BillingCorrection
                 ], 409));
             }
 
+            if ($openInvoices->contains(fn (Invoice $invoice) => $invoice->isMarkedFreeGift())) {
+                abort(response()->json($this->freeGiftRefusal(), 409));
+            }
+
             $locked->SessionCount = $newCount;
             $locked->Charge = $newCharge;
             $locked->save();
@@ -284,6 +308,11 @@ final class BillingCorrection
      */
     public function correctCountMode(StudentClass $studentClass, array $payload, bool $preview, ?int $actorId, \Closure $audit): array
     {
+        if (Invoice::query()->scopes('notVoided')->where('StudentClassID', $studentClass->getKey())->where('zero_amount_reason', Invoice::ZERO_REASON_FREE_GIFT)->exists()) {
+            $audit('billing_correction_free_gift_locked', 409);
+            return $this->reply($this->freeGiftRefusal(), 409);
+        }
+
         if (!empty($payload['new_end_date'])) {
             $audit('billing_correction_end_date_count_mode_only', 422);
             return $this->reply([
@@ -350,6 +379,10 @@ final class BillingCorrection
 
         $newCount = (int) $payload['new_session_count'];
         $newCharge = (int) $payload['new_charge'];
+        if ($newCharge === 0) {
+            $audit('billing_correction_zero_forbidden', 422);
+            return $this->reply($this->zeroChargeRefusal(), 422);
+        }
         $oldCount = (int) ($studentClass->SessionCount ?? 0);
         $oldCharge = (int) ($studentClass->Charge ?? 0);
         $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));

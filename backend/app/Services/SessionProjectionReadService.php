@@ -149,6 +149,10 @@ class SessionProjectionReadService
         array $materialized,
         ?StudentClass $class = null
     ): array {
+        if ($class?->getAttribute('scheduling_policy') === ManualSessionBookingService::POLICY) {
+            return [];
+        }
+
         $materializedDateSet = [];
         $materializedSlotSet = [];
         foreach ($materialized as $row) {

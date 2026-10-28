@@ -78,6 +78,23 @@ class CaseDumpPhpLint(unittest.TestCase):
             self.assertNotIn(bad, block)
 
 
+class ConfirmedReportVoidBlockedCase(unittest.TestCase):
+    """in-app #436: fleet scan, read-only, never prints Invoice Note text (only the void tag)."""
+
+    def test_read_only_and_note_reduced_to_a_tag(self):
+        block = case_block(render("confirmed_report_void_blocked").stdout, "confirmed_report_void_blocked")
+        for bad in WRITE_MARKERS:
+            self.assertNotIn(bad, block)
+        self.assertNotRegex(block, r"=> \$note|=> \(string\)\$inv->Note|'note' =>")
+
+    def test_invoice_net_counts_a_positive_void_row_as_a_reversal(self):
+        block = case_block(render("confirmed_report_void_blocked").stdout, "confirmed_report_void_blocked")
+        net = re.search(r"'invoice_net' => \(int\)\$pays->sum\(fn \(\$p\) => (.*)\),\n", block).group(1)
+        # 10,000 cash then a positive 10,000 void row nets to zero (PaidStatusParityTest void_method_positive)
+        php = f"$s = 0; foreach ([[10000, 'cash'], [10000, 'void'], [500, 'transfer'], [-500, 'transfer']] as [$a, $m]) {{ $p = (object) ['Amount' => $a, 'Method' => $m]; $s += {net}; }} echo $s;"
+        self.assertEqual(subprocess.run(["php", "-r", php], capture_output=True, text=True, check=True).stdout, "0")
+
+
 class InApp414AmountSourceCase(unittest.TestCase):
     """#4155 / in-app #414: one campus-11 StudentClass, read-only, IDs/amounts/dates/statuses/enums only."""
 
@@ -351,6 +368,21 @@ function app($s) {
             self.assertFalse([k for k in keys if bad in k], bad)
         self.assertIn("$out['stale_skip_teacher_ids']", block)
         self.assertIn("$out['schedule_rows']", block)
+
+
+class TeacherScopeProbeCase(unittest.TestCase):
+    """in-app #441: read-only, ids/enums only, runs the API's own scoped query and writes nothing."""
+
+    def test_block_is_read_only_and_prints_no_names(self):
+        proc = render("teacher_scope_probe")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        block = case_block(proc.stdout, "teacher_scope_probe")
+        for marker in WRITE_MARKERS:
+            self.assertNotIn(marker, block)
+        for column in ("student_name", "teacher_name", "'name'", "Note", "Phone", "->update", "Memo"):
+            self.assertNotIn(column, block)
+        self.assertIn("buildClassSessionIndexQuery", block)
+        self.assertIn("withoutContractCappedFutureReservations", block)
 
 
 if __name__ == "__main__":
