@@ -51,15 +51,16 @@
 
       <div class="actions">
         <button type="button" class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button type="button" class="primary" :disabled="submitting || checking || !result?.can_add" @click="$emit('submit')">
-          {{ submitting ? '建立中…' : '建立這一堂' }}
-        </button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="checking || !result?.can_add" pending-text="建立中…" @click="$emit('submit')">
+          建立這一堂
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed, ref } from 'vue';
 
 const props = defineProps({

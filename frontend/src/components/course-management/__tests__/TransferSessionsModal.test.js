@@ -28,14 +28,14 @@ describe('TransferSessionsModal', () => {
 
   it('disables submit until a target course id and at least one session are chosen', async () => {
     const wrapper = mountModal();
-    const submitBtn = wrapper.find('button.primary');
+    const submitBtn = wrapper.find('button.at-submit');
     expect(submitBtn.attributes('disabled')).toBeDefined();
 
     await wrapper.find('input[type="checkbox"]').setValue(true);
-    expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined(); // still no target id
+    expect(wrapper.find('button.at-submit').attributes('disabled')).toBeDefined(); // still no target id
 
     await wrapper.findAll('.target-course-option')[0].trigger('click');
-    expect(wrapper.find('button.primary').attributes('disabled')).toBeUndefined();
+    expect(wrapper.find('button.at-submit').attributes('disabled')).toBeUndefined();
   });
 
   it('emits submit with the selected session ids (as numbers) and target course id', async () => {
@@ -45,7 +45,7 @@ describe('TransferSessionsModal', () => {
     await checkboxes[0].setValue(true);
     await checkboxes[1].setValue(true);
 
-    await wrapper.find('button.primary').trigger('click');
+    await wrapper.find('button.at-submit').trigger('click');
 
     const emitted = wrapper.emitted('submit');
     expect(emitted).toBeTruthy();
@@ -57,7 +57,7 @@ describe('TransferSessionsModal', () => {
     await wrapper.findAll('.target-course-option')[0].trigger('click');
     await wrapper.findAll('input[type="checkbox"]')[0].setValue(true);
 
-    await wrapper.find('button.primary').trigger('click');
+    await wrapper.find('button.at-submit').trigger('click');
 
     expect(wrapper.emitted('submit')[0][0]).toEqual({ targetCourseId: 1849, sessionIds: [101] });
     expect(wrapper.text()).toContain('數學｜王老師');
@@ -100,11 +100,11 @@ describe('TransferSessionsModal', () => {
 
     expect(wrapper.text()).toContain('已取消（可恢復）');
     expect(wrapper.text()).toContain('仍保留評量／點名證據');
-    expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('button.at-submit').attributes('disabled')).toBeDefined();
 
     await wrapper.find('#transfer-recovery-reason').setValue('原合約誤標取消，依歷史紀錄恢復');
-    expect(wrapper.find('button.primary').attributes('disabled')).toBeUndefined();
-    await wrapper.find('button.primary').trigger('click');
+    expect(wrapper.find('button.at-submit').attributes('disabled')).toBeUndefined();
+    await wrapper.find('button.at-submit').trigger('click');
     expect(wrapper.emitted('submit')[0][0]).toEqual({
       targetCourseId: 1849,
       sessionIds: [201],

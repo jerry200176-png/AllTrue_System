@@ -18,15 +18,16 @@
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" :disabled="submitting || loadingPreview || !preview || !reason" @click="$emit('submit', reason)">
-          {{ submitting ? '處理中…' : '確認撤銷調整' }}
-        </button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="loadingPreview || !preview || !reason" pending-text="處理中…" @click="$emit('submit', reason)">
+          確認撤銷調整
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed, ref, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 

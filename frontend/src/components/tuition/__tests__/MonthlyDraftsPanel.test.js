@@ -68,3 +68,17 @@ it('disables confirm for a past proposed end date', async () => {
   expect(past.text()).toContain('無法在此開立');
   expect(past.findAll('button')).toHaveLength(0);
 });
+
+it('#4488 select-all covers only rows that can be opened and reads checked / mixed', async () => {
+  wrapper = mountIt();
+  await flushPromises();
+  const head = () => wrapper.find('thead input[type=checkbox]').element;
+  await wrapper.find('thead input[type=checkbox]').setValue(true);
+  // Row 3's period already ended (disabled), so "all" means rows 1 and 2.
+  expect(head().checked).toBe(true);
+  expect(head().indeterminate).toBe(false);
+  await wrapper.find('input[aria-label="選取 學生1"]').setValue(false);
+  expect(head().checked).toBe(false);
+  expect(head().indeterminate).toBe(true);
+  expect(btn('確認開立 1 筆')).toBeTruthy();
+});

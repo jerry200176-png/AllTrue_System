@@ -55,7 +55,7 @@
       <footer class="alloc__foot">
         <span class="alloc__sum" data-testid="alloc-sum">合計 <strong>{{ money(total) }}</strong></span>
         <AtButton variant="secondary" shape="rect" @click="$emit('close')">取消</AtButton>
-        <AtButton type="submit" shape="rect" :disabled="!canSubmit" :loading="submitting" data-testid="alloc-submit">登記收款</AtButton>
+        <AtSubmitButton type="submit" shape="rect" :pending="submitting" :disabled="!canSubmit && !submitting" pending-text="登記中…" data-testid="alloc-submit">登記收款</AtSubmitButton>
       </footer>
     </form>
 
@@ -69,7 +69,7 @@
         </li>
       </ul>
       <footer class="alloc__foot">
-        <AtButton v-if="failed.length && accepted" variant="secondary" shape="rect" :loading="submitting" data-testid="alloc-retry" @click="retryFailed">再試一次（只送沒登記的）</AtButton>
+        <AtSubmitButton v-if="failed.length && accepted" variant="secondary" shape="rect" :pending="submitting" pending-text="重新送出中…" data-testid="alloc-retry" @click="retryFailed">再試一次（只送沒登記的）</AtSubmitButton>
         <AtButton v-if="failed.length && !accepted" variant="secondary" shape="rect" data-testid="alloc-edit" @click="view = 'form'">回去修改</AtButton>
         <AtButton v-if="accepted" shape="rect" data-testid="alloc-done" @click="$emit('done')">完成</AtButton>
       </footer>
@@ -80,6 +80,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { recordPaymentBatch } from '../../lib/paymentActions.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import { formatDate } from '../../lib/billingDocumentView.js';
