@@ -43,14 +43,13 @@ class AdditiveMigrationGate(unittest.TestCase):
         for body in (ADD, CREATE):
             patch = new_file(MIG, body)
             self.assertEqual(additive_migration_paths([MIG], patch), {MIG})
-            # Merge is T2 now; activation stays Founder-gated until deploy.yml can roll code
-            # back after an additive migration (the follow-up PR flips the flag).
-            self.assertEqual(self.tiers(patch), (2, 3))
-            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", True):
-                self.assertEqual(self.tiers(patch), (2, 2))
+            # Founder 2026-10-28 A: merge and activation are both T2; the switch off restores the click.
+            self.assertEqual(self.tiers(patch), (2, 2))
+            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", False):
+                self.assertEqual(self.tiers(patch), (2, 3))
 
-    def test_activation_flag_is_off_until_deploy_rollback_lands(self):
-        self.assertIs(gate.ADDITIVE_MIGRATION_AUTO_ACTIVATION, False)
+    def test_activation_flag_is_on_after_deploy_rollback_and_watch(self):
+        self.assertIs(gate.ADDITIVE_MIGRATION_AUTO_ACTIVATION, True)
 
     def test_destructive_or_data_up_stays_t3(self):
         for up in (

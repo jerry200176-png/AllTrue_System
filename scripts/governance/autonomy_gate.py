@@ -597,11 +597,11 @@ def _migration_body_is_additive(source: str) -> bool:
     return bool(_MIGRATION_SKELETON_RE.fullmatch(code))
 
 
-# Merge classification treats additive migrations as T2 now. Activation stays
-# Founder-gated until deploy.yml can roll code back after an additive
-# migration (today any migration in range holds with exit 12/13); the PR that
-# adds that rollback flips this flag.
-ADDITIVE_MIGRATION_AUTO_ACTIVATION = False
+# Founder 2026-10-28 A: a declared, Codex-confirmed additive-only migration also
+# activates without the click. deploy.yml rolls code back over additive-only
+# schema (post-deploy-verify.py range-additive, exit 10/11) and watches the
+# release (#4560); any other migration still holds with exit 12/13.
+ADDITIVE_MIGRATION_AUTO_ACTIVATION = True
 
 
 CODEX_REVIEWER = "chatgpt-codex-connector[bot]"
