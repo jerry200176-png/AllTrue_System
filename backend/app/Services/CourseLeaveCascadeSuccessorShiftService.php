@@ -383,7 +383,9 @@ class CourseLeaveCascadeSuccessorShiftService
         if (!$lock || $best[0] === null) {
             return $best;
         }
-        $chosen = StudentClass::query()->whereKey((int) $best[0]->ID)->lockForUpdate()->first();
+        $chosen = StudentClass::query()->whereKey((int) $best[0]->ID)
+            ->where('StudentID', (int) $old->StudentID)->where('SubjectID', (int) $old->SubjectID) // a subject edited since the scan disqualifies it
+            ->lockForUpdate()->first();
         $chain = $this->liveLessons((int) $best[0]->ID, true);
 
         return $chosen && $this->isSuccessorCandidate($chosen) && $chain->isNotEmpty()

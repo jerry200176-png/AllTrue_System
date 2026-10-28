@@ -701,8 +701,13 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame([['student', $this->old, null]], array_map(fn ($b) => [$b['type'], $b['course_id'], $b['session_id']], $preview->json('blockers')));
     }
 
-    /** #4210 review: apply's current locking read judges the renewal by preview's own rule, count mode included. */
-    public function test_apply_refuses_a_renewal_switched_to_date_mode_after_its_snapshot(): void
+    /**
+     * #4210 review: apply's current locking read judges the renewal by preview's own rule, count mode included, and
+     * keeps it a renewal of the same subject (Codex on #4601).
+     *
+     * @dataProvider editsAfterTheSnapshot
+     */
+    public function test_apply_refuses_a_renewal_edited_after_its_snapshot(string $column, string|int $edited, string|int $snapshot): void
     {
         $original = DB::getDefaultConnection();
         $this->assertSame('mysql', DB::connection()->getDriverName());
@@ -716,16 +721,16 @@ class LeaveSuccessorShiftTest extends TestCase
         try {
             $apply->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
             $apply->beginTransaction();
-            $mode = fn () => $apply->table('StudentClass')->where('ID', $this->renewal)->value('ScheduleMode');
-            $this->assertSame('count', $mode());
-            DB::table('StudentClass')->where('ID', $this->renewal)->update(['ScheduleMode' => 'date']); // committed independently
-            $this->assertSame('count', $mode(), 'prove that the apply snapshot is stale');
+            $current = fn () => $apply->table('StudentClass')->where('ID', $this->renewal)->value($column);
+            $this->assertEquals($snapshot, $current());
+            DB::table('StudentClass')->where('ID', $this->renewal)->update([$column => $edited]); // committed independently
+            $this->assertEquals($snapshot, $current(), 'prove that the apply snapshot is stale');
             $before = $this->undoSnapshot();
             DB::setDefaultConnection('shift_mode_current');
             $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $preview->json('preview_token')])
                 ->assertStatus(422)->assertJsonPath('plan.applicable', false);
             DB::setDefaultConnection($original);
-            $this->assertSame($before, $this->undoSnapshot(), 'a renewal that left count mode is never shifted');
+            $this->assertSame($before, $this->undoSnapshot(), 'a renewal that left count mode or changed subject is never shifted');
         } finally {
             DB::setDefaultConnection($original);
             while ($apply->transactionLevel() > 0) {
@@ -735,6 +740,12 @@ class LeaveSuccessorShiftTest extends TestCase
             $this->purgeCommittedFixtures((int) $userId);
             DB::beginTransaction(); // Keep RefreshDatabase's teardown transaction balanced.
         }
+    }
+
+    /** @return array<string, array{string, string|int, string|int}> */
+    public static function editsAfterTheSnapshot(): array
+    {
+        return ['date mode' => ['ScheduleMode', 'date', 'count'], 'another subject' => ['SubjectID', 2, 1]];
     }
 
     /** Legacy blank modes are count mode in preview and apply alike. */
