@@ -60,9 +60,7 @@ class PaymentReportController extends Controller
         $link = $baseUrl . '/pay-report?token=' . urlencode($result['token']);
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
-        $billingPeriod = $sc->getAttribute('ScheduleMode') === 'date'
-            ? $this->monthlyBilling->collectionPeriodFor($sc)
-            : null;
+        $billingPeriod = $this->linkBillingPeriod($sc);
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
             : null;
@@ -134,9 +132,7 @@ class PaymentReportController extends Controller
 
         $periodStart = null;
         $periodEnd = null;
-        $billingPeriod = $sc->ScheduleMode === 'date'
-            ? $this->monthlyBilling->collectionPeriodFor($sc)
-            : null;
+        $billingPeriod = $this->linkBillingPeriod($sc);
         $billing = $billingPeriod
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
             : null;
@@ -1425,6 +1421,17 @@ class PaymentReportController extends Controller
      * Payment-row projection decides whether it still owes, whatever its stored Status (#3875: stored paid can still
      * owe). None owes → the first not-stored-paid one, so the caller refuses it as covered; never another bill.
      */
+    /** Pay-link month: the owing bill submit/confirm will pay (pickOpenInvoice), else the oldest unbilled month (in-app #432). */
+    private function linkBillingPeriod(StudentClass $sc): ?string
+    {
+        if ($sc->getAttribute('ScheduleMode') !== 'date') {
+            return null;
+        }
+        $open = (string) ($this->pickOpenInvoice((int) $sc->ID, $sc)->billing_period ?? '');
+
+        return preg_match('/^\d{4}-\d{2}$/', $open) ? $open : $this->monthlyBilling->collectionPeriodFor($sc);
+    }
+
     private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc): ?Invoice
     {
         $live = app(BillingPayableResolver::class)->collectionOrder(Invoice::where('StudentClassID', $studentClassId)

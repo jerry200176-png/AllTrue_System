@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Http\Controllers\PaymentReportController;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
@@ -10,8 +11,10 @@ use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\MonthlyBillingService;
+use App\Services\PaymentReportTokenService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Tests\TestCase;
 
 /**
@@ -95,6 +98,20 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $bill->items()->create(['StudentClassID' => $sc->ID, 'Description' => 'cycle', 'Amount' => 3300, 'PeriodStart' => '2026-08-28', 'PeriodEnd' => '2026-09-27']);
         $this->assertNull($billing->unbilledPeriodFor($sc));
         $this->assertSame('2026-09', $billing->collectionPeriodFor($sc, '2026-10-23'));
+    }
+
+    public function test_pay_link_names_the_owing_bill_before_an_unbilled_month(): void
+    {
+        // #4573 review: submit/confirm pay the owing October bill first, so the link must name October, not August.
+        $sc = $this->course('2026-08-01', '2026-10-31', ['2026-08-31' => 'attended', '2026-10-05' => 'attended']);
+        Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 1650,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        $controller = app(PaymentReportController::class);
+        $tokens = app(PaymentReportTokenService::class);
+
+        $link = $controller->generateLink(Request::create('/x', 'POST', ['student_class_id' => $sc->ID]), $tokens)->getData(true);
+        $form = $controller->formData(Request::create('/x', 'GET', ['token' => $link['token']]), $tokens)->getData(true);
+        $this->assertSame(['2026-10', '2026-10'], [$link['billing_period'], $form['billing_period']]);
     }
 
     private function course(string $start, string $end, array $lessons, array $overrides = []): StudentClass
