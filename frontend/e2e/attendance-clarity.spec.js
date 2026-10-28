@@ -182,6 +182,33 @@ test.describe('Attendance clarity — real Director workflow', () => {
       body: { StudentID: 3101, StudentClassID: 4101, TeacherID: 9001, ClassSessionID: 9101, Status: 'late', mark_mode: 'arrival' },
     });
   });
+
+  test('#4488 mobile batch bar and sticky bar send one batch when both are tapped', async ({ page }) => {
+    const diagnostics = await openAttendance(page, 'dense', viewports[0]);
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const batches = [];
+    await page.route('**/api/v1/attendance/batch-mark', async (route) => {
+      batches.push(route.request().postDataJSON());
+      await held;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success_count: 5, fail_count: 0, results: [] }) });
+    });
+    const selectAll = page.locator('.att-batch-bar input[type="checkbox"]');
+    await selectAll.check();
+    await expect(page.locator('.att-batch-bar')).toContainText('已選 5 堂');
+    const barButton = page.locator('.att-batch-bar button.at-submit');
+    const stickyButton = page.locator('.att-sticky-batch button.at-submit');
+    await barButton.click();
+    await expect(barButton).toHaveAttribute('aria-busy', 'true');
+    await stickyButton.click();
+    await expect(stickyButton).toHaveAttribute('aria-busy', 'true');
+    expect(batches).toHaveLength(1);
+    expect(batches[0].items).toHaveLength(5);
+    release();
+    await expect(page.locator('.att-batch-bar button.at-submit')).not.toHaveAttribute('aria-busy', 'true');
+    expect(batches).toHaveLength(1);
+    expect(diagnostics.consoleErrors).toEqual([]);
+  });
 });
 
 test.describe('Attendance baseline capture', () => {

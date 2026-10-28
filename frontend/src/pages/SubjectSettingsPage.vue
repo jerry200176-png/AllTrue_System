@@ -74,7 +74,9 @@
       panel-class="subject-dialog"
       @close="showModal = false"
     >
-        <div class="form-group">
+        <!-- Enter submits through the form's default button (the save button below), so the
+             keyboard and click paths share one pending guard. -->
+        <form id="subject-form" class="form-group" @submit.prevent>
           <label for="subject-name">科目名稱 <span class="required">*</span></label>
           <input
             id="subject-name"
@@ -82,16 +84,15 @@
             placeholder="例如：程式設計"
             maxlength="16"
             aria-describedby="subject-name-hint"
-            @keydown.enter="submit"
           />
           <span id="subject-name-hint" class="form-hint">最多 16 個字。</span>
-        </div>
+        </form>
         <p v-if="formError" class="error-text">{{ formError }}</p>
         <template #actions>
           <AtButton shape="rect" variant="ghost" @click="showModal = false">取消</AtButton>
-          <AtButton shape="rect" variant="primary" :loading="saving" :disabled="!formName.trim()" @click="submit">
-            {{ saving ? '處理中...' : '儲存' }}
-          </AtButton>
+          <AtSubmitButton type="submit" form="subject-form" shape="rect" :disabled="!formName.trim()" :action="submit" pending-text="處理中…" success-text="已儲存" error-text="未儲存">
+            儲存
+          </AtSubmitButton>
         </template>
     </AtDialog>
 
@@ -106,9 +107,9 @@
         <p>確定要刪除科目「{{ deletingSubject.label }}」嗎？若有課程使用此科目則無法刪除。</p>
         <template #actions>
           <AtButton shape="rect" variant="ghost" @click="deletingSubject = null">取消</AtButton>
-          <AtButton shape="rect" variant="danger" :loading="saving" @click="doDelete">
-            {{ saving ? '刪除中...' : '刪除' }}
-          </AtButton>
+          <AtSubmitButton shape="rect" variant="danger" :action="doDelete" pending-text="刪除中…" success-text="已刪除" error-text="未刪除">
+            刪除
+          </AtSubmitButton>
         </template>
     </AtDialog>
   </div>
@@ -117,6 +118,7 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
@@ -138,7 +140,6 @@ const showModal = ref(false);
 const editingId = ref(null);
 const formName = ref('');
 const formError = ref('');
-const saving = ref(false);
 const deletingSubject = ref(null);
 
 async function load() {
@@ -170,8 +171,7 @@ function openEdit(s) {
 
 async function submit() {
   const name = formName.value.trim();
-  if (!name) return;
-  saving.value = true;
+  if (!name) return false;
   formError.value = '';
   try {
     if (editingId.value) {
@@ -181,10 +181,10 @@ async function submit() {
     }
     showModal.value = false;
     await load();
+    return true;
   } catch (e) {
     formError.value = e.message || '操作失敗';
-  } finally {
-    saving.value = false;
+    return false;
   }
 }
 
@@ -194,16 +194,15 @@ function confirmDelete(s) {
 }
 
 async function doDelete() {
-  if (!deletingSubject.value) return;
-  saving.value = true;
+  if (!deletingSubject.value) return false;
   try {
     await deleteSubject(deletingSubject.value.id);
     deletingSubject.value = null;
     await load();
+    return true;
   } catch (e) {
     alert(e.message || '刪除失敗');
-  } finally {
-    saving.value = false;
+    return false;
   }
 }
 
