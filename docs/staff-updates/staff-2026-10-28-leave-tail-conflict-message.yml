@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-28-leave-tail-conflict-message
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 請假順延撞到續課時會說清楚
+    summary: 請假或取消後要順延的時段已被續課佔用時，提示會寫出順延日期與處理方式。
+    items:
+      - category: fixed
+        text: 最後一堂請假或取消時，若順延時段已有續課，提示會說明要順延到哪天幾點，並建議先把這堂調到其他時間。
+    source_refs:
+      - "changelog:2026-10-28:leave-tail-conflict-message"
