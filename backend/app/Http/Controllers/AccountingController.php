@@ -801,7 +801,7 @@ class AccountingController extends Controller
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
                 // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
-                'current_contract_charge' => $this->currentContractCharge($class),
+                'current_contract_charge' => $class->currentContractCharge(),
                 'paid' => (int) ($class->Paid ?? 0) === 1 || $freeGiftSettled, // #3991: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,
@@ -857,20 +857,6 @@ class AccountingController extends Controller
         }
 
         return $out;
-    }
-
-    /**
-     * The contract's current Charge for a count-mode, non-package course. Charge already follows rate and
-     * count edits, keeps renewal discounts and session_charge deltas, so an issued bill that still equals it is
-     * not flagged. Null for every other course. Read-only (#4115).
-     */
-    private function currentContractCharge(StudentClass $class): ?int
-    {
-        if ((string) ($class->ScheduleMode ?? 'count') !== 'count' || $class->isPartOfPackage()) {
-            return null;
-        }
-
-        return max(0, (int) ($class->Charge ?? 0));
     }
 
     /**
