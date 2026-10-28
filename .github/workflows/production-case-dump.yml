@@ -740,16 +740,16 @@ jobs:
             $out['slots'] = array_slice($rows, 0, 200);
           }} elseif ($case === 'teacher_scope_probe') {{
             // Read-only (in-app #441): sessions the class-sessions API returns to a director but hides from the session's own
-            // contract teacher (the teacher workbench week list). Campus 25 only, today-1..+14, through the same scoped query,
-            // projection cap filter and teacher scope the API uses (reflection, as schedule_241). IDs, enums and booleans only.
-            $campusId = 25; $from = now()->subDay()->toDateString(); $to = now()->addDays(14)->toDateString();
+            // contract teacher (the teacher workbench week list). Campuses 9 (新店) and 25, today-1..+14, through the same scoped
+            // query, projection cap filter and teacher scope the API uses (reflection, as schedule_241). IDs, enums and booleans only.
+            $from = now()->subDay()->toDateString(); $to = now()->addDays(14)->toDateString();
             $invoke = function ($controller, string $method, array $args = []) {{
               $reflection = new \\ReflectionMethod($controller, $method);
               $reflection->setAccessible(true);
               return $reflection->invokeArgs($controller, $args);
             }};
             $controller = app(\\App\\Http\\Controllers\\ClassSessionController::class);
-            $fetch = function (string $role, int $teacherId) use ($invoke, $controller, $from, $to, $campusId) {{
+            $fetch = function (string $role, int $teacherId, int $campusId) use ($invoke, $controller, $from, $to) {{
               $request = \\Illuminate\\Http\\Request::create('/api/v1/class-sessions/projection', 'GET', ['start' => $from, 'end' => $to, 'branch_id' => $campusId]);
               $request->attributes->set('auth_role', $role);
               $request->attributes->set('auth_teacher_id', $teacherId);
@@ -758,15 +758,6 @@ jobs:
               $items = $invoke($controller, 'fetchAllClassSessionIndexRows', [$invoke($controller, 'buildClassSessionIndexQuery', [$request])]);
               return $invoke($controller, 'withoutContractCappedFutureReservations', [$items]);
             }};
-            $all = $fetch('director', 0);
-            $teachers = collect($all)->pluck('contract_teacher_id')->filter()->unique()->values()->all();
-            $hidden = [];
-            foreach ($teachers as $tid) {{
-              $seen = collect($fetch('teacher', (int)$tid))->pluck('id')->flip();
-              foreach ($all as $r) {{
-                if ((int)$r->contract_teacher_id === (int)$tid && !$seen->has($r->id)) $hidden[] = $r;
-              }}
-            }}
             $slotRows = fn ($r) => $db::table('schedules')->where('student_course_id', $r->student_class_id)->whereDate('schedule_date', $r->session_date)
               ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$r->start_time])->orderBy('id')
               ->get(['id', 'teacher_id', 'status', 'type', 'original_schedule_id', 'original_schedule_date'])
@@ -777,13 +768,25 @@ jobs:
               'contract_teacher_id' => (int)$r->contract_teacher_id, 'substitute_teacher_id' => $r->substitute_teacher_id === null ? null : (int)$r->substitute_teacher_id,
               'substitute_notice' => (bool)$r->substitute_notice, 'course_stop' => (int)$r->course_stop];
             $out['window'] = [$from, $to];
-            $out['campus_id'] = $campusId;
-            $out['occurrence_assignment_on'] = \\App\\Services\\OccurrenceAssignmentService::enabledFor($campusId);
-            $out['director_scope_sessions'] = count($all);
-            $out['teachers_checked'] = count($teachers);
-            $out['hidden_from_contract_teacher'] = count($hidden);
-            $out['hidden_rows'] = array_map(fn ($r) => $row($r) + ['schedule_rows' => $slotRows($r)], array_slice($hidden, 0, 100));
-            $out['slot_2026_10_31'] = collect($all)->filter(fn ($r) => (string)$r->session_date === '2026-10-31')->map($row)->values()->all();
+            $out['campuses'] = [];
+            foreach ([9, 25] as $campusId) {{
+              $all = $fetch('director', 0, $campusId);
+              $teachers = collect($all)->pluck('contract_teacher_id')->filter()->unique()->values()->all();
+              $hidden = [];
+              foreach ($teachers as $tid) {{
+                $seen = collect($fetch('teacher', (int)$tid, $campusId))->pluck('id')->flip();
+                foreach ($all as $r) {{
+                  if ((int)$r->contract_teacher_id === (int)$tid && !$seen->has($r->id)) $hidden[] = $r;
+                }}
+              }}
+              $out['campuses'][(string)$campusId] = [
+                'occurrence_assignment_on' => \\App\\Services\\OccurrenceAssignmentService::enabledFor($campusId),
+                'director_scope_sessions' => count($all), 'teachers_checked' => count($teachers),
+                'hidden_from_contract_teacher' => count($hidden),
+                'hidden_rows' => array_map(fn ($r) => $row($r) + ['schedule_rows' => $slotRows($r)], array_slice($hidden, 0, 100)),
+                'slot_2026_10_31' => collect($all)->filter(fn ($r) => (string)$r->session_date === '2026-10-31')->map($row)->values()->all(),
+              ];
+            }}
           }} elseif ($case === 'occurrence_identity_health') {{
             // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
             // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_id.
