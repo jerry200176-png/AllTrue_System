@@ -184,7 +184,7 @@ final class TriageTokenTest extends TestCase
         $fresh = $this->createToken($admin);
         $row = collect($this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->json('data'))
             ->firstWhere('id', (int) explode('|', $fresh)[0]);
-        $this->assertSame(180, now()->parse($row['created_at'])->diffInDays(now()->parse($row['expires_at'])));
+        $this->assertSame(180.0, now()->parse($row['created_at'])->diffInDays(now()->parse($row['expires_at'])));
         $this->assertFalse($row['expired']);
         $this->getJson('/api/v1/triage/bug-reports', $this->bearer($fresh))->assertOk();
     }
