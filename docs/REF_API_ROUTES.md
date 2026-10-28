@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 529 api/* routes · generated 2026-10-18
+> Source: `php artisan route:list --json` · 535 api/* routes · generated 2026-10-28
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -379,6 +379,27 @@
 | POST | `api/v1/exception-workflows/{id}/generate-candidates` | `ExceptionWorkflowController@generateCandidates` | role+campus |
 | POST | `api/v1/exception-workflows/{id}/reject` | `ExceptionWorkflowController@reject` | role+campus |
 | POST | `api/v1/exception-workflows/{id}/waive` | `ExceptionWorkflowController@waive` | role+campus |
+
+## /api/v1/fee-charges (3)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/fee-charges` | `FeeLedgerController@storeCharges` | role+campus |
+| POST | `api/v1/fee-charges/{id}/pay` | `FeeLedgerController@pay` | role+campus |
+| POST | `api/v1/fee-charges/{id}/void` | `FeeLedgerController@voidCharge` | role+campus |
+
+## /api/v1/fee-ledger (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/fee-ledger` | `FeeLedgerController@index` | role+campus |
+
+## /api/v1/fee-payouts (2)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/fee-payouts` | `FeeLedgerController@storePayout` | role+campus |
+| POST | `api/v1/fee-payouts/{id}/void` | `FeeLedgerController@voidPayout` | role+campus |
 
 ## /api/v1/finance (56)
 

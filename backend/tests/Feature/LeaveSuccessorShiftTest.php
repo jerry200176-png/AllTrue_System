@@ -59,7 +59,7 @@ class LeaveSuccessorShiftTest extends TestCase
         $leaveId = $this->sessions['2026-11-17'];
         $before = $this->fingerprint();
         $preview = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk();
-        $preview->assertJsonPath('applicable', true)->assertJsonPath('eligible', true)->assertJsonPath('blockers', []);
+        $preview->assertJsonPath('applicable', true)->assertJsonPath('eligible', true)->assertJsonPath('apply_enabled', true)->assertJsonPath('blockers', []);
         $moves = $preview->json('moves');
         $this->assertSame(['date' => '2026-12-01', 'start' => '19:00:00', 'end' => '21:00:00'], $moves[0]['to']);
         $this->assertSame('old_tail', $moves[0]['role']);
@@ -215,6 +215,19 @@ class LeaveSuccessorShiftTest extends TestCase
         $before = $this->fingerprint();
         $this->shift('apply', ['class_session_id' => $leaveId, 'preview_token' => $token])->assertStatus(403)->assertJsonPath('message', '續約順延尚未開放（撤銷請假的保護尚未上線），未做任何變更');
         $this->assertSame($before, $this->fingerprint());
+    }
+
+    public function test_preview_exposes_apply_capability_without_changing_the_plan_or_data(): void
+    {
+        $leaveId = $this->sessions['2026-11-17'];
+        $before = $this->fingerprint();
+        config(['perfflags.leave_successor_shift_apply_enabled' => false]);
+        $disabled = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()
+            ->assertJsonPath('applicable', true)->assertJsonPath('eligible', true)->assertJsonPath('apply_enabled', false);
+        config(['perfflags.leave_successor_shift_apply_enabled' => true]);
+        $enabled = $this->shift('preview', ['class_session_id' => $leaveId])->assertOk()->assertJsonPath('apply_enabled', true);
+        $this->assertSame($disabled->json('preview_token'), $enabled->json('preview_token'));
+        $this->assertSame($before, $this->fingerprint(), 'capability preview must not write or alter plan identity');
     }
 
     /** In-app #433: a plain leave/cancel of the last lesson whose tail lands on the renewal said 「改選其他日期／時間」. */
