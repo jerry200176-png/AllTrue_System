@@ -180,7 +180,8 @@ class AccountingController extends Controller
             $reports = $reportMap->get((int) $course->ID, collect());
             [$invoiceTotal, $appliedTotal, $overpaidTotal, $outstandingTotal] = $this->invoiceTotals($invoices);
 
-            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1;
+            // Same trial exemption as the course list and alerts (#4339): a trial fee recorded by date never gets an invoice.
+            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1 && !$course->isTrialFeeRecordedByDate();
             $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
             $status = $stoppedStatuses[(int) $course->getAttribute('ID')] ?? null;
             $state = $status !== null && (int) $course->getAttribute('Stop') === 1 ? $this->stoppedCourseVisibleState($course, $status) : null;
