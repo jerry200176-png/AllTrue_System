@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
+use App\Models\FeeCharge;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
@@ -942,7 +943,7 @@ class AlertController extends Controller
                     $billing['period_start'],
                     $billing['period_end']
                 ),
-        ]);
+        ] + FeeCharge::slipBlock((int) $student->id, (int) $student->CampusID, $billingPeriod)); // #439: beside tuition, never in it
     }
 
     /**

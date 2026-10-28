@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-slip-pass-through-fees
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費單另列「代收款」
+    summary: 學生有書籍費等代收款時，繳費單會另列一段，不加進學費。
+    items:
+      - category: added
+        text: 繳費單在學費下方另列「代收款（非學費）」，有項目、金額、狀態和未繳合計。
+      - category: improved
+        text: 代收款不會加進學費或帳單，應繳學費不變；沒有代收款時不顯示這一段。
+    source_refs:
+      - "changelog:2026-10-28:slip-pass-through-fees"
