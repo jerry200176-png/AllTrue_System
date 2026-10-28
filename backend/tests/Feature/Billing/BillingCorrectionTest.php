@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -28,6 +31,116 @@ class BillingCorrectionTest extends TestCase
             'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 8,
             'ClassType' => 'one_on_one', 'UsedSessions' => 0,
         ]);
+    }
+
+    public function test_zero_count_correction_never_offers_or_applies_confirmation(): void
+    {
+        $svc = app(BillingCorrection::class);
+        foreach ([0, 0.01] as $rate) {
+            $c = $this->course();
+            $c->update(['Rate' => $rate]);
+            $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+            $item = InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $c->ID, 'Description' => 'Synthetic', 'Amount' => 4000]);
+            $token = $svc->confirmationToken($c->fresh(), 6, 0, 0, [], 7);
+            $payload = ['new_session_count' => 6, 'new_charge' => 0, 'reason' => 'Synthetic', 'confirmation_token' => $token];
+            $before = [$c->fresh()->toArray(), $invoice->fresh()->toArray(), $item->fresh()->toArray()];
+            $audit = [];
+            foreach ([true, false] as $preview) {
+                $result = $svc->correctCountMode($c->fresh(), $payload, $preview, 7, function ($code, $status) use (&$audit) { $audit[] = [$code, $status]; });
+                $this->assertSame(422, $result['status']);
+                $this->assertSame('billing_correction_zero_forbidden', $result['body']['code']);
+                $this->assertArrayNotHasKey('confirmation_token', $result['body']);
+                $this->assertSame($before, [$c->fresh()->toArray(), $invoice->fresh()->toArray(), $item->fresh()->toArray()]);
+            }
+            $this->assertSame([['billing_correction_zero_forbidden', 422], ['billing_correction_zero_forbidden', 422]], $audit);
+        }
+    }
+
+    private function financialCounts(): array
+    {
+        return array_map(fn ($table) => DB::table($table)->count(), ['Payment', 'payment_reports', 'session_deduction_ledger', 'security_audit_events']);
+    }
+
+    public function test_direct_apply_rejects_zero_with_a_valid_token_without_writes(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $c->update(['Rate' => 0]);
+        $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $item = InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $c->ID, 'Description' => 'Synthetic', 'Amount' => 4000]);
+        $session = ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => '2032-03-07', 'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'scheduled']);
+        $before = [$c->fresh()->toArray(), $invoice->fresh()->toArray(), $item->fresh()->toArray(), $session->fresh()->toArray(), $this->financialCounts()];
+        $token = $svc->confirmationToken($c->fresh(), 6, 0, 0, [], 7);
+        try {
+            $svc->applyCountCorrection($c->fresh(), 6, 0, 'Synthetic', 8, 4000, $token, 7);
+            $this->fail('direct apply accepted a zero target');
+        } catch (HttpResponseException $e) {
+            $this->assertSame(422, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_zero_forbidden', json_decode($e->getResponse()->getContent(), true)['code']);
+        }
+        $this->assertSame($before, [$c->fresh()->toArray(), $invoice->fresh()->toArray(), $item->fresh()->toArray(), $session->fresh()->toArray(), $this->financialCounts()]);
+    }
+
+    public function test_live_free_gift_refuses_count_preview_and_direct_apply(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $before = [$c->fresh()->toArray(), $invoice->fresh()->toArray()];
+        $audit = [];
+        $result = $svc->correctCountMode($c->fresh(), ['new_session_count' => 6, 'new_charge' => 3000, 'reason' => 'Synthetic'], true, 7, function ($code, $status) use (&$audit) { $audit[] = [$code, $status]; });
+        $this->assertSame(409, $result['status']);
+        $this->assertSame('billing_correction_free_gift_locked', $result['body']['code']);
+        $this->assertSame([['billing_correction_free_gift_locked', 409]], $audit);
+        $token = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 7);
+        try {
+            $svc->applyCountCorrection($c->fresh(), 6, 3000, 'Synthetic', 8, 4000, $token, 7);
+            $this->fail('direct apply accepted a live free/gift invoice');
+        } catch (HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_free_gift_locked', json_decode($e->getResponse()->getContent(), true)['code']);
+        }
+        $this->assertSame($before, [$c->fresh()->toArray(), $invoice->fresh()->toArray()]);
+    }
+
+    public function test_voided_free_gift_does_not_block_a_valid_positive_correction(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'void', 'Note' => '', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-02', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $payload = ['new_session_count' => 6, 'new_charge' => 3000, 'reason' => 'Synthetic'];
+        $preview = $svc->correctCountMode($c->fresh(), $payload, true, 7, fn () => null);
+        $this->assertSame(200, $preview['status']);
+        $done = $svc->correctCountMode($c->fresh(), $payload + ['confirmation_token' => $preview['body']['confirmation_token']], false, 7, fn () => null);
+        $this->assertSame(200, $done['status']);
+        $this->assertSame(3000, (int) $invoice->fresh()->TotalAmount);
+    }
+
+    public function test_marker_added_after_confirmation_is_rechecked_before_stamping(): void
+    {
+        $svc = app(BillingCorrection::class);
+        $c = $this->course();
+        $invoice = Invoice::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'IssueDate' => '2032-03-01', 'TotalAmount' => 4000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+        $token = $svc->confirmationToken($c->fresh(), 6, 3000, 0, [], 7);
+        $hookReached = false;
+        $svc->setAfterConfirmationTokenForTests(function () use ($invoice, &$hookReached): void {
+            $invoice->update(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+            $hookReached = true;
+        });
+        try {
+            $svc->applyCountCorrection($c->fresh(), 6, 3000, 'Synthetic', 8, 4000, $token, 7);
+            $this->fail('direct apply ignored a newly marked free/gift invoice');
+        } catch (HttpResponseException $e) {
+            $this->assertSame(409, $e->getResponse()->getStatusCode());
+            $this->assertSame('billing_correction_free_gift_locked', json_decode($e->getResponse()->getContent(), true)['code']);
+        } finally {
+            $svc->setAfterConfirmationTokenForTests(null);
+        }
+        $this->assertTrue($hookReached);
+        $this->assertSame(4000, (int) $invoice->fresh()->TotalAmount);
+        $this->assertNull($invoice->fresh()->zero_amount_reason);
+        $this->assertSame(8, (int) $c->fresh()->SessionCount);
     }
 
     public function test_token_is_bound_to_actor_and_target(): void

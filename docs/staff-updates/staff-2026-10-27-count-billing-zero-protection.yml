@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-27-count-billing-zero-protection
+    published_at: "2026-10-27"
+    audiences:
+      - director
+    importance: digest
+    title: 堂數制帳務更正的零元防護
+    summary: 堂數制更正不能將應收改成未標記的零元帳單。
+    items:
+      - category: improved
+        text: 遇到零元更正時會先提示處理方式，不會儲存更正。
+    source_refs:
+      - "changelog:2026-10-27:count-billing-zero-protection"
