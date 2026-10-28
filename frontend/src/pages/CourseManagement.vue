@@ -622,7 +622,7 @@
                         ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
                         <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> {{ DUAL_TEACHER_COPY_LABEL }}</button>
                         <p class="action-section-label">狀態管理</p>
-                        <button v-if="hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                        <button v-if="hc.status === 'inactive' && hc.closed_reason !== 'waived'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
                         <p class="action-section-label action-section-label--danger">危險操作</p>
                         <button v-if="effectiveClosedReason(hc) !== 'waived'" class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
