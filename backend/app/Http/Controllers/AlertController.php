@@ -129,7 +129,10 @@ class AlertController extends Controller
         if ($studentIds !== null) {
             $stoppedResults->whereIn('StudentID', $studentIds);
         }
-        $stoppedResults = $stoppedResults->get();
+        $stoppedRows = $stoppedResults->get();
+        // In-app #440 (Founder 2026-10-29): a plain pause that never started is not owed while paused (StudentClass::unstartedPauseIds).
+        $unstartedPauses = StudentClass::unstartedPauseIds($stoppedRows->pluck('ID')->all());
+        $stoppedResults = $stoppedRows->reject(fn (StudentClass $c) => isset($unstartedPauses[(int) $c->ID]))->values();
         $stoppedStatuses = $this->payableResolver
             ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
         // In-app #394: a review_required verdict built from issued invoices still owes their open balance.
