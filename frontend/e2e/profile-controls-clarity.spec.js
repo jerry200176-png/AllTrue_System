@@ -112,6 +112,32 @@ test.describe('Profile controls real Vue page', () => {
     });
   }
 
+  test('#4488 save result stays readable while the pointer rests on the button', async ({ page }) => {
+    await installProfileMocks(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/pilot-mount.html?page=profile');
+    const save = page.locator('#profile-panel-profile button.at-submit');
+    await expect(save).toHaveAccessibleName('儲存基本資料');
+    await save.click();
+    await expect(save).toHaveAccessibleName('已儲存');
+    await expect(save).toHaveClass(/at-submit--success/);
+    // The success message above can shift the button, so put the pointer back on it.
+    await save.hover();
+    const readColors = () => save.evaluate((button) => {
+      const probe = document.createElement('span');
+      probe.style.background = 'var(--ds-success-wash)';
+      probe.style.color = 'var(--ds-success-text)';
+      button.parentElement.appendChild(probe);
+      const expected = `${getComputedStyle(probe).backgroundColor} / ${getComputedStyle(probe).color}`;
+      probe.remove();
+      const actual = `${getComputedStyle(button).backgroundColor} / ${getComputedStyle(button).color}`;
+      return { hovered: button.matches(':hover'), matches: actual === expected, actual, expected };
+    });
+    // Poll past AtButton's background transition.
+    await expect.poll(async () => (await readColors()).matches).toBe(true);
+    expect((await readColors()).hovered).toBe(true);
+  });
+
   test('keeps profile loading state explicit', async ({ page }) => {
     await installProfileMocks(page, 'loading');
     await page.setViewportSize({ width: 390, height: 844 });

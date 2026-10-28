@@ -127,6 +127,31 @@ test('subject settings exposes recoverable error state', async ({ page }) => {
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
 });
 
+test('#4488 Enter and the save button share one pending create request', async ({ page }) => {
+  await openPilot(page, { viewport: VIEWPORTS[3] });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const creates = [];
+  await page.route('**/api/v1/subjects', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    creates.push(route.request().postDataJSON());
+    await held;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 3, name: '程式設計' }) });
+  });
+  await page.getByRole('button', { name: '新增科目', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新增科目', exact: true });
+  await dialog.getByLabel('科目名稱').fill('程式設計');
+  await dialog.getByLabel('科目名稱').press('Enter');
+  const save = dialog.locator('button.at-submit');
+  await expect(save).toHaveAttribute('aria-busy', 'true');
+  // aria-disabled does not stop a real pointer; force the click Playwright would otherwise wait out.
+  await save.click({ force: true });
+  await expect.poll(() => creates.length).toBe(1);
+  release();
+  await expect(dialog).toBeHidden();
+  expect(creates).toHaveLength(1);
+});
+
 test('subject settings keeps long Chinese names inside the mobile card layout', async ({ page }) => {
   await openPilot(page, { mode: 'long', viewport: VIEWPORTS[0] });
   await expect(page.getByText('英文進階長內容驗證科目名稱', { exact: true })).toBeVisible({ timeout: 10_000 });
