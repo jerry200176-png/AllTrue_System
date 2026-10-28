@@ -12,8 +12,6 @@ updates:
       - category: fixed
         text: 同一門課在兩個分頁同時結案與暫停時，結案狀態不會再被暫停蓋掉。
       - category: improved
-        text: 不小心結案的課，超級管理員可以在「恢復課程」填寫原因後復原，系統會留下紀錄。
-      - category: improved
-        text: 只是暫停、還沒結案的課，恢復方式不變。
+        text: 不小心結案的課，超級管理員可以在「恢復課程」填寫原因後復原，系統會留下紀錄；只是暫停的課恢復方式不變。
     source_refs:
       - "changelog:2026-10-16:4188-pause-close-backend-guard"
