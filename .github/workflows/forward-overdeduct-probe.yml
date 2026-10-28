@@ -1,0 +1,97 @@
+# governance-capability: read-only-probe
+name: Forward over-deduct probe (read-only)
+
+# #4554 / #4515: which count courses did the nightly forward generator (#1062) give an extra lesson while the last one
+# was still unmarked, so the ledger now holds more attendance deducts than bought? Runs the reviewed
+# scripts/probes/forward-overdeduct-probe.php from main against the deployed app's own DB connection, in a MySQL READ
+# ONLY session and a transaction that is rolled back (the server refuses any write; the script exits if the session is
+# not read-only). Public repo (#3605): the input is a numeric id and the output is ids, counts and statuses, never
+# names, amounts or notes. Record each run on #4554 (run link + ids only).
+on:
+  workflow_dispatch:
+    inputs:
+      campus_id:
+        description: "Campus id (numeric); 0 scans every campus (max 200 courses)"
+        required: true
+        default: "0"
+        type: string
+
+concurrency:
+  group: forward-overdeduct-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Production read-only forward over-deduct probe
+    # Production SSH secrets reach only the reviewed workflow and probe script on main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 10
+    steps:
+      - name: Validate inputs
+        env:
+          CAMPUS_ID: ${{ inputs.campus_id }}
+        run: |
+          set -euo pipefail
+          [[ "$CAMPUS_ID" =~ ^(0|[1-9][0-9]{0,8})$ ]] || { echo 'campus_id must be 0 or a positive integer'; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/probes/forward-overdeduct-probe.php
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Run read-only probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          CAMPUS_ID: ${{ inputs.campus_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          PROBE_B64=$(base64 -w0 scripts/probes/forward-overdeduct-probe.php)
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "PROBE_B64='${PROBE_B64}' CAMPUS_ID='${CAMPUS_ID}' bash -s" <<'ENDSSH' | tee out/forward-overdeduct-probe.json
+          set -euo pipefail
+          PROBE=$(mktemp /tmp/forward-overdeduct-probe.XXXXXX.php)
+          trap 'rm -f "$PROBE"' EXIT
+          printf '%s' "$PROBE_B64" | base64 -d > "$PROBE"
+          cd /home/admin/backend
+          FORWARD_OVERDEDUCT_PROBE=1 APP_ROOT=/home/admin/backend CAMPUS_ID="$CAMPUS_ID" php "$PROBE"
+          ENDSSH
+          grep -q '"read_only": true' out/forward-overdeduct-probe.json
+          grep -q '"session_read_only": 1' out/forward-overdeduct-probe.json
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Forward over-deduct probe (read-only)'
+            echo 'ids, counts and statuses only'
+            echo '```json'
+            sed -n '1,400p' out/forward-overdeduct-probe.json 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
