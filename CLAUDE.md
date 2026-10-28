@@ -115,7 +115,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 ### G-011：「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死
 `StudentClass.standard_lesson_minutes`（計費標準堂長）與 `SessionDuration`（排課時長）是**兩件事**。同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 **2.00 / 1.50 / 1.00** 堂；買 8 堂分別 = 720 / 960 / 1440 分鐘。
 **後端沒有任何 fallback 到 120**：`resolvedStandardLessonMinutes()` 未設定時回傳 `null`，不會退回 `SessionDuration` 也不會退回 120；建課表單的 `120` 只是輸入框初值，一定會隨 payload 明確送出。任何「AllTrue 一堂固定 120 分鐘」「8 堂 = 16 小時」「3 小時課永遠扣 1.5 堂」的假設都是 bug。
-**兩個旗標缺一不可且皆預設關**：`perfflags.actual_duration_deduction_enabled`（環境）＋ `deduction_basis`（每門課）。旗標關閉時，已標記 `actual_duration` 的課行為**完全等同** `fixed_session`（fail-safe，非 fail-open），因此關旗標＝完整回滾、無資料要清。
+**兩個旗標缺一不可且皆預設關**：`perfflags.actual_duration_deduction_enabled`（環境）＋ `deduction_basis`（每門課）。旗標關閉時，已標記 `actual_duration` 的課行為**完全等同** `fixed_session`（fail-safe，非 fail-open），因此關旗標＝完整回滾、無資料要清。**試辦名單（#3834）**：`perfflags.actual_duration_campus_ids`（`PERF_ACTUAL_DURATION_CAMPUS_IDS`，預設 `11,13`）限制哪些分校可以**新開**這個選項——建課與把既有課改成 `actual_duration` 在名單外回 422；已經是 `actual_duration` 的課不受名單影響（不改任何扣堂口徑）。
 **第一筆扣堂 ledger 之後**，`standard_lesson_minutes`／`deduction_basis`／`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（回 422）；前端變灰只是 UX。一般編輯仍不提供扣堂後任意修正；但主任／超級管理員可使用具名的 `billing-correction` 例外流程，僅處理**未收款、非共用、按堂計費的堂數下修**，不得低於已使用堂數，且會留下稽核紀錄。此例外不修改 `standard_lesson_minutes`／`deduction_basis`，也不改寫已發生的扣堂歷史；已收款或付款回報案件仍須走帳務作廢／更正流程。
 **超額永遠不擋點名**：確認只發生在建課階段（D5）。若出現「因額度不足而無法點名」＝ bug，先關旗標。上線／回滾見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
 
@@ -159,7 +159,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
-- Presubmit hard limit: 700 changed lines (generated/baseline excluded); split, don't stack.
+- Presubmit size: 700 logic lines (tests, docs, generated and baseline excluded) and 1500 lines in all; split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
 - Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (AGENTS.md §PR review; `docs/governance/FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).

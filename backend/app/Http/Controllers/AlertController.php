@@ -832,6 +832,10 @@ class AlertController extends Controller
         // lessons and deadline come from that same bill, not the newest stored-open one.
         $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
             ?? $this->payableResolver->unbilled();
+        // in-app #432 (#4573 review): a settled bill does not hold the slip while a later month is still unbilled.
+        if ($mode === 'date' && (int) ($payable['payable_outstanding'] ?? 0) <= 0 && $this->monthlyBilling->unbilledPeriodFor($sc) !== null) {
+            $payable = $this->payableResolver->unbilled();
+        }
         $payablePeriod = (string) ($payable['payable_billing_period'] ?? '');
         // The payable bill itself (its item service range drives the lesson list); else the newest open one.
         $payableInvoice = $mode === 'date' && (int) ($payable['payable_invoice_id'] ?? 0) > 0
@@ -851,7 +855,7 @@ class AlertController extends Controller
         $billingPeriod = $mode === 'date'
             ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
                 ? (string) $openBillingPeriod
-                : $this->monthlyBilling->defaultPeriodFor($sc, $today))
+                : $this->monthlyBilling->collectionPeriodFor($sc, $today)) // in-app #432: oldest unbilled month first
             : null;
         $billing = $mode === 'date'
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)

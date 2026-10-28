@@ -153,7 +153,10 @@ jobs:
       # 純刪除為主的死碼清償另有較高上限，見下方）
       # 排除：lock files, migration seed 純資料
       # ─────────────────────────────────────────────
-      - name: "[CHECK 2] PR size check (≤ 700 lines hard limit)"
+      - name: "[CHECK 2a] PR size check self-test"
+        run: python3 scripts/tests/test_presubmit_size_gate.py
+
+      - name: "[CHECK 2] PR size check (≤ 700 logic lines; tests/docs ≤ 1500 total)"
         if: ${{ env.LQ_BATCH != 'true' }}
         env:
           GITHUB_HEAD_REF: ${{ github.head_ref || github.ref_name }}
@@ -169,17 +172,25 @@ jobs:
             EXTRA_EXCLUDE+=(':!docs/CHANGELOG.md' ':!docs/archive/**')
           fi
           # 計算加減行數（分開算），排除 lock 檔和純資料檔
-          read -r ADD DEL <<< "$(git diff --numstat origin/main...HEAD \
-            -- ':!*.lock' ':!**/package-lock.json' ':!package-lock.json' \
+          BASE_EXCLUDE=(':!*.lock' ':!**/package-lock.json' ':!package-lock.json' \
                ':!**/composer.lock' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
                ':!*.log' ':!**/*.log' \
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
-               "${EXTRA_EXCLUDE[@]}" \
+               "${EXTRA_EXCLUDE[@]}")
+          read -r ADD DEL <<< "$(git diff --numstat origin/main...HEAD -- "${BASE_EXCLUDE[@]}" \
             | awk 'NF==3 {add+=$1; del+=$2} END {print add+0, del+0}')"
           TOTAL=$((ADD + DEL))
+          # Founder 2026-10-28 (governance smoothing): the 700-line limit bounds the review of *logic*.
+          # Tests and docs make a change safer, so they no longer force a split; they count only
+          # toward a 1500-line total (#4200 was 777 lines, ~500 of them tests).
+          LOGIC=$(git diff --numstat origin/main...HEAD -- "${BASE_EXCLUDE[@]}" \
+               ':!backend/tests/**' ':!scripts/tests/**' ':!**/__tests__/**' ':!**/*.test.*' ':!**/*.spec.*' \
+               ':!frontend/e2e/**' ':!docs/**' ':!**/*.md' \
+            | awk 'NF==3 {n+=$1+$2} END {print n+0}')
+          TOTAL_LIMIT=1500
 
-          echo "PR size: $TOTAL lines changed (+$ADD/-$DEL, excluding lock/data files)"
+          echo "PR size: $TOTAL lines changed (+$ADD/-$DEL, excluding lock/data files); $LOGIC logic lines (no tests/docs)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
           # Non-production-path exception: the 700-line ceiling exists to bound the
@@ -224,16 +235,16 @@ jobs:
             exit 0
           fi
 
-          if [ "$TOTAL" -gt "$HARD_LIMIT" ]; then
-            echo "❌ PR too large: $TOTAL lines (hard limit: $HARD_LIMIT)"
+          if [ "$LOGIC" -gt "$HARD_LIMIT" ] || [ "$TOTAL" -gt "$TOTAL_LIMIT" ]; then
+            echo "❌ PR too large: $LOGIC logic lines (limit: $HARD_LIMIT), $TOTAL lines with tests/docs (limit: $TOTAL_LIMIT)"
             echo ""
             echo "Please split into smaller PRs. Each PR should cover one independent feature."
             echo "Reference: .cursor/rules/module-industry-standards.mdc"
             exit 1
-          elif [ "$TOTAL" -gt 400 ]; then
-            echo "::warning title=Large PR::PR is $TOTAL lines (recommended ≤ 400). Consider splitting if possible."
+          elif [ "$LOGIC" -gt 400 ]; then
+            echo "::warning title=Large PR::PR has $LOGIC logic lines (recommended ≤ 400). Consider splitting if possible."
           else
-            echo "✅ PR size OK: $TOTAL lines"
+            echo "✅ PR size OK: $LOGIC logic lines, $TOTAL total"
           fi
 
       # ─────────────────────────────────────────────

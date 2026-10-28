@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-actual-duration-pilot-campuses
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 實際時長換算，先開新莊兩校
+    summary: 試辦期間，只有新莊分校與新莊中平分校可以新建這種課；其他分校請用「每次上課扣一堂」。
+    items:
+      - category: improved
+        text: 其他分校在建課時選「依實際上課時長換算」，會提示「此分校尚未開放」，請改用「每次上課扣一堂」。
+      - category: improved
+        text: 已經設定成「依實際上課時長換算」的課不受影響，扣堂與剩餘堂數照舊。
+    source_refs:
+      - "changelog:2026-10-28:actual-duration-pilot-campuses"

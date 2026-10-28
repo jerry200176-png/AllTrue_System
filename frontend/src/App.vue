@@ -583,6 +583,7 @@
         :user-id="session.user.id"
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
+        @navigate-context="onNavigateFromNotifications"
       />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
