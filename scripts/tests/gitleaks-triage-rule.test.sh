@@ -35,5 +35,5 @@ check prefix-only "$(scan prefix "'secret_prefix' => '${pre}', forged 1|${pre}fo
 check identifiers "$(scan ids "'key' => 'syn.eng.phonics.short-vowels.v1', key: 'weekly_16_segments', 'key' => 'perfFlags.ADMISSIONS_FUNNEL_V1'
 'idempotency_key' => 'synthetic-4326'" backend/tests/Feature/FooTest.php)" ""
 # A literal UUID under a key name is not allowlisted anywhere (fixtures build theirs at runtime).
-check uuid-key-trips "$(scan uuid "'idempotency_key' => '$(python3 -c 'import uuid; print(uuid.uuid4())')'" backend/tests/Feature/FooTest.php)" generic-api-key
+check uuid-key-trips "$(scan uuid "'idempotency_key' => '$(python3 -c 'import uuid; print(uuid.uuid5(uuid.NAMESPACE_URL, "alltrue-gitleaks-self-test"))')'" backend/tests/Feature/FooTest.php)" generic-api-key
 check random-key-still-trips "$(scan random "config_api_key = \"kJ8dL2mN9qRxT5vWzY3aB7cE1fG4hI6p\"")" generic-api-key
