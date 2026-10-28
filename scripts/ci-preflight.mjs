@@ -101,6 +101,9 @@ function checkWorkflowYaml(errors) {
   }
 }
 
+// Same shape as the .gitleaks.toml `alltrue-triage-token` rule (#4022); the bare prefix alone never matches.
+const TRIAGE_TOKEN_RE = /(?:\d+\|)?alltrue_triage_[A-Za-z0-9]{40}(?![A-Za-z0-9])/;
+
 function checkSecrets(errors) {
   let diff = '';
   try {
@@ -108,7 +111,7 @@ function checkSecrets(errors) {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024,
     });
   } catch { return; }
-  for (const [re, label] of [[/AKIA[0-9A-Z]{16}/, 'AWS key'], [/-----BEGIN (RSA |OPENSSH )?PRIVATE KEY-----/, 'private key'], [/ghp_[A-Za-z0-9]{36}/, 'GitHub PAT']]) {
+  for (const [re, label] of [[/AKIA[0-9A-Z]{16}/, 'AWS key'], [/-----BEGIN (RSA |OPENSSH )?PRIVATE KEY-----/, 'private key'], [/ghp_[A-Za-z0-9]{36}/, 'GitHub PAT'], [TRIAGE_TOKEN_RE, 'AllTrue triage token']]) {
     if (re.test(diff)) {
       errors.push(formatGovError({
         code: GOV_CODES.SECRET, message: `Possible secret in diff: ${label}`,
@@ -123,6 +126,9 @@ async function main() {
     if (classifyStepFailure({ step: 'Branch naming', logSnippet: 'Invalid branch name' }).primary !== 'BRANCH_NAMING_POLICY') throw new Error('taxonomy');
     if (classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: true }).kind !== 'flake') throw new Error('flake');
     if (!validateBranchName('sec/x').ok || validateBranchName('agent/x').ok) throw new Error('branch');
+    const issued = `12|${'alltrue_'}triage_${'Ab3'.repeat(13)}x`; // built at runtime: this file never holds a token
+    if (!TRIAGE_TOKEN_RE.test(`+ token = "${issued}"`) || !TRIAGE_TOKEN_RE.test(issued.slice(3))) throw new Error('triage token not detected');
+    if (TRIAGE_TOKEN_RE.test("'secret_prefix' => 'alltrue_triage_', see 1|alltrue_triage_forged")) throw new Error('triage prefix false positive');
     console.log('ci-preflight self-test: OK');
     return;
   }
