@@ -271,17 +271,18 @@ _MAX_GUARDED_SENSITIVE_LINES = 240
 
 
 _MIGRATION_PREFIX = "backend/database/migrations/"
-# Founder 2026-10-14（三）補充 #1: identity/authz and billing tables never take the
-# additive path, whatever the change (matched on every table the file names).
+# Founder 2026-10-14（三）補充 #1: identity/authz tables never take the additive
+# path, whatever the change (matched on every table the file names). Founder
+# 2026-10-28 A removed the billing tables (invoice, payment, ledger, package,
+# contract/StudentClass, ...) from this list; identity, auth, permission,
+# credential, token, security, PII and control tables stay excluded.
 # The author's `Additive-Migration: yes` declaration and Codex's confirmation on
 # the final head carry the rest of the judgement; this list is not meant to be
 # a complete vocabulary of sensitive data.
 _ADDITIVE_EXCLUDED_TABLE_RE = re.compile(
     r"user|role|permission|capabilit|auth|token|password|login|guardian|identity|parent|binding|"
-    r"apiclient|api_client|security|grant|teacher|"
-    r"invoice|payment|payroll|salary|billing|ledger|charge|pric|deduct|entitlement|refund|bank|"
-    r"accounting|dunning|rate_card|package|contract|tuition|fee|cash|allowance|coverage|correction|"
-    r"studentclass|student_class|^student$|singin|rfid|swipe|pop_|system_setting|_members|"
+    r"apiclient|api_client|security|grant|teacher|credential|secret|bank|"
+    r"^student$|singin|rfid|swipe|pop_|system_setting|_members|"
     r"pii|legal|medical|national|personal|consent|export",
     re.IGNORECASE,
 )

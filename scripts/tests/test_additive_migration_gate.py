@@ -232,18 +232,18 @@ class AdditiveMigrationGate(unittest.TestCase):
         up = 'Schema::table(\'t\', fn (Blueprint $t) => $t->string("\\x61")->nullable());'
         self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set())
 
-    def test_identity_and_billing_tables_stay_t3(self):
+    def test_identity_and_security_tables_stay_t3(self):
         for up in (
             "Schema::create('auth_tokens', function (Blueprint $t) { $t->id(); });",
             "Schema::table('permissions', fn (Blueprint $t) => $t->string('scope')->nullable());",
-            "Schema::table('Invoice', fn (Blueprint $t) => $t->string('note')->nullable());",
-            "Schema::table('StudentClass', fn (Blueprint $t) => $t->string('memo')->nullable());",
             "Schema::create('roles', function (Blueprint $t) { $t->id(); });",
             "Schema::table('User', fn (Blueprint $t) => $t->boolean('is_super_admin')->nullable());",
             "Schema::create('student_guardians', function (Blueprint $t) { $t->id(); });",
-            "Schema::table('payroll_runs', fn (Blueprint $t) => $t->string('x')->nullable());",
-            "Schema::table('session_deduction_ledger', fn (Blueprint $t) => $t->string('x')->nullable());",
-            "if (Schema::hasTable('Payment')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "if (Schema::hasTable('api_clients')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "Schema::create('payment_credentials', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('invoice_secrets', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('bank_accounts', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('parent_invoice_links', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('pop_approval_events', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('Student', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('TempRfid', fn (Blueprint $t) => $t->string('x')->nullable());",
@@ -252,6 +252,35 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('chat_thread_members', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::create('pii_exports', function (Blueprint $t) { $t->id(); });",
             "Schema::create('legal_records', function (Blueprint $t) { $t->id(); });",
+        ):
+            patch = new_file(MIG, migration(up))
+            self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
+            self.assertEqual(self.tiers(patch), (3, 3), up)
+
+    def test_billing_tables_take_the_additive_path(self):
+        # Founder 2026-10-28 A: additive-only changes on billing tables are no longer excluded.
+        for up in (
+            "Schema::table('Invoice', fn (Blueprint $t) => $t->string('note')->nullable());",
+            "Schema::table('StudentClass', fn (Blueprint $t) => $t->string('memo')->nullable());",
+            "Schema::table('payroll_runs', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('session_deduction_ledger', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('course_packages', fn (Blueprint $t) => $t->index('campus_id'));",
+            "if (Schema::hasTable('Payment')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "Schema::create('invoice_adjustments', function (Blueprint $t) { $t->id(); $t->text('reason'); });",
+        ):
+            patch = new_file(MIG, migration(up))
+            self.assertEqual(additive_migration_paths([MIG], patch), {MIG}, up)
+            self.assertEqual(self.tiers(patch)[0], 2, up)
+            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", True):
+                self.assertEqual(self.tiers(patch), (2, 2), up)
+
+    def test_billing_tables_still_refuse_destructive_or_data_changes(self):
+        for up in (
+            "Schema::table('Invoice', fn ($t) => $t->dropColumn('note'));",
+            "Schema::table('StudentClass', fn ($t) => $t->renameColumn('Memo', 'memo'));",
+            "Schema::table('Payment', fn ($t) => $t->decimal('Amount', 12, 2)->change());",
+            "Schema::table('Invoice', fn ($t) => $t->string('a')); DB::table('Invoice')->update(['a' => 1]);",
+            "Schema::dropIfExists('invoice_adjustments');",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
