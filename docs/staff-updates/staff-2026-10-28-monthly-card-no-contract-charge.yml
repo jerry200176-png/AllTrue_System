@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-monthly-card-no-contract-charge
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 月結合約卡金額和繳費單一致
+    summary: 月結合約卡不再顯示會和繳費單對不上的「合約金額」，月結金額以繳費單為準。
+    items:
+      - category: fixed
+        text: 月結、共用方案的合約卡不再顯示合約金額；月結每月應繳請看繳費單，它依當月已上的課計算。
+      - category: improved
+        text: 堂數制合約照舊顯示合約金額；帳單、收款和繳費單金額都沒有改。
+    source_refs:
+      - "changelog:2026-10-28:monthly-card-no-contract-charge"
