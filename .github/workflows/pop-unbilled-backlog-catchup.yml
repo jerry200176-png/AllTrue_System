@@ -1,7 +1,7 @@
 name: Founder POP unbilled-backlog catch-up (per campus)
 # Dispatch adapter for POP operation unbilled-backlog-catchup-20261006 (runbook RM-UNBILLED-BACKLOG-CATCHUP-20261006).
 # dry-run (expected_digest empty) is read-only: it drafts a POP request and prints state, digest, totals and ids-only rows (no names).
-# Jerry must dispatch it (production-activation environment). approve needs the reviewed digest; execution stays on the Pi scheduler.
+# dry-run runs on production-ssh with no click; approve waits for the Founder (production-activation gate job) and needs the reviewed digest; execution stays on the Pi scheduler.
 on:
   workflow_dispatch:
     inputs:
@@ -60,14 +60,28 @@ jobs:
             [[ "$CONFIRM" == "APPROVE_UNBILLED_BACKLOG_$CAMPUS" ]] || { echo '::error::confirm must be APPROVE_UNBILLED_BACKLOG_<campus_id>'; exit 1; }
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA campus=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
+  founder-approval:
+    # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
+    name: Founder approval (approve mode only)
+    needs: guard
+    if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production-activation
+    outputs:
+      attempt: ${{ github.run_attempt }}
+    steps:
+      - run: echo "Founder approved approve mode for run attempt ${{ github.run_attempt }}"
   catchup:
     name: Pi-local short-lived POP unbilled-backlog catch-up
-    needs: guard
-    if: ${{ needs.guard.result == 'success' }}
+    needs: [guard, founder-approval]
+    # dry-run: production-ssh with no click. approve: only after this attempt's Founder approval (a re-run needs a new click).
+    if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: production-activation
+      name: production-ssh
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -178,7 +192,7 @@ jobs:
             python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d=d.get("data", d); p=d.get("plan", d.get("result", d)); sys.exit(0 if p.get("state") == "pinned" else 1)' "$dry_run" \
               || { echo '::error::approve requires the pinned dry-run to report state=pinned (digest must match the live manifest)'; exit 1; }
           fi
-          if [[ "$MODE" == dry-run ]]; then
+          if [[ "$MODE" != approve ]]; then
             echo "dry-run only: no approval issued"
             exit 0
           fi
