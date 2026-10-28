@@ -42,6 +42,22 @@ export function statusTone(status) {
 
 const SLIP_FOOTER = '此通知單僅供繳費確認用，如已繳費請忽略。';
 
+/** In-app #439: 代收款 (books, materials...) is its own block with its own subtotal; it never joins items or the amount. */
+function passThroughView(raw) {
+  const rows = raw.pass_through || [];
+  if (!rows.length) return null;
+  return {
+    unpaid_total: formatAmount(raw.pass_through_unpaid_total),
+    rows: rows.map(r => ({
+      title: r.title,
+      category: r.category,
+      amount: formatAmount(r.amount),
+      paid: r.status === 'paid',
+      state: r.status === 'paid' ? `已繳 ${formatDate(r.paid_on)}` : '未繳',
+    })),
+  };
+}
+
 /** Payment slip (invoice slip-data or tuition-slip payload) → BillingDocument view model. */
 export function paymentSlipView(raw) {
   // Per slip, not per page load: a tab left open overnight must not print yesterday.
@@ -72,6 +88,7 @@ export function paymentSlipView(raw) {
         { label: '開立日期', value: formatDate(raw.issue_date) },
       ],
       items,
+      pass_through: passThroughView(raw),
       note: raw.note,
       // Invoice payloads carry no schedule mode; count-mode ones list the whole course.
       session_title: '上課日期',
@@ -119,6 +136,7 @@ export function paymentSlipView(raw) {
       { label: '產生日期', value: generatedOn },
     ],
     items,
+    pass_through: passThroughView(raw),
     note: raw.note,
     // Count-mode payloads list the whole course, not one billing period.
     session_title: raw.schedule_mode === 'date' ? '本期上課日期' : '課程明細',

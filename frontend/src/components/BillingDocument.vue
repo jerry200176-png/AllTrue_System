@@ -50,6 +50,19 @@
       </tfoot>
     </table>
 
+    <section v-if="doc.pass_through" class="slip-pass" data-testid="slip-pass-through">
+      <div class="slip-section-title">代收款（非學費）</div>
+      <ul class="slip-pass-list">
+        <li v-for="(r, i) in doc.pass_through.rows" :key="i">
+          <span class="slip-pass-title">{{ r.title }} <span class="slip-chip">{{ r.category }}</span></span>
+          <span class="slip-pass-amount">{{ r.amount }}</span>
+          <span class="slip-pass-state" :class="{ 'is-paid': r.paid }">{{ r.state }}</span>
+        </li>
+      </ul>
+      <div class="slip-pass-total"><span>代收款未繳合計</span><span>{{ doc.pass_through.unpaid_total }}</span></div>
+      <p class="slip-pass-note">代收款由補習班代為收取轉付，不屬於學費</p>
+    </section>
+
     <section v-if="doc.sessions.length" class="slip-sessions">
       <div class="slip-section-title">
         {{ doc.session_title || '本期上課日期' }}
@@ -275,6 +288,22 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
 .slip-status.is-leave { color: var(--slip-leave); background: var(--slip-leave-wash); }
 .slip-status.is-planned { color: var(--slip-ink-2); background: var(--slip-soft); border: 1px solid var(--slip-line); }
 
+/* 代收款: one column, a title line with its amount and a state line beneath (#439). */
+.slip-pass { margin: 0 0 18px; padding: 12px 14px; background: var(--slip-soft); border: 1px solid var(--slip-line); border-radius: 8px; }
+.slip-pass-list { list-style: none; margin: 0; padding: 0; }
+.slip-pass-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--slip-line);
+}
+.slip-pass-title { font-weight: 600; overflow-wrap: anywhere; }
+.slip-pass-amount { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.slip-pass-state { grid-column: 1 / -1; font-size: 11.5px; color: var(--slip-warn); }
+.slip-pass-state.is-paid { color: var(--slip-done); }
+.slip-pass-total { display: flex; justify-content: space-between; padding-top: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.slip-pass-note { margin: 4px 0 0; font-size: 11.5px; color: var(--slip-ink-2); }
 .slip-more { margin: 6px 0 0; font-size: 12px; color: var(--slip-mute); text-align: center; }
 .slip-note {
   margin-top: 16px;
