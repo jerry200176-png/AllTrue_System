@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
@@ -288,6 +289,32 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([null, true], [$course['package_id'], $course['in_package']]);
         $plain = $this->legacyCourse(1);
         $this->assertFalse(collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$plain->ID}")->json('courses'))->firstWhere('id', $plain->ID)['in_package']);
+    }
+
+    /** Codex P1: confirm()'s package write must reach only the package owner's own courses, never a stale foreign PackageID. */
+    public function test_backfill_leaves_a_foreign_course_with_a_stale_package_id_untouched(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, , $package] = $this->legacyPackage(1);
+        $foreign = $this->legacyCourse(2, ['Paid' => 0, 'PayDate' => null, 'PackageID' => $package->id]);
+        $this->backfill($token, $lead, ['amount' => 8800])->assertOk();
+        $this->assertSame([true, 1], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid]);
+        $this->assertSame([0, null, $package->id], [(int) $foreign->fresh()->Paid, $foreign->fresh()->PayDate, (int) $foreign->fresh()->PackageID]);
+    }
+
+    /** Codex P2: a monthly backfill is capped by the month confirm() will bill (oldest unbilled), not the payment date's month. */
+    public function test_monthly_backfill_cap_uses_the_month_confirmation_bills(): void
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1, ['ScheduleMode' => 'date', 'Charge' => 1650, 'Rate' => 1650, 'rate_unit' => 'session',
+            'StartDate' => '2026-08-01', 'EndDate' => '2026-10-31']);
+        foreach (['2026-08-29' => 'attended', '2026-08-31' => 'attended', '2026-10-05' => 'attended'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        // August (2 lessons, NT$3300) is the oldest unbilled month, so an October payment date still backfills August in full.
+        $this->backfill($token, $course, ['amount' => 3300, 'payment_date' => '2026-10-20'])->assertOk()->assertJsonPath('status', 'confirmed');
+        $invoice = Invoice::where('StudentClassID', $course->ID)->sole();
+        $this->assertSame(['2026-08', 3300], [(string) $invoice->billing_period, (int) $invoice->TotalAmount]);
     }
 
     /** Security review: a caller outside the campus is refused from the routing read, before any lock or write. */
