@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-29-teacher-week-refresh
+    published_at: "2026-10-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 本週課表回到前景自動更新
+    summary: 離開 App 再回來，工作台的本週課表會自動重新載入。
+    items:
+      - category: fixed
+        text: 主任中途新增或調整的課，不用再手動重新整理就會出現在本週課表。
+    source_refs:
+      - "changelog:2026-10-29:teacher-week-refresh"
