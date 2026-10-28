@@ -1849,7 +1849,8 @@ const fetchRecords = async () => {
 const fetchPendingSessions = async () => {
   if (!isTeacher.value && !props.branchId) { pendingSessions.value = []; sessionStatusRows.value = []; return; }
   pendingLoading.value = true;
-  pendingMarkMsg.value = '';
+  // Keep the last action's result (批次完成／已核課／請假): every mark refetches this list right
+  // after writing that message. Manual refresh and branch change clear it instead.
   fetchError.value = '';
   try {
     const token = await getToken();
@@ -2359,6 +2360,7 @@ const handleDismiss = async (id) => {
 
 const refreshAll = () => {
   fetchError.value = '';
+  pendingMarkMsg.value = '';
   batchResults.value = [];
   fetchRecords();
   fetchPendingSessions();
@@ -2549,6 +2551,8 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.branchId, () => {
+  pendingMarkMsg.value = '';
+  batchResults.value = [];
   fetchRecords();
   fetchPendingSessions();
   fetchMakeupSessions();

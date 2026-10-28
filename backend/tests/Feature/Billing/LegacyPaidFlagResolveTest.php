@@ -3,6 +3,8 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -75,7 +77,7 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->backfill($token, $course, ['amount' => 3000])->assertOk()->assertJsonPath('invoice_id', $invoice->id);
         $this->assertSame([1, 'partial', 0], [Invoice::count(), (string) $invoice->fresh()->Status, (int) $course->fresh()->Paid]);
         $this->clear($token, $this->legacyCourse(1, ['Charge' => 0]))->assertStatus(422); // 0 元 is out of scope
-        $this->clear($token, $this->legacyCourse(1, ['ClassType' => 'trial']))->assertStatus(422)->assertJsonPath('code', 'legacy_flag_count_only'); // #4339 trial fee by date
+        $this->clear($token, $this->legacyCourse(1, ['ClassType' => 'trial']))->assertStatus(422)->assertJsonPath('code', 'legacy_flag_trial_fee'); // #4339 trial fee by date
     }
 
     public function test_both_actions_refuse_a_course_with_a_real_payment(): void
@@ -138,6 +140,215 @@ class LegacyPaidFlagResolveTest extends TestCase
         // Replay: already unpaid, nothing changes and no second audit event.
         $this->clear($token, $course, $reason)->assertOk()->assertJsonPath('replayed', true);
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->count());
+    }
+
+    /** In-app #428 / #438: monthly contracts had the 需核對 label and no way out; same two actions, same audit. */
+    public function test_a_monthly_contract_resolves_both_ways(): void
+    {
+        $token = $this->token('A', [1]);
+        $monthly = ['ScheduleMode' => 'date', 'Charge' => 3000, 'Rate' => 3000, 'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31'];
+        $cleared = $this->legacyCourse(1, $monthly);
+        $this->clear($token, $cleared)->assertOk();
+        $this->assertSame([0, null], [(int) $cleared->fresh()->Paid, $cleared->fresh()->PayDate]);
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->count());
+
+        $paid = $this->legacyCourse(1, $monthly);
+        // No bill and no session evidence: the stored charge still caps what a new bill may record (Codex P2).
+        $this->backfill($token, $paid, ['amount' => 5000])->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 3000);
+        $this->assertSame([0, 0], [Invoice::count(), PaymentReport::count()]);
+        $this->backfill($token, $paid, ['amount' => 3000, 'idempotency_key' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'synthetic-legacy-backfill-1')])
+            ->assertOk()->assertJsonPath('status', 'confirmed');
+        $invoice = Invoice::where('StudentClassID', $paid->ID)->sole();
+        $this->assertSame([3000, 'paid', 1], [(int) $invoice->TotalAmount, (string) $invoice->Status, (int) $paid->fresh()->Paid]);
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_backfill')->count());
+        $this->assertSame(['paid', false], $this->courseRow($token, $paid));
+    }
+
+    /** A shared package is one obligation: clearing the mark clears the package and every member, like markPackagePaid sets them. */
+    public function test_clearing_a_shared_package_mark_clears_the_package_and_every_member(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        $this->assertSame(['paid', true], $this->courseRow($token, $sibling));
+        $this->clear($token, $lead)->assertOk();
+        $this->assertFalse((bool) $package->fresh()->paid);
+        $this->assertNull($package->fresh()->paid_at);
+        foreach ([$lead, $sibling] as $member) {
+            $this->assertSame([0, null], [(int) $member->fresh()->Paid, $member->fresh()->PayDate]);
+        }
+        $event = DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->sole();
+        $this->assertSame(2, json_decode((string) $event->metadata, true)['row_count']);
+        $this->assertSame([0, 0, 0], [Invoice::count(), Payment::count(), PaymentReport::count()]);
+        $this->assertSame(false, $this->courseRow($token, $sibling)[1]);
+    }
+
+    /** A member whose own Paid is 0 is still paid by the package's mark: clearing from it must not answer 「已經是未繳」. */
+    public function test_clearing_from_a_member_paid_only_by_the_package_mark_clears_the_package(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        $sibling->update(['Paid' => 0, 'PayDate' => null]);
+        $this->clear($token, $sibling)->assertOk()->assertJsonMissing(['replayed' => true]);
+        $this->assertFalse((bool) $package->fresh()->paid);
+        $this->assertSame([0, 0], [(int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+        $this->clear($token, $sibling)->assertOk()->assertJsonPath('replayed', true);
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.legacy_paid_flag_cleared')->count());
+    }
+
+    public function test_backfilling_a_shared_package_records_one_payment_and_a_partial_one_drops_the_marks(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        $this->backfill($token, $lead, ['amount' => 8800])->assertOk()->assertJsonPath('status', 'confirmed');
+        $this->assertSame([1, true, 1, 1], [Invoice::where('StudentClassID', $lead->ID)->count(), (bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+        $this->assertSame([false, false], [$this->courseRow($token, $lead)[1], $this->courseRow($token, $sibling)[1]]);
+
+        [$lead2, $sibling2, $package2] = $this->legacyPackage(1);
+        Invoice::create(['StudentID' => $lead2->StudentID, 'StudentClassID' => $lead2->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->backfill($token, $lead2, ['amount' => 3000, 'idempotency_key' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'synthetic-legacy-backfill-2')])->assertOk();
+        $this->assertSame([false, 0, 0], [(bool) $package2->fresh()->paid, (int) $lead2->fresh()->Paid, (int) $sibling2->fresh()->Paid]);
+    }
+
+    /** Evidence and reports are read across the whole package, so a sibling's money or report blocks both actions. */
+    public function test_a_sibling_payment_or_report_blocks_a_shared_package(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling] = $this->legacyPackage(1);
+        $report = $this->report($sibling, 'pending');
+        $this->backfill($token, $lead)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
+        $this->clear($token, $lead)->assertStatus(422)->assertJsonPath('code', 'pending_report_exists');
+        $report->update(['status' => 'confirmed', 'confirmed_at' => Carbon::now()]);
+        $this->clear($token, $lead)->assertStatus(422)->assertJsonPath('code', 'confirmed_report_exists');
+        $report->delete();
+        $invoice = Invoice::create(['StudentID' => $sibling->StudentID, 'StudentClassID' => $sibling->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-09-01', 'Method' => 'cash']);
+        $this->backfill($token, $lead)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_has_payment');
+        $this->clear($token, $lead)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_has_payment');
+        $this->assertSame([1, 1], [(int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+    }
+
+    /**
+     * Security review: the shared-package decision reads reports and evidence only after every sibling course row, their reports,
+     * the package row and their bills are locked (confirm()'s order), so a concurrent confirm cannot slip past a snapshot read.
+     */
+    public function test_shared_package_actions_lock_siblings_reports_package_and_bills_before_any_read(): void
+    {
+        $token = $this->token('A', [1]);
+        $log = [];
+        DB::listen(function ($query) use (&$log) {
+            $log[] = strtolower($query->sql);
+        });
+        foreach (['clear', 'backfill'] as $action) {
+            [$lead, $sibling] = $this->legacyPackage(1);
+            Invoice::create(['StudentID' => $lead->StudentID, 'StudentClassID' => $sibling->ID, 'IssueDate' => '2026-09-01',
+                'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+            $log = [];
+            $action === 'clear' ? $this->clear($token, $sibling)->assertOk() : $this->backfill($token, $sibling)->assertOk();
+            $find = fn (string $from) => collect($log)->search(fn ($sql) => str_contains($sql, $from) && str_contains($sql, ' for update'));
+            $courses = $find('from `studentclass` where `id` in');
+            $locks = [$courses, $find('from `payment_reports`'), $find('from `course_packages`'), $find('from `invoice`')];
+            $this->assertSame($locks, collect($locks)->sort()->values()->all(), "$action: courses, reports, package, bills in that order");
+            $this->assertStringContainsString('order by `id` asc for update', $log[$courses], "$action: sibling rows locked by id");
+            $plainRead = collect($log)->skip($courses)->filter(fn ($sql) => !str_contains($sql, ' for update'))->keys()->first();
+            $this->assertGreaterThan($locks[3], $plainRead, "$action: nothing is read before every lock is held");
+        }
+    }
+
+    /** Codex P1: a stale PackageID pointing at another student's or campus's package must never have its paid mark changed. */
+    public function test_a_stale_package_id_to_a_foreign_package_is_refused(): void
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1);
+        $foreign = $this->legacyCourse(2);
+        $package = CoursePackage::create(['student_id' => $foreign->StudentID, 'campus_id' => 2, 'name' => 'F', 'billing_mode' => 'count',
+            'total_sessions' => 16, 'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 550, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'paid_at' => '2026-03-01', 'stop' => false, 'enabled' => true]);
+        $course->update(['PackageID' => $package->id]);
+        $this->clear($token, $course)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_package_mismatch');
+        $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'legacy_flag_package_mismatch');
+        $this->assertSame([true, 1, 1], [(bool) $package->fresh()->paid, (int) $course->fresh()->Paid, (int) $foreign->fresh()->Paid]);
+        $this->assertSame([0, 0], [Invoice::count(), PaymentReport::count()]);
+    }
+
+    /** Codex P2: paying one member's bill must not keep the whole package marked paid while a sibling still owes. */
+    public function test_backfill_drops_the_package_marks_while_a_sibling_still_owes(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        Invoice::create(['StudentID' => $sibling->StudentID, 'StudentClassID' => $sibling->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->backfill($token, $lead, ['amount' => 8800])->assertOk();
+        $this->assertSame([false, 0, 0], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+    }
+
+    /** Codex P2: the ledger tells the card about any package membership (monthly members have package_id null there). */
+    public function test_ledger_flags_a_monthly_package_member_for_the_clear_warning(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, , $package] = $this->legacyPackage(1);
+        $lead->update(['ScheduleMode' => 'date']);
+        $course = collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$lead->ID}")->assertOk()->json('courses'))->firstWhere('id', $lead->ID);
+        $this->assertSame([null, true], [$course['package_id'], $course['in_package']]);
+        $plain = $this->legacyCourse(1);
+        $this->assertFalse(collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$plain->ID}")->json('courses'))->firstWhere('id', $plain->ID)['in_package']);
+    }
+
+    /** Codex P1: confirm()'s package write must reach only the package owner's own courses, never a stale foreign PackageID. */
+    public function test_backfill_leaves_a_foreign_course_with_a_stale_package_id_untouched(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, , $package] = $this->legacyPackage(1);
+        $foreign = $this->legacyCourse(2, ['Paid' => 0, 'PayDate' => null, 'PackageID' => $package->id]);
+        $this->backfill($token, $lead, ['amount' => 8800])->assertOk();
+        $this->assertSame([true, 1], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid]);
+        $this->assertSame([0, null, $package->id], [(int) $foreign->fresh()->Paid, $foreign->fresh()->PayDate, (int) $foreign->fresh()->PackageID]);
+    }
+
+    /** Codex P2: a monthly backfill is capped by the month confirm() will bill (oldest unbilled), not the payment date's month. */
+    public function test_monthly_backfill_cap_uses_the_month_confirmation_bills(): void
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1, ['ScheduleMode' => 'date', 'Charge' => 1650, 'Rate' => 1650, 'rate_unit' => 'session',
+            'StartDate' => '2026-08-01', 'EndDate' => '2026-10-31']);
+        foreach (['2026-08-29' => 'attended', '2026-08-31' => 'attended', '2026-10-05' => 'attended'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        // August (2 lessons, NT$3300) is the oldest unbilled month, so an October payment date still backfills August in full.
+        $this->backfill($token, $course, ['amount' => 3300, 'payment_date' => '2026-10-20'])->assertOk()->assertJsonPath('status', 'confirmed');
+        $invoice = Invoice::where('StudentClassID', $course->ID)->sole();
+        $this->assertSame(['2026-08', 3300], [(string) $invoice->billing_period, (int) $invoice->TotalAmount]);
+    }
+
+    /** Security review: a caller outside the campus is refused from the routing read, before any lock or write. */
+    public function test_a_cross_campus_request_for_a_shared_package_is_refused_without_taking_locks(): void
+    {
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        $other = $this->token('A', [2]);
+        $log = [];
+        DB::listen(function ($query) use (&$log) {
+            $log[] = strtolower($query->sql);
+        });
+        $this->clear($other, $sibling)->assertForbidden();
+        $this->backfill($other, $sibling)->assertForbidden();
+        $this->assertSame([], array_values(array_filter($log, fn ($sql) => str_contains($sql, ' for update') || str_starts_with($sql, 'update ') || str_starts_with($sql, 'insert into `payment'))));
+        $this->assertSame([true, 1, 1], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid]);
+    }
+
+    /** @return array{0: StudentClass, 1: StudentClass, 2: CoursePackage} two members of one paid shared package, no payment record */
+    private function legacyPackage(int $campusId): array
+    {
+        $lead = $this->legacyCourse($campusId);
+        $package = CoursePackage::create(['student_id' => $lead->StudentID, 'campus_id' => $campusId, 'name' => 'P', 'billing_mode' => 'count',
+            'total_sessions' => 16, 'remaining_sessions' => 16, 'used_sessions' => 0, 'rate' => 550, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'paid_at' => '2026-03-01', 'stop' => false, 'enabled' => true]);
+        $lead->update(['PackageID' => $package->id]);
+        $sibling = StudentClass::create(array_merge($lead->only(['StudentID', 'GradeID', 'TeacherID', 'by1', 'Period', 'TotalHours', 'Charge', 'PayDate', 'Paid',
+            'Stop', 'ScheduleMode', 'SessionCount', 'SessionDuration', 'RemainingSessions', 'ClassType', 'UsedSessions']),
+            ['SubjectID' => 2, 'PackageID' => $package->id, 'StartDate' => now(), 'MDate' => now(), 'Pay' => null]));
+
+        return [$lead->fresh(), $sibling, $package];
     }
 
     /** @return array{0: ?string, 1: ?bool} */

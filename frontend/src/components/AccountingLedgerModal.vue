@@ -667,9 +667,11 @@ const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
-// Mirror the existing server refusal by report status, independently of payment display completeness.
-const hasConfirmedReportFor = (id) => (payload.value?.receipts || [])
-  .some((r) => Number(r.student_class_id) === Number(id) && r.status === 'confirmed');
+// Mirror the existing server refusal by report status (any member of a shared package counts), independently of payment display completeness.
+const hasConfirmedReportFor = (id) => {
+  const ids = packageMemberIds(id);
+  return (payload.value?.receipts || []).some((r) => ids.includes(Number(r.student_class_id)) && r.status === 'confirmed');
+};
 // #4115: the issued-bill vs current-contract note for the bill row (display only).
 const rateNoteFor = (inv) => {
   const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
@@ -708,8 +710,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
     || Number(a.id) - Number(b.id))[0];
 const needsLegacyChoice = (course) => !payload.value?.scope?.no_payment_obligation && canResolveLegacyPaidFlag(course, {
   legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
-  isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
-  pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
+  waived: isWaivedContract(course), pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
 });
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
   .filter((c) => c.class_type !== 'tutoring' && !needsLegacyChoice(c) && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))

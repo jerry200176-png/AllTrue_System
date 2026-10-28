@@ -113,4 +113,15 @@ describe('LearningRecords review queue accessibility', () => {
     expect(source).toContain('評量內容：未填／已填');
     expect(source).toContain('審核：待主任核准／老師需修改／已核准／已退回');
   });
+
+  it('#4488 student groups are disclosure cards: name filter beside the toggle, not nested in a summary', () => {
+    const start = source.indexOf('<AtDisclosureCard');
+    const group = source.slice(start, source.indexOf('<template #summary>', start));
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(source).not.toContain('<details\n          v-for="(group) in filteredGroupedRecords"');
+    expect(group).toContain(':open="openGroupKeys.has(group.key)"');
+    expect(group).toContain('@update:open="setGroupOpen(group.key, $event)"');
+    expect(group).toContain('<template #actions>');
+    expect(group).toContain('@click="filterByStudent(group.student_name)"');
+  });
 });

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-28-attendance-result-message
+    published_at: "2026-10-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 點名結果訊息會留在畫面上
+    summary: 批次到班、核課、請假完成後，結果訊息不會再一閃就消失。
+    items:
+      - category: fixed
+        text: 批次到班、核課、請假完成後的結果訊息會留在畫面上，直到下一次操作或重新整理。
+    source_refs:
+      - "changelog:2026-10-28:attendance-result-message"
