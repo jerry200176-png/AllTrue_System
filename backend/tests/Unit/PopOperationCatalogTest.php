@@ -150,11 +150,13 @@ final class PopOperationCatalogTest extends TestCase
             [$entry['founder_approval_required'], $entry['execution_authority'], $entry['parameter_keys']]);
         self::assertSame(['super_admin'], $roles->invoke($service, $entry));
         $founder->invoke($service, $entry, 'founder-go-package-ledger-net-repair-4455');
+        $thrown = false; // not self::fail() in the try: PHPUnit's own failure is a RuntimeException too
         try {
             $founder->invoke($service, $entry, 'director-approval-4455');
-            self::fail('a non founder-go reference must be rejected');
         } catch (RuntimeException) {
+            $thrown = true;
         }
+        self::assertTrue($thrown, 'a non founder-go reference must be rejected');
         $entry['founder_approval_required'] = false;
         $this->expectException(RuntimeException::class);
         $roles->invoke($service, $entry);
