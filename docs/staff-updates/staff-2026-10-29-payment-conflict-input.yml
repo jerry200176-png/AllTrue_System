@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-29-payment-conflict-input
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 收款衝突會保留輸入
+    summary: 遇到重複回報或餘額變動時，保留輸入金額並顯示核對提示。
+    items:
+      - category: improved
+        text: 已有待核對回報時，登記表單會保留，取消後可查看更新的回報。
+      - category: improved
+        text: 帳單餘額變動時會顯示最新餘額；輸入金額不會被自動改小。
+      - category: action_required
+        text: 確認入帳前請先核對實收與回報金額；不符請退回，退回不代表退款。
+    source_refs:
+      - "github:4237"
