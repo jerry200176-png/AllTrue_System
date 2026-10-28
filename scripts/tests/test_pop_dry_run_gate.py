@@ -12,15 +12,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
-SPLIT = (
-    "pop-founder-scoped-repair.yml",
-    "pop-invoice1997-stale-values.yml",
-    "pop-muzha-chen-billing-catchup.yml",
-    "pop-package-ledger-net-repair-4455.yml",
-    "pop-past-scheduled-cancel.yml",
-    "pop-td076-occurrence-repairs.yml",
-    "pop-unpaid-hidden-closures.yml",
-)
+# workflow -> id of its SSH job
+SPLIT = {
+    "pop-founder-scoped-repair.yml": "repair",
+    "pop-invoice1997-stale-values.yml": "repair",
+    "pop-muzha-chen-billing-catchup.yml": "repair",
+    "pop-past-scheduled-cancel.yml": "repair",
+    "pop-unbilled-backlog-catchup.yml": "catchup",
+    "pop-unpaid-hidden-closures.yml": "repair",
+}
 GATE_IF = "if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}"
 REPAIR_IF = (
     "if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && "
@@ -54,10 +54,10 @@ def evaluate(expr, **values):
 
 class PopDryRunGate(unittest.TestCase):
     def test_dry_run_job_is_on_production_ssh_and_exits_before_any_approval(self):
-        for name in SPLIT:
+        for name, ssh_job in SPLIT.items():
             text = (WORKFLOWS / name).read_text()
             job = jobs(text)
-            gate, repair = job["founder-approval"], job["repair"]
+            gate, repair = job["founder-approval"], job[ssh_job]
             self.assertIn("    environment:\n      name: production-activation\n", gate, name)
             self.assertIn(GATE_IF, gate, name)
             self.assertNotRegex(gate, SECRET, name)
