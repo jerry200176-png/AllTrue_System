@@ -6838,8 +6838,12 @@ class StudentClassController extends Controller
      */
     private function courseCloseCommitted(StudentClass $sc): bool
     {
-        return $sc->isUsageSettlementLocked()
-            || (string) ($sc->getAttribute('closed_reason') ?? '') !== '';
+        $reason = (string) ($sc->getAttribute('closed_reason') ?? '');
+        // A 月結 (date-mode) course records every plain pause as completed (togglePause); that pause stays
+        // resumable in place, as before #4188.
+        $datePause = $reason === 'completed' && (string) ($sc->ScheduleMode ?? 'count') !== 'count';
+
+        return $sc->isUsageSettlementLocked() || ($reason !== '' && !$datePause);
     }
 
     /**
