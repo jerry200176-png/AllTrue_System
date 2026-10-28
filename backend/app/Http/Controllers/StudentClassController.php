@@ -6795,7 +6795,10 @@ class StudentClassController extends Controller
                 $superAdminReopen = $request->attributes->get('auth_role') === 'super_admin'
                     && $reopenReason !== '' && mb_strlen($reopenReason) <= 500
                     && !in_array($closedReason, ['waived', 'converted_trial'], true);
-                if ($this->courseCloseCommitted($sc) && !$superAdminReopen) {
+                // A 月結 (date-mode) course stores every plain pause as a close (completed, or settled_pending while
+                // unpaid), so its stored reason cannot tell a pause from a close: its resume stays as before #4188.
+                $closeToReopen = $this->courseCloseCommitted($sc) && (string) ($sc->ScheduleMode ?? 'count') === 'count';
+                if ($closeToReopen && !$superAdminReopen) {
                     DB::rollBack();
                     return response()->json([
                         'message' => '這門課已經結案，不能直接恢復。要繼續上課，請用「續課」建立新的一期；如果是誤結案，請用「回報問題」通知系統管理員處理。過去的上課、繳費與結案紀錄都會保留。',
@@ -6803,7 +6806,7 @@ class StudentClassController extends Controller
                         'closed_reason' => $sc->getAttribute('closed_reason'),
                     ], 409);
                 }
-                if ($this->courseCloseCommitted($sc)) {
+                if ($closeToReopen) {
                     SecurityAuditEvent::append('student_class.close_reopened', 'success', [
                         'actor_type' => 'user',
                         'actor_id' => $request->attributes->get('auth_user')?->id,
@@ -6838,12 +6841,8 @@ class StudentClassController extends Controller
      */
     private function courseCloseCommitted(StudentClass $sc): bool
     {
-        $reason = (string) ($sc->getAttribute('closed_reason') ?? '');
-        // A 月結 (date-mode) course records every plain pause as completed (togglePause); that pause stays
-        // resumable in place, as before #4188.
-        $datePause = $reason === 'completed' && (string) ($sc->ScheduleMode ?? 'count') !== 'count';
-
-        return $sc->isUsageSettlementLocked() || ($reason !== '' && !$datePause);
+        return $sc->isUsageSettlementLocked()
+            || (string) ($sc->getAttribute('closed_reason') ?? '') !== '';
     }
 
     /**

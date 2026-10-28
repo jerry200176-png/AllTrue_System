@@ -142,6 +142,23 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $future)->value('Status'));
     }
 
+    public function test_monthly_pause_stays_resumable_paid_or_unpaid(): void
+    {
+        // A 月結 plain pause is stored as completed, or settled_pending while unpaid; both stay a resume (#4200 review).
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        foreach ([['Paid' => 1, 'Charge' => 0], ['Paid' => 0, 'Charge' => 8000]] as $money) {
+            [$token, $course] = $this->fixture(['ScheduleMode' => 'date', 'EndDate' => '2026-12-31'] + $money);
+            $this->lifecycle($token, $course, ['action' => 'pause'])->assertOk();
+            $this->assertContains($course->fresh()->closed_reason, ['completed', 'settled_pending']);
+
+            $this->lifecycle($token, $course, ['action' => 'resume'])->assertOk();
+            $course->refresh();
+            $this->assertSame(0, (int) $course->Stop);
+            $this->assertNull($course->closed_reason);
+        }
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'student_class.close_reopened')->count());
+    }
+
     public function test_unsupported_reason_cannot_bypass_the_close_guard(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
