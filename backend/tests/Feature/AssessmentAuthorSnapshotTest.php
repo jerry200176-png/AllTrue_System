@@ -164,6 +164,19 @@ class AssessmentAuthorSnapshotTest extends TestCase
         $this->api()->putJson("/api/v1/learning-records/{$lr->id}", $body)->assertStatus(422)->assertJsonValidationErrors('AttachmentUrl');
     }
 
+    public function test_second_contract_transfer_before_refill_moves_the_owner_again(): void
+    {
+        [$s, $lr] = $this->filled();
+        $c = User::create(['LoginName' => 'teacherc@snap3824.example.com', 'Name' => 'teacherc', 'PSW' => 'x', 'type' => 'T',
+            'phone' => '0922222222', 'MustChangePassword' => false, 'TeachingSessionCount' => 0]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $c->id, 'Admin' => 0, 'Approved' => 1]);
+        $scC = StudentClass::create($this->scB->only(['StudentID', 'GradeID', 'SubjectID', 'by1', 'Period', 'StartDate', 'TotalHours', 'Charge', 'Rate', 'SessionCount', 'RemainingSessions', 'SessionDuration', 'week', 'time', 'class_type', 'ScheduleMode', 'Stop', 'Paid']) + ['TeacherID' => $c->id, 'MDT' => now()]);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/reassign-contract", ['new_student_class_id' => $this->scB->ID, 'reason' => 'one'])->assertOk();
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/reassign-contract", ['new_student_class_id' => $scC->ID, 'reason' => 'two'])->assertOk();
+        $this->assertSame((int) $c->id, (int) $lr->fresh()->TeacherID);
+        $this->assertSame(1, LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->count());
+    }
+
     public function test_teacher_comment_is_copied_into_the_snapshot_and_removed_from_the_live_row(): void
     {
         [$s, $lr] = $this->filled();
