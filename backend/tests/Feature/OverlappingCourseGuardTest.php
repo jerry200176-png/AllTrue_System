@@ -165,6 +165,25 @@ class OverlappingCourseGuardTest extends TestCase
         $this->assertSame($before, $this->counts());
     }
 
+    /** #4001: enrollment_force_override is audited only for an override that was applied, never for one refused after the gate. */
+    public function test_force_override_is_audited_only_when_the_enrollment_commits(): void
+    {
+        $fx = $this->renewalFixture('renew-audit@example.com');
+        $logged = 0;
+        \Illuminate\Support\Facades\Log::listen(function ($e) use (&$logged) {
+            $e->message === 'enrollment_force_override' && $logged++;
+        });
+        $past = Carbon::now()->subWeeks(2)->next(Carbon::WEDNESDAY)->subWeek()->toDateString();
+        $this->completed($fx[3], $past);
+        $plan = [['session_date' => $past, 'start_time' => '16:00', 'kind' => 'confirmed', 'subject' => 'Math']];
+
+        $this->assertGreaterThanOrEqual(400, $this->renew($fx, [$past], ['session_plan' => $plan])->status());
+        $this->assertSame(0, $logged, 'refused after the override gate: no audit row');
+
+        $this->renew($fx, [$this->later()])->assertCreated();
+        $this->assertSame(1, $logged, 'committed: exactly one audit row');
+    }
+
     /** #3738 review: a same-day future row whose slot already ended becomes completed, so the guard must apply. */
     public function test_renewal_guard_applies_to_future_row_that_is_already_ended_today(): void
     {

@@ -13,14 +13,14 @@
 
 ### 必要條件
 
-- PHP 8.1+（mbstring, pdo_mysql, tokenizer, xml, ctype, json）
+- PHP 8.2（正式環境 8.2.35；mbstring, pdo_mysql, tokenizer, xml, ctype, json）
 - Composer
 - Apache 或 Nginx — **Document root 必須指向 `backend/public`**
 - `AllowOverride All` + `mod_rewrite` 啟用
 
 ### 部署前端到生產
 
-**正常流程（全自動）**：WSL2 push → PR merge → `deploy.yml` 自動執行，無需手動操作。
+**正常流程（全自動）**：雲端 session push → PR（label `queue`）→ merge → `deploy.yml` 自動執行（發車班表＋最新綠燈 commit），無需手動操作。
 
 **緊急手動部署**（CI 掛掉時才用，需使用者明確批准並先讀 `docs/DANGEROUS_OPERATIONS.md`）：
 ```bash
@@ -78,7 +78,7 @@ cloudflared tunnel --url http://localhost:8080
 
 ## 3. 樹莓派專用注意事項
 
-- 環境需求：PHP 8.1+、Composer、Node.js 18+（僅本機建置時）
+- 環境需求：PHP 8.2、Composer、Node.js 22（僅本機建置時）
 - Log 已改為 daily rotation（14 天保留），部署後無需額外設定
 - 選擇性啟用 tmpfs 緩衝：`sudo bash scripts/infra/setup-log-tmpfs.sh`（詳見 `OPERATIONS_RUNBOOK.md` §L）
 - 確認非 SD 卡根檔案系統：`bash scripts/infra/storage-inventory.sh`
