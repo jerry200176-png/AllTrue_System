@@ -1,0 +1,5 @@
+## 2026-10-29 — #4455 round 2: over-debit repair manifest for the shared package ledger
+<!-- release-notes: silent_ship=silent-2026-10-29-package-ledger-overdebit-repair-4455 -->
+<!-- silent-reason: data repair operation; nothing changes for staff until the Founder-approved repair runs -->
+
+`package-ledger-net-repair-4455` gains a second, Founder-gated round (`decision_reference` `repair-package-ledger-overdebit-4455`, reason `repair_4455_r2`). It adds 39 class R rows over 8 packages. Each row brings one lesson's package net back to 0: +1 on 37 extra debits (package-creation seeds of deleted or cancelled lessons, and a group slot's second debit) and −1 on 2 stray duplicate-cleanup credits. The credits are what blocked class A rows 36716 and 28718. Each row runs only while the lesson is not course-charged and its slot then holds exactly one debit if a lesson there is taught or charged (Founder rule 1). Insert-only. Runbook: `docs/incidents/RM-PACKAGE-LEDGER-NET-REPAIR-4455.md` §Round 2. Refs #4455 #4470
