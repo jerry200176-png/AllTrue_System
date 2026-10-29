@@ -183,11 +183,11 @@ class LearningRecordReviewerFromLoginTest extends TestCase
     {
         $source = (string) file_get_contents(app_path('Http/Controllers/LearningRecordController.php'));
 
-        $this->assertDoesNotMatchRegularExpression(
-            "/\\[\\s*'DirectorID'\\s*\\]|(input|get|post|query|json|only)\\(\\s*\\[?\\s*'DirectorID'/",
-            $source,
-            'reviewer identity comes from the login (reviewerUserId), never from the request body'
-        );
+        // #4443: any other mention (->DirectorID, integer('DirectorID'), data_get, a later only([...]) entry) fails.
+        $reads = array_filter(explode("\n", $source), fn (string $line) => str_contains($line, 'DirectorID')
+            && !preg_match("/^\\s*('DirectorID' => 'nullable\\|integer',|\\*|\\/\\/)/", $line));
+
+        $this->assertSame([], array_values($reads), 'reviewer identity comes from the login (reviewerUserId); DirectorID may only appear as a validation rule or comment');
     }
 
     private function approvalSignIn(LearningRecord $record): ?StudentSignIn
