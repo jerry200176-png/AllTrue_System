@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 撤銷收款或作廢帳單失敗時，帳務畫面不再消失
+    title: 撤銷或作廢失敗，帳務畫面會保留
     summary: 操作失敗時會留住學生帳務畫面、顯示原因，並自動重新讀取最新資料。
     items:
       - category: fixed
