@@ -38,3 +38,17 @@ Not in round 2 (Founder questions on #4455):
 Run: the same workflow, which now drafts `decision_reference` `repair-package-ledger-overdebit-4455` with idempotency key `founder-package-ledger-overdebit-repair-4455`; `mode=dry-run`, then `mode=approve`. The dry-run expects `ok=true state=before`, counts `rows=39 to_insert=39 done=0 blocked=0 packages=8`, and per package `ledger_net` 133 −36→−32, 140 −14→−12, 155 −18→−15, 160 −30→−31, 173 −24→−23, 175 −12→−9, 176 −57→−35, 207 −5→−4. Verify checks each lesson at net 0 with its repair row, and counters equal to the ledger.
 
 Rollback: the snapshot holds the inserted ids and `round: 2`. A rollback deletes only rows whose lesson still nets 0. As in round 1, no production adapter runs it, so a rollback is a new Founder-approved path.
+
+## Round 3 — down to taught + absent (Founder 2026-10-29, option A)
+
+Round 2 ran on 2026-10-29: approve run 40822045546, audit verified. The post-round-2 probe (runs 40825430575, 40825468531, 40825511624) left 3 packages over: 195 +4 (ledger used 46, taught 42), 173 +1 (24 vs 23) and 58 +1 (7 vs 6). The Founder chose to reverse only the excess, so used equals taught + absent and never goes below it.
+
+Scope: `PackageLedgerNetRepairManifest::rows(3)`, 5 class R rows with reason `repair_4455_r3`. The checks are the same as in round 2. Only package-creation seeds (`attended`, 16:00) qualify: the lesson was deleted, nothing is on that day, and there is no course charge. 195 has 9 of these and 173 has 2.
+- 195: 38727, the 2026-07-12 16:00 slot's second debit (38696 holds that slot). Then 38704, 38706 and 38708, the latest dates.
+- 173: 36237, the later of 36236 and 36237.
+
+The probe cannot tell which deleted date each uncharged `completed` lesson (195: 5, 173: 1) replaced. So which seeds keep their debit is a choice, and the balances come out the same.
+
+Not in round 3: package 58 / 10678. That cancelled lesson is still charged on its course ledger (deduct net +1). Under rule 1 the package follows the course, so the R check `r_course_net_` blocks a package-only row, and this operation writes no course ledger. The smallest addition is a class C row that calls `SessionDeductionService::reverseForSession(1329, 10678, …)`. That existing writer adds the course `reverse` event and syncs the package +1 through `PackageDeductionService::syncFromStudentClassDeduction`. Its preconditions are: lesson cancelled, course net exactly +1, package net −1. Rollback would remove both rows. This needs a Founder GO, because it adds a course-ledger write to this operation.
+
+Run: the same workflow, which now drafts `decision_reference` `repair-package-ledger-overdebit-r3-4455` with idempotency key `founder-package-ledger-overdebit-r3-repair-4455`. The dry-run should show `ok=true state=before`, counts `rows=5 to_insert=5 done=0 blocked=0 packages=2`, and `ledger_net` 173 −24→−23 and 195 −46→−42. Verify and rollback are the same as in round 2, with `round: 3` in the snapshot.
