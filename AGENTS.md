@@ -133,6 +133,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - PR CI 狀態明確；docs-only 要確認未混入 deployable diff。
 - 有使用者可驗收的測試或 smoke test 清單。
 - 新規則、事故、技術債、架構決策已寫回正確文件。
+- 每個 milestone（PR merge、deploy、Founder 決定）後，coordinator 更新 `docs/RUNBOOK_HANDOFF.md`（日期＋SHA、刪除已完成項）；超過 7 天未更新會在 SessionStart 顯示 STALE。
 
 **Stop-the-line 條件**
 - 發現可能寫 production DB、繞過 auth、暴露 token/PII、直接 push `main`、force push、或在 Pi production 跑測試。
