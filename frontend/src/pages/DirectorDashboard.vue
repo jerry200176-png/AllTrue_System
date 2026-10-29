@@ -3040,12 +3040,19 @@ onBeforeUnmount(() => {
 .surface-panel__count { flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .director-task-list { margin: 0; padding: 0 22px; list-style: none; }
 .director-workbench-v2__primary > .surface-panel__header { position: relative; padding-left: 28px; }
-.director-workbench-v2__primary > .surface-panel__header::before { content: ''; position: absolute; top: 20px; bottom: 16px; left: 16px; width: 3px; border-radius: 3px; background: var(--ds-brand-orange); }
+.director-workbench-v2__primary > .surface-panel__header::before { content: ''; position: absolute; top: 31px; left: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--ds-cta); }
 .surface-panel--summary { border-top: 2px solid var(--ds-ink); }
 .director-task { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-width: 0; margin-inline: -10px; padding: 17px 10px; border-top: 1px solid var(--ds-hairline); border-radius: 8px; transition: background-color 160ms ease, box-shadow 160ms ease; }
 .director-task:hover { background: var(--ds-canvas-soft); box-shadow: inset 3px 0 0 var(--ds-hairline-input); }
 .director-task--critical:hover, .director-task--danger:hover { box-shadow: inset 3px 0 0 var(--ds-danger); }
 .director-task--warning:hover { box-shadow: inset 3px 0 0 var(--ds-warning); }
+.director-task__index::before, .director-top-risks__item::before { content: ''; display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; background: var(--urgency, var(--ds-ink-mute)); }
+.director-task__index { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.director-task--critical, .director-task--danger, .director-top-risks__item--critical, .director-top-risks__item--danger { --urgency: var(--ds-danger); }
+.director-task--warning, .director-top-risks__item--warning { --urgency: var(--ds-warning); }
+/* info is a hollow ring so it never relies on hue alone (--ds-info and --ds-warning are both orange) */
+.director-task--info, .director-top-risks__item--info { --urgency: var(--ds-info); }
+.director-task--info .director-task__index::before, .director-top-risks__item--info::before { background: transparent; border: 2px solid var(--urgency); }
 .director-task__index { align-self: start; padding-top: 2px; color: var(--ds-ink-mute); font-size: 11px; font-variant-numeric: tabular-nums; }
 .director-task--critical .director-task__index,
 .director-task--danger .director-task__index { color: var(--ds-danger); font-weight: 900; }
@@ -3094,11 +3101,10 @@ onBeforeUnmount(() => {
 .director-top-risks { margin: 0 22px 16px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
 .director-top-risks h3 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
 .director-top-risks ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.director-top-risks__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); }
+.director-top-risks__item { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 8px 28px; border-radius: 8px; background: var(--ds-canvas); }
+.director-top-risks__item::before { position: absolute; top: 14px; left: 10px; }
 .director-top-risks__item strong { color: var(--ds-ink); font-size: 13px; font-weight: 700; }
 .director-top-risks__item span { color: var(--ds-ink-mute); font-size: 12px; }
-.director-top-risks__item--critical, .director-top-risks__item--danger { border-left-color: var(--ds-danger); }
-.director-top-risks__item--warning { border-left-color: var(--ds-warning); }
 .director-trust-note { border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
 .director-trust-note summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 2px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; cursor: pointer; list-style: none; }
 .director-trust-note summary::-webkit-details-marker { display: none; }
