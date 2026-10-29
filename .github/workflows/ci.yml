@@ -830,3 +830,40 @@ jobs:
             ${{ runner.temp }}/npm-audit.log
             ${{ runner.temp }}/npm-audit-degraded.json
           if-no-files-found: ignore
+
+  # Advisory only (never a required check): UI "AI-feel" regressions + dead code.
+  # impeccable fails only on findings absent from scripts/design/impeccable-baseline.json;
+  # knip is report-only. Versions pinned (>=14 days old); not added to package.json.
+  design-advisory:
+    name: Design and dead-code advisory
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies (knip needs them to resolve imports)
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: impeccable annotations (pinned 4.6.0)
+        continue-on-error: true
+        run: npx -y impeccable@4.6.0 detect --github frontend/src
+
+      - name: impeccable new findings vs committed baseline
+        run: node scripts/design/impeccable-baseline.mjs check
+
+      - name: knip report (pinned 6.41.0, report only)
+        if: always()
+        working-directory: frontend
+        run: npx -y knip@6.41.0 --no-exit-code || true
