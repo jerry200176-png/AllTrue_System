@@ -200,28 +200,18 @@ class LineWebhookController extends Controller
         $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_NAME, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
-            // 跨校衝突：本分校找不到，但同名＋同手機的學生存在於其他分校 → 明確告知，避免家長誤以為系統沒資料
-            if (in_array($c['reasonCode'], [
-                ParentBindingCodes::STUDENT_NOT_FOUND,
-                ParentBindingCodes::PHONE_MISMATCH,
-                ParentBindingCodes::CONTACT_PHONE_MISSING,
-            ], true) && $this->findCrossCampusMatch($name, $normalized, (int) $campus->id)) {
-                $this->replyMessage($replyToken, "此學生已在其他分校綁定，請聯繫主任。", $campus);
-                return;
-            }
-            $message = match ($c['reasonCode']) {
-                ParentBindingCodes::INVALID_INPUT => "綁定格式錯誤，請輸入「綁定 學生姓名 手機號碼」，例如：綁定 王小明 0912345678。",
-                ParentBindingCodes::STUDENT_NOT_FOUND => "找不到「{$name}」的學生，請確認姓名是否正確。",
-                ParentBindingCodes::CONTACT_PHONE_MISSING => "「{$name}」的學生未登記手機號碼，請聯繫分校確認。",
-                ParentBindingCodes::PHONE_MISMATCH => "手機號碼不符，請確認。",
-                default => "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。",
-            };
+            // 不論是查無此人、手機不符、未登記手機或在他校，都回同一句：避免用回覆文字探測學生是否存在（no enumeration）。
+            // 精確原因仍由 ParentBindingObservability 記錄給分校（綁定管理）。
+            // 格式錯誤只看輸入本身（手機沒有任何數字），不看查詢結果，否則回覆差異會洩漏學生是否存在。
+            $message = $normalized === ''
+                ? "綁定格式錯誤，請輸入「綁定 學生姓名 手機號碼」，例如：綁定 王小明 0912345678。"
+                : $this->bindMismatchReply($campus, '綁定 王小明 0912345678');
             $this->replyMessage($replyToken, $message, $campus);
             return;
         }
         $student = $candidates->first(fn ($s) => StudentContactPhone::matchesNormalizedInput($s, $normalized));
         if (!$student) {
-            $this->replyMessage($replyToken, "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。", $campus);
+            $this->replyMessage($replyToken, $this->bindMismatchReply($campus, '綁定 王小明 0912345678'), $campus);
             return;
         }
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
@@ -250,14 +240,10 @@ class LineWebhookController extends Controller
         $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
-            $message = match ($c['reasonCode']) {
-                ParentBindingCodes::INVALID_INPUT => "綁定格式錯誤，請輸入「綁定 學生代號 手機號碼」，例如：綁定 {$studentId} 0912345678。",
-                ParentBindingCodes::STUDENT_NOT_FOUND => "找不到學生代號 {$studentId} 的學生，請確認後重試。",
-                ParentBindingCodes::CAMPUS_MISMATCH => "此學生已在其他分校綁定，請聯繫主任。",
-                ParentBindingCodes::CONTACT_PHONE_MISSING => "此學生未登記手機號碼，請聯繫分校確認。",
-                ParentBindingCodes::PHONE_MISMATCH => "手機號碼不符，請確認。",
-                default => "在 {$campus->name} 找不到學生代號 {$studentId}，請確認後重試。",
-            };
+            // 格式錯誤只看輸入本身（手機沒有任何數字），不看查詢結果，否則回覆差異會洩漏學生是否存在。
+            $message = $normalized === ''
+                ? "綁定格式錯誤，請輸入「綁定 學生代號 手機號碼」，例如：綁定 1234 0912345678。"
+                : $this->bindMismatchReply($campus, '綁定 1234 0912345678');
             $this->replyMessage($replyToken, $message, $campus);
             return;
         }
@@ -331,20 +317,16 @@ class LineWebhookController extends Controller
     }
 
     /**
-     * 跨校衝突偵測：本分校查無符合條件的學生時，檢查其他分校是否存在
-     * 同名且同手機號碼的學生。若存在，代表資料可能掛在別的分校，
-     * 回饋給家長「已在其他分校綁定」，而不是單純說「找不到」。
+     * 綁定比對失敗的統一回覆：告訴家長要檢查什麼、可以找誰，但不透露是姓名還是手機不符、
+     * 學生是否存在或在哪一分校（避免被用來探測學生資料）。
      */
-    private function findCrossCampusMatch(string $name, string $normalizedPhone, int $campusId): bool
+    private function bindMismatchReply(object $campus, string $example): string
     {
-        if ($normalizedPhone === '') {
-            return false;
-        }
-
-        return Student::whereRaw('TRIM(name) = ?', [$name])
-            ->where('CampusID', '!=', $campusId)
-            ->get()
-            ->contains(fn (Student $s) => StudentContactPhone::matchesNormalizedInput($s, $normalizedPhone));
+        return "在 {$campus->name} 找不到相符的資料，請檢查：\n"
+            . "1. 學生姓名（或學生代號）要和報名時登記的一致\n"
+            . "2. 手機要填報名時留給分校的「家長手機」，只輸入數字\n"
+            . "範例：{$example}\n\n"
+            . "為保護學生資料，系統不會說明是哪一項不符。若確認無誤仍無法綁定，可能是分校尚未登記或需要更新資料，請洽 {$campus->name} 主任協助。";
     }
 
     private function boundCount(string $lineUserId, int $campusId): int

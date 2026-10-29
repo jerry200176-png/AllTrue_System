@@ -2065,7 +2065,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereRaw\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/LineWebhookController.php
 
 		-
