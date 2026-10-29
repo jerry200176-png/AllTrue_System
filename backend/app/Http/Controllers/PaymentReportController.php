@@ -609,7 +609,7 @@ class PaymentReportController extends Controller
             return response()->json(['message' => '課程資料不存在'], 404);
         }
 
-        $userId = $request->attributes->get('auth_user_id');
+        $userId = $request->attributes->get('auth_user_id') ?? $request->attributes->get('auth_user')?->id; // bearer auth sets only auth_user
         // Founder GO 2026-10-21: 已收過，補登收款 for a legacy-flag-only course (Paid=1, no payment record).
         if ($request->boolean('legacy_flag_backfill')) {
             if ($freeGift || !empty($data['replaces_invoice_id'])) {
@@ -1211,14 +1211,15 @@ class PaymentReportController extends Controller
                         'invoice_id' => (int) $invoice->id,
                     ], 422);
                 }
-                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0,
+                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0, 'reconciled_at' => now(), 'reconciled_by' => $userId ?: null, // #4018: who granted it
                     'Note' => mb_substr(trim($invoice->Note . ' ' . $freeNote), 0, 255)])->save();
             } else {
                 try {
                     $invoice = app(InvoiceIssuer::class)->issue(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
                         'IssueDate' => $data['payment_date'], 'TotalAmount' => 0, 'Status' => 'paid', 'ScheduleModeAtIssue' => $course->getAttribute('ScheduleMode'),
                         'Note' => mb_substr($freeNote, 0, 255), // Invoice.Note is VARCHAR(255)
-                        'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT], [], true);
+                        'billing_period' => $period, 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT,
+                        'reconciled_at' => now(), 'reconciled_by' => $userId ?: null], [], true);
                 } catch (BillingPeriodInvoiceExists) {
                     return response()->json(['message' => '此課程該月份已有有效帳單，請重新整理後再試。', 'code' => 'billing_period_invoice_exists'], 409);
                 }

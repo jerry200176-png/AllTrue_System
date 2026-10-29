@@ -33,6 +33,9 @@ class Invoice extends Model
 
     public const ZERO_REASON_FREE_GIFT_LABEL = '免費／贈送';
 
+    /** #4018 (Founder 2026-10-29): a renewal discounted to NT$0 is settled; the renewal sets this with the approver in reconciled_by and the discount snapshot as evidence. */
+    public const ZERO_REASON_FULL_DISCOUNT = 'full_discount';
+
     protected static function booted(): void
     {
         // A waived (確認不收) contract is terminal: no new billing line may point at it.
@@ -71,12 +74,22 @@ class Invoice extends Model
         return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FREE_GIFT;
     }
 
+    public function isFullDiscount(): bool
+    {
+        return (string) $this->getAttribute('zero_amount_reason') === self::ZERO_REASON_FULL_DISCOUNT;
+    }
+
     /**
      * #3991 review: the mark settles a term only while its course still has no fee on record (a fee added by any path voids its effect).
      * #4017: a caller checking many terms of one course passes courseHasFee() read once.
      */
     public function freeGiftHolds(?StudentClass $course, ?bool $courseHasFee = null): bool
     {
+        // #4018: a full-discount term settles while its bill stays NT$0 (the course has a fee by design); a fee added later bills a positive amount.
+        if ($this->isFullDiscount()) {
+            return $course !== null && (int) $this->getAttribute('TotalAmount') === 0;
+        }
+
         return $this->isMarkedFreeGift() && $course !== null && !($courseHasFee ?? self::courseHasFee($course));
     }
 

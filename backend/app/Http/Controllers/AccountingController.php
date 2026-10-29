@@ -677,7 +677,7 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
-                'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->isMarkedFreeGift() && $paymentRows->isEmpty()))
+                'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty()))
                     && $paidAmount <= 0 && $netApplied <= 0,
                 // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
@@ -793,8 +793,9 @@ class AccountingController extends Controller
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
             'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
-                $freeGiftSettled = $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
-                    && (string) $i->Status !== 'void' && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
+                $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
+                    && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
+                $freeGiftSettled = $zeroSettled(true);
 
                 return [
                 'id' => (int) $class->ID,
@@ -804,7 +805,7 @@ class AccountingController extends Controller
                 'charge' => (int) ($class->Charge ?? 0),
                 // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
                 'current_contract_charge' => $class->currentContractCharge(),
-                'paid' => (int) ($class->Paid ?? 0) === 1 || $freeGiftSettled, // #3991: current term
+                'paid' => (int) ($class->Paid ?? 0) === 1 || $zeroSettled(false), // #3991 free/gift, #4018 full-discount: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,
                 'waived' => ContractMoneyState::isWaived($class),
