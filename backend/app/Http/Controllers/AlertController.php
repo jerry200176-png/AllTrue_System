@@ -244,7 +244,7 @@ class AlertController extends Controller
             // #3985 (Founder 2026-10-29): the members' billing verdict, not the package flag or an open invoice alone, decides
             // whether the package row still owes (the window then follows its settlement day).
             $ownerOf = $monthlyPkgs->pluck('student_id', 'id'); // a course with a stale PackageID of another student never feeds the verdict
-            $ownMemberIds = StudentClass::whereIn('PackageID', $monthlyPkgs->pluck('id'))->get(['ID', 'PackageID', 'StudentID'])
+            $ownMemberIds = StudentClass::query()->whereIn('PackageID', $monthlyPkgs->pluck('id'))->get(['ID', 'PackageID', 'StudentID'])
                 ->filter(fn ($m) => (int) $m->StudentID === (int) $ownerOf[(int) $m->PackageID])->pluck('ID')->map(fn ($id) => (int) $id)->all();
             $memberVerdicts = $this->payableResolver->courseStatusesByStudentClassIds($ownMemberIds);
 
