@@ -1149,7 +1149,7 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(5000, (int) $row['outstanding'], 'void invoice should not count as receivable');
     }
 
-    public function test_count_mode_amount_uses_rate_and_session_count_when_charge_snapshot_is_stale(): void
+    public function test_count_mode_amount_is_the_stored_charge_even_when_rate_times_count_differs(): void
     {
         $token = $this->createDirectorToken([1], 'director-stale-charge@example.com');
         $student = Student::create([
@@ -1173,8 +1173,41 @@ class TuitionAlertsApiTest extends TestCase
         $res->assertOk();
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
-        $this->assertSame(13200, (int) $row['charge']);
-        $this->assertSame(13200, (int) $row['outstanding']);
+        // Founder Q3 (2026-10-11): StudentClass.Charge everywhere; the Rate x count mismatch goes to a director-confirm list.
+        $this->assertSame(24750, (int) $row['charge']);
+        $this->assertSame(24750, (int) $row['outstanding']);
+    }
+
+    public function test_count_mode_empty_charge_keeps_the_estimate_in_the_queue_but_the_slip_refuses_to_price_it(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-empty-charge@example.com');
+        $student = Student::create(['name' => '空學費', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $course = $this->createCountModeClass($student->id, ['Rate' => 1000, 'SessionCount' => 8, 'Charge' => 0, 'Paid' => 0, 'RemainingSessions' => 8]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $row = collect($this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row, 'Charge 0 + Rate is "not filled in", not free: it must not vanish from the queue');
+        $this->assertSame(8000, (int) $row['charge']);
+        // A parent-facing slip never carries an amount invented from Rate (Founder 2026-10-14).
+        $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertStatus(422);
+    }
+
+    public function test_package_member_slip_keeps_package_pricing_when_its_stored_charge_differs(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-package-slip@example.com');
+        $student = Student::create(['name' => '方案繳費單', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '方案繳費單測試', 'total_sessions' => 8, 'remaining_sessions' => 8, 'used_sessions' => 0,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        // convertToPackage() keeps the source course's historical Charge: it is not the package's price.
+        $anchor = $this->createCountModeClass($student->id, [
+            'Rate' => 1000, 'SessionCount' => 8, 'Charge' => 5000, 'Paid' => 0, 'RemainingSessions' => 8,
+            'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/alerts/tuition-slip/{$anchor->ID}")->assertOk()->assertJsonPath('charge', 8000);
     }
 
     // ── #4123 / in-app #407 (#4114): 最近繳費 and 已收 come from valid Payment rows ──────────────
