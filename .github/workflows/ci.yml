@@ -852,16 +852,16 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install frontend dependencies (knip needs them to resolve imports)
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
       - name: impeccable annotations (pinned 4.6.0)
         continue-on-error: true
         run: npx -y impeccable@4.6.0 detect --github frontend/src
 
       - name: impeccable new findings vs committed baseline
         run: node scripts/design/impeccable-baseline.mjs check
-
-      - name: Install frontend dependencies (knip needs them to resolve imports)
-        working-directory: frontend
-        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: knip report (pinned 6.41.0, report only)
         if: always()
