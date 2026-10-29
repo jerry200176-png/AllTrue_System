@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-line-bind-failure-wording
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 家長 LINE 綁定失敗的回覆更清楚
+    summary: 綁定比對不到時，LINE 會告訴家長要檢查什麼，並請家長洽分校主任。
+    items:
+      - category: improved
+        text: 家長綁定比對不到時，LINE 會提示檢查姓名與家長手機，並請洽主任。
+      - category: improved
+        text: 為保護資料不說是哪項不符；請到學生管理核對，指引在家長 LINE 綁定頁。
+    source_refs:
+      - "changelog:2026-10-29:line-bind-failure-wording"

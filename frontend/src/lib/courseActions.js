@@ -42,6 +42,7 @@ export function courseActions(course, caps = {}) {
     { id: 'billing', label: '帳務', items: [
       purchase,
       { id: 'contract-adjust', label: '合約／堂次調整' },
+      caps.siblingTransfer && { id: 'sibling-transfer', label: '轉給手足' },
       caps.contractAmended && { id: 'contract-revert', label: '撤銷調整' },
       caps.packagePreview && { id: 'package-preview', label: '轉多科方案預檢' },
       caps.paymentNotice && { id: 'payment-slip', label: '繳費單' },

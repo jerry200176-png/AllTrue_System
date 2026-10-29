@@ -1052,7 +1052,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("schedule", resolve_if)
         self.assertIn('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then', self.workflow)
         self.assertIn("run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}", self.workflow)
-        # A run never cancels a train already awaiting approval.
+        # A run stands down for another run awaiting approval, except a stale train (#3992).
         self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)
         self.assertIn('release-train) EXPECTED="RELEASE_TRAIN" ;;', self.workflow)
@@ -1099,7 +1099,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('runs?${q}&per_page=100', job)
         # Only trains count as queued/running; any waiting run counts. A smoke or manual deploy
         # dispatch must not make the window's kick stand down (nothing re-kicks after it ends).
-        self.assertIn('select(.id != ${RUN_ID} and (.status == \\"waiting\\" or .display_title == \\"Release train\\"))] | length', job)
+        # #3992: a train still waiting from before this window is stale and does not count.
+        self.assertIn('select(.id != ${RUN_ID} and ((.status == \\"waiting\\" and (.display_title != \\"Release train\\" or .created_at >= \\"${SINCE}\\")) or (.status != \\"waiting\\" and .display_title == \\"Release train\\")))] | length', job)
         self.assertIn('select(.status != "completed" and .display_title == "Release train")] | length', job)
         self.assertIn("PENDING=$((PENDING + n))", job)
         self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
@@ -1150,6 +1151,131 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                     capture_output=True, text=True, check=True,
                 )
                 self.assertEqual(out.stdout.strip(), expected)
+
+    # #3992: run the real resolve / kick shell against a fake `gh` (jq does the --jq filters).
+    TIP, OLD = "a" * 40, "b" * 40
+    ROUTED_GH = textwrap.dedent("""
+        import json, os, re, subprocess, sys
+        method, jq, url, args = "GET", None, None, sys.argv[2:]
+        while args:
+            arg = args.pop(0)
+            if arg == "-X":
+                method = args.pop(0)
+            elif arg == "--jq":
+                jq = args.pop(0)
+            elif arg.startswith("/"):
+                url = arg
+        with open(os.environ["FAKE_GH_LOG"], "a") as log:
+            log.write(f"{method} {url}\\n")
+        if method != "GET":
+            sys.exit(0)
+        for pattern, body in json.loads(os.environ["FAKE_GH_ROUTES"]):
+            if re.search(pattern, url):
+                text = json.dumps(body)
+                sys.exit(subprocess.run(["jq", "-r", jq], input=text, text=True).returncode if jq else print(text))
+        sys.exit(f"unrouted {url}")
+    """)
+
+    def _run_fake_gh(self, script, routes, env):
+        with tempfile.TemporaryDirectory() as tmp:
+            bindir = Path(tmp)
+            (bindir / "gh").write_text(f"#!{sys.executable}\n{self.ROUTED_GH}")
+            (bindir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+            for name in ("gh", "sleep"):
+                (bindir / name).chmod(0o755)
+            (bindir / "out").write_text("")
+            (bindir / "log").write_text("")
+            proc = subprocess.run(
+                ["bash", "-c", "set -euo pipefail\n" + script], capture_output=True, text=True,
+                env={**os.environ, **env, "PATH": f"{tmp}:{os.environ['PATH']}", "GITHUB_OUTPUT": f"{tmp}/out",
+                     "FAKE_GH_LOG": f"{tmp}/log", "FAKE_GH_ROUTES": json.dumps(routes), "REPO": "o/r"},
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            out = dict(line.split("=", 1) for line in (bindir / "out").read_text().splitlines())
+            return out, (bindir / "log").read_text(), proc.stdout
+
+    def _resolve(self, event, trigger_sha, waiting=(), tip_ci=True, own_runs=(), trigger_event="push"):
+        script = self._step_script("Validate target SHA and CI evidence")
+        green = [{"name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push", "status": "completed",
+                  "updated_at": "2026-10-28T19:00:00Z"}] if tip_ci else []
+        routes = [
+            [rf"ci\.yml/runs\?branch=main&head_sha={self.TIP}&status=", {"workflow_runs": green}],
+            [rf"ci\.yml/runs\?branch=main&head_sha={self.TIP}&per_page", {"workflow_runs": []}],
+            [r"deploy\.yml/runs\?status=waiting", {"workflow_runs": list(waiting)}],
+            [rf"deploy\.yml/runs\?event=workflow_run&head_sha={self.TIP}", {"workflow_runs": list(own_runs)}],
+            [rf"/compare/{self.OLD}\.\.\.{self.TIP}$", {"status": "ahead"}],
+            [rf"/compare/{self.TIP}\.\.\.{self.TIP}$", {"status": "identical"}],
+            [r"/commits/[0-9a-f]{40}$", {}],
+        ]
+        env = {"EVENT_NAME": event, "PHASE": "release-train" if event == "workflow_dispatch" else "",
+               "RUN_HEAD_SHA": self.TIP, "RUN_ID": "100", "WORKFLOW_REF": "refs/heads/main",
+               "TARGET_SHA_INPUT": trigger_sha, "TRIGGER_EVENT": trigger_event, **dict.fromkeys(("FLAG_ADMISSIONS", "FLAG_CALENDAR", "FLAG_MANAGER", "FLAG_POP_INAPP"), "")}
+        return self._run_fake_gh(script, routes, env)
+
+    def test_merge_run_deploys_its_own_head_while_main_contains_it(self):
+        # Its own CI: no exact-main lookup, the executor gates use train semantics.
+        out, log, _ = self._resolve("workflow_run", self.TIP)
+        self.assertEqual((out["target_sha"], out["may_trail_main"], out["release_train"]), (self.TIP, "true", "false"))
+        self.assertNotIn("superseded", out)
+        self.assertNotIn("git/ref/heads/main", log)
+        # A late CI for a commit main had left: wait for the run head's CI and deploy the head.
+        out, log, _ = self._resolve("workflow_run", self.OLD, own_runs=[{"id": 50, "created_at": "2026-10-28T18:40:00Z"}])
+        self.assertEqual((out["target_sha"], out["may_trail_main"]), (self.TIP, "true"))
+        self.assertNotIn("POST", log)
+        # The run the head's own green CI started takes it; the head without green CI waits for a later run.
+        for kwargs in ({"own_runs": [{"id": 200, "created_at": "2026-10-28T19:00:05Z"}]}, {"tip_ci": False},
+                       {"trigger_event": "pull_request"}):
+            with self.subTest(**kwargs):
+                out, _, _ = self._resolve("workflow_run", self.OLD, **kwargs)
+                self.assertEqual(out.get("superseded"), "true")
+                self.assertNotIn("target_sha", out)
+
+    def test_release_train_cancels_only_a_stale_waiting_train(self):
+        stale = {"id": 7, "head_sha": self.OLD, "display_title": "Release train"}
+        out, log, stdout = self._resolve("workflow_dispatch", "", waiting=[stale])
+        self.assertEqual((out["target_sha"], out["release_train"], out["may_trail_main"]), (self.TIP, "true", "true"))
+        self.assertIn("POST /repos/o/r/actions/runs/7/cancel\n", log)
+        self.assertIn("cancelled run 7", stdout)
+        # Never approves, never touches environments.
+        self.assertEqual([line for line in log.splitlines() if line.startswith("POST")], ["POST /repos/o/r/actions/runs/7/cancel"])
+        for waiting in ([{"id": 8, "head_sha": self.TIP, "display_title": "Release train"}],
+                        [{"id": 9, "head_sha": self.OLD, "display_title": "Deploy to Pi"}],
+                        [stale, {"id": 9, "head_sha": self.OLD, "display_title": "Deploy to Pi"}]):
+            with self.subTest(waiting=waiting):
+                out, log, _ = self._resolve("workflow_dispatch", "", waiting=waiting)
+                self.assertEqual(out.get("superseded"), "true")
+                self.assertNotIn("POST", log)
+        # No green tip: stand down before looking at (or cancelling) anything.
+        out, log, _ = self._resolve("workflow_dispatch", "", waiting=[stale], tip_ci=False)
+        self.assertEqual(out.get("superseded"), "true")
+        self.assertNotIn("POST", log)
+        job = self.workflow[self.workflow.index("  resolve-target:\n"):self.workflow.index("  detect-deployable:\n")]
+        self.assertIn("permissions:\n      contents: read\n      actions: write", job)
+        for forbidden in ("environment", "pending_deployments", "reviews", "contents: write"):
+            self.assertNotIn(forbidden, job)
+
+    def test_executor_gates_take_train_semantics_from_may_trail_main(self):
+        gate = self.workflow[self.workflow.index("      - name: Final exact-main gate before production executor"):]
+        self.assertIn("RELEASE_TRAIN: ${{ needs.resolve-target.outputs.may_trail_main }}", gate[:400])
+        self.assertIn("may_trail_main: ${{ steps.resolve.outputs.may_trail_main }}", self.workflow)
+        # Approval routing still keys on release_train only: a merge run never opens the Founder gate.
+        for job in ("  production-activation:\n", "  production-auto:\n", "  deploy:\n", "  release-train-kick:\n"):
+            job_if = self.workflow[self.workflow.index(job):].split("\n")[3]
+            self.assertNotIn("may_trail_main", job_if)
+
+    def test_release_train_kick_ignores_a_train_waiting_from_an_earlier_window(self):
+        script = self._step_script("Dispatch the window's release train unless one already ran")
+        script = script[script.index("PENDING=0"):script.index('if [[ "$PENDING" -ge 1 ]]')] + 'echo "PENDING=$PENDING"'
+        cases = [("Release train", "2026-10-28T13:14:43Z", "0"), ("Release train", "2026-10-28T10:17:00Z", "1"),
+                 ("Deploy to Pi", "2026-10-28T09:00:00Z", "1")]
+        for title, created, expected in cases:
+            with self.subTest(title=title, created=created):
+                routes = [[r"status=waiting", {"workflow_runs": [{"id": 7, "status": "waiting", "display_title": title, "created_at": created}]}],
+                          [r"status=", {"workflow_runs": []}]]
+                # The window SINCE is 10:17 that day, so the 13:14 train is current; move SINCE past it.
+                since = "2026-10-29T04:17:00Z" if created.startswith("2026-10-28T13") else "2026-10-28T10:17:00Z"
+                _, _, stdout = self._run_fake_gh(script, routes, {"RUN_ID": "100", "SINCE": since})
+                self.assertIn(f"PENDING={expected}", stdout)
 
     def test_existing_ci_completion_trigger_is_preserved(self):
         self.assertIn('workflows: ["CI — PHPUnit Tests"]', self.workflow)
@@ -2039,7 +2165,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                                           "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID", "SENTRY_WATCH"))
                          | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1",
                                            "pop_inapp_standing_policy"))
-                         | expr("needs.resolve-target.outputs", ("target_sha", "release_train")), env)
+                         | expr("needs.resolve-target.outputs", ("target_sha",))
+                         # #3992: a train or a merge run may trail main; the Pi then never downgrades.
+                         | {"DEPLOY_RELEASE_TRAIN": "${{ needs.resolve-target.outputs.may_trail_main }}"}, env)
 
     def test_remote_script_renders_like_github_text_substitution(self):
         sys.path.insert(0, str(REMOTE_RENDERER.parent))

@@ -186,6 +186,7 @@ if ! git fetch origin main; then
   exit 1
 fi
 REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)
+# RELEASE_TRAIN=true for a release train or a merge run (#3992): main may have moved past the target.
 if [ "$RELEASE_TRAIN" = "true" ]; then
   if ! git merge-base --is-ancestor "$TARGET_SHA" "$REMOTE_MAIN_SHA"; then
     echo "❌ release train target 不在 origin/main 歷史中：target=$TARGET_SHA origin/main=$REMOTE_MAIN_SHA — 中止部署"

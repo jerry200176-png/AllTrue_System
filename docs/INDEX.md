@@ -67,6 +67,25 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 
 ---
 
+## Takeover recall（問題 → 文件／issue；只放指標）
+
+活的狀態先讀 [`RUNBOOK_HANDOFF.md`](RUNBOOK_HANDOFF.md)（SessionStart 會印；超過 7 天視為 STALE，需對 GitHub 驗證）。
+
+| 接手問題 | 去哪看 |
+|---|---|
+| POP in-app 每日上限、何時重置 | `docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md`（Asia/Taipei 日） |
+| 為什麼 release train 停手 | `RUNBOOK_HANDOFF.md` 「Deploy / POP 常見坑」；`.github/workflows/deploy.yml` |
+| deploy 後如何 resolve in-app report | `docs/changes/2026-10-22-pop-inapp-resolve-after-deploy.md`、`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`、`docs/CHAT_BUG_SYSTEM.md` |
+| SourceRef／issueOwnsReport 失敗 | `backend/app/Operations/Inapp/InappReportResolveEvidence.php`、`docs/changes/2026-10-07-f14-ownership-rule.md` |
+| 某 issue/PR（如 #4455、#3868、#4623）現在卡在哪 | `RUNBOOK_HANDOFF.md` 「進行中」→ 該 issue 最新留言（`gh issue view <n>`） |
+| #4455 package ledger 修復 | `docs/incidents/RM-PACKAGE-LEDGER-NET-REPAIR-4455.md`、`docs/changes/*-4455.md` |
+| 合約編號查詢 UI 在哪 | 個人資料 → 安全性（super_admin）；`docs/changes/2026-10-28-superadmin-contract-lookup.md` |
+| 合約 Charge 更正規則（#3868） | `docs/incidents/RM-CONTRACT-CHARGE-CORRECTION-3868.md`、`docs/changes/2026-10-29-pop-contract-charge-correction-3868.md`（Rate × 堂數） |
+| Founder 要批的事／誰可 merge | `docs/governance/FOUNDER_STANDING_DECISIONS.md` |
+| 找不到時 | `git grep -n '<關鍵字>' -- docs/changes docs/incidents`（changes 依日期命名） |
+
+---
+
 ## 🗂️ Structured service catalog (registry schema)
 
 **Schema (required fields per row):** `service name` · `role` · `execution owner` · `incident linkage` · `SLO`

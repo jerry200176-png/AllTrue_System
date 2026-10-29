@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 536 api/* routes · generated 2026-10-28
+> Source: `php artisan route:list --json` · 537 api/* routes · generated 2026-10-29
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -765,7 +765,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
-## /api/v1/student-classes (40)
+## /api/v1/student-classes (41)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -806,6 +806,7 @@
 | POST | `api/v1/student-classes/{studentClass}/renew-monthly` | `StudentClassController@renewMonthly` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renewal-confirm` | `StudentClassController@renewalConfirm` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renewal-preview` | `StudentClassController@renewalPreview` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/sibling-transfer` | `SiblingContractTransferController@store` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/split-contract` | `StudentClassController@splitContract` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/split-contract/preview` | `StudentClassController@splitContractPreview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/transfer-sessions` | `StudentClassController@transferSessions` | role+campus |

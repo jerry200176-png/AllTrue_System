@@ -3970,7 +3970,7 @@ const approveRecord = async (record) => {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
-    body: JSON.stringify({ DirectorID: props.userId })
+    body: JSON.stringify({})
   });
 
   if (res.ok) {
@@ -4016,7 +4016,7 @@ const rollbackApproval = async (record) => {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
-    body: JSON.stringify({ DirectorID: props.userId, ReviewNote: note || null })
+    body: JSON.stringify({ ReviewNote: note || null })
   });
 
   if (res.ok) {
@@ -4236,7 +4236,7 @@ const batchApproveSelected = async () => {
     const res = await fetch('/api/v1/learning-records/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ ids, DirectorID: props.userId, branch_id: props.branchId })
+      body: JSON.stringify({ ids, branch_id: props.branchId })
     });
     if (res.ok) {
       const json = await res.json();
@@ -4263,7 +4263,7 @@ const batchRejectSelected = async () => {
     const res = await fetch('/api/v1/learning-records/batch-reject', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ ids, ReviewNote: note, DirectorID: props.userId })
+      body: JSON.stringify({ ids, ReviewNote: note })
     });
     if (res.ok) {
       const json = await res.json();
@@ -4290,7 +4290,7 @@ const batchRequestChangesSelected = async () => {
     const res = await fetch('/api/v1/learning-records/batch-request-changes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ ids, ReviewNote: note, DirectorID: props.userId })
+      body: JSON.stringify({ ids, ReviewNote: note })
     });
     if (res.ok) {
       const json = await res.json();
@@ -4313,7 +4313,7 @@ const requestChangesRecord = async (record) => {
   const res = await fetch(`/api/v1/learning-records/${record.id}/request-changes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ ReviewNote: note, DirectorID: props.userId })
+    body: JSON.stringify({ ReviewNote: note })
   });
   if (res.ok) {
     fetchRecords();
@@ -4800,7 +4800,6 @@ const submitBulkBackfill = async () => {
       body: JSON.stringify({
         StudentClassID: course.id,
         TeacherID: course.teacher_id,
-        DirectorID: props.userId,
         session_dates: bulkSelectedDates.value,
         auto_project_future: true
       })

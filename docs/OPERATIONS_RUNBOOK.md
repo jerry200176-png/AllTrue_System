@@ -25,7 +25,7 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 
 > **讀法**：本篇很長；依任務**只開對應 §**，其餘略過。與 AI 協作時見 [`AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md)。
 
-## A. Development SOP（2026-04-24 起：WSL2 本地開發）
+## A. Development SOP（2026-10-14 起：雲端 session 為預設；本機 WSL2 僅供舊路徑）
 
 > ⛔ 禁止 SSH 到 Pi 直接改程式碼。所有改動必須在 **安全 task worktree** 進行（禁止 `/home/jerry/alltrue`；見 `docs/governance/WORKTREE_POLICY.md`）。
 

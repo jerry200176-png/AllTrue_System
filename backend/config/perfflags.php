@@ -12,7 +12,12 @@
 */
 
 return [
-    'leave_successor_shift_apply_enabled' => (bool) env('LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED', false), // #410: off until undo-leave refuses an active shift (Q9a)
+    // #410 / #4210: a leave whose make-up lesson lands in a pre-created renewal shifts the renewal after a director's
+    // preview and confirmation. On by default now that the #4210 pre-enable checklist is done on main.
+    // Founder 2026-10-28: 「好」 to 「開放 410/433「請假時續約課自動往後排」給主任用（開之前會先顯示哪些課會移、主任確認後才改）」.
+    // Rollback: LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED=false refuses every apply again (403). Shifts already applied stay,
+    // and the undo-leave guard for them does not depend on this flag.
+    'leave_successor_shift_apply_enabled' => (bool) env('LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED', true),
     // Throttle notification sync to once per 5 min per branch.
     // false = always sync on every unread-count request (old behavior)
     'throttle_notification_sync' => (bool) env('PERF_THROTTLE_NOTIF_SYNC', true),
@@ -82,10 +87,9 @@ return [
     'truefit_v1' => (bool) env('TRUEFIT_V1', false),
 
     // in-app #413: inbox sync re-checks deduction_failed / lr_feedback source rows and
-    // auto-resolves handled items. DARK LAUNCH: default OFF until the product decision
-    // on lanes + "handled" (docs/plans/2026-10-20-inapp-closeout-product-decisions.md #413)
-    // is recorded. Rollback: PERF_NOTIFICATION_SOURCE_RESOLVE=false stops further auto-resolve/reopen;
+    // auto-resolves handled items. Default ON (Founder 2026-10-29, #4154). Rollback:
+    // PERF_NOTIFICATION_SOURCE_RESOLVE=false (or revert the default) stops further auto-resolve/reopen;
     // rows it already resolved stay resolved and carry Payload.source_resolved_at, so they can be found
     // and reopened by a (Founder-approved) data repair if needed.
-    'notification_source_resolve_enabled' => (bool) env('PERF_NOTIFICATION_SOURCE_RESOLVE', false),
+    'notification_source_resolve_enabled' => (bool) env('PERF_NOTIFICATION_SOURCE_RESOLVE', true),
 ];

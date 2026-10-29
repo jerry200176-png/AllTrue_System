@@ -19,7 +19,7 @@
 
 ## 容易誤判為第三方依賴、但實際不是的項目
 
-- **`@supabase/supabase-js`**（frontend `package.json`）：**不是真的 Supabase 服務依賴**。`frontend/src/supabase.js` 是一個手寫的相容層，模仿 Supabase client 的 `.from().select().eq()` 鏈式語法，但底層全部呼叫自家 Laravel API（`/api/v1/...`），純粹是介面相容命名，沒有任何流量真的送到 Supabase。盤點時不應把它算進「第三方風險」，但套件命名容易誤導未來接手的人以為系統真的接了 Supabase，值得在此記錄澄清。
+- **`@supabase/supabase-js`**（frontend `package.json`）：**不是真的 Supabase 服務依賴**。`frontend/src/supabase.js` 是一個手寫的相容層，模仿 Supabase client 的 `.from().select().eq()` 鏈式語法，但底層全部呼叫自家 Laravel API（`/api/v1/...`），純粹是介面相容命名，沒有任何流量真的送到 Supabase。盤點時不應把它算進「第三方風險」，但套件命名容易誤導未來接手的人以為系統真的接了 Supabase，值得在此記錄澄清。 **2026-10-29 已從 `package.json` 移除（沒有任何 import）。**
 
 ## 已知缺口（尚未做的部分，對齊 #879/#892 母 issue 範圍）
 

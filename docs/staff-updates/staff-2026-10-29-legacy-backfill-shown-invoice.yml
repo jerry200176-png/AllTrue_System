@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-legacy-backfill-shown-invoice
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 補登收款會記在畫面上那張帳單
+    summary: 舊「已收」標記的課程有多張未繳帳單時，補登收款會記到畫面顯示的那一張。
+    items:
+      - category: fixed
+        text: 補登收款時，款項記到畫面顯示的那張帳單，不會被系統改記到別張。
+      - category: fixed
+        text: 如果那張帳單已作廢或已收齊，會提示重新載入，不會登記任何款項。
+    source_refs:
+      - "changelog:2026-10-29:legacy-backfill-shown-invoice"

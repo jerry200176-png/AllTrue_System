@@ -1427,12 +1427,11 @@ const approveEvaluation = async (evalItem) => {
   if (!confirm('確認核准此評量？')) return;
   const token = getToken();
   const baseUrl = getBaseUrl();
-  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   try {
     const res = await fetch(`${baseUrl}/v1/learning-records/${evalItem.id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ DirectorID: session?.user?.id }),
+      body: JSON.stringify({}),
     });
     if (res.ok) {
       pendingEvaluations.value = pendingEvaluations.value.filter(e => e.id !== evalItem.id);

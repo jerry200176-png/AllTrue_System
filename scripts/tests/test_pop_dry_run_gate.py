@@ -14,9 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 # workflow -> id of its SSH job
 SPLIT = {
+    "pop-contract-charge-correction-3868.yml": "repair",
     "pop-founder-scoped-repair.yml": "repair",
     "pop-invoice1997-stale-values.yml": "repair",
     "pop-muzha-chen-billing-catchup.yml": "repair",
+    "pop-package-ledger-net-repair-4455.yml": "repair",
     "pop-past-scheduled-cancel.yml": "repair",
     "pop-unbilled-backlog-catchup.yml": "catchup",
     "pop-unpaid-hidden-closures.yml": "repair",
@@ -88,16 +90,16 @@ class PopDryRunGate(unittest.TestCase):
             if runs:
                 self.assertEqual(guard, "success")
 
-    def test_other_dry_run_workflows_keep_the_click_or_have_their_own_gate(self):
+    def test_every_pop_workflow_splits_its_dry_run_and_clicks_every_other_ssh_job(self):
+        """Founder 2026-10-29「怎麼什麼都要我按核准呀」: a new or unsplit dry-run mode fails here; so does an unclicked SSH job."""
         for path in sorted(WORKFLOWS.glob("pop-*.yml")):
             text = path.read_text()
-            if path.name in SPLIT or "options: [dry-run, approve]" not in text:
-                continue
-            if "pop_auto_approve.py" in text:
-                continue  # append-only auto approve: covered by test_pop_auto_approve.py
+            auto = "pop_auto_approve.py" in text  # append-only auto approve: pinned by test_pop_auto_approve.py
+            if re.search(r"(?m)^ +options: \[[^\]]*\bdry-run\b", text):
+                self.assertTrue(path.name in SPLIT or auto, f"{path.name}: dry-run must not wait for production-activation")
             for job_id, body in jobs(text).items():
-                if SECRET.search(body):
-                    self.assertIn("      name: production-activation\n", body, f"{path.name}:{job_id}")
+                if SECRET.search(body) and not auto and SPLIT.get(path.name) != job_id:
+                    self.assertRegex(body, r"environment:(?:\n      name:)? production-activation\n", f"{path.name}:{job_id}")
 
     def test_credential_workflows_keep_the_click(self):
         for name in ("pop-telegram-webhook-secret.yml", "pop-mount-reviewed-financial-once.yml"):

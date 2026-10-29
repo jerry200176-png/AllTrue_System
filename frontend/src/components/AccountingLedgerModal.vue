@@ -26,6 +26,10 @@
         <div v-if="loading" class="ledger-state">載入中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
+          <div v-if="actionError" class="ledger-state ledger-error" role="alert" data-testid="ledger-action-error">
+            {{ actionError }} 下方是已重新讀取的最新帳務，確認後再操作。
+            <button type="button" data-testid="ledger-action-reload" @click="loadLedger()">重新整理</button>
+          </div>
           <PaymentAllocation
             v-if="allocating"
             :student-name="payload.student?.name || '學生'"
@@ -347,7 +351,7 @@ import {
 const EXCEPTION_PREVIEW = 2;
 
 const props = defineProps({
-  show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean,
+  show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean, studentWide: Boolean,
   // In-app #398: 'record' opens 登記收款 for the opened course once the ledger has loaded (only if its card offers it).
   initialAction: { type: String, default: null },
 });
@@ -396,6 +400,8 @@ watch(() => props.show, async (open) => {
 
 const loading = ref(false);
 const error = ref('');
+// #4551: a failed action (void report/invoice) is not a failed load: keep the ledger on screen, reread it, show the reason.
+const actionError = ref('');
 const payload = ref(null);
 const busyReportId = ref(null);
 const busyInvoiceId = ref(null);
@@ -501,6 +507,7 @@ async function loadLedger() {
 
   loading.value = true;
   error.value = '';
+  actionError.value = '';
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
@@ -539,9 +546,10 @@ watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, 
 
 // In-app #396: opened from one course, the panel marks that contract card and scrolls to it,
 // so the director does not have to scroll through every contract to find it.
-const isOpenedCourse = (c) => Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
+// #3987: a student-wide launch passes an arbitrary first course only to load the ledger; it is not a course scope.
+const isOpenedCourse = (c) => !props.studentWide && Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
 function scrollToOpenedContract() {
-  if (!Number(props.studentClassId || 0) || contractCourses.value.length < 2) return;
+  if (props.studentWide || !Number(props.studentClassId || 0) || contractCourses.value.length < 2) return;
   if (isOpenedCourse(contractCourses.value[0])) return;
   const card = modalEl.value?.querySelector(`[data-testid="contract-card-${Number(props.studentClassId)}"]`);
   card?.scrollIntoView?.({ block: 'start' });
@@ -555,12 +563,12 @@ const invoiceCoversCourse = (inv, id) => {
 };
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
-  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);
   return !!scopeId && !invoiceCoversCourse(inv, scopeId);
 };
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
-  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);
   const invoices = (payload.value?.invoices || []).filter((inv) => !scopeId || invoiceCoversCourse(inv, scopeId));
   const receipts = (payload.value?.receipts || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
   return !invoices.length && !receipts.length;
@@ -608,7 +616,7 @@ const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
   .map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))));
 // 開啟單一課程、但未繳來自其他課程時，標題要說清楚是整個學生的金額。
 const owedLabel = computed(() => {
-  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);
   const others = (payload.value?.invoices || []).filter((inv) => inv.status !== 'void' && Number(inv.student_class_id) !== scopeId);
   const dueNow = splitOwed(others.map((inv) => ({ amount: inv.outstanding_amount, due_date: inv.due_date }))).now > 0; // 只算到今天已到期的，同 owedSplit
   return scopeId && dueNow ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
@@ -910,7 +918,9 @@ async function voidReport(reportId) {
     await loadLedger();
     emit('changed');
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e.message || '撤銷失敗');
+    const msg = humanizeApiErrorMessage(e.message || '撤銷失敗');
+    await loadLedger(); // the outcome may be uncertain (network/5xx): reread the authoritative ledger before the next write
+    if (!error.value) actionError.value = msg;
   } finally {
     busyReportId.value = null;
   }
@@ -935,7 +945,9 @@ async function voidInvoice(invoice, mode) {
     await loadLedger();
     emit('changed');
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e.message || `${actionLabel}失敗`);
+    const msg = humanizeApiErrorMessage(e.message || `${actionLabel}失敗`);
+    await loadLedger(); // the outcome may be uncertain (network/5xx): reread the authoritative ledger before the next write
+    if (!error.value) actionError.value = msg;
   } finally {
     busyInvoiceId.value = null;
   }

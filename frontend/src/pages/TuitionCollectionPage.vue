@@ -934,6 +934,7 @@
       :student-id="ledgerStudentId"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
+      :student-wide="ledgerNavStudentId != null"
       @close="ledgerOpen = false"
       @step="stepLedger"
       @changed="onLedgerChanged"

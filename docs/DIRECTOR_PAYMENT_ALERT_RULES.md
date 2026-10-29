@@ -107,6 +107,8 @@ last_reviewed: 2026-10-15
 
 例外（F7 S3a）：`Stop=1` 的合約只要帳單解析結果（`BillingPayableResolver`）仍為未繳／部分繳／未開單且欠款 > 0，就以 `pending_reconciliation`（結案／待查帳）列入，不論 `closed_reason`（暫停中無 reason 者也算）；`waived`（確認不收）與已繳清者不列。進行中（`Stop=0`）合約的規則不變。
 
+**暫停中、還沒開始的合約不算欠款（in-app #440，Founder 2026-10-29 回覆「A」）**：F7 S3a 的例外再收窄一格——單純暫停（`Stop=1` 且沒有 `closed_reason`）、**從沒開始**的合約，暫停期間不列入欠款，恢復上課（`Stop=0`）後依一般規則再列入。「從沒開始」＝同時符合：`Paid` 不是 1；沒有任何未作廢帳單；沒有 `pending`／`confirmed` 繳費回報；沒有任何非 `cancelled` 的堂次（已上、已排、請假都算開始過）。已結案（任何 `closed_reason`）、共用方案成員、已有帳單／回報／堂次的暫停，維持 F7 S3a 原規則。唯一判斷：`StudentClass::unstartedPauseIds()`（批次，一次三個查詢），`AlertController::tuition` 與 `AccountingController::settledCourses` 共用；不改任何資料，不需 migration。
+
 ## 回歸時請測
 
 - 堂數制：已繳但剩 1～2 堂（或 0 堂）仍應出現。
@@ -131,6 +133,17 @@ last_reviewed: 2026-10-15
 ## 單科合約的 payment_status 與已收金額改讀 ContractMoneyVerdict（2026-10-11，ADMIN-OPS billing）
 
 `alerts/tuition` 單科合約列的 `payment_status`（paid / partial / unpaid 的判定）與 `paid_amount` 改讀 `ContractMoneyVerdict`（帳單＋Payment 紀錄為準）；不再用 `StudentClass.Paid` 旗標與帳單「儲存的 PaidAmount 加總」。沒有帳單的舊合約仍以 `Paid` 旗標為準，Verdict 給不出答案（`review_required`）時沿用舊算法。**列入條件完全不變**（見上節：`payment_status` 不影響列入）。同一合約在帳務中心名單、課程查找、繳費通知上的「已繳／部分繳／未繳」因此一致。跨呼叫端一致性由 `ContractMoneyCallersAgreeTest` 守住；`Paid=1` 但仍有未收帳單的合約：Founder Q2（2026-10-11，#3797）決定列入並可收款（見堂數制第 3 條）。
+
+## 堂數制單科合約沒有帳單時的金額：一律是合約「學費」`StudentClass.Charge`（Founder Q3，2026-10-11，#3797）
+
+`alerts/tuition` 列的 `charge`／`estimated_amount`／`outstanding` 與繳費單 `tuition-slip` 的 `charge`，在堂數制單科合約**還沒有帳單**時都等於 `StudentClass.Charge`，也就是 `ContractMoneyVerdict`（`unbilled`）回報的金額；不再用「單價 × 堂數（時薪制 × 時數）」重算。有帳單的合約仍以帳單為準。單價與堂數改動時 `Charge` 會跟著改（#4128 讀同一個欄位），所以兩者不一致代表合約資料需要主任確認，不是顯示該自己重算。
+
+兩個例外，都只是估算、不是金額（`charge_semantics = estimate_only`）：
+
+- **共用課程包成員**：金額由課程包決定，維持原本算法，不受本規則影響。
+- **`Charge = 0` 但有單價**（合約學費尚未填寫，Verdict 讀作 `review_required`，不是免費）：名單仍列入（`Charge > 0` 的過濾不能讓它們消失），顯示「單價 × 堂數」估算；**繳費單不得用單價算出金額**（`tuition-slip` 回 422「金額待確認」），要等主任填好學費。
+
+唯讀盤點：`production-case-dump` 案例 `charge_vs_rate_count`（只輸出合約 ID、校區 ID、金額）。
 
 ## CoursePackage 月結方案的 payment_status（2026-04-22 Bug Fix）
 

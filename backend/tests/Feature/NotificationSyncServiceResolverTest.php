@@ -172,6 +172,14 @@ class NotificationSyncServiceResolverTest extends TestCase
         return [$fb, $notifier, $n];
     }
 
+    public function test_staff_reply_resolves_lr_feedback_notice_and_clears_reads(): void
+    {
+        [$fb, , $n] = $this->feedbackThreadNotice();
+
+        $this->assertFalse($this->isOpen($n));
+        $this->assertNotNull($n->fresh()->ResolvedAt);
+    }
+
     public function test_parent_follow_up_reopens_unread_even_inside_merge_window(): void
     {
         [$fb, $notifier, $n] = $this->feedbackThreadNotice();

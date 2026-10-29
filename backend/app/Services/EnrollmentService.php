@@ -50,6 +50,7 @@ class EnrollmentService
 
     public function store(Request $request, array $data): JsonResponse
     {
+        $this->forceAudit = null; // a reused service must not log a stale override
         $confirmedDates = $this->normalizeDateArray($data['confirmed_dates'] ?? []);
         $futureDates = $this->normalizeDateArray($data['future_dates'] ?? []);
 
@@ -736,7 +737,7 @@ class EnrollmentService
         // Canonical fix is migration 2026_07_22_130000 (utf8mb4); this mapping does NOT strip emoji.
         // MySQL 8 may abort the transaction on 3988 and surface PDO SAVEPOINT noise — treat as charset.
         try {
-            return DB::transaction(function () use (
+            $response = DB::transaction(function () use (
             $request,
             $data,
             $targetCampusId,
@@ -1133,6 +1134,12 @@ class EnrollmentService
 
             return response()->json($payload, 201);
         });
+            // #4001: the override is audited only once the enrollment committed, never for a request that is refused afterwards.
+            if ($this->forceAudit !== null && $response->getStatusCode() < 400) {
+                Log::info('enrollment_force_override', $this->forceAudit);
+            }
+
+            return $response;
         } catch (\Throwable $e) {
             if (MysqlCharsetRejection::matches($e)) {
                 Log::warning('enrollment_memo_charset_incompatible', [
@@ -1250,6 +1257,9 @@ class EnrollmentService
         return null;
     }
 
+    /** @var array<string, mixed>|null #4001: audit context staged by validateForceOverride(), logged after commit */
+    private ?array $forceAudit = null;
+
     private function validateForceOverride(Request $request, array $data, array $subjectIds = [], int $resolvedStudentId = 0): ?JsonResponse
     {
         $allowed = ['create_trial', 'renewal_next_term', 'independent_parallel'];
@@ -1309,7 +1319,7 @@ class EnrollmentService
             $actorId = null;
         }
 
-        Log::info('enrollment_force_override', [
+        $this->forceAudit = [
             'actor_user_id' => $actorId ? (int) $actorId : null,
             'force_reason' => $reason,
             'force_note' => $note !== '' ? $note : null,
@@ -1317,7 +1327,7 @@ class EnrollmentService
             'student_id' => (int) ($data['student_id'] ?? 0) ?: null,
             'class_type' => $classType !== '' ? $classType : null,
             'branch_id' => (int) ($data['branch_id'] ?? 0) ?: null,
-        ]);
+        ];
 
         return null;
     }
