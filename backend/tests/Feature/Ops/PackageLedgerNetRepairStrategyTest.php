@@ -66,6 +66,7 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
         PackageLedgerNetRepairManifest::useRowsForTesting(null);
         PackageLedgerNetRepairManifest::useRowsForTesting(null, 2);
         PackageLedgerNetRepairManifest::useRowsForTesting(null, 3);
+        PackageLedgerNetRepairManifest::useRowsForTesting(null, 4);
         parent::tearDown();
     }
 
@@ -172,6 +173,56 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
         self::assertSame(["floor_{$group->id}"], $s->verify($plan, $result)['errors']);
         self::assertSame(1, $s->rollback($result['snapshot'], [])['deleted']);
         self::assertSame(['r_floor_990003'], $s->plan($params)['errors'], 'the reversal would take used 2 below the floor 2');
+    }
+
+    /** @return array{0: CoursePackage, 1: StudentClass, 2: int} a date-mode stopped course (like 1329) with a cancelled lesson charged and debited once */
+    private function chargedCancellation(): array
+    {
+        [$package, $course] = $this->pool('one_on_one', 10);
+        DB::table('StudentClass')->where('ID', $course->ID)->update(['ScheduleMode' => 'date', 'Stop' => 1]);
+        $cs = $this->lesson($course, '2026-05-07', 'cancelled');
+        $this->charge($course, $cs, ['deduct']);
+        $this->ledger($package, $course, $cs, 'attendance', -1);
+        PackageLedgerNetRepairManifest::useRowsForTesting([['class' => 'C', 'package_id' => (int) $package->id, 'class_session_id' => $cs,
+            'student_class_id' => (int) $course->ID, 'scope' => 'session', 'status' => 'cancelled', 'slot' => '2026-05-07 16:00']], 4);
+
+        return [$package, $course, $cs];
+    }
+
+    public function test_round_four_reverses_a_cancelled_lessons_course_charge_and_its_package_debit_together(): void
+    {
+        [$package, $course, $cs] = $this->chargedCancellation();
+        $s = new PackageLedgerNetRepairStrategy();
+        $params = ['decision_reference' => 'repair-course-charge-r4-4455'];
+        $plan = $s->plan($params);
+        self::assertSame([true, 4, 1, -1, 0], [$plan['ok'], $plan['round'], $plan['counts']['to_insert'],
+            $plan['packages'][(int) $package->id]['ledger_net_before'], $plan['packages'][(int) $package->id]['ledger_net_after']], implode(',', $plan['errors']));
+
+        $result = $s->execute($plan, ['operation_id' => 'req-r4']);
+        self::assertSame([['reverse', 'repair_4455_r4', '#4455 class C']], DB::table('session_deduction_ledger')->where('class_session_id', $cs)
+            ->where('event_type', 'reverse')->get(['event_type', 'source', 'note'])->map(fn ($r): array => array_values((array) $r))->all());
+        self::assertSame([[1, 'repair_4455_r4', 'req-r4']], DB::table('package_session_ledger')->where('class_session_id', $cs)
+            ->where('reason', PackageLedgerNetRepairStrategy::REASON_R4)->get(['delta', 'reason', 'request_id'])
+            ->map(fn ($r): array => [(int) $r->delta, $r->reason, $r->request_id])->all());
+        self::assertSame(1, (int) DB::table('StudentClass')->where('ID', $course->ID)->value('Stop'), 'the course recompute would clear Stop');
+        self::assertTrue($s->verify($plan, $result)['ok']);
+        $again = $s->plan($params);
+        self::assertSame([true, 'after', 1], [$again['ok'], $again['state'], $again['counts']['done']]);
+
+        self::assertSame(1, $s->rollback($result['snapshot'], [])['deleted']);
+        self::assertSame([0, 0], [DB::table('session_deduction_ledger')->where('class_session_id', $cs)->where('event_type', 'reverse')->count(),
+            DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON_R4)->count()]);
+    }
+
+    public function test_round_four_fails_closed_when_the_lesson_is_taught_again_or_no_longer_charged(): void
+    {
+        [, $course, $cs] = $this->chargedCancellation();
+        DB::table('ClassSession')->where('id', $cs)->update(['Status' => 'attended']); // marked taught since the scan: also its floor
+        $this->charge($course, $cs, ['reverse']); // and its course charge already reversed
+
+        $plan = (new PackageLedgerNetRepairStrategy())->plan(['decision_reference' => 'repair-course-charge-r4-4455']);
+        self::assertSame(["c_status_{$cs}", "c_course_net_{$cs}", "c_floor_{$cs}"], $plan['errors']);
+        self::assertSame(0, DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON_R4)->count());
     }
 
     public function test_round_two_keeps_one_debit_in_a_slot_whose_reversed_lesson_is_attended(): void
@@ -292,6 +343,8 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
         self::assertSame([5, 2, -5], [count($r3), count(array_unique(array_column($r3, 'package_id'))), array_sum(array_column($r3, 'net'))]);
         self::assertSame([], array_intersect(array_column($r3, 'class_session_id'), [...array_column($rows, 'class_session_id'),
             ...array_column($r2, 'class_session_id')]), 'no lesson in two rounds');
+        self::assertSame([['C', 58, 10678, 1329]], array_map(fn (array $r): array => [$r['class'], $r['package_id'], $r['class_session_id'],
+            $r['student_class_id']], PackageLedgerNetRepairManifest::rows(4)));
     }
 
     public function test_rollback_restores_the_exact_prior_state_and_leaves_a_row_that_moved_on(): void

@@ -52,3 +52,22 @@ The probe cannot tell which deleted date each uncharged `completed` lesson (195:
 Not in round 3: package 58 / 10678. That cancelled lesson is still charged on its course ledger (deduct net +1). Under rule 1 the package follows the course, so the R check `r_course_net_` blocks a package-only row, and this operation writes no course ledger. The smallest addition is a class C row that calls `SessionDeductionService::reverseForSession(1329, 10678, …)`. That existing writer adds the course `reverse` event and syncs the package +1 through `PackageDeductionService::syncFromStudentClassDeduction`. Its preconditions are: lesson cancelled, course net exactly +1, package net −1. Rollback would remove both rows. This needs a Founder GO, because it adds a course-ledger write to this operation.
 
 Run: the same workflow, which now drafts `decision_reference` `repair-package-ledger-overdebit-r3-4455` with idempotency key `founder-package-ledger-overdebit-r3-repair-4455`. The dry-run should show `ok=true state=before`, counts `rows=5 to_insert=5 done=0 blocked=0 packages=2`, and `ledger_net` 173 −24→−23 and 195 −46→−42. Verify and rollback are the same as in round 2, with `round: 3` in the snapshot.
+
+## Round 4 — package 58's cancelled lesson still charged on its course (Founder GO 2026-10-29「AA」)
+
+Scope: `PackageLedgerNetRepairManifest::rows(4)` holds one class C row: package 58, session 10678, course 1329. The lesson is cancelled (2026-05-07 20:00, one_on_one, date mode). It is still charged once on its course ledger (deduct − reverse = +1) and debited once on the package (−1), as of probe run 40825511624.
+
+Execute, under the round's locks, calls the existing `SessionDeductionService::reverseForSession(1329, 10678, 'repair_4455_r4', …)`. That writer adds one `session_deduction_ledger` `reverse` row with source `repair_4455_r4`. It then syncs the package through `PackageDeductionService::syncFromStudentClassDeduction`, which adds one +1 `package_session_ledger` row with reason `repair_4455_r4` and recomputes the package counters. The strategy then stamps that row with the POP request id.
+
+The course counters are not recomputed, for two reasons:
+- `SessionDeductionService::recomputeCounters()` sets `Stop = 0` on a non-count course, and course 1329 is stopped.
+- It counts only the attendance/retro_leave/status_adjust/duplicate_session sources, so this reverse would not change them anyway.
+
+Preconditions (any mismatch blocks the plan):
+- `c_status_`: the lesson is still cancelled, on course 1329, at its slot.
+- `c_net_`: package net −1.
+- `c_course_net_`: course net exactly +1, with no round-4 reverse yet.
+- `c_package_`: course 1329 still belongs to package 58.
+- `c_floor_`: after the credit, package used stays at or above taught + absent. That floor is read under a shared lock during execute.
+
+Run: the same workflow with `round=4`. It drafts `decision_reference` `repair-course-charge-r4-4455` with idempotency key `founder-course-charge-r4-repair-4455`. `round=3` still drafts round 3. The dry-run should show `ok=true state=before`, counts `rows=1 to_insert=1 done=0 blocked=0 packages=1`, and package 58 `ledger_net` −7→−6. `remaining` stays 0 before and after, because it is a date-mode package with total 0. Verify checks package net 0 and course net 0 on 10678, both repair rows present, counters equal to the ledger, and the floor. Rollback deletes both rows only while the lesson still nets 0 on both ledgers. The snapshot holds `rows` and `course_rows`.
