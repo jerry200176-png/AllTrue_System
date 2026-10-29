@@ -10,6 +10,6 @@ updates:
       - category: improved
         text: 家長綁定比對不到時，LINE 會提示檢查姓名與家長手機，並請洽主任。
       - category: improved
-        text: 為保護資料不說是姓名或手機不符；家長來問，請到綁定管理核對登記。
+        text: 為保護資料不說是哪項不符；請到學生管理核對，指引在家長 LINE 綁定頁。
     source_refs:
       - "changelog:2026-10-29:line-bind-failure-wording"
