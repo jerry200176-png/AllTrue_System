@@ -21,7 +21,8 @@ on:
   # delays many scheduled runs, so the same kick also runs at the end of every merge's own
   # run whose range waits for a train: it dispatches only when a window has passed, no train
   # has asked for approval or deployed since that window, and no train or approval is pending.
-  # A train still stands down if a deploy run is already waiting for approval.
+  # A train still stands down if a deploy run is already waiting for approval, unless that run is
+  # a train on an older commit: the new train cancels it once its own tip is green (#3992).
   schedule:
     - cron: '17 4 * * *'
     - cron: '17 10 * * *'
@@ -118,10 +119,16 @@ jobs:
     if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'release-train' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45 # #3643 bounded wait for the tip CI
+    permissions:
+      contents: read
+      actions: write # #3992: cancel a stale release train waiting for approval; never approves
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
       superseded: ${{ steps.resolve.outputs.superseded }}
       release_train: ${{ steps.resolve.outputs.release_train }}
+      # true: main may move past the target; the executor gates then require main to contain
+      # it and the Pi never downgrades (train semantics). Missing = exact-main (fail safe).
+      may_trail_main: ${{ steps.resolve.outputs.may_trail_main }}
       flag_changes: ${{ steps.resolve.outputs.flag_changes }}
     steps:
       - name: Validate target SHA and CI evidence
@@ -137,6 +144,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || inputs.target_sha }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -154,6 +162,22 @@ jobs:
           done
           echo "flag_changes=${FLAG_CHANGES:-none}" >> "$GITHUB_OUTPUT"
           [[ -z "$FLAG_CHANGES" ]] || echo "::warning title=Feature-flag change requested::${FLAG_CHANGES}"
+          # #3643/#3992: the land queue merges often, so a commit's main CI may still be running.
+          # Wait (bounded, ~40 min) while a main CI run for $1 is unfinished; true once one is green.
+          main_ci_green() {
+            local ok pending
+            for _ in $(seq 1 40); do
+              ok="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=$1&status=completed&per_page=100" \
+                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
+              [[ "$ok" -ge 1 ]] && return 0
+              pending="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=$1&per_page=100" \
+                --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+              [[ "$pending" -ge 1 ]] || return 1
+              sleep 60
+            done
+            return 1
+          }
+          stand_down() { echo "::notice::$1"; echo "superseded=true" >> "$GITHUB_OUTPUT"; exit 0; }
           RELEASE_TRAIN=false
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then
             RELEASE_TRAIN=true
@@ -163,35 +187,28 @@ jobs:
                 exit 1
               fi
             done
-            # A retry stands down while another deploy run already waits for approval,
-            # so the Founder never sees the waiting train cancelled under them.
-            WAITING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?status=waiting&per_page=5" \
-              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")"
-            if [[ "$WAITING" -ge 1 ]]; then
-              echo "::notice::Release train: another deploy run is already waiting for approval; standing down."
-              echo "superseded=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
             # The train offers only the run's own head_sha (main at trigger time): deploy
-            # provenance is keyed on it. If its main CI is not green yet, wait for the next
+            # provenance is keyed on it. If its main CI does not turn green, wait for the next
             # train instead of offering any other commit.
             TIP="$RUN_HEAD_SHA"
-            # #3643: the land queue merges often, so the tip's CI may still be running. Wait (bounded,
-            # ~40 min) while a main CI run for TIP is unfinished; never switch to another commit.
-            for _ in $(seq 1 40); do
-              OK="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=completed&per_page=100" \
-                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
-              [[ "$OK" -ge 1 ]] && break
-              PENDING="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&per_page=100" \
-                --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
-              [[ "$PENDING" -ge 1 ]] || break
-              sleep 60
+            main_ci_green "$TIP" || stand_down "Release train: main tip ${TIP} has no successful main CI yet; nothing to offer this time."
+            # A retry stands down while another deploy run already waits for approval, except
+            # (#3992) a release train waiting on a commit TIP strictly contains: TIP is green, so
+            # that request is stale. Cancel it (never approve it) and offer TIP instead.
+            WAITING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?status=waiting&per_page=100" \
+              --jq ".workflow_runs[] | select(.id != ${RUN_ID}) | \"\(.id):\(.head_sha):\(.display_title == \"Release train\")\"")"
+            STALE=""
+            for row in $WAITING; do
+              IFS=: read -r id head train <<< "$row"
+              [[ "$train" == "true" && "$(gh api "/repos/${REPO}/compare/${head}...${TIP}" --jq '.status')" == "ahead" ]] ||
+                stand_down "Release train: another deploy run is already waiting for approval; standing down."
+              STALE="$STALE $id"
             done
-            if [[ "$OK" -lt 1 ]]; then
-              echo "::notice::Release train: main tip ${TIP} has no successful main CI yet; nothing to offer this time."
-              echo "superseded=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            for id in $STALE; do
+              gh api -X POST "/repos/${REPO}/actions/runs/${id}/cancel" >/dev/null ||
+                stand_down "Release train: could not cancel stale run ${id}; standing down."
+              echo "::notice::Release train: cancelled run ${id}, which waited for approval on an older commit; offering ${TIP}."
+            done
             TARGET_SHA_INPUT="$TIP"
           fi
           echo "release_train=${RELEASE_TRAIN}" >> "$GITHUB_OUTPUT"
@@ -208,14 +225,29 @@ jobs:
 
           gh api "/repos/${REPO}/commits/${TARGET_SHA}" >/dev/null
 
-          # A late CI run for an older commit must not ask for Founder approval that the
-          # exact-main gate will refuse anyway; the newer main commit's own CI deploys it.
+          # #3992: the land queue merges faster than main CI runs, so a merge's commit was rarely
+          # still main once its CI turned green, and requiring exact main skipped every run while
+          # production starved. A merge run now deploys its own head_sha (main when the run started;
+          # deploy provenance is keyed on it) while main still contains it, with train semantics
+          # at the executor gates (main contains the target; the Pi never downgrades).
+          MAY_TRAIL_MAIN="$RELEASE_TRAIN"
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
-            if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
-              echo "::notice::Superseded: CI finished for ${TARGET_SHA} but main is ${MAIN_SHA}; skipping without an approval request."
-              echo "superseded=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # Only main CI starts a deploy: a fork PR's CI on a branch named main never does.
+            [[ "$TRIGGER_EVENT" == "push" || "$TRIGGER_EVENT" == "workflow_dispatch" ]] ||
+              stand_down "Not a main CI run (${TRIGGER_EVENT}); nothing to deploy."
+            MAY_TRAIL_MAIN=true
+            TIP="${RUN_HEAD_SHA,,}"
+            if [[ "$TARGET_SHA" != "$TIP" ]]; then
+              # This CI is for a commit main had already left: wait for the run head's own CI instead.
+              main_ci_green "$TIP" || stand_down "Superseded: CI finished for ${TARGET_SHA}; main head ${TIP} has no green CI, so a later run deploys."
+              # If main was still TIP when its CI turned green, the run that CI started deploys TIP.
+              sleep 30
+              GREEN_AT="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=success&per_page=100" \
+                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and (.event == "push" or .event == "workflow_dispatch")) | .updated_at] | min')"
+              OWN="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_run&head_sha=${TIP}&per_page=100" \
+                --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and .created_at >= \"${GREEN_AT}\")] | length")"
+              [[ "$OWN" -lt 1 ]] || stand_down "Superseded: the run started by ${TIP}'s own green CI deploys it."
+              TARGET_SHA="$TIP"
             fi
           fi
 
@@ -242,6 +274,7 @@ jobs:
           fi
 
           echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+          echo "may_trail_main=${MAY_TRAIL_MAIN}" >> "$GITHUB_OUTPUT"
           echo "Resolved activation target: ${TARGET_SHA}"
 
   detect-deployable:
@@ -1310,11 +1343,13 @@ jobs:
           # Other dispatches (smoke, manual deploy) are not counted either: nothing kicks again when
           # they finish, so the window would be lost. A waiting run counts whatever started it.
           # Filter by status on the server: an old waiting run can sit beyond the newest 100 runs.
+          # #3992: a train still waiting from before this window is stale; this window's train
+          # cancels it once its newer tip is green, so it does not count.
           PENDING=0
           for q in "status=waiting" "event=workflow_dispatch&status=queued" "event=workflow_dispatch&status=in_progress" \
             "event=workflow_dispatch&status=requested" "event=workflow_dispatch&status=pending"; do
             n="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?${q}&per_page=100" \
-              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and (.status == \"waiting\" or .display_title == \"Release train\"))] | length")"
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and ((.status == \"waiting\" and (.display_title != \"Release train\" or .created_at >= \"${SINCE}\")) or (.status != \"waiting\" and .display_title == \"Release train\")))] | length")"
             PENDING=$((PENDING + n))
           done
           if [[ "$PENDING" -ge 1 ]]; then
@@ -1722,7 +1757,7 @@ jobs:
       - name: Final exact-main gate before production executor
         env:
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
-          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.may_trail_main }} # train or merge run (#3992)
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1777,7 +1812,7 @@ jobs:
           DEPLOY_PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           DEPLOY_PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           DEPLOY_TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
-          DEPLOY_RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          DEPLOY_RELEASE_TRAIN: ${{ needs.resolve-target.outputs.may_trail_main }}
           DEPLOY_ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
           DEPLOY_COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
           DEPLOY_COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
