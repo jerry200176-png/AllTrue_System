@@ -1,17 +1,18 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="!busy && $emit('close')">
-    <div class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="sibling-transfer-title">
+    <div ref="panelRef" class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="sibling-transfer-title" tabindex="-1" @keydown="onKeydown">
       <h3 id="sibling-transfer-title" class="modal-title">把剩餘堂數轉給手足</h3>
       <p class="modal-desc">轉出的堂數會在手足名下開一份新合約，金額照這份合約實際繳的錢等比例搬過去。原收款與收據不變，帳上以轉出／轉入紀錄連動，沒有退費。</p>
 
       <label class="form-label" for="sib-target">轉給誰（同分校的學生）</label>
-      <select id="sib-target" v-model="form.target_student_id" class="form-input" :disabled="busy">
-        <option value="">請選擇</option>
+      <select id="sib-target" v-model="form.target_student_id" class="form-input" :disabled="busy || loadingStudents">
+        <option value="">{{ loadingStudents ? '載入學生中…' : '請選擇' }}</option>
         <option v-for="s in candidates" :key="s.id" :value="s.id">{{ s.name }}</option>
       </select>
 
       <label class="form-label" for="sib-sessions">轉幾堂（留空＝全部剩餘堂數）</label>
-      <input id="sib-sessions" v-model.number="form.sessions" type="number" min="1" step="1" class="form-input" :disabled="busy" />
+      <input id="sib-sessions" v-model.number="form.sessions" type="number" min="1" step="1" class="form-input" :disabled="busy" :aria-invalid="!sessionsValid" aria-describedby="sib-sessions-err" />
+      <p v-if="!sessionsValid" id="sib-sessions-err" class="error" role="alert">堂數要是 1 以上的整數；要全部轉就留空。</p>
 
       <label class="form-label" for="sib-reason">原因（必填）</label>
       <textarea id="sib-reason" v-model.trim="form.reason" class="form-input" rows="2" maxlength="100" :disabled="busy" />
@@ -37,34 +38,76 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch';
+import { trapTab } from '../../lib/focusTrap.js';
 
 const props = defineProps({
   show: Boolean,
   courseId: { type: [Number, String], default: null },
   ownStudentId: { type: [Number, String], default: null },
-  students: { type: Array, default: () => [] },
+  branchId: { type: [Number, String], default: null },
 });
 const emit = defineEmits(['close', 'done']);
 const form = reactive({ target_student_id: '', sessions: null, reason: '', acknowledge_no_family_link: false });
 const plan = ref(null);
 const error = ref('');
 const busy = ref(false);
+const students = ref([]);
+const loadingStudents = ref(false);
+const panelRef = ref(null);
+let opener = null;
 // One key per opening of the dialog: a double click or a retry after a lost response replays the same transfer.
 let idempotencyKey = '';
 const newKey = () => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`);
 
-const candidates = computed(() => props.students.filter((s) => Number(s.id) !== Number(props.ownStudentId)));
-const canSubmit = computed(() => !!form.target_student_id && !!form.reason);
+const candidates = computed(() => students.value.filter((s) => Number(s.id) !== Number(props.ownStudentId)));
+// Blank means "all remaining"; anything typed must be a whole number of at least 1 (0 must never fall back to "all").
+const hasSessions = computed(() => form.sessions !== null && form.sessions !== '' && form.sessions !== undefined);
+const sessionsValid = computed(() => !hasSessions.value || (Number.isInteger(form.sessions) && form.sessions >= 1));
+const canSubmit = computed(() => !!form.target_student_id && !!form.reason && sessionsValid.value);
 
-watch(() => props.show, (v) => {
-  if (!v) return;
+// Every student of the campus (per_page=all), not just the first page the course list loaded.
+async function loadStudents() {
+  students.value = [];
+  if (!props.branchId) return;
+  loadingStudents.value = true;
+  try {
+    const res = await authedFetch(`/api/v1/students?${new URLSearchParams({ branch_id: String(props.branchId), per_page: 'all' })}`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    const json = await res.json().catch(() => null);
+    const list = Array.isArray(json) ? json : (json?.data ?? []);
+    if (!res.ok || !Array.isArray(list)) throw new Error('students');
+    students.value = list.map((s) => ({ id: Number(s?.id ?? 0), name: String(s?.name ?? '').trim() })).filter((s) => s.id > 0 && s.name);
+  } catch {
+    error.value = '載入學生名單失敗，請關掉重開再試。';
+  } finally {
+    loadingStudents.value = false;
+  }
+}
+
+watch(() => props.show, async (v) => {
+  if (!v) {
+    // Give focus back to whatever opened the dialog (the ⋯ menu or the drawer), unless it is gone.
+    if (opener?.isConnected) opener.focus();
+    opener = null;
+    return;
+  }
+  opener = document.activeElement;
   Object.assign(form, { target_student_id: '', sessions: null, reason: '', acknowledge_no_family_link: false });
   plan.value = null;
   error.value = '';
   idempotencyKey = newKey();
+  await nextTick();
+  panelRef.value?.querySelector('#sib-target')?.focus();
+  loadStudents();
 });
+const onKeydown = (e) => {
+  if (e.key === 'Tab') trapTab(e, panelRef.value);
+  else if (e.key === 'Escape' && !busy.value) emit('close');
+};
 // Any input change invalidates a previous preview.
 watch(() => [form.target_student_id, form.sessions], () => { plan.value = null; form.acknowledge_no_family_link = false; });
 
@@ -73,7 +116,7 @@ const body = (preview) => ({
   reason: form.reason,
   idempotency_key: idempotencyKey,
   preview,
-  ...(form.sessions ? { sessions: Number(form.sessions) } : {}),
+  ...(hasSessions.value ? { sessions: Number(form.sessions) } : {}),
   ...(form.acknowledge_no_family_link ? { acknowledge_no_family_link: true } : {}),
 });
 

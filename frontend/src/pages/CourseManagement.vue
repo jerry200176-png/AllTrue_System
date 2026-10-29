@@ -1108,7 +1108,7 @@
       :show="!!siblingTransferCourse"
       :course-id="siblingTransferCourse?.id"
       :own-student-id="siblingTransferCourse?.student_id ?? siblingTransferCourse?.StudentID"
-      :students="allStudents"
+      :branch-id="props.branchId"
       @close="siblingTransferCourse = null"
       @done="onSiblingTransferDone"
     />
