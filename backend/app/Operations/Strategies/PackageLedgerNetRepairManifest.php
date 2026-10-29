@@ -33,6 +33,21 @@ final class PackageLedgerNetRepairManifest
      * (package 160), which held the slots of the blocked class A rows 36716 and 28718 at net 0. Packages 195 and 173's
      * 36236/36237 wait for the Founder (uncharged completed lessons, class D).
      */
+    /**
+     * Round 3, class R (Founder 2026-10-29 option A: used down to taught + absent, never below; post-round-2 probe runs
+     * 40825430575 and 40825468531): 195 is 4 over, 173 1 over. Only deleted 16:00 creation seeds with no lesson that day
+     * qualify (9 in 195, 2 in 173); the slot's second debit 38727 first (38696 holds 2026-07-12 16:00), then the latest
+     * dates. The probe cannot tell which deleted date an uncharged `completed` lesson replaced, so which seeds keep their
+     * debit is a choice; the balances are the same. Package 58 (10678) needs its course charge reversed first (rule 1).
+     */
+    private const OVER_DEBIT_R3 = [
+        173 => [[36237, 'deleted', '2026-09-09 16:00', -1]],
+        195 => [
+            [38727, 'deleted', '2026-07-12 16:00', -1], [38704, 'deleted', '2026-08-11 16:00', -1],
+            [38706, 'deleted', '2026-08-18 16:00', -1], [38708, 'deleted', '2026-08-25 16:00', -1],
+        ],
+    ];
+
     private const OVER_DEBIT = [
         133 => [
             [26750, 'deleted', '2026-06-30 16:00', -1], [26751, 'deleted', '2026-07-14 16:00', -1], [26752, 'deleted', '2026-07-21 16:00', -1],
@@ -83,10 +98,10 @@ final class PackageLedgerNetRepairManifest
         if (isset(self::$override[$round])) {
             return self::$override[$round];
         }
-        if ($round === 2) {
+        if ($round >= 2) {
             $rows = [];
-            foreach (self::OVER_DEBIT as $packageId => $lessons) {
-                foreach ($lessons as [$id, $status, $slot, $net]) { // every round 2 package is a group type, reconciled per slot
+            foreach ($round === 2 ? self::OVER_DEBIT : self::OVER_DEBIT_R3 as $packageId => $lessons) {
+                foreach ($lessons as [$id, $status, $slot, $net]) { // every round 2/3 package is a group type, reconciled per slot
                     $rows[] = ['class' => 'R', 'package_id' => $packageId, 'class_session_id' => $id, 'scope' => 'slot', 'status' => $status,
                         'slot' => $slot, 'net' => $net];
                 }

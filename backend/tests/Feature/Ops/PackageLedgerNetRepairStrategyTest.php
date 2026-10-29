@@ -65,6 +65,7 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
     {
         PackageLedgerNetRepairManifest::useRowsForTesting(null);
         PackageLedgerNetRepairManifest::useRowsForTesting(null, 2);
+        PackageLedgerNetRepairManifest::useRowsForTesting(null, 3);
         parent::tearDown();
     }
 
@@ -145,6 +146,32 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
         self::assertSame(["r_net_{$ids['gone']}", "r_slot_net_{$ids['gone']}", "r_status_{$ids['alone']}", "r_slot_net_{$ids['alone']}", "r_slot_net_{$ids['cancelled']}",
             "r_course_net_{$ids['solo']}"], $plan['errors']);
         self::assertSame(0, DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON_R2)->count());
+    }
+
+    public function test_round_three_reverses_its_own_manifest_and_never_takes_used_below_taught_plus_absent(): void
+    {
+        [$group, $course] = $this->pool('one_on_three', 10);
+        $this->ledger($group, $course, $this->lesson($course, '2026-07-05'), 'attendance', -1); // floor 1
+        $this->ledger($group, $course, 990003, 'attended', -1); // a creation seed whose lesson was deleted: used 2
+        PackageLedgerNetRepairManifest::useRowsForTesting([['class' => 'R', 'package_id' => (int) $group->id, 'class_session_id' => 990003,
+            'scope' => 'slot', 'status' => 'deleted', 'slot' => '2026-07-12 16:00', 'net' => -1]], 3);
+        $s = new PackageLedgerNetRepairStrategy();
+        $params = ['decision_reference' => 'repair-package-ledger-overdebit-r3-4455'];
+        $plan = $s->plan($params);
+        self::assertSame([true, 3, 1], [$plan['ok'], $plan['round'], $plan['counts']['to_insert']]);
+        $sql = [];
+        DB::listen(function ($q) use (&$sql): void { $sql[] = strtolower($q->sql); });
+        $result = $s->execute($plan, ['operation_id' => 'req-r3']);
+        self::assertNotSame([], array_filter($sql, fn (string $q): bool => str_contains($q, 'count(distinct')
+            && (str_contains($q, 'lock in share mode') || str_contains($q, 'for share'))), 'execute reads the floor with a shared lock');
+        self::assertSame([[990003, 1]], DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON_R3)
+            ->get(['class_session_id', 'delta'])->map(fn ($r): array => [(int) $r->class_session_id, (int) $r->delta])->all());
+        self::assertTrue($s->verify($plan, $result)['ok']);
+
+        $this->lesson($course, '2026-07-19', 'absent'); // a no-show marked absent with no package debit raises the floor to 2
+        self::assertSame(["floor_{$group->id}"], $s->verify($plan, $result)['errors']);
+        self::assertSame(1, $s->rollback($result['snapshot'], [])['deleted']);
+        self::assertSame(['r_floor_990003'], $s->plan($params)['errors'], 'the reversal would take used 2 below the floor 2');
     }
 
     public function test_round_two_keeps_one_debit_in_a_slot_whose_reversed_lesson_is_attended(): void
@@ -261,6 +288,10 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
             count(array_unique(array_column($r2, 'package_id'))), count(array_filter($r2, fn (array $r): bool => $r['net'] === -1)),
             count(array_filter($r2, fn (array $r): bool => $r['net'] === 1))]);
         self::assertSame([], array_intersect(array_column($r2, 'class_session_id'), array_column($rows, 'class_session_id')), 'no lesson in both rounds');
+        $r3 = PackageLedgerNetRepairManifest::rows(3);
+        self::assertSame([5, 2, -5], [count($r3), count(array_unique(array_column($r3, 'package_id'))), array_sum(array_column($r3, 'net'))]);
+        self::assertSame([], array_intersect(array_column($r3, 'class_session_id'), [...array_column($rows, 'class_session_id'),
+            ...array_column($r2, 'class_session_id')]), 'no lesson in two rounds');
     }
 
     public function test_rollback_restores_the_exact_prior_state_and_leaves_a_row_that_moved_on(): void
