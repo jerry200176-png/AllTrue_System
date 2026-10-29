@@ -182,6 +182,7 @@ final class PopOperationService
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
             && !$this->isExactPackageLedgerNetRepair($entry)
+            && !$this->isExactContractChargeCorrection($entry)
             && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
@@ -825,6 +826,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactContractChargeCorrection($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'exact_manifest_student_class_charge_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactPackageLedgerNetRepair($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1069,6 +1085,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'invoice1997-stale-values-20261008'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\Invoice1997StaleValuesStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice1997-stale-values'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (GitHub #3868, StudentClass.Charge of two unbilled count contracts). */
+    private function isExactContractChargeCorrection(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'contract-charge-correction-3868'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\ContractChargeCorrectionStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-contract-charge-correction'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 

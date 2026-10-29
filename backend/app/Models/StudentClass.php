@@ -174,6 +174,7 @@ class StudentClass extends Model
             'dunning_events' => ['student_class_id'],
             'course_contract_group_members' => ['student_class_id'],
             'bug_report_contract_links' => ['student_class_id'],
+            'contract_sibling_transfers' => ['source_student_class_id', 'target_student_class_id'],
         ];
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {

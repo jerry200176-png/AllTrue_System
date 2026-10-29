@@ -1104,6 +1104,14 @@
       @close="showCourseTransfer = false; courseTransferPrefill = null"
       @done="onCourseTransferDone"
     />
+    <SiblingTransferModal
+      :show="!!siblingTransferCourse"
+      :course-id="siblingTransferCourse?.id"
+      :own-student-id="siblingTransferCourse?.student_id ?? siblingTransferCourse?.StudentID"
+      :branch-id="props.branchId"
+      @close="siblingTransferCourse = null"
+      @done="onSiblingTransferDone"
+    />
     <TransferSessionsModal
       :show="showTransferSessionsModal"
       :source-course="transferSessionsCourse"
@@ -1462,6 +1470,7 @@ import PurchaseSessionsModal from '../components/course-management/PurchaseSessi
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
+import SiblingTransferModal from '../components/course-management/SiblingTransferModal.vue';
 import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js';
 import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
@@ -2257,6 +2266,19 @@ const onCourseTransferDone = async () => {
   await loadCourses();
   toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
 };
+// In-app #412: 轉給手足. The backend (SiblingContractTransferService) is the authority; this only hides the item
+// where it can never apply (not a director, not a plain open session contract, not paid).
+const siblingTransferCourse = ref(null);
+const canSiblingTransfer = (c) => ['director', 'super_admin'].includes(props.userRole)
+  && isSessionMode(c) && !isPackageMember(c) && c.status !== 'inactive' && !effectiveClosedReason(c)
+  && c.payment_status === 'paid';
+const openSiblingTransfer = (c) => { siblingTransferCourse.value = c; };
+const onSiblingTransferDone = async () => {
+  siblingTransferCourse.value = null;
+  closeCourseManager();
+  await loadCourses();
+  toastRef.value?.show?.({ title: '已轉給手足', description: '剩餘堂數與對應金額已轉到手足名下的新合約，請到他的課程排課。', variant: 'success', durationMs: 4000 });
+};
 const editability = ref(null);
 const editabilityLoading = ref(false);
 const editabilityError = ref('');
@@ -2783,6 +2805,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     duplicate: () => duplicateCourseForTeacher(c),
     reschedule: () => runRowAction(c, 'reschedule'), substitute: () => runRowAction(c, 'substitute'),
     transfer: () => runRowAction(c, 'transfer'), 'contract-revert': () => openContractRevertModal(c),
+    'sibling-transfer': () => openSiblingTransfer(c),
   };
   map[name]?.();
 }
@@ -5562,11 +5585,11 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   getLessonPicker: () => lessonPicker.value,
   effectiveClosedReason, planningStatusVisible, planningStatusFor, isSessionMode, isMonthlyMode, isManualOccurrenceCourse,
   canQuickAddSession, quickAddDisabledReason, canCloseCourse, purchaseActionIsRenew, purchaseActionLabel, isPackageMember,
-  isPaymentNoticeAvailable, featureSubstituteV2,
+  isPaymentNoticeAvailable, canSiblingTransfer, featureSubstituteV2,
   isDetailsOpen: (c) => expandedDates.value.has(c.id),
   isSessionEditOpen: () => showSessionEditModal.value,
   requestDelete: (c) => { confirmDeleteTarget.value = c; },
-  openCourseTransfer: (c) => openCourseTransfer(c),
+  openCourseTransfer: (c) => openCourseTransfer(c), openSiblingTransfer,
   openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
   editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,
