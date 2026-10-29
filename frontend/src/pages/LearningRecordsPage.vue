@@ -1503,7 +1503,7 @@
         <template v-for="[key, label] in AUTHOR_SNAPSHOT_FIELDS" :key="key">
           <p v-if="snap.payload?.[key]">{{ label }}：{{ snap.payload[key] }}</p>
         </template>
-        <p v-if="snap.payload?.AttachmentUrl">附件：<a :href="snap.payload.AttachmentUrl" target="_blank" rel="noopener noreferrer">開啟附件</a></p>
+        <p v-if="safeAttachmentHref(snap.payload?.AttachmentUrl)">附件：<a :href="safeAttachmentHref(snap.payload.AttachmentUrl)" target="_blank" rel="noopener noreferrer">開啟附件</a></p>
         <p v-if="snap.payload?.teacher_comment?.content">給家長的話：{{ snap.payload.teacher_comment.content }}</p>
       </div>
     </AtDialog>
@@ -1562,6 +1562,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
+import { safeHttpHref } from '../lib/safeHttpHref.js';
 import { isDirectorRole as roleIsDirector } from '../lib/roleCapabilities.js';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
@@ -2495,6 +2496,7 @@ const AUTHOR_SNAPSHOT_FIELDS = [
   ['Progress', '進度'], ['NextHomework', '作業'], ['NextWeekTestScope', '下週考試範圍'], ['QuizScore', '測驗成績'],
   ['HomeworkStatus', '作業完成度'], ['Performance', '課堂表現'], ['Comment', '備註'],
 ];
+const safeAttachmentHref = safeHttpHref;
 const showAuthorSnapshots = ref(false);
 const authorSnapshots = ref([]);
 const openAuthorSnapshots = async () => {

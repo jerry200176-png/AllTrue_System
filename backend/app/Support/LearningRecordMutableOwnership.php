@@ -157,7 +157,8 @@ final class LearningRecordMutableOwnership
             return true;
         }
         // #3824: a teacher change cleared the body into a snapshot; the assigned teacher stays the owner of the refill.
-        if (DB::table('learning_record_author_snapshots')->where('learning_record_id', (int) $record->getAttribute('id'))->exists()) {
+        if (DB::table('learning_record_author_snapshots')->where('learning_record_id', (int) $record->getAttribute('id'))
+            ->where('new_teacher_id', (int) $record->getAttribute('TeacherID'))->exists()) {
             return true;
         }
 
@@ -254,7 +255,8 @@ final class LearningRecordMutableOwnership
                     }
                 });
             $outer->orWhereExists(function ($sub) use ($lrTable) {
-                $sub->select(DB::raw(1))->from('learning_record_author_snapshots as lras')->whereColumn('lras.learning_record_id', "{$lrTable}.id");
+                $sub->select(DB::raw(1))->from('learning_record_author_snapshots as lras')
+                    ->whereColumn('lras.learning_record_id', "{$lrTable}.id")->whereColumn('lras.new_teacher_id', "{$lrTable}.TeacherID");
             });
             if (Schema::hasTable('learning_record_teacher_comments')) {
                 $outer->orWhereExists(function ($sub) use ($lrTable) {

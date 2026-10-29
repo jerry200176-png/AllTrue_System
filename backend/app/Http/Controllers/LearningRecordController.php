@@ -1056,7 +1056,7 @@ class LearningRecordController extends Controller
             'ClassSessionID' => 'nullable|integer',
             'TeacherID' => 'required|integer',
             'Content' => 'nullable|string|max:65535',
-            'AttachmentUrl' => 'nullable|string|max:255',
+            'AttachmentUrl' => ['nullable', 'string', 'max:255', 'regex:#^(https?://|/(?!/))#i'], // #3824: http(s) or site-relative only
             'Subject' => 'nullable|string|max:32',
             'SessionDate' => 'nullable|date',
             'StartTime' => 'nullable|string|max:8',
@@ -1267,7 +1267,7 @@ class LearningRecordController extends Controller
     {
         $data = $request->validate([
             'Content' => 'nullable|string|max:65535',
-            'AttachmentUrl' => 'nullable|string|max:255',
+            'AttachmentUrl' => ['nullable', 'string', 'max:255', 'regex:#^(https?://|/(?!/))#i'], // #3824: http(s) or site-relative only
             'Subject' => 'nullable|string|max:32',
             'SessionDate' => 'nullable|date',
             'StartTime' => 'nullable|string|max:8',

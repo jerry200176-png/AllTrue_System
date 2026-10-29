@@ -141,6 +141,29 @@ class AssessmentAuthorSnapshotTest extends TestCase
         $this->assertFalse(\App\Support\LearningRecordMutableOwnership::isActionableOwner($lr->fresh(), $this->aId));
     }
 
+    public function test_ownership_pin_ends_when_the_record_moves_on_to_a_newer_teacher(): void
+    {
+        [$s, $lr] = $this->filled();
+        $s->update(['Status' => 'scheduled']);
+        DB::table('StudentSingIn')->where('ClassSessionID', $s->id)->delete();
+        $lr->update(['SessionDeducted' => false]);
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+        $own = \App\Support\LearningRecordMutableOwnership::class;
+        $this->assertFalse($own::canFollowCurrentCourseTeacher($lr->fresh())); // pinned while snapshot.new_teacher_id == TeacherID
+        $this->assertSame(1, DB::table('LearningRecord as lr')->where('lr.id', $lr->id)->where(fn ($q) => $own::constrainWhereTeacherIdIsHistoricalOwner($q, 'lr'))->count());
+
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['TeacherID' => $this->aId]); // a later change to a third/other teacher
+        $this->assertTrue($own::canFollowCurrentCourseTeacher($lr->fresh()), 'stale snapshot no longer pins');
+        $this->assertSame(0, DB::table('LearningRecord as lr')->where('lr.id', $lr->id)->where(fn ($q) => $own::constrainWhereTeacherIdIsHistoricalOwner($q, 'lr'))->count());
+    }
+
+    public function test_attachment_url_must_be_http_or_site_relative(): void
+    {
+        [$s, $lr] = $this->filled();
+        $body = ['StudentClassID' => $this->sc->ID, 'TeacherID' => $this->aId, 'Content' => 'x', 'AttachmentUrl' => 'javascript:alert(1)', 'SessionDate' => self::DATE];
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", $body)->assertStatus(422)->assertJsonValidationErrors('AttachmentUrl');
+    }
+
     public function test_teacher_comment_is_copied_into_the_snapshot_and_removed_from_the_live_row(): void
     {
         [$s, $lr] = $this->filled();
