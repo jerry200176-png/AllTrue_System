@@ -127,3 +127,31 @@ describe('帳務面板 · 標出並捲到你點開的那門課 (in-app #396)', (
     w.unmount();
   });
 });
+
+describe('帳務面板 · 整個學生開啟不標「其他課程」 (#3987)', () => {
+  const inv = { id: 1, student_class_id: 11, status: 'unpaid', outstanding_amount: 4400, total_amount: 4400, payments: [] };
+  async function mountWide(studentWide) {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't' }));
+    const payload = { summary: {}, scope: { student_class_id: 42 }, receipts: [], anomalies: [], invoices: [inv], courses: [course(11, '數學'), course(42, '英文')] };
+    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).startsWith('/api/v1/accounting/ledger')
+      ? { ok: true, status: 200, json: async () => payload } : { ok: false, status: 500, json: async () => ({}) })));
+    const w = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 42, branchId: 1, studentWide }, global: { stubs: { Transition: false } } });
+    await flushPromises();
+    return w;
+  }
+  it('course-scoped launch labels the sibling course invoice and focuses the card', async () => {
+    Element.prototype.scrollIntoView = () => {};
+    const w = await mountWide(false);
+    expect(w.find('[data-testid="ledger-other-course"]').exists()).toBe(true);
+    expect(w.find('[data-testid="contract-focused"]').exists()).toBe(true);
+    w.unmount();
+  });
+  it('student-wide launch labels nothing 其他課程 and focuses no card', async () => {
+    Element.prototype.scrollIntoView = () => {};
+    const w = await mountWide(true);
+    expect(w.find('[data-testid="ledger-other-course"]').exists()).toBe(false);
+    expect(w.find('[data-testid="contract-focused"]').exists()).toBe(false);
+    expect(w.text()).not.toContain('含其他課程');
+    w.unmount();
+  });
+});
