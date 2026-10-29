@@ -1500,9 +1500,10 @@
       <div v-for="snap in authorSnapshots" :key="snap.id" class="lr-director-note-body">
         <p class="lr-director-note-meta">{{ snap.author_teacher_name }} · {{ snap.created_at }}</p>
         <pre style="white-space:pre-wrap">{{ snap.payload?.Content }}</pre>
-        <p v-if="snap.payload?.Progress">進度：{{ snap.payload.Progress }}</p>
-        <p v-if="snap.payload?.NextHomework">作業：{{ snap.payload.NextHomework }}</p>
-        <p v-if="snap.payload?.Comment">備註：{{ snap.payload.Comment }}</p>
+        <template v-for="[key, label] in AUTHOR_SNAPSHOT_FIELDS" :key="key">
+          <p v-if="snap.payload?.[key]">{{ label }}：{{ snap.payload[key] }}</p>
+        </template>
+        <p v-if="snap.payload?.AttachmentUrl">附件：<a :href="snap.payload.AttachmentUrl" target="_blank" rel="noopener noreferrer">開啟附件</a></p>
         <p v-if="snap.payload?.teacher_comment?.content">給家長的話：{{ snap.payload.teacher_comment.content }}</p>
       </div>
     </AtDialog>
@@ -2490,6 +2491,10 @@ const feedbackDismissSaving = ref(false);
 const feedbackReplyError = ref('');
 
 /** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */
+const AUTHOR_SNAPSHOT_FIELDS = [
+  ['Progress', '進度'], ['NextHomework', '作業'], ['NextWeekTestScope', '下週考試範圍'], ['QuizScore', '測驗成績'],
+  ['HomeworkStatus', '作業完成度'], ['Performance', '課堂表現'], ['Comment', '備註'],
+];
 const showAuthorSnapshots = ref(false);
 const authorSnapshots = ref([]);
 const openAuthorSnapshots = async () => {

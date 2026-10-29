@@ -129,6 +129,18 @@ class AssessmentAuthorSnapshotTest extends TestCase
         $this->assertSame((int) $this->scB->ID, (int) $lr->fresh()->StudentClassID);
     }
 
+    public function test_new_teacher_stays_the_actionable_owner_after_the_body_is_cleared(): void
+    {
+        [$s, $lr] = $this->filled();
+        $s->update(['Status' => 'scheduled']);
+        DB::table('StudentSingIn')->where('ClassSessionID', $s->id)->delete();
+        $lr->update(['SessionDeducted' => false]);
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+        $this->assertFalse(\App\Support\LearningRecordMutableOwnership::canFollowCurrentCourseTeacher($lr->fresh()));
+        $this->assertTrue(\App\Support\LearningRecordMutableOwnership::isActionableOwner($lr->fresh(), $this->bId));
+        $this->assertFalse(\App\Support\LearningRecordMutableOwnership::isActionableOwner($lr->fresh(), $this->aId));
+    }
+
     public function test_teacher_comment_is_copied_into_the_snapshot_and_removed_from_the_live_row(): void
     {
         [$s, $lr] = $this->filled();

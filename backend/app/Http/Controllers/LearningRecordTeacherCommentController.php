@@ -33,19 +33,24 @@ class LearningRecordTeacherCommentController extends Controller
             return response()->json(['message' => '主任評語需為 1-500 字'], 422);
         }
 
-        $comment = LearningRecordTeacherComment::updateOrCreate(
-            ['learning_record_id' => (int) $learningRecord->id],
-            [
-                'student_id' => $ctx['student_id'],
-                'student_class_id' => $ctx['student_class_id'],
-                'class_session_id' => $ctx['class_session_id'],
-                'teacher_id' => $ctx['teacher_id'],
-                'campus_id' => $ctx['campus_id'],
-                'author_user_id' => $this->authUserId($request),
-                'content' => $content,
-                'last_read_by_teacher_at' => null,
-            ]
-        );
+        // #3824: same record lock as AssessmentAuthorSnapshot, so a teacher change cannot snapshot-and-delete a half-saved comment.
+        $comment = DB::transaction(function () use ($learningRecord, $ctx, $request, $content) {
+            DB::table('LearningRecord')->where('id', (int) $learningRecord->id)->lockForUpdate()->value('id');
+
+            return LearningRecordTeacherComment::updateOrCreate(
+                ['learning_record_id' => (int) $learningRecord->id],
+                [
+                    'student_id' => $ctx['student_id'],
+                    'student_class_id' => $ctx['student_class_id'],
+                    'class_session_id' => $ctx['class_session_id'],
+                    'teacher_id' => $ctx['teacher_id'],
+                    'campus_id' => $ctx['campus_id'],
+                    'author_user_id' => $this->authUserId($request),
+                    'content' => $content,
+                    'last_read_by_teacher_at' => null,
+                ]
+            );
+        });
 
         return response()->json([
             'comment' => $this->formatComment($comment),

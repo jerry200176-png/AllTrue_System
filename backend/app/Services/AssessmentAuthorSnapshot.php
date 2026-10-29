@@ -37,7 +37,7 @@ final class AssessmentAuthorSnapshot
                 $payload[$col] = $lr->getAttribute($col);
             }
             // ponytail: comment row is copied into the payload then removed (smallest safe: nothing lost, new teacher starts blank).
-            $comment = DB::table('learning_record_teacher_comments')->where('learning_record_id', $lr->id)->first();
+            $comment = DB::table('learning_record_teacher_comments')->where('learning_record_id', $lr->id)->lockForUpdate()->first();
             $payload['teacher_comment'] = $comment ? (array) $comment : null;
 
             (new LearningRecordAuthorSnapshot())->newQuery()->create([
