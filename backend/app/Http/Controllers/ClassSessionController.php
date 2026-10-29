@@ -2306,10 +2306,11 @@ class ClassSessionController extends Controller
             DB::table('StudentSingIn')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
             DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->update(['student_class_id' => $newId]);
             // #3824 Founder GO: a filled-but-unapproved assessment follows the new contract's teacher via snapshot + refill.
-            $lrBefore = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->first(['id', 'TeacherID', 'Status']);
+            $lrBefore = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->lockForUpdate()->first();
             $newContractTeacher = (int) $new->getAttribute('TeacherID');
             // An outstanding refill (snapshot already names the LR's current teacher, body still empty) follows a later transfer too.
             $pendingRefill = $lrBefore && (int) $lrBefore->TeacherID !== $newContractTeacher && strtolower((string) $lrBefore->Status) !== 'approved'
+                && !LearningRecordMutableOwnership::hasSubstantiveTeacherContent($lrBefore) // B already wrote: fall through to a new snapshot
                 && DB::table('learning_record_author_snapshots')->where('learning_record_id', $lrBefore->id)->where('new_teacher_id', (int) $lrBefore->TeacherID)->exists();
             if ($lrBefore && ($pendingRefill || \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, (int) $new->getAttribute('TeacherID'), (int) optional($request->attributes->get('auth_user'))->id ?: null, $reason))) {
                 DB::table('LearningRecord')->where('id', $lrBefore->id)->update(['TeacherID' => (int) $new->getAttribute('TeacherID')]);

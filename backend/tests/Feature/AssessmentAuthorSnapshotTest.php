@@ -177,6 +177,22 @@ class AssessmentAuthorSnapshotTest extends TestCase
         $this->assertSame(1, LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->count());
     }
 
+    public function test_second_contract_transfer_after_b_wrote_snapshots_bs_content(): void
+    {
+        [$s, $lr] = $this->filled();
+        $c = User::create(['LoginName' => 'teacherc2@snap3824.example.com', 'Name' => 'teacherc2', 'PSW' => 'x', 'type' => 'T',
+            'phone' => '0933333333', 'MustChangePassword' => false, 'TeachingSessionCount' => 0]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $c->id, 'Admin' => 0, 'Approved' => 1]);
+        $scC = StudentClass::create($this->scB->only(['StudentID', 'GradeID', 'SubjectID', 'by1', 'Period', 'StartDate', 'TotalHours', 'Charge', 'Rate', 'SessionCount', 'RemainingSessions', 'SessionDuration', 'week', 'time', 'class_type', 'ScheduleMode', 'Stop', 'Paid']) + ['TeacherID' => $c->id, 'MDT' => now()]);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/reassign-contract", ['new_student_class_id' => $this->scB->ID, 'reason' => 'one'])->assertOk();
+        LearningRecord::whereKey($lr->id)->update(['Content' => 'B 的正文']);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/reassign-contract", ['new_student_class_id' => $scC->ID, 'reason' => 'two'])->assertOk();
+        $this->assertSame(2, LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->count());
+        $this->assertSame('B 的正文', LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->orderByDesc('id')->first()->payload['Content']);
+        $this->assertSame('', $lr->fresh()->Content);
+        $this->assertSame((int) $c->id, (int) $lr->fresh()->TeacherID);
+    }
+
     public function test_teacher_comment_is_copied_into_the_snapshot_and_removed_from_the_live_row(): void
     {
         [$s, $lr] = $this->filled();
