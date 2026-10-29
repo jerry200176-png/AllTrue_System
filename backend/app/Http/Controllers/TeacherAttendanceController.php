@@ -235,7 +235,7 @@ class TeacherAttendanceController extends Controller
             // #4144: a retried identical 補卡 (double click, flaky network) must not stack a second audit row. It is a retry only
             // when the latest row is the same actor, reason and times within 2 minutes; anything else is its own audit entry.
             // ponytail: no client Idempotency-Key on this endpoint; add one if the window proves too loose.
-            $signin = TeacherSignIn::query()->whereKey($signin->id)->lockForUpdate()->firstOrFail();
+            $signin = TeacherSignIn::query()->whereKey($signin->id)->lockForUpdate()->first();
             $same = fn ($a, $b) => ($a === null && $b === null) || ($a !== null && $b !== null && Carbon::parse($a)->equalTo(Carbon::parse($b)));
             $last = TeacherSignInAdjustment::query()->where('teacher_signin_id', $signin->id)->orderByDesc('id')->first();
             $recent = $last && TeacherSignInAdjustment::query()->whereKey($last->id)->whereRaw('created_at >= NOW() - INTERVAL 2 MINUTE')->exists(); // DB clock, as created_at uses
