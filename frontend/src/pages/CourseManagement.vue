@@ -5446,7 +5446,6 @@ const submitBackfill = async () => {
       body: JSON.stringify({
         StudentClassID: createdCourseId,
         TeacherID: Number(form.teacher_id),
-        DirectorID: Number(directorId),
         session_dates: selectedLegacyDates,
       })
     }, token);

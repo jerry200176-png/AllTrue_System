@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import TuitionDocActions from '../TuitionDocActions.vue';
 
 // #3894 — 繳費單／收據固定兩顆入口；synthetic rows only. Per-state outcomes for real API rows: SlipReceiptStateContract.test.js.
@@ -44,5 +46,14 @@ describe('TuitionDocActions', () => {
     await w.get('[data-testid="tc-doc-ledger"]').trigger('click');
     expect(w.emitted('ledger')).toHaveLength(1);
     expect(w.emitted('slip')).toBeUndefined();
+  });
+  // #3924: monthly-package alert rows come back with id null; the page's `receiptLoading` also starts at null.
+  it('a monthly-package row (id null) is disabled with its own reason, not as a stuck "busy" lookup', () => {
+    const w = mk({ id: null, payment_status: 'monthly_due_soon' });
+    expect([t(w, 'receipt'), why(w, 'receipt')]).toEqual([true, '共用方案收據請至成員課程查看']);
+  });
+  it('the page only reports busy for the row whose lookup is running, never when receiptLoading is idle (null)', () => {
+    const page = readFileSync(resolve(process.cwd(), 'src/pages/TuitionCollectionPage.vue'), 'utf8');
+    expect(page).toContain(':busy="receiptLoading !== null && receiptLoading === r.id"');
   });
 });

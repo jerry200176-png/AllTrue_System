@@ -31,7 +31,7 @@
     "sort-packages": true,
     "platform-check": false,
     "platform": {
-      "php": "8.2.30"
+      "php": "8.2.35"
     },
     "allow-plugins": {
       "pestphp/pest-plugin": true
