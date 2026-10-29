@@ -202,7 +202,8 @@ class LineWebhookController extends Controller
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             // 不論是查無此人、手機不符、未登記手機或在他校，都回同一句：避免用回覆文字探測學生是否存在（no enumeration）。
             // 精確原因仍由 ParentBindingObservability 記錄給分校（綁定管理）。
-            $message = $c['reasonCode'] === ParentBindingCodes::INVALID_INPUT
+            // 格式錯誤只看輸入本身（手機沒有任何數字），不看查詢結果，否則回覆差異會洩漏學生是否存在。
+            $message = $normalized === ''
                 ? "綁定格式錯誤，請輸入「綁定 學生姓名 手機號碼」，例如：綁定 王小明 0912345678。"
                 : $this->bindMismatchReply($campus, '綁定 王小明 0912345678');
             $this->replyMessage($replyToken, $message, $campus);
@@ -239,9 +240,10 @@ class LineWebhookController extends Controller
         $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
-            $message = $c['reasonCode'] === ParentBindingCodes::INVALID_INPUT
-                ? "綁定格式錯誤，請輸入「綁定 學生代號 手機號碼」，例如：綁定 {$studentId} 0912345678。"
-                : $this->bindMismatchReply($campus, "綁定 {$studentId} 0912345678");
+            // 格式錯誤只看輸入本身（手機沒有任何數字），不看查詢結果，否則回覆差異會洩漏學生是否存在。
+            $message = $normalized === ''
+                ? "綁定格式錯誤，請輸入「綁定 學生代號 手機號碼」，例如：綁定 1234 0912345678。"
+                : $this->bindMismatchReply($campus, '綁定 1234 0912345678');
             $this->replyMessage($replyToken, $message, $campus);
             return;
         }
