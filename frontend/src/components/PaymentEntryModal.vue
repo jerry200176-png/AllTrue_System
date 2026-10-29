@@ -194,7 +194,7 @@ async function submit() {
     }
     // Pay the bill whose outstanding prefilled the amount (payable_invoice_id), not a display invoice_id (#3875, #3888).
     const invoiceId = props.row.payable_invoice_id ?? props.row.invoice_id;
-    if (invoiceId && !legacyBackfill.value) { // the backfill picks the open bill on the server, as confirm does
+    if (invoiceId) { // the backfill pays the bill shown too (#4367), so the server cannot pick another
       body.invoice_id = invoiceId;
     }
     if (form.payment_method === 'transfer' && form.account_last5) {
