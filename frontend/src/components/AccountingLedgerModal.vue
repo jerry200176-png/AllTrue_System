@@ -26,6 +26,10 @@
         <div v-if="loading" class="ledger-state">載入中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
+          <div v-if="actionError" class="ledger-state ledger-error" role="alert" data-testid="ledger-action-error">
+            {{ actionError }} 下方是已重新讀取的最新帳務，確認後再操作。
+            <button type="button" data-testid="ledger-action-reload" @click="loadLedger()">重新整理</button>
+          </div>
           <PaymentAllocation
             v-if="allocating"
             :student-name="payload.student?.name || '學生'"
@@ -396,6 +400,8 @@ watch(() => props.show, async (open) => {
 
 const loading = ref(false);
 const error = ref('');
+// #4551: a failed action (void report/invoice) is not a failed load: keep the ledger on screen, reread it, show the reason.
+const actionError = ref('');
 const payload = ref(null);
 const busyReportId = ref(null);
 const busyInvoiceId = ref(null);
@@ -501,6 +507,7 @@ async function loadLedger() {
 
   loading.value = true;
   error.value = '';
+  actionError.value = '';
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
@@ -910,7 +917,9 @@ async function voidReport(reportId) {
     await loadLedger();
     emit('changed');
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e.message || '撤銷失敗');
+    const msg = humanizeApiErrorMessage(e.message || '撤銷失敗');
+    await loadLedger(); // the outcome may be uncertain (network/5xx): reread the authoritative ledger before the next write
+    if (!error.value) actionError.value = msg;
   } finally {
     busyReportId.value = null;
   }
@@ -935,7 +944,9 @@ async function voidInvoice(invoice, mode) {
     await loadLedger();
     emit('changed');
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e.message || `${actionLabel}失敗`);
+    const msg = humanizeApiErrorMessage(e.message || `${actionLabel}失敗`);
+    await loadLedger(); // the outcome may be uncertain (network/5xx): reread the authoritative ledger before the next write
+    if (!error.value) actionError.value = msg;
   } finally {
     busyInvoiceId.value = null;
   }

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-ledger-action-error
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 撤銷收款或作廢帳單失敗時，帳務畫面不再消失
+    summary: 操作失敗時會留住學生帳務畫面、顯示原因，並自動重新讀取最新資料。
+    items:
+      - category: fixed
+        text: 撤銷收款或作廢帳單被拒絕時，原本的課程卡和操作區不再整個消失；原因顯示在上方，並附「重新整理」。
+      - category: fixed
+        text: 失敗後系統會先重新讀取最新帳務，請確認畫面上的狀態再決定下一步，不要直接重送。
+    source_refs:
+      - "changelog:2026-10-29:ledger-action-error-and-secret-guard"
