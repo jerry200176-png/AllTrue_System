@@ -1,0 +1,4 @@
+## 2026-10-29 — chore(ops): contract charge correction case 4138 (4050/4051 455 to 9100, Founder-approved)
+<!-- release-notes: silent_ship=silent-2026-10-29-pop-contract-charge-correction-4138 -->
+<!-- silent-reason: data repair manifest and workflow input; runs only after Founder approval -->
+- `ContractChargeCorrectionStrategy` gains the manifests `repair-contract-charge-4138-20261029` and `rollback-contract-charge-4138-20261029`: StudentClass 4050 and 4051 Charge 455 to 9100 (Rate × 20), nothing else written. The campus-2 director had keyed the per-lesson price as the total. `pop-contract-charge-correction-3868.yml` gains a `contract_case` input (3868 or 4138) that selects the manifest, confirm phrase, approval reference and idempotency key. Same operation, guards and audit. Runbook: `docs/incidents/RM-CONTRACT-CHARGE-CORRECTION-3868.md` §Case 4138. Refs #4138
