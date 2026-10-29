@@ -1432,7 +1432,7 @@ const approveEvaluation = async (evalItem) => {
     const res = await fetch(`${baseUrl}/v1/learning-records/${evalItem.id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ DirectorID: session?.user?.id }),
+      body: JSON.stringify({}),
     });
     if (res.ok) {
       pendingEvaluations.value = pendingEvaluations.value.filter(e => e.id !== evalItem.id);
