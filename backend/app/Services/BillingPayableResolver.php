@@ -154,7 +154,7 @@ class BillingPayableResolver
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason'])
+            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason', 'billing_snapshot'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
@@ -264,7 +264,7 @@ class BillingPayableResolver
         // Prefer an invoice that still has a balance when the worst period holds several.
         $currentInvoiceId = $current ? (int) (end($current['open_invoice_ids']) ?: end($current['invoice_ids']) ?: 0) : 0;
         // A non-free course whose non-void invoices are all zero-value is not settled: review.
-        $zeroValueOnly = !$hasBillableInvoice; // free courses already returned above
+        $zeroValueOnly = !$hasBillableInvoice && !$invoices->contains(fn ($invoice) => $invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: a full-discount NT$0 term is settled, not review // free courses already returned above
 
         return $result(
             ($unattributed !== [] || $monthlyReview || $zeroValueOnly) ? 'review_required' : ($worst['status'] ?? 'paid'),

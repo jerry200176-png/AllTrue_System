@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-full-discount-settled
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 全額折扣的續約算已繳清
+    summary: 折扣後學費是零的續約不會再顯示未繳；免費／贈送也會記下是誰核准。
+    items:
+      - category: fixed
+        text: 折扣到 NT$0 的續約，帳務中心不再顯示「待登記」。
+      - category: improved
+        text: 免費／贈送的帳單會記下核准人與時間。
+    source_refs:
+      - "changelog:2026-10-29:full-discount-settled"

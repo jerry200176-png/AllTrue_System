@@ -117,7 +117,8 @@ class InvoiceAmountReconciliationService
             $periodStart = $billing['period_start'];
             $periodEnd = $billing['period_end'];
             $amountDiscrepancy = $billing['source'] === 'billable_sessions'
-                && $computedTotalAmount !== $storedTotalAmount;
+                && $computedTotalAmount !== $storedTotalAmount
+                && !($invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: an evidenced full discount is NT$0 by decision, not a discrepancy
 
             $repriceable = $billing['source'] === 'billable_sessions'
                 && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
