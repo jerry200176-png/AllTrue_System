@@ -612,13 +612,13 @@ class PaymentReportController extends Controller
         $userId = $request->attributes->get('auth_user_id');
         // Founder GO 2026-10-21: 已收過，補登收款 for a legacy-flag-only course (Paid=1, no payment record).
         if ($request->boolean('legacy_flag_backfill')) {
-            if ($freeGift || !empty($data['invoice_id']) || !empty($data['replaces_invoice_id'])) {
-                return response()->json(['message' => '補登收款不能同時指定帳單、更正或標記免費。沒有登記任何款項。', 'code' => 'legacy_backfill_conflict'], 422);
+            if ($freeGift || !empty($data['replaces_invoice_id'])) {
+                return response()->json(['message' => '補登收款不能同時指定更正或標記免費。沒有登記任何款項。', 'code' => 'legacy_backfill_conflict'], 422);
             }
             $request->validate(['idempotency_key' => 'required|uuid']);
             $actorId = $request->attributes->get('auth_user')?->id;
 
-            return $this->recordLegacyFlagBackfill($request, $data, (int) $sc->getKey(), $actorId === null ? null : (int) $actorId);
+            return $this->recordLegacyFlagBackfill($request, $data, (int) $sc->getKey(), $actorId === null ? null : (int) $actorId, empty($data['invoice_id']) ? null : (int) $data['invoice_id']);
         }
         // #4132 Codex P1: feature gate + campus auth before tutoring/zero-fee classification.
         if (!empty($data['replaces_invoice_id'])) {
@@ -793,7 +793,7 @@ class PaymentReportController extends Controller
      *
      * @param array<string, mixed> $data
      */
-    private function recordLegacyFlagBackfill(Request $request, array $data, int $courseId, ?int $userId)
+    private function recordLegacyFlagBackfill(Request $request, array $data, int $courseId, ?int $userId, ?int $invoiceId = null)
     {
         $tokenHash = hash('sha256', "legacy-flag-backfill|{$courseId}|" . $data['idempotency_key']);
         // Routing read and campus refusal before the transaction, so a caller outside the campus never takes a lock.
@@ -803,7 +803,7 @@ class PaymentReportController extends Controller
         }
         $lockIds = $this->legacyFlagCourseIds($routing);
 
-        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash, $lockIds) {
+        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash, $lockIds, $invoiceId) {
             [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds);
             if ($denied = $this->legacyFlagAccessRefusal($request, $course)) { // again on the locked row
                 return $denied;
@@ -815,6 +815,11 @@ class PaymentReportController extends Controller
             }
             if ($refusal = $this->legacyFlagRefusal($course, $standingReport)) {
                 return $refusal;
+            }
+            // #4367: pay the bill the director saw, not whichever pickOpenInvoice() finds first; it must be this course's, live and owing.
+            $picked = $invoiceId === null ? null : Invoice::where('id', $invoiceId)->where('StudentClassID', $courseId)->lockForUpdate()->first();
+            if ($invoiceId !== null && (!$picked || (string) $picked->Status === 'void' || (int) $this->invoiceProjection($picked, $course)['outstanding_amount'] <= 0)) {
+                return response()->json(['message' => '指定的帳單不存在、已作廢或已收齊，請重新載入後再補登。沒有登記任何款項。', 'code' => 'legacy_backfill_invoice_stale'], 422);
             }
             if ((int) $data['amount'] <= 0) {
                 return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
@@ -828,7 +833,7 @@ class PaymentReportController extends Controller
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit], 422);
                 }
             }
-            $report = $this->createPendingReport($course, $data, null, $tokenHash);
+            $report = $this->createPendingReport($course, $data, $picked?->id, $tokenHash);
             $confirmed = $this->confirm($request, $report->id, true); // the backfill already holds the course lock
             if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
