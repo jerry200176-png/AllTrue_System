@@ -207,7 +207,7 @@ class BillingPayableResolver
         $zeroFee = !$isPackageMember && (!$monthlyReview || $markedFree) && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
         // #4005 (Founder 2026-10-29): an unmarked zero-fee course is settled only while nothing is owed: a live priced amendment or a
         // positive bill line (also on another invoice, e.g. a member bill) is fee evidence, so the verdict falls through to review/unbilled.
-        if ($zeroFee && !$tutoring && Invoice::courseHasBillEvidence($course)) {
+        if ($zeroFee && !$tutoring && Invoice::courseHasBillEvidence($course, true)) {
             $zeroFee = false;
         }
         if ($tutoring || $zeroFee) {

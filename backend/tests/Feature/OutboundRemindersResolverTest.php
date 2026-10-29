@@ -87,6 +87,33 @@ class OutboundRemindersResolverTest extends TestCase
         $this->assertTrue($this->reminded());
     }
 
+    /** #4005 review: a linked member bill its payments fully cover does not bring a zero-fee course back into the reminders. */
+    public function test_zero_fee_course_with_a_fully_paid_member_bill_line_stays_settled(): void
+    {
+        $course = $this->course(0, 0);
+        $bill = Invoice::create(['StudentID' => $course->StudentID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-15', 'Note' => '',
+            'TotalAmount' => 1500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        \App\Models\InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $course->ID, 'Description' => 'member', 'Amount' => 1500]);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 1500, 'PaidAt' => '2026-08-05', 'Method' => 'cash']);
+
+        $this->assertSame(0, $this->dunned());
+        $this->assertFalse($this->reminded());
+    }
+
+    /** #3985 review: the rollback switch keeps the legacy (stored Status) window. */
+    public function test_monthly_window_keeps_the_legacy_query_when_the_outbound_switch_is_off(): void
+    {
+        config(['billing.paid_status_outbound_notifications' => false]);
+        \Carbon\Carbon::setTestNow('2026-10-10 09:00:00');
+        $course = $this->course(3000, 750);
+        $course->update(['ScheduleMode' => 'date', 'settlement_day' => 28, 'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31']);
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01', 'DueDate' => '2026-10-12',
+            'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => '2026-10']);
+        $kept = \App\Services\NotificationSyncService::withinTuitionReminderWindow(new \Illuminate\Database\Eloquent\Collection([$course->fresh()]));
+        \Carbon\Carbon::setTestNow();
+        $this->assertCount(0, $kept);
+    }
+
     /** #3985 (Founder 2026-10-29): the monthly reminder window follows the verdict's open period, not the stored invoice Status. */
     public function test_monthly_window_follows_the_verdict_open_period_not_the_stored_status(): void
     {

@@ -465,6 +465,31 @@ class CoursePackageMonthlyBillingTest extends TestCase
         $this->assertSame(0, (int) $row['outstanding']);
     }
 
+    /** #3985 review: a course of another student with a stale PackageID never changes this package's row. */
+    public function test_a_foreign_course_with_a_stale_package_id_does_not_reopen_the_package_row(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $t1 = $this->makeTeacher();
+        $this->ensureSubjects();
+        $pkgId = (int) $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/course-packages/create-multi-subject', [
+                'student_id' => $student->id, 'branch_id' => 1, 'name' => '外來成員方案', 'payment_type' => 'monthly', 'rate' => 800,
+                'settlement_day' => (int) Carbon::today()->day,
+                'subjects' => [['subject_id' => 1, 'teacher_id' => $t1->id, 'duration_hours' => 2], ['subject_id' => 2, 'teacher_id' => $t1->id, 'duration_hours' => 2]],
+            ])->assertStatus(201)->json('package_id');
+        \App\Models\CoursePackage::query()->whereKey($pkgId)->update(['paid' => 1]);
+        $member = StudentClass::where('PackageID', $pkgId)->firstOrFail();
+        $foreign = $member->replicate();
+        $foreign->StudentID = $this->makeStudent(1)->id;
+        $foreign->save();
+        $foreign->forceFill(['PackageID' => $pkgId])->save();
+        \App\Models\Invoice::create(['StudentID' => $foreign->StudentID, 'StudentClassID' => $foreign->ID, 'IssueDate' => Carbon::today()->toDateString(), 'DueDate' => Carbon::today()->toDateString(),
+            'TotalAmount' => 1600, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => Carbon::today()->format('Y-m')]);
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('package_id', $pkgId);
+        $this->assertTrue($row['paid'], 'the foreign unpaid course must not flip the package to unpaid');
+    }
+
     // ─── 回歸：堂數制多科方案仍然以原有邏輯運作 ──────────
 
     public function test_count_mode_multi_subject_package_unchanged(): void

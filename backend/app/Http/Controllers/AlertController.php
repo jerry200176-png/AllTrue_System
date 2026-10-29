@@ -243,11 +243,14 @@ class AlertController extends Controller
 
             // #3985 (Founder 2026-10-29): the members' billing verdict, not the package flag or an open invoice alone, decides
             // whether the package row still owes (the window then follows its settlement day).
-            $memberVerdicts = $this->payableResolver->courseStatusesByStudentClassIds($allMemberScIds->map(fn ($id) => (int) $id)->all());
+            $ownerOf = $monthlyPkgs->pluck('student_id', 'id'); // a course with a stale PackageID of another student never feeds the verdict
+            $ownMemberIds = StudentClass::whereIn('PackageID', $monthlyPkgs->pluck('id'))->get(['ID', 'PackageID', 'StudentID'])
+                ->filter(fn ($m) => (int) $m->StudentID === (int) $ownerOf[(int) $m->PackageID])->pluck('ID')->map(fn ($id) => (int) $id)->all();
+            $memberVerdicts = $this->payableResolver->courseStatusesByStudentClassIds($ownMemberIds);
 
             foreach ($monthlyPkgs as $pkg) {
                 $members = $membersByPkg->get($pkg->id, collect());
-                $statuses = $members->map(fn ($m) => $memberVerdicts[(int) $m->ID]['status'] ?? null);
+                $statuses = $members->filter(fn ($m) => isset($memberVerdicts[(int) $m->ID]))->map(fn ($m) => $memberVerdicts[(int) $m->ID]['status']);
                 $pkgPaid = $statuses->contains(fn ($s) => in_array($s, ['unpaid', 'partial', 'unbilled'], true)) ? false
                     : ($statuses->isNotEmpty() && $statuses->every(fn ($s) => in_array($s, ['paid', 'free'], true)) ? true : (bool) $pkg->paid);
                 $monthlySessions = $members->sum(fn ($m) => $memberSessionCounts[(int) $m->ID] ?? 0);

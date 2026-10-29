@@ -88,11 +88,12 @@ class Invoice extends Model
     }
 
     /** #4005: priced evidence beyond the course's own columns: a live priced amendment, or a positive live bill (line) naming the course. */
-    public static function courseHasBillEvidence(StudentClass $course): bool
+    public static function courseHasBillEvidence(StudentClass $course, bool $openOnly = false): bool
     {
         return StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists()
             || self::query()->scopes('notVoided')->where(fn ($q) => $q->where(fn ($a) => $a->where('StudentClassID', $course->ID)->where('TotalAmount', '>', 0)) // a positive bill on the course itself
-                ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))->exists();
+                ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))
+            ->when($openOnly, fn ($q) => $q->whereRaw('Invoice.TotalAmount > ' . self::netPaidSql()))->exists(); // $openOnly: a bill its payments already cover is no reason to remind
     }
 
     public function scopeNotVoided($query)
