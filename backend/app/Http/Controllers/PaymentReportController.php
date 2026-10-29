@@ -817,7 +817,7 @@ class PaymentReportController extends Controller
                 return $refusal;
             }
             // #4367: pay the bill the director saw, not whichever pickOpenInvoice() finds first; it must be this course's, live and owing.
-            $picked = $invoiceId === null ? null : Invoice::where('id', $invoiceId)->where('StudentClassID', $courseId)->lockForUpdate()->first();
+            $picked = $invoiceId === null ? null : Invoice::query()->where("id", $invoiceId)->where("StudentClassID", $courseId)->lockForUpdate()->first();
             if ($invoiceId !== null && (!$picked || (string) $picked->Status === 'void' || (int) $this->invoiceProjection($picked, $course)['outstanding_amount'] <= 0)) {
                 return response()->json(['message' => '指定的帳單不存在、已作廢或已收齊，請重新載入後再補登。沒有登記任何款項。', 'code' => 'legacy_backfill_invoice_stale'], 422);
             }
