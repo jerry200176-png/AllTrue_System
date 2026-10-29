@@ -80,6 +80,25 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->clear($token, $this->legacyCourse(1, ['ClassType' => 'trial']))->assertStatus(422)->assertJsonPath('code', 'legacy_flag_trial_fee'); // #4339 trial fee by date
     }
 
+    public function test_backfill_pays_the_bill_the_director_chose_and_refuses_a_stale_or_foreign_one(): void // #4367
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1);
+        $mk = fn (int $classId, int $total, string $date, string $status = 'unpaid') => Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $classId,
+            'IssueDate' => $date, 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status]);
+        $first = $mk($course->ID, 5000, '2026-09-01');
+        $chosen = $mk($course->ID, 3000, '2026-10-01');
+        $void = $mk($course->ID, 3000, '2026-10-02', 'void');
+        $foreign = $mk($this->legacyCourse(1)->ID, 3000, '2026-10-01');
+        foreach ([$void->id, $foreign->id, 999999] as $bad) {
+            $this->backfill($token, $course, ['amount' => 3000, 'invoice_id' => $bad])->assertStatus(422)->assertJsonPath('code', 'legacy_backfill_invoice_stale');
+        }
+        $this->assertSame([0, 0], [PaymentReport::count(), Payment::count()]);
+        $this->backfill($token, $course, ['amount' => 3000, 'invoice_id' => $chosen->id])->assertOk()->assertJsonPath('invoice_id', $chosen->id);
+        $this->assertSame(3000, (int) Payment::where('InvoiceID', $chosen->id)->sole()->Amount);
+        $this->assertSame(0, Payment::where('InvoiceID', $first->id)->count());
+    }
+
     public function test_both_actions_refuse_a_course_with_a_real_payment(): void
     {
         $token = $this->token('A', [1]);

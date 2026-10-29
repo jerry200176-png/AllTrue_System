@@ -161,4 +161,13 @@ describe('PaymentEntryModal legacy-backfill mode (補登收款)', () => {
     expect(first.idempotency_key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(retry.idempotency_key).toBe(first.idempotency_key);
   });
+  it('sends the invoice id of the bill shown, so the server cannot pick another (#4367)', async () => {
+    wrapper = mount(PaymentEntryModal, { props: { show: false, row: { ...row, invoice_id: 77, payable_status: 'invoiced', payable_amount: 3000, payable_outstanding: 3000 }, mode: 'legacy-backfill' } });
+    await wrapper.setProps({ show: true });
+    await nextTick();
+    authedFetch.mockResolvedValueOnce(respond({ status: 'confirmed' }));
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(posted()[0][1]).toMatchObject({ legacy_flag_backfill: true, invoice_id: 77 });
+  });
 });
