@@ -100,6 +100,20 @@ class OutboundRemindersResolverTest extends TestCase
         $this->assertFalse($this->reminded());
     }
 
+    /** #4005 security review: a stale 免費／贈送 mark beside a real open member bill must not hide the debt. */
+    public function test_a_marked_gift_bill_beside_an_open_positive_member_bill_still_reminds(): void
+    {
+        $course = $this->course(0, 0);
+        Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-07-01', 'DueDate' => '2026-07-15', 'Note' => '',
+            'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'billing_period' => '2026-07', 'zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $bill = Invoice::create(['StudentID' => $course->StudentID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-15', 'Note' => '',
+            'TotalAmount' => 1500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        \App\Models\InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $course->ID, 'Description' => 'member', 'Amount' => 1500]);
+
+        $this->assertNotSame('free', app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$course->ID], [$course])[$course->ID]['status']);
+        $this->assertSame(1, $this->dunned());
+    }
+
     /** #3985 review: the rollback switch keeps the legacy (stored Status) window. */
     public function test_monthly_window_keeps_the_legacy_query_when_the_outbound_switch_is_off(): void
     {
