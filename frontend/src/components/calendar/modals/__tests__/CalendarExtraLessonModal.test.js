@@ -20,20 +20,22 @@ describe('CalendarExtraLessonModal', () => {
     const selects = w.findAll('select');
     await selects[3].trigger('change'); // 時長 select（subject/teacher/class_type 之後）
     expect(w.emitted('duration-change')).toHaveLength(1);
-    await w.find('.primary').trigger('click');
+    await w.find('.at-submit').trigger('click');
     expect(w.emitted('submit')).toHaveLength(1);
   });
   it('#2677 pending DOM blocks repeat and close, disables editable payload fields', async () => {
     const w = mount(CalendarExtraLessonModal, { props: { show: true, form: { ...form }, ready: true, check: { can_add: true, is_ended: false }, submitting: true } });
-    expect(w.find('.primary').element.disabled).toBe(true);
-    await w.find('.primary').trigger('click'); await w.find('.ghost').trigger('click'); await w.find('.modal-overlay').trigger('click');
+    // Pending keeps focus (aria-disabled + aria-busy) but still blocks a repeat submit.
+    expect(w.find('.at-submit').attributes('aria-disabled')).toBe('true');
+    expect(w.find('.at-submit').attributes('aria-busy')).toBe('true');
+    await w.find('.at-submit').trigger('click'); await w.find('.ghost').trigger('click'); await w.find('.modal-overlay').trigger('click');
     expect(w.emitted('submit')).toBeUndefined(); expect(w.emitted('close')).toBeUndefined();
     for (const control of w.findAll('input,select')) expect(control.element.disabled).toBe(true);
   });
   it('#2677 invalid or mismatched check leaves submit disabled in rendered DOM', async () => {
     const w = mount(CalendarExtraLessonModal, { props: { show: true, form: { ...form }, check: { can_add: true, is_ended: false }, ready: false } });
-    expect(w.find('.primary').element.disabled).toBe(true);
-    await w.setProps({ ready: true }); expect(w.find('.primary').element.disabled).toBe(false);
-    await w.setProps({ checkError: 'Malformed' }); expect(w.find('.primary').element.disabled).toBe(true);
+    expect(w.find('.at-submit').element.disabled).toBe(true);
+    await w.setProps({ ready: true }); expect(w.find('.at-submit').element.disabled).toBe(false);
+    await w.setProps({ checkError: 'Malformed' }); expect(w.find('.at-submit').element.disabled).toBe(true);
   });
 });

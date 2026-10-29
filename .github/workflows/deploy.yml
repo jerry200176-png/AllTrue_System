@@ -21,7 +21,8 @@ on:
   # delays many scheduled runs, so the same kick also runs at the end of every merge's own
   # run whose range waits for a train: it dispatches only when a window has passed, no train
   # has asked for approval or deployed since that window, and no train or approval is pending.
-  # A train still stands down if a deploy run is already waiting for approval.
+  # A train still stands down if a deploy run is already waiting for approval, unless that run is
+  # a train on an older commit: the new train cancels it once its own tip is green (#3992).
   schedule:
     - cron: '17 4 * * *'
     - cron: '17 10 * * *'
@@ -110,6 +111,7 @@ jobs:
         run: |
           python3 scripts/tests/test_deploy_activation_state.py
           python3 scripts/tests/test_principal_rotation_grant_replay.py
+          python3 scripts/tests/test_post_deploy_watch.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -117,10 +119,16 @@ jobs:
     if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'release-train' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45 # #3643 bounded wait for the tip CI
+    permissions:
+      contents: read
+      actions: write # #3992: cancel a stale release train waiting for approval; never approves
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
       superseded: ${{ steps.resolve.outputs.superseded }}
       release_train: ${{ steps.resolve.outputs.release_train }}
+      # true: main may move past the target; the executor gates then require main to contain
+      # it and the Pi never downgrades (train semantics). Missing = exact-main (fail safe).
+      may_trail_main: ${{ steps.resolve.outputs.may_trail_main }}
       flag_changes: ${{ steps.resolve.outputs.flag_changes }}
     steps:
       - name: Validate target SHA and CI evidence
@@ -136,6 +144,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || inputs.target_sha }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -153,6 +162,22 @@ jobs:
           done
           echo "flag_changes=${FLAG_CHANGES:-none}" >> "$GITHUB_OUTPUT"
           [[ -z "$FLAG_CHANGES" ]] || echo "::warning title=Feature-flag change requested::${FLAG_CHANGES}"
+          # #3643/#3992: the land queue merges often, so a commit's main CI may still be running.
+          # Wait (bounded, ~40 min) while a main CI run for $1 is unfinished; true once one is green.
+          main_ci_green() {
+            local ok pending
+            for _ in $(seq 1 40); do
+              ok="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=$1&status=completed&per_page=100" \
+                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
+              [[ "$ok" -ge 1 ]] && return 0
+              pending="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=$1&per_page=100" \
+                --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+              [[ "$pending" -ge 1 ]] || return 1
+              sleep 60
+            done
+            return 1
+          }
+          stand_down() { echo "::notice::$1"; echo "superseded=true" >> "$GITHUB_OUTPUT"; exit 0; }
           RELEASE_TRAIN=false
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then
             RELEASE_TRAIN=true
@@ -162,35 +187,28 @@ jobs:
                 exit 1
               fi
             done
-            # A retry stands down while another deploy run already waits for approval,
-            # so the Founder never sees the waiting train cancelled under them.
-            WAITING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?status=waiting&per_page=5" \
-              --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")"
-            if [[ "$WAITING" -ge 1 ]]; then
-              echo "::notice::Release train: another deploy run is already waiting for approval; standing down."
-              echo "superseded=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
             # The train offers only the run's own head_sha (main at trigger time): deploy
-            # provenance is keyed on it. If its main CI is not green yet, wait for the next
+            # provenance is keyed on it. If its main CI does not turn green, wait for the next
             # train instead of offering any other commit.
             TIP="$RUN_HEAD_SHA"
-            # #3643: the land queue merges often, so the tip's CI may still be running. Wait (bounded,
-            # ~40 min) while a main CI run for TIP is unfinished; never switch to another commit.
-            for _ in $(seq 1 40); do
-              OK="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=completed&per_page=100" \
-                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and .conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
-              [[ "$OK" -ge 1 ]] && break
-              PENDING="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&per_page=100" \
-                --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
-              [[ "$PENDING" -ge 1 ]] || break
-              sleep 60
+            main_ci_green "$TIP" || stand_down "Release train: main tip ${TIP} has no successful main CI yet; nothing to offer this time."
+            # A retry stands down while another deploy run already waits for approval, except
+            # (#3992) a release train waiting on a commit TIP strictly contains: TIP is green, so
+            # that request is stale. Cancel it (never approve it) and offer TIP instead.
+            WAITING="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?status=waiting&per_page=100" \
+              --jq ".workflow_runs[] | select(.id != ${RUN_ID}) | \"\(.id):\(.head_sha):\(.display_title == \"Release train\")\"")"
+            STALE=""
+            for row in $WAITING; do
+              IFS=: read -r id head train <<< "$row"
+              [[ "$train" == "true" && "$(gh api "/repos/${REPO}/compare/${head}...${TIP}" --jq '.status')" == "ahead" ]] ||
+                stand_down "Release train: another deploy run is already waiting for approval; standing down."
+              STALE="$STALE $id"
             done
-            if [[ "$OK" -lt 1 ]]; then
-              echo "::notice::Release train: main tip ${TIP} has no successful main CI yet; nothing to offer this time."
-              echo "superseded=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            for id in $STALE; do
+              gh api -X POST "/repos/${REPO}/actions/runs/${id}/cancel" >/dev/null ||
+                stand_down "Release train: could not cancel stale run ${id}; standing down."
+              echo "::notice::Release train: cancelled run ${id}, which waited for approval on an older commit; offering ${TIP}."
+            done
             TARGET_SHA_INPUT="$TIP"
           fi
           echo "release_train=${RELEASE_TRAIN}" >> "$GITHUB_OUTPUT"
@@ -207,14 +225,29 @@ jobs:
 
           gh api "/repos/${REPO}/commits/${TARGET_SHA}" >/dev/null
 
-          # A late CI run for an older commit must not ask for Founder approval that the
-          # exact-main gate will refuse anyway; the newer main commit's own CI deploys it.
+          # #3992: the land queue merges faster than main CI runs, so a merge's commit was rarely
+          # still main once its CI turned green, and requiring exact main skipped every run while
+          # production starved. A merge run now deploys its own head_sha (main when the run started;
+          # deploy provenance is keyed on it) while main still contains it, with train semantics
+          # at the executor gates (main contains the target; the Pi never downgrades).
+          MAY_TRAIL_MAIN="$RELEASE_TRAIN"
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
-            if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
-              echo "::notice::Superseded: CI finished for ${TARGET_SHA} but main is ${MAIN_SHA}; skipping without an approval request."
-              echo "superseded=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # Only main CI starts a deploy: a fork PR's CI on a branch named main never does.
+            [[ "$TRIGGER_EVENT" == "push" || "$TRIGGER_EVENT" == "workflow_dispatch" ]] ||
+              stand_down "Not a main CI run (${TRIGGER_EVENT}); nothing to deploy."
+            MAY_TRAIL_MAIN=true
+            TIP="${RUN_HEAD_SHA,,}"
+            if [[ "$TARGET_SHA" != "$TIP" ]]; then
+              # This CI is for a commit main had already left: wait for the run head's own CI instead.
+              main_ci_green "$TIP" || stand_down "Superseded: CI finished for ${TARGET_SHA}; main head ${TIP} has no green CI, so a later run deploys."
+              # If main was still TIP when its CI turned green, the run that CI started deploys TIP.
+              sleep 30
+              GREEN_AT="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TIP}&status=success&per_page=100" \
+                --jq '[.workflow_runs[] | select(.name == "CI — PHPUnit Tests" and (.event == "push" or .event == "workflow_dispatch")) | .updated_at] | min')"
+              OWN="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?event=workflow_run&head_sha=${TIP}&per_page=100" \
+                --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and .created_at >= \"${GREEN_AT}\")] | length")"
+              [[ "$OWN" -lt 1 ]] || stand_down "Superseded: the run started by ${TIP}'s own green CI deploys it."
+              TARGET_SHA="$TIP"
             fi
           fi
 
@@ -241,6 +274,7 @@ jobs:
           fi
 
           echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+          echo "may_trail_main=${MAY_TRAIL_MAIN}" >> "$GITHUB_OUTPUT"
           echo "Resolved activation target: ${TARGET_SHA}"
 
   detect-deployable:
@@ -748,26 +782,26 @@ jobs:
                   is_production_activation_sensitive_path,
                   parse_declaration,
                   reconcile_preexisting_pr_provenance,
-                  codex_confirms_head,
-                  declares_additive_migration,
+                  additive_activation_confirmed,
               )
 
-              def additive_confirmed(pr, paths):
-                  # Founder 2026-10-14（三）補充 #1: declared, and Codex's 👍 on the final head.
-                  if not declares_additive_migration(pr.get("body") or "") or not any(
-                      p.startswith("backend/database/migrations/") for p in paths
-                  ):
-                      return False
-                  n, flags = pr.get("number"), ("--paginate", "--slurp")
+              def additive_confirmed(pr, paths, patch):
+                  # #4590 review: the deployed policy's classifier (the one the automatic rollback loads) must
+                  # agree, plus full final-head review evidence; a missing deployed policy or any error is the click.
                   try:
-                      return codex_confirms_head(
-                          (pr.get("head") or {}).get("sha"),
-                          pages(gh_api(f"/repos/{repo}/issues/{n}/comments?per_page=100", *flags)),
-                          pages(gh_api(f"/repos/{repo}/pulls/{n}/reviews?per_page=100", *flags)),
-                          pages(gh_api(f"/repos/{repo}/issues/{n}/reactions?per_page=100", *flags)),
+                      import importlib.util
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_additive_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
                       )
-                  except (RuntimeError, ValueError):
+                      deployed = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(deployed)
+                      classify = deployed.additive_migration_paths
+                  except Exception:
                       return False
+                  return additive_activation_confirmed(
+                      repo=repo, number=pr.get("number"), body=pr.get("body") or "", paths=paths, patch=patch,
+                      api=gh_api, graphql=lambda query: gh_api("graphql", "-f", f"query={query}"), classify=classify,
+                  )
 
               base = os.environ["RUNTIME_BASE_SHA"]
               required_status_checks = active_main_required_status_checks(repo)
@@ -945,7 +979,7 @@ jobs:
                           **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
-                          "additive_confirmed": additive_confirmed(pr, actual_paths),
+                          "additive_confirmed": additive_confirmed(pr, actual_paths, actual_effect["patch"]),
                       })
                       attributed_commits.add(commit_sha)
               attributed.extend(aggregate_landed_pr_effects(landed_effects))
@@ -1047,12 +1081,38 @@ jobs:
                   # Founder Q1 A (2026-10-08): a GO line is plain text any agent on the owner
                   # token can write, so it never replaces the reviewer for an awaiting-activation
                   # (R3) range; only R0-R2 ranges activate without a human (#3797).
+              # Stop the line (#4363 review): after a failed, rolled-back, held or interrupted production
+              # deploy, no range activates on its own until a reviewed deploy succeeds. Unknown = frozen.
+              freeze_now = None
+              if mode == "auto":
+                  try:
+                      import functools
+                      import importlib.util
+                      import scripts.governance.autonomy_gate as target_freeze_gate
+                      spec = importlib.util.spec_from_file_location(
+                          "trusted_freeze_gate", "trusted-policy/scripts/governance/autonomy_gate.py"
+                      )
+                      trusted_freeze_gate = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(trusted_freeze_gate)
+                      # Deployed and target copies both judge, so a range cannot drop its own freeze (#4560 review);
+                      # a deployed policy that predates the freeze has none to apply. One cached API view for both.
+                      cached_api = functools.lru_cache(maxsize=None)(gh_api)
+                      freeze_now = next((reason for reason in (
+                          gate.deploy_freeze_reason(repo=repo, api=cached_api)
+                          for gate in (trusted_freeze_gate, target_freeze_gate) if hasattr(gate, "deploy_freeze_reason")
+                      ) if reason is not None), None)
+                  except Exception as exc:
+                      freeze_now = f"freeze state unavailable ({type(exc).__name__})"
+                  if freeze_now is not None:
+                      mode, reason, approval_eligible = "awaiting-activation", f"deploy freeze: {freeze_now}", True
+                  print(f"Deploy freeze: {freeze_now or 'none'}")
               # Founder 2026-10-21（二）之二: a range held only because it is R3 activates through
               # production-auto. Both the deployed and the target policy must accept it; an old
               # deployed policy without the rule, or any error, keeps the Founder reviewer.
               r3 = {"ok": False, "reason": "not evaluated"}
               r3_review_prs = []
-              if mode == "awaiting-activation" and approval_eligible:
+              # A range frozen above stays with the Founder reviewer; skip the second scan (#4560 review N5).
+              if mode == "awaiting-activation" and approval_eligible and freeze_now is None:
                   try:
                       import importlib.util
                       import scripts.governance.autonomy_gate as target_r3_gate
@@ -1283,11 +1343,13 @@ jobs:
           # Other dispatches (smoke, manual deploy) are not counted either: nothing kicks again when
           # they finish, so the window would be lost. A waiting run counts whatever started it.
           # Filter by status on the server: an old waiting run can sit beyond the newest 100 runs.
+          # #3992: a train still waiting from before this window is stale; this window's train
+          # cancels it once its newer tip is green, so it does not count.
           PENDING=0
           for q in "status=waiting" "event=workflow_dispatch&status=queued" "event=workflow_dispatch&status=in_progress" \
             "event=workflow_dispatch&status=requested" "event=workflow_dispatch&status=pending"; do
             n="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?${q}&per_page=100" \
-              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and (.status == \"waiting\" or .display_title == \"Release train\"))] | length")"
+              --jq "[.workflow_runs[] | select(.id != ${RUN_ID} and ((.status == \"waiting\" and (.display_title != \"Release train\" or .created_at >= \"${SINCE}\")) or (.status != \"waiting\" and .display_title == \"Release train\")))] | length")"
             PENDING=$((PENDING + n))
           done
           if [[ "$PENDING" -ge 1 ]]; then
@@ -1548,8 +1610,12 @@ jobs:
     environment: production-ssh
     # Bound the sole production executor so a lost SSH session cannot leave a
     # run waiting indefinitely. The remote script retains its existing
-    # rollback-on-error behavior before this runner-level deadline.
-    timeout-minutes: 30
+    # rollback-on-error behavior before this runner-level deadline. The 20-minute
+    # post-deploy watch (gap #3) runs inside the same executor, so the bound is
+    # deploy (~3-15 min) + verify/smoke (~3 min) + watch (20 min) + a full rollback (~15 min) + margin.
+    timeout-minutes: 80
+    outputs:
+      rc: ${{ steps.deploy.outputs.rc }}
     # Serialize only the side-effecting executor. Read-only preflight and
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
@@ -1567,14 +1633,14 @@ jobs:
       # auto-r3 carries no GO text; its freeze and final-head review are re-checked instead (after the
       # executor slot is held, #4359 review), plus the exact-main CI gate below.
       - name: Checkout target gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
           path: gate-target
           sparse-checkout: scripts/governance
       - name: Checkout deployed gate policy for Founder GO recheck
-        if: ${{ needs.production-auto.result == 'success' }}
+        if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
@@ -1646,6 +1712,35 @@ jobs:
                   raise SystemExit(f"final-head review no longer holds ({root}): {review.get('reason')}; nothing deployed")
           print("R3 freeze and final-head review re-verified under the deployed and target policy")
           PY
+      - name: Recheck the deploy freeze before an unattended deploy
+        # #4560 review: a run classified while an earlier deploy was still in its 20-minute watch saw no
+        # freeze; that deploy may have failed or rolled back while this one waited for the executor slot.
+        if: ${{ needs.classify-activation.outputs.mode == 'auto' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          import subprocess
+
+          def api(path, *extra):
+              return json.loads(subprocess.check_output(["gh", "api", path, *extra], text=True))
+
+          for root in ("gate-trusted", "gate-target"):
+              spec = importlib.util.spec_from_file_location(f"{root}_freeze", f"{root}/scripts/governance/autonomy_gate.py")
+              gate = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(gate)
+              if not hasattr(gate, "deploy_freeze_reason"):
+                  continue  # a deployed policy older than the freeze has none to apply
+              freeze = gate.deploy_freeze_reason(repo=os.environ["REPO"], api=api)
+              if freeze is not None:
+                  raise SystemExit(f"deploy freeze since classification ({root}): {freeze}; nothing deployed")
+          print("Deploy freeze re-checked under the deployed and target policy: none")
+          PY
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1662,7 +1757,7 @@ jobs:
       - name: Final exact-main gate before production executor
         env:
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
-          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          RELEASE_TRAIN: ${{ needs.resolve-target.outputs.may_trail_main }} # train or merge run (#3992)
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1702,6 +1797,11 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -l -f ~/.ssh/deploy_key
 
+      # Post-deploy watch (gap #3): after verify + smoke pass, the [6/7] gate keeps watching for
+      # 20 min (health + deployment.json identity every 30 s, 4 consecutive failures = breach; a
+      # Sentry error-count spike vs the pre-deploy hour when the secret SENTRY_WATCH is set to
+      # "<org>/<project> <read-only token>"). A breach takes the same rollback-or-hold
+      # decision as a failed verify, so the rollback stays this executor's rollback_deploy.
       - name: Deploy
         id: deploy
         # The remote script is scripts/production-deploy/pi-remote-deploy.sh from the same commit as this
@@ -1712,7 +1812,7 @@ jobs:
           DEPLOY_PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           DEPLOY_PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           DEPLOY_TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
-          DEPLOY_RELEASE_TRAIN: ${{ needs.resolve-target.outputs.release_train }}
+          DEPLOY_RELEASE_TRAIN: ${{ needs.resolve-target.outputs.may_trail_main }}
           DEPLOY_ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
           DEPLOY_COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
           DEPLOY_COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
@@ -1721,6 +1821,7 @@ jobs:
           DEPLOY_SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
           DEPLOY_SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
           DEPLOY_SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
+          DEPLOY_SENTRY_WATCH: ${{ secrets.SENTRY_WATCH }}
         run: |
           rc=0
           remote_script="$(umask 077 && mktemp "${RUNNER_TEMP}/pi-remote-deploy.XXXXXX")"
@@ -1773,6 +1874,11 @@ jobs:
             echo "## state=production-verified"
             echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed,"
             echo "and the runner re-checked /api/health, /api/v1/health and the deployment.json manifest (backend_sha) from outside the Pi."
+            echo ""
+            echo "## post-deploy watch"
+            echo "20-minute watch passed: health + deployment.json identity every 30 s, no 4 consecutive failures."
+            # The runner cannot see whether the Sentry query actually ran (#4363 review): point at the executor's own lines.
+            echo "Sentry error-count check: result is in the Deploy log (\`post-deploy watch:\` lines); not evaluated here."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Read-only GitHub token for the in-app resolve evidence (#4565), from the production-ssh secret
@@ -1823,6 +1929,69 @@ jobs:
             --rc "${RC:-1}" --target-sha "$TARGET_SHA" --previous-sha "$PREVIOUS_SHA" --runner-verify "$RUNNER_VERIFY")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Production deploy not verified::$(printf '%s' "$summary" | tail -n 1)"
+
+  # Gap #3: a failed production executor (rollback, rollback failure, hold, lost SSH, or the
+  # runner re-check failing) opens or appends ONE incident issue. IDs and SHAs only, no PII.
+  # The freeze needs no extra marker: the failed "Deploy to Production" job is what the
+  # deploy-freeze check (autonomy_gate.deploy_freeze_reason, #4359) reads.
+  deploy-incident:
+    name: Record production deploy incident
+    needs: [resolve-target, detect-deployable, deploy]
+    # A timeout or cancel ends the job as 'cancelled', possibly before rc is written (#4363 review).
+    if: ${{ always() && (needs.deploy.result == 'failure' || needs.deploy.result == 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      # The default branch's summarizer, never the failing release's copy, runs next to an issues:write token.
+      - name: Checkout incident summarizer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/post-deploy-verify.py
+          sparse-checkout-cone-mode: false
+
+      - name: Open or append the deploy incident issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RC: ${{ needs.deploy.outputs.rc }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PREVIOUS_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Production deploy incident (deploy.yml)"
+          # Failed before the executor step (stale target, GO/R3 recheck, SSH setup): nothing reached the Pi.
+          # Only positive proof (the Deploy step concluded skipped) suppresses the incident; unknown reports it.
+          skipped="$(gh api "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "Deploy to Production") | .steps[]? | select(.name == "Deploy" and .conclusion == "skipped")] | length')" \
+            || skipped="unknown"
+          if [ "$skipped" = "1" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then
+            echo "Deploy step never ran; production untouched, no incident."
+            exit 0
+          fi
+          if [[ "$RC" =~ ^[0-9]+$ ]]; then
+            body="$(python3 -I scripts/post-deploy-verify.py summarize --rc "$RC" --target-sha "$TARGET_SHA" \
+              --previous-sha "$PREVIOUS_SHA" --runner-verify failure)"
+          else
+            RC="unknown"
+            body="Executor result UNKNOWN: the Deploy job ended ${DEPLOY_RESULT} before reporting an exit code (timeout or cancel). Production may be on ${TARGET_SHA} or ${PREVIOUS_SHA}; check deployment.json before any further deploy."
+          fi
+          body="$(printf '%s\n\nRun: %s\nExecutor rc: %s\nRelease auto-activation is frozen until a reviewed deploy succeeds (RULEBOOK D8).\n' \
+            "$body" "$RUN_URL" "$RC")"
+          existing="$(gh api -X GET search/issues -f q="repo:${REPO} is:issue is:open in:title \"${title}\"" \
+            --jq "[.items[] | select(.title == \"${title}\")][0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh api "repos/${REPO}/issues/${existing}/comments" -f body="$body" --jq .html_url
+          else
+            gh api "repos/${REPO}/issues" -f title="$title" -f body="$body" --jq .html_url
+          fi
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke

@@ -22,6 +22,7 @@ use App\Http\Controllers\BindingController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
+use App\Http\Controllers\StudentClassLookupController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StudentGuardianController;
 use App\Http\Controllers\ParentPortalTestFixtureController;
@@ -395,6 +396,14 @@ Route::prefix('v1')->group(function () {
         Route::post('invoices/{invoice}/exception-void', [BillingController::class, 'exceptionVoidInvoice']);
         Route::get('invoices/export', [ExportController::class, 'invoices']);
 
+        // In-app #439: pass-through fees (代收) and payouts (代付), a ledger separate from tuition.
+        Route::get('fee-ledger', [\App\Http\Controllers\FeeLedgerController::class, 'index']);
+        Route::post('fee-charges', [\App\Http\Controllers\FeeLedgerController::class, 'storeCharges']);
+        Route::post('fee-charges/{id}/pay', [\App\Http\Controllers\FeeLedgerController::class, 'pay'])->whereNumber('id');
+        Route::post('fee-charges/{id}/void', [\App\Http\Controllers\FeeLedgerController::class, 'voidCharge'])->whereNumber('id');
+        Route::post('fee-payouts', [\App\Http\Controllers\FeeLedgerController::class, 'storePayout']);
+        Route::post('fee-payouts/{id}/void', [\App\Http\Controllers\FeeLedgerController::class, 'voidPayout'])->whereNumber('id');
+
         Route::post('learning-records/{learningRecord}/approve', [LearningRecordController::class, 'approve']);
         Route::patch('learning-records/{learningRecord}/teacher', [LearningRecordController::class, 'updateTeacher']);
         Route::post('learning-records/{learningRecord}/rollback-approval', [LearningRecordController::class, 'rollbackApproval']);
@@ -575,6 +584,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/monthly-contract-correction/preview', [\App\Http\Controllers\MonthlyContractCorrectionController::class, 'preview']);
         Route::post('student-classes/{studentClass}/monthly-accounting-correction/preview', [\App\Http\Controllers\MonthlyContractCorrectionController::class, 'accountingPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
+        Route::post('student-classes/{studentClass}/sibling-transfer', [\App\Http\Controllers\SiblingContractTransferController::class, 'store']);
         Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);
         Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
@@ -1000,6 +1010,8 @@ Route::prefix('v1')->group(function () {
         // #4100: link ONE open report to ONE contract for the triage billing snapshot (session only; never the token).
         Route::post('admin/triage-contract-links', [TriageContractLinkController::class, 'store']);
         Route::delete('admin/triage-contract-links/{id}', [TriageContractLinkController::class, 'destroy'])->whereNumber('id');
+        // #3868: readable rows for engineering contract ids (read-only, <= 50 ids, audited).
+        Route::get('admin/student-classes/lookup', [StudentClassLookupController::class, 'index']);
     });
 
     // ── Duplicate Sessions P2 Review (director + super_admin) ──

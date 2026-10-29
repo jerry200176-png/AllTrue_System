@@ -25,7 +25,9 @@ class ScheduleLeaveSuccessorShiftController extends Controller
             return $denied;
         }
         try {
-            return response()->json($this->service->preview((int) $data['class_session_id']));
+            return response()->json($this->service->preview((int) $data['class_session_id']) + [
+                'apply_enabled' => (bool) config('perfflags.leave_successor_shift_apply_enabled', false),
+            ]);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

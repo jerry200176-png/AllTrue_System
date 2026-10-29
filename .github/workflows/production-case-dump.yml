@@ -32,6 +32,7 @@ on:
           - substitute_calendar_xinzhuang
           - substitute_slot_conflicts
           - occurrence_identity_health
+          - teacher_scope_probe
           - occurrence_identity_shadow
           - td076_r2_plan_probe
           - paid_status_shadow_log
@@ -138,7 +139,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -738,6 +739,107 @@ jobs:
             $out['calendar_risk_slots'] = count(array_filter($rows, fn ($r) => $r['calendar_risk']));
             $out['by_campus'] = collect($rows)->groupBy('campus_id')->map(fn ($g) => ['slots' => $g->count(), 'calendar_risk' => $g->where('calendar_risk', true)->count()])->all();
             $out['slots'] = array_slice($rows, 0, 200);
+          }} elseif ($case === 'teacher_scope_probe') {{
+            // Read-only (in-app #441): sessions the class-sessions API returns to a director but hides from the session's own
+            // contract teacher (the teacher workbench week list). Campuses 9 (新店) and 25, today-1..+14, through the same scoped
+            // query, projection cap filter and teacher scope the API uses (reflection, as schedule_241). IDs, enums and booleans only.
+            $from = now()->subDay()->toDateString(); $to = now()->addDays(14)->toDateString();
+            $invoke = function ($controller, string $method, array $args = []) {{
+              $reflection = new \\ReflectionMethod($controller, $method);
+              $reflection->setAccessible(true);
+              return $reflection->invokeArgs($controller, $args);
+            }};
+            $controller = app(\\App\\Http\\Controllers\\ClassSessionController::class);
+            $fetch = function (string $role, int $teacherId, int $campusId) use ($invoke, $controller, $from, $to) {{
+              $request = \\Illuminate\\Http\\Request::create('/api/v1/class-sessions/projection', 'GET', ['start' => $from, 'end' => $to, 'branch_id' => $campusId]);
+              $request->attributes->set('auth_role', $role);
+              $request->attributes->set('auth_teacher_id', $teacherId);
+              $request->attributes->set('auth_campus_ids', [$campusId]);
+              app()->instance('request', $request);
+              $items = $invoke($controller, 'fetchAllClassSessionIndexRows', [$invoke($controller, 'buildClassSessionIndexQuery', [$request])]);
+              return $invoke($controller, 'withoutContractCappedFutureReservations', [$items]);
+            }};
+            $slotRows = fn ($r) => $db::table('schedules')->where('student_course_id', $r->student_class_id)->whereDate('schedule_date', $r->session_date)
+              ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$r->start_time])->orderBy('id')
+              ->get(['id', 'teacher_id', 'status', 'type', 'original_schedule_id', 'original_schedule_date'])
+              ->map(fn ($x) => ['id' => (int)$x->id, 'teacher_id' => $x->teacher_id === null ? null : (int)$x->teacher_id, 'status' => (string)$x->status,
+                'type' => $x->type, 'has_original_schedule_id' => $x->original_schedule_id !== null, 'has_original_date' => $x->original_schedule_date !== null])->values()->all();
+            $row = fn ($r) => ['session_id' => (int)$r->id, 'class_id' => (int)$r->student_class_id, 'student_id' => (int)$r->student_id,
+              'date' => (string)$r->session_date, 'start' => (string)$r->start_time, 'status' => (string)$r->status,
+              'contract_teacher_id' => (int)$r->contract_teacher_id, 'substitute_teacher_id' => $r->substitute_teacher_id === null ? null : (int)$r->substitute_teacher_id,
+              'substitute_notice' => (bool)$r->substitute_notice, 'course_stop' => (int)$r->course_stop];
+            $out['window'] = [$from, $to];
+            $out['campuses'] = [];
+            foreach ([9, 25] as $campusId) {{
+              $all = $fetch('director', 0, $campusId);
+              $teachers = collect($all)->pluck('contract_teacher_id')->filter()->unique()->values()->all();
+              $hidden = [];
+              foreach ($teachers as $tid) {{
+                $seen = collect($fetch('teacher', (int)$tid, $campusId))->pluck('id')->flip();
+                foreach ($all as $r) {{
+                  if ((int)$r->contract_teacher_id === (int)$tid && !$seen->has($r->id)) $hidden[] = $r;
+                }}
+              }}
+              $out['campuses'][(string)$campusId] = [
+                'occurrence_assignment_on' => \\App\\Services\\OccurrenceAssignmentService::enabledFor($campusId),
+                'director_scope_sessions' => count($all), 'teachers_checked' => count($teachers),
+                'hidden_from_contract_teacher' => count($hidden),
+                'hidden_rows' => array_map(fn ($r) => $row($r) + ['schedule_rows' => $slotRows($r)], array_slice($hidden, 0, 100)),
+                'slot_2026_10_31' => collect($all)->filter(fn ($r) => (string)$r->session_date === '2026-10-31')->map($row)->values()->all(),
+              ];
+              if ($campusId !== 9) continue;
+              // Timeline of the 13:00 slot on 2026-10-31 (in-app #441): evidence flags of each row, then every class of those
+              // students with its sessions (created/updated times) and reschedule-log rows. Ids, enums, times only.
+              $trio = collect($all)->filter(fn ($r) => (string)$r->session_date === '2026-10-31' && (string)$r->start_time === '13:00');
+              $sessionTimes = $db::table('ClassSession')->whereIn('id', $trio->pluck('id')->all())->pluck('updated_at', 'id');
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived'];
+              $classes = $db::table('StudentClass')->whereIn('StudentID', $trio->pluck('student_id')->unique()->all())->orderBy('ID')
+                ->get(['ID', 'StudentID', 'TeacherID', 'Stop', 'closed_reason', 'StartDate', 'EndDate', 'ScheduleMode', 'SessionCount', 'RemainingSessions', 'MDate', 'ClassType']);
+              $out['campuses']['9']['slot_13_evidence'] = $trio->map(fn ($r) => $row($r) + ['learning_record_status' => (string)$r->learning_record_status,
+                'has_lr_history' => (bool)$r->has_learning_record_history, 'has_attendance_history' => (bool)$r->has_attendance_history,
+                'recoverable_cancelled' => (bool)$r->recoverable_cancelled, 'is_contract_exception' => (bool)$r->is_contract_exception,
+                'updated_at' => (string)($sessionTimes[(int)$r->id] ?? '')])->values()->all();
+              $out['campuses']['9']['student_classes'] = $classes->map(function ($c) use ($db, $knownReasons) {{
+                $reason = strtolower(trim((string)($c->closed_reason ?? '')));
+                $cid = (int)$c->ID;
+                return ['class_id' => $cid, 'student_id' => (int)$c->StudentID, 'teacher_id' => (int)$c->TeacherID, 'stop' => (int)($c->Stop ?? 0),
+                  'closed_reason' => $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other'),
+                  'start' => substr((string)$c->StartDate, 0, 10), 'end' => $c->EndDate ? substr((string)$c->EndDate, 0, 10) : null,
+                  'mode' => (string)$c->ScheduleMode, 'class_type' => (string)$c->ClassType, 'session_count' => (int)$c->SessionCount,
+                  'remaining' => (int)$c->RemainingSessions, 'modified' => (string)$c->MDate,
+                  'sessions' => $db::table('ClassSession')->where('StudentClassID', $cid)->whereBetween('SessionDate', ['2026-10-01', '2026-11-30'])
+                    ->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'SessionDate', 'StartTime', 'Status', 'created_at', 'updated_at as changed_at'])
+                    ->map(fn ($x) => ['id' => (int)$x->id, 'date' => substr((string)$x->SessionDate, 0, 10), 'start' => substr((string)$x->StartTime, 0, 5),
+                      'status' => (string)$x->Status, 'created_at' => (string)$x->created_at, 'changed_at' => (string)$x->changed_at])->values()->all(),
+                  'change_log' => \\Illuminate\\Support\\Facades\\Schema::hasTable('schedule_change_log') ? $db::table('schedule_change_log')->where('student_course_id', $cid)
+                    ->where('created_at', '>=', '2026-10-01')->orderBy('id')->get(['id', 'from_date', 'from_time', 'to_date', 'to_time', 'actor_id', 'reason', 'created_at'])
+                    ->map(fn ($x) => ['id' => (int)$x->id, 'from' => substr((string)$x->from_date, 0, 10) . ' ' . substr((string)$x->from_time, 0, 5),
+                      'to' => substr((string)$x->to_date, 0, 10) . ' ' . substr((string)$x->to_time, 0, 5), 'actor_id' => $x->actor_id === null ? null : (int)$x->actor_id,
+                      'reason' => (string)$x->reason, 'created_at' => (string)$x->created_at])->values()->all() : []];
+              }})->values()->all();
+              // What assigned the 13:00 rows to someone else, or touched them (in-app #441): the slots' schedules rows, any substitute notice
+              // for the sessions, and the audit events of those classes since 2026-10-20 (event type and time only).
+              $sessionIds = $trio->pluck('id')->map(fn ($i) => (int)$i)->all();
+              $classIds = $trio->pluck('student_class_id')->map(fn ($i) => (int)$i)->unique()->values()->all();
+              $out['campuses']['9']['trio_schedule_rows'] = $db::table('schedules')->whereIn('student_course_id', $classIds)
+                ->whereBetween('schedule_date', ['2026-10-24', '2026-11-07'])->orderBy('student_course_id')->orderBy('schedule_date')->orderBy('id')
+                ->get(['id', 'student_course_id', 'schedule_date', 'start_time', 'status', 'type', 'teacher_id', 'original_schedule_id', 'created_at', 'updated_at as changed_at'])
+                ->map(fn ($x) => ['id' => (int)$x->id, 'class_id' => (int)$x->student_course_id, 'date' => substr((string)$x->schedule_date, 0, 10), 'start' => substr((string)$x->start_time, 0, 5),
+                  'status' => (string)$x->status, 'type' => $x->type, 'teacher_id' => $x->teacher_id === null ? null : (int)$x->teacher_id,
+                  'original_schedule_id' => $x->original_schedule_id === null ? null : (int)$x->original_schedule_id,
+                  'created_at' => (string)$x->created_at, 'changed_at' => (string)$x->changed_at])->values()->all();
+              $out['campuses']['9']['trio_substitute_notices'] = $db::table('Notifications')
+                ->whereIn('SourceKey', array_map(fn ($i) => 'substitute:' . $i, $sessionIds))
+                ->get(['id', 'SourceKey', 'ResolvedAt', 'created_at'])
+                ->map(fn ($x) => ['id' => (int)$x->id, 'session_id' => (int)substr((string)$x->SourceKey, 11), 'resolved_at' => $x->ResolvedAt === null ? null : (string)$x->ResolvedAt,
+                  'created_at' => (string)$x->created_at])->values()->all();
+              $refs = [];
+              foreach ($classIds as $cid) {{ $refs[\\App\\Models\\SecurityAuditEvent::ref('student_class', $cid)] = $cid; }}
+              $out['campuses']['9']['trio_audit_events'] = $db::table('security_audit_events')->whereIn('subject_ref', array_keys($refs))
+                ->where('occurred_at', '>=', '2026-10-20')->orderBy('occurred_at')->get(['event_type', 'outcome', 'subject_ref', 'occurred_at'])
+                ->map(fn ($x) => ['class_id' => $refs[$x->subject_ref] ?? null, 'event_type' => (string)$x->event_type, 'outcome' => (string)$x->outcome,
+                  'occurred_at' => (string)$x->occurred_at])->values()->all();
+            }}
           }} elseif ($case === 'occurrence_identity_health') {{
             // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
             // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_id.

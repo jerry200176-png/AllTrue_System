@@ -43,9 +43,8 @@ class TriageBillingSnapshotController extends Controller
         $courseId = (int) $course->getKey();
         $rate = $course->Rate === null ? null : (float) $course->Rate;
         $rateUnit = (string) $course->rate_unit ?: 'session';
-        $quantity = $rateUnit === 'hour' ? (int) $course->TotalHours : (int) ($course->SessionCount ?? 0);
         // Same base as StudentClassController::update() (G-009 preservedDelta = Charge - base).
-        $base = (int) round((float) ($rate ?? 0) * $quantity);
+        $base = $course->rateTimesQuantity();
         $charge = $course->Charge === null ? null : (int) $course->Charge;
 
         // Anchored or itemized here. Not wholly this student's (BillingNoteController::invoiceStudent() rule): left out, count only. Also covers another of their contracts, or has a line with no contract: no money.

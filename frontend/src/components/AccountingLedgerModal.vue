@@ -287,7 +287,7 @@
 
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
           <div v-if="allocContracts.length" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
-            <p id="ledger-pay-scope" class="ledger-muted ledger-sticky-pay__scope" data-testid="ledger-pay-scope">此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。</p>
+            <p id="ledger-pay-scope" class="ledger-muted ledger-sticky-pay__scope" data-testid="ledger-pay-scope">{{ payScopeText }}</p>
             <button type="button" class="ledger-sticky-pay__btn" data-testid="ledger-sticky-pay-btn" aria-describedby="ledger-pay-scope" @click="allocating = true">
               登記收款<small>{{ allocContracts.length > 1 ? `${allocContracts.length} 份合約` : allocContracts[0].subject }}</small>
             </button>
@@ -667,9 +667,11 @@ const pendingReportFor = (id) => {
   const r = (payload.value?.receipts || []).find((x) => ids.includes(Number(x.student_class_id)) && x.status === 'pending');
   return r ? { report_id: Number(r.report_id), amount: Number(r.amount || 0), date: r.payment_date || '' } : null;
 };
-// Mirror the existing server refusal by report status, independently of payment display completeness.
-const hasConfirmedReportFor = (id) => (payload.value?.receipts || [])
-  .some((r) => Number(r.student_class_id) === Number(id) && r.status === 'confirmed');
+// Mirror the existing server refusal by report status (any member of a shared package counts), independently of payment display completeness.
+const hasConfirmedReportFor = (id) => {
+  const ids = packageMemberIds(id);
+  return (payload.value?.receipts || []).some((r) => ids.includes(Number(r.student_class_id)) && r.status === 'confirmed');
+};
 // #4115: the issued-bill vs current-contract note for the bill row (display only).
 const rateNoteFor = (inv) => {
   const course = (payload.value?.courses || []).find((c) => Number(c.id) === Number(inv.student_class_id));
@@ -708,8 +710,7 @@ const oldestOpenInvoice = (courseId) => (payload.value?.invoices || [])
     || Number(a.id) - Number(b.id))[0];
 const needsLegacyChoice = (course) => !payload.value?.scope?.no_payment_obligation && canResolveLegacyPaidFlag(course, {
   legacyUnverified: payLineFor(course)?.legacyUnverified === true, canResolveLegacy: canManageInvoices(),
-  isMonthly: course.schedule_mode === 'date', waived: isWaivedContract(course),
-  pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
+  waived: isWaivedContract(course), pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
 });
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
   .filter((c) => c.class_type !== 'tutoring' && !needsLegacyChoice(c) && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
@@ -718,6 +719,18 @@ const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligati
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
   })
   .sort((a, b) => a.key.localeCompare(b.key) || a.id - b.id)));
+// In-app #437: the director opened a course with nothing to collect and the button collected another one; say so plainly.
+const payScopeText = computed(() => {
+  const opened = contractCourses.value.find(isOpenedCourse);
+  const subjects = [...new Set(allocContracts.value.map((c) => c.subject).filter(Boolean))].join('、');
+  if (!opened || allocContracts.value.some((c) => c.id === opened.id) || !subjects) {
+    return '此入口處理這位學生的可收款合約，不限於點開的課程；請在下一步確認科目與金額。';
+  }
+  // Only say "nothing to collect" when it is true; a shared-package or pending course is just left out of this button.
+  return !(owedFor(opened.id) > 0) && (opened.paid || isWaivedContract(opened))
+    ? `你點開的「${opened.subject}」目前沒有要收的款；這個按鈕是登記「${subjects}」的收款，下一步可再確認科目與金額。`
+    : `這個按鈕是登記「${subjects}」的收款，不含你點開的「${opened.subject}」；「${opened.subject}」請看它自己的課程卡。`;
+});
 const allocating = ref(false);
 async function onAllocDone() {
   allocating.value = false;
@@ -782,13 +795,16 @@ function openEntry(course, mode = 'record') {
   entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
+  // in-app #432: no open bill on a monthly contract → the month and amount the server will check (collection_period).
+  const collect = oldest ? null : course.collection_period;
   entryRow.value = {
     id: course.id,
     charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,
-    billing_period: oldest?.billing_period,
+    billing_period: oldest ? oldest.billing_period : collect?.billing_period,
+    ...(collect ? { estimated_amount: Number(collect.amount) } : {}),
     payable_status: oldest ? 'invoiced' : 'unbilled',
     payable_amount: oldest ? Number(oldest.outstanding_amount) : null,
     payable_outstanding: oldest ? Number(oldest.outstanding_amount) : null,

@@ -36,6 +36,49 @@
 
 ---
 
+## AtSubmitButton（#4488 完成按鈕反饋）
+
+```vue
+<AtSubmitButton :action="save" pending-text="儲存中…" success-text="已儲存" error-text="未儲存">儲存</AtSubmitButton>
+```
+
+- 包一層 `AtButton`（variant／size／shape 照傳）。idle → pending（轉圈、`aria-busy`、不能重送、寬度不跳）→ success／error → idle。
+- `action` 是「動作層級」的：同一個函式同時只會跑一次，第二顆按鈕或切分頁後重新掛載的按鈕會接上同一次送出並顯示處理中（請傳 setup 裡的固定函式，不要傳 inline arrow）。
+- `action` **伺服器確認成功才 `return true`**；`return false` 顯示錯誤面；拋例外也顯示錯誤面；其他回傳值直接回 idle，不宣稱成功。詳細錯誤訊息仍由頁面顯示，輸入不清空。
+- 送出後會關閉的 modal 看不到成功面，仍有 pending 與錯誤面；成功提示照舊用頁面訊息。
+- **父層持有送出狀態**（modal 只 emit、由父層 composable 寫入）：不傳 `action`，改 `:pending="submitting" @click="$emit('submit')"`。只用 pending 面（轉圈、`aria-busy`、寬度不跳、pending 時點擊與 form submit 都被擋）；成功由父層關閉 modal，錯誤由 modal 自己的訊息顯示。`:disabled` 只放「還不能送」的條件，不要再放 `submitting`。
+
+## AtSelectAll + useSelection（#4488 勾選聯動）
+
+```js
+const selection = useSelection(visibleRows, { key: 'id', canSelect: (r) => r.status === 'pending' });
+```
+```vue
+<AtSelectAll :selection="selection" label="全選本頁" />
+<input type="checkbox" :checked="selection.has(row.id)" @change="selection.toggle(row.id)">
+```
+
+- `visibleRows` 傳**畫面上看得到的清單**（篩選後）。不可選的列永遠不會被勾；篩選、分頁、重新整理後看不到的勾選自動移除，批次動作用 `selection.keys`。
+- 原生 checkbox：部分選取 = `indeterminate`（螢幕閱讀器讀 mixed），Space 可操作；點半勾 = 全選。表頭只放勾選框時用 `hide-label :show-count="false"`。
+
+---
+
+## AtDisclosureCard（#4488 疊卡展開）
+
+```vue
+<AtDisclosureCard v-model:open="isOpen" :stacked="items.length > 1">
+  <template #actions><button type="button" @click="filterBy(name)">{{ name }}</button></template>
+  <template #summary><span>{{ items.length }} 筆</span><span>{{ pending }} 待處理</span></template>
+  明細內容
+</AtDisclosureCard>
+```
+
+- 展開鈕是真的 `<button>`（`aria-expanded`／`aria-controls`），取代 `<details>`；收合時 `#summary` 的筆數與狀態仍顯示，明細 `inert` 但不卸載（輸入內容保留）。
+- 標題列其他按鈕放 `#actions`（在展開鈕旁、不巢狀），並當展開鈕名稱的一部分；收合時焦點若在明細裡會回到展開鈕。
+- `stacked`：收合時卡片下緣露出兩層疊卡邊；展開時淡出。高度用 `grid-template-rows` 0fr→1fr，減少動態時不滑動。
+
+---
+
 ## AtCard
 
 ```vue

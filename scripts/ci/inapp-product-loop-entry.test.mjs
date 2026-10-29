@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -24,7 +25,25 @@ assert.equal(
   '.cursor/skills/alltrue-inapp-product-loop must resolve to .agents canonical dir',
 );
 
+// Claude Code loads skills from .claude/skills; each entry links to the canonical copy.
+const claudeSkills = {
+  'alltrue-inapp-product-loop': path.dirname(skillAgents),
+  ...Object.fromEntries(
+    [
+      'alltrue-code-review', 'alltrue-debugging', 'alltrue-release', 'alltrue-security',
+      'alltrue-testing', 'security-audit', 'design-taste-frontend', 'redesign-existing-projects',
+    ].map((n) => [n, path.join(root, '.cursor/skills', n)]),
+  ),
+};
+for (const [name, canonical] of Object.entries(claudeSkills)) {
+  const link = path.join(root, '.claude/skills', name);
+  assert.ok(fs.lstatSync(link).isSymbolicLink(), `.claude/skills/${name} must be a symlink`);
+  assert.equal(fs.realpathSync(link), fs.realpathSync(canonical), `.claude/skills/${name} must resolve to its canonical dir`);
+  assert.ok(fs.existsSync(path.join(link, 'SKILL.md')), `.claude/skills/${name}/SKILL.md missing`);
+}
+
 const skillBody = fs.readFileSync(skillAgents, 'utf8');
+assert.doesNotMatch(skillBody, /\/home\/jerry/);
 assert.match(skillBody, /name:\s*alltrue-inapp-product-loop/);
 assert.match(skillBody, /處理 in-app 意見與建議/);
 assert.match(skillBody, /INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1/);
@@ -61,4 +80,5 @@ assert.ok(
   'intent must resolve to skill + policy via AGENTS route',
 );
 
+execFileSync('python3', [path.join(root, '.claude/hooks/test_session_start.py')], { stdio: 'inherit' });
 console.log('alltrue-inapp-product-loop cold-start discoverability: PASS');

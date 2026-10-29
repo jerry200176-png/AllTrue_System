@@ -12,7 +12,7 @@
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
         <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
-        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
+        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
         <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
@@ -34,7 +34,7 @@
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
       </template>
-      <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
+      <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid || legacyUnverified)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
       <AtButton v-else-if="!legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
@@ -60,8 +60,8 @@
       <template v-else>
         <textarea v-model="draft" rows="3" aria-label="合約備註" data-testid="contract-memo-input" />
         <div class="contract__memo-actions">
-          <button type="button" :disabled="saving" data-testid="contract-memo-save" @click="saveMemo">{{ saving ? '儲存中…' : '儲存' }}</button>
-          <button type="button" :disabled="saving" @click="editing = false">取消</button>
+          <AtSubmitButton size="sm" shape="rect" :pending="saving" pending-text="儲存中…" data-testid="contract-memo-save" @click="saveMemo">儲存</AtSubmitButton>
+          <AtButton size="sm" shape="rect" variant="secondary" :disabled="saving" @click="editing = false">取消</AtButton>
         </div>
       </template>
       <p v-if="memoError" class="contract__error">{{ memoError }}</p>
@@ -117,6 +117,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
 import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
@@ -189,9 +190,10 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
-// Server `current_contract_charge` (StudentClass.Charge); fall back to `charge` on older payloads.
+// Server `current_contract_charge` only (AccountingController::currentContractCharge). It is null for a monthly contract
+// or a package member, whose stored Charge is no contract price: in-app #432 showed a monthly Charge as 合約金額.
 const contractCharge = computed(() => {
-  const raw = props.course?.current_contract_charge ?? props.course?.charge;
+  const raw = props.course?.current_contract_charge;
   if (raw == null || raw === '') return null;
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : null;
@@ -202,12 +204,11 @@ const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p
 // #4150 review: a waiver (server ContractMoneyState::isWaived; a real one keeps Paid=0) is terminal, so no unpaid controls.
 const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
-// Same scope the server allows (PaymentReportController::legacyFlagRefusal): a single count-mode contract flagged paid with
-// no report waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
+// Same scope the server allows (PaymentReportController::legacyFlagRefusal): any contract flagged paid with no report
+// waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
 const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
   legacyUnverified: legacyUnverified.value, canResolveLegacy: props.canResolveLegacy,
-  isMonthly: isMonthly.value, waived: waived.value, pendingReport: props.pendingReport,
-  sharedFollower: props.sharedFollower,
+  waived: waived.value, pendingReport: props.pendingReport, sharedFollower: props.sharedFollower,
 }));
 const payLineText = computed(() => {
   const p = props.lastPayment;

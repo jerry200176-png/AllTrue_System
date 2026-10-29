@@ -53,7 +53,9 @@ describe('CourseManagement action hierarchy', () => {
     }
     expect(rowActions).toContain("'contract-adjust'");
     expect(source).toContain('useCourseRowActions({');
-    expect(source).toContain('openCourseTransfer: (c) => openCourseTransfer(c),');
+    expect(source).toContain('openCourseTransfer: (c) => openCourseTransfer(c), openSiblingTransfer,');
+    expect(source).toContain("'sibling-transfer': () => openSiblingTransfer(c),");
+    expect(source).toContain("['director', 'super_admin'].includes(props.userRole)");
     expect(source).toContain('requestDelete: (c) => { confirmDeleteTarget.value = c; }');
     expect(source).toContain('isPaymentNoticeAvailable,');
   });

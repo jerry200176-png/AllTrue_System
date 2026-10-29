@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-10-28-ui-disclosure-cards
+    published_at: "2026-10-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量列表學生卡改成疊卡
+    summary: 學習評量列表的學生卡收合時仍看得到筆數與待處理，點一下就在原地展開。
+    items:
+      - category: improved
+        text: 學生卡收合時保留筆數、待處理與日期，多筆時卡片下緣有疊卡邊，點一下在原地展開明細。
+      - category: improved
+        text: 點學生姓名仍是只看此學生；展開鈕可用鍵盤操作，收合後游標回到展開鈕。
+    source_refs:
+      - "changelog:2026-10-28:ui-disclosure-cards"

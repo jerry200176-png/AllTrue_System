@@ -33,15 +33,16 @@
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">{{ finished ? '關閉' : '取消' }}</button>
-        <button v-if="!finished" class="primary" :disabled="submitting || !selectedRows.length" @click="submit">
-          {{ submitting ? '建立中…' : `續報 ${selectedRows.length} 科` }}
-        </button>
+        <AtSubmitButton v-if="!finished" shape="rect" :pending="submitting" :disabled="!selectedRows.length" pending-text="建立中…" @click="submit">
+          續報 {{ selectedRows.length }} 科
+        </AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed, ref, watch } from 'vue';
 import { authedFetch, getAccessToken } from '../../lib/authedFetch';
 import { getSubjectLabel } from '../../lib/constants';

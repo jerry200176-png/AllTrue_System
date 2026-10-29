@@ -43,14 +43,13 @@ class AdditiveMigrationGate(unittest.TestCase):
         for body in (ADD, CREATE):
             patch = new_file(MIG, body)
             self.assertEqual(additive_migration_paths([MIG], patch), {MIG})
-            # Merge is T2 now; activation stays Founder-gated until deploy.yml can roll code
-            # back after an additive migration (the follow-up PR flips the flag).
-            self.assertEqual(self.tiers(patch), (2, 3))
-            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", True):
-                self.assertEqual(self.tiers(patch), (2, 2))
+            # Founder 2026-10-28 A: merge and activation are both T2; the switch off restores the click.
+            self.assertEqual(self.tiers(patch), (2, 2))
+            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", False):
+                self.assertEqual(self.tiers(patch), (2, 3))
 
-    def test_activation_flag_is_off_until_deploy_rollback_lands(self):
-        self.assertIs(gate.ADDITIVE_MIGRATION_AUTO_ACTIVATION, False)
+    def test_activation_flag_is_on_after_deploy_rollback_and_watch(self):
+        self.assertIs(gate.ADDITIVE_MIGRATION_AUTO_ACTIVATION, True)
 
     def test_destructive_or_data_up_stays_t3(self):
         for up in (
@@ -232,18 +231,18 @@ class AdditiveMigrationGate(unittest.TestCase):
         up = 'Schema::table(\'t\', fn (Blueprint $t) => $t->string("\\x61")->nullable());'
         self.assertEqual(additive_migration_paths([MIG], new_file(MIG, migration(up))), set())
 
-    def test_identity_and_billing_tables_stay_t3(self):
+    def test_identity_and_security_tables_stay_t3(self):
         for up in (
             "Schema::create('auth_tokens', function (Blueprint $t) { $t->id(); });",
             "Schema::table('permissions', fn (Blueprint $t) => $t->string('scope')->nullable());",
-            "Schema::table('Invoice', fn (Blueprint $t) => $t->string('note')->nullable());",
-            "Schema::table('StudentClass', fn (Blueprint $t) => $t->string('memo')->nullable());",
             "Schema::create('roles', function (Blueprint $t) { $t->id(); });",
             "Schema::table('User', fn (Blueprint $t) => $t->boolean('is_super_admin')->nullable());",
             "Schema::create('student_guardians', function (Blueprint $t) { $t->id(); });",
-            "Schema::table('payroll_runs', fn (Blueprint $t) => $t->string('x')->nullable());",
-            "Schema::table('session_deduction_ledger', fn (Blueprint $t) => $t->string('x')->nullable());",
-            "if (Schema::hasTable('Payment')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "if (Schema::hasTable('api_clients')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "Schema::create('payment_credentials', function (Blueprint $t) { $t->id(); });",
+            "Schema::table('invoice_secrets', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('bank_accounts', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('parent_invoice_links', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('pop_approval_events', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('Student', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::table('TempRfid', fn (Blueprint $t) => $t->string('x')->nullable());",
@@ -252,6 +251,35 @@ class AdditiveMigrationGate(unittest.TestCase):
             "Schema::table('chat_thread_members', fn (Blueprint $t) => $t->string('x')->nullable());",
             "Schema::create('pii_exports', function (Blueprint $t) { $t->id(); });",
             "Schema::create('legal_records', function (Blueprint $t) { $t->id(); });",
+        ):
+            patch = new_file(MIG, migration(up))
+            self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
+            self.assertEqual(self.tiers(patch), (3, 3), up)
+
+    def test_billing_tables_take_the_additive_path(self):
+        # Founder 2026-10-28 A: additive-only changes on billing tables are no longer excluded.
+        for up in (
+            "Schema::table('Invoice', fn (Blueprint $t) => $t->string('note')->nullable());",
+            "Schema::table('StudentClass', fn (Blueprint $t) => $t->string('memo')->nullable());",
+            "Schema::table('payroll_runs', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('session_deduction_ledger', fn (Blueprint $t) => $t->string('x')->nullable());",
+            "Schema::table('course_packages', fn (Blueprint $t) => $t->index('campus_id'));",
+            "if (Schema::hasTable('Payment')) { return; } Schema::create('notes', function (Blueprint $t) { $t->id(); });",
+            "Schema::create('invoice_adjustments', function (Blueprint $t) { $t->id(); $t->text('reason'); });",
+        ):
+            patch = new_file(MIG, migration(up))
+            self.assertEqual(additive_migration_paths([MIG], patch), {MIG}, up)
+            self.assertEqual(self.tiers(patch)[0], 2, up)
+            with mock.patch.object(gate, "ADDITIVE_MIGRATION_AUTO_ACTIVATION", True):
+                self.assertEqual(self.tiers(patch), (2, 2), up)
+
+    def test_billing_tables_still_refuse_destructive_or_data_changes(self):
+        for up in (
+            "Schema::table('Invoice', fn ($t) => $t->dropColumn('note'));",
+            "Schema::table('StudentClass', fn ($t) => $t->renameColumn('Memo', 'memo'));",
+            "Schema::table('Payment', fn ($t) => $t->decimal('Amount', 12, 2)->change());",
+            "Schema::table('Invoice', fn ($t) => $t->string('a')); DB::table('Invoice')->update(['a' => 1]);",
+            "Schema::dropIfExists('invoice_adjustments');",
         ):
             patch = new_file(MIG, migration(up))
             self.assertEqual(additive_migration_paths([MIG], patch), set(), up)
@@ -381,3 +409,108 @@ class CodexConfirmation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+BILLING_MIG = "backend/database/migrations/2026_10_28_000000_add_note_to_invoice.php"
+BILLING = migration("Schema::table('Invoice', fn (Blueprint $t) => $t->string('note')->nullable());")
+DECL = "Rollback: revert this PR\nRisk-Class: R2\nAutonomy-Tier: T2\nAdditive-Migration: yes\n"
+CODEX = {"login": "chatgpt-codex-connector[bot]"}
+THUMBS = [{"user": CODEX, "content": "+1", "created_at": "2026-10-28T02:00:00Z"}]
+CLEAN = {"nodes": [], "pageInfo": {"hasNextPage": False}}
+
+
+def fakes(body=DECL, threads=CLEAN, reactions=THUMBS):
+    """GitHub API fakes: PR #11 squash-merged as one commit that adds BILLING_MIG; Codex 👍 on head e*40."""
+    sha, head = f"{11:040x}", "e" * 40
+    pr = {"number": 11, "merge_commit_sha": sha, "merged_at": "2026-10-28T01:30:00Z", "base": {"ref": "main"},
+          "head": {"repo": {"full_name": "o/r"}, "sha": head}, "author_association": "OWNER", "body": body}
+    summary = ("<!-- codex-pull-request-review-summary -->\n✅ **Completed** "
+               f"<relative-time datetime=\"2026-10-28T01:00:00Z\">x</relative-time> | `{head[:7]}`")
+
+    def api(path, *flags):
+        if path.endswith(f"/compare/{'1' * 40}...{'2' * 40}"):
+            return {"status": "ahead", "total_commits": 1, "commits": [{"sha": sha, "commit": {"message": "feat: note (#11)"}}]}
+        if path.endswith(f"/commits/{sha}"):
+            return {"parents": [{"sha": "9" * 40}], "files": [{"filename": BILLING_MIG, "status": "added", "sha": "b" * 40,
+                                                              "patch": new_file(BILLING_MIG, BILLING).split("\n", 1)[1]}]}
+        if path.endswith("/pulls/11"):
+            return pr
+        if "/issues/11/comments" in path:
+            return [[{"user": CODEX, "body": summary}]]
+        return [reactions] if "/reactions" in path else [[]]
+
+    def graphql(query):
+        if isinstance(threads, Exception) and "reviewThreads" in query:
+            raise threads
+        return {"data": {"repository": {"pullRequest": {"lastEditedAt": None, "editor": None, "reviewThreads": threads}}}}
+    return api, graphql
+
+
+def deployed_policy_before_this_change():
+    """A copy of this module with the billing exclusion still in place: what range_additive loads until this deploys."""
+    import importlib.util
+    import re
+    spec = importlib.util.spec_from_file_location("deployed_autonomy_gate", gate.__file__)
+    old = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(old)
+    old._ADDITIVE_EXCLUDED_TABLE_RE = re.compile(gate._ADDITIVE_EXCLUDED_TABLE_RE.pattern + "|invoice", re.IGNORECASE)
+    return old
+
+
+class AdditiveActivationEvidence(unittest.TestCase):
+    """#4590 review: auto activation of an additive migration needs the deployed classifier and full review evidence."""
+
+    def confirmed(self, classify=None, body=DECL, **kw):
+        api, graphql = fakes(body=body, **kw)
+        return gate.additive_activation_confirmed(repo="o/r", number=11, body=body, paths=[BILLING_MIG],
+                                                  patch=new_file(BILLING_MIG, BILLING), api=api, graphql=graphql,
+                                                  classify=classify)
+
+    def test_target_accepts_but_deployed_policy_rejects_keeps_the_click(self):
+        patch, old = new_file(BILLING_MIG, BILLING), deployed_policy_before_this_change()
+        self.assertEqual(gate.additive_migration_paths([BILLING_MIG], patch), {BILLING_MIG})
+        self.assertEqual(old.additive_migration_paths([BILLING_MIG], patch), set())
+        self.assertTrue(self.confirmed(gate.additive_migration_paths))
+        self.assertFalse(self.confirmed(old.additive_migration_paths))
+        for broken in (lambda paths, patch: None, lambda paths, patch: 1 / 0, lambda paths, patch: {"x.php"}):
+            self.assertFalse(self.confirmed(broken))
+        # additive_confirmed False is the production-activation click.
+        self.assertEqual(classify_activation_scope([BILLING_MIG], patch, False)["machine_minimum_tier"], 3)
+        self.assertEqual(classify_activation_scope([BILLING_MIG], patch, True)["machine_minimum_tier"], 2)
+
+    def test_open_or_unknown_review_threads_keep_the_click(self):
+        self.assertTrue(self.confirmed())
+        for label, kw in {
+            "open thread": dict(threads={"nodes": [{"isResolved": False, "comments": {"totalCount": 1}}],
+                                         "pageInfo": {"hasNextPage": False}}),
+            "resolved without a reply": dict(threads={"nodes": [{"isResolved": True, "comments": {"totalCount": 1}}],
+                                                      "pageInfo": {"hasNextPage": False}}),
+            "thread evidence unavailable": dict(threads=None),
+            "more than one page": dict(threads={"nodes": [], "pageInfo": {"hasNextPage": True}}),
+            "graphql error": dict(threads=RuntimeError("HTTP 502")),
+            "no Codex 👍 on the final head": dict(reactions=[]),
+            "not declared": dict(body=DECL.replace("Additive-Migration: yes\n", "")),
+        }.items():
+            self.assertFalse(self.confirmed(**kw), label)
+
+    def test_release_train_accepts_a_confirmed_additive_migration_only(self):
+        def go(policy=gate, **kw):
+            api, graphql = fakes(**kw)
+            return policy.evaluate_founder_go_range(repo="o/r", base_sha="1" * 40, target_sha="2" * 40,
+                                                    api=api, graphql=graphql)
+        self.assertTrue(go()["ok"], go()["reason"])
+        self.assertFalse(go(threads={"nodes": [{"isResolved": False, "comments": {"totalCount": 1}}],
+                                     "pageInfo": {"hasNextPage": False}})["ok"])
+        self.assertFalse(go(reactions=[])["ok"])
+        self.assertFalse(go(body=DECL.replace("Additive-Migration: yes\n", ""))["ok"])
+        # deploy.yml also requires the deployed copy to accept the range; until this policy is deployed it rejects.
+        self.assertFalse(go(policy=deployed_policy_before_this_change())["ok"])
+
+    def test_deploy_workflow_uses_the_deployed_classifier_and_full_review_evidence(self):
+        text = (Path(gate.__file__).resolve().parents[2] / ".github/workflows/deploy.yml").read_text()
+        block = text[text.index("def additive_confirmed(pr, paths, patch):"):text.index("base = os.environ[\"RUNTIME_BASE_SHA\"]")]
+        self.assertIn('"trusted-policy/scripts/governance/autonomy_gate.py"', block)
+        self.assertIn("classify = deployed.additive_migration_paths", block)
+        self.assertIn("return additive_activation_confirmed(", block)
+        self.assertIn('additive_confirmed(pr, actual_paths, actual_effect["patch"])', text)
+        self.assertNotIn("codex_confirms_head(", text)

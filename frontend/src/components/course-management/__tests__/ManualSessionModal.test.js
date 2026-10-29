@@ -23,7 +23,7 @@ describe('monthly cross-period booking', () => {
     const wrapper = mount(ManualSessionModal, { props: input });
     await wrapper.find('.manual-session-next-period button').trigger('click');
     expect(wrapper.emitted('next-period')).toEqual([[2]]);
-    expect(wrapper.find('.actions .primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('.actions .at-submit').attributes('disabled')).toBeDefined();
     await wrapper.setProps({ submitting: true });
     expect(wrapper.find('input').attributes('disabled')).toBeDefined();
     wrapper.unmount();

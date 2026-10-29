@@ -1,0 +1,7 @@
+# gitleaks fingerprints (commit:file:rule:line) of reviewed non-secrets. Keep this list tiny and justified.
+# #4575: an intermediate commit of the self-test script held a made-up UUID literal as a "must still trip" fixture;
+# a later commit builds it at runtime. The range scan reads every commit of the PR, so the old one needs this entry.
+c10e49c2c59c555a2f61d3c3596caa8152d41f8e:scripts/tests/gitleaks-triage-rule.test.sh:generic-api-key:36
+# #4583: commit b6e30f2d held two made-up idempotency UUIDs in LegacyPaidFlagResolveTest; later commits build them at runtime.
+b6e30f2db47be14727ebd78b819c60fcd3cdf8d9:backend/tests/Feature/Billing/LegacyPaidFlagResolveTest.php:generic-api-key:151
+b6e30f2db47be14727ebd78b819c60fcd3cdf8d9:backend/tests/Feature/Billing/LegacyPaidFlagResolveTest.php:generic-api-key:201

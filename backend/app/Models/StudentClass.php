@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
  *           `fixed_session` when the column is null (see the accessor below).
  * @property array<string, mixed>|null $pricing_snapshot Immutable transaction pricing snapshot.
  * @property \App\Models\Student|null $student
+ * @property \App\Models\User|null $teacher
  * @property \App\Models\CoursePackage|null $coursePackage
  * @property int|null $ID
  * @property int $StudentID
@@ -173,6 +174,7 @@ class StudentClass extends Model
             'dunning_events' => ['student_class_id'],
             'course_contract_group_members' => ['student_class_id'],
             'bug_report_contract_links' => ['student_class_id'],
+            'contract_sibling_transfers' => ['source_student_class_id', 'target_student_class_id'],
         ];
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {
@@ -271,6 +273,32 @@ class StudentClass extends Model
     }
 
     /**
+     * The contract's current Charge for a count-mode, non-package course. Charge already follows rate and
+     * count edits, keeps renewal discounts and session_charge deltas, so an issued bill that still equals it is
+     * not flagged. Null for every other course. Read-only (#4115).
+     */
+    public function currentContractCharge(): ?int
+    {
+        if ((string) ($this->ScheduleMode ?? 'count') !== 'count' || $this->isPartOfPackage()) {
+            return null;
+        }
+
+        return max(0, (int) ($this->Charge ?? 0));
+    }
+
+    /** What Rate multiplies: TotalHours when rate_unit is hour, else SessionCount. */
+    public function pricedQuantity(): int
+    {
+        return (string) $this->rate_unit === 'hour' ? (int) $this->TotalHours : (int) ($this->SessionCount ?? 0);
+    }
+
+    /** Rate x pricedQuantity(): the base Charge is compared with (G-009). */
+    public function rateTimesQuantity(): int
+    {
+        return (int) round((float) ($this->Rate ?? 0) * $this->pricedQuantity());
+    }
+
+    /**
      * Non-financial effective-paid predicate for display, alerts, dunning, and notifications.
      *
      * A course is effectively paid if:
@@ -334,6 +362,53 @@ class StudentClass extends Model
             && (int) $package->student_id === (int) $this->StudentID
             && $campusId !== null && (int) $package->campus_id === (int) $campusId
             && $package->isTrialFeeRecordedByDate();
+    }
+
+    /**
+     * In-app #440 (Founder 2026-10-29, option A): a plain pause (Stop=1, no close reason) of a contract that never started is
+     * not owed while paused and is listed again on resume. "Never started" = no payment (Paid flag, bill or payment report), no
+     * session other than a cancelled one (held, scheduled or on leave) and no observed taught lesson (legacy sign-ins, orphan assessments). Closed contracts (any closed_reason) and shared-package
+     * members keep the F7 S3a rule (the package carries the obligation). One batch rule for every list that shows owed money.
+     *
+     * @param int[] $courseIds
+     * @return array<int, true> course id => true
+     */
+    public static function unstartedPauseIds(array $courseIds): array
+    {
+        $courseIds = array_values(array_unique(array_filter(array_map('intval', $courseIds), fn (int $id) => $id > 0)));
+        if ($courseIds === []) {
+            return [];
+        }
+        $paused = static::query()->whereIn('ID', $courseIds)->where('Stop', 1)->where('Paid', '!=', 1)
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', ''))
+            ->where(fn ($q) => $q->whereNull('PackageID')->orWhere('PackageID', '<=', 0))
+            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $ids = array_fill_keys($paused, true);
+        if ($ids === []) {
+            return [];
+        }
+        $started = array_merge(
+            DB::table('Invoice')->whereIn('StudentClassID', $paused)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->pluck('StudentClassID')->all(),
+            DB::table('payment_reports')->whereIn('StudentClassID', $paused)->whereIn('status', ['pending', 'confirmed'])->pluck('StudentClassID')->all(),
+            DB::table('ClassSession')->whereIn('StudentClassID', $paused)->whereRaw("LOWER(COALESCE(Status, '')) <> 'cancelled'")->pluck('StudentClassID')->all(),
+        );
+        foreach ($started as $id) {
+            unset($ids[(int) $id]);
+        }
+        // Taught lessons that never got a ClassSession link (legacy sign-ins, approved orphan assessments) are usage too: the same
+        // authoritative evidence the deduction count reads (SessionDeductionService::batchObservedUsedSessions).
+        foreach (\App\Services\SessionDeductionService::batchObservedUsedSessions(array_keys($ids)) as $id => $used) {
+            if ((int) $used > 0) {
+                unset($ids[(int) $id]);
+            }
+        }
+
+        return $ids;
+    }
+
+    public function isUnstartedPause(): bool
+    {
+        return isset(self::unstartedPauseIds([(int) $this->getKey()])[(int) $this->getKey()]);
     }
 
     /**

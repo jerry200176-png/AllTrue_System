@@ -1104,6 +1104,14 @@
       @close="showCourseTransfer = false; courseTransferPrefill = null"
       @done="onCourseTransferDone"
     />
+    <SiblingTransferModal
+      :show="!!siblingTransferCourse"
+      :course-id="siblingTransferCourse?.id"
+      :own-student-id="siblingTransferCourse?.student_id ?? siblingTransferCourse?.StudentID"
+      :branch-id="props.branchId"
+      @close="siblingTransferCourse = null"
+      @done="onSiblingTransferDone"
+    />
     <TransferSessionsModal
       :show="showTransferSessionsModal"
       :source-course="transferSessionsCourse"
@@ -1202,7 +1210,11 @@
       :is-retro-leave="isSelectedRetroLeave"
       :day-label="dayLabel"
       :impact-preview="leaveImpactPreview"
-      @close="showLeaveModal = false"
+      :preview-ready="leavePreviewReady" :preview-loading="leaveCascadePlanLoading"
+      :preview-error="leavePreviewError" :submitting="leaveSubmitting"
+      @retry-preview="refreshLeaveCascadePreview"
+      @navigate="showLeaveModal = false; emit('navigate', $event)"
+      @close="!leaveSubmitting && (showLeaveModal = false)"
       @submit="submitLeave"
     />
 
@@ -1458,6 +1470,7 @@ import PurchaseSessionsModal from '../components/course-management/PurchaseSessi
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
+import SiblingTransferModal from '../components/course-management/SiblingTransferModal.vue';
 import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js';
 import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
@@ -1475,6 +1488,7 @@ import {
 } from '../composables/course-management/useCourseSessionCalendar.js';
 import perfFlags from '../lib/perfFlags.js';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
+import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../lib/leaveSuccessorShift.js';
 import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
 import RescheduleModal from '../components/course-management/RescheduleModal.vue';
 import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.vue';
@@ -2252,6 +2266,19 @@ const onCourseTransferDone = async () => {
   await loadCourses();
   toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
 };
+// In-app #412: 轉給手足. The backend (SiblingContractTransferService) is the authority; this only hides the item
+// where it can never apply (not a director, not a plain open session contract, not paid).
+const siblingTransferCourse = ref(null);
+const canSiblingTransfer = (c) => ['director', 'super_admin'].includes(props.userRole)
+  && isSessionMode(c) && !isPackageMember(c) && c.status !== 'inactive' && !effectiveClosedReason(c)
+  && c.payment_status === 'paid';
+const openSiblingTransfer = (c) => { siblingTransferCourse.value = c; };
+const onSiblingTransferDone = async () => {
+  siblingTransferCourse.value = null;
+  closeCourseManager();
+  await loadCourses();
+  toastRef.value?.show?.({ title: '已轉給手足', description: '剩餘堂數與對應金額已轉到手足名下的新合約，請到他的課程排課。', variant: 'success', durationMs: 4000 });
+};
 const editability = ref(null);
 const editabilityLoading = ref(false);
 const editabilityError = ref('');
@@ -2778,6 +2805,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     duplicate: () => duplicateCourseForTeacher(c),
     reschedule: () => runRowAction(c, 'reschedule'), substitute: () => runRowAction(c, 'substitute'),
     transfer: () => runRowAction(c, 'transfer'), 'contract-revert': () => openContractRevertModal(c),
+    'sibling-transfer': () => openSiblingTransfer(c),
   };
   map[name]?.();
 }
@@ -3584,6 +3612,7 @@ const getLeaveSessionOptionsForCourse = (course) => {
       isRetro,
       session_id: row?.id || null,
       start_time: startTime || null,
+      end_time: row?.endTime || null,
       label: startTime ? `${date} ${startTime}` : date,
     });
   });
@@ -3613,6 +3642,13 @@ const selectedLeaveOption = computed(() => {
 });
 const leaveCascadePlan = ref(null);
 const leaveCascadePlanLoading = ref(false);
+const leavePreviewError = ref('');
+const leaveSubmitting = ref(false);
+const leavePreviewSuccessKey = ref('');
+let leavePreviewVersion = 0;
+const leaveRequestKey = computed(() => JSON.stringify([props.branchId, props.userRole, leaveForm.value]));
+const leavePreviewReady = computed(() => Boolean(leaveCascadePlan.value && !leaveCascadePlanLoading.value
+  && !leavePreviewError.value && leavePreviewSuccessKey.value === leaveRequestKey.value));
 
 function formatLeavePreviewDate(ymd) {
   const s = String(ymd || '').slice(0, 10);
@@ -3656,6 +3692,10 @@ function buildLeaveCascadeImpactItems(baseItems, plan) {
 const leaveImpactPreview = computed(() => {
   const form = leaveForm.value;
   if (!form.schedule_date) return null;
+  if (leaveCascadePlan.value?.applicable === true) return {
+    title: '請假與續約順延影響預覽', summary: `${form.student_name || '學生'}｜${form.schedule_date}`,
+    items: successorImpactItems(leaveCascadePlan.value), blockers: leaveCascadePlan.value.blockers,
+  };
   const retro = isSelectedRetroLeave.value;
   const option = selectedLeaveOption.value;
   const label = option?.label || `${form.schedule_date} ${form.start_time || ''}`.trim();
@@ -3686,43 +3726,46 @@ const leaveImpactPreview = computed(() => {
 });
 
 async function refreshLeaveCascadePreview() {
-  const form = leaveForm.value;
-  const courseId = Number(form.course_id || 0);
-  const date = String(form.schedule_date || '').slice(0, 10);
-  if (!courseId || !date || !showLeaveModal.value) {
-    leaveCascadePlan.value = null;
-    return;
-  }
+  const form = { ...leaveForm.value };
+  const version = ++leavePreviewVersion;
+  const key = leaveRequestKey.value;
+  const owns = () => showLeaveModal.value && version === leavePreviewVersion && key === leaveRequestKey.value;
+  leaveCascadePlan.value = null;
+  leavePreviewSuccessKey.value = '';
+  leavePreviewError.value = '';
+  if (!form.course_id || !form.schedule_date || !showLeaveModal.value) return;
   leaveCascadePlanLoading.value = true;
   try {
     const token = await getAccessToken();
-    if (!token) {
-      leaveCascadePlan.value = null;
-      return;
+    if (!token) throw new Error('請重新登入後再試');
+    if (!owns()) return;
+    if (!isSelectedRetroLeave.value) {
+      const plan = await previewSuccessorLeave({ role: props.userRole, sessionId: form.session_id,
+        courseId: form.course_id, date: form.schedule_date, start: form.start_time, branchId: props.branchId, token });
+      if (!owns()) return;
+      if (plan) {
+        leaveCascadePlan.value = plan;
+        if (!plan.eligible) leavePreviewError.value = plan.apply_enabled === false
+          ? '續約順延目前尚未開放，這次沒有變更課程。'
+          : '請先處理下列阻擋原因，再重新預覽';
+        leavePreviewSuccessKey.value = key;
+        return;
+      }
     }
     const res = await authedFetch('/api/v1/schedules/leave-cascade-preview', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        student_course_id: courseId,
-        schedule_date: date,
-        class_session_id: form.session_id || undefined,
-      }),
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ student_course_id: form.course_id, schedule_date: form.schedule_date, class_session_id: form.session_id || undefined }),
     }, token);
-    if (!res.ok) {
-      leaveCascadePlan.value = null;
-      return;
-    }
-    leaveCascadePlan.value = await res.json();
-  } catch (_) {
-    leaveCascadePlan.value = null;
-  } finally {
-    leaveCascadePlanLoading.value = false;
-  }
+    const plan = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(plan.message || '無法取得請假影響預覽');
+    if (!owns()) return;
+    if (plan.policy !== 'KEEP_FUTURE_DATES_APPEND_TAIL' || plan.leave_session_date !== form.schedule_date
+      || plan.future_dates_unchanged !== true || !Array.isArray(plan.moves) || plan.moves.length) throw new Error('請假影響預覽資料不完整，請重試');
+    leaveCascadePlan.value = plan;
+    leavePreviewSuccessKey.value = key;
+  } catch (error) {
+    if (owns()) leavePreviewError.value = error.message || '無法取得請假影響預覽';
+  } finally { if (version === leavePreviewVersion) leaveCascadePlanLoading.value = false; }
 }
 async function openLeave(c) {
   await ensureCompletedSessionDatesLoaded(c);
@@ -3740,7 +3783,7 @@ async function openLeave(c) {
     teacher_id: c.teacher_id || null,
     day_of_week: dayOfWeekFromDate(first.date),
     start_time: first.start_time || c.start_time || '16:00',
-    end_time: c.end_time || computeEndTime(first.start_time || c.start_time || '16:00', c.duration_hours ?? 2),
+    end_time: first.end_time || c.end_time || computeEndTime(first.start_time || c.start_time || '16:00', c.duration_hours ?? 2),
     duration_hours: c.duration_hours ?? 2,
     class_type: c.class_type || 'one_on_one',
     schedule_date: first.date || '',
@@ -3752,11 +3795,15 @@ async function openLeave(c) {
   await refreshLeaveCascadePreview();
 }
 async function submitLeave() {
+  if (leaveSubmitting.value) return;
+  if (!leavePreviewReady.value) { leavePreviewError.value ||= '請先取得最新請假影響預覽'; return; }
   if (!leaveForm.value.schedule_date) return;
   const branchId = Number(props.branchId) || 0;
   if (!branchId) { alert('請先選擇分校'); return; }
-  const form = leaveForm.value;
+  const form = { ...leaveForm.value };
+  const key = leaveRequestKey.value;
   const isRetro = isSelectedRetroLeave.value;
+  leaveSubmitting.value = true;
 
   try {
     const token = await getAccessToken();
@@ -3765,6 +3812,21 @@ async function submitLeave() {
       return;
     }
 
+    if (!showLeaveModal.value || key !== leaveRequestKey.value || !leavePreviewReady.value) return;
+    if (leaveCascadePlan.value?.applicable === true) {
+      try { await applySuccessorLeave(leaveCascadePlan.value, { token }); }
+      catch (error) {
+        leaveCascadePlan.value = null;
+        leavePreviewSuccessKey.value = '';
+        leavePreviewError.value = '請重新取得預覽後再確認';
+        throw error;
+      }
+      showLeaveModal.value = false;
+      leaveCourse.value = null;
+      await loadCourses();
+      toastRef.value?.show?.({ title: '請假與續約順延已完成', variant: 'success', durationMs: 4000 });
+      return;
+    }
     if (isRetro) {
       const retroPayload = {
         student_course_id: form.course_id,
@@ -3881,7 +3943,7 @@ async function submitLeave() {
   } catch (e) {
     alert('請假登記失敗：' + (e?.message || '請稍後再試'));
     return;
-  }
+  } finally { leaveSubmitting.value = false; }
 }
 
 // ----- Reschedule (調課) -----
@@ -3918,24 +3980,11 @@ async function submitBulkLeave() {
   }
 }
 
-watch(() => leaveForm.value.schedule_date, (date) => {
-  if (!date) {
-    leaveCascadePlan.value = null;
-    return;
-  }
-  leaveForm.value.day_of_week = dayOfWeekFromDate(date);
-  const option = leaveSessionOptions.value.find((opt) => opt.date === date);
-  if (option) {
-    leaveForm.value.session_id = option.session_id || null;
-    if (option.start_time) {
-      leaveForm.value.start_time = option.start_time;
-      leaveForm.value.end_time = computeEndTime(option.start_time, leaveForm.value.duration_hours || 2);
-    }
-  }
-  refreshLeaveCascadePreview();
-});
+watch(leaveRequestKey, () => { if (!leaveSubmitting.value) void refreshLeaveCascadePreview(); });
 watch(() => showLeaveModal.value, (open) => {
   if (!open) {
+    leavePreviewVersion++;
+    leavePreviewSuccessKey.value = '';
     leaveCascadePlan.value = null;
     leaveCascadePlanLoading.value = false;
   }
@@ -5536,11 +5585,11 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   getLessonPicker: () => lessonPicker.value,
   effectiveClosedReason, planningStatusVisible, planningStatusFor, isSessionMode, isMonthlyMode, isManualOccurrenceCourse,
   canQuickAddSession, quickAddDisabledReason, canCloseCourse, purchaseActionIsRenew, purchaseActionLabel, isPackageMember,
-  isPaymentNoticeAvailable, featureSubstituteV2,
+  isPaymentNoticeAvailable, canSiblingTransfer, featureSubstituteV2,
   isDetailsOpen: (c) => expandedDates.value.has(c.id),
   isSessionEditOpen: () => showSessionEditModal.value,
   requestDelete: (c) => { confirmDeleteTarget.value = c; },
-  openCourseTransfer: (c) => openCourseTransfer(c),
+  openCourseTransfer: (c) => openCourseTransfer(c), openSiblingTransfer,
   openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
   editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,

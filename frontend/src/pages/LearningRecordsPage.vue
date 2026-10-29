@@ -188,15 +188,12 @@
            never breaks into an uneven 3-then-2 wrap on narrow viewports. -->
       <div v-if="selectionMode" class="lr-batch-bar">
         <div class="lr-batch-bar__meta">
-          <button type="button" class="ghost xs lr-select-all-btn" @click="toggleSelectAll">
-            {{ allSelected ? '取消全選' : '全選本頁' }}
-          </button>
-          <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
+          <AtSelectAll :selection="selection" label="全選本頁" />
         </div>
         <div class="lr-batch-bar__actions">
-          <button type="button" class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
-          <button type="button" class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
-          <button type="button" class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+          <button type="button" class="primary xs" :disabled="batchOperating || selection.count === 0" @click="batchApproveSelected">批次核准</button>
+          <button type="button" class="ghost xs" :disabled="batchOperating || selection.count === 0" @click="batchRequestChangesSelected">批次需修改</button>
+          <button type="button" class="danger xs" :disabled="batchOperating || selection.count === 0" @click="batchRejectSelected">批次退回</button>
         </div>
       </div>
     </div>
@@ -716,7 +713,7 @@
                 'has-feedback': record.parent_feedback,
                 'is-unread': parentFeedbackUnread(record),
                 'has-feedback-read': record.parent_feedback && !parentFeedbackUnread(record),
-                'is-selected': selectionMode && selectedRecordIds.has(record.id)
+                'is-selected': selectionMode && selection.has(record.id)
               }"
               @click="handleRecordCardClick(record)"
             >
@@ -726,9 +723,9 @@
                     v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested') && (record.Status === 'pending' || record.Status === 'changes_requested')"
                     type="checkbox"
                     class="lr-record-card__select"
-                    :checked="selectedRecordIds.has(record.id)"
+                    :checked="selection.has(record.id)"
                     @click.stop
-                    @change="toggleRecordSelection(record.id)"
+                    @change="selection.toggle(record.id)"
                     :aria-label="'選取' + (record.student_name || '未命名學生') + ' ' + record.SessionDate + (record.StartTime ? ' ' + record.StartTime : '') + ' ' + (record.Subject || record.student_class_label || '未分類') + ' 的評量'"
                     title="選取以批次核准"
                   >
@@ -789,21 +786,24 @@
       </div>
 
       <div v-else class="lr-groups">
-        <details
+        <AtDisclosureCard
           v-for="(group) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
+          :stacked="group.records.length > 1"
           :open="openGroupKeys.has(group.key)"
-          @toggle="onGroupToggle(group.key, $event)"
+          @update:open="setGroupOpen(group.key, $event)"
         >
-          <summary class="lr-group-summary">
-            <div class="lr-group-title">
-              <button
-                type="button"
-                class="lr-group-student lr-group-student-btn"
-                :title="`點此只載入 ${group.student_name} 的全部記錄`"
-                @click.stop.prevent="filterByStudent(group.student_name)"
-              >{{ group.student_name }}</button>
+          <template #actions>
+            <button
+              type="button"
+              class="lr-group-student lr-group-student-btn"
+              :title="`點此只載入 ${group.student_name} 的全部記錄`"
+              @click="filterByStudent(group.student_name)"
+            >{{ group.student_name }}</button>
+          </template>
+          <template #summary>
+            <span class="lr-group-title">
               <span class="lr-group-count">{{ group.records.length }} 筆</span>
               <span v-if="group.pending_count > 0" class="lr-group-pending">{{ group.pending_count }} 待處理</span>
               <span v-if="group.unfilled_body_count > 0" class="lr-group-unfilled">{{ group.unfilled_body_count }} 未填</span>
@@ -812,9 +812,9 @@
                 <span v-if="group.oldest_date === group.newest_date">{{ group.oldest_date }}</span>
                 <span v-else>{{ group.oldest_date }} ～ {{ group.newest_date }}</span>
               </span>
-            </div>
+            </span>
             <span class="lr-group-hint">展開 / 收合</span>
-          </summary>
+          </template>
 
           <div class="lr-subject-subgroups">
             <div
@@ -871,7 +871,7 @@
                   <thead>
                     <tr>
                       <th v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
-                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" :aria-label="allSelected ? '取消全選本頁評量' : '全選本頁評量'" title="全選">
+                        <AtSelectAll :selection="selection" label="全選本頁評量" hide-label :show-count="false" />
                       </th>
                       <th>日期</th>
                       <th>學生 / 班級</th>
@@ -884,13 +884,13 @@
                   </thead>
                   <tbody>
                     <template v-for="record in sg.records" :key="record.id">
-                    <tr class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record), 'is-selected': selectionMode && selectedRecordIds.has(record.id) }" @click="handleRecordCardClick(record)">
+                    <tr class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record), 'is-selected': selectionMode && selection.has(record.id) }" @click="handleRecordCardClick(record)">
                       <td v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                         <input
                           v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
                           type="checkbox"
-                          :checked="selectedRecordIds.has(record.id)"
-                          @change="toggleRecordSelection(record.id)"
+                          :checked="selection.has(record.id)"
+                          @change="selection.toggle(record.id)"
                           :aria-label="'選取' + (record.student_name || '未命名學生') + ' ' + record.SessionDate + (record.StartTime ? ' ' + record.StartTime : '') + ' ' + (record.Subject || record.student_class_label || '未分類') + ' 的評量'"
                         >
                       </td>
@@ -964,7 +964,7 @@
               </div>
             </div>
           </div>
-        </details>
+        </AtDisclosureCard>
       </div>
 
       <!-- Load More / Load All (slide-up fade once fully loaded). -->
@@ -1542,6 +1542,8 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSelectAll from '../components/design-system/AtSelectAll.vue';
+import AtDisclosureCard from '../components/design-system/AtDisclosureCard.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
@@ -1591,6 +1593,7 @@ import {
   pruneOldDrafts,
 } from '../lib/learningRecordDrafts';
 import { createLearningRecordSaver } from '../composables/useLearningRecordSave';
+import { useSelection } from '../composables/useSelection';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read']);
@@ -1817,7 +1820,6 @@ watch(reviewTab, (t) => {
 // #199: the two "only" lenses are mutually exclusive.
 watch(onlyUnfilled, (v) => { if (v) onlyFilled.value = false; });
 watch(onlyFilled, (v) => { if (v) onlyUnfilled.value = false; });
-const selectedRecordIds = ref(new Set());
 // Bulk-approve is opt-in (Gmail/Files-style "Select" mode) rather than always-on
 // checkboxes on every row/card — the checkbox only appears once the director
 // explicitly enters selection mode, so single-record review (the common case)
@@ -1826,11 +1828,9 @@ const selectionMode = ref(false);
 const previewColspan = computed(() => (isTeacher.value ? 6 : 7) + (selectionMode.value ? 1 : 0));
 function toggleSelectionMode() {
   selectionMode.value = !selectionMode.value;
-  if (!selectionMode.value) selectedRecordIds.value = new Set();
 }
 function exitSelectionMode() {
   selectionMode.value = false;
-  selectedRecordIds.value = new Set();
 }
 const batchOperating = ref(false);
 const draftAutoSaveKey = ref('');
@@ -2091,8 +2091,8 @@ watch(filteredGroupedRecords, (groups) => {
     if (i === 0 || groups.length === 1) openGroupKeys.value.add(g.key);
   });
 }, { immediate: true });
-function onGroupToggle(key, event) {
-  if (event.target.open) openGroupKeys.value.add(key);
+function setGroupOpen(key, open) {
+  if (open) openGroupKeys.value.add(key);
   else openGroupKeys.value.delete(key);
 }
 
@@ -2393,35 +2393,22 @@ const showAllStatuses = () => {
   } else if (isDirectorRole.value) {
     reviewTab.value = 'all';
   }
-  selectedRecordIds.value = new Set();
 };
 
-const allSelected = computed(() => {
-  const selectable = filteredRecords.value.filter(r => r.Status === 'pending' || r.Status === 'changes_requested');
-  return selectable.length > 0 && selectable.every(r => selectedRecordIds.value.has(r.id));
+// Batch scope = rows on screen (subject filter included) in a reviewable tab while selecting;
+// leaving selection mode or the tab drops the selection.
+const selection = useSelection(computed(() => filteredGroupedRecords.value.flatMap((g) => g.records)), {
+  canSelect: (r) => selectionMode.value && isDirectorRole.value
+    && (reviewTab.value === 'pending' || reviewTab.value === 'changes_requested')
+    && (r.Status === 'pending' || r.Status === 'changes_requested'),
 });
-
-const toggleSelectAll = () => {
-  const selectable = filteredRecords.value.filter(r => r.Status === 'pending' || r.Status === 'changes_requested');
-  if (allSelected.value) {
-    selectedRecordIds.value = new Set();
-  } else {
-    selectedRecordIds.value = new Set(selectable.map(r => r.id));
-  }
-};
-
-const toggleRecordSelection = (id) => {
-  const next = new Set(selectedRecordIds.value);
-  if (next.has(id)) next.delete(id); else next.add(id);
-  selectedRecordIds.value = next;
-};
 
 // While in selection mode, tapping the row/card toggles its checkbox instead of
 // opening the detail modal — matches the mode's own affordance (Gmail/Files pattern).
 const handleRecordCardClick = (record) => {
   const selectable = record?.Status === 'pending' || record?.Status === 'changes_requested';
   if (selectionMode.value && selectable) {
-    toggleRecordSelection(record.id);
+    selection.toggle(record.id);
     return;
   }
   viewRecord(record);
@@ -4240,7 +4227,7 @@ const deleteRecord = async (record) => {
 };
 
 const batchApproveSelected = async () => {
-  const ids = [...selectedRecordIds.value];
+  const ids = [...selection.keys];
   if (ids.length === 0) return;
   if (!confirm(`確定要批次核准 ${ids.length} 筆評量？`)) return;
   batchOperating.value = true;
@@ -4266,7 +4253,7 @@ const batchApproveSelected = async () => {
 };
 
 const batchRejectSelected = async () => {
-  const ids = [...selectedRecordIds.value];
+  const ids = [...selection.keys];
   if (ids.length === 0) return;
   const note = prompt(`請輸入退回原因（將套用到 ${ids.length} 筆）：`);
   if (!note) return;
@@ -4293,7 +4280,7 @@ const batchRejectSelected = async () => {
 };
 
 const batchRequestChangesSelected = async () => {
-  const ids = [...selectedRecordIds.value];
+  const ids = [...selection.keys];
   if (ids.length === 0) return;
   const note = prompt(`請輸入修改說明（將套用到 ${ids.length} 筆）：`);
   if (!note) return;
@@ -5302,13 +5289,6 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   .lr-batch-bar__actions button {
     width: 100%;
   }
-}
-
-.lr-batch-count {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-primary-text);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── Template Phrases ── */
@@ -6321,27 +6301,15 @@ select.lr-input {
   min-width: 200px;
 }
 
+/* AtDisclosureCard: head/body round their own corners; no overflow clip, so the stacked edges show. */
 .lr-group {
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
   background: var(--card-bg);
 }
 
-.lr-group-summary {
-  list-style: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  cursor: pointer;
+.lr-group :deep(.at-disclosure__head) {
   background: var(--ds-canvas-soft);
-  border-bottom: 1px solid var(--border);
-}
-
-.lr-group-summary::-webkit-details-marker {
-  display: none;
 }
 
 .lr-group-title {
@@ -6424,10 +6392,6 @@ select.lr-input {
 .lr-group-date-range-label {
   font-size: 11px;
   opacity: 0.7;
-}
-
-.lr-group[open] .lr-group-summary {
-  background: var(--ds-canvas-soft);
 }
 
 /* ── Subject Subgroup (FR-004) ── */
@@ -8582,19 +8546,19 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   border-radius: var(--ios-radius);
   box-shadow: var(--ios-shadow);
   border: none;
-  overflow: hidden;
 }
-.lr-page--teacher .lr-group-summary {
+.lr-page--teacher .lr-group.is-open :deep(.at-disclosure__head) {
+  border-bottom-color: var(--ios-separator);
+}
+.lr-page--teacher .lr-group :deep(.at-disclosure__head) {
   padding: 12px 16px;
   background: var(--ios-surface);
-  border-bottom: 1px solid var(--ios-separator);
   font-family: var(--ios-font);
-  font-size: 13px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ios-label-secondary);
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  cursor: pointer;
 }
 .lr-page--teacher .lr-group-detail {
   border-top: none;
@@ -8772,13 +8736,9 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   border-radius: 12px;
   box-shadow: var(--ds-shadow-1);
 }
-.lr-page:not(.lr-page--teacher) .lr-group-summary,
-.lr-page:not(.lr-page--teacher) .lr-group[open] .lr-group-summary {
+.lr-page:not(.lr-page--teacher) .lr-group :deep(.at-disclosure__head) {
   padding: 14px 16px;
   background: var(--ds-canvas);
-}
-.lr-page:not(.lr-page--teacher) .lr-group-summary {
-  border-bottom-color: var(--ds-hairline);
 }
 .lr-page:not(.lr-page--teacher) .lr-subject-subgroups {
   padding: 10px 12px 14px;

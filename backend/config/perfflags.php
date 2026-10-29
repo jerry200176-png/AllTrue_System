@@ -12,7 +12,12 @@
 */
 
 return [
-    'leave_successor_shift_apply_enabled' => (bool) env('LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED', false), // #410: off until undo-leave refuses an active shift (Q9a)
+    // #410 / #4210: a leave whose make-up lesson lands in a pre-created renewal shifts the renewal after a director's
+    // preview and confirmation. On by default now that the #4210 pre-enable checklist is done on main.
+    // Founder 2026-10-28: 「好」 to 「開放 410/433「請假時續約課自動往後排」給主任用（開之前會先顯示哪些課會移、主任確認後才改）」.
+    // Rollback: LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED=false refuses every apply again (403). Shifts already applied stay,
+    // and the undo-leave guard for them does not depend on this flag.
+    'leave_successor_shift_apply_enabled' => (bool) env('LEAVE_SUCCESSOR_SHIFT_APPLY_ENABLED', true),
     // Throttle notification sync to once per 5 min per branch.
     // false = always sync on every unread-count request (old behavior)
     'throttle_notification_sync' => (bool) env('PERF_THROTTLE_NOTIF_SYNC', true),
@@ -59,6 +64,13 @@ return [
     // actual_duration still behaves exactly like fixed_session, so turning the flag
     // back off is a complete rollback with no data migration.
     'actual_duration_deduction_enabled' => (bool) env('PERF_ACTUAL_DURATION_DEDUCTION', false),
+
+    // Pilot boundary for that feature (Founder GO 2026-10-13, #3834): the campuses where a course may NEWLY opt in
+    // to deduction_basis=actual_duration. "11,13" = 新莊分校 + 新莊中平分校 (campus ids as in frontend useBranches),
+    // "*" = every campus, "" = none. An unknown campus (0) never passes. Creating or editing a course at any other
+    // campus answers 422. Courses that already are actual_duration are not touched by this list, so deploying it
+    // only narrows what can be created and changes no balance.
+    'actual_duration_campus_ids' => env('PERF_ACTUAL_DURATION_CAMPUS_IDS', '11,13'),
 
     // Multi-guardian (Student 1:N). Flag gates staff UX + Portal canonical authZ
     // (guardians/student_guardians). Dual-write runs whenever tables exist.

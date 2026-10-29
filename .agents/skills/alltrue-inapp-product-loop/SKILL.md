@@ -26,7 +26,7 @@ description: >-
 2. [`docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](../../../docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)  
 3. [`docs/CHAT_BUG_SYSTEM.md`](../../../docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**（含 `product_loop`）  
 4. 工作狀態：GitHub issue／PR（cloud session 預設，2026-10-14 起）。本機 WSL 才有的 `agent-start` manifest 與  
-   `/home/jerry/workspace/state/alltrue/delivery/`（`*_RELEASE_PACKET.json`、`*_EXECUTION_PLAN.md`）若存在可參考  
+   本機 `$HOME/workspace/state/alltrue/delivery/`（`*_RELEASE_PACKET.json`、`*_EXECUTION_PLAN.md`）若存在可參考；cloud session 沒有此目錄，略過  
 5. **In-app backlog 讀取與各階段自動化**（缺 dogfood actor ≠ 無法讀 backlog）：一律依 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](../../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表（哪個 workflow、schedule／push request-file／dispatch-only、cloud 能否自行完成）與 Freshness gate。要點：log 只有 ID／數量，標題／描述／留言只在加密 artifact；解密由已授權且完成 secret 綁定的受控環境執行，不以本機為必要條件（見 SOP 的 Cloud decryption custody）；`bug-auto-intake.yml` 每小時已自動建 issue＋留「收到」回覆；**禁止** Pi SSH。`meta.counts` 任一不符 → **PARTIAL**。`resolved` 是待回報者確認的獨立營運佇列，不回填 active delivery owner。
 6. 依風險再開：`alltrue-debugging` · `alltrue-testing` · `alltrue-code-review` · `alltrue-release` · `alltrue-security`（非每筆全開）
 
@@ -73,6 +73,7 @@ Codex／Cursor 共用本路徑。啟動：cloud session 從 `origin/main` 開 br
 雲端預設從 fresh clone 的 `origin/main` 開 feature branch，以 GitHub issue／PR、review、CI 與既有 checkpoint 接續工作；不要求本機工具存在。下列本機執行工具與模型目錄不作為雲端啟動前提：
 
 - **Cursor**：本機產品執行；強規劃用帳戶實際可用的 Sol slug（`agent models` 核對），禁止用 `auto` 冒充強模型。
+- **Claude Code**：本 skill 與其他 AllTrue skill 經 `.claude/skills/<name>` symlink 載入，Cursor 專屬指令（`.mdc`、`agent models`、`agent-start`）的對照見 [`.claude/skills/README.md`](../../../.claude/skills/README.md)。
 - **CubeLV**：GitHub 可讀研究／建議；**不**假設未驗證的自動調度；**不是**第二個技術 Planning Lead。  
 - **Codex**：雲端走上述 GitHub 交付入口；本機 WSL 恢復後才用既有 `~/.codex/model-routing.toml`／`codex-route`；不因偏好 Codex 停掉 Cursor 可合法執行的工作。Astra 目前以 Codex 目錄為準（Cursor map 可能為空 → fail-closed）。
 

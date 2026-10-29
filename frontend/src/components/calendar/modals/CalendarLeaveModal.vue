@@ -38,6 +38,7 @@
           <li v-for="item in impactItems" :key="item">{{ item }}</li>
         </ul>
         <p v-if="previewError" class="preview-error" role="alert">{{ previewError }}</p>
+        <SuccessorLeaveBlockers :blockers="impactPreview?.blockers || []" :date="impactPreview?.date || form.schedule_date" @navigate="$emit('navigate', $event)" />
         <button v-if="previewError" type="button" class="ghost preview-retry" @click="$emit('retry-preview')">重新取得預覽</button>
         <label v-if="previewReady" class="impact-confirm">
           <input v-model="impactAccepted" type="checkbox" />
@@ -47,14 +48,16 @@
       <p v-if="error" class="submit-error" role="alert">請假登記失敗：{{ error }}</p>
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="!submitting && $emit('close')">取消</button>
-        <button class="primary" :disabled="!canSubmit || submitting" @click="$emit('submit')">{{ submitting ? '送出中…' : '確認請假' }}</button>
+        <AtSubmitButton shape="rect" :pending="submitting" :disabled="!canSubmit" pending-text="送出中…" @click="$emit('submit')">確認請假</AtSubmitButton>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import AtSubmitButton from '../../design-system/AtSubmitButton.vue';
 import { computed, ref, watch } from 'vue';
+import SuccessorLeaveBlockers from '../../course-management/SuccessorLeaveBlockers.vue';
 import './calendarModalRwd.css';
 
 const props = defineProps({
@@ -70,7 +73,7 @@ const props = defineProps({
   error: { type: String, default: '' },
   submitting: { type: Boolean, default: false },
 });
-defineEmits(['close', 'submit', 'retry-preview']);
+defineEmits(['close', 'submit', 'retry-preview', 'navigate']);
 const impactAccepted = ref(false);
 const impactItems = computed(() => {
   const items = props.impactPreview?.items;

@@ -2,7 +2,9 @@
 
 from pathlib import Path
 import argparse
+import io
 import json
+from contextlib import redirect_stderr
 import os
 import subprocess
 import tempfile
@@ -1050,7 +1052,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("schedule", resolve_if)
         self.assertIn('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "release-train" ]]; then', self.workflow)
         self.assertIn("run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}", self.workflow)
-        # A run never cancels a train already awaiting approval.
+        # A run stands down for another run awaiting approval, except a stale train (#3992).
         self.assertIn("another deploy run is already waiting for approval; standing down", self.workflow)
         self.assertIn("- release-train", self.workflow)
         self.assertIn('release-train) EXPECTED="RELEASE_TRAIN" ;;', self.workflow)
@@ -1097,7 +1099,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('runs?${q}&per_page=100', job)
         # Only trains count as queued/running; any waiting run counts. A smoke or manual deploy
         # dispatch must not make the window's kick stand down (nothing re-kicks after it ends).
-        self.assertIn('select(.id != ${RUN_ID} and (.status == \\"waiting\\" or .display_title == \\"Release train\\"))] | length', job)
+        # #3992: a train still waiting from before this window is stale and does not count.
+        self.assertIn('select(.id != ${RUN_ID} and ((.status == \\"waiting\\" and (.display_title != \\"Release train\\" or .created_at >= \\"${SINCE}\\")) or (.status != \\"waiting\\" and .display_title == \\"Release train\\")))] | length', job)
         self.assertIn('select(.status != "completed" and .display_title == "Release train")] | length', job)
         self.assertIn("PENDING=$((PENDING + n))", job)
         self.assertLess(job.index('if [[ "$PENDING" -ge 1 ]]'), dispatch)
@@ -1148,6 +1151,131 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                     capture_output=True, text=True, check=True,
                 )
                 self.assertEqual(out.stdout.strip(), expected)
+
+    # #3992: run the real resolve / kick shell against a fake `gh` (jq does the --jq filters).
+    TIP, OLD = "a" * 40, "b" * 40
+    ROUTED_GH = textwrap.dedent("""
+        import json, os, re, subprocess, sys
+        method, jq, url, args = "GET", None, None, sys.argv[2:]
+        while args:
+            arg = args.pop(0)
+            if arg == "-X":
+                method = args.pop(0)
+            elif arg == "--jq":
+                jq = args.pop(0)
+            elif arg.startswith("/"):
+                url = arg
+        with open(os.environ["FAKE_GH_LOG"], "a") as log:
+            log.write(f"{method} {url}\\n")
+        if method != "GET":
+            sys.exit(0)
+        for pattern, body in json.loads(os.environ["FAKE_GH_ROUTES"]):
+            if re.search(pattern, url):
+                text = json.dumps(body)
+                sys.exit(subprocess.run(["jq", "-r", jq], input=text, text=True).returncode if jq else print(text))
+        sys.exit(f"unrouted {url}")
+    """)
+
+    def _run_fake_gh(self, script, routes, env):
+        with tempfile.TemporaryDirectory() as tmp:
+            bindir = Path(tmp)
+            (bindir / "gh").write_text(f"#!{sys.executable}\n{self.ROUTED_GH}")
+            (bindir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+            for name in ("gh", "sleep"):
+                (bindir / name).chmod(0o755)
+            (bindir / "out").write_text("")
+            (bindir / "log").write_text("")
+            proc = subprocess.run(
+                ["bash", "-c", "set -euo pipefail\n" + script], capture_output=True, text=True,
+                env={**os.environ, **env, "PATH": f"{tmp}:{os.environ['PATH']}", "GITHUB_OUTPUT": f"{tmp}/out",
+                     "FAKE_GH_LOG": f"{tmp}/log", "FAKE_GH_ROUTES": json.dumps(routes), "REPO": "o/r"},
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            out = dict(line.split("=", 1) for line in (bindir / "out").read_text().splitlines())
+            return out, (bindir / "log").read_text(), proc.stdout
+
+    def _resolve(self, event, trigger_sha, waiting=(), tip_ci=True, own_runs=(), trigger_event="push"):
+        script = self._step_script("Validate target SHA and CI evidence")
+        green = [{"name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push", "status": "completed",
+                  "updated_at": "2026-10-28T19:00:00Z"}] if tip_ci else []
+        routes = [
+            [rf"ci\.yml/runs\?branch=main&head_sha={self.TIP}&status=", {"workflow_runs": green}],
+            [rf"ci\.yml/runs\?branch=main&head_sha={self.TIP}&per_page", {"workflow_runs": []}],
+            [r"deploy\.yml/runs\?status=waiting", {"workflow_runs": list(waiting)}],
+            [rf"deploy\.yml/runs\?event=workflow_run&head_sha={self.TIP}", {"workflow_runs": list(own_runs)}],
+            [rf"/compare/{self.OLD}\.\.\.{self.TIP}$", {"status": "ahead"}],
+            [rf"/compare/{self.TIP}\.\.\.{self.TIP}$", {"status": "identical"}],
+            [r"/commits/[0-9a-f]{40}$", {}],
+        ]
+        env = {"EVENT_NAME": event, "PHASE": "release-train" if event == "workflow_dispatch" else "",
+               "RUN_HEAD_SHA": self.TIP, "RUN_ID": "100", "WORKFLOW_REF": "refs/heads/main",
+               "TARGET_SHA_INPUT": trigger_sha, "TRIGGER_EVENT": trigger_event, **dict.fromkeys(("FLAG_ADMISSIONS", "FLAG_CALENDAR", "FLAG_MANAGER", "FLAG_POP_INAPP"), "")}
+        return self._run_fake_gh(script, routes, env)
+
+    def test_merge_run_deploys_its_own_head_while_main_contains_it(self):
+        # Its own CI: no exact-main lookup, the executor gates use train semantics.
+        out, log, _ = self._resolve("workflow_run", self.TIP)
+        self.assertEqual((out["target_sha"], out["may_trail_main"], out["release_train"]), (self.TIP, "true", "false"))
+        self.assertNotIn("superseded", out)
+        self.assertNotIn("git/ref/heads/main", log)
+        # A late CI for a commit main had left: wait for the run head's CI and deploy the head.
+        out, log, _ = self._resolve("workflow_run", self.OLD, own_runs=[{"id": 50, "created_at": "2026-10-28T18:40:00Z"}])
+        self.assertEqual((out["target_sha"], out["may_trail_main"]), (self.TIP, "true"))
+        self.assertNotIn("POST", log)
+        # The run the head's own green CI started takes it; the head without green CI waits for a later run.
+        for kwargs in ({"own_runs": [{"id": 200, "created_at": "2026-10-28T19:00:05Z"}]}, {"tip_ci": False},
+                       {"trigger_event": "pull_request"}):
+            with self.subTest(**kwargs):
+                out, _, _ = self._resolve("workflow_run", self.OLD, **kwargs)
+                self.assertEqual(out.get("superseded"), "true")
+                self.assertNotIn("target_sha", out)
+
+    def test_release_train_cancels_only_a_stale_waiting_train(self):
+        stale = {"id": 7, "head_sha": self.OLD, "display_title": "Release train"}
+        out, log, stdout = self._resolve("workflow_dispatch", "", waiting=[stale])
+        self.assertEqual((out["target_sha"], out["release_train"], out["may_trail_main"]), (self.TIP, "true", "true"))
+        self.assertIn("POST /repos/o/r/actions/runs/7/cancel\n", log)
+        self.assertIn("cancelled run 7", stdout)
+        # Never approves, never touches environments.
+        self.assertEqual([line for line in log.splitlines() if line.startswith("POST")], ["POST /repos/o/r/actions/runs/7/cancel"])
+        for waiting in ([{"id": 8, "head_sha": self.TIP, "display_title": "Release train"}],
+                        [{"id": 9, "head_sha": self.OLD, "display_title": "Deploy to Pi"}],
+                        [stale, {"id": 9, "head_sha": self.OLD, "display_title": "Deploy to Pi"}]):
+            with self.subTest(waiting=waiting):
+                out, log, _ = self._resolve("workflow_dispatch", "", waiting=waiting)
+                self.assertEqual(out.get("superseded"), "true")
+                self.assertNotIn("POST", log)
+        # No green tip: stand down before looking at (or cancelling) anything.
+        out, log, _ = self._resolve("workflow_dispatch", "", waiting=[stale], tip_ci=False)
+        self.assertEqual(out.get("superseded"), "true")
+        self.assertNotIn("POST", log)
+        job = self.workflow[self.workflow.index("  resolve-target:\n"):self.workflow.index("  detect-deployable:\n")]
+        self.assertIn("permissions:\n      contents: read\n      actions: write", job)
+        for forbidden in ("environment", "pending_deployments", "reviews", "contents: write"):
+            self.assertNotIn(forbidden, job)
+
+    def test_executor_gates_take_train_semantics_from_may_trail_main(self):
+        gate = self.workflow[self.workflow.index("      - name: Final exact-main gate before production executor"):]
+        self.assertIn("RELEASE_TRAIN: ${{ needs.resolve-target.outputs.may_trail_main }}", gate[:400])
+        self.assertIn("may_trail_main: ${{ steps.resolve.outputs.may_trail_main }}", self.workflow)
+        # Approval routing still keys on release_train only: a merge run never opens the Founder gate.
+        for job in ("  production-activation:\n", "  production-auto:\n", "  deploy:\n", "  release-train-kick:\n"):
+            job_if = self.workflow[self.workflow.index(job):].split("\n")[3]
+            self.assertNotIn("may_trail_main", job_if)
+
+    def test_release_train_kick_ignores_a_train_waiting_from_an_earlier_window(self):
+        script = self._step_script("Dispatch the window's release train unless one already ran")
+        script = script[script.index("PENDING=0"):script.index('if [[ "$PENDING" -ge 1 ]]')] + 'echo "PENDING=$PENDING"'
+        cases = [("Release train", "2026-10-28T13:14:43Z", "0"), ("Release train", "2026-10-28T10:17:00Z", "1"),
+                 ("Deploy to Pi", "2026-10-28T09:00:00Z", "1")]
+        for title, created, expected in cases:
+            with self.subTest(title=title, created=created):
+                routes = [[r"status=waiting", {"workflow_runs": [{"id": 7, "status": "waiting", "display_title": title, "created_at": created}]}],
+                          [r"status=", {"workflow_runs": []}]]
+                # The window SINCE is 10:17 that day, so the 13:14 train is current; move SINCE past it.
+                since = "2026-10-29T04:17:00Z" if created.startswith("2026-10-28T13") else "2026-10-28T10:17:00Z"
+                _, _, stdout = self._run_fake_gh(script, routes, {"RUN_ID": "100", "SINCE": since})
+                self.assertIn(f"PENDING={expected}", stdout)
 
     def test_existing_ci_completion_trigger_is_preserved(self):
         self.assertIn('workflows: ["CI — PHPUnit Tests"]', self.workflow)
@@ -1396,7 +1524,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         deploy_start = self.workflow.index("  deploy:\n")
         parent_smoke_start = self.workflow.index("  parent-portal-smoke:\n")
         deploy = self.workflow[deploy_start:parent_smoke_start]
-        self.assertIn("timeout-minutes: 30", deploy)
+        self.assertIn("timeout-minutes: 80", deploy)  # deploy + verify + 20-min post-deploy watch
         for option in (
             "-o BatchMode=yes",
             "-o ConnectTimeout=20",
@@ -1734,6 +1862,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             for bad in ("ON", "true", "1", " on", "off\n", 'on"; touch x; "'):
                 with self.assertRaises(ValueError):
                     renderer.render(script, {f"DEPLOY_{name}": bad})
+        # #4560 review F9/N3: SENTRY_WATCH lands in a double-quoted shell string on the Pi; a value that could
+        # break out is dropped (Sentry skipped), base64 '+'/'=' are kept, and the deploy is never blocked.
+        good = "https://de.sentry.io acme sntrys_abc+def="
+        self.assertIn(f'SENTRY_WATCH="{good}"', renderer.render(script, {"DEPLOY_SENTRY_WATCH": good}))
+        for bad in ('tok"; touch x; "', "tok$(id)", "tok`id`", "tok\\", "tok\nx"):
+            with redirect_stderr(io.StringIO()):
+                rendered = renderer.render(script, {"DEPLOY_SENTRY_WATCH": bad})
+            self.assertIn('SENTRY_WATCH=""', rendered)
+            self.assertNotIn(bad, rendered)
         out = subprocess.run([sys.executable, str(REMOTE_RENDERER), str(REMOTE_DEPLOY)], capture_output=True,
                              env={**os.environ, "DEPLOY_POP_INAPP_STANDING_POLICY": "ON"})
         self.assertEqual(1, out.returncode)
@@ -2025,10 +2162,12 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertEqual({f"DEPLOY_{n}" for n in placeholders} | {"DEPLOY_PI_SSH_USER", "DEPLOY_PI_SSH_HOST"}, set(env))
         expr = lambda source, names: {f"DEPLOY_{n.upper()}": f"${{{{ {source}.{n} }}}}" for n in names}
         self.assertEqual(expr("secrets", ("PI_SSH_USER", "PI_SSH_HOST", "SENTRY_DSN", "SMOKE_TEACHER_LOGIN",
-                                          "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID"))
+                                          "SMOKE_TEACHER_PASSWORD", "SMOKE_BRANCH_ID", "SENTRY_WATCH"))
                          | expr("inputs", ("admissions_funnel_v1", "course_session_calendar_v1", "course_manager_v1",
                                            "pop_inapp_standing_policy"))
-                         | expr("needs.resolve-target.outputs", ("target_sha", "release_train")), env)
+                         | expr("needs.resolve-target.outputs", ("target_sha",))
+                         # #3992: a train or a merge run may trail main; the Pi then never downgrades.
+                         | {"DEPLOY_RELEASE_TRAIN": "${{ needs.resolve-target.outputs.may_trail_main }}"}, env)
 
     def test_remote_script_renders_like_github_text_substitution(self):
         sys.path.insert(0, str(REMOTE_RENDERER.parent))
@@ -2151,7 +2290,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn(self.MIGRATION_START, deploy)
         self.assertNotIn("continue-on-error", deploy)
         self.assertNotIn("set +e", deploy)
-        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  parent-portal-smoke:", 1)[0]
+        after = self.workflow.split("      - name: Deploy\n", 1)[1].split("\n  deploy-incident:", 1)[0]
         steps = after.split("      - name: ")[1:]
         names = [step.split("\n", 1)[0] for step in steps]
         self.assertEqual(
@@ -2228,7 +2367,8 @@ class R3AutoActivationTest(unittest.TestCase):
             with self.subTest(path=path):
                 result = self._decide([billing], range_paths=[self.BILLING, path])
                 self.assertFalse(result["ok"])
-                self.assertIn("deploy execution", result["reason"])
+                # post-deploy-verify.py is gate policy itself since #4560 (review F5), held even earlier.
+                self.assertRegex(result["reason"], r"deploy execution|gate policy or deploy workflow")
         # Other workflows do not hold by path; the caller requires final-head review of every PR instead.
         self.assertTrue(self._decide([billing], range_paths=[self.BILLING, ".github/workflows/ci.yml"])["ok"])
 
@@ -2379,7 +2519,7 @@ class R3AutoActivationTest(unittest.TestCase):
                 if path.endswith("/runs/2/jobs?per_page=100"):
                     return {"jobs": [{"name": "Deploy to Production", "conclusion": "skipped"}]}
                 return {"jobs": [{"name": "Deploy to Production", "conclusion": deploy_job,
-                                  "completed_at": "2026-10-28T01:00:00Z"}]}
+                                  "completed_at": "2026-10-28T01:00:00Z", "steps": [{"name": "Deploy", "conclusion": deploy_job}]}]}
             return api
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api_for(["success"], "success")))
         self.assertIn("main CI is red", deploy_freeze_reason(repo="o/r", api=api_for(["failure"], "success")))
@@ -2402,9 +2542,71 @@ class R3AutoActivationTest(unittest.TestCase):
             if "/workflows/deploy.yml/runs" in path:
                 return {"workflow_runs": [{"id": 20}, {"id": 10}]}  # newest run first
             if "/runs/20/" in path:
-                return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z"}]}
-            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z"}]}
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                                  "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "failure"}]}]}
         self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_a_failed_deploy_freezes_while_its_run_is_still_open(self):
+        # #4560 review: the incident job keeps the failed run in progress after the executor slot is released.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                if "status=completed" in path:
+                    return {"workflow_runs": [{"id": 10}]}
+                return {"workflow_runs": [{"id": 30, "status": "in_progress"}, {"id": 10}]}
+            if "/runs/30/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                                  "steps": [{"name": "Deploy", "conclusion": "failure"}]},
+                                 {"name": "Record failed deploy", "status": "queued", "conclusion": None}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+        self.assertIn("run 30", deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_a_job_that_failed_before_the_executor_step_does_not_freeze(self):
+        # #4560 review F1: a stale-target refusal or GO recheck fails the job with the Deploy step skipped.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}, {"id": 10}]}
+            if "/runs/20/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z",
+                                  "steps": [{"name": "Production executor refused stale target", "conclusion": "failure"},
+                                            {"name": "Deploy", "conclusion": "skipped"}]}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_freeze_reads_only_runs_updated_after_the_newest_deploy_but_catches_a_later_rerun(self):
+        # #4560 review N5/N6: skip runs that cannot hold a newer deploy; an old run re-run later is still read.
+        read = []
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 30, "updated_at": "2026-10-28T03:00:00Z"},
+                                          {"id": 20, "updated_at": "2026-10-28T00:30:00Z"},
+                                          {"id": 10, "updated_at": "2026-10-28T05:00:00Z"}]}  # an old run re-run later
+            run = int(path.split("/runs/")[1].split("/")[0])
+            read.append(run)
+            ok = {30: ("success", "2026-10-28T03:00:00Z"), 10: ("failure", "2026-10-28T05:00:00Z")}.get(run, ("failure", "2026-10-28T00:30:00Z"))
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": ok[0], "completed_at": ok[1],
+                              "steps": [{"name": "Deploy", "conclusion": ok[0]}]}]}
+        self.assertIn("run 10", deploy_freeze_reason(repo="o/r", api=api))
+        self.assertEqual([30, 10], read)  # run 20 last changed before the 03:00 deploy: not read
+
+    def test_a_failed_job_without_step_data_still_freezes(self):
+        # Security review on #4560: no positive proof that the executor was skipped = it may have run.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "failure", "completed_at": "2026-10-28T02:00:00Z"}]}
+        self.assertIn("stop the line", deploy_freeze_reason(repo="o/r", api=api))
 
     def test_deploy_freeze_looks_past_skipped_runs_within_a_bounded_window(self):
         # #4359 review: most deploy.yml runs skip the deploy job; look past them, but bounded (job deadline).
@@ -2417,10 +2619,13 @@ class R3AutoActivationTest(unittest.TestCase):
             run = int(path.split("/runs/")[1].split("/")[0])
             ran = run == real_run
             return {"jobs": [{"name": "Deploy to Production", "conclusion": "success" if ran else "skipped",
-                              "completed_at": "2026-10-28T01:00:00Z"}]}
+                              "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success" if ran else "skipped"}]}]}
         real_run = 1000 + 97  # the 98th run back, after 97 skipped ones
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
-        real_run = 2000 + 3  # beyond the window: unknown, so frozen
+        real_run = 3000 + 3  # a quiet stretch (#4560 review F8): later pages are read when page 1 has no deploy
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+        real_run = 4000 + 3  # beyond the window: unknown, so frozen
         self.assertIn("state unknown", deploy_freeze_reason(repo="o/r", api=api))
 
     def test_all_r3_billing_range_with_green_ci_activates_automatically(self):
@@ -2493,7 +2698,7 @@ class R3AutoActivationTest(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:\n"):workflow.index("  release-state:\n")]
         r3 = classify[classify.index('r3 = {"ok": False, "reason": "not evaluated"}'):]
-        self.assertIn('if mode == "awaiting-activation" and approval_eligible:', r3)
+        self.assertIn('if mode == "awaiting-activation" and approval_eligible and freeze_now is None:', r3)
         self.assertIn("for gate in (trusted_r3_gate, target_r3_gate)", r3)
         self.assertIn('r3 = next((result for result in r3_results if not result["ok"]), r3_results[0])', r3)
         self.assertIn('r3 = {"ok": False, "reason": f"R3 auto evidence unavailable ({type(exc).__name__})"}', r3)
@@ -2732,7 +2937,8 @@ class FounderGoAutoActivationTest(unittest.TestCase):
 
         executor = sorted(gate._DEPLOY_EXECUTOR_PATHS)
         self.assertEqual({"scripts/production-deploy/pi-remote-deploy.sh",
-                          "scripts/production-deploy/render_pi_remote_deploy.py"}, set(executor))
+                          "scripts/production-deploy/render_pi_remote_deploy.py",
+                          "scripts/post-deploy-verify.py"}, set(executor))  # #4560 review F5
         deploy = ".github/workflows/deploy.yml"
         patch = lambda path: f"diff --git a/{path} b/{path}\n@@ -1 +1 @@\n-echo old\n+echo new\n"
         for path in executor:

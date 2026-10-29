@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ClassSession;
 use App\Models\Notification;
 use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
@@ -23,8 +24,20 @@ class StudentPresenceBackfillService
     /**
      * Idempotent: sessions that already have a non-voided sign-in (teacher-made or
      * from an earlier run) are excluded.
+     *
+     * #4192: the candidate query is only a snapshot. Each candidate is re-checked
+     * under StudentClass FOR UPDATE -> ClassSession FOR UPDATE (the order used by
+     * cancellation/billing-correction and SessionDeductionService), so a session
+     * cancelled after the candidate read is skipped instead of overwritten.
      */
     public static function backfill(Student $student, Carbon $signInDT, Carbon $signOutDT, int $campusId): void
+    {
+        // Both callers already run inside a transaction; this keeps the locks held
+        // until the effects are written for any future caller as well.
+        DB::transaction(fn () => self::backfillLocked($student, $signInDT, $signOutDT, $campusId));
+    }
+
+    private static function backfillLocked(Student $student, Carbon $signInDT, Carbon $signOutDT, int $campusId): void
     {
         $today = $signInDT->toDateString();
 
@@ -41,13 +54,35 @@ class StudentPresenceBackfillService
             ->where(DB::raw('LOWER(Status)'), SessionStatus::SCHEDULED)
             // Any sign-in, voided included: a staff void/undo must not be re-created.
             ->whereDoesntHave('signIns')
+            ->orderBy('StartTime')
+            ->orderBy('id')
             ->get();
 
-        foreach ($sessions as $session) {
-            $sc = $session->studentClass;
-            if (!$sc) {
+        foreach ($sessions as $candidate) {
+            if (!$candidate->studentClass) {
                 continue;
             }
+
+            $sc = StudentClass::query()->where('ID', $candidate->StudentClassID)->lockForUpdate()->first();
+            $session = $sc
+                ? ClassSession::query()->where('StudentClassID', $sc->ID)
+                    ->where('id', $candidate->id)->lockForUpdate()->first()
+                : null;
+            // Current read: a cancel/leave/teacher decision or a sign-in committed
+            // after the candidate snapshot wins; skip, never overwrite.
+            if (!$sc || !$session
+                || (int) $sc->StudentID !== (int) $student->id
+                || (int) $sc->Stop !== 0
+                || strtolower((string) $session->Status) !== SessionStatus::SCHEDULED
+                || StudentSignIn::query()->where('ClassSessionID', $session->id)->lockForUpdate()->exists()) {
+                Log::info('presence_window_skip_changed_after_candidate', [
+                    'class_session_id' => $candidate->id,
+                    'student_id'       => $student->id,
+                    'status'           => $session?->Status,
+                ]);
+                continue;
+            }
+            $session->setRelation('studentClass', $sc);
 
             // TD-009: 防禦 EndTime=null，跳過避免 SignOutDT=00:00
             if (!$session->EndTime) {

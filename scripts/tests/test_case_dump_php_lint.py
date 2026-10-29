@@ -370,5 +370,20 @@ function app($s) {
         self.assertIn("$out['schedule_rows']", block)
 
 
+class TeacherScopeProbeCase(unittest.TestCase):
+    """in-app #441: read-only, ids/enums only, runs the API's own scoped query and writes nothing."""
+
+    def test_block_is_read_only_and_prints_no_names(self):
+        proc = render("teacher_scope_probe")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        block = case_block(proc.stdout, "teacher_scope_probe")
+        for marker in WRITE_MARKERS:
+            self.assertNotIn(marker, block)
+        for column in ("student_name", "teacher_name", "'name'", "Note", "Phone", "->update", "Memo"):
+            self.assertNotIn(column, block)
+        self.assertIn("buildClassSessionIndexQuery", block)
+        self.assertIn("withoutContractCappedFutureReservations", block)
+
+
 if __name__ == "__main__":
     unittest.main()

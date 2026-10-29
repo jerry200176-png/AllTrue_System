@@ -2078,6 +2078,12 @@ class LearningRecordController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        // In-app #441: never store a teacher_id that is not a teacher of the caller's campuses (a phantom owner hides the lesson).
+        if (!empty($data['teacher_id']) && ($refusal = app(\App\Services\SubstituteService::class)
+                ->assignableTeacherRefusal((int) $data['teacher_id'], (int) $studentClass->TeacherID, $campusIds))) {
+            return response()->json($refusal, 422);
+        }
+
         // #3824: the atomic reschedule writes teacher_id onto the live row; a protected occurrence keeps its teacher.
         // An omitted teacher_id would fall back to the target/contract teacher, so pin the protected record's teacher.
         // Same source as RescheduleSessionService::findSession(): without old_start_time it moves the first session of old_date.

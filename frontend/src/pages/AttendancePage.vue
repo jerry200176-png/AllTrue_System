@@ -10,6 +10,8 @@
         <AtButton variant="secondary" shape="rect" icon="refresh" @click="refreshAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
+    <SuccessorLeaveBlockers :blockers="leaveBlockers" :date="leaveBlockerDate" @navigate="emit('navigate-context', $event)" />
+    <ConfirmDialogHost />
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
     <div v-if="!isTeacher" class="att-tabs at-tabs" role="tablist" aria-label="出缺勤工作區">
@@ -263,20 +265,17 @@
       <template v-else>
         <!-- Batch action bar -->
         <div class="att-batch-bar">
-          <label class="att-check-all">
-            <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
-            <span>全選</span>
-          </label>
-          <button
-            v-if="selectedIds.length > 0"
-            class="primary small"
-            type="button"
-            :disabled="batchSubmitting"
-            @click="batchMarkAllPresent"
+          <AtSelectAll :selection="selection" unit="堂" />
+          <AtSubmitButton
+            v-if="selection.count > 0"
+            size="sm"
+            :action="batchMarkAllPresent"
+            pending-text="送出中…"
+            success-text="已到班"
           >
-            {{ batchSubmitting ? '送出中…' : `全部到班（${selectedIds.length}）` }}
-          </button>
-          <span v-if="selectedIds.length > 0" class="att-batch-hint">
+            全部到班（{{ selection.count }}）
+          </AtSubmitButton>
+          <span v-if="selection.count > 0" class="att-batch-hint">
             或逐列選擇其他狀態
           </span>
         </div>
@@ -296,13 +295,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in pendingSessions" :key="s.class_session_id" :class="{ 'att-row-selected': selectedSet.has(s.class_session_id) }">
+              <tr v-for="s in pendingSessions" :key="s.class_session_id" :class="{ 'att-row-selected': selection.has(s.class_session_id) }">
                 <td>
                   <input
                     type="checkbox"
-                    :checked="selectedSet.has(s.class_session_id)"
+                    :checked="selection.has(s.class_session_id)"
                     :aria-label="'選取' + (s.student_name || '未命名學生') + ' ' + s.start_time + '–' + s.end_time + (s.subject_name ? ' ' + s.subject_name : '') + ' 的點名堂次'"
-                    @change="toggleSelect(s.class_session_id)"
+                    @change="selection.toggle(s.class_session_id)"
                   />
                 </td>
                 <td class="att-time-range">{{ s.start_time }}–{{ s.end_time }}</td>
@@ -358,18 +357,18 @@
         </div>
 
         <!-- Mobile cards (hidden on desktop) -->
-        <div class="att-mobile-only att-cards" :style="selectedIds.length > 0 ? { paddingBottom: '72px' } : {}">
+        <div class="att-mobile-only att-cards" :style="selection.count > 0 ? { paddingBottom: '72px' } : {}">
           <div
             v-for="s in pendingSessions" :key="'m-' + s.class_session_id"
             class="att-card"
-            :class="{ 'att-card-selected': selectedSet.has(s.class_session_id) }"
+            :class="{ 'att-card-selected': selection.has(s.class_session_id) }"
           >
             <div class="att-card-top">
               <input
                 type="checkbox"
-                :checked="selectedSet.has(s.class_session_id)"
+                :checked="selection.has(s.class_session_id)"
                 :aria-label="'選取' + (s.student_name || '未命名學生') + ' ' + s.start_time + '–' + s.end_time + (s.subject_name ? ' ' + s.subject_name : '') + ' 的點名堂次'"
-                @change="toggleSelect(s.class_session_id)"
+                @change="selection.toggle(s.class_session_id)"
                 class="att-card-check"
               />
               <div class="att-card-info">
@@ -425,11 +424,9 @@
         </div>
 
         <!-- Sticky batch bar (mobile) -->
-        <div v-if="selectedIds.length > 0" class="att-sticky-batch att-mobile-only">
-          <span>已選 {{ selectedIds.length }} 堂</span>
-          <button type="button" class="primary small" :disabled="batchSubmitting" @click="batchMarkAllPresent">
-            {{ batchSubmitting ? '送出中…' : '全部到班' }}
-          </button>
+        <div v-if="selection.count > 0" class="att-sticky-batch att-mobile-only">
+          <span>已選 {{ selection.count }} 堂</span>
+          <AtSubmitButton size="sm" :action="batchMarkAllPresent" pending-text="送出中…" success-text="已到班">全部到班</AtSubmitButton>
         </div>
       </template>
 
@@ -1103,6 +1100,9 @@ import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
 import TeacherMonthlyAttendance from '../components/TeacherMonthlyAttendance.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSelectAll from '../components/design-system/AtSelectAll.vue';
+import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
+import { useSelection } from '../composables/useSelection';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
@@ -1110,13 +1110,45 @@ import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
 import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
+import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems, leaveWithRenewalShift } from '../lib/leaveSuccessorShift.js';
+import SuccessorLeaveBlockers from '../components/course-management/SuccessorLeaveBlockers.vue';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
+import { askConfirm, confirmState, settleConfirm } from '../composables/useConfirmDialog';
 
 const props = defineProps({
   branchId: [String, Number],
   userRole: String,
   userId: [String, Number],
 });
-const emit = defineEmits(['navigate', 'navigate-learning']);
+const emit = defineEmits(['navigate', 'navigate-learning', 'navigate-context']);
+const leaveBlockers = ref([]);
+const leaveBlockerDate = ref('');
+const leaveConfirmOwner = ref(null);
+const statusEditOwner = ref(0);
+async function confirmSuccessorLeave(message) {
+  const answer = askConfirm({ title: '請假與續約順延影響', message, confirmLabel: '確認請假與順延' });
+  const owner = confirmState.value;
+  leaveConfirmOwner.value = owner;
+  try { return await answer; } finally { if (leaveConfirmOwner.value === owner) leaveConfirmOwner.value = null; }
+}
+// An unmarked lesson (pending or make-up list) is where a director's leave can shift a pre-created renewal (#4578).
+// Resolves 'ordinary' to continue with the ordinary leave; any other value means this call already handled the lesson.
+async function leaveUnmarkedWithShift(sessionId, token, fail) {
+  leaveBlockers.value = [];
+  const owner = statusEditOwner.value;
+  try {
+    return await leaveWithRenewalShift({
+      role: props.userRole, sessionId, token, ask: confirmSuccessorLeave, owns: () => statusEditOwner.value === owner,
+      onBlocked: (plan) => { leaveBlockers.value = plan.blockers; leaveBlockerDate.value = plan.leave_session.date || ''; fail('續約順延有阻擋原因，這堂沒有請假；請看頁面上方的說明'); },
+    });
+  } catch (e) {
+    fail('請假失敗：' + (e.message || '網路錯誤'));
+    throw e;
+  }
+}
+function cancelLeaveConfirmation() { if (leaveConfirmOwner.value && confirmState.value === leaveConfirmOwner.value) settleConfirm(false); }
+onBeforeUnmount(() => { statusEditOwner.value += 1; cancelLeaveConfirmation(); });
+watch(() => [props.branchId, props.userRole], () => { statusEditOwner.value += 1; cancelLeaveConfirmation(); leaveBlockers.value = []; leaveBlockerDate.value = ''; }, { flush: 'sync' });
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorOrAdmin = computed(() => props.userRole === 'director' || props.userRole === 'super_admin');
@@ -1440,10 +1472,7 @@ const todaySessionTotal = ref(0);
 const fetchError = ref('');
 
 // Batch selection
-const selectedIds = ref([]);
-const selectedSet = computed(() => new Set(selectedIds.value));
-const allSelected = computed(() => pendingSessions.value.length > 0 && selectedIds.value.length === pendingSessions.value.length);
-const batchSubmitting = ref(false);
+const selection = useSelection(pendingSessions, { key: 'class_session_id' });
 const batchResults = ref([]);
 
 const confirmDialog = reactive({ visible: false, title: '', body: '', onConfirm: () => {}, submitting: false, error: '' });
@@ -1770,24 +1799,6 @@ const filteredRecords = computed(() => {
   return list;
 });
 
-// --- Selection helpers ---
-function toggleSelectAll() {
-  if (allSelected.value) {
-    selectedIds.value = [];
-  } else {
-    selectedIds.value = pendingSessions.value.map(s => s.class_session_id);
-  }
-}
-
-function toggleSelect(id) {
-  const idx = selectedIds.value.indexOf(id);
-  if (idx >= 0) {
-    selectedIds.value = selectedIds.value.filter(x => x !== id);
-  } else {
-    selectedIds.value = [...selectedIds.value, id];
-  }
-}
-
 // 預設「到班」只用於送出，未點選前畫面不顯示為已記錄（避免像已完成）。
 const pendingMarkTouched = ref({});
 function isStatusChosen(sessionId, value) {
@@ -1853,7 +1864,8 @@ const fetchRecords = async () => {
 const fetchPendingSessions = async () => {
   if (!isTeacher.value && !props.branchId) { pendingSessions.value = []; sessionStatusRows.value = []; return; }
   pendingLoading.value = true;
-  pendingMarkMsg.value = '';
+  // Keep the last action's result (批次完成／已核課／請假): every mark refetches this list right
+  // after writing that message. Manual refresh and branch change clear it instead.
   fetchError.value = '';
   try {
     const token = await getToken();
@@ -1893,10 +1905,6 @@ const fetchPendingSessions = async () => {
     const next = {};
     pending.forEach(r => { next[r.class_session_id] = pendingMarkStatus.value[r.class_session_id] || 'present'; });
     pendingMarkStatus.value = next;
-
-    // Prune selection for removed sessions
-    const validIds = new Set(pending.map(s => s.class_session_id));
-    selectedIds.value = selectedIds.value.filter(id => validIds.has(id));
   } catch (e) {
     console.error('fetchPendingSessions', e);
     pendingSessions.value = [];
@@ -1938,6 +1946,17 @@ async function doSubmitPendingMark(s, status) {
       const msg = '請先登入';
       pendingMarkMsg.value = msg; pendingMarkMsgType.value = 'error';
       throw new Error(msg);
+    }
+    if (status === 'leave') {
+      const failPending = (msg) => { pendingMarkMsg.value = msg; pendingMarkMsgType.value = 'error'; };
+      const shift = await leaveUnmarkedWithShift(s.class_session_id, token, failPending);
+      if (shift === 'done') {
+        pendingMarkMsg.value = `已請假並順延續約：${s.student_name}`;
+        pendingMarkMsgType.value = 'success';
+        trackAdoptionEvent('attendance_marked', props.branchId, { role: props.userRole, status });
+        await Promise.all([fetchPendingSessions(), fetchRecords()]);
+      }
+      if (shift !== 'ordinary') return;
     }
     const res = await fetch('/api/v1/attendance', {
       method: 'POST',
@@ -1990,9 +2009,10 @@ async function doSubmitPendingMark(s, status) {
 }
 
 // Batch mark all selected as "present" using the backend batch API
+// Resolves true only when every selected session was marked; failed rows stay selected for retry.
+// The batch bar and the mobile sticky bar share this action, so AtSubmitButton runs it once.
 async function batchMarkAllPresent() {
-  if (selectedIds.value.length === 0) return;
-  batchSubmitting.value = true;
+  if (selection.count === 0) return;
   batchResults.value = [];
   pendingMarkMsg.value = '';
   try {
@@ -2002,7 +2022,7 @@ async function batchMarkAllPresent() {
     const sessionMap = {};
     pendingSessions.value.forEach(s => { sessionMap[s.class_session_id] = s; });
 
-    const items = selectedIds.value.map(id => {
+    const items = selection.keys.map(id => {
       const s = sessionMap[id];
       return {
         ClassSessionID: id,
@@ -2039,13 +2059,13 @@ async function batchMarkAllPresent() {
       pendingMarkMsgType.value = 'error';
     }
 
-    selectedIds.value = [];
+    // Marked sessions leave the pending list on refetch, which drops them from the selection.
     await Promise.all([fetchPendingSessions(), fetchRecords()]);
+    return json.success_count > 0 && !json.fail_count;
   } catch (e) {
     pendingMarkMsg.value = '批次送出失敗：網路錯誤';
     pendingMarkMsgType.value = 'error';
-  } finally {
-    batchSubmitting.value = false;
+    return false;
   }
 }
 
@@ -2117,6 +2137,17 @@ const submitMakeupMark = async (s) => {
   try {
     const token = await getToken();
     if (!token) { makeupMsg.value = '請先登入'; makeupMsgType.value = 'error'; return; }
+    if (status === 'leave') {
+      const shift = await leaveUnmarkedWithShift(s.class_session_id, token, (msg) => { makeupMsg.value = msg; makeupMsgType.value = 'error'; });
+      if (shift === 'done') {
+        makeupMsg.value = `已補登請假並順延續約：${s.student_name}`;
+        makeupMsgType.value = 'success';
+        makeupSessions.value = makeupSessions.value.filter(r => r.class_session_id !== s.class_session_id);
+        makeupTotal.value = Math.max(0, makeupTotal.value - 1);
+        fetchRecords();
+      }
+      if (shift !== 'ordinary') return;
+    }
     const res = await fetch('/api/v1/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -2174,11 +2205,17 @@ const submitMakeupMark = async (s) => {
 };
 
 const saveStatusEdit = async (record) => {
+  if (record._saving) return;
   if (record._newStatus === record.Status) { record._editing = false; return; }
+  const context = { owner: statusEditOwner.value, branch: props.branchId, role: props.userRole,
+    session: record.ClassSessionID, course: record.StudentClassID, status: record.Status, nextStatus: record._newStatus };
+  const ownsEdit = () => statusEditOwner.value === context.owner && props.branchId === context.branch
+    && props.userRole === context.role && record.ClassSessionID === context.session
+    && record.StudentClassID === context.course && record.Status === context.status && record._newStatus === context.nextStatus;
   record._saving = true;
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token || !ownsEdit()) return;
     if (!record.ClassSessionID) {
       alert('此記錄缺少堂次關聯，無法修改狀態');
       record._saving = false;
@@ -2186,7 +2223,31 @@ const saveStatusEdit = async (record) => {
     }
 
     if (record._newStatus === 'leave') {
+      leaveBlockers.value = [];
       const isAttended = ['present', 'late'].includes(String(record.Status || '').toLowerCase());
+      if (!isAttended) {
+        const plan = await previewSuccessorLeave({ role: context.role, sessionId: context.session, token });
+        if (!ownsEdit()) return;
+        if (plan) {
+          const effects = successorImpactItems(plan).join('\n');
+          if (!plan.eligible) {
+            leaveBlockers.value = plan.blockers;
+            leaveBlockerDate.value = plan.leave_session.date || '';
+            return;
+          }
+          if (!await confirmSuccessorLeave(effects)) return;
+          if (!ownsEdit()) return;
+          await applySuccessorLeave(plan, { token });
+          if (!ownsEdit()) return;
+          record.Status = 'leave';
+          record.status_label = '請假';
+          record._editing = false;
+          pendingMarkMsg.value = '請假與續約順延已完成';
+          pendingMarkMsgType.value = 'success';
+          await Promise.all([fetchPendingSessions(), fetchRecords()]);
+          return;
+        }
+      }
       const confirmMsg = isAttended
         ? `此堂已登記到班，確定要補請假？\n（將作廢出缺勤記錄與評量記錄、沖回堂數；未來既有上課日不變，僅於尾端補回一堂）`
         : `確定要將此堂標記為「請假」？\n未來既有上課日不變，系統僅於尾端補回一堂。`;
@@ -2336,6 +2397,7 @@ const handleDismiss = async (id) => {
 
 const refreshAll = () => {
   fetchError.value = '';
+  pendingMarkMsg.value = '';
   batchResults.value = [];
   fetchRecords();
   fetchPendingSessions();
@@ -2526,6 +2588,8 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.branchId, () => {
+  pendingMarkMsg.value = '';
+  batchResults.value = [];
   fetchRecords();
   fetchPendingSessions();
   fetchMakeupSessions();
@@ -2729,12 +2793,6 @@ watch(() => props.branchId, () => {
   margin-bottom: 14px; padding: 10px 12px;
   background: var(--primary-bg, rgba(232,121,36,0.06)); border-radius: 10px;
 }
-.att-check-all {
-  display: flex; align-items: center; gap: 6px; cursor: pointer;
-  font-size: 13px; font-weight: 600; color: var(--text);
-  user-select: none;
-}
-.att-check-all input { width: 16px; height: 16px; accent-color: var(--primary); }
 .att-batch-hint { font-size: 12px; color: var(--text-light); }
 
 /* Status button group (replaces dropdown) */

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\FeeCharge;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Student;
@@ -647,6 +648,54 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('schedule_mode', 'count')
             ->assertJsonPath('remaining_sessions', 0)
             ->assertJsonPath('charge', 8000); // Founder Q3 (2026-10-11): Charge is the amount; Rate x count is only a list for directors to confirm
+    }
+
+    /** In-app #439: both slips carry a separate 代收款 block that never touches the tuition fields. */
+    public function test_slips_show_pass_through_block_without_changing_tuition(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-31 09:00:00', 'Asia/Taipei'));
+        $headers = ['Authorization' => 'Bearer ' . $this->createDirectorToken('director-pass-through@example.com'), 'Accept' => 'application/json'];
+        [$student, $course] = $this->makeMonthlyCourse('代收款繳費單測試', '2026-07-01', '2026-07-31');
+        $other = Student::create(['name' => '另一位學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-07-17', 'DueDate' => '2026-07-17',
+            'TotalAmount' => 6000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-07',
+        ]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用 2026年7月', 'Amount' => 6000, 'PeriodStart' => '2026-07-01', 'PeriodEnd' => '2026-07-31']);
+        $slips = fn () => [
+            $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertOk()->json(),
+            $this->withHeaders($headers)->getJson("/api/v1/invoices/{$invoice->id}/slip-data")->assertOk()->json(),
+        ];
+        $tuitionOnly = fn (array $slip) => array_diff_key($slip, array_flip(['pass_through', 'pass_through_unpaid_total']));
+
+        [$tuitionBefore, $invoiceBefore] = $slips();
+        $this->assertSame([], $tuitionBefore['pass_through']);
+        $this->assertSame(0, $invoiceBefore['pass_through_unpaid_total']);
+
+        $make = fn (array $a) => FeeCharge::create($a + ['campus_id' => 1, 'student_id' => $student->id, 'category' => 'books', 'amount' => 100, 'charged_on' => '2026-07-01', 'created_by' => 1]);
+        $make(['title' => '舊的未繳', 'amount' => 300, 'charged_on' => '2026-06-20']);
+        $make(['title' => '本月已繳', 'category' => 'materials', 'amount' => 200, 'charged_on' => '2026-07-02', 'paid_on' => '2026-07-10', 'paid_method' => 'cash']);
+        $make(['title' => '上月已繳', 'charged_on' => '2026-06-01', 'paid_on' => '2026-06-05', 'paid_method' => 'cash']);
+        $make(['title' => '已作廢', 'amount' => 999, 'voided_at' => now()]);
+        $make(['title' => '別的分校', 'amount' => 888, 'campus_id' => 2]);
+        $make(['title' => '別的學生', 'amount' => 777, 'student_id' => $other->id]);
+        $make(['title' => '本月未繳', 'category' => 'sundry', 'charged_on' => '2026-07-05']);
+
+        [$tuitionAfter, $invoiceAfter] = $slips();
+        foreach ([$tuitionAfter, $invoiceAfter] as $slip) {
+            $this->assertSame(['舊的未繳', '本月已繳', '本月未繳'], array_column($slip['pass_through'], 'title'));
+            $this->assertSame(400, $slip['pass_through_unpaid_total']);
+            $this->assertSame(
+                ['title' => '本月已繳', 'category' => '教材費', 'amount' => 200, 'status' => 'paid', 'paid_on' => '2026-07-10'],
+                $slip['pass_through'][1],
+            );
+            $this->assertSame(['unpaid', 'paid', 'unpaid'], array_column($slip['pass_through'], 'status'));
+        }
+        // Tuition fields, totals and the invoice row are exactly what they were without the charges.
+        $this->assertSame($tuitionOnly($tuitionBefore), $tuitionOnly($tuitionAfter));
+        $this->assertSame($tuitionOnly($invoiceBefore), $tuitionOnly($invoiceAfter));
+        $this->assertSame(6000, (int) Invoice::find($invoice->id)->TotalAmount);
+        $this->assertSame(0, (int) Invoice::find($invoice->id)->PaidAmount);
     }
 
     private function createDirectorToken(string $loginName = 'director-monthly@example.com'): string

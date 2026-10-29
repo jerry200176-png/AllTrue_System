@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
+use App\Models\FeeCharge;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
@@ -128,7 +129,10 @@ class AlertController extends Controller
         if ($studentIds !== null) {
             $stoppedResults->whereIn('StudentID', $studentIds);
         }
-        $stoppedResults = $stoppedResults->get();
+        $stoppedRows = $stoppedResults->get();
+        // In-app #440 (Founder 2026-10-29): a plain pause that never started is not owed while paused (StudentClass::unstartedPauseIds).
+        $unstartedPauses = StudentClass::unstartedPauseIds($stoppedRows->pluck('ID')->all());
+        $stoppedResults = $stoppedRows->reject(fn (StudentClass $c) => isset($unstartedPauses[(int) $c->ID]))->values();
         $stoppedStatuses = $this->payableResolver
             ->courseStatusesByStudentClassIds($stoppedResults->pluck('ID')->all(), $stoppedResults);
         // In-app #394: a review_required verdict built from issued invoices still owes their open balance.
@@ -839,6 +843,10 @@ class AlertController extends Controller
         // lessons and deadline come from that same bill, not the newest stored-open one.
         $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
             ?? $this->payableResolver->unbilled();
+        // in-app #432 (#4573 review): a settled bill does not hold the slip while a later month is still unbilled.
+        if ($mode === 'date' && (int) ($payable['payable_outstanding'] ?? 0) <= 0 && $this->monthlyBilling->unbilledPeriodFor($sc) !== null) {
+            $payable = $this->payableResolver->unbilled();
+        }
         $payablePeriod = (string) ($payable['payable_billing_period'] ?? '');
         // The payable bill itself (its item service range drives the lesson list); else the newest open one.
         $payableInvoice = $mode === 'date' && (int) ($payable['payable_invoice_id'] ?? 0) > 0
@@ -858,7 +866,7 @@ class AlertController extends Controller
         $billingPeriod = $mode === 'date'
             ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
                 ? (string) $openBillingPeriod
-                : $this->monthlyBilling->defaultPeriodFor($sc, $today))
+                : $this->monthlyBilling->collectionPeriodFor($sc, $today)) // in-app #432: oldest unbilled month first
             : null;
         $billing = $mode === 'date'
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
@@ -943,7 +951,7 @@ class AlertController extends Controller
                     $billing['period_start'],
                     $billing['period_end']
                 ),
-        ]);
+        ] + FeeCharge::slipBlock((int) $student->id, (int) $student->CampusID, $billingPeriod)); // #439: beside tuition, never in it
     }
 
     /**

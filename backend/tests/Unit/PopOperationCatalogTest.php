@@ -150,8 +150,64 @@ final class PopOperationCatalogTest extends TestCase
             [$entry['founder_approval_required'], $entry['execution_authority'], $entry['parameter_keys']]);
         self::assertSame(['super_admin'], $roles->invoke($service, $entry));
         $founder->invoke($service, $entry, 'founder-go-package-ledger-net-repair-4455');
+        $thrown = false; // not self::fail() in the try: PHPUnit's own failure is a RuntimeException too
         try {
             $founder->invoke($service, $entry, 'director-approval-4455');
+        } catch (RuntimeException) {
+            $thrown = true;
+        }
+        self::assertTrue($thrown, 'a non founder-go reference must be rejected');
+        $entry['founder_approval_required'] = false;
+        $this->expectException(RuntimeException::class);
+        $roles->invoke($service, $entry);
+    }
+
+    public function test_standing_a_auto_reference_is_accepted_only_for_the_reviewed_append_only_operations(): void
+    {
+        $path = dirname(__DIR__, 3) . '/operations/catalog.yaml';
+        $catalog = new PopOperationCatalog($path);
+        $service = new PopOperationService($catalog);
+        $check = new ReflectionMethod($service, 'assertFounderApprovalReference');
+        $d = 'abcdef012345';
+        $check->invoke($service, $catalog->operation('td076-r2-history-pins-20261006'), "standing-a-auto-pop-td076-occurrence-repairs-$d");
+        $refused = [
+            ['td076-r1-collision-keepers-20261006', "standing-a-auto-pop-td076-occurrence-repairs-$d"],
+            ['unbilled-backlog-catchup-20261006', "standing-a-auto-pop-unbilled-backlog-catchup-$d"],
+            ['package-ledger-net-repair-4455', "standing-a-auto-pop-package-ledger-net-repair-4455-$d"],
+            ['td076-r2-history-pins-20261006', "standing-a-auto-pop-package-ledger-net-repair-4455-$d"],
+            ['td076-r2-history-pins-20261006', 'standing-a-auto-pop-td076-occurrence-repairs-ABCDEF012345'],
+            ['td076-r2-history-pins-20261006', "standing-a-auto-pop-td076-occurrence-repairs-$d\n"],
+            ['td076-r2-history-pins-20261006', "Standing-A-Auto-pop-td076-occurrence-repairs-$d"],
+        ];
+        preg_match_all('/^  ([a-z0-9-]+):\s*$/m', (string) file_get_contents($path), $ids);
+        self::assertGreaterThan(10, count($ids[1]));
+        foreach (array_diff($ids[1], ['td076-r2-history-pins-20261006']) as $id) {
+            $refused[] = [$id, "standing-a-auto-pop-td076-occurrence-repairs-$d"]; // founder-scoped or not
+        }
+        foreach ($refused as [$id, $reference]) {
+            $thrown = false; // not self::fail() in the try: PHPUnit's own failure is a RuntimeException too
+            try {
+                $check->invoke($service, $catalog->operation($id), $reference);
+            } catch (RuntimeException) {
+                $thrown = true;
+            }
+            self::assertTrue($thrown, "$id must refuse $reference");
+        }
+    }
+
+    public function test_contract_charge_correction_requires_founder_approval_and_exact_pop_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $roles = new ReflectionMethod($service, 'approvalRoles');
+        $founder = new ReflectionMethod($service, 'assertFounderApprovalReference');
+        $entry = $catalog->operation('contract-charge-correction-3868');
+        self::assertSame([true, 'pop-pi-local', ['decision_reference']],
+            [$entry['founder_approval_required'], $entry['execution_authority'], $entry['parameter_keys']]);
+        self::assertSame(['super_admin'], $roles->invoke($service, $entry));
+        $founder->invoke($service, $entry, 'founder-go-contract-charge-correction-3868-repair');
+        try {
+            $founder->invoke($service, $entry, 'director-approval-3868');
             self::fail('a non founder-go reference must be rejected');
         } catch (RuntimeException) {
         }
