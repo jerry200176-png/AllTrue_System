@@ -105,6 +105,13 @@ class FullDiscountSettledTest extends TestCase
         $this->assertNotSame('paid', app(ContractMoneyVerdict::class)->forCourse($new->fresh())->status);
     }
 
+    public function test_a_full_discount_stays_settled_after_a_lesson_is_attended(): void
+    {
+        $new = $this->renew(self::fullDiscounts()['percent 100'][0]);
+        \App\Models\ClassSession::create(['StudentClassID' => $new->ID, 'SessionDate' => substr((string) $new->StartDate, 0, 10), 'StartTime' => '18:00', 'EndTime' => '19:00', 'Status' => 'attended']);
+        $this->assertSame('paid', app(ContractMoneyVerdict::class)->forCourse($new->fresh())->status);
+    }
+
     public function test_free_gift_records_who_granted_it(): void
     {
         $student = Student::create(['name' => '免費', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
@@ -123,6 +130,12 @@ class FullDiscountSettledTest extends TestCase
             'student_class_id' => $other->ID, 'payment_date' => '2026-04-27', 'payment_method' => 'cash', 'amount' => 0, 'free_gift' => true, 'invoice_id' => $bill->id,
         ])->assertOk();
         $this->assertSame($this->userId, (int) $bill->fresh()->reconciled_by);
+        // a repeat request by someone else keeps the first approver
+        $bill->update(['reconciled_by' => 999]);
+        $this->withToken($this->token)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $other->ID, 'payment_date' => '2026-04-27', 'payment_method' => 'cash', 'amount' => 0, 'free_gift' => true, 'invoice_id' => $bill->id,
+        ])->assertOk();
+        $this->assertSame(999, (int) $bill->fresh()->reconciled_by);
     }
 
     private function renew(array $discount): StudentClass

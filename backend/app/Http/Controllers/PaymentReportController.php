@@ -1211,7 +1211,7 @@ class PaymentReportController extends Controller
                         'invoice_id' => (int) $invoice->id,
                     ], 422);
                 }
-                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0, 'reconciled_at' => now(), 'reconciled_by' => $userId ?: null, // #4018: who granted it
+                $invoice->fill(['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT, 'Status' => 'paid', 'PaidAmount' => 0] + ($invoice->isMarkedFreeGift() ? [] : ['reconciled_at' => now(), 'reconciled_by' => $userId ?: null]) + [ // #4018: who granted it; a repeat request keeps the first approver
                     'Note' => mb_substr(trim($invoice->Note . ' ' . $freeNote), 0, 255)])->save();
             } else {
                 try {
