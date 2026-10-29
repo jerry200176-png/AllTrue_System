@@ -159,6 +159,18 @@ class SiblingContractTransferTest extends TestCase
         Payment::create(['InvoiceID' => Invoice::where('StudentClassID', $src->ID)->value('id'), 'Amount' => -100, 'PaidAt' => '2026-09-05', 'Method' => 'void', 'Note' => '']);
         $this->transfer($token, $src, $sibling)->assertStatus(422)->assertJsonPath('code', 'sibling_transfer_paid_not_simple');
 
+        // Codex P2: a split invoice with two lines would misstate its items; P1: a makeup deducted by real minutes.
+        [$token, $multi, $sibling, $multiInvoice] = $this->setUpFamily();
+        InvoiceItem::create(['InvoiceID' => $multiInvoice->id, 'StudentClassID' => $multi->ID, 'Description' => '第二行', 'Amount' => 0]);
+        $this->transfer($token, $multi, $sibling)->assertStatus(422)->assertJsonPath('code', 'sibling_transfer_paid_not_simple');
+
+        [$token, $makeup, $sibling] = $this->setUpFamily();
+        $sessionId = (int) DB::table('ClassSession')->where('StudentClassID', $makeup->ID)->where('Status', 'attended')->value('id');
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $makeup->ID, 'class_session_id' => $sessionId,
+            'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 240, 'created_at' => now(), 'updated_at' => now()]);
+        $this->transfer($token, $makeup, $sibling)->assertStatus(422)->assertJsonPath('code', 'sibling_transfer_usage_unclear');
+        $this->transfer($token, $makeup, $sibling, ['target_student_id' => 999999])->assertStatus(422)->assertJsonPath('code', 'sibling_transfer_bad_target');
+
         [$token, $unpaid, $sibling] = $this->setUpFamily(paid: false);
         $this->transfer($token, $unpaid, $sibling)->assertStatus(422)->assertJsonPath('code', 'sibling_transfer_paid_not_simple');
     }
@@ -177,6 +189,16 @@ class SiblingContractTransferTest extends TestCase
         $this->transfer($token, $src, $other, ['idempotency_key' => 'key-bbbbbbbb'])->assertStatus(409)->assertJsonPath('code', 'sibling_transfer_already_done');
         $this->assertSame(1, SiblingContractTransfer::count());
         $this->assertSame(0, StudentClass::where('StudentID', $other->id)->count());
+    }
+
+    public function test_the_same_client_key_on_two_contracts_never_collides(): void
+    {
+        [$token, $a, $sibA] = $this->setUpFamily();
+        [, $b, $sibB] = $this->setUpFamily();
+        $this->transfer($token, $a, $sibA, ['idempotency_key' => 'shared-key-1'])->assertCreated();
+        $this->transfer($token, $b, $sibB, ['idempotency_key' => 'shared-key-1'])->assertCreated()->assertJsonPath('replayed', false);
+        $this->assertSame(2, SiblingContractTransfer::count());
+        $this->assertSame(2, SiblingContractTransfer::distinct()->count('idempotency_key'));
     }
 
     public function test_only_a_director_of_the_campus_may_transfer(): void

@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Schema;
  * actually paid. One append-only row per transfer links the source contract, the new target contract, the amount
  * and the actor; the money itself stays in the existing transfer_out / transfer_in Payment pair.
  * New table only; nothing existing is altered. Plain indexes only: SiblingContractTransferService enforces one
- * live transfer per source contract and one row per idempotency key under the source contract's row lock.
+ * live transfer per source contract and one row per idempotency key (stored hashed with the source contract id, so
+ * keys never collide across contracts) under the source contract's row lock.
  */
 return new class extends Migration
 {

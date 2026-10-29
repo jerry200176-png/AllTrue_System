@@ -76,13 +76,18 @@ final class SiblingContractTransferService
 
     private function apply(int $courseId, array $in, int $actorId, bool $preview): array
     {
-        // Every writer locks the source contract first, so a retry or a double click waits here and then sees the row.
+        // Lock order = purgeStudentRecords: students (by id) first, so a purge of the recipient waits for this transfer
+        // (or this transfer sees it gone), then the source contract. Every writer locks the source contract, so a retry
+        // or a double click waits there and then sees the committed row.
+        $course = StudentClass::query()->where('ID', $courseId)->first() ?? abort(404);
+        Student::query()->whereIn('id', [(int) $course->StudentID, (int) $in['target_student_id']])->orderBy('id')->lockForUpdate()->get(['id']);
         $source = StudentClass::query()->where('ID', $courseId)->lockForUpdate()->first() ?? abort(404);
-        $key = (string) $in['idempotency_key'];
+        // The stored key is scoped to the source contract: the same client key on two contracts can never collide.
+        $key = hash('sha256', $courseId . '|' . $in['idempotency_key']);
 
         $prior = SiblingContractTransfer::query()->where('idempotency_key', $key)->first();
         if ($prior) {
-            if ((int) $prior->source_student_class_id !== $courseId || (int) $prior->target_student_id !== (int) $in['target_student_id']) {
+            if ((int) $prior->target_student_id !== (int) $in['target_student_id']) {
                 $this->refuse('sibling_transfer_key_reused', '這個送出代碼已用在另一筆轉讓，請重新整理後再試。', 409);
             }
 
@@ -100,7 +105,13 @@ final class SiblingContractTransferService
 
         [$invoice, $paid] = $this->assertSimplePaidContract($source);
         $purchased = (int) $source->getAttribute('SessionCount');
-        $used = (int) (SessionDeductionService::batchObservedUsedSessions([$courseId])[$courseId] ?? 0);
+        // Same canonical usage as the counters; a makeup deducted by real minutes, or usage artifacts to reconcile,
+        // cannot be turned into whole transferable sessions here.
+        $usage = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$courseId])[$courseId] ?? null;
+        if (!$usage || $usage['has_partial'] || $usage['cancelled_usage_artifacts'] > 0) {
+            $this->refuse('sibling_transfer_usage_unclear', '這份合約有依實際分鐘扣堂的補課，或有待核對的扣堂紀錄，請先核對扣堂後再轉讓。');
+        }
+        $used = (int) $usage['expected_used'];
         $remaining = $purchased - $used;
         $moving = (int) ($in['sessions'] ?? $remaining);
         if ($remaining < 1 || $moving < 1) {
@@ -130,7 +141,7 @@ final class SiblingContractTransferService
             return ['status' => 200, 'body' => ['preview' => true, 'plan' => $plan]];
         }
 
-        $transfer = $this->write($source, $target, $invoice, $plan, $in, $actorId);
+        $transfer = $this->write($source, $target, $invoice, $plan, $in, $actorId, $key);
         SecurityAuditEvent::append('student_class.sibling_transfer', 'success', [
             'campus_id' => (int) $target->CampusID, 'actor_type' => 'user', 'actor_id' => $actorId,
             'subject_type' => 'student_class', 'subject_id' => $courseId,
@@ -215,15 +226,23 @@ final class SiblingContractTransferService
             || (int) $invoice->TotalAmount !== $applied || (int) $invoice->PaidAmount !== $applied
             || $payments->contains(fn ($p) => (int) $p->Amount <= 0 || (string) $p->Method === 'void' || in_array((string) $p->Method, self::TRANSFER_METHODS, true))
             || (int) $payments->sum(fn ($p) => (int) $p->Amount) !== $applied
-            || InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', '!=', $id)->exists()) {
+            || $this->invoiceItemsAreNotJustThisContract($invoice, $id)) {
             $simple();
         }
 
         return [$invoice, $applied];
     }
 
+    /** One line item at most, and it must be this contract's: a split would otherwise misstate the other lines. */
+    private function invoiceItemsAreNotJustThisContract(Invoice $invoice, int $courseId): bool
+    {
+        $items = InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->get(['StudentClassID']);
+
+        return $items->count() > 1 || $items->contains(fn ($item) => (int) $item->StudentClassID !== $courseId);
+    }
+
     /** @param array<string, mixed> $plan */
-    private function write(StudentClass $source, Student $target, Invoice $invoice, array $plan, array $in, int $actorId): SiblingContractTransfer
+    private function write(StudentClass $source, Student $target, Invoice $invoice, array $plan, array $in, int $actorId, string $key): SiblingContractTransfer
     {
         $srcId = (int) $source->getKey();
         $moving = (int) $plan['moved_sessions'];
@@ -280,7 +299,7 @@ final class SiblingContractTransferService
         SessionDeductionService::recomputeCounters($newId);
 
         return SiblingContractTransfer::create([
-            'idempotency_key' => (string) $in['idempotency_key'], 'campus_id' => (int) $target->CampusID,
+            'idempotency_key' => $key, 'campus_id' => (int) $target->CampusID,
             'source_student_class_id' => $srcId, 'target_student_class_id' => $newId,
             'source_student_id' => (int) $source->StudentID, 'target_student_id' => (int) $target->id,
             'purchased_sessions' => (int) $plan['purchased_sessions'], 'moved_sessions' => $moving,
