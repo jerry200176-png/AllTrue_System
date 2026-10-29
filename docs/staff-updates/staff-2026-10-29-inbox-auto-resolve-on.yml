@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-29-inbox-auto-resolve-on
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 通知中心會自動清掉已處理的通知
+    summary: 扣堂失敗與家長學習回饋的通知，處理完會自己離開待辦，不用再手動按已讀。
+    items:
+      - category: improved
+        text: 「刷卡出席但扣堂失敗」的通知，只要該筆出席已補扣、作廢或改為不扣堂狀態，就會自動結案。
+      - category: improved
+        text: 家長學習回饋的通知，老師或主任回覆（或標記不需回覆）後自動結案；家長再追問時會重新出現並顯示未讀。
+      - category: improved
+        text: 扣堂被沖回時，已結案的扣堂失敗通知會重新出現。代課、系統警示、匯入與升年級通知仍需手動處理。
+    source_refs:
+      - "changelog:2026-10-29:inbox-auto-resolve-on"
