@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-29-ledger-student-wide-label
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 從學生列開帳務，不再誤標「其他課程」
+    summary: 從學生列開啟帳務面板時，不會再把某一門課當成你點開的課程。
+    items:
+      - category: fixed
+        text: 從學生列開啟帳務面板，不再把其他課程的帳單標成「其他課程」，標題也不再寫「含其他課程」。
+    source_refs:
+      - "changelog:2026-10-29:ledger-student-wide-label"
