@@ -57,7 +57,7 @@
 
 ### 再靠近一點大廠（選配、不強制）
 
-- **Merge queue**：多人協作時在 **Settings → Rules** 開啟，減少「綠燈但合併後 main 紅」。
+- **Merge queue**：GitHub 原生 merge queue 在此 user-owned repo 不可用，改用自建 [`land-queue.yml`](.github/workflows/land-queue.yml)（PR 加 label `queue`）。
 - **Required reviewers**：第二位 maintainer 出現後，對 `main` 要求至少 1 approve。
 - **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
