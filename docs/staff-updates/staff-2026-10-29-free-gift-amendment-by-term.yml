@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 標記免費／贈送，改看該期單價
-    summary: 課程將來才調價、或舊調價已被改回 0 元時，仍可把那一期標成免費／贈送。
+    summary: 課程將來才調價、或舊調價已被改回零元時，仍可把那一期標成免費／贈送。
     items:
       - category: fixed
         text: 標記「免費／贈送」時，只看那一期實際生效的單價；以前只要有過調價紀錄就會被擋。
