@@ -2,7 +2,7 @@ name: Founder POP package ledger net repair (#4455)
 # governance-capability: pop-controlled
 # Case adapter for POP operation package-ledger-net-repair-4455 (Founder decision 2026-10-23, #4455, PR #4456).
 # Round 1 (52 rows) ran on 2026-10-28 (run 40650089714), round 2 (39 rows) on 2026-10-29 (run 40822045546). This adapter
-# now drafts round 3: the 5-row manifest (PackageLedgerNetRepairManifest::rows(3)) under its own decision reference and key.
+# drafts the `round` input: 3 (5 rows) or 4 (package 58's course charge), each under its own decision reference and key.
 # Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
 # The operation spans campuses, so draft/dry-run use that super_admin session (the POP machine identity is
 # campus-scoped). dry-run is read-only and runs on production-ssh with no click (Founder 2026-10-28 A); approve waits for
@@ -24,6 +24,11 @@ on:
         description: Full backend SHA currently in production (deployment.json backend_sha)
         required: true
         type: string
+      round:
+        description: "Manifest round: 3 (packages 195/173, 5 rows) or 4 (package 58 course charge, 1 row)"
+        required: true
+        type: choice
+        options: ['3', '4']
 permissions:
   contents: read
 concurrency:
@@ -41,16 +46,18 @@ jobs:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
           INPUT_SHA: ${{ inputs.deployed_backend_sha }}
+          ROUND: ${{ inputs.round }}
         run: |
           set -euo pipefail
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
+          [[ "$ROUND" == 3 || "$ROUND" == 4 ]] || exit 1
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
           if [[ "$MODE" == dry-run ]]; then
             [[ "$CONFIRM" == DRY_RUN_PACKAGE_LEDGER_NET_REPAIR_4455 ]] || exit 1
           else
             [[ "$CONFIRM" == APPROVE_PACKAGE_LEDGER_NET_REPAIR_4455 ]] || exit 1
           fi
-          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_round3_5_ledger_rows"
+          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA round=$ROUND scope=exact_manifest_round${ROUND}"
   founder-approval:
     # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
     name: Founder approval (approve mode only)
@@ -94,10 +101,11 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           MODE: ${{ inputs.mode }}
           TARGET_SHA: ${{ inputs.deployed_backend_sha }}
+          ROUND: ${{ inputs.round }}
         run: |
           set -euo pipefail
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
-          # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
+          # All three were allowlisted by the guard job (mode and round choices, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           SSH_DIR="$RUNNER_TEMP/pop-package-ledger-ssh"
           install -d -m 700 "$SSH_DIR"
@@ -107,7 +115,7 @@ jobs:
           ssh -i "$SSH_DIR/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' ROUND='$ROUND' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077
           cd /home/admin/backend
@@ -144,8 +152,12 @@ jobs:
             curl -sS --proto '=https' --tlsv1.2 -H "Authorization: Bearer $TOKEN" \
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
-          # Exact catalog-bound parameters; the round 3 manifest (5 rows) lives in code (PackageLedgerNetRepairManifest::rows(3)).
-          PARAMETERS_JSON='{"parameters":{"decision_reference":"repair-package-ledger-overdebit-r3-4455"},"idempotency_key":"founder-package-ledger-overdebit-r3-repair-4455"}'
+          # Exact catalog-bound parameters per round; each manifest lives in code (PackageLedgerNetRepairManifest::rows($ROUND)).
+          case "$ROUND" in
+            3) PARAMETERS_JSON='{"parameters":{"decision_reference":"repair-package-ledger-overdebit-r3-4455"},"idempotency_key":"founder-package-ledger-overdebit-r3-repair-4455"}' ;;
+            4) PARAMETERS_JSON='{"parameters":{"decision_reference":"repair-course-charge-r4-4455"},"idempotency_key":"founder-course-charge-r4-repair-4455"}' ;;
+            *) echo '::error::round must be 3 or 4'; exit 1 ;;
+          esac
           draft="$WORK_DIR/draft.json"
           draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
           [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }

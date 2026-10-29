@@ -38,7 +38,7 @@ final class PackageLedgerNetRepairManifest
      * 40825430575 and 40825468531): 195 is 4 over, 173 1 over. Only deleted 16:00 creation seeds with no lesson that day
      * qualify (9 in 195, 2 in 173); the slot's second debit 38727 first (38696 holds 2026-07-12 16:00), then the latest
      * dates. The probe cannot tell which deleted date an uncharged `completed` lesson replaced, so which seeds keep their
-     * debit is a choice; the balances are the same. Package 58 (10678) needs its course charge reversed first (rule 1).
+     * debit is a choice; the balances are the same. Package 58 (10678) needs its course charge reversed: round 4.
      */
     private const OVER_DEBIT_R3 = [
         173 => [[36237, 'deleted', '2026-09-09 16:00', -1]],
@@ -92,11 +92,20 @@ final class PackageLedgerNetRepairManifest
         }
     }
 
-    /** @return list<array<string, mixed>> class, package_id, class_session_id, scope (slot or session); class R also status, slot, net */
+    /**
+     * @return list<array<string, mixed>> class, package_id, class_session_id, scope (slot or session); class R also status,
+     * slot, net; class C student_class_id, status, slot
+     */
     public static function rows(int $round = 1): array
     {
         if (isset(self::$override[$round])) {
             return self::$override[$round];
+        }
+        if ($round === 4) {
+            // Founder GO 2026-10-29「AA」: package 58's cancelled lesson 10678, still charged once on its course 1329 and
+            // debited once on the package (probe run 40825511624); per lesson (one_on_one, date mode).
+            return [['class' => 'C', 'package_id' => 58, 'class_session_id' => 10678, 'student_class_id' => 1329, 'scope' => 'session',
+                'status' => 'cancelled', 'slot' => '2026-05-07 20:00']];
         }
         if ($round >= 2) {
             $rows = [];
