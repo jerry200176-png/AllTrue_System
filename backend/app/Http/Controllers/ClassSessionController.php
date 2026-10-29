@@ -2309,10 +2309,10 @@ class ClassSessionController extends Controller
             $lrBefore = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->first(['id', 'TeacherID']);
             if ($lrBefore && \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, (int) $new->getAttribute('TeacherID'), (int) optional($request->attributes->get('auth_user'))->id ?: null, $reason)) {
                 DB::table('LearningRecord')->where('id', $lrBefore->id)->update(['TeacherID' => (int) $new->getAttribute('TeacherID')]);
-                LearningRecordTeacherChange::create([
+                DB::table('learning_record_teacher_changes')->insert([
                     'learning_record_id' => (int) $lrBefore->id, 'old_teacher_id' => (int) $lrBefore->TeacherID ?: null,
                     'new_teacher_id' => (int) $new->getAttribute('TeacherID'), 'changed_by' => (int) optional($request->attributes->get('auth_user'))->id,
-                    'reason' => 'reassign_contract: ' . mb_substr($reason, 0, 200),
+                    'reason' => 'reassign_contract: ' . mb_substr($reason, 0, 200), 'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
             DB::table('LearningRecord')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);

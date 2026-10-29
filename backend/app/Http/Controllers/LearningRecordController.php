@@ -266,7 +266,7 @@ class LearningRecordController extends Controller
         $record->effective_teacher_id = $effTid;
         $record->teacher_name = TeacherProfileDirectory::nameFor((int) $effTid, '未指派');
         $comment = LearningRecordTeacherComment::where('learning_record_id', $record->id)->first();
-        $record->author_snapshot_count = \App\Models\LearningRecordAuthorSnapshot::where('learning_record_id', $record->id)->count();
+        $record->setAttribute('author_snapshot_count', DB::table('learning_record_author_snapshots')->where('learning_record_id', $record->id)->count());
         $record->teacher_comment = $comment ? $this->formatTeacherCommentForRecord($comment, [
             (int) $comment->author_user_id => DB::table('User')->where('id', $comment->author_user_id)->value('Name'),
         ]) : null;

@@ -4,10 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\LearningRecord;
 use App\Models\LearningRecordAuthorSnapshot;
-use App\Models\Student;
-use App\Models\StudentClass;
 use App\Support\TeacherProfileDirectory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /** #3824: read-only, director/super_admin (route middleware). Never exposed to parents or the new teacher. */
 class LearningRecordAuthorSnapshotController extends Controller
@@ -16,13 +15,13 @@ class LearningRecordAuthorSnapshotController extends Controller
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-        $sc = StudentClass::find($learningRecord->StudentClassID);
-        $campusId = (int) (($sc ? Student::find($sc->StudentID) : null)->CampusID ?? 0);
+        $campusId = (int) DB::table('StudentClass')->join('Student', 'Student.id', '=', 'StudentClass.StudentID')
+            ->where('StudentClass.ID', $learningRecord->StudentClassID)->value('Student.CampusID');
         if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        return response()->json(LearningRecordAuthorSnapshot::where('learning_record_id', $learningRecord->id)
+        return response()->json((new LearningRecordAuthorSnapshot())->newQuery()->where('learning_record_id', $learningRecord->id)
             ->orderBy('id')->get()->map(fn ($s) => [
                 'id' => $s->id,
                 'author_teacher_id' => $s->author_teacher_id,

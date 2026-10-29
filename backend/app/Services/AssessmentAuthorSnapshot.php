@@ -40,7 +40,7 @@ final class AssessmentAuthorSnapshot
             $comment = DB::table('learning_record_teacher_comments')->where('learning_record_id', $lr->id)->first();
             $payload['teacher_comment'] = $comment ? (array) $comment : null;
 
-            LearningRecordAuthorSnapshot::create([
+            (new LearningRecordAuthorSnapshot())->newQuery()->create([
                 'learning_record_id' => $lr->id,
                 'author_teacher_id' => (int) $lr->TeacherID ?: null,
                 'new_teacher_id' => $newTeacherId,
