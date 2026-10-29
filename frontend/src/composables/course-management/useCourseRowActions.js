@@ -41,6 +41,7 @@ export function useCourseRowActions(d) {
       contractAmended: d.effectiveClosedReason(c) === 'contract_amended',
       packagePreview: d.isSessionMode(c) && !d.isPackageMember(c),
       paymentNotice: d.isPaymentNoticeAvailable(c),
+      siblingTransfer: d.canSiblingTransfer(c),
     });
   }
 
@@ -113,6 +114,7 @@ export function useCourseRowActions(d) {
       duplicate: () => d.duplicateCourseForTeacher(c),
       purchase: () => d.openCommercialPurchaseEntry(c),
       'contract-adjust': () => d.openContractAdjustmentModal(c),
+      'sibling-transfer': () => d.openSiblingTransfer(c),
       'contract-revert': () => d.openContractRevertModal(c),
       'package-preview': () => d.openPackageConversionPreview(c),
       'payment-slip': () => d.openPaymentSlip(c),
