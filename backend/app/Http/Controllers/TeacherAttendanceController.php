@@ -232,6 +232,13 @@ class TeacherAttendanceController extends Controller
         }
 
         [$adjustment, $signin] = DB::transaction(function () use ($request, $signin, $authUser) {
+            // #4144: a retried identical 補卡 (double click, flaky network) must not stack a second audit row.
+            $signin = TeacherSignIn::whereKey($signin->id)->lockForUpdate()->firstOrFail();
+            $same = fn ($a, $b) => ($a === null && $b === null) || ($a !== null && $b !== null && Carbon::parse($a)->equalTo(Carbon::parse($b)));
+            if ($same($signin->SignInDT, $request->input('new_signin_dt')) && $same($signin->SignOutDT, $request->input('new_signout_dt'))
+                && ($last = TeacherSignInAdjustment::where('teacher_signin_id', $signin->id)->orderByDesc('id')->first())) {
+                return [$last, $signin];
+            }
             $adj = TeacherSignInAdjustment::create([
                 'teacher_signin_id'   => $signin->id,
                 'adjusted_by_user_id' => $authUser->id,
