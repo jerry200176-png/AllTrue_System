@@ -195,6 +195,27 @@ final class PopOperationCatalogTest extends TestCase
         }
     }
 
+    public function test_contract_charge_correction_requires_founder_approval_and_exact_pop_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $roles = new ReflectionMethod($service, 'approvalRoles');
+        $founder = new ReflectionMethod($service, 'assertFounderApprovalReference');
+        $entry = $catalog->operation('contract-charge-correction-3868');
+        self::assertSame([true, 'pop-pi-local', ['decision_reference']],
+            [$entry['founder_approval_required'], $entry['execution_authority'], $entry['parameter_keys']]);
+        self::assertSame(['super_admin'], $roles->invoke($service, $entry));
+        $founder->invoke($service, $entry, 'founder-go-contract-charge-correction-3868-repair');
+        try {
+            $founder->invoke($service, $entry, 'director-approval-3868');
+            self::fail('a non founder-go reference must be rejected');
+        } catch (RuntimeException) {
+        }
+        $entry['founder_approval_required'] = false;
+        $this->expectException(RuntimeException::class);
+        $roles->invoke($service, $entry);
+    }
+
     public function test_founder_scoped_policy_is_supported_only_for_the_safe_course_repair_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');

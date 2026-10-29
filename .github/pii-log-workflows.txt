@@ -55,6 +55,7 @@ ops-stranded-classify-refresh.yml
 ops-td059-monitor.yml
 ops-unattended-session-29212.yml
 ops-unpaid-history-audit.yml
+pop-contract-charge-correction-3868.yml
 pop-execute.yml
 pop-founder-scoped-repair.yml
 pop-invoice1997-stale-values.yml
