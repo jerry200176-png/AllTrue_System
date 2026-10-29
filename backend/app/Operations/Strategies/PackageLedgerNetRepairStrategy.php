@@ -23,17 +23,21 @@ final class PackageLedgerNetRepairStrategy
 {
     public const REASON = 'repair_4455';
     public const REASON_R2 = 'repair_4455_r2';
+    public const REASON_R3 = 'repair_4455_r3';
     private const REF = 'repair-package-ledger-net-4455';
     private const REF_R2 = 'repair-package-ledger-overdebit-4455';
+    private const REF_R3 = 'repair-package-ledger-overdebit-r3-4455'; // round 3: class R as round 2, own reason
+    private const REFS = [1 => self::REF, 2 => self::REF_R2, 3 => self::REF_R3];
+    private const REASONS = [1 => self::REASON, 2 => self::REASON_R2, 3 => self::REASON_R3];
     private const GROUP_TYPES = ['one_on_two', 'one_on_three', 'one_on_many', 'tutoring']; // PackageDeductionService::groupSlot()
     private const TAUGHT = ['attended', 'completed', 'late'];
 
     public function plan(array $parameters): array
     {
-        $round = ($parameters['decision_reference'] ?? null) === self::REF_R2 ? 2 : 1;
+        $round = array_search($parameters['decision_reference'] ?? null, self::REFS, true) ?: 1;
         $live = $this->inspect($round);
         $rowErrors = $this->rowErrors($live);
-        $errors = in_array($parameters['decision_reference'] ?? null, [self::REF, self::REF_R2], true) ? [] : ['case_parameters_mismatch'];
+        $errors = in_array($parameters['decision_reference'] ?? null, self::REFS, true) ? [] : ['case_parameters_mismatch'];
         $errors = [...$errors, ...array_merge(...array_values($rowErrors))];
         $states = $delta = [];
         foreach ($live['rows'] as $key => $r) {
@@ -210,7 +214,7 @@ final class PackageLedgerNetRepairStrategy
     private function inspect(int $round, bool $current = false): array
     {
         $read = fn ($query) => $current ? $query->sharedLock() : $query;
-        $reason = $round === 2 ? self::REASON_R2 : self::REASON;
+        $reason = self::REASONS[$round];
         $manifest = PackageLedgerNetRepairManifest::rows($round);
         $courseNet = fn (int $cs): int => (int) $read(DB::table('session_deduction_ledger')->where('class_session_id', $cs))
             ->selectRaw("COALESCE(SUM(CASE WHEN event_type = 'deduct' THEN 1 WHEN event_type = 'reverse' THEN -1 ELSE 0 END), 0) AS net")->value('net');
