@@ -1150,7 +1150,11 @@ class PaymentReportController extends Controller
             if ($refusal = ContractMoneyState::waivedRefusal($course, '此合約已確認不收，不能登錄帳單')) {
                 return $refusal;
             }
-            if (Invoice::courseHasFee($course)) {
+            // #4008: judge the fee in force for the term being marked (month end for a monthly course, else the payment date).
+            $feeDate = empty($data['invoice_id']) && $course->getAttribute('ScheduleMode') === 'date'
+                ? Carbon::parse($this->monthlyBilling->defaultPeriodFor($course, $data['payment_date']) . '-01')->endOfMonth()->toDateString()
+                : substr((string) $data['payment_date'], 0, 10);
+            if (Invoice::courseHasFee($course, $feeDate)) {
                 return response()->json([
                     'message' => '這門課有設定費用（或費用在套裝上），不能登錄為「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」。沒有登記任何款項。',
                     'code' => 'free_gift_course_has_fee',

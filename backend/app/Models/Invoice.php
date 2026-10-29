@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\StudentClassPricingService;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -80,11 +81,19 @@ class Invoice extends Model
         return $this->isMarkedFreeGift() && $course !== null && !($courseHasFee ?? self::courseHasFee($course));
     }
 
-    /** #3991: a fee or money on record (rate, charge, package, legacy Paid/Pay/PayDate, live priced amendment, positive live bill line) rules out 免費／贈送. */
-    public static function courseHasFee(StudentClass $course): bool
+    /**
+     * #3991: a fee or money on record (rate, charge, package, legacy Paid/Pay/PayDate, live priced amendment, positive live bill line) rules out 免費／贈送.
+     * #4008: with $date the rate is the one in force on that date (StudentClassPricingService::forDate), so a later rate rise or an
+     * old positive amendment replaced by a zero-rate one no longer blocks marking a genuinely free term. Without it any positive amendment blocks.
+     */
+    public static function courseHasFee(StudentClass $course, ?string $date = null): bool
     {
-        return (int) ($course->Paid ?? 0) === 1 || (int) ($course->Pay ?? 0) > 0 || !empty($course->PayDate) || (float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
-            || StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists()
+        $rateHolds = $date !== null
+            ? (int) app(StudentClassPricingService::class)->forDate($course, $date)['rate'] > 0
+            : (float) ($course->Rate ?? 0) > 0
+                || StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists();
+
+        return (int) ($course->Paid ?? 0) === 1 || (int) ($course->Pay ?? 0) > 0 || !empty($course->PayDate) || $rateHolds || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
             || self::query()->scopes('notVoided')->where(fn ($q) => $q->where(fn ($a) => $a->where('StudentClassID', $course->ID)->where('TotalAmount', '>', 0)) // a positive bill on the course itself
                 ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))->exists();
     }
