@@ -296,9 +296,10 @@ final class PackageLedgerNetRepairStrategy
                 if ($r['status'] !== $r['expected_status'] || $r['slot_moved']) $e[] = "r_status_{$cs}";
                 if (!in_array($r['found_net'], [-1, 1], true) || $r['net'] !== $r['found_net']) $e[] = "r_net_{$cs}";
                 if ($r['course_net'] > 0) $e[] = "r_course_net_{$cs}"; // still charged on its course: the package follows (rule 1)
-                // After every reversal in this slot, the slot keeps one debit if a lesson there is charged, else none.
+                // After every reversal in this slot, the slot keeps one debit if any lesson there, the reversed ones
+                // included (an attended second debit), is attended, late or charged, else none.
                 $rest = array_filter($r['rest'], fn (array $l): bool => !in_array($l['id'], $reversed[$r['slot']], true));
-                $charged = array_filter($rest, fn (array $l): bool => $l['charged']) !== [];
+                $charged = in_array($r['status'], ['attended', 'late'], true) || array_filter($r['rest'], fn (array $l): bool => $l['charged']) !== [];
                 if (array_sum(array_column($rest, 'net')) !== ($charged ? -1 : 0)) $e[] = "r_slot_net_{$cs}";
             } elseif ($r['class'] === 'B') {
                 if ($r['net'] !== -2) $e[] = "b_net_{$cs}";

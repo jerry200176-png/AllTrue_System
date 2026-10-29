@@ -142,9 +142,27 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
             StudentClass::query()->find(DB::table('ClassSession')->where('id', $ids['recreated'])->value('StudentClassID')), $ids['gone'], 'attendance', -1);
 
         $plan = $s->plan(['decision_reference' => 'repair-package-ledger-overdebit-4455']);
-        self::assertSame(["r_net_{$ids['gone']}", "r_slot_net_{$ids['gone']}", "r_status_{$ids['alone']}", "r_slot_net_{$ids['cancelled']}",
+        self::assertSame(["r_net_{$ids['gone']}", "r_slot_net_{$ids['gone']}", "r_status_{$ids['alone']}", "r_slot_net_{$ids['alone']}", "r_slot_net_{$ids['cancelled']}",
             "r_course_net_{$ids['solo']}"], $plan['errors']);
         self::assertSame(0, DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON_R2)->count());
+    }
+
+    public function test_round_two_keeps_one_debit_in_a_slot_whose_reversed_lesson_is_attended(): void
+    {
+        [$group, $course] = $this->pool('one_on_three', 10);
+        [, $sibling] = $this->pool('one_on_three', 10);
+        DB::table('StudentClass')->where('ID', $sibling->ID)->update(['PackageID' => $group->id]);
+        [$second, $first] = [$this->lesson($course, '2026-10-05'), $this->lesson($sibling, '2026-10-05')];
+        $this->ledger($group, $course, $second, 'attended', -1);
+        $this->ledger($group, $sibling, $first, 'attended', -1);
+        PackageLedgerNetRepairManifest::useRowsForTesting([['class' => 'R', 'package_id' => (int) $group->id, 'class_session_id' => $second,
+            'scope' => 'slot', 'status' => 'attended', 'slot' => '2026-10-05 16:00', 'net' => -1]], 2);
+        $s = new PackageLedgerNetRepairStrategy();
+        self::assertTrue($s->plan(['decision_reference' => 'repair-package-ledger-overdebit-4455'])['ok'], 'second debit of a slot');
+
+        DB::table('ClassSession')->where('id', $first)->update(['Status' => 'cancelled']); // the sibling cancelled and credited since
+        $this->ledger($group, $sibling, $first, 'retro_leave', 1);
+        self::assertSame(["r_slot_net_{$second}"], $s->plan(['decision_reference' => 'repair-package-ledger-overdebit-4455'])['errors']);
     }
 
     public function test_dry_run_reports_ids_counts_and_remaining_only_and_writes_nothing(): void
