@@ -129,13 +129,14 @@ final class ContractChargeCorrectionStrategy
             }
             $base = (int) round((float) ($c->Rate ?? 0) * ((string) ($c->rate_unit ?? '') === 'hour' ? (int) $c->TotalHours : (int) ($c->SessionCount ?? 0)));
             $charge = (int) ($c->Charge ?? -1);
-            $invoices = DB::table('Invoice')->where('Status', '!=', 'void')->where(fn ($q) => $q->where('StudentClassID', $id)
-                ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $id)->select('InvoiceID')))->count();
-            $voided = DB::table('Invoice')->where('Status', 'void')->where('StudentClassID', $id)->count();
-            $payments = DB::table('payment_reports')->where('StudentClassID', $id)->count()
-                + DB::table('Invoice')->where('StudentClassID', $id)->where('PaidAmount', '>', 0)->count()
-                + DB::table('Payment')->join('Invoice', 'Payment.InvoiceID', '=', 'Invoice.id')->where('Invoice.StudentClassID', $id)
-                    ->where(fn ($q) => $q->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void'))->count();
+            // Invoices of the contract by anchor or by item link (a null-anchor invoice can carry course items).
+            $invoiceIds = DB::table('Invoice')->where('StudentClassID', $id)
+                ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $id)->select('InvoiceID'))->pluck('id')->all();
+            $invoices = DB::table('Invoice')->whereIn('id', $invoiceIds)->where('Status', '!=', 'void')->count();
+            $voided = DB::table('Invoice')->whereIn('id', $invoiceIds)->where('Status', 'void')->count();
+            $payments = DB::table('payment_reports')->where(fn ($q) => $q->where('StudentClassID', $id)->orWhereIn('InvoiceID', $invoiceIds))->count()
+                + DB::table('Invoice')->whereIn('id', $invoiceIds)->where('PaidAmount', '>', 0)->count()
+                + DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->where(fn ($q) => $q->whereNull('Method')->orWhere('Method', '!=', 'void'))->count();
             $amendments = DB::table('student_class_pricing_amendments')->where('student_class_id', $id)->whereNull('voided_at')->count();
             $sessionCharges = DB::table('ClassSession')->where('StudentClassID', $id)->whereNotNull('session_charge')->count();
             $paidFlag = (int) $c->Paid !== 0 || (int) $c->Pay !== 0 || !empty($c->PayDate);

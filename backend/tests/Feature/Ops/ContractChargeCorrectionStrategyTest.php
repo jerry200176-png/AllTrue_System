@@ -133,6 +133,13 @@ final class ContractChargeCorrectionStrategyTest extends TestCase
                 $invoice('void');
                 DB::table('Payment')->insert(['InvoiceID' => 9100, 'Amount' => 100, 'PaidAt' => now(), 'Method' => 'cash', 'created_at' => now()]);
             }],
+            'retained payment on a void item-linked invoice' => ['course_3288_payment_evidence', function (): void {
+                DB::table('Invoice')->insert(['id' => 9102, 'StudentID' => 3288, 'StudentClassID' => null, 'IssueDate' => '2026-09-29',
+                    'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('InvoiceItem')->insert(['id' => 9103, 'InvoiceID' => 9102, 'StudentClassID' => 3288, 'Description' => 'm', 'Amount' => 8800,
+                    'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30', 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('Payment')->insert(['InvoiceID' => 9102, 'Amount' => 8800, 'PaidAt' => now(), 'Method' => 'transfer', 'created_at' => now()]);
+            }],
             'paid flag' => ['course_2569_paid_flag', fn () => DB::table('StudentClass')->where('ID', 2569)->update(['Paid' => 1])],
             'charge drifted' => ['course_2569_charge_drifted', fn () => DB::table('StudentClass')->where('ID', 2569)->update(['Charge' => 7000])],
             'rate changed' => ['course_3288_rate_quantity_drifted', fn () => DB::table('StudentClass')->where('ID', 3288)->update(['Rate' => 1000])],
