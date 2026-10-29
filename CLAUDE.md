@@ -169,7 +169,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 
 | 需要什麼 | 去哪讀 |
 |---|---|
-| **SOP 對標大廠 / AI 接手地圖（換手前先讀「進行中狀態」）** | `docs/SOP_MATURITY.md` |
+| **換手前先讀的交接狀態（SessionStart 會自動印出）** | `docs/RUNBOOK_HANDOFF.md`；SOP 對標大廠 roadmap 見 `docs/SOP_MATURITY.md` |
 | 完整工作流程 + 角色規格 + SOP | `.cursorrules` |
 | P0 紅線速查 + OPS checklist | `.cursor/rules/p0-gate.mdc` |
 | API 路由 / DB schema / Gotchas | `.cursorrules` 或 `alltrue-system.mdc` |
