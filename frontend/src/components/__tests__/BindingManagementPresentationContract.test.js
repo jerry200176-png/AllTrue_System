@@ -22,18 +22,16 @@ describe('BindingManagementPage responsive presentation contract', () => {
     expect(source).toContain('title="家長 LINE 綁定"');
     expect(source).toContain('<summary>家長綁不上怎麼辦</summary>');
     // The guide quotes the parent's LINE reply; keep it tied to the replies the webhook really sends.
-    for (const [reply, quoted] of [
-      ['找不到「', '找不到學生'],
-      ['手機號碼不符', '手機號碼不符'],
-      ['未登記手機號碼', '未登記手機號碼'],
-      ['已在其他分校綁定', '已在其他分校綁定'],
-    ]) {
-      expect(webhook).toContain(reply);
-      expect(source).toContain(`「${quoted}」`);
+    // Every lookup-dependent failure gets this one reply (no student-existence oracle), so the guide has one row for it.
+    expect(webhook).toContain('找不到相符的資料');
+    expect(source).toContain('「找不到相符的資料」');
+    for (const retired of ['找不到學生', '手機號碼不符', '未登記手機號碼', '已在其他分校綁定']) {
+      expect(webhook).not.toContain(retired);
+      expect(source).not.toContain(`「${retired}」`);
     }
     expect(webhook).toContain('綁定 王小明 0912345678');
     expect(source).toContain('綁定 王小明 0912345678');
-    // The cross-campus reply only proves a same-name/phone match elsewhere: verify the campus first.
+    // The reply no longer says the student is at another campus: the guide tells the director to verify the campus first.
     expect(source).toContain('先確認學生現在在哪個分校上課');
     // A phone-only change keeps the binding but still needs the new number on file.
     expect(source).toContain('不用解除或重綁');
