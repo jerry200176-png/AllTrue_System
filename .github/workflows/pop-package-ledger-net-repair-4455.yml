@@ -5,7 +5,8 @@ name: Founder POP package ledger net repair (#4455)
 # (PackageLedgerNetRepairManifest::rows(2)) under its own decision reference and idempotency key.
 # Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
 # The operation spans campuses, so draft/dry-run use that super_admin session (the POP machine identity is
-# campus-scoped). dry-run is read-only; approve waits for Pi-local execute + verify.
+# campus-scoped). dry-run is read-only and runs on production-ssh with no click (Founder 2026-10-28 A); approve waits for
+# the Founder (production-activation gate job), then for Pi-local execute + verify.
 on:
   workflow_dispatch:
     inputs:
@@ -50,14 +51,28 @@ jobs:
             [[ "$CONFIRM" == APPROVE_PACKAGE_LEDGER_NET_REPAIR_4455 ]] || exit 1
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_round2_39_ledger_rows"
+  founder-approval:
+    # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
+    name: Founder approval (approve mode only)
+    needs: guard
+    if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production-activation
+    outputs:
+      attempt: ${{ github.run_attempt }}
+    steps:
+      - run: echo "Founder approved approve mode for run attempt ${{ github.run_attempt }}"
   repair:
     name: Pi-local short-lived POP repair (package ledger net, #4455)
-    needs: guard
-    if: ${{ needs.guard.result == 'success' }}
+    needs: [guard, founder-approval]
+    # dry-run: production-ssh with no click. approve: only after this attempt's Founder approval (a re-run needs a new click).
+    if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: production-activation
+      name: production-ssh
     steps:
       - name: Checkout pinned SSH trust helper
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -160,7 +175,7 @@ jobs:
                   print('package=%d remaining %d->%d ledger_net %d->%d' % (int(pid), p['remaining_before'], p['remaining_after'], p['ledger_net_before'], p['ledger_net_after']))
           PY
           [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
-          if [[ "$MODE" == dry-run ]]; then
+          if [[ "$MODE" != approve ]]; then
             echo "dry-run only: no approval issued"
             exit 0
           fi
