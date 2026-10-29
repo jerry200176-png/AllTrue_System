@@ -3040,13 +3040,13 @@ onBeforeUnmount(() => {
 .surface-panel__count { flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .director-task-list { margin: 0; padding: 0 22px; list-style: none; }
 .director-workbench-v2__primary > .surface-panel__header { position: relative; padding-left: 28px; }
-.director-workbench-v2__primary > .surface-panel__header::before { content: ''; position: absolute; top: 31px; left: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--ds-cta); }
+.director-workbench-v2__primary > .surface-panel__header::before { content: ''; position: absolute; top: 31px; left: 14px; width: 8px; height: 8px; border-radius: var(--ds-radius-pill); background: var(--ds-cta); }
 .surface-panel--summary { border-top: 2px solid var(--ds-ink); }
 .director-task { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-width: 0; margin-inline: -10px; padding: 17px 10px; border-top: 1px solid var(--ds-hairline); border-radius: 8px; transition: background-color 160ms ease, box-shadow 160ms ease; }
 .director-task:hover { background: var(--ds-canvas-soft); box-shadow: inset 3px 0 0 var(--ds-hairline-input); }
 .director-task--critical:hover, .director-task--danger:hover { box-shadow: inset 3px 0 0 var(--ds-danger); }
 .director-task--warning:hover { box-shadow: inset 3px 0 0 var(--ds-warning); }
-.director-task__index::before, .director-top-risks__item::before { content: ''; display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; background: var(--urgency, var(--ds-ink-mute)); }
+.director-task__index::before, .director-top-risks__item::before { content: ''; display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; box-sizing: border-box; border-radius: var(--ds-radius-pill); background: var(--urgency, var(--ds-ink-mute)); }
 .director-task__index { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .director-task--critical, .director-task--danger, .director-top-risks__item--critical, .director-top-risks__item--danger { --urgency: var(--ds-danger); }
 .director-task--warning, .director-top-risks__item--warning { --urgency: var(--ds-warning); }
