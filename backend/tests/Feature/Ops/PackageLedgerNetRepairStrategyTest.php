@@ -159,7 +159,11 @@ final class PackageLedgerNetRepairStrategyTest extends TestCase
         $params = ['decision_reference' => 'repair-package-ledger-overdebit-r3-4455'];
         $plan = $s->plan($params);
         self::assertSame([true, 3, 1], [$plan['ok'], $plan['round'], $plan['counts']['to_insert']]);
+        $sql = [];
+        DB::listen(function ($q) use (&$sql): void { $sql[] = strtolower($q->sql); });
         $result = $s->execute($plan, ['operation_id' => 'req-r3']);
+        self::assertNotSame([], array_filter($sql, fn (string $q): bool => str_contains($q, 'count(distinct')
+            && (str_contains($q, 'lock in share mode') || str_contains($q, 'for share'))), 'execute reads the floor with a shared lock');
         self::assertSame([[990003, 1]], DB::table('package_session_ledger')->where('reason', PackageLedgerNetRepairStrategy::REASON_R3)
             ->get(['class_session_id', 'delta'])->map(fn ($r): array => [(int) $r->class_session_id, (int) $r->delta])->all());
         self::assertTrue($s->verify($plan, $result)['ok']);

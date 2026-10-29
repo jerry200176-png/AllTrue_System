@@ -209,7 +209,7 @@ final class PackageLedgerNetRepairStrategy
      * Live state per manifest row (`A|B:package:session`) and package. `net` is the ledger net the repair targets: a group
      * package's class A slot (PackageDeductionService::slotNet()), else the session. `$current` (execute, rollback): the
      * ledgers are read with shared locks, so a snapshot taken by the POP transaction before the row locks cannot hide a
-     * write committed meanwhile (#4454); ClassSession rows are never locked.
+     * write committed meanwhile (#4454); ClassSession rows are locked only by round 3's floor read (shared).
      * Round 3 also reads each package's floor: taught slots plus absent slots of its member lessons, as the probe counts
      * them (Founder 2026-10-29: used never below taught + absent).
      * @return array{rows: array<string, array<string, mixed>>, packages: array<int, array{group: bool, total: int, remaining: int, used: int, net: int, floor: ?int}|null>, reason: string}
@@ -228,7 +228,9 @@ final class PackageLedgerNetRepairStrategy
                 'group' => in_array((string) $p->class_type, self::GROUP_TYPES, true),
                 'total' => (int) $p->total_sessions, 'remaining' => (int) $p->remaining_sessions, 'used' => (int) $p->used_sessions,
                 'net' => (int) $read(DB::table('package_session_ledger')->where('package_id', $id))->sum('delta'),
-                'floor' => $round < 3 ? null : (int) DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID')
+                // Under execute/rollback a shared lock, so a member lesson's status write (scheduled -> absent locks only the
+                // session) waits for the repair to commit instead of raising the floor after it was read (Codex on #4630).
+                'floor' => $round < 3 ? null : (int) $read(DB::table('ClassSession as c')->join('StudentClass as sc', 'sc.ID', '=', 'c.StudentClassID'))
                     ->where('sc.PackageID', $id)->selectRaw("COUNT(DISTINCT CASE WHEN c.Status IN ('attended', 'completed', 'late') THEN CONCAT(c.SessionDate, ' ', c.StartTimeHM) END)"
                         . " + COUNT(DISTINCT CASE WHEN LOWER(c.Status) = 'absent' THEN CONCAT(c.SessionDate, ' ', c.StartTimeHM) END) AS n")->value('n'),
             ];
