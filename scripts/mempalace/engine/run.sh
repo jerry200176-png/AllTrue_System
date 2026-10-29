@@ -43,7 +43,7 @@ Options:
   --dry-run          Plan only; no mempalace mine writes
   --no-lock          Skip flock (node testing)
   --force            Ignore missing input artifacts
-  --prune            After a successful run, `mempalace sync --apply` the docs wing (drops drawers
+  --prune            After a successful run, run mempalace sync --apply on the docs wing (drops drawers
                      whose source files were deleted/moved). Default is never to delete. With
                      --dry-run it only previews.
   --list-stages      Print topologically sorted node names

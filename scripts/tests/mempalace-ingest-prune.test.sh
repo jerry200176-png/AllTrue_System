@@ -30,4 +30,7 @@ grep -q "^sync --wing alltrue-docs --apply $ROOT\$" "$T/log" || fail "expected a
 run --prune --dry-run
 grep -q "^sync --wing alltrue-docs --dry-run $ROOT\$" "$T/log" || fail "dry-run must not apply"
 ! grep -q -- '--apply' "$T/log" || fail "dry-run applied"
+# --help must be output-only (no command substitution of the usage text)
+run --help
+! grep -q . "$T/log" || fail "--help executed mempalace"
 echo "ok"
