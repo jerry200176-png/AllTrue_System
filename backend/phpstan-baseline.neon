@@ -4196,12 +4196,6 @@ parameters:
 			path: app/Services/RecordStudentSwipe.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Services/RecordStudentSwipe.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1

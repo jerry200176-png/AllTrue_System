@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-10-29-swipe-cancel-guard
+    published_at: "2026-10-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 刷卡遇到剛取消的堂次會擋下
+    summary: 刷卡時若該堂剛被取消，會提示重新確認，不會記成到班或扣堂。
+    items:
+      - category: improved
+        text: 刷卡的同一刻若該堂被取消，會提示重新確認課程，不會被改回到班。
+    source_refs:
+      - "changelog:2026-10-29:swipe-cancel-guard"

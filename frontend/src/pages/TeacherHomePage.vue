@@ -714,6 +714,10 @@ const weekLoadedOnce = ref(false);
 const weekLoadError = ref('');
 const weekSessions = ref([]);
 let weekLoadSequence = 0;
+// In-app #441: when the week list last loaded successfully. The poll skips the (heavy) week projection, so returning to the
+// foreground is what refreshes it: a lesson assigned or restored while the app sat in the background must not stay missing.
+let weekLoadedAt = 0;
+const WEEK_STALE_MS = 60000;
 
 const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -780,7 +784,7 @@ async function loadWeekSchedule() {
       return (a.branchId || 0) - (b.branchId || 0);
     });
     if (requestSequence === weekLoadSequence) weekSessions.value = items;
-    if (requestSequence === weekLoadSequence) weekLoadedOnce.value = true;
+    if (requestSequence === weekLoadSequence) { weekLoadedOnce.value = true; weekLoadedAt = Date.now(); }
   } catch {
     if (requestSequence !== weekLoadSequence) return;
     weekLoadError.value = '無法載入課表，請稍後重試';
@@ -1036,6 +1040,7 @@ function onVisibilityChange() {
     fetchOverdueLearning();
     fetchPendingExams();
     fetchClockinStatus();
+    if (Date.now() - weekLoadedAt >= WEEK_STALE_MS) loadWeekSchedule();
   }
 }
 
