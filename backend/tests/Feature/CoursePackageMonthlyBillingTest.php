@@ -425,6 +425,46 @@ class CoursePackageMonthlyBillingTest extends TestCase
         $this->assertCount(0, $memberRows, '月結方案成員（Charge=0）不應出現在提醒（已由方案層代為顯示）');
     }
 
+    /** #3985 (Founder 2026-10-29): the members' billing verdict, not the package flag, decides whether the package row owes. */
+    private function monthlyPackageRow(bool $pkgPaidFlag, bool $paidInvoices, int $dueInDays): array
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $t1 = $this->makeTeacher();
+        $this->ensureSubjects();
+        $pkgId = (int) $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/course-packages/create-multi-subject', [
+                'student_id' => $student->id, 'branch_id' => 1, 'name' => '帳務判定方案', 'payment_type' => 'monthly', 'rate' => 800,
+                'settlement_day' => (int) Carbon::today()->day,
+                'subjects' => [['subject_id' => 1, 'teacher_id' => $t1->id, 'duration_hours' => 2], ['subject_id' => 2, 'teacher_id' => $t1->id, 'duration_hours' => 2]],
+            ])->assertStatus(201)->json('package_id');
+        \App\Models\CoursePackage::query()->whereKey($pkgId)->update(['paid' => $pkgPaidFlag ? 1 : 0]);
+        foreach (StudentClass::where('PackageID', $pkgId)->get() as $member) {
+            $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $member->ID, 'IssueDate' => Carbon::today()->toDateString(),
+                'DueDate' => Carbon::today()->addDays($dueInDays)->toDateString(), 'TotalAmount' => 1600, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => Carbon::today()->format('Y-m')]);
+            if ($paidInvoices) {
+                \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 1600, 'PaidAt' => Carbon::today()->toDateString(), 'Method' => 'cash']);
+            }
+        }
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+
+        return $rows->firstWhere('package_id', $pkgId) ?? [];
+    }
+
+    public function test_package_row_stays_owed_when_member_invoice_is_open_with_a_future_due_and_the_settlement_day_is_due(): void
+    {
+        $row = $this->monthlyPackageRow(true, false, 10); // a stale paid flag must not hide it; the invoice due date must not postpone it
+        $this->assertFalse($row['paid']);
+        $this->assertSame('unpaid', $row['payment_status']);
+    }
+
+    public function test_package_row_is_settled_when_member_payments_cover_the_bills_despite_an_unpaid_flag(): void
+    {
+        $row = $this->monthlyPackageRow(false, true, 10);
+        $this->assertTrue($row['paid']);
+        $this->assertSame(0, (int) $row['outstanding']);
+    }
+
     // ─── 回歸：堂數制多科方案仍然以原有邏輯運作 ──────────
 
     public function test_count_mode_multi_subject_package_unchanged(): void

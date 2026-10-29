@@ -241,14 +241,21 @@ class AlertController extends Controller
                 ->get()
                 ->groupBy('PackageID');
 
+            // #3985 (Founder 2026-10-29): the members' billing verdict, not the package flag or an open invoice alone, decides
+            // whether the package row still owes (the window then follows its settlement day).
+            $memberVerdicts = $this->payableResolver->courseStatusesByStudentClassIds($allMemberScIds->map(fn ($id) => (int) $id)->all());
+
             foreach ($monthlyPkgs as $pkg) {
                 $members = $membersByPkg->get($pkg->id, collect());
+                $statuses = $members->map(fn ($m) => $memberVerdicts[(int) $m->ID]['status'] ?? null);
+                $pkgPaid = $statuses->contains(fn ($s) => in_array($s, ['unpaid', 'partial', 'unbilled'], true)) ? false
+                    : ($statuses->isNotEmpty() && $statuses->every(fn ($s) => in_array($s, ['paid', 'free'], true)) ? true : (bool) $pkg->paid);
                 $monthlySessions = $members->sum(fn ($m) => $memberSessionCounts[(int) $m->ID] ?? 0);
                 $rate = (float) $pkg->rate;
                 $charge = round($monthlySessions * $rate, 2);
 
                 $alertRow = $this->mapMonthlyAlert(
-                    $this->makeFakeSCForPackage($pkg),
+                    $this->makeFakeSCForPackage($pkg, $pkgPaid),
                     $today
                 );
                 if ($alertRow === null) {
@@ -274,12 +281,12 @@ class AlertController extends Controller
                     'payable_source'    => null,
                     'payable_invoice_id' => null,
                     'billing_period'    => null,
-                    'outstanding'      => (bool) $pkg->paid ? 0 : $charge,
-                    'paid'             => (bool) $pkg->paid,
+                    'outstanding'      => $pkgPaid ? 0 : $charge,
+                    'paid'             => $pkgPaid,
                     'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                     'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
-                    'paid_amount'      => (bool) $pkg->paid ? (int) round($charge) : 0,
-                    'payment_status'   => (bool) $pkg->paid ? 'monthly_due_soon' : 'unpaid',
+                    'paid_amount'      => $pkgPaid ? (int) round($charge) : 0,
+                    'payment_status'   => $pkgPaid ? 'monthly_due_soon' : 'unpaid',
                     'latest_payment_report_id' => null,
                     'has_newer_course'         => false,
                     'newer_course_id'          => null,
@@ -777,13 +784,13 @@ class AlertController extends Controller
      * Build a minimal fake StudentClass object to drive mapMonthlyAlert for a CoursePackage.
      * Only settlement_day, Paid, ID, and student (for campus_id) are needed by mapMonthlyAlert.
      */
-    private function makeFakeSCForPackage(\App\Models\CoursePackage $pkg): StudentClass
+    private function makeFakeSCForPackage(\App\Models\CoursePackage $pkg, ?bool $paid = null): StudentClass
     {
         $sc = new StudentClass();
         $sc->ID = null;
         $sc->StudentID = $pkg->student_id;
         $sc->settlement_day = $pkg->settlement_day;
-        $sc->Paid = $pkg->paid ? 1 : 0;
+        $sc->Paid = ($paid ?? (bool) $pkg->paid) ? 1 : 0;
         $sc->Charge = 0;
         $sc->ScheduleMode = 'date';
         $sc->student = $pkg->student;
