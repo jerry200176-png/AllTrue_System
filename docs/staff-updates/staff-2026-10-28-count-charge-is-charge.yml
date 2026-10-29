@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-28-count-charge-is-charge
+    published_at: "2026-10-28"
+    audiences:
+      - director
+    importance: digest
+    title: 還沒開帳單的金額，跟合約學費一致
+    summary: 沒開帳單的堂數制合約，名單與繳費單都用合約學費。
+    items:
+      - category: improved
+        text: 名單與繳費單的金額一致，不再另有「單價乘堂數」。
+      - category: improved
+        text: 沒填學費的合約，名單只列估算，繳費單會提示「金額待確認」。
+    source_refs:
+      - "changelog:2026-10-28:count-charge-is-charge"

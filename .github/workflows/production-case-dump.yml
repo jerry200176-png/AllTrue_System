@@ -25,6 +25,7 @@ on:
           - unbilled_monthly_sessions
           - f7_prod_discrepancy
           - paid_flag_open_invoice
+          - charge_vs_rate_count
           - confirmed_report_void_blocked
           - swipe_line_path
           - class_sessions_explain_319
@@ -138,7 +139,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -1336,6 +1337,39 @@ jobs:
             $out['by_reason'] = array_count_values(array_column($rows, 'reason'));
             $out['by_void_tag'] = array_count_values(array_filter(array_column($rows, 'void_tag')));
             $out['rows'] = $rows;
+          }} elseif ($case === 'charge_vs_rate_count') {{
+            // Read-only (Founder Q3, 2026-10-11): count-mode contracts whose stored Charge differs from Rate x sessions
+            // (hour-rated: Rate x TotalHours). Charge is the amount shown for a contract without an invoice, so a director
+            // confirms each `display_changes` row. IDs, campus id and amounts only; no names, no writes.
+            $rows = [];
+            $q = $db::table('StudentClass')->join('Student', 'Student.id', '=', 'StudentClass.StudentID')
+              ->where('StudentClass.ScheduleMode', 'count')
+              ->whereRaw("LOWER(TRIM(COALESCE(StudentClass.ClassType, ''))) <> 'tutoring'")
+              ->where('StudentClass.Rate', '>', 0)->where('StudentClass.SessionCount', '>', 0)
+              ->where(fn ($w) => $w->where('StudentClass.Stop', 0)->orWhereNull('StudentClass.Stop')->orWhereDate('StudentClass.EndDate', '>=', '2026-01-01'))
+              ->orderBy('StudentClass.ID')
+              ->get(['StudentClass.ID', 'Student.CampusID', 'StudentClass.Charge', 'StudentClass.Rate', 'StudentClass.SessionCount', 'StudentClass.TotalHours', 'StudentClass.SessionDuration', 'StudentClass.rate_unit', 'StudentClass.Paid', 'StudentClass.Stop', 'StudentClass.RemainingSessions', 'StudentClass.PackageID', 'StudentClass.closed_reason']);
+            foreach ($q as $c) {{
+              $hour = strtolower(trim((string)($c->rate_unit ?? 'session'))) === 'hour';
+              $hours = (int)($c->TotalHours ?? 0) > 0 ? (int)$c->TotalHours : (int)round(((int)$c->SessionCount * max(30, (int)($c->SessionDuration ?? 120))) / 60);
+              $rateTimes = (int)round((float)$c->Rate * ($hour ? $hours : (int)$c->SessionCount));
+              if ((int)$c->Charge === $rateTimes) continue;
+              $isPackage = (int)($c->PackageID ?? 0) > 0;
+              $hasInvoice = $db::table('Invoice')->where('StudentClassID', $c->ID)->where(fn ($w) => $w->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists();
+              // The amount shown changes only here: no invoice, not a package member (its package owns the amount), a Charge on the
+              // contract, and listed by the queue either as unpaid or as a paid renewal row (2 sessions or fewer left).
+              $display = !$hasInvoice && !$isPackage && (int)$c->Charge > 0 && ((int)$c->Paid === 0 || (int)($c->RemainingSessions ?? 0) <= 2);
+              $rows[] = ['id' => (int)$c->ID, 'campus_id' => (int)$c->CampusID, 'charge' => (int)$c->Charge, 'rate_times_count' => $rateTimes,
+                'diff' => (int)$c->Charge - $rateTimes, 'paid_flag' => (int)$c->Paid, 'stopped' => (int)$c->Stop === 1, 'closed_reason' => (string)($c->closed_reason ?? ''),
+                'has_invoice' => $hasInvoice, 'package_member' => $isPackage, 'empty_charge' => (int)$c->Charge === 0, 'display_changes' => $display];
+            }}
+            $out['scanned_contracts'] = count($q);
+            $out['mismatch_count'] = count($rows);
+            $out['display_changes'] = array_values(array_filter($rows, fn ($r) => $r['display_changes']));
+            $out['display_changes_count'] = count($out['display_changes']);
+            // Charge 0 beside a rate, no invoice, not a package member: the queue keeps the Rate x count estimate, the slip refuses it.
+            $out['empty_charge_ids'] = array_values(array_map(fn ($r) => $r['id'], array_filter($rows, fn ($r) => $r['empty_charge'] && !$r['has_invoice'] && !$r['package_member'] && $r['paid_flag'] === 0)));
+            $out['mismatch_all'] = $rows;
           }} elseif ($case === 'f7_prod_discrepancy') {{
             // Read-only F7 S0 prod-snapshot discrepancy report (packet section 7): run the S1 resolver
             // (BillingPayableResolver::courseStatusesByStudentClassIds) next to the legacy signals over every contract
