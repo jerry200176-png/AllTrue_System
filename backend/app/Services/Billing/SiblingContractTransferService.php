@@ -64,7 +64,7 @@ final class SiblingContractTransferService
     {
         DB::beginTransaction();
         try {
-            $out = $this->apply((int) $course->getKey(), $in, $actorId, $preview);
+            $out = $this->apply((int) $course->getKey(), (int) $course->StudentID, $in, $actorId, $preview);
             $preview ? DB::rollBack() : DB::commit();
 
             return $out;
@@ -74,13 +74,14 @@ final class SiblingContractTransferService
         }
     }
 
-    private function apply(int $courseId, array $in, int $actorId, bool $preview): array
+    private function apply(int $courseId, int $sourceStudentId, array $in, int $actorId, bool $preview): array
     {
         // Lock order = purgeStudentRecords: students (by id) first, so a purge of the recipient waits for this transfer
         // (or this transfer sees it gone), then the source contract. Every writer locks the source contract, so a retry
         // or a double click waits there and then sees the committed row.
-        $course = StudentClass::query()->where('ID', $courseId)->first() ?? abort(404);
-        Student::query()->whereIn('id', [(int) $course->StudentID, (int) $in['target_student_id']])->orderBy('id')->lockForUpdate()->get(['id']);
+        // $sourceStudentId comes from the already-loaded route model: no plain SELECT may precede the locks, or under
+        // REPEATABLE READ its snapshot would predate a deduction committed while we wait.
+        Student::query()->whereIn('id', [$sourceStudentId, (int) $in['target_student_id']])->orderBy('id')->lockForUpdate()->get(['id']);
         $source = StudentClass::query()->where('ID', $courseId)->lockForUpdate()->first() ?? abort(404);
         // The stored key is scoped to the source contract: the same client key on two contracts can never collide.
         $key = hash('sha256', $courseId . '|' . $in['idempotency_key']);
