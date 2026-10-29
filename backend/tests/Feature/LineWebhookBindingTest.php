@@ -189,18 +189,55 @@ class LineWebhookBindingTest extends TestCase
             && ($req->data()['messages'][0]['text'] ?? null) === $expected);
     }
 
-    public function test_failure_by_name_student_not_found_replies_clear_hint(): void
+    /** 比對失敗一律同一句：說明要檢查什麼、找誰，且不洩漏學生是否存在（no enumeration）。 */
+    private function assertMismatchReply(Campus $campus, string $example): void
+    {
+        $this->assertReplyText(
+            "在 {$campus->name} 找不到相符的資料，請檢查：\n"
+            . "1. 學生姓名（或學生代號）要和報名時登記的一致\n"
+            . "2. 手機要填報名時留給分校的「家長手機」，只輸入數字\n"
+            . "範例：{$example}\n\n"
+            . "為保護學生資料，系統不會說明是哪一項不符。若確認無誤仍無法綁定，可能是分校尚未登記或需要更新資料，請洽 {$campus->name} 主任協助。"
+        );
+    }
+
+    public function test_failure_replies_do_not_reveal_whether_student_exists(): void
+    {
+        $captured = [];
+        Http::fake(function ($req) use (&$captured) {
+            $captured[] = $req->data()['messages'][0]['text'] ?? '';
+            return Http::response(['ok' => true], 200);
+        });
+        $campus = Campus::factory()->create();
+        $other = Campus::factory()->create();
+        Student::create(['name' => '存在生', 'CampusID' => $campus->id, 'ClassID' => 1, 'enable' => 1,
+            'MDT' => now(), 'Notify_Token' => '', 'parent_phone' => '0911222333']);
+        Student::create(['name' => '他校生', 'CampusID' => $other->id, 'ClassID' => 1, 'enable' => 1,
+            'MDT' => now(), 'Notify_Token' => '', 'parent_phone' => '0912345678']);
+
+        foreach (['綁定 存在生 0912345678', '綁定 查無此人 0912345678', '綁定 他校生 0912345678'] as $i => $text) {
+            $this->postBindingMessage($campus, 'U' . str_repeat((string) $i, 32), $text)->assertOk();
+        }
+
+        $this->assertCount(3, $captured);
+        $this->assertCount(1, array_unique($captured), 'existing / unknown / other-campus student must get the identical reply');
+        $this->assertStringNotContainsString('存在生', $captured[0]);
+        $this->assertStringNotContainsString('他校生', $captured[0]);
+        $this->assertStringContainsString($campus->name, $captured[0]);
+    }
+
+    public function test_failure_by_name_student_not_found_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campus = Campus::factory()->create();
 
         $this->postBindingMessage($campus, 'U' . str_repeat('n', 32), '綁定 查無此人 0912345678')->assertOk();
 
-        $this->assertReplyText('找不到「查無此人」的學生，請確認姓名是否正確。');
+        $this->assertMismatchReply($campus, '綁定 王小明 0912345678');
         $this->assertFalse(StudentLineBinding::where('line_user_id', 'U' . str_repeat('n', 32))->exists());
     }
 
-    public function test_failure_by_name_phone_mismatch_replies_clear_hint(): void
+    public function test_failure_by_name_phone_mismatch_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campus = Campus::factory()->create();
@@ -211,7 +248,7 @@ class LineWebhookBindingTest extends TestCase
 
         $this->postBindingMessage($campus, 'U' . str_repeat('p', 32), '綁定 電話不符生 0912345678')->assertOk();
 
-        $this->assertReplyText('手機號碼不符，請確認。');
+        $this->assertMismatchReply($campus, '綁定 王小明 0912345678');
         $this->assertFalse(StudentLineBinding::where('line_user_id', 'U' . str_repeat('p', 32))->exists());
     }
 
@@ -226,7 +263,7 @@ class LineWebhookBindingTest extends TestCase
         $this->assertReplyText('綁定格式錯誤，請輸入「綁定 學生姓名 手機號碼」，例如：綁定 王小明 0912345678。');
     }
 
-    public function test_failure_by_name_cross_campus_student_replies_director_hint(): void
+    public function test_failure_by_name_cross_campus_student_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campusA = Campus::factory()->create();
@@ -238,21 +275,21 @@ class LineWebhookBindingTest extends TestCase
 
         $this->postBindingMessage($campusA, 'U' . str_repeat('c', 32), '綁定 跨校生 0912345678')->assertOk();
 
-        $this->assertReplyText('此學生已在其他分校綁定，請聯繫主任。');
+        $this->assertMismatchReply($campusA, '綁定 王小明 0912345678');
         $this->assertFalse(StudentLineBinding::where('line_user_id', 'U' . str_repeat('c', 32))->exists());
     }
 
-    public function test_failure_by_id_student_not_found_replies_clear_hint(): void
+    public function test_failure_by_id_student_not_found_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campus = Campus::factory()->create();
 
         $this->postBindingMessage($campus, 'U' . str_repeat('i', 32), '綁定 99999999 0912345678')->assertOk();
 
-        $this->assertReplyText('找不到學生代號 99999999 的學生，請確認後重試。');
+        $this->assertMismatchReply($campus, '綁定 99999999 0912345678');
     }
 
-    public function test_failure_by_id_phone_mismatch_replies_clear_hint(): void
+    public function test_failure_by_id_phone_mismatch_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campus = Campus::factory()->create();
@@ -263,11 +300,11 @@ class LineWebhookBindingTest extends TestCase
 
         $this->postBindingMessage($campus, 'U' . str_repeat('j', 32), "綁定 {$student->id} 0912345678")->assertOk();
 
-        $this->assertReplyText('手機號碼不符，請確認。');
+        $this->assertMismatchReply($campus, "綁定 {$student->id} 0912345678");
         $this->assertFalse(StudentLineBinding::where('line_user_id', 'U' . str_repeat('j', 32))->exists());
     }
 
-    public function test_failure_by_id_cross_campus_student_replies_director_hint(): void
+    public function test_failure_by_id_cross_campus_student_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campusA = Campus::factory()->create();
@@ -279,7 +316,7 @@ class LineWebhookBindingTest extends TestCase
 
         $this->postBindingMessage($campusA, 'U' . str_repeat('k', 32), "綁定 {$student->id} 0912345678")->assertOk();
 
-        $this->assertReplyText('此學生已在其他分校綁定，請聯繫主任。');
+        $this->assertMismatchReply($campusA, "綁定 {$student->id} 0912345678");
         $this->assertFalse(StudentLineBinding::where('line_user_id', 'U' . str_repeat('k', 32))->exists());
     }
 
@@ -297,7 +334,7 @@ class LineWebhookBindingTest extends TestCase
         $this->assertReplyText("綁定格式錯誤，請輸入「綁定 學生代號 手機號碼」，例如：綁定 {$student->id} 0912345678。");
     }
 
-    public function test_failure_by_name_missing_stored_phone_replies_director_hint(): void
+    public function test_failure_by_name_missing_stored_phone_replies_uniform_hint(): void
     {
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $campus = Campus::factory()->create();
@@ -308,7 +345,7 @@ class LineWebhookBindingTest extends TestCase
 
         $this->postBindingMessage($campus, 'U' . str_repeat('z', 32), '綁定 無手機生 0912345678')->assertOk();
 
-        $this->assertReplyText('「無手機生」的學生未登記手機號碼，請聯繫分校確認。');
+        $this->assertMismatchReply($campus, '綁定 王小明 0912345678');
         $this->assertFalse(StudentLineBinding::where('line_user_id', 'U' . str_repeat('z', 32))->exists());
     }
 }

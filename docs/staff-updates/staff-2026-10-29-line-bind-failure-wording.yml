@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-line-bind-failure-wording
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 家長 LINE 綁定失敗的回覆更清楚
+    summary: 綁定比對不到時，LINE 會告訴家長要檢查什麼，並請家長洽分校主任。
+    items:
+      - category: improved
+        text: 家長輸入「綁定 姓名 手機」但比對不到時，LINE 一律回同一則提示：姓名要與報名一致、手機要填留給分校的家長手機，仍失敗請洽主任。
+      - category: improved
+        text: 為保護學生資料，回覆不會說明是姓名還是手機不符，也不會透露學生是否存在或在哪個分校；家長來問時，請到「綁定管理」核對學生姓名與家長手機是否已登記。
+    source_refs:
+      - "changelog:2026-10-29:line-bind-failure-wording"
