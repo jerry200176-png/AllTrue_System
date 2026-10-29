@@ -232,6 +232,19 @@ class TeacherAttendanceController extends Controller
         }
 
         [$adjustment, $signin] = DB::transaction(function () use ($request, $signin, $authUser) {
+            // #4144: a retried identical 補卡 (double click, flaky network) must not stack a second audit row. It is a retry only
+            // when the latest row is the same actor, reason and times within 2 minutes; anything else is its own audit entry.
+            // ponytail: no client Idempotency-Key on this endpoint; add one if the window proves too loose.
+            $signin = TeacherSignIn::query()->whereKey($signin->id)->lockForUpdate()->first();
+            $same = fn ($a, $b) => ($a === null && $b === null) || ($a !== null && $b !== null && Carbon::parse($a)->equalTo(Carbon::parse($b)));
+            $last = TeacherSignInAdjustment::query()->where('teacher_signin_id', $signin->id)->orderByDesc('id')->first();
+            $recent = $last && TeacherSignInAdjustment::query()->whereKey($last->id)->whereRaw('created_at >= NOW() - INTERVAL 2 MINUTE')->exists(); // DB clock, as created_at uses
+            if ($last && (int) $last->adjusted_by_user_id === (int) $authUser->id
+                && (string) $last->adjust_reason === (string) $request->input('adjust_reason')
+                && $same($last->new_signin_dt, $request->input('new_signin_dt')) && $same($last->new_signout_dt, $request->input('new_signout_dt'))
+                && $recent) {
+                return [$last, $signin];
+            }
             $adj = TeacherSignInAdjustment::create([
                 'teacher_signin_id'   => $signin->id,
                 'adjusted_by_user_id' => $authUser->id,
