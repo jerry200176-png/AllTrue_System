@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-sibling-transfer
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 剩餘堂數可轉給手足
+    summary: 課程「⋯」選單多了「轉給手足」，依已繳金額把剩餘堂數轉給同分校的手足。
+    items:
+      - category: added
+        text: 主任可以把已繳清合約的剩餘堂數，依已繳金額等比例轉給同分校的手足。
+      - category: added
+        text: 原收款與收據不變、不會退費；手足名下會多一份新合約，需要另外排課。
+    source_refs:
+      - "changelog:2026-10-29:sibling-transfer-dialog"

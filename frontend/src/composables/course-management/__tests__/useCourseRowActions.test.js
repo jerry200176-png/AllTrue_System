@@ -8,7 +8,7 @@ const bag = (over = {}) => {
     isSessionMode: () => true, isMonthlyMode: () => false, isManualOccurrenceCourse: () => false,
     canQuickAddSession: () => true, quickAddDisabledReason: () => '', canCloseCourse: () => true,
     purchaseActionIsRenew: () => false, purchaseActionLabel: () => '加購堂數', isPackageMember: () => false,
-    isPaymentNoticeAvailable: () => false, featureSubstituteV2: false, isDetailsOpen: () => false,
+    isPaymentNoticeAvailable: () => false, canSiblingTransfer: () => false, openSiblingTransfer: vi.fn(), featureSubstituteV2: false, isDetailsOpen: () => false,
     upcomingLessonOptions: () => [], canOpenLesson: () => true, currentLesson: () => ({}), openSessionEdit: vi.fn(async () => {}), setLessonPicker: vi.fn(), getLessonPicker: () => null,
     isSessionEditOpen: () => true, requestDelete: fn(), openCourseTransfer: fn(),
     openSessionEditFromAction: vi.fn(async () => {}), startSessionReschedule: fn(), startSubstitute: fn(), openSubstituteV2FromEdit: fn(),
@@ -22,6 +22,15 @@ const course = { id: 7, status: 'active' };
 const ids = (m) => m.groups.flatMap((g) => g.items.map((i) => i.id));
 
 describe('useCourseRowActions', () => {
+  it('轉給手足 follows the page capability and opens the dialog for that course (#412)', () => {
+    const d = bag({ canSiblingTransfer: () => true });
+    const { rowModel, runRowAction } = useCourseRowActions(d);
+    expect(ids(rowModel(course))).toContain('sibling-transfer');
+    runRowAction(course, 'sibling-transfer');
+    expect(d.openSiblingTransfer).toHaveBeenCalledWith(course);
+    expect(ids(useCourseRowActions(bag()).rowModel(course))).not.toContain('sibling-transfer');
+  });
+
   it('a plain course: primary 編輯, 詳情 + 調動 items in ⋯, never a second primary', () => {
     const { rowModel } = useCourseRowActions(bag());
     const m = rowModel(course);

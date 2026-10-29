@@ -55,6 +55,12 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     expect(item).toMatchObject({ disabled: true, reason: '已無剩餘堂數' });
   });
 
+  it('轉給手足 shows only when the page says the contract can use it (#412)', () => {
+    expect(ids(courseActions(session, base))).not.toContain('sibling-transfer');
+    const m = courseActions(session, { ...base, siblingTransfer: true });
+    expect(m.groups.find((g) => g.id === 'billing').items.find((i) => i.id === 'sibling-transfer').label).toBe('轉給手足');
+  });
+
   it('optional billing items follow the caller capabilities', () => {
     const none = ids(courseActions(session, base));
     expect(none).not.toContain('payment-slip');
