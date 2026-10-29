@@ -139,6 +139,36 @@ sys.exit(0)
         self.assertEqual(sum(x['command']=='composer' and 'install' in x['args'] for x in calls), 1)
         self.assertEqual(sum(x['command']=='node' for x in calls), 1)
 
+    def _handoff(self, updated):
+        d = self.project / 'docs'; d.mkdir(exist_ok=True)
+        (d / 'RUNBOOK_HANDOFF.md').write_text('# H\n\nUpdated: ' + updated + '\nBODY-MARKER\n' + 'x' * 20000)
+
+    def test_handoff_fresh_is_printed_bounded_without_warning(self):
+        import datetime
+        self._handoff(datetime.date.today().isoformat())
+        r, _ = self.run_hook()
+        self.assertIn('BODY-MARKER', r.stdout)
+        self.assertNotIn('STALE', r.stdout)
+        self.assertLess(len(r.stdout.encode()), 6500)
+
+    def test_handoff_stale_warns(self):
+        self._handoff('2020-01-01')
+        r, _ = self.run_hook()
+        self.assertIn('STALE', r.stdout)
+        self.assertIn('BODY-MARKER', r.stdout)
+
+    def test_handoff_missing_is_fail_open_and_installs_still_run(self):
+        r, calls = self.run_hook()
+        self.assertIn('missing', r.stdout)
+        self.assertTrue(any(x['command'] == 'npm' for x in calls))
+
+    def test_handoff_prints_locally_too_without_installs(self):
+        self._handoff('2020-01-01')
+        self.env['CLAUDE_CODE_REMOTE'] = 'false'
+        r, calls = self.run_hook()
+        self.assertIn('STALE', r.stdout)
+        self.assertEqual(calls, [])
+
 
 if __name__ == '__main__':
     unittest.main()
