@@ -154,7 +154,7 @@ class BillingPayableResolver
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason'])
+            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason', 'billing_snapshot'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 

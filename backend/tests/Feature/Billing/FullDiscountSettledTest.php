@@ -85,6 +85,26 @@ class FullDiscountSettledTest extends TestCase
         $this->assertNotSame('paid', app(ContractMoneyVerdict::class)->forCourse($new->fresh())->status);
     }
 
+    public function test_a_full_discount_bill_does_not_settle_beside_another_open_positive_bill(): void
+    {
+        $new = $this->renew(self::fullDiscounts()['percent 100'][0]);
+        $zero = Invoice::query()->where('StudentClassID', $new->ID)->firstOrFail();
+        Invoice::create(['StudentID' => $new->StudentID, 'StudentClassID' => $new->ID, 'IssueDate' => '2026-04-27', 'Note' => '', 'billing_period' => $zero->billing_period,
+            'ScheduleModeAtIssue' => 'date', 'TotalAmount' => 900, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->assertFalse($zero->fresh()->freeGiftHolds($new->fresh()));
+        $this->assertNotSame('paid', app(ContractMoneyVerdict::class)->forCourse($new->fresh())->status);
+        $ledger = $this->withToken($this->token)->getJson('/api/v1/accounting/ledger?student_id=' . $new->StudentID)->assertOk();
+        $this->assertFalse(collect($ledger->json('courses'))->firstWhere('id', $new->ID)['paid']);
+    }
+
+    public function test_a_charge_changed_after_the_discount_is_not_settled(): void
+    {
+        $new = $this->renew(self::fullDiscounts()['percent 100'][0]);
+        $new->update(['Charge' => 2400]);
+        $this->assertFalse(Invoice::query()->where('StudentClassID', $new->ID)->firstOrFail()->freeGiftHolds($new->fresh()));
+        $this->assertNotSame('paid', app(ContractMoneyVerdict::class)->forCourse($new->fresh())->status);
+    }
+
     public function test_free_gift_records_who_granted_it(): void
     {
         $student = Student::create(['name' => '免費', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);

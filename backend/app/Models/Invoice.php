@@ -87,7 +87,11 @@ class Invoice extends Model
     {
         // #4018: a full-discount term settles while its bill stays NT$0 (the course has a fee by design); a fee added later bills a positive amount.
         if ($this->isFullDiscount()) {
-            return $course !== null && (int) $this->getAttribute('TotalAmount') === 0;
+            // Fail closed: settled only while this bill is NT$0, the snapshot says final 0, the course still charges 0 and no other live positive bill exists for its period.
+            return $course !== null && (int) $this->getAttribute('TotalAmount') === 0
+                && (int) ($this->billing_snapshot['final_amount'] ?? -1) === 0
+                && (int) ($course->Charge ?? 0) === 0
+                && !self::courseHasPositiveBill($course, $this->billing_period);
         }
 
         return $this->isMarkedFreeGift() && $course !== null && !($courseHasFee ?? self::courseHasFee($course));
@@ -98,8 +102,15 @@ class Invoice extends Model
     {
         return (int) ($course->Paid ?? 0) === 1 || (int) ($course->Pay ?? 0) > 0 || !empty($course->PayDate) || (float) ($course->Rate ?? 0) > 0 || (int) ($course->Charge ?? 0) > 0 || (int) ($course->PackageID ?? 0) > 0
             || StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists()
-            || self::query()->scopes('notVoided')->where(fn ($q) => $q->where(fn ($a) => $a->where('StudentClassID', $course->ID)->where('TotalAmount', '>', 0)) // a positive bill on the course itself
-                ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))->exists();
+            || self::courseHasPositiveBill($course);
+    }
+
+    /** A live positive bill, or a positive line, naming the course; $period limits it to that billing period (or an undated bill). */
+    public static function courseHasPositiveBill(StudentClass $course, ?string $period = null): bool
+    {
+        return self::query()->scopes('notVoided')->where(fn ($q) => $q->where(fn ($a) => $a->where('StudentClassID', $course->ID)->where('TotalAmount', '>', 0)) // a positive bill on the course itself
+            ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))
+            ->when($period !== null, fn ($q) => $q->where(fn ($p) => $p->whereNull('billing_period')->orWhere('billing_period', $period)))->exists();
     }
 
     public function scopeNotVoided($query)

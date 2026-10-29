@@ -794,7 +794,7 @@ class AccountingController extends Controller
             'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
-                    && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
+                    && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && !$invoices->contains(fn (Invoice $o) => (int) $o->StudentClassID === (int) $class->ID && (string) $o->Status !== 'void' && (int) $o->TotalAmount > 0 && in_array((string) $o->Status, ['unpaid', 'partial'], true)) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
                 $freeGiftSettled = $zeroSettled(true);
 
                 return [
