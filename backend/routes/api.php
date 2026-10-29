@@ -405,6 +405,7 @@ Route::prefix('v1')->group(function () {
         Route::post('fee-payouts/{id}/void', [\App\Http\Controllers\FeeLedgerController::class, 'voidPayout'])->whereNumber('id');
 
         Route::post('learning-records/{learningRecord}/approve', [LearningRecordController::class, 'approve']);
+        Route::get('learning-records/{learningRecord}/author-snapshots', [\App\Http\Controllers\LearningRecordAuthorSnapshotController::class, 'index'])->middleware('role:director,super_admin');
         Route::patch('learning-records/{learningRecord}/teacher', [LearningRecordController::class, 'updateTeacher']);
         Route::post('learning-records/{learningRecord}/rollback-approval', [LearningRecordController::class, 'rollbackApproval']);
         Route::post('learning-records/{learningRecord}/request-changes', [LearningRecordController::class, 'requestChanges']);

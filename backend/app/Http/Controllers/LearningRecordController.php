@@ -266,6 +266,7 @@ class LearningRecordController extends Controller
         $record->effective_teacher_id = $effTid;
         $record->teacher_name = TeacherProfileDirectory::nameFor((int) $effTid, '未指派');
         $comment = LearningRecordTeacherComment::where('learning_record_id', $record->id)->first();
+        $record->author_snapshot_count = \App\Models\LearningRecordAuthorSnapshot::where('learning_record_id', $record->id)->count();
         $record->teacher_comment = $comment ? $this->formatTeacherCommentForRecord($comment, [
             (int) $comment->author_user_id => DB::table('User')->where('id', $comment->author_user_id)->value('Name'),
         ]) : null;
@@ -281,7 +282,7 @@ class LearningRecordController extends Controller
             return $this->learningRecordsForClassSessionConflictLookup($request, $role, $campusIds);
         }
 
-        $query = LearningRecord::active();
+        $query = LearningRecord::active()->withCount(['authorSnapshots as author_snapshot_count']); // #3824: UI note only, never the content
 
         if ($role === 'teacher') {
             $teacherId = $request->attributes->get('auth_teacher_id');
@@ -1434,6 +1435,8 @@ class LearningRecordController extends Controller
                     );
                 }
             }
+            \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $learningRecord->ClassSessionID, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null, $data['reason'] ?? null);
+            $learningRecord->refresh();
             $learningRecord->TeacherID = $newTeacherId;
             $learningRecord->save();
 

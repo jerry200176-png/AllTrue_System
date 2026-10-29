@@ -218,7 +218,7 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         // undo: substitute while still pending, then approve between precheck and transaction
         DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
-        DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null, 'Content' => '老師實際填寫的評量正文']); // B refilled after the substitute cleared the body
         \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, $flip);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo")->assertStatus(409);
     }
@@ -532,7 +532,8 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
     /** Simulate the director approving a (substituted) assessment owned by $teacherId. */
     private function approve(LearningRecord $lr, int $teacherId): void
     {
-        $lr->update(['Status' => 'approved', 'ApprovedBy' => 1, 'ApprovedAt' => now(), 'TeacherID' => $teacherId]);
+        // a teacher change clears the unapproved body (#3824 part 2), so the new teacher refills it before approval
+        LearningRecord::whereKey($lr->id)->update(['Status' => 'approved', 'ApprovedBy' => 1, 'ApprovedAt' => now(), 'TeacherID' => $teacherId, 'Content' => '老師實際填寫的評量正文', 'Progress' => '第三章']);
         User::whereKey($teacherId)->increment('TeachingSessionCount');
     }
 

@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-10-29-lr-author-snapshot
+    published_at: "2026-10-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 換老師後原評量內容會保存
+    summary: 已填未核准的評量換老師時，原內容先保存，由新老師重填。
+    items:
+      - category: improved
+        text: 換老師時，原內容會先完整保存，評量清空，畫面顯示「原內容已保存，請新老師重填」。
+      - category: improved
+        text: 主任可在該筆評量按「查看原作者內容（唯讀）」，家長與新老師看不到。
+      - category: improved
+        text: 已核准的評量維持不能換老師，沒有改變。
+    source_refs:
+      - "changelog:2026-10-29:lr-author-snapshot"

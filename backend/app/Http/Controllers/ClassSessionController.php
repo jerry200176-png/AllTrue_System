@@ -2305,6 +2305,16 @@ class ClassSessionController extends Controller
             DB::table('ClassSession')->where('id', $session->id)->update(['StudentClassID' => $newId, 'updated_at' => now()]);
             DB::table('StudentSingIn')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
             DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->update(['student_class_id' => $newId]);
+            // #3824 Founder GO: a filled-but-unapproved assessment follows the new contract's teacher via snapshot + refill.
+            $lrBefore = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->first(['id', 'TeacherID']);
+            if ($lrBefore && \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, (int) $new->getAttribute('TeacherID'), (int) optional($request->attributes->get('auth_user'))->id ?: null, $reason)) {
+                DB::table('LearningRecord')->where('id', $lrBefore->id)->update(['TeacherID' => (int) $new->getAttribute('TeacherID')]);
+                LearningRecordTeacherChange::create([
+                    'learning_record_id' => (int) $lrBefore->id, 'old_teacher_id' => (int) $lrBefore->TeacherID ?: null,
+                    'new_teacher_id' => (int) $new->getAttribute('TeacherID'), 'changed_by' => (int) optional($request->attributes->get('auth_user'))->id,
+                    'reason' => 'reassign_contract: ' . mb_substr($reason, 0, 200),
+                ]);
+            }
             DB::table('LearningRecord')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
             ClassSession::resetSettlementLockCache();
 
@@ -3043,6 +3053,7 @@ class ClassSessionController extends Controller
                 $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
                 $lrStatus = (string) ($lrRow->Status ?? '');
                 if ($lrOldTeacher !== $newTeacherId) {
+                    \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null, $data['reason'] ?? '代課');
                     $lrUpdate = ['TeacherID' => $newTeacherId];
                     if (Schema::hasColumn($lrTable, 'updated_at')) {
                         $lrUpdate['updated_at'] = now();
@@ -3416,6 +3427,7 @@ class ClassSessionController extends Controller
                 $lrId = (int) $lrRow->id;
                 $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
                 if ($lrOldTeacher !== $originalTeacherId) {
+                    \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, $originalTeacherId, $changedBy > 0 ? $changedBy : null, $data['reason'] ?? '回復正班老師');
                     $lrUpdate = ['TeacherID' => $originalTeacherId];
                     if (Schema::hasColumn($lrTable, 'updated_at')) {
                         $lrUpdate['updated_at'] = now();
