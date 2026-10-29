@@ -5,73 +5,13 @@
 > **Decision:** INCIDENT stack (I3). **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (I1).
 
 > 目的：讓任何 AI（Claude Code / Cursor）能快速了解我們的工程 SOP 對標大廠到哪、還缺什麼，並在 usage 上限或換手時無縫接續。
-> 本文件被 `CLAUDE.md` 的「On-demand 快查」引用，請在交接前先讀此檔頂部的「進行中狀態」。
+> 本文件被 `CLAUDE.md` 的「On-demand 快查」引用，交接前請先讀 `docs/RUNBOOK_HANDOFF.md`。
 
 ---
 
-## 🔴 進行中狀態（交接區 — 完成後清空此節）
+## 進行中狀態
 
-更新時間：2026-07-29（大廠對標落差排序 + 分批執行啟動）
-
-**排序原則**：比照一般工程組織的成熟度投資順序——先擋合規/資料外洩風險（一旦出事無法逆轉、且是法律責任），再補可靠性護欄（防資料遺失/停機），再補交付流程成熟度（長期複利但不急），最後才是產品體驗與儀式感。同一層內，「純程式碼/文件、我能直接驗證」優先於「需要真實基礎設施、正式權限、或組織/Founder 決策」的項目——後者標記 blocked 並附原因，不是被跳過，是**任何授權都無法讓 AI agent 憑空取得生產 SSH、真金白銀花費、或組織排班決策**。
-
-| 優先層 | Issue | 現況 |
-|---|---|---|
-| **P0 合規/資料** | #889 PII data inventory | ✅ 本輪完成：`docs/REF_PRIVACY_DATA_INVENTORY.md` |
-| **P0 合規/資料** | #888 IAM/access review（code-level 部分） | ✅ 稽核完成，**發現真實 P0 資安漏洞並已修復**（`confirmPayment()` 缺分校/老師歸屬檢查，見 #1504 + PR #1506）；**僅涵蓋程式碼可驗證的角色/權限邏輯，不含真實 production 帳號盤點**（需要人工登入各系統才能完成，見下方 blocked），該部分尚未落成獨立文件 |
-| **P0 合規/資料** | #892 third-party/vendor risk register | ✅ 本輪完成：`docs/REF_VENDOR_RISK_REGISTER.md` |
-| **P0 合規/資料** | #890 sensitive action audit log coverage、#902 security exception register、#903 privacy request SOP | ⏳ 待接續（下個 batch） |
-| **P1 可靠性護欄** | #878 Release/Deploy/In-app traceability | ✅ 本 session 稍早已實作核心（PR #1496：`deploy-meta.json` + `/health/detailed`），待 review/merge |
-| **P1 可靠性護欄** | #872 DORA 四指標儀表板 | ⏳ 可從既有 git/CI 歷史直接算出，待接續 |
-| **P1 可靠性護欄** | #884 Observability 補強 | ⏳ 先產出「現況 vs 缺口」盤點（Sentry 已接、集中 log/alert 降噪未做），待接續 |
-| **P2 交付流程** | #896 ADR/RFC process | 📌 發現：**已大量存在**（`docs/adr/`、`docs/pop/adr/`、`docs/ADR_003–006`），缺的只是把「這是我們的標準流程」寫成一頁說明，非從零建立 |
-| **P2 交付流程** | #873 postmortem 範本、#893 service catalog/RACI、#897 release train cadence、#901 data quality checks、#905 QA test matrix | ⏳ 待接續 |
-| **P2 交付流程** | #894 SOP review cadence、#900 weekly ops review、#908 quarterly roadmap review | 💡 可直接用 Routine（排程訊息）落地，不是純文件 |
-| **P3 產品體驗** | #909–#912 角色分眾文案/UX（老師/主任/家長） | ⏳ 待接續，屬於可直接出 PR 的前端文案調整 |
-| **⛔ Blocked（需要真實基礎設施/權限/組織決策，非程式碼能解）** | #868 staging 環境、#870 CI 高可用、#871 Merge Queue、#875 GitHub Environments、#877 Project automation、#879 secret rotation（真實輪替）、#880 repository ruleset、#881 MySQL PITR、#882 DR tabletop、#883 on-call、#885 即時 capacity 監控（需活 Pi 指標）、#886 status page（需外部服務）、#887 host hardening verification（需 SSH，違反 CLAUDE.md 紅線 R6）、#899 RFID 實體盤點 | 逐項原因：GitHub 帳號管理層級設定（Merge Queue/Environments/ruleset/Project automation）不在目前 MCP 工具集裡；真實密鑰輪替/SSH 稽核/DR 演練需要正式生產存取，CLAUDE.md 紅線明文禁止 AI 直接 SSH 改 Pi；staging 環境、CI 高可用、on-call 排班都是要花錢或要人力排班的組織決策，本次 `/goal` 的排序授權不能替代這些 |
-
-**尚未排進上表、下一輪納入**：#869 feature flags（其實是純程式碼模式，非基礎設施，之後應歸 P2 而非 blocked）、#891 threat modeling cadence、#895 SLA metrics（部分需要 in-app 資料庫，非本 repo 純程式碼可得）、#898 onboarding package（本文件已部分承擔此角色，需整理非重寫）、#906/#907 其他文件類缺口。此表格是每輪接續更新的活文件，不代表未列出 = 已捨棄。
-
-**下一個 Agent／下一輪第一步**：
-1. 兩個背景 agent（PII 盤點、IAM code audit）完成後，落地為正式文件並更新本節狀態。
-2. 依上表 P0→P1→P2→P3 順序接續未完成項目；每完成一批更新本節，不要整份重寫。
-3. Blocked 清單只需要在你（或 Founder）想推進特定一項時，由人工決定「花這筆錢/開這個帳號權限/排這個班」，AI 才能接手後續程式碼/文件工作。
-
-**2026-06-27 Engineering Governance Audit**
-- ✅ 全庫 10-phase 稽核完成（無 CI；靜態分析 + code review）
-- 📄 報告：`docs/reviews/ENGINEERING_AUDIT_2026-06-27.md`
-- 🎫 新建 **39** GitHub issues **#957–#995**（security / regression / architecture / testing / perf / docs）
-- ⛔ **Stop-the-line：#970** `X-User-Id` header auth bypass — 優先於其他資安 hardening
-- 📋 Top priority epic：**#957** ClassSession materialization 統一
-- ✅ Production 已手動收斂至 `main` @ `5efaf61`（#954 calendar fix）；**execution per contract I1:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
-
-**urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）— 部分 superseded**
-- ✅ Bug 1 家長登入 regex：`#922` merged；prod API `/auth/login` + `/learning-records` 200。
-- ✅ in-app `#169` / `#170`：程式 `#928` / `#927` merged；in-app 狀態皆 `resolved`；prod 待審清單已無鄭筠霏 06-20（唯讀 API 驗證）。
-- 🕰️ `#919` 曾於 2026-06-21 恢復 self-hosted CI/deploy 並部署 `fd04b07`；此拓撲已被 2026-07-14 的 GitHub-hosted runner 遷移取代，現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
-- ⏳ Bug 2 count 課稀疏堂次 materialize：**PR #937**（`fix/count-session-same-day-materialize`）；**刻意跳過 `PackageID>0` 共用池**（周宏謙 / #162 需商業規則後另 PR）。
-- ⏳ in-app `#174` 重疊課程 force-create modal：**PR #938**（`fix/course-overlap-force-create` → main）；prod 曾手動部署 `acf1251`，`version.json` 可能落後 git HEAD，merge 後應走正常 deploy。
-- 🗑️ 聚合 hotfix **PR #925** 已留言 superseded，可 close。
-
-**production 快照（2026-06-27）**
-- `GET /api/v1/health` → ok；`version.json` hash=`acf1251`（前端-only 手動部署痕跡；backend 實際含 `#922–#929` 多數修復，以 deploy log / Pi `git HEAD` 為準）。
-- **#926** Sentry `Unknown column 'not'`：2026-06-20 中間版 SQL 事故；**現行 prod `/learning-records` 200**，issue 可標 resolved-after-deploy 並關閉。
-- 新 in-app `#171–#176` / GitHub `#931–#936`：**不在本 handoff 範圍**，勿重複 triage。
-
-**待 merge / 待 CEO 決策**
-| 項目 | 動作 |
-|---|---|
-| **#937** Bug 2 materialize | CI 綠 → merge → deploy → 請陸逸老師驗證非共用池 count 課點名 |
-| **#938** #174 overlap modal | merge → deploy（讓 main 與 prod 收斂）|
-| **#874** + **#850** docs handoff | 本分支已更新 INDEX / SOP_MATURITY / ROADMAP / integrity-check；CI 綠後 merge（docs-only）|
-| **#920** in-app #168 | `status:needs-decision`：主任確認 3/19 是否計入本期後才開資料修復 PR |
-| **周宏謙共用池 materialize** | 需定義「12 堂池分配到各科」規則後再實作；不可 per-course SessionCount 盲目補堂 |
-
-**下一個 Agent 第一步**
-1. 讀 `docs/reviews/ENGINEERING_AUDIT_2026-06-27.md` Top 20 + 30-day roadmap
-2. **#970** header auth bypass — stop-the-line fix branch（手動 security test；CI minutes 耗盡時勿等 Actions）
-3. 開 in-app #931–#936 triage 與 #957 materialization epic 規劃（不重複 audit 已建 issues）
-4. `gh pr checks 937` / `938` 若仍 open → merge 順序不變
+已移至 [`RUNBOOK_HANDOFF.md`](RUNBOOK_HANDOFF.md)（活的交接狀態；本檔保留大廠對標 roadmap，2026-07-29 的舊排序不再維護）。
 
 ---
 

@@ -36,6 +36,29 @@
 #   in cloud sessions, and CI runs the same checks.
 set -uo pipefail
 
+# Handoff banner (cloud AND local): print docs/RUNBOOK_HANDOFF.md to stdout so
+# every session starts from the same live state. Read-only, bounded (~2k tokens),
+# fail-open: a missing or malformed file never blocks startup or the installs.
+print_handoff() {
+  local f upd now age
+  f="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)}/docs/RUNBOOK_HANDOFF.md"
+  [ -r "$f" ] || { echo "[handoff] docs/RUNBOOK_HANDOFF.md missing; read docs/INDEX.md Start here"; return 0; }
+  upd="$(sed -n 's/^Updated: *\([0-9-]\{10\}\).*/\1/p' "$f" | head -n 1)"
+  age=""
+  if [ -n "$upd" ]; then
+    now="$(date +%s)"; upd="$(date -d "$upd" +%s 2>/dev/null)" && age=$(( (now - upd) / 86400 ))
+  fi
+  if [ -z "$age" ]; then
+    echo "[handoff] STALE: no valid 'Updated: YYYY-MM-DD' line; verify against GitHub before trusting"
+  elif [ "$age" -gt 7 ]; then
+    echo "[handoff] STALE: ${age} days old (limit 7); verify against GitHub (issues/PRs/runs) before trusting"
+  fi
+  echo "[handoff] docs/RUNBOOK_HANDOFF.md"
+  head -n 45 "$f" | head -c 6000
+  echo
+}
+print_handoff 2>/dev/null || true
+
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi

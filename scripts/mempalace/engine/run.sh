@@ -43,6 +43,9 @@ Options:
   --dry-run          Plan only; no mempalace mine writes
   --no-lock          Skip flock (node testing)
   --force            Ignore missing input artifacts
+  --prune            After a successful run, `mempalace sync --apply` the docs wing (drops drawers
+                     whose source files were deleted/moved). Default is never to delete. With
+                     --dry-run it only previews.
   --list-stages      Print topologically sorted node names
   --show-plan        Print derived execution plan and exit
   --help             Show this help
@@ -64,6 +67,7 @@ mempalace_engine_parse_args() {
   export MEMPALACE_INGEST_DRY_RUN=0
   export MEMPALACE_INGEST_NO_LOCK=0
   export MEMPALACE_INGEST_FORCE=0
+  export MEMPALACE_INGEST_PRUNE=0
   export MEMPALACE_INGEST_SHOW_PLAN=0
   export MEMPALACE_INGEST_REPLAY=""
   export MEMPALACE_INGEST_REPLAY_ONLY=0
@@ -92,6 +96,7 @@ mempalace_engine_parse_args() {
       --dry-run) MEMPALACE_INGEST_DRY_RUN=1; shift ;;
       --no-lock) MEMPALACE_INGEST_NO_LOCK=1; shift ;;
       --force) MEMPALACE_INGEST_FORCE=1; shift ;;
+      --prune) MEMPALACE_INGEST_PRUNE=1; shift ;;
       --show-plan) MEMPALACE_INGEST_SHOW_PLAN=1; shift ;;
       --list-stages)
         mempalace_dag_validate_manifest
@@ -162,6 +167,13 @@ mempalace_engine_main() {
     echo "   Replay: bash scripts/mempalace-ingest.sh --replay"
     echo "   Events: $MEMPALACE_EVENTS_FILE"
     exit 1
+  fi
+
+  if [ "${MEMPALACE_INGEST_PRUNE:-0}" = "1" ]; then
+    # ponytail: pruning is explicit opt-in; docs wing only (sessions live outside the repo).
+    local apply="--apply"
+    [ "${MEMPALACE_INGEST_DRY_RUN:-0}" = "1" ] && apply="--dry-run"
+    "$MEMPALACE" sync --wing "$MEMPALACE_WING_DOCS" "$apply" "$MEMPALACE_REPO_ROOT" || echo "⚠️ prune failed (non-fatal)"
   fi
 
   echo ""
