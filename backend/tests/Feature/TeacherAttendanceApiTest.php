@@ -354,6 +354,26 @@ class TeacherAttendanceApiTest extends TestCase
         $this->assertSame(1, TeacherSignInAdjustment::where('teacher_signin_id', $signin->id)->count());
     }
 
+    /** @test #4144: a different reason, a different actor or a stale retry is its own audit row */
+    public function an_adjust_that_is_not_an_exact_recent_retry_gets_its_own_audit_row(): void
+    {
+        $director = $this->makeDirector(1);
+        $other    = $this->makeDirector(1);
+        $teacher  = $this->makeTeacherUser(1);
+        $signin   = $this->makeSignIn($teacher['user']->id, 1, ['SignInDT' => now()->subHours(2)->toDateTimeString(), 'Status' => 'late']);
+        $body = ['new_signin_dt' => now()->subHours(3)->format('Y-m-d H:i:s'), 'new_signout_dt' => now()->format('Y-m-d H:i:s'), 'adjust_reason' => '第一個原因'];
+        $post = fn ($who, array $b) => $this->withHeaders($this->authHeaders($who['token']))->postJson("/api/v1/teacher-attendance/{$signin->id}/adjust", $b)->assertOk();
+
+        $post($director, $body);
+        $post($director, ['adjust_reason' => '另一個原因'] + $body);   // same times, new reason
+        $post($other, ['adjust_reason' => '另一個原因'] + $body);      // same reason as the last row, new actor
+        $this->assertSame(3, TeacherSignInAdjustment::where('teacher_signin_id', $signin->id)->count());
+
+        TeacherSignInAdjustment::where('teacher_signin_id', $signin->id)->update(['created_at' => DB::raw('NOW() - INTERVAL 5 MINUTE')]);
+        $post($other, ['adjust_reason' => '另一個原因'] + $body);      // exact repeat, but outside the window
+        $this->assertSame(4, TeacherSignInAdjustment::where('teacher_signin_id', $signin->id)->count());
+    }
+
     /** @test 補卡後主表 SignOutDT 更新，unclosed 不再顯示 */
     public function adjust_updates_main_table_and_disappears_from_unclosed(): void
     {
