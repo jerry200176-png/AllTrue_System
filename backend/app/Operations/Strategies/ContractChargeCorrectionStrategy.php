@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * Exact-case POP strategy (GitHub #3868, Founder 2026-10-29): writes StudentClass.Charge and nothing else, for the courses of one
+ * Exact-case POP strategy (GitHub #3868 and #4138, Founder 2026-10-29): writes StudentClass.Charge and nothing else, for the courses of one
  * committed manifest chosen by decision_reference. The reverse manifest (rollback) runs through the same operation. A course must be
  * an unbilled, unpaid, count-mode, non-package contract whose Charge is the manifest's `from` (or `to`, when already applied) and
  * whose Rate x quantity is the manifest's third number, so the G-009 preservedDelta cannot re-apply the old difference on a later edit.
@@ -20,6 +20,9 @@ final class ContractChargeCorrectionStrategy
     public const MANIFESTS = [
         'repair-contract-charge-3868-20261029' => [2569 => [8000, 4000, 4000], 3288 => [8800, 1100, 1100]],
         'rollback-contract-charge-3868-20261029' => [2569 => [4000, 8000, 4000], 3288 => [1100, 8800, 1100]],
+        // #4138 item 4 (Founder 2026-10-29): campus-2 director keyed the per-lesson price 455 into the total; Rate x 20 = 9100.
+        'repair-contract-charge-4138-20261029' => [4050 => [455, 9100, 9100], 4051 => [455, 9100, 9100]],
+        'rollback-contract-charge-4138-20261029' => [4050 => [9100, 455, 9100], 4051 => [9100, 455, 9100]],
     ];
 
     public function plan(array $parameters): array
