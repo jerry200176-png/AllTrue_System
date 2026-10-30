@@ -526,13 +526,24 @@ function onWindowResize() {
   fabPos.value = snapFabToNearestEdge(fabPos.value.x, fabPos.value.y);
 }
 
+// in-app #446: other screens (e.g. the student ledger) open the form pre-filled with IDs for something staff cannot fix themselves.
+function onOpenRequest(event) {
+  const d = event?.detail || {};
+  openForm();
+  description.value = String(d.description || '').slice(0, 2000);
+  relatedReference.value = String(d.relatedReference || '').slice(0, 300);
+  feedbackType.value = 'bug';
+}
+
 onMounted(() => {
   fabPos.value = loadFabPos();
   window.addEventListener('resize', onWindowResize);
+  window.addEventListener('alltrue-open-bug-report', onOpenRequest);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize);
+  window.removeEventListener('alltrue-open-bug-report', onOpenRequest);
   clearAttachments();
 });
 
