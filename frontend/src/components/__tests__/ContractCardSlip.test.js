@@ -56,7 +56,7 @@ describe('ContractCard 繳費單 (in-app #425)', () => {
   it('金額待確認 (server verdict): shown disabled with the list reason', async () => {
     const w = await card({ outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 }, course: { id: 9, subject: '數學', paid: false, amount_pending_confirmation: true } });
     expect(slip(w)).toEqual({ disabled: true, reason: slipAvailability({ id: 9, payment_status: 'unpaid', amount_pending_confirmation: true }).reason });
-    expect(slip(w).reason).toBe('金額待確認，請先確認應收金額');
+    expect(slip(w).reason).toBe('金額需核對，不能產生繳費單');
     await w.get('[data-testid="contract-slip"]').trigger('click');
     expect(w.emitted('slip')).toBeUndefined();
   });

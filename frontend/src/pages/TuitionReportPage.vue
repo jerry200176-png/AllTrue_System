@@ -2,7 +2,7 @@
   <div class="tuition-report-page at-page">
     <AtPageHeader
       title="當月學收"
-      description="依已上課堂數 × 費率試算各學生當月學收。"
+      description="本月已上課堂數 × 費率的估算，不等於已收。"
       icon="bar_chart"
       data-guide="tuition-report-header"
     >
@@ -69,7 +69,7 @@
               <th class="hide-sm">班型</th>
               <th class="num">月堂數</th>
               <th class="num">費率</th>
-              <th class="num">月學收</th>
+              <th class="num">上課應收（估算）</th>
               <th>收款狀態</th>
               <th class="hide-sm">繳費日期</th>
             </tr>

@@ -29,7 +29,7 @@ describe('legacy paid flag without a payment record (#4114)', () => {
     await flushPromises();
 
     const tag = (name) => w.findAll('tr').find((tr) => tr.text().includes(name)).find('.status-tag');
-    expect(tag('旗標生').text()).toBe('需核對：舊資料標記已收，缺付款紀錄');
+    expect(tag('旗標生').text()).toBe('需核對（舊資料標已收，查無收款）');
     expect(tag('旗標生').classes()).toContain('st-pending');
     expect(tag('旗標生').classes()).not.toContain('st-paid');
     expect(tag('收款生').text()).toBe('已收');

@@ -31,7 +31,7 @@ describe('operations quick-start UX contract', () => {
     for (const marker of ['收款與核帳', '新增排課', '調課／代課', "intent: 'pending'", "intent: 'quick-add'", "intent: 'reschedule'"]) {
       expect(director).toContain(marker);
     }
-    for (const marker of ['帳務處理流程', '登記繳費回報', '確認入帳與收據', 'clear-initial-tab']) {
+    for (const marker of ['帳務處理流程', '登記收款', '確認入帳', 'clear-initial-tab']) {
       expect(billing).toContain(marker);
     }
     for (const marker of ['排課處理流程', '調課', '換代課', 'clear-initial-intent']) {

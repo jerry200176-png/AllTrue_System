@@ -160,7 +160,7 @@ describe('學生帳務對帳 · 涵蓋上課日 (M1)', () => {
     await flushPromises();
 
     const block = w.find('[data-testid="ledger-coverage-inv-41"]');
-    expect(block.text()).toContain('上課日暫時無法載入');
+    expect(block.text()).toContain('上課日載入失敗');
     expect(w.text()).toContain('6,000');
     expect(w.text()).not.toContain('boom');
 

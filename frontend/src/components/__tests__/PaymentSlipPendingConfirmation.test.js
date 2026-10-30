@@ -7,7 +7,7 @@ import PaymentSlipModal from '../PaymentSlipModal.vue';
 
 vi.mock('modern-screenshot', () => ({ domToBlob: vi.fn() }));
 
-const MSG = '金額待確認，請先確認應收金額';
+const MSG = '金額需核對，不能產生繳費單';
 const refused = () => ({ ok: false, status: 422, json: async () => ({ message: MSG }) });
 
 describe('payment slip on 金額待確認 contracts', () => {

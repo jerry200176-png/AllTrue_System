@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-30-billing-copy-vocabulary
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心用字統一
+    summary: 帳務畫面改用同一套說法：未繳、已收、繳了一部分、待確認入帳、還沒開帳單，說明也變短。
+    items:
+      - category: improved
+        text: 全站只用「未繳／已收／繳了一部分／待確認入帳／還沒開帳單」，不再出現「未結清」「已記入」等不同說法。
+      - category: improved
+        text: 「登記已回報」改叫「登記收款」，「繳費通知單」改叫「繳費單」。
+      - category: improved
+        text: 「當月學收」的月學收欄改為「上課應收（估算）」，旁邊的狀態才是實際收款。
+    source_refs:
+      - "changelog:2026-10-30:billing-copy-vocabulary"

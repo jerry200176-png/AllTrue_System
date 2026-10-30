@@ -49,7 +49,7 @@
         <input v-model="form.note" maxlength="500" data-testid="alloc-note" />
       </label>
 
-      <p class="alloc__hint">送出後會顯示「已回報付款，待你核對入帳」，你在這裡按「確認入帳」才算收到。</p>
+      <p class="alloc__hint">送出後是「待確認入帳」，按「確認入帳」才算已收。</p>
       <p v-if="submitError" class="alloc__err" role="alert" data-testid="alloc-submit-error">{{ submitError }}</p>
 
       <footer class="alloc__foot">
@@ -150,7 +150,7 @@ function buildEntries(ids) {
 }
 
 const reasonOf = (r) => (r.code === 'pending_report_exists'
-  ? '這份合約已經有一筆待核對入帳的回報，請先確認或退回'
+  ? '已有待確認入帳的回報，請先確認或退回'
   : humanizeApiErrorMessage(r.message || '登記失敗'));
 
 async function send(entries) {
@@ -199,7 +199,7 @@ function retryFailed() {
 const accepted = computed(() => results.value.filter((r) => r.ok).length);
 const failed = computed(() => results.value.filter((r) => !r.ok));
 const verdict = computed(() => {
-  if (!failed.value.length) return `已登記 ${accepted.value} 份合約，待核對入帳。`;
+  if (!failed.value.length) return `已登記 ${accepted.value} 份合約，待確認入帳。`;
   if (!accepted.value) return '都沒有登記成功，沒有任何金額被記下。';
   return `只有部分登記成功：${accepted.value} 份已登記、${failed.value.length} 份沒有登記。`;
 });

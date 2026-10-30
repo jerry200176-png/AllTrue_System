@@ -33,8 +33,8 @@ describe('ContractCard', () => {
     expect(w.find('[data-testid="contract-memo"]').text()).toContain('第二行');
     expect(w.findAll('h6').map((h) => h.text())).toEqual(['2026 年 9 月', '2026 年 10 月']);
     const rows = w.findAll('[data-testid="contract-session"]').map((r) => r.text());
-    expect(rows[0]).toContain('已付');
-    expect(rows[2]).toContain('未付');
+    expect(rows[0]).toContain('已收');
+    expect(rows[2]).toContain('未繳');
     expect(w.find('[data-testid="contract-summary"]').text()).toBe('共 3 堂・已上 1・還沒上 3');
     expect(w.find('[data-testid="contract-unscheduled"]').text()).toBe('還有 2 堂還沒排日期');
     // Founder 2026-10-15 (Q9=A, in-app #396 / #3982): the card shows the course reference in the
@@ -82,7 +82,7 @@ describe('ContractCard', () => {
     const w = mount(ContractCard, { props: { course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 }, amounts: { due: 6600, received: 6600, owed: 0 } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/05　NT$ 6,600');
-    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,600・已收 NT$ 6,600・未收 NT$ 0');
+    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,600・已收 NT$ 6,600・未繳 NT$ 0');
     const w2 = mount(ContractCard, { props: { course: { id: 9 } } });
     await flushPromises();
     expect(w2.find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
@@ -101,7 +101,7 @@ describe('ContractCard', () => {
     });
     await flushPromises();
     expect(w.find('[data-testid="contract-charge"]').text()).toBe('合約金額 NT$ 8,800');
-    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未收 NT$ 0');
+    expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未繳 NT$ 0');
     expect(w.find('[data-testid="contract-rate-note"]').exists()).toBe(true);
   });
 
@@ -132,7 +132,7 @@ describe('ContractCard', () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
     const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 7, amount: 8000, date: '2026-10-05' } } });
     await flushPromises();
-    expect(w.text()).toContain('家長回報 10/5 已付 NT$ 8,000，待你核對入帳');
+    expect(w.text()).toContain('待確認入帳 NT$ 8,000（10/5 家長回報）');
   });
 
   it('saves a memo-only PUT and shows the new memo', async () => {
@@ -157,7 +157,7 @@ describe('ContractCard', () => {
     authedFetch.mockResolvedValueOnce(respond({}, 500));
     const w = mount(ContractCard, { props: { course: { id: 9, subject: '英文' } } });
     await flushPromises();
-    expect(w.text()).toContain('上課日暫時無法載入');
+    expect(w.text()).toContain('上課日載入失敗');
   });
 });
 
@@ -228,7 +228,7 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
-    expect(w.text()).toContain('家長回報已付 NT$ 1,000，待你核對入帳');
+    expect(w.text()).toContain('待確認入帳 NT$ 1,000');
     await w.find('[data-testid="contract-confirm"]').trigger('click');
     await flushPromises();
     // nothing is booked until the dialog is accepted; 取消 holds the focus
@@ -341,7 +341,7 @@ describe('ContractCard money states (#3731 review)', () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
     const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0 } });
     await flushPromises();
-    expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單，金額待確認');
+    expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單');
     expect(w.find('[data-testid="contract-money"]').text()).not.toContain('NT$ 0');
   });
 });
@@ -420,7 +420,7 @@ describe('AccountingLedgerModal mobile (PRD v2 D5)', () => {
       invoices: [INVOICE],
     });
     const labels = w.findAll('.ledger-table tbody tr:first-child td[data-label]').map((td) => td.attributes('data-label'));
-    expect(labels).toEqual(['應繳日', '應收', '已記入', '未結清', '狀態']);
+    expect(labels).toEqual(['應繳日', '應收', '已收', '未繳', '狀態']);
     const bar = w.find('[data-testid="ledger-sticky-pay"]');
     expect(bar.exists()).toBe(true);
     expect(bar.text()).toContain('登記收款');
@@ -468,7 +468,7 @@ describe('billing panel visual tokens (spec B-PR2)', () => {
     const w = mount(ContractCard, { props: { course: { id: 9 } } });
     await flushPromises();
     const rows = w.findAll('[data-testid="contract-session"]');
-    expect(rows.every((r) => /已付|未付/.test(r.text()))).toBe(true);
+    expect(rows.every((r) => /已收|未繳/.test(r.text()))).toBe(true);
     expect(rows[0].find('.pay-paid').exists()).toBe(true);
   });
 });
@@ -513,9 +513,9 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     });
     expect(w.find('[data-testid="ledger-overpaid"]').text()).toContain('多收 NT$ 500');
     const text = w.text();
-    expect(text).toContain('2026/10/05 匯款 NT$ 3,500 這筆');
+    expect(text).toContain('2026/10/05 匯款 NT$ 3,500，比帳單多 NT$ 500');
     expect(text).toContain('撤銷這筆');
-    expect(w.find('[data-testid="ledger-exception-hint"]').text()).toContain('撤銷這筆就好');
+    expect(w.find('[data-testid="ledger-exception-hint"]').text()).toContain('撤銷這筆收款');
     expect(text).not.toMatch(/請聯絡總部|RCPT-|收據-/);
     w.unmount(); vi.unstubAllGlobals();
   });
@@ -529,7 +529,7 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     expect(w.findAll('.ledger-receipt')).toHaveLength(2);
     expect(w.text()).not.toMatch(/RCPT-/);
     const toggle = w.find('[data-testid="ledger-other-receipts-toggle"]');
-    expect(toggle.text()).toContain('其他紀錄（3）');
+    expect(toggle.text()).toContain('已退回／已撤銷（3）');
     await toggle.trigger('click');
     expect(w.findAll('.ledger-receipt')).toHaveLength(5);
     w.unmount(); vi.unstubAllGlobals();
@@ -582,9 +582,9 @@ describe('AccountingLedgerModal Excel-card sources (spec B-PR3)', () => {
     await flushPromises();
     const text = (id) => w.find(`[data-testid="contract-card-${id}"]`).text();
     expect(text(2)).toContain('繳費日 2026/09/03　NT$ 8,000');
-    expect(text(2)).toContain('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未收 NT$ 0');
+    expect(text(2)).toContain('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未繳 NT$ 0');
     // #4150: course 3 has only a legacy PayDate + Charge, no receipt or payment -> neutral 需核對, no 繳費日 line.
-    expect(text(3)).toContain('需核對：舊資料標記已收，缺付款紀錄');
+    expect(text(3)).toContain('需核對（舊資料標已收，查無收款）');
     expect(text(3)).not.toContain('繳費日');
     expect(text(4)).toContain('還沒繳費');
     expect(text(4)).toContain('未繳 NT$ 3,000');
@@ -678,7 +678,7 @@ describe('AccountingLedgerModal allocation step (PRD D18/D19)', () => {
 
 // #4150: legacy metadata (PayDate / Charge / Paid flag) is not a payment record; only real evidence becomes 繳費日.
 describe('AccountingLedgerModal legacy payment display (#4150)', () => {
-  const LEGACY = '需核對：舊資料標記已收，缺付款紀錄';
+  const LEGACY = '需核對（舊資料標已收，查無收款）';
   const mountWith = async (body) => {
     const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
     authedFetch.mockResolvedValue(respond({ sessions: [], unscheduled_count: 0 }));
@@ -698,7 +698,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     expect(card(w).find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card(w).find('[data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     expect(card(w).text()).not.toContain('2026/08/01');
-    expect(card(w).find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,000・已收 NT$ 0・未收 NT$ 6,000');
+    expect(card(w).find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,000・已收 NT$ 0・未繳 NT$ 6,000');
     w.unmount(); vi.unstubAllGlobals();
   });
 

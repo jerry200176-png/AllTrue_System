@@ -23,7 +23,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
   it('explains estimated slips when there are no invoices or receipts', async () => {
     const w = await mountWith({ summary: {}, invoices: [], receipts: [], anomalies: [] });
-    expect(w.text()).toContain('目前只有繳費單（依課程估算），還沒有帳單和收款。登記收款並確認入帳後，才會出現在這裡。');
+    expect(w.text()).toContain('還沒開帳單，也沒收款。登記收款後會出現在這裡。');
     expect(w.text()).not.toContain('此學生尚無帳單');
   });
 
@@ -48,7 +48,7 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [other], receipts: [], anomalies: [] });
     // #3894: no contradictory "no invoices" copy while another course's invoice is listed.
     expect(w.text()).not.toContain('目前只有繳費單');
-    expect(w.get('[data-testid="ledger-target-empty"]').text()).toContain('這門課目前沒有帳單和收款');
+    expect(w.get('[data-testid="ledger-target-empty"]').text()).toContain('這門課沒有帳單和收款');
     expect(w.get('[data-testid="ledger-other-course"]').text()).toBe('其他課程');
     const w2 = await mountWith({ summary: {}, scope: { student_class_id: 2 }, invoices: [other], receipts: [], anomalies: [] });
     expect(w2.text()).not.toContain('目前只有繳費單');

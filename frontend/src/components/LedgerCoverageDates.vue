@@ -6,7 +6,7 @@
     </div>
     <p v-if="!entry || entry.state === 'loading'" class="coverage__muted">上課日載入中…</p>
     <p v-else-if="entry.state === 'error'" class="coverage__muted">
-      上課日暫時無法載入，金額不受影響。
+      上課日載入失敗，金額不受影響。
       <button
         class="coverage__link"
         type="button"

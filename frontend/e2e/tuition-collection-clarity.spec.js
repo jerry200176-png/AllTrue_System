@@ -51,7 +51,7 @@ test('In-App #339: dense receivable actions leave readable space for amounts wit
     const actions = row.locator('td:last-child');
     await expect(row.locator('td').nth(6)).toContainText('4,200');
     await expect(row.locator('td').nth(8)).toContainText('4,200');
-    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'receipt 收據', 'check_circle 登記已回報']);
+    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'receipt 收據', 'check_circle 登記收款']);
     const box = await actions.boundingBox();
     expect(box.width).toBeLessThanOrEqual(width * 0.35);
     await expect(actions).toHaveCSS('position', 'sticky');

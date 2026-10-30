@@ -31,13 +31,13 @@ describe('F15 UI breadcrumbs', () => {
   });
 
   it('records only error/warning toasts (last 5), never alerts or info/success', () => {
-    useToast().error('登記繳費回報失敗', { title: '無法儲存' });
+    useToast().error('登記收款失敗', { title: '無法儲存' });
     useToast().success('臨時密碼：Ab3xY9kLm2Qz');
     window.alert('臨時密碼：Ab3xY9kLm2Qz');
-    useToast().warning('月結課程不能登記繳費回報');
+    useToast().warning('月結課程不能登記收款');
     expect(getRecentMessages().map((m) => [m.kind, m.text])).toEqual([
-      ['error', '無法儲存 登記繳費回報失敗'],
-      ['warning', '月結課程不能登記繳費回報'],
+      ['error', '無法儲存 登記收款失敗'],
+      ['warning', '月結課程不能登記收款'],
     ]);
     for (let i = 0; i < 9; i++) recordUserMessage('error', `m${i}`);
     expect(getRecentMessages()).toHaveLength(5);

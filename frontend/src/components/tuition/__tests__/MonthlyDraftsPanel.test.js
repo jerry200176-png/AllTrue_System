@@ -36,7 +36,7 @@ it('renders three sections', async () => {
   expect(t).toContain('可開立（3）');
   expect(t).toContain('有 3 堂已上課沒有帳單');
   expect(t).toContain('請聯絡總部補開');
-  expect(t).toContain('請到課程管理結案');
+  expect(t).toContain('到課程管理結案');
 });
 
 it('batch confirm renews each selected row with proposed_end_date; failure shows message', async () => {
@@ -65,7 +65,7 @@ it('disables confirm for a past proposed end date', async () => {
   await flushPromises();
   const past = wrapper.findAll('tbody tr')[2];
   expect(past.find('input[type=checkbox]').attributes('disabled')).toBeDefined();
-  expect(past.text()).toContain('無法在此開立');
+  expect(past.text()).toContain('不能開立');
   expect(past.findAll('button')).toHaveLength(0);
 });
 

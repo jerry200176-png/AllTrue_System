@@ -24,7 +24,7 @@ async function attempt(code, amount, extra = {}) {
 }
 it('keeps intended receipt 8800 and requires checking the existing report before confirming', async () => {
   const w = await attempt('pending_report_exists', 8800, { report_id: 903 });
-  expect(w.text()).toContain('金額不符請先退回');
+  expect(w.text()).toContain('請先「確認入帳」或「退回」');
   expect(w.find('.pe-error').attributes('role')).toBe('alert');
   expect(w.text()).not.toContain('請直接按');
   expect(w.find('input[type="number"]').element.value).toBe('8800');
@@ -80,13 +80,13 @@ it.each(['collection page', 'accounting ledger', 'ledger inside collection'])('k
       await flushPromises();
     }
     const frame = owner === 'ledger inside collection' ? w.findComponent(AccountingLedgerModal) : w;
-    await frame.find(owner === 'collection page' ? 'button[title="登記已回報"]' : '[data-testid="contract-record"]').trigger('click');
+    await frame.find(owner === 'collection page' ? 'button[title="登記收款"]' : '[data-testid="contract-record"]').trigger('click');
     const entry = frame.findComponent(PaymentEntryModal);
     await entry.find('input[type="number"]').setValue(8800);
     await entry.find('form').trigger('submit');
     await flushPromises();
     expect(entry.props('show')).toBe(true);
-    expect(entry.text()).toContain('金額不符請先退回');
+    expect(entry.text()).toContain('請先「確認入帳」或「退回」');
     expect(entry.find('input[type="number"]').element.value).toBe('8800');
     expect(w.text()).not.toContain('請按確認入帳，不要重複送出');
     expect(global.fetch.mock.calls.filter(([url]) => String(url).includes('/director-record'))).toHaveLength(1);
@@ -101,7 +101,7 @@ it.each(['collection page', 'accounting ledger', 'ledger inside collection'])('k
       await frame.find('button[aria-label="關閉學生帳務"]').trigger('click');
       await flushPromises();
       expect(w.find('button[title="確認入帳"]').exists()).toBe(true);
-      expect(w.find('button[title="登記已回報"]').exists()).toBe(false);
+      expect(w.find('button[title="登記收款"]').exists()).toBe(false);
     }
   } finally { w.unmount(); }
 });

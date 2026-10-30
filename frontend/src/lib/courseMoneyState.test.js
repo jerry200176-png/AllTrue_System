@@ -156,14 +156,14 @@ assert.equal(M.TUITION_STATUS_CONFIG.partial.label, '繳了一部分');
 assert.equal(M.TUITION_STATUS_CONFIG.waived.label, '不收了', 'Rule 1: the alert ladder shows waived too');
 assert.equal(M.WAIVED_LABEL, '不收了');
 assert.equal(M.TUITION_STATUS_CONFIG.pending_report.cls, 'st-pending');
-assert.equal(M.TUITION_STATUS_CONFIG.pending_reconciliation.label, '課已結束，尚未收款', 'tab/badge also holds paused courses');
-assert.equal(M.ENDED_PENDING_LABEL, '課已結束，尚未收款');
-assert.equal(M.PAUSED_PENDING_LABEL, '暫停中，尚未收款');
+assert.equal(M.TUITION_STATUS_CONFIG.pending_reconciliation.label, '已結束，未收', 'tab/badge also holds paused courses');
+assert.equal(M.ENDED_PENDING_LABEL, '已結束，未收');
+assert.equal(M.PAUSED_PENDING_LABEL, '暫停中，未收');
 assert.equal(M.INVOICE_STATUS_LABELS.partial, '繳了一部分');
 assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已收');
 assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
 // #4114 (Founder Q3): paid by the legacy flag alone is its own neutral wording, only when the server says so.
-assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '需核對：舊資料標記已收，缺付款紀錄');
+assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '需核對（舊資料標已收，查無收款）');
 assert.equal(M.isWaivedContract({ waived: true, paid: false }), true);
 // #4150 round 3: reversal netting mirrors BillingPayableResolver::latestUnreversedReceiptDate.
 assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', report_id: 5 }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', report_id: 5 }]), null);
@@ -180,15 +180,15 @@ assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid' }), false, 'older p
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'paid' }), '2026-09 未繳');
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { review_required: true }, payment_status: 'paid' }), '月結帳單與上課堂數不符，請核對');
 assert.equal(M.monthlyPaymentLabel({ payment_status: 'paid' }), null);
-assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待核對入帳');
+assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待確認入帳');
 assert.equal(M.periodPaymentLabel('partial'), '繳了一部分');
 // in-app #395-#404: review wording only for review_required; unknown statuses stay neutral.
 assert.equal(M.periodPaymentLabel('review_required'), '月結帳單與上課堂數不符，請核對');
 assert.equal(M.periodPaymentLabel('unknown'), '月結帳單與上課堂數不符，請核對', 'unattributed sessions are a review case');
 assert.equal(M.periodPaymentLabel('something_new'), '狀態待確認');
-assert.equal(M.periodPaymentLabel('pending_report'), '待核對入帳');
-assert.equal(M.REPORT_STATUS_LABELS.pending, '待核對入帳');
-assert.equal(M.TUITION_STATUS_CONFIG.pending_report.label, '已回報付款，待你核對入帳');
+assert.equal(M.periodPaymentLabel('pending_report'), '待確認入帳');
+assert.equal(M.REPORT_STATUS_LABELS.pending, '待確認入帳');
+assert.equal(M.TUITION_STATUS_CONFIG.pending_report.label, '待確認入帳');
 
 // ─── closed-reason verdict: legacy oracles (verbatim page copies) + pinned divergences ───
 const cmClosed = (c) => {
@@ -244,7 +244,7 @@ assert.deepEqual(['settled_pending', 'completed', 'converted_trial', null].map((
 
 console.log('courseMoneyState passed');
 
-// in-app #442: one lead row per count-mode shared package carries 繳費單 / 登記繳費回報.
+// in-app #442: one lead row per count-mode shared package carries 繳費單 / 登記收款.
 {
   const m = (id, extra = {}) => ({ course: { id, PackageID: 7, payment_type: 'session', payment_status: 'unpaid', ...extra }, reports: extra.reports || [] });
   const lead = (rows, i = 0) => M.sharedPackageBillingLead(rows[i].course, rows)?.id ?? null;

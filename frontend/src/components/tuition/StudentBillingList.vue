@@ -1,7 +1,7 @@
 <template>
   <section class="sbl" aria-label="學生帳務清單">
     <AtInlineAlert v-if="error" tone="danger" title="帳務資料載入失敗" data-testid="sbl-error">
-      {{ error }}。未載入前不顯示金額，避免誤以為都已繳清。
+      {{ error }}。載入失敗，金額先不顯示。
       <template #action>
         <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" data-testid="sbl-retry" @click="$emit('retry')">重試</AtButton>
       </template>
@@ -11,11 +11,11 @@
     </div>
     <template v-if="!pending && !(error && !alertRows.length)">
     <div class="sbl__summary" data-testid="sbl-summary">
-      <span>本校區到今天未收 <strong>{{ money(totalNow) }}</strong></span>
+      <span>本校區到今天未繳 <strong>{{ money(totalNow) }}</strong></span>
       <span>未繳 <strong>{{ owingCount }}</strong> 位</span>
-      <span v-if="pendingReviewCount" data-testid="sbl-pending-review">另有金額待確認 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，未計入未收）</span>
+      <span v-if="pendingReviewCount" data-testid="sbl-pending-review">需核對金額 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，不在未繳內）</span>
     </div>
-    <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區目前沒有到期未繳。</p>
+    <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有到期未繳。</p>
     <div class="sbl__tools">
       <input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="sbl-search" />
       <div class="sbl__chips" role="group" aria-label="篩選">
@@ -71,7 +71,7 @@
                 <span>{{ c.period }}</span>
                 <span>未繳 {{ money(c.owed) }}</span>
                 <span>已繳 {{ money(c.paid) }}</span>
-                <span v-if="c.pending_review > 0">金額待確認 {{ money(c.pending_review) }}</span>
+                <span v-if="c.pending_review > 0">需核對金額 {{ money(c.pending_review) }}</span>
               </li>
             </ul>
           </template>
@@ -135,8 +135,8 @@ const visible = computed(() => {
 // Status lozenges use the one §0.2 wording; text is always shown, never colour alone.
 const badges = (r) => {
   const out = [];
-  if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '已回報付款，待你核對入帳' });
-  if (r.pending_review_count > 0) out.push({ tone: 'warning', label: '金額待確認' });
+  if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '待確認入帳' });
+  if (r.pending_review_count > 0) out.push({ tone: 'warning', label: '需核對金額' });
   if (r.owed_now > 0) out.push({ tone: 'danger', label: '未繳' });
   else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '還沒到期' });
   else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '還沒開帳單' });

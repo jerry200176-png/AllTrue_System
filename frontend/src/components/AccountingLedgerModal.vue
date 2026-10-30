@@ -44,11 +44,11 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（記在同一張帳單上，不會自動抵上面的未繳金額）。{{ ledgerExceptions.some((x) => x.can_void) ? '下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。' : '這筆沒有可以直接撤銷的收款，請用下面的「回報給系統管理員」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料，記在同一張帳單上，不會自動抵上面的未繳金額）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
-            <h4>需先處理</h4>
+            <h4>要先處理</h4>
             <div class="ledger-receipts">
               <div v-for="x in visibleExceptions" :key="x.key" class="ledger-receipt">
                 <strong>{{ x.title }}</strong>
@@ -74,7 +74,7 @@
               type="button"
               @click="showAllExceptions = !showAllExceptions"
             >
-              {{ showAllExceptions ? '收合異常' : `還有 ${ledgerExceptions.length - EXCEPTION_PREVIEW} 則` }}
+              {{ showAllExceptions ? '收起' : `還有 ${ledgerExceptions.length - EXCEPTION_PREVIEW} 項` }}
             </button>
           </section>
 
@@ -112,8 +112,8 @@
           <section class="ledger-section">
             <h4>帳單</h4>
             <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
-            <div v-else-if="ledgerBothEmpty && payload.invoices?.length" class="ledger-empty" data-testid="ledger-target-empty">這門課目前沒有帳單和收款（舊制已繳，或尚未開立）。下面列的是此學生「其他課程」的帳單。</div>
-            <div v-else-if="ledgerBothEmpty" class="ledger-empty">目前只有繳費單（依課程估算），還沒有帳單和收款。登記收款並確認入帳後，才會出現在這裡。</div>
+            <div v-else-if="ledgerBothEmpty && payload.invoices?.length" class="ledger-empty" data-testid="ledger-target-empty">這門課沒有帳單和收款。下面是這位學生的其他紀錄。</div>
+            <div v-else-if="ledgerBothEmpty" class="ledger-empty">還沒開帳單，也沒收款。登記收款後會出現在這裡。</div>
             <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
               <table class="ledger-table">
@@ -123,8 +123,8 @@
                     <th>帳單（科目）</th>
                     <th>應繳日</th>
                     <th class="num">應收</th>
-                    <th class="num">已記入</th>
-                    <th class="num">未結清</th>
+                    <th class="num">已收</th>
+                    <th class="num">未繳</th>
                     <th>狀態</th>
                     <th>操作</th>
                   </tr>
@@ -155,8 +155,8 @@
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
                       <td class="num" data-label="應收">{{ formatCurrency(inv.total_amount) }}</td>
-                      <td class="num" data-label="已記入">{{ formatCurrency(inv.calculated_applied_amount) }}</td>
-                      <td class="num" data-label="未結清" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
+                      <td class="num" data-label="已收">{{ formatCurrency(inv.calculated_applied_amount) }}</td>
+                      <td class="num" data-label="未繳" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
                       <td data-label="狀態">
                         <span :class="['ledger-chip', invoiceStatusClass(inv.status)]">{{ invoiceStatusLabel(inv.status) }}</span>
                         <span v-if="inv.zero_amount_reason === ZERO_REASON_FREE_GIFT" class="ledger-chip chip--muted" :data-testid="`ledger-free-gift-${inv.id}`">{{ FREE_GIFT_LABEL }}</span>
@@ -289,7 +289,7 @@
               :aria-expanded="showOtherReceipts"
               data-testid="ledger-other-receipts-toggle"
               @click="showOtherReceipts = !showOtherReceipts"
-            >{{ showOtherReceipts ? '收合其他紀錄' : `其他紀錄（${otherReceipts.length}）：已退回、已撤銷或 0 元` }}</button>
+            >{{ showOtherReceipts ? '收合其他紀錄' : `已退回／已撤銷（${otherReceipts.length}）` }}</button>
           </section>
 
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
@@ -605,10 +605,10 @@ const ledgerExceptions = computed(() => {
       rows.push({
         key: `p-${p.id}`,
         title: `多收 ${formatCurrency(p.unapplied_amount)}`,
-        message: `${fmtDate(p.paid_at)} ${paymentMethodLabel(p.method)} ${formatCurrency(p.amount)} 這筆，比帳單多收了 ${formatCurrency(p.unapplied_amount)}`,
+        message: `${fmtDate(p.paid_at)} ${paymentMethodLabel(p.method)} ${formatCurrency(p.amount)}，比帳單多 ${formatCurrency(p.unapplied_amount)}`,
         detail: formatAccountingLedgerInvoiceLabel(inv),
-        action_label: '撤銷這筆',
-        hint: '多收的錢沒有記進任何帳單。如果是重複收款，撤銷這筆就好；要保留請找老闆處理。',
+        action_label: '撤銷這筆收款',
+        hint: '多收的錢沒有記進任何帳單。若是重複收款，按「撤銷這筆收款」。',
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
         drift_line: formatLedgerDriftLine(inv),
@@ -893,7 +893,7 @@ function runInitialAction() {
 }
 function recordBlockedReason(c) {
   if (payload.value?.scope?.no_payment_obligation || c.class_type === 'tutoring') return '輔導課不用繳費，所以沒有打開登記表。';
-  if (pendingReportFor(c.id)) return '這門課已有家長回報待核對，請在下面的課程卡按「確認入帳」或「退回」。';
+  if (pendingReportFor(c.id)) return '這門課已有待確認入帳的回報，請在下面的課程卡按「確認入帳」或「退回」。';
   if (isWaivedContract(c)) return '這門課已確認不收，所以沒有打開登記表。';
   if (c.package_id) return '這是共用方案，請在下面的課程卡處理收款。';
   return '這門課目前沒有要收的款，所以沒有打開登記表。';
@@ -923,7 +923,7 @@ function getAuthRole() {
 
 async function voidReport(reportId) {
   if (!reportId || !isDirectorRole(getAuthRole())) return;
-  const reason = window.prompt('撤銷收款會保留稽核紀錄，不會更改帳單應繳金額；帳單開錯需另行作廢並更正。請輸入撤銷原因');
+  const reason = window.prompt('撤銷這筆收款（帳單金額不變）。請寫原因：');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
   try {
@@ -974,7 +974,7 @@ const formatPeriod = (period) => !period ? '—' : (String(period).split('-').le
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
 const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS, status);
 const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS, status);
-const applicationStatusLabel = (status) => labelMap({ applied: '已記入', partially_applied: '部分記入', overpayment_pending_review: '多收待處理', voided: '已更正' }, status);
+const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收（多出部分未入帳）', overpayment_pending_review: '多收', voided: '已撤銷' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
   unpaid: 'chip--danger',
@@ -994,11 +994,11 @@ const applicationStatusClass = (status) => labelMap({
   voided: 'chip--muted',
 }, status);
 const anomalyLabel = (code) => labelMap({
-  overpayment_pending_review: '多收，疑似重複收款',
-  duplicate_effective_payments: '同一帳單有多筆收款',
-  paid_amount_mismatch: '帳單金額不一致',
-  paid_status_with_balance: '顯示已繳但仍有餘額',
-  open_status_without_balance: '顯示未繳但已繳足',
+  overpayment_pending_review: '多收',
+  duplicate_effective_payments: '同一張帳單收了多次',
+  paid_amount_mismatch: '帳單金額對不上',
+  paid_status_with_balance: '標示已收，但還有餘額',
+  open_status_without_balance: '標示未繳，但金額已收足',
   payment_without_receipt: '收款缺少收據',
   receipt_without_payment: '收據缺少收款',
   receipt_without_invoice: '收據尚未對到帳單',

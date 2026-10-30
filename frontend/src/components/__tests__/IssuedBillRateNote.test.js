@@ -84,8 +84,8 @@ describe('ContractCard issued-bill note', () => {
     await flushPromises();
     const text = w.find('[data-testid="contract-rate-note"]').text();
     expect(text).toContain('開單時金額 NT$ 8,800 ／ 目前課程金額 NT$ 7,200');
-    expect(text).toContain('金額不同可能是約定調整，不代表帳單有誤');
-    expect(text).toContain('請先確認原約定與應收金額');
+    expect(text).toContain('帳單金額不會隨課程金額變動');
+    expect(text).toContain('帳單金額不會隨課程金額變動');
     for (const word of ['過期', '錯誤', '開錯了', '舊價']) expect(text).not.toContain(word);
     expect(text).not.toContain('作廢');
     expect(w.find('[data-testid="contract-rate-void"]').exists()).toBe(false);

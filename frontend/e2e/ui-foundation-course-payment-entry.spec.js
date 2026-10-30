@@ -16,8 +16,8 @@ import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from '.
  */
 // #4186: each state also pins the badge text the row must show (labels from courseMoneyState.js).
 const STATES = [
-  { paymentStatus: 'unpaid', actionLabel: '登記繳費回報', badge: TUITION_STATUS_CONFIG.unpaid.label },
-  { paymentStatus: 'partial', actionLabel: '登記繳費回報', badge: TUITION_STATUS_CONFIG.partial.label },
+  { paymentStatus: 'unpaid', actionLabel: '登記收款', badge: TUITION_STATUS_CONFIG.unpaid.label },
+  { paymentStatus: 'partial', actionLabel: '登記收款', badge: TUITION_STATUS_CONFIG.partial.label },
   { paymentStatus: 'pending_report', actionLabel: `查看「${REPORT_STATUS_LABELS.pending}」`, badge: TUITION_STATUS_CONFIG.pending_report.label },
   { paymentStatus: 'paid', actionLabel: '在這裡看帳務', badge: TUITION_STATUS_CONFIG.paid.label },
   // #4174: paid by the legacy flag alone (no payment record) reads 需核對, never 已收.

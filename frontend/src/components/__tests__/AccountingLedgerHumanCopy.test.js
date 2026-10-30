@@ -18,7 +18,7 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(ledger).not.toContain('對帳');
     expect(ledger).not.toContain('對齊帳單');
     expect(ledger).toContain('到今天未繳');
-    expect(ledger).toContain('多收待處理');
+    expect(ledger).toContain('多收');
     expect(ledger).toContain('撤銷收款');
   });
 
@@ -26,8 +26,8 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(tuition).not.toContain('Invoice/Payment/Receipt');
     expect(tuition).not.toContain('查看 / PNG');
     expect(tuition).toContain('查看收據');
-    expect(tuition).toContain('多收待處理');
-    expect(tuition).toContain('已記入收款');
+    expect(tuition).toContain('多收');
+    expect(tuition).toContain('多收');
   });
 
   it('course management stats and billing CTA use Chinese', () => {
