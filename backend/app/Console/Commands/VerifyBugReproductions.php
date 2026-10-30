@@ -37,6 +37,9 @@ class VerifyBugReproductions extends Command
             static fn (string $status): string => "'" . addslashes($status) . "'",
             AttendanceStatus::requiresLogSessionStatuses()
         ));
+        // A live positive bill naming the course on its header or on a line.
+        $link = "COALESCE(i.Status, '') <> 'void' AND i.TotalAmount > 0 AND (i.StudentClassID = sc.ID"
+            . " OR EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.StudentClassID = sc.ID AND ii.Amount > 0))";
         return [
             [
                 'key' => 'attended_session_without_learning_record',
@@ -147,15 +150,14 @@ class VerifyBugReproductions extends Command
                 'key' => 'paid_flag_vs_invoice',
                 'label' => 'Active contracts where Paid=1 beside an open positive invoice, or Paid=0 with every positive invoice fully paid (G-009)',
                 'issue' => '#4659/G-009', 'enforced' => true,
-                // Payment rows are the truth: Invoice::netPaidSql(). Package members are skipped (their package owns the paid flag).
+                // Payment rows are the truth: Invoice::netPaidSql(). A bill names the course on its header or on a line
+                // (InvoiceItem.StudentClassID). Package members are skipped (their package owns the paid flag).
                 'sql' => "SELECT COUNT(*) AS c FROM StudentClass sc
                           WHERE (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.PackageID IS NULL AND (
-                            (sc.Paid = 1 AND EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = sc.ID AND COALESCE(i.Status, '') <> 'void'
-                                  AND i.TotalAmount > 0 AND i.TotalAmount > " . Invoice::netPaidSql('i') . "))
+                            (sc.Paid = 1 AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . "))
                             OR (COALESCE(sc.Paid, 0) = 0
-                                AND EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = sc.ID AND COALESCE(i.Status, '') <> 'void' AND i.TotalAmount > 0)
-                                AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = sc.ID AND COALESCE(i.Status, '') <> 'void'
-                                  AND i.TotalAmount > 0 AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
+                                AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link})
+                                AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
             ],
         ];
     }

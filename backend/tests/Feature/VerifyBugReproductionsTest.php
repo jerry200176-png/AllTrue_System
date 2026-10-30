@@ -162,6 +162,13 @@ class VerifyBugReproductionsTest extends TestCase
         $inv($this->course(['Paid' => 1]), 0); // Paid=1, invoice still owes
         $pay($inv($this->course(['Paid' => 0]), 1000)); // Paid=0, invoice fully paid
         $this->assertSame(2, $this->condition('paid_flag_vs_invoice')['count']);
+
+        // A bill that names the course only on a line (header course id null) counts the same.
+        $itemOnly = $this->course(['Paid' => 1]);
+        $bill = $inv(0, 0);
+        DB::table('Invoice')->where('id', $bill)->update(['StudentClassID' => null]);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $bill, 'StudentClassID' => $itemOnly, 'Amount' => 1000, 'Description' => 'x', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(3, $this->condition('paid_flag_vs_invoice')['count']);
     }
 
     public function test_baseline_allows_known_drift_and_fails_only_above_it(): void
