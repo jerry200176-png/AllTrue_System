@@ -435,15 +435,20 @@ class NotificationSyncService
     {
         $dateModeIds = $classes->filter(fn (StudentClass $c) => ($c->ScheduleMode ?? null) !== 'count')
             ->pluck('ID')->map(fn ($id) => (int) $id)->all();
-        $openInvoiceDue = empty($dateModeIds) ? [] : Invoice::query()
-            ->whereIn('StudentClassID', $dateModeIds)
-            ->whereIn('Status', ['unpaid', 'partial'])
-            ->whereNotNull('DueDate')
-            ->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, MIN(DueDate) as earliest_due')
-            ->pluck('earliest_due', 'StudentClassID')
-            ->map(fn ($d) => substr((string) $d, 0, 10))
-            ->all();
+        $legacyDue = fn () => Invoice::query()->whereIn('StudentClassID', $dateModeIds)->whereIn('Status', ['unpaid', 'partial'])->whereNotNull('DueDate')
+            ->groupBy('StudentClassID')->selectRaw('StudentClassID, MIN(DueDate) as earliest_due')->pluck('earliest_due', 'StudentClassID')
+            ->map(fn ($d) => substr((string) $d, 0, 10))->all();
+        $openInvoiceDue = [];
+        if ($dateModeIds !== []) {
+            try { // #3985/#4005 (Founder 2026-10-29): the window follows the verdict's open periods, not a stored invoice Status; the rollback switch keeps the legacy query
+                $openInvoiceDue = !config('billing.paid_status_outbound_notifications', true) ? $legacyDue()
+                    : collect(app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds($dateModeIds, $classes))
+                        ->map(fn ($v) => collect($v['periods'] ?? [])->pluck('due_date')->filter()->min())->filter()->all();
+            } catch (\Throwable $e) {
+                Log::warning('tuition_window_resolver_failed', ['error' => $e::class]);
+                $openInvoiceDue = $legacyDue();
+            }
+        }
         return $classes->filter(fn (StudentClass $class) => ($class->ScheduleMode ?? null) === 'count'
             || self::monthlyInWindow((int) ($class->settlement_day ?? 0), $openInvoiceDue[(int) $class->ID] ?? null))->values();
     }

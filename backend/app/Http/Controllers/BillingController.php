@@ -223,8 +223,8 @@ class BillingController extends Controller
             $courseIds = $this->lockInvoiceCourses($invoice, true);
             // 先鎖帳單再判斷，避免與確認不收（void）競爭。
             $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
-            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->isMarkedFreeGift()) { // #3991: a 免費／贈送 bill takes no payment
-                return response()->json(['message' => $fresh?->isMarkedFreeGift() ? '免費／贈送帳單不能登記收款；這門課要收費的話，請先作廢這張帳單再開立新帳單' : '作廢帳單不可登記收款'], 422);
+            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void' || $fresh->zero_amount_reason !== null) { // #3991: a 免費／贈送 bill takes no payment
+                return response()->json(['message' => $fresh?->zero_amount_reason !== null ? '免費／贈送帳單不能登記收款；這門課要收費的話，請先作廢這張帳單再開立新帳單' : '作廢帳單不可登記收款'], 422);
             }
             $this->assertInvoiceOwnersUnchanged($fresh, $courseIds, (int) $invoice->StudentID);
             $invoice = $fresh;
@@ -370,7 +370,7 @@ class BillingController extends Controller
 
             $netApplied = $this->invoiceNetAppliedAmount((int) $invoice->id);
 
-            $freeGiftOnly = $invoice->isMarkedFreeGift() && (int) $invoice->TotalAmount === 0 && !$invoice->payments()->exists(); // #3991: wrong-period mark is correctable
+            $freeGiftOnly = $invoice->zero_amount_reason !== null && (int) $invoice->TotalAmount === 0 && !$invoice->payments()->exists(); // #3991: wrong-period mark is correctable
             if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
                     'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',

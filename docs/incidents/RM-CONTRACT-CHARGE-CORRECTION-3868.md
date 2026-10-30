@@ -10,3 +10,7 @@ Guards (plan, and again under the course row locks; any difference fails the who
 Run: `.github/workflows/pop-contract-charge-correction-3868.yml`, `direction=repair`, `attempt=1`, `mode=dry-run` (no click; read-only), then `mode=approve` (Founder click on `production-activation`, same `attempt`). If an approval expires unconsumed, rerun both modes with the next `attempt` (a fresh request and approval). Dry-run expects `ok=true state=before`, `counts courses=2 to_change=2`, and per course the live Charge, Rate x quantity and the invoice/payment/amendment counts (all 0). The Pi scheduler (`pop:execute-approved`) runs execute, then verify (Charge applied, guards still clean).
 
 Rollback: the reverse manifest `rollback-contract-charge-3868-20261029` (2569 4000 to 8000, 3288 1100 to 8800) through the same operation and workflow (`direction=rollback`, dry-run then approve). Pi-local rollback phase is not used for this strategy, as for the other exact POP repairs.
+
+## Case 4138 (#4138 item 4, Founder 2026-10-29)
+
+The campus-2 director entered the per-lesson price 455 as the total. StudentClass 4050 and 4051 go from Charge 455 to 9100, which is Rate 455 × 20 sessions. The operation, guards and audit are the ones above. Run the same workflow with `contract_case=4138` and confirm `DRY_RUN_CONTRACT_CHARGE_4138_REPAIR`, then `APPROVE_CONTRACT_CHARGE_4138_REPAIR` (Founder click). Rollback is `rollback-contract-charge-4138-20261029` (9100 back to 455), via `direction=rollback`.
