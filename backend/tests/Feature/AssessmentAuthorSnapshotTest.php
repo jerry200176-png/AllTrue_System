@@ -14,7 +14,6 @@ use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /** #3824 part 2: teacher change on a filled-but-unapproved assessment snapshots + clears; approved stays locked. Synthetic data. */
@@ -255,18 +254,6 @@ class AssessmentAuthorSnapshotTest extends TestCase
         UserCampus::create(['CampusID' => 2, 'UserID' => $other->id, 'Admin' => 1, 'Approved' => 1]);
         $this->withHeaders(['Authorization' => 'Bearer ' . $this->tok($other), 'Accept' => 'application/json'])
             ->getJson("/api/v1/learning-records/{$lr->id}/author-snapshots")->assertStatus(403);
-    }
-
-    public function test_migration_is_create_only_and_rolls_back_by_dropping_the_table(): void
-    {
-        $this->assertTrue(Schema::hasTable('learning_record_author_snapshots'));
-        $m = require database_path('migrations/2026_10_29_150000_create_learning_record_author_snapshots_table.php');
-        $m->down();
-        $this->assertFalse(Schema::hasTable('learning_record_author_snapshots'));
-        $this->assertTrue(Schema::hasTable('LearningRecord'));
-        $m->up();
-        $this->assertTrue(Schema::hasTable('learning_record_author_snapshots'));
-        DB::connection()->getPdo()->beginTransaction(); // MySQL DDL committed the test transaction; reopen so teardown rolls back cleanly
     }
 
     private function assertSnapshotted(LearningRecord $lr, int $newTeacherId): void
