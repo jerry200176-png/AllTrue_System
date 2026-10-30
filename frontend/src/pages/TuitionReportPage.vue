@@ -50,7 +50,7 @@
       </div>
 
       <div v-if="!rows.length && unpaidOnly && collection.allCollected" class="tr-empty" role="status">
-        <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">task_alt</span>
+        <span class="material-symbols-outlined" style="font-size:var(--ds-font-size-2xl);color:var(--text-light)">task_alt</span>
         <p>本月學收已收齊</p>
       </div>
 
@@ -426,10 +426,10 @@ loadData();
 }
 .tr-stat--ok { color: var(--ds-success); font-weight: 600; }
 .tr-stat--warn { color: var(--danger); font-weight: 600; }
-.tr-filter { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; min-height: var(--ds-control-height-touch, 44px); }
-.pay-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg); white-space: nowrap; }
+.tr-filter { display: inline-flex; align-items: center; gap: 6px; font-size: var(--ds-font-size-base); min-height: var(--ds-control-height-touch, 44px); }
+.pay-tag { display: inline-block; padding: 2px 8px; border-radius: var(--ds-radius-pill); font-size: var(--ds-font-size-sm); font-weight: 600; background: var(--bg); white-space: nowrap; }
 .pay-tag--paid { color: var(--ds-success); }
 .pay-tag--partial, .pay-tag--review { color: var(--ds-warning); }
 .pay-tag--unpaid { color: var(--danger); }
-.pay-owed { display: block; color: var(--text-light); font-size: 11px; }
+.pay-owed { display: block; color: var(--text-light); font-size: var(--ds-font-size-xs); }
 </style>
