@@ -31,7 +31,7 @@
     </div>
 
     <template v-else>
-      <div class="tr-stats" v-if="rows.length">
+      <div class="tr-stats" v-if="rows.length || unpaidOnly">
         <span class="tr-stat">
           學生 <strong>{{ summary.total_students }}</strong> 人
         </span>
@@ -41,9 +41,20 @@
         <span class="tr-stat tr-stat--primary">
           學收合計 <strong>{{ formatAmount(summary.total_tuition) }}</strong>
         </span>
+        <span class="tr-stat" :class="collection.allCollected ? 'tr-stat--ok' : 'tr-stat--warn'" data-testid="collection-summary" role="status">
+          {{ collection.text }}
+        </span>
+        <label class="tr-filter">
+          <input type="checkbox" v-model="unpaidOnly" @change="onFilterChange" /> 只看未收
+        </label>
       </div>
 
-      <div v-if="!rows.length" class="tr-empty" role="status">
+      <div v-if="!rows.length && unpaidOnly && collection.allCollected" class="tr-empty" role="status">
+        <span class="material-symbols-outlined" style="font-size:var(--ds-font-size-2xl);color:var(--text-light)">task_alt</span>
+        <p>本月學收已收齊</p>
+      </div>
+
+      <div v-else-if="!rows.length" class="tr-empty" role="status">
         <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">calendar_month</span>
         <p>本分校 {{ year }}/{{ month }} 無有效課程紀錄</p>
       </div>
@@ -59,6 +70,7 @@
               <th class="num">月堂數</th>
               <th class="num">費率</th>
               <th class="num">月學收</th>
+              <th>收款狀態</th>
               <th class="hide-sm">繳費日期</th>
             </tr>
           </thead>
@@ -73,6 +85,10 @@
               <td class="num">{{ r.monthly_sessions }}</td>
               <td class="num">{{ formatAmount(r.rate) }}</td>
               <td class="num"><strong>{{ formatAmount(r.monthly_tuition) }}</strong></td>
+              <td>
+                <span class="pay-tag" :class="`pay-tag--${r.pay_status}`">{{ payStatusLabel(r.pay_status) }}</span>
+                <small v-if="r.pay_status !== 'paid' && r.outstanding_amount > 0" class="pay-owed">差 {{ formatAmount(r.outstanding_amount) }}</small>
+              </td>
               <td class="hide-sm">
                 <span v-if="r.last_paid_at" class="paid-date">{{ r.last_paid_at }}</span>
                 <span v-else class="text-light">—</span>
@@ -86,6 +102,7 @@
               <td class="num"><strong>{{ summary.total_sessions }}</strong></td>
               <td class="num">—</td>
               <td class="num"><strong>{{ formatAmount(summary.total_tuition) }}</strong></td>
+              <td></td>
               <td class="hide-sm"></td>
             </tr>
           </tfoot>
@@ -102,7 +119,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { collectionSummary, payStatusLabel } from '../lib/tuitionPayStatus';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -116,11 +134,14 @@ const year = ref(now.getFullYear());
 const month = ref(now.getMonth() + 1);
 
 const rows = ref([]);
-const summary = ref({ total_students: 0, total_sessions: 0, total_tuition: 0 });
+const summary = ref({ total_students: 0, total_sessions: 0, total_tuition: 0, total_due: 0, total_collected: 0, total_outstanding: 0, unpaid_students: 0 });
 const meta = ref({ current_page: 1, last_page: 1, per_page: 50, total: 0 });
 const loading = ref(false);
 const error = ref('');
 const currentPage = ref(1);
+const unpaidOnly = ref(false);
+const collection = computed(() => collectionSummary(summary.value));
+function onFilterChange() { currentPage.value = 1; loadData(); }
 
 const CLASS_TYPE_LABELS = {
   one_on_one: '一對一',
@@ -164,6 +185,7 @@ async function loadData() {
     params.set('year', String(year.value));
     params.set('month', String(month.value));
     params.set('page', String(currentPage.value));
+    if (unpaidOnly.value) params.set('unpaid_only', '1');
 
     const resp = await fetch(`/api/v1/finance/branch-monthly-tuition?${params}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
@@ -171,7 +193,7 @@ async function loadData() {
     if (!resp.ok) throw new Error(`載入失敗（${resp.status}）`);
     const json = await resp.json();
     rows.value = json.data || [];
-    summary.value = json.summary || { total_students: 0, total_sessions: 0, total_tuition: 0 };
+    summary.value = json.summary || { total_students: 0, total_sessions: 0, total_tuition: 0, total_due: 0, total_collected: 0, total_outstanding: 0, unpaid_students: 0 };
     meta.value = json.meta || { current_page: 1, last_page: 1, per_page: 50, total: 0 };
   } catch (e) {
     error.value = e.message || '載入失敗';
@@ -402,4 +424,12 @@ loadData();
 .tuition-report-page :deep(.at-icon-btn) {
   min-height: var(--ds-control-height-touch, 44px) !important;
 }
+.tr-stat--ok { color: var(--ds-success); font-weight: 600; }
+.tr-stat--warn { color: var(--danger); font-weight: 600; }
+.tr-filter { display: inline-flex; align-items: center; gap: 6px; font-size: var(--ds-font-size-base); min-height: var(--ds-control-height-touch, 44px); }
+.pay-tag { display: inline-block; padding: 2px 8px; border-radius: var(--ds-radius-pill); font-size: var(--ds-font-size-sm); font-weight: 600; background: var(--bg); white-space: nowrap; }
+.pay-tag--paid { color: var(--ds-success); }
+.pay-tag--partial, .pay-tag--review { color: var(--ds-warning); }
+.pay-tag--unpaid { color: var(--danger); }
+.pay-owed { display: block; color: var(--text-light); font-size: var(--ds-font-size-xs); }
 </style>

@@ -705,7 +705,9 @@ class FinanceController extends Controller
         if ($branchFiltered && empty($studentIds)) {
             return response()->json([
                 'data'    => [],
-                'summary' => ['total_students' => 0, 'total_sessions' => 0, 'total_tuition' => 0],
+                'summary' => ['total_students' => 0, 'total_sessions' => 0, 'total_tuition' => 0,
+                    'total_due' => 0, 'total_collected' => 0, 'total_outstanding' => 0, 'unpaid_students' => 0,
+                    'unconfirmed_amount' => 0, 'review_students' => 0],
                 'meta'    => ['current_page' => 1, 'last_page' => 1, 'per_page' => 50, 'total' => 0],
             ]);
         }
@@ -809,6 +811,18 @@ class FinanceController extends Controller
             return $sessions * (float) $pkg->rate;
         });
 
+        // Month-scoped payment status (one verdict batch for every row, so the summary covers all pages).
+        $payStatus = $this->monthPaymentStatuses($regularRows, $monthlyPkgs, $pkgSessionTotals, sprintf('%04d-%02d', $year, $month));
+        $courseStatus = $payStatus['course'];
+        $pkgStatus    = $payStatus['package'];
+        $paySummary   = $payStatus['summary'];
+
+        $unpaidOnly = $request->boolean('unpaid_only');
+        if ($unpaidOnly) {
+            $regularRows = $regularRows->filter(fn ($c) => !in_array($courseStatus[(int) $c->ID]['pay_status'], ['paid', 'waived'], true));
+            $monthlyPkgs = $monthlyPkgs->filter(fn ($p) => $pkgStatus[$p->id]['pay_status'] !== 'paid');
+        }
+
         $perPage = min((int) $request->input('per_page', 50), 200);
         $page    = max((int) $request->input('page', 1), 1);
         $total   = $regularRows->count() + $monthlyPkgs->count();
@@ -822,7 +836,7 @@ class FinanceController extends Controller
         $pagedClassIds = $paged->pluck('ID')->map(fn ($id) => (int) $id)->all();
         $paidAtMap = app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds($pagedClassIds);
 
-        $data = $paged->map(function ($c) use ($paidAtMap) {
+        $data = $paged->map(function ($c) use ($paidAtMap, $courseStatus) {
             $rate = $this->resolveRate($c);
             $sessions = (int) $c->monthly_session_count;
             return [
@@ -842,11 +856,11 @@ class FinanceController extends Controller
                 'paid_at'            => $c->PayDate ? substr($c->PayDate, 0, 10) : null,
                 'last_paid_at'       => ($c->PayDate ? substr($c->PayDate, 0, 10) : null) ?? ($paidAtMap[(int) $c->ID] ?? null),
                 'is_stopped'         => (bool) $c->Stop,
-            ];
+            ] + $courseStatus[(int) $c->ID];
         })->values()->all();
 
         // Append monthly billing package rows
-        $pkgRows = $monthlyPkgs->map(function ($pkg) use ($pkgSessionTotals) {
+        $pkgRows = $monthlyPkgs->map(function ($pkg) use ($pkgSessionTotals, $pkgStatus) {
             $sessions = $pkgSessionTotals[$pkg->id] ?? 0;
             $rate     = (float) $pkg->rate;
             return [
@@ -863,7 +877,7 @@ class FinanceController extends Controller
                 'paid'               => (bool) $pkg->paid,
                 'paid_at'            => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                 'is_stopped'         => (bool) $pkg->stop,
-            ];
+            ] + $pkgStatus[$pkg->id];
         })->values()->all();
 
         return response()->json([
@@ -872,7 +886,7 @@ class FinanceController extends Controller
                 'total_students'  => $uniqueStudents,
                 'total_sessions'  => $totalSessions,
                 'total_tuition'   => round($totalTuition, 2),
-            ],
+            ] + $paySummary,
             'meta' => [
                 'current_page' => $page,
                 'last_page'    => $lastPage,
@@ -925,17 +939,21 @@ class FinanceController extends Controller
             fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
         ])->values();
 
+        // Export lists regular course rows only (monthly package rows are not exported today).
+        $exportStatus = $this->monthPaymentStatuses($allRows, collect(), [], sprintf('%04d-%02d', $year, $month))['course'];
+        $statusLabels = ['paid' => '已收', 'partial' => '部分', 'unpaid' => '未收', 'review' => '待確認', 'waived' => '已免收'];
+
         $branchIds = $campusIds ?: [];
         $branchName = !empty($branchIds)
             ? (DB::table('Campus')->where('id', $branchIds[0])->value('name') ?? 'all')
             : 'all';
         $filename = "當月學收_{$branchName}_{$year}{$month}.csv";
 
-        return response()->streamDownload(function () use ($allRows) {
+        return response()->streamDownload(function () use ($allRows, $exportStatus, $statusLabels) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
             // FR-003: Added 課程狀態 column to distinguish active vs stopped courses.
-            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態']);
+            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態', '收款狀態', '本月未收金額']);
             foreach ($allRows as $c) {
                 $rate = $this->resolveRate($c);
                 $sessions = (int) $c->monthly_session_count;
@@ -953,10 +971,139 @@ class FinanceController extends Controller
                     round($sessions * $rate, 2),
                     $c->PayDate ? substr($c->PayDate, 0, 10) : '',
                     $c->Stop ? '已結課' : '進行中',
+                    $statusLabels[$exportStatus[(int) $c->ID]['pay_status']],
+                    $exportStatus[(int) $c->ID]['outstanding_amount'],
                 ]);
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Month-scoped payment status for 當月學收 rows, from the existing Contract Money Verdict (no new money rule).
+     * - Monthly-billed course (ScheduleMode=date, no package): the verdict period of this month (YYYY-MM) only; other
+     *   periods' review state never leaks in. Invoiced period => its status; unattributed period => review;
+     *   no period => unpaid (paid only when the verdict itself is settled/free with an invoice or free).
+     * - Count-mode / other course: the verdict of the contract covering the sessions. A partial contract balance is
+     *   allocated oldest-sessions-first (receipts cover earlier lessons), so months never double-count one balance.
+     * - Monthly package row: follows the package paid flag (CoursePackage.paid is not month-scoped).
+     * - review (待確認): review_required verdicts and legacy Paid flags without invoice/payment evidence. Their amount is
+     *   an estimate kept in `estimated_amount` and the summary's `unconfirmed_amount`, never in confirmed due/outstanding.
+     *
+     * @return array{course: array<int, array>, package: array<int, array>, summary: array}
+     */
+    private function monthPaymentStatuses($courses, $packages, array $pkgSessionTotals, string $period): array
+    {
+        $verdicts = app(\App\Services\Billing\ContractMoneyVerdict::class)->forCourses($courses->all());
+        $due = $collected = $unconfirmed = 0.0;
+        $unpaidStudents = $reviewStudents = [];
+        $note = function (int $studentId, float $owed, float $out) use (&$due, &$collected, &$unpaidStudents) {
+            $due += $owed;
+            $collected += $owed - $out;
+            if ($out > 0) {
+                $unpaidStudents[$studentId] = true;
+            }
+        };
+
+        // Count-mode contracts backed by an invoice: lesson counts to spread the authoritative contract amount over
+        // the lessons (a discounted contract must never show more than its ledger value, partial or settled).
+        $monthEnd = date('Y-m-t', strtotime($period . '-01'));
+        $countIds = [];
+        $monthlyIds = [];
+        foreach ($courses as $c) {
+            $v = $verdicts[(int) $c->ID] ?? null;
+            if ($v === null) {
+                continue;
+            }
+            if ((string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0) {
+                $monthlyIds[] = $c;
+            } elseif ($v->source === 'invoice' && $v->owed > 0) {
+                $countIds[] = (int) $c->ID;
+            }
+        }
+        $throughEnd = $countIds === [] ? [] : DB::table('ClassSession')
+            ->whereIn('StudentClassID', $countIds)
+            ->whereIn('Status', AttendanceStatus::payableSessionStatuses())
+            ->select('StudentClassID', DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN SessionDate <= '{$monthEnd}' THEN 1 ELSE 0 END) as thru"))
+            ->groupBy('StudentClassID')->get()->keyBy('StudentClassID')->all();
+        // Selected-month coverage evidence (invoice range gaps / lessons outside the contract) from the period engine.
+        $coverage = $monthlyIds === [] ? [] : app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($monthlyIds));
+
+        $course = [];
+        foreach ($courses as $c) {
+            $tuition = round((int) $c->monthly_session_count * $this->resolveRate($c), 2);
+            $v = $verdicts[(int) $c->ID] ?? null;
+            $monthlyBilled = (string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0;
+            $owed = $out = 0.0;
+            $p = ($v !== null && $monthlyBilled) ? collect($v->periods)->first(fn ($x) => ($x['billing_period'] ?? null) === $period) : null;
+            $gap = collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains(
+                fn ($r) => ($r['calendar_month'] ?? null) === $period && (($r['uncovered_sessions'] ?? 0) > 0 || ($r['outside_contract_sessions'] ?? 0) > 0)
+            );
+            $cross = collect($coverage[(int) $c->ID]['periods'] ?? [])->contains(
+                // An invoice whose service range spans two months would be counted in both reports: show 待確認 in each.
+                fn ($r) => ($r['invoice_ids'] ?? []) !== [] && substr((string) $r['period_start'], 0, 7) !== substr((string) $r['period_end'], 0, 7)
+                    && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
+            );
+            $gap = $gap || $cross;
+            if ((string) $c->closed_reason === 'waived') {
+                $course[(int) $c->ID] = ['pay_status' => 'waived', 'due_amount' => 0.0, 'outstanding_amount' => 0.0];
+                continue; // written off by the director: neither collected nor outstanding
+            }
+            if ($v === null) {
+                $st = 'review';
+            } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
+                $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy']) || $gap) ? 'review' : $p['status'];
+                [$owed, $out] = [(float) $p['total'], (float) $p['outstanding']];
+            } elseif ($monthlyBilled && ($p !== null || $cross)) {
+                $st = 'review'; // this month's lessons cannot be attributed to an invoice
+            } elseif ($v->status === 'review_required' && !$monthlyBilled) {
+                $st = 'review';
+            } elseif ($v->source === 'legacy_flag') {
+                $st = 'review'; // Paid flag only, no invoice/payment evidence: never green, never debt
+            } elseif ($monthlyBilled) {
+                [$st, $owed, $out] = $v->isSettled() ? ['paid', $tuition, 0.0] : ['unpaid', $tuition, $tuition];
+            } else {
+                // Spread the authoritative contract amount (invoice total) over the lessons, then apply receipts oldest-first.
+                $rate = $this->resolveRate($c);
+                $agg = $throughEnd[(int) $c->ID] ?? null;
+                $gross = (int) ($agg->total ?? 0) * $rate;
+                $scale = ($gross > 0 && $v->owed < $gross) ? $v->owed / $gross : 1.0;
+                $owed = round($tuition * $scale, 2);
+                if ($v->isSettled()) {
+                    [$st, $out] = ['paid', 0.0];
+                } elseif ($v->status === 'partial') {
+                    $out = max(0.0, min($owed, (int) ($agg->thru ?? 0) * $rate * $scale - (float) $v->applied));
+                    $st = $out <= 0 ? 'paid' : ($out >= $owed ? 'unpaid' : 'partial');
+                } else {
+                    [$st, $out] = ['unpaid', $owed];
+                }
+            }
+            if ($st === 'review') {
+                $unconfirmed += $tuition;
+                $reviewStudents[(int) $c->StudentID] = true;
+                $course[(int) $c->ID] = ['pay_status' => 'review', 'due_amount' => 0.0, 'outstanding_amount' => 0.0, 'estimated_amount' => $tuition];
+                continue;
+            }
+            $note((int) $c->StudentID, $owed, $out);
+            $course[(int) $c->ID] = ['pay_status' => $st, 'due_amount' => round($owed, 2), 'outstanding_amount' => round($out, 2)];
+        }
+
+        $package = [];
+        foreach ($packages as $pkg) {
+            $tuition = round(($pkgSessionTotals[$pkg->id] ?? 0) * (float) $pkg->rate, 2);
+            $paid = (bool) $pkg->paid;
+            $note((int) $pkg->student_id, $tuition, $paid ? 0.0 : $tuition);
+            $package[$pkg->id] = ['pay_status' => $paid ? 'paid' : 'unpaid', 'due_amount' => $tuition, 'outstanding_amount' => $paid ? 0.0 : $tuition];
+        }
+
+        return ['course' => $course, 'package' => $package, 'summary' => [
+            'total_due'          => round($due, 2),
+            'total_collected'    => round($collected, 2),
+            'total_outstanding'  => round($due - $collected, 2),
+            'unpaid_students'    => count($unpaidStudents),
+            'unconfirmed_amount' => round($unconfirmed, 2),
+            'review_students'    => count($reviewStudents),
+        ]];
     }
 
     /**
