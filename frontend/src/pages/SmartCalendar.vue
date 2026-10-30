@@ -981,7 +981,6 @@ const {
   reloadCalendarData: reloadCalendarDataCore,
 } = useCalendarDataLoad({
   branchId: computed(() => props.branchId),
-  branchName: computed(() => props.branchName),
   userId: computed(() => props.userId),
   isTeacher,
   viewMode,
@@ -1019,6 +1018,7 @@ const {
   openTeacherLeaveBatch, onBatchSubstituteSubmitted,
 } = useCalendarSubstitute({
   branchId: computed(() => props.branchId),
+  branchName: computed(() => props.branchName),
   showModal,
   modalForm,
   editingCourseId,
