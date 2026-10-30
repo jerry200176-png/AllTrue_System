@@ -180,14 +180,14 @@ assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid' }), false, 'older p
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'paid' }), '2026-09 未繳');
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { review_required: true }, payment_status: 'paid' }), '月結帳單與上課堂數不符，請核對');
 assert.equal(M.monthlyPaymentLabel({ payment_status: 'paid' }), null);
-assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待核對入帳');
+assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待確認入帳');
 assert.equal(M.periodPaymentLabel('partial'), '繳了一部分');
 // in-app #395-#404: review wording only for review_required; unknown statuses stay neutral.
 assert.equal(M.periodPaymentLabel('review_required'), '月結帳單與上課堂數不符，請核對');
 assert.equal(M.periodPaymentLabel('unknown'), '月結帳單與上課堂數不符，請核對', 'unattributed sessions are a review case');
 assert.equal(M.periodPaymentLabel('something_new'), '狀態待確認');
-assert.equal(M.periodPaymentLabel('pending_report'), '待核對入帳');
-assert.equal(M.REPORT_STATUS_LABELS.pending, '待核對入帳');
+assert.equal(M.periodPaymentLabel('pending_report'), '待確認入帳');
+assert.equal(M.REPORT_STATUS_LABELS.pending, '待確認入帳');
 assert.equal(M.TUITION_STATUS_CONFIG.pending_report.label, '待確認入帳');
 
 // ─── closed-reason verdict: legacy oracles (verbatim page copies) + pinned divergences ───

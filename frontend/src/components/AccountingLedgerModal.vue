@@ -974,7 +974,7 @@ const formatPeriod = (period) => !period ? '—' : (String(period).split('-').le
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
 const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS, status);
 const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS, status);
-const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '收了一部分', overpayment_pending_review: '多收', voided: '已撤銷' }, status);
+const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收（多出部分未入帳）', overpayment_pending_review: '多收', voided: '已撤銷' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
   unpaid: 'chip--danger',

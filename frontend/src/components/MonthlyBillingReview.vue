@@ -74,7 +74,7 @@ defineExpose({ reload, loading });
               {{ month.calendar_month }} · 已上 {{ month.completed_sessions }} 堂 · 試算 {{ money(month.estimated_charge) }}
               <small v-if="month.uncovered_sessions">{{ month.uncovered_sessions }} 堂沒有帳單</small>
               <small v-if="month.outside_contract_sessions">{{ month.outside_contract_sessions }} 堂超出合約日期</small>
-            </div><small>估算，還沒開帳單。</small></td>
+            </div><small>估算，不等於帳單。</small></td>
             <td data-label="下一步"><AtButton variant="ghost" shape="rect" size="sm" @click="emit('ledger', { id: course.ID })">看收款</AtButton><AtButton variant="secondary" shape="rect" size="sm" @click="emit('navigate', { target: 'course-mgmt', studentId: course.StudentID, courseId: course.ID, studentName: course.student_name })">前往課程核對</AtButton></td>
           </tr></tbody>
         </table>
