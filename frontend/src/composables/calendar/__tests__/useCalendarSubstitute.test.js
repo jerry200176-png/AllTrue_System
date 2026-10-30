@@ -161,3 +161,14 @@ describe('useCalendarSubstitute', () => {
     expect(substituteV2Context.value.current_teacher_id).toBe(81);
   });
 });
+
+describe('useCalendarSubstitute branchNameMap (in-app #443)', () => {
+  it('uses the real campus name, not the 分校#id placeholder', () => {
+    const { branchNameMap } = useCalendarSubstitute(makeDeps({ branchId: computed(() => 25), branchName: computed(() => '板橋校') }));
+    expect(branchNameMap.value[25]).toBe('板橋校');
+  });
+  it('falls back to the placeholder when no name is known', () => {
+    const { branchNameMap } = useCalendarSubstitute(makeDeps({ branchId: computed(() => 25), branchName: computed(() => '') }));
+    expect(branchNameMap.value[25]).toBe('分校#25');
+  });
+});
