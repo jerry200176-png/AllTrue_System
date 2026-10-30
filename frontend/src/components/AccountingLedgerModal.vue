@@ -648,14 +648,17 @@ const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_tot
 // F-1: one-line conclusion. Only sums figures already on screen (owedSplit.now, pending receipts); no new money rule.
 const pendingConfirmTotal = computed(() => (payload.value?.receipts || [])
   .filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount || 0), 0));
-// A combined bill covers every course it lists (invoiceCoversCourse), not only its anchor.
-const courseHasBill = (id) => (payload.value?.invoices || []).some((inv) => inv.status !== 'void' && invoiceCoversCourse(inv, id));
+// F-1: the headline summarises the per-course state the cards below already show, so it cannot contradict them.
+// Tutoring: the API only flags the opened course (scope.no_payment_obligation); class_type is read when present.
+const courseNeedsMoney = (c) => !(c.class_type === 'tutoring' || isWaivedContract(c)
+  || (payload.value?.scope?.no_payment_obligation && Number(c.id) === Number(payload.value?.scope?.student_class_id)));
 const conclusion = computed(() => {
+  const cs = (payload.value?.courses || []).filter(courseNeedsMoney);
   const parts = [];
+  if (cs.some((c) => owedFor(c.id) <= 0 && c.paid && payLineFor(c)?.legacyUnverified)) parts.push('需核對'); // same as the card's payline
   if (owedSplit.value.now > 0) parts.push(`未繳 ${formatCurrency(owedSplit.value.now)}`);
   if (pendingConfirmTotal.value > 0) parts.push(`待確認入帳 ${formatCurrency(pendingConfirmTotal.value)}`);
-  const unbilled = (payload.value?.courses || []).some((c) => !c.paid && c.waived !== true && c.class_type !== 'tutoring' && !courseHasBill(c.id));
-  if (unbilled) parts.push('還沒開帳單');
+  if (cs.some((c) => !c.paid && owedFor(c.id) <= 0)) parts.push('還沒開帳單'); // same as the card's 還沒開帳單
   if (parts.length) return parts.join('・');
   return owedSplit.value.later > 0 ? '到今天沒有未繳' : '已收齊'; // a future-due bill is not 已收齊
 });

@@ -43,7 +43,8 @@ describe('ledger drawer conclusion', () => {
   });
 
   it('reads 已收齊 only when nothing is owed, pending or unbilled', async () => {
-    const w = await open({ ...base, courses: [course({ paid: true })], invoices: [inv({ outstanding_amount: 0, status: 'paid', calculated_applied_amount: 3000 })] });
+    const w = await open({ ...base, courses: [course({ paid: true })], invoices: [inv({ outstanding_amount: 0, status: 'paid', calculated_applied_amount: 3000 })],
+      receipts: [{ report_id: 6, student_class_id: 2, status: 'confirmed', amount: 3000, payment_date: '2026-10-05' }] });
     expect(w.get('[data-testid="ledger-conclusion"]').text()).toContain('已收齊');
     w.unmount(); vi.unstubAllGlobals();
   });
@@ -61,11 +62,24 @@ describe('ledger drawer conclusion', () => {
     w.unmount(); vi.unstubAllGlobals();
   });
 
-  it('does not call a course unbilled when a combined bill covers it', async () => {
-    const w = await open({
-      ...base, courses: [course(), course({ id: 3, subject: '英文' })],
-      invoices: [inv({ covered_student_class_ids: [2, 3] })],
-    });
+  it('reads 需核對, not 已收齊, for a legacy Paid flag with no payment evidence', async () => {
+    const w = await open({ ...base, courses: [course({ paid: true, paid_at: '2026-01-05' })], invoices: [] });
+    const text = w.get('[data-testid="ledger-conclusion"]').text();
+    expect(text).toContain('需核對');
+    expect(text).not.toContain('已收齊');
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('keeps 還沒開帳單 when only an older settled invoice exists', async () => {
+    const w = await open({ ...base, courses: [course({ schedule_mode: 'date' })], invoices: [inv({ outstanding_amount: 0, status: 'paid', calculated_applied_amount: 3000 })] });
+    const text = w.get('[data-testid="ledger-conclusion"]').text();
+    expect(text).toContain('還沒開帳單');
+    expect(text).not.toContain('已收齊');
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('never calls a tutoring course unbilled', async () => {
+    const w = await open({ ...base, scope: { student_class_id: 2, no_payment_obligation: true }, courses: [course({ class_type: 'tutoring' })], invoices: [] });
     expect(w.get('[data-testid="ledger-conclusion"]').text()).not.toContain('還沒開帳單');
     w.unmount(); vi.unstubAllGlobals();
   });
