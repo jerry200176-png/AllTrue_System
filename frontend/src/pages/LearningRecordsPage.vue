@@ -1372,6 +1372,11 @@
             <p>{{ form.ReviewNote || '（無說明）' }}</p>
           </div>
 
+          <div v-if="form.id && _activeRecordRef?.author_snapshot_count > 0" class="lr-reject-note" role="note" data-testid="lr-author-snapshot-note">
+            <p>原內容已保存，請新老師重填</p>
+            <button v-if="isDirectorRole" type="button" class="ghost xs" @click="openAuthorSnapshots">查看原作者內容（唯讀）</button>
+          </div>
+
           <div v-if="form.Status === 'approved' && form.id" class="lr-approved-note">
             <span class="lr-approved-badge">✓ 已核准</span>
             <span v-if="isTeacher">此評量已由主任核准，無法再修改。</span>
@@ -1483,6 +1488,26 @@
       </div>
     </div>
 
+    <!-- #3824: director/super_admin read-only view of the original author's saved body -->
+    <AtDialog
+      :open="showAuthorSnapshots"
+      title="原作者內容（唯讀）"
+      size="sm"
+      close-label="關閉原作者內容"
+      @close="showAuthorSnapshots = false"
+    >
+      <p v-if="!authorSnapshots.length" class="lr-director-note-hint">載入中或沒有資料。</p>
+      <div v-for="snap in authorSnapshots" :key="snap.id" class="lr-director-note-body">
+        <p class="lr-director-note-meta">{{ snap.author_teacher_name }} · {{ snap.created_at }}</p>
+        <pre style="white-space:pre-wrap">{{ snap.payload?.Content }}</pre>
+        <template v-for="[key, label] in AUTHOR_SNAPSHOT_FIELDS" :key="key">
+          <p v-if="snap.payload?.[key]">{{ label }}：{{ snap.payload[key] }}</p>
+        </template>
+        <p v-if="safeAttachmentHref(snap.payload?.AttachmentUrl)">附件：<a :href="safeAttachmentHref(snap.payload.AttachmentUrl)" target="_blank" rel="noopener noreferrer">開啟附件</a></p>
+        <p v-if="snap.payload?.teacher_comment?.content">給家長的話：{{ snap.payload.teacher_comment.content }}</p>
+      </div>
+    </AtDialog>
+
     <!-- Director: quick internal note to teacher (no full edit flow) -->
     <AtDialog
       :open="showDirectorNoteModal"
@@ -1537,6 +1562,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
+import { safeHttpHref } from '../lib/safeHttpHref.js';
 import { isDirectorRole as roleIsDirector } from '../lib/roleCapabilities.js';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
@@ -2466,6 +2492,22 @@ const feedbackDismissSaving = ref(false);
 const feedbackReplyError = ref('');
 
 /** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */
+const AUTHOR_SNAPSHOT_FIELDS = [
+  ['Progress', '進度'], ['NextHomework', '作業'], ['NextWeekTestScope', '下週考試範圍'], ['QuizScore', '測驗成績'],
+  ['HomeworkStatus', '作業完成度'], ['Performance', '課堂表現'], ['Comment', '備註'],
+];
+const safeAttachmentHref = safeHttpHref;
+const showAuthorSnapshots = ref(false);
+const authorSnapshots = ref([]);
+const openAuthorSnapshots = async () => {
+  if (!isDirectorRole.value || !form.id) return;
+  authorSnapshots.value = [];
+  showAuthorSnapshots.value = true;
+  const token = await getToken();
+  const res = await fetch(`/api/v1/learning-records/${form.id}/author-snapshots`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.ok) authorSnapshots.value = await res.json();
+};
+
 const showDirectorNoteModal = ref(false);
 const directorNoteTarget = ref(null);
 const directorNoteDraft = ref('');
