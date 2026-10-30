@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { mount } from '@vue/test-utils';
 import BillingDocument from '../BillingDocument.vue';
 import { paymentSlipView, formatSessionDate, statusTone, isDone, STATUS_ZH } from '../../lib/billingDocumentView.js';
@@ -90,5 +92,22 @@ describe('代收款 section (in-app #439)', () => {
       expect(mount(BillingDocument, { props: { doc } }).find('[data-testid="slip-pass-through"]').exists()).toBe(false);
     }
     expect(paymentSlipView({ student_class_id: 1, schedule_mode: 'count', pass_through: passThrough, pass_through_unpaid_total: 300 }).pass_through.rows).toHaveLength(2);
+  });
+});
+
+describe('BillingDocument header layout (in-app #444)', () => {
+  const src = readFileSync(resolve(process.cwd(), 'src/components/BillingDocument.vue'), 'utf8');
+  it('brand name and campus never wrap and may shrink with an ellipsis', () => {
+    expect(src).toMatch(/\.slip-brand-name\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
+    expect(src).toMatch(/\.slip-brand-campus\s*\{[^}]*white-space:\s*nowrap/);
+    expect(src).toMatch(/\.slip-brand-text\s*\{[^}]*min-width:\s*0/);
+  });
+  it('watermark sits behind the text so the footer is not smudged', () => {
+    expect(src).toMatch(/\.slip-watermark\s*\{\s*z-index:\s*0/);
+    expect(src).toContain('.slip > :not(.slip-watermark)');
+  });
+  it('receipt and slip share the one component', () => {
+    const rcpt = readFileSync(resolve(process.cwd(), 'src/components/ReceiptModal.vue'), 'utf8');
+    expect(rcpt).toContain('<BillingDocument');
   });
 });
