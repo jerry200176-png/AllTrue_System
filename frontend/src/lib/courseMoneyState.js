@@ -314,7 +314,7 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
 /**
  * in-app #442: members of one count-mode shared package are ONE payment obligation (PaymentReportController: one report
  * covers every member; the ledger gives the package a single lead card). Returns the member course whose billing row
- * carries 繳費單 / 登記繳費回報, or null when `course` is not in such a package. Lead = member holding a pending report,
+ * carries 繳費單 / 登記繳費回報, or null when `course` is not in such a package. Lead = member holding a pending report, else the one with the open bill,
  * else the first regular (non-tutoring) member that is not settled, else the first member. Monthly members stay per course.
  * @param {{course: object, reports?: object[], invoices?: object[]}[]} rows
  */
@@ -328,6 +328,7 @@ export const sharedPackageBillingLead = (course, rows) => {
   if (members.filter(openBill).length > 1) return null;
   const regular = members.filter((r) => r.course.class_type !== 'tutoring');
   const lead = members.find((r) => r.reports?.some((x) => x.status === 'pending'))
+    || members.find(openBill) // its slip/payment resolves that bill, not the package's full estimate
     || regular.find((r) => !['paid', 'free'].includes(String(r.course.payment_status || '')))
     || regular[0] || members[0];
   return lead.course;
