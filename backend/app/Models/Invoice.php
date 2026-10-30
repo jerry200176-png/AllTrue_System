@@ -105,12 +105,20 @@ class Invoice extends Model
             || self::courseHasPositiveBill($course);
     }
 
-    /** A live positive bill, or a positive line, naming the course; $period limits it to that billing period (or an undated bill). */
-    public static function courseHasPositiveBill(StudentClass $course, ?string $period = null): bool
+    /** A live positive bill, or a positive line, naming the course; $period limits it to that billing period (or an undated bill); $openOnly skips a bill its payments already cover. */
+    public static function courseHasPositiveBill(StudentClass $course, ?string $period = null, bool $openOnly = false): bool
     {
         return self::query()->scopes('notVoided')->where(fn ($q) => $q->where(fn ($a) => $a->where('StudentClassID', $course->ID)->where('TotalAmount', '>', 0)) // a positive bill on the course itself
             ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $course->ID)->where('Amount', '>', 0)->select('InvoiceID')))
-            ->when($period !== null, fn ($q) => $q->where(fn ($p) => $p->whereNull('billing_period')->orWhere('billing_period', $period)))->exists();
+            ->when($period !== null, fn ($q) => $q->where(fn ($p) => $p->whereNull('billing_period')->orWhere('billing_period', $period)))
+            ->when($openOnly, fn ($q) => $q->whereRaw('Invoice.TotalAmount > ' . self::netPaidSql()))->exists();
+    }
+
+    /** #4005: priced evidence beyond the course's own columns: a live priced amendment, or a positive live bill (line) naming the course ($openOnly: still owing). */
+    public static function courseHasBillEvidence(StudentClass $course, bool $openOnly = false): bool
+    {
+        return StudentClassPricingAmendment::query()->where('student_class_id', $course->ID)->whereNull('voided_at')->where('rate', '>', 0)->exists()
+            || self::courseHasPositiveBill($course, null, $openOnly);
     }
 
     public function scopeNotVoided($query)

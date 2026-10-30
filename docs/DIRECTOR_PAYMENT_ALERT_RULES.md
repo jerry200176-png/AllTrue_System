@@ -193,3 +193,11 @@ Founder Q3 是本次對 `GET /api/v1/alerts/tuition` 顯示語意的明示同意
 - **已收過，補登收款**：`POST /api/v1/payment-reports/director-record`，`legacy_flag_backfill=true`、必填 `idempotency_key`（UUID）。畫面用同一個「登記收款」表單（`PaymentEntryModal` 的 `legacy-backfill` 模式：繳費日期、繳費方式、帳號後5碼、繳費金額預填合約金額、備註；提示「送出即入帳，不需要再確認」）。後端不另寫收款規則：在同一個 transaction 先建立 director-record 的待核對回報，再呼叫確認入帳（`confirmReport`，只略過這個舊旗標會觸發的「已收齊」防重複檢查）；有未繳清帳單就收在那張（不超過其未收額），沒有帳單就依金額開一張（月結依收款日期歸屬的月份開、金額不可超過該期應收，共用方案開在主卡）；少收，或方案內任何成員的帳單仍有未收時，共用方案同樣整個方案改回未繳；月結沒有帳單可封頂時，金額也不可超過該期應收（`monthly_amount_stale`）；確認被擋時整筆回滾。卡片可補登時不再顯示「登記這筆」，只有一個收款入口。`Paid` 維持 1，之後有收款紀錄，「需核對」依上方規則自然消失。同一 `idempotency_key` 重送回傳第一次的結果（`replayed=true`）；換新 key 會因為已有收款紀錄被擋。
 - **其實沒收，改成未繳**：`POST /api/v1/payment-reports/legacy-flag-clear`，必填原因。只寫 `Paid=0`、`Pay=0`、`PayDate=null`（`closed_reason=settled` 改回 `settled_pending`，與撤銷收款相同）；共用方案另把 `course_packages.paid=false`、`paid_at=null`，方案內同學生所有課程的標記一起拿掉（`markPackagePaid` 的反向，稽核 `row_count` 記改了幾門課）；**不動任何帳單或收款**。之後依既有規則列為未繳、未收額 = 合約金額。已經是未繳時重送回 200（`replayed=true`）且不重複記錄。`SecurityAuditEvent`（`student_class.legacy_paid_flag_cleared`）只存原因的 SHA-256，不存原文；補登記 `student_class.legacy_paid_flag_backfill`。
 - **帳務中心「已結清」的「舊制無帳單」**（`GET /api/v1/accounting/settled-courses`）與課程管理、學費提醒用同一套證據規則（`validPaymentEvidence`：收款在方案內其他課程上也算），所以標籤出現的課，在繳費明細的課程卡一定有上述兩個動作；列表下方的說明文字也指向這兩個動作。
+
+## 提醒跟著帳務判定走（Founder 2026-10-29，#4005、#3985）
+
+催繳（DunningService、`tuition:send-reminders`）與學費提醒一律跟著課程帳務判定（`BillingPayableResolver`／`ContractMoneyVerdict`），不是只看有沒有未結帳單：
+
+- 沒標記的零學費單科課程，只在判定「沒有任何欠款」時才算免費。課程有定價修訂，或別張帳單（例如成員帳單）有大於 0 的明細時，判定不再是免費，提醒照舊保留。
+- 月結制提醒視窗取判定裡未結期別的最早到期日（不是帳單存的狀態）；沒有未結期別時才用結算日。
+- 月結方案列：成員判定有欠款就是未繳（不管方案旗標），全部已繳才是已繳；結算日已到而成員帳單到期日在未來時，仍然列入。
