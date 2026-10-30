@@ -80,6 +80,8 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $trial_target_class_type Trial courses only: regular class type the trial is for (in-app #426).
  * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
+ * @property int|string|null $monthly_session_count Optional projection/aggregate attribute; no schema change.
+ * @property \Illuminate\Support\Carbon|null $created_at Optional legacy attribute only; absent from the current schema and normal rows.
  */
 class StudentClass extends Model
 {
@@ -210,6 +212,7 @@ class StudentClass extends Model
         }
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
@@ -221,46 +224,55 @@ class StudentClass extends Model
             || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended', 'waived'], true);
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Subject, $this> */
     public function subjectRecord()
     {
         return $this->belongsTo(Subject::class, 'SubjectID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function teacher()
     {
         return $this->belongsTo(User::class, 'TeacherID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ClassSession, $this> */
     public function classSessions()
     {
         return $this->hasMany(ClassSession::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<LearningRecord, $this> */
     public function learningRecords()
     {
         return $this->hasMany(LearningRecord::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<Invoice, $this> */
     public function invoices()
     {
         return $this->hasMany(Invoice::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentClassPricingAmendment, $this> */
     public function pricingAmendments()
     {
         return $this->hasMany(StudentClassPricingAmendment::class, 'student_class_id', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<PaymentReport, $this> */
     public function paymentReports()
     {
         return $this->hasMany(PaymentReport::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Room, $this> */
     public function room()
     {
         return $this->belongsTo(Room::class, 'room_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<CoursePackage, $this> */
     public function coursePackage()
     {
         return $this->belongsTo(CoursePackage::class, 'PackageID', 'id');

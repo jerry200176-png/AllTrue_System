@@ -24,6 +24,7 @@ class LearningRecordTeacherComment extends Model
         'last_read_by_teacher_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<LearningRecord, $this> */
     public function learningRecord()
     {
         return $this->belongsTo(LearningRecord::class, 'learning_record_id', 'id');

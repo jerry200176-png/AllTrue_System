@@ -8,6 +8,16 @@ use PHPUnit\Framework\TestCase;
 /** 老師月出勤每日一列：只刷一次不算工時、系統補簽退算異常、修正後照新時間算。 */
 class TeacherAttendanceMonthTest extends TestCase
 {
+    /** #977: Carbon 2 truncates each completed pair before adding minutes. */
+    public function test_partial_minutes_are_truncated_per_pair_and_remain_integers(): void
+    {
+        $days = TeacherAttendanceMonth::days(collect([
+            self::rec(91, '2026-08-01 10:00:00', '2026-08-01 10:00:45'),
+            self::rec(92, '2026-08-01 11:00:00', '2026-08-01 11:00:45'),
+        ]), '2026-08', [], [], '2026-08-31');
+        $this->assertSame(0, self::day($days, '2026-08-01')['minutes']);
+    }
+
     private static function rec(int $id, string $in, ?string $out, ?string $memo = null, int $campus = 1): object
     {
         return (object) ['id' => $id, 'sign_in_dt' => $in, 'sign_out_dt' => $out, 'memo' => $memo, 'campus_id' => $campus];

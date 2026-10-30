@@ -45,7 +45,10 @@ class BillingPayableResolver
             return [];
         }
 
-        return collect($statuses)->filter(fn ($s) => in_array($s['status'] ?? null, ['paid', 'free'], true))->map(fn () => true)->all();
+        /** @var array<int, true> $settled Every selected course is mapped to the literal true. */
+        $settled = collect($statuses)->filter(fn ($s) => in_array($s['status'] ?? null, ['paid', 'free'], true))->map(fn () => true)->all();
+
+        return $settled;
     }
 
     /**
@@ -446,13 +449,16 @@ class BillingPayableResolver
             return [];
         }
 
-        return DB::table('Invoice')
+        /** @var array<int, true> $withHistory Every selected contract is mapped to the literal true. */
+        $withHistory = DB::table('Invoice')
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
             ->distinct()
             ->pluck('Invoice.StudentClassID')
             ->mapWithKeys(fn ($id) => [(int) $id => true])
             ->all();
+
+        return $withHistory;
     }
 
     /**
@@ -465,7 +471,7 @@ class BillingPayableResolver
      *  3. anything still left (no earlier receipt to reverse) nets against later receipts, oldest first, so an invoice whose
      *     net applied is 0 never gives a date.
      *
-     * @param  Collection<int, object>  $payments
+     * @param  Collection<int, \stdClass>  $payments
      */
     private function latestUnreversedReceiptDate(Collection $payments): ?string
     {

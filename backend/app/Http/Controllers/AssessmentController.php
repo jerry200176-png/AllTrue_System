@@ -644,6 +644,7 @@ class AssessmentController extends Controller
         return $data;
     }
 
+    /** @return \Illuminate\Database\Eloquent\Builder<\App\Models\Assessment> */
     private function accessibleAssessments(Request $request): Builder
     {
         $query = Assessment::query();

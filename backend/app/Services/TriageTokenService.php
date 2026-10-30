@@ -142,7 +142,11 @@ final class TriageTokenService
         return null;
     }
 
-    /** Coarse SQL narrowing (the ability is always written first); hasOnlyTriageAbility() is the real check. */
+    /**
+     * Coarse SQL narrowing (the ability is always written first); hasOnlyTriageAbility() is the real check.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<\Laravel\Sanctum\PersonalAccessToken>
+     */
     private static function query(): \Illuminate\Database\Eloquent\Builder
     {
         return PersonalAccessToken::query()

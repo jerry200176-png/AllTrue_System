@@ -37,11 +37,13 @@ class ScheduleAuditLog extends Model
         });
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
     public function session()
     {
         return $this->belongsTo(ClassSession::class, 'session_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function operator()
     {
         return $this->belongsTo(User::class, 'operator_id');

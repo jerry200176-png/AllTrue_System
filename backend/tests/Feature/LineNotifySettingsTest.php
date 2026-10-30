@@ -62,8 +62,9 @@ class LineNotifySettingsTest extends TestCase
         $this->putJson('/api/v1/line/notify-settings', ['branch_id' => $this->other->id, 'settings' => ['swipe' => false]], $director)
             ->assertForbidden();
         $this->getJson("/api/v1/line/notify-settings?branch_id={$this->other->id}", $director)->assertForbidden();
-        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['marketing_blast' => true]], $director)
-            ->assertStatus(422);
+        foreach ([['marketing_blast' => true], ['swipe' => false, 'marketing_blast' => true]] as $settings) {
+            $this->putJson('/api/v1/line/notify-settings', ['settings' => $settings], $director)->assertStatus(422);
+        }
 
         $teacher = ['Authorization' => 'Bearer ' . $this->token('T', $this->mine->id)];
         $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe' => false]], $teacher)

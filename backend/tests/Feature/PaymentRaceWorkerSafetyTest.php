@@ -53,7 +53,7 @@ class PaymentRaceWorkerSafetyTest extends TestCase
         $connection->shouldReceive('getDatabaseName')->andReturn('AllTrue_test');
         DB::shouldReceive('connection')->andReturn($connection);
         DB::shouldReceive('selectOne')->once()->with('SELECT @@transaction_isolation AS level')
-            ->andThrow(new QueryException('SELECT @@transaction_isolation AS level', [], new \PDOException('Unknown system variable')));
+            ->andThrow(new QueryException('mysql', 'SELECT @@transaction_isolation AS level', [], new \PDOException('Unknown system variable')));
         DB::shouldReceive('selectOne')->once()->with('SELECT @@tx_isolation AS level')
             ->andReturn((object) ['level' => 'REPEATABLE-READ']);
         DB::shouldReceive('statement')->once()->with('SET SESSION innodb_lock_wait_timeout = 5');

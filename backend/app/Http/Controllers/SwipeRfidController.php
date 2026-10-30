@@ -297,7 +297,7 @@ class SwipeRfidController extends Controller
 
         if ($openRecord) {
             // NFR-003: RF bounce debounce — 60 秒內重複訊號直接忽略，不自動簽退
-            $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
+            $ageSeconds = (int) Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt, true);
             if ($ageSeconds <= self::TEACHER_SWIPE_DEBOUNCE_SECONDS) {
                 return response()->json([
                     'ok'     => true,

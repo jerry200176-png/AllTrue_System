@@ -4,6 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int|string|null $cnt Optional projection/aggregate attribute; no schema change.
+ * @property int|string|null $binding_count Optional projection/aggregate attribute; no schema change.
+ */
 class StudentLineBinding extends Model
 {
     protected $table = 'student_line_bindings';
@@ -31,6 +35,7 @@ class StudentLineBinding extends Model
         return $query->whereNotNull('verified_at');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id');

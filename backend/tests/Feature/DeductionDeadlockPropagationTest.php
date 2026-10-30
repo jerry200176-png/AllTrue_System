@@ -6,6 +6,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\SessionDeductionService;
 use App\Support\DeadlockRetry;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -30,8 +31,14 @@ class DeductionDeadlockPropagationTest extends TestCase
         try {
             DB::transaction(fn () => SessionDeductionService::deductOnAttendance($course, null, $lesson));
             $this->fail('the deadlock was swallowed inside the caller\'s transaction');
-        } catch (QueryException $e) {
+        } catch (DeadlockException $e) {
             $this->assertTrue(DeadlockRetry::causedBy($e));
+            // Laravel 12 wraps each nested boundary; preserve the original query failure.
+            $cause = $e;
+            while ($cause instanceof DeadlockException && $cause->getPrevious()) {
+                $cause = $cause->getPrevious();
+            }
+            $this->assertInstanceOf(QueryException::class, $cause);
         }
         $this->assertSame(1, $inserts(), 'a nested transaction is not run again: only the outermost one can be');
         $this->assertSame(1, DB::transactionLevel(), 'every level the deadlock passed through is closed');
@@ -67,7 +74,7 @@ class DeductionDeadlockPropagationTest extends TestCase
         [$runs, $error] = $run(fn () => throw $this->deadlock());
         $this->assertSame(DeadlockRetry::ATTEMPTS, $runs, 'bounded');
         $this->assertInstanceOf(QueryException::class, $error);
-        [$runs] = $run(fn () => throw new QueryException('insert', [], new PDOException('SQLSTATE[23000]: Duplicate entry')));
+        [$runs] = $run(fn () => throw new QueryException('mysql', 'insert', [], new PDOException('SQLSTATE[23000]: Duplicate entry')));
         $this->assertSame(1, $runs, 'only a concurrency error runs again');
         DB::purge('deadlock_probe');
     }
@@ -109,6 +116,6 @@ class DeductionDeadlockPropagationTest extends TestCase
         $pdo = new PDOException('SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock; try restarting transaction');
         $pdo->errorInfo = ['40001', 1213, 'Deadlock found when trying to get lock; try restarting transaction'];
 
-        return new QueryException('insert into `session_deduction_ledger`', [], $pdo);
+        return new QueryException('mysql', 'insert into `session_deduction_ledger`', [], $pdo);
     }
 }

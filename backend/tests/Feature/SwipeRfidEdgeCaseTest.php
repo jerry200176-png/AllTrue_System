@@ -195,6 +195,37 @@ class SwipeRfidEdgeCaseTest extends TestCase
             'TD-006: debounce 視窗內第二次刷卡不應觸發 sign_out，openRecord 應保持開放');
     }
 
+    /** #977: preserve Carbon 2's whole-second debounce boundary. */
+    public function test_student_debounce_keeps_fractional_second_boundary(): void
+    {
+        $start = now()->copy();
+        $student = $this->makeStudent();
+        $this->swipe($student->RFID)->assertStatus(201)->assertJsonPath('action', 'sign_in');
+        Carbon::setTestNow($start->copy()->addSeconds(60)->addMilliseconds(500));
+        $this->swipe($student->RFID)->assertOk()->assertJsonPath('action', 'duplicate_ignored');
+        $this->assertNull(StudentSignIn::where('StudentID', $student->id)->first()->SignOutDT);
+        Carbon::setTestNow($start->copy()->addSeconds(61));
+        $this->swipe($student->RFID)->assertOk()->assertJsonPath('action', 'sign_out');
+    }
+
+    /** #977: teacher and student readers must retain the same threshold. */
+    public function test_teacher_debounce_keeps_fractional_second_boundary(): void
+    {
+        $start = now()->copy();
+        $teacher = DB::table('User')->insertGetId([
+            'LoginName' => 'boundary-teacher@example.test', 'Name' => 'Boundary teacher',
+            'PSW' => 'synthetic', 'type' => 'T', 'phone' => '0900000000',
+        ]);
+        DB::table('UserCampus')->insert(['CampusID' => $this->campus->id, 'UserID' => $teacher,
+            'Admin' => 0, 'Approved' => 1, 'RFID' => 'EDGE-BOUNDARY-TEACHER']);
+        $this->swipe('EDGE-BOUNDARY-TEACHER')->assertStatus(201)->assertJsonPath('action', 'sign_in');
+        Carbon::setTestNow($start->copy()->addSeconds(60)->addMilliseconds(500));
+        $this->swipe('EDGE-BOUNDARY-TEACHER')->assertOk()->assertJsonPath('action', 'duplicate_ignored');
+        $this->assertNull(TeacherSignIn::where('TeacherID', $teacher)->first()->SignOutDT);
+        Carbon::setTestNow($start->copy()->addSeconds(61));
+        $this->swipe('EDGE-BOUNDARY-TEACHER')->assertOk()->assertJsonPath('action', 'sign_out');
+    }
+
     // ── TD-007: 同一 ClassSession 已有 active StudentSignIn 時不應重複建立 ────
 
     /**

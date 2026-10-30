@@ -19,7 +19,7 @@ class ScheduleGuardSummaryTest extends TestCase
         self::assertSame($source, $details[0]['source']);
     }
 
-    public function sourceLabels(): array
+    public static function sourceLabels(): array
     {
         return [
             ['student_class', '固定課程'],

@@ -301,6 +301,7 @@ class MonthlyBillingService
         return $all->filter(fn (ClassSession $session) => substr((string) $session->SessionDate, 0, 10) >= $from && substr((string) $session->SessionDate, 0, 10) <= $to)->values();
     }
 
+    /** @return \Illuminate\Database\Eloquent\Builder<\App\Models\ClassSession> */
     private function periodSessionQuery(
         Model $course,
         string $billingPeriod,
@@ -481,7 +482,10 @@ class MonthlyBillingService
         ];
     }
 
-    /** @return Collection<int, ClassSession> */
+    /**
+ * @return Collection<int, ClassSession>
+ * @param Builder<ClassSession> $query
+ */
     private function plannedSessions(Builder $query): Collection
     {
         // Still-to-happen lessons only (same set as receipts' upcoming list);

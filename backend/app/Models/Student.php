@@ -59,11 +59,13 @@ class Student extends Model
         static::addGlobalScope(new OperationalTenantScope());
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentClass, $this> */
     public function classes()
     {
         return $this->hasMany(StudentClass::class, 'StudentID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentGuardian, $this> */
     public function studentGuardians()
     {
         return $this->hasMany(StudentGuardian::class, 'student_id');

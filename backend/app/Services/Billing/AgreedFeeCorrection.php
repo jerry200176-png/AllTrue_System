@@ -27,6 +27,7 @@ final class AgreedFeeCorrection
             $student = DB::table('Student')->where('id', $studentId)->lockForUpdate()->first();
             $courseQuery = StudentClass::query()->whereKey($courseId);
             $courseQuery->lockForUpdate();
+            /** @var \Illuminate\Database\Eloquent\Model $course Raw ORM boundary; keep the fail-closed concrete-model check. */
             $course = $courseQuery->firstOrFail();
             if (!$course instanceof StudentClass) abort(404);
             if ((int) $course->StudentID !== (int) $studentId) $this->refuse('課程學生已變更，請重新開啟帳務。', 'state_changed', 409);

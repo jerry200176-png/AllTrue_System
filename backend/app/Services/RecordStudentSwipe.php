@@ -50,7 +50,7 @@ class RecordStudentSwipe
 
         if ($openRecord) {
             // TD-006: debounce — RF bounce 在 60 秒內的重複訊號直接忽略，不自動簽退
-            $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
+            $ageSeconds = (int) Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt, true);
             if ($ageSeconds <= self::DEBOUNCE_SECONDS) {
                 return ['status' => 200, 'action' => 'duplicate_ignored', 'record' => $openRecord, 'class' => null];
             }

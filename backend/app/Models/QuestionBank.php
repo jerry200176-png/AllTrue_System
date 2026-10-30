@@ -22,11 +22,13 @@ class QuestionBank extends Model
         'campus_id', 'subject_id', 'name', 'description', 'status', 'created_by_user_id',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<QuestionBankItem, $this> */
     public function items()
     {
         return $this->hasMany(QuestionBankItem::class, 'question_bank_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<QuestionBankAuditLog, $this> */
     public function auditLogs()
     {
         return $this->hasMany(QuestionBankAuditLog::class, 'question_bank_id');

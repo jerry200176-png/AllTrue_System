@@ -60,7 +60,7 @@ final class PopInappStandingPolicyTest extends TestCase
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
         $event = DB::table('pop_approval_events')->where('operation_id', $id)->sole();
         self::assertSame(['approved', 'policy', 'policy:founder-standing-inapp-lifecycle@2', 'FSD-2026-10-14-II:#4069:#4073', null, str_repeat('a', 40), true, 'approved'],
-            [$event->event_type, $event->approver_role, $event->approver, $event->approval_reference, $event->approver_id, $event->commit_sha, $event->token_hash !== null, $this->status($id)]);
+            [$event->event_type, $event->approver_role, $event->approver, $event->approval_reference, $event->approver_id, $event->commit_sha, $event->token_hash !== null, $this->storedStatus($id)]);
 
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         self::assertSame(['closed', 'closed'], BugReport::query()->whereKey($bugs)->pluck('status')->all());
@@ -90,7 +90,7 @@ final class PopInappStandingPolicyTest extends TestCase
         $id = $this->drafted($ids, $check === 'replay' ? 'req-dup' : 'req-001');
 
         $out = $this->policy->approvePending($this->service, 5);
-        self::assertSame([false, 'awaiting_approval', 'resolved'], [in_array($id, $out['approved'], true), $this->status($id), BugReport::query()->whereKey($bug)->value('status')]);
+        self::assertSame([false, 'awaiting_approval', 'resolved'], [in_array($id, $out['approved'], true), $this->storedStatus($id), BugReport::query()->whereKey($bug)->value('status')]);
         // An inactive (flag off / frozen) policy decides nothing; every other failure records one denial.
         self::assertSame(!in_array($check, ['flag_off', 'frozen'], true), DB::table('pop_approval_events')->where('operation_id', $id)->where('event_type', 'policy_denied')->exists());
         $human = $this->service->approve($id, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', str_repeat('a', 40), $this->admin);
@@ -100,7 +100,7 @@ final class PopInappStandingPolicyTest extends TestCase
     public function test_report_outside_campus_fails_the_dry_run_and_is_never_approved(): void
     {
         $id = $this->drafted([$this->eligibleBug()], 'req-001', null, 2);
-        self::assertSame([[], 'failed'], [$this->policy->approvePending($this->service)['approved'], $this->status($id)]);
+        self::assertSame([[], 'failed'], [$this->policy->approvePending($this->service)['approved'], $this->storedStatus($id)]);
     }
 
     public static function killSwitches(): array
@@ -125,7 +125,7 @@ final class PopInappStandingPolicyTest extends TestCase
             $this->service->runApprovedLocally($id);
             self::fail('a tripped kill switch must stop execution');
         } catch (RuntimeException) {} // fail closed
-        self::assertSame('cancelled', $this->status($id));
+        self::assertSame('cancelled', $this->storedStatus($id));
         self::assertTrue(DB::table('pop_approval_events')->where('operation_id', $id)->where('event_type', 'policy_revoked')->exists());
         self::assertSame('resolved', BugReport::query()->whereKey($bug)->value('status'));
         // Kill switches apply to policy approvals only: a super_admin-approved request still executes.
@@ -141,7 +141,7 @@ final class PopInappStandingPolicyTest extends TestCase
         $this->policy->approvePending($this->service);
         array_map(fn () => $this->eligibleBug(), range(1, 20));
         $this->service->runApprovedLocally($id);
-        self::assertSame(['failed', 'resolved'], [$this->status($id), BugReport::query()->whereKey($bug)->value('status')]);
+        self::assertSame(['failed', 'resolved'], [$this->storedStatus($id), BugReport::query()->whereKey($bug)->value('status')]);
     }
 
     public function test_policy_approver_role_is_rejected_for_every_other_operation(): void
@@ -193,7 +193,7 @@ final class PopInappStandingPolicyTest extends TestCase
             'severity' => 'low', 'status' => $status])->id;
     }
 
-    private function status(string $id): string
+    private function storedStatus(string $id): string
     {
         return (string) DB::table('pop_operation_requests')->where('id', $id)->value('status');
     }

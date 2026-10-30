@@ -30,6 +30,7 @@ class StudentClassPricingAmendment extends Model
         'voided_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');

@@ -163,7 +163,7 @@ final class TriageTokenTest extends TestCase
         $admin = $this->user('S');
         $token = $this->createToken($admin);
         $listed = $this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->json('data.0');
-        $this->assertSame(42, now()->parse($listed['created_at'])->diffInDays(now()->parse($listed['expires_at'])));
+        $this->assertSame(42.0, now()->parse($listed['created_at'])->diffInDays(now()->parse($listed['expires_at'])));
 
         $this->travel(10)->days();
         config(['triage_tokens.ttl_days' => 7]); // shortening applies at once (fail-safe)
@@ -184,7 +184,7 @@ final class TriageTokenTest extends TestCase
         $fresh = $this->createToken($admin);
         $row = collect($this->getJson('/api/v1/admin/triage-tokens', $this->as($admin))->json('data'))
             ->firstWhere('id', (int) explode('|', $fresh)[0]);
-        $this->assertSame(180, now()->parse($row['created_at'])->diffInDays(now()->parse($row['expires_at'])));
+        $this->assertSame(180.0, now()->parse($row['created_at'])->diffInDays(now()->parse($row['expires_at'])));
         $this->assertFalse($row['expired']);
         $this->getJson('/api/v1/triage/bug-reports', $this->bearer($fresh))->assertOk();
     }

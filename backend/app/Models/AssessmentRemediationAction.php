@@ -46,16 +46,19 @@ class AssessmentRemediationAction extends Model
         'completed_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Assessment, $this> */
     public function assessment()
     {
         return $this->belongsTo(Assessment::class, 'assessment_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<AssessmentResult, $this> */
     public function assessmentResult()
     {
         return $this->belongsTo(AssessmentResult::class, 'assessment_result_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');

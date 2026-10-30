@@ -685,6 +685,23 @@ class SubstituteUxV2Test extends TestCase
             ->assertJsonFragment(['server_window_seconds' => 70]);
     }
 
+    /** #977: the existing 65-second window compares complete seconds. */
+    public function test_undo_window_preserves_fractional_second_boundary(): void
+    {
+        $start = Carbon::parse('2026-04-19 10:00:00');
+        Carbon::setTestNow($start);
+        [$dirToken, , $subId, $session] = $this->seedScenarioSingleCampus();
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", ['substitute_teacher_id' => $subId])->assertOk();
+        Carbon::setTestNow($start->copy()->addSeconds(65)->addMilliseconds(500));
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute/undo")->assertOk();
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", ['substitute_teacher_id' => $subId])->assertOk();
+        $notification = \App\Models\Notification::where('SourceType', 'ClassSession')->where('SourceID', $session->id)->latest('id')->firstOrFail();
+        $notification->created_at = $start;
+        $notification->save();
+        Carbon::setTestNow($start->copy()->addSeconds(66));
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute/undo")->assertStatus(410);
+    }
+
     // ──────────── helpers ────────────
 
     private function withAuth(string $token)

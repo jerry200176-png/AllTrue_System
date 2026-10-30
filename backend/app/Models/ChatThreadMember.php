@@ -21,11 +21,13 @@ class ChatThreadMember extends Model
         'last_read_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ChatThread, $this> */
     public function thread()
     {
         return $this->belongsTo(ChatThread::class, 'thread_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

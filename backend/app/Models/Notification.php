@@ -44,6 +44,7 @@ class Notification extends Model
         'ResolvedAt' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<NotificationRead, $this> */
     public function reads()
     {
         return $this->hasMany(NotificationRead::class, 'NotificationID', 'id');

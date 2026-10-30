@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int|string|null $net Optional projection/aggregate attribute; no schema change.
+ */
 class SessionDeductionLedger extends Model
 {
     protected $table = 'session_deduction_ledger';
@@ -18,16 +21,19 @@ class SessionDeductionLedger extends Model
         'note',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
     public function classSession()
     {
         return $this->belongsTo(ClassSession::class, 'class_session_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by', 'id');

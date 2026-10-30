@@ -44,7 +44,7 @@ class BillingNote extends Model
      * #4041 — void invoices whose course no longer exists (StudentClassController::destroy() voids the
      * unpaid invoices and then deletes the course). Their notes stay staff-visible, read-only.
      *
-     * @return Builder
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\Invoice>
      */
     public static function deletedCourseVoidInvoices(): Builder
     {
