@@ -111,7 +111,7 @@ describe('StudentBillingList', () => {
     expect(row.text()).not.toContain('目前沒有未繳');
     expect(row.find('.sbl__now strong').text()).toBe('—');
     expect(row.find('[data-testid="at-badge"]').text()).toBe('沒有待收款項');
-    expect(w.find('[data-testid="sbl-clear"]').text()).toBe('本校區沒有未繳。');
+    expect(w.find('[data-testid="sbl-clear"]').text()).toBe('本校區沒有到期未繳。');
     const w2 = mount(StudentBillingList, { props: { alertRows: ROWS, today: '2026-10-07' } });
     expect(w2.find('[data-testid="sbl-row-2"]').text()).toContain('待確認入帳');
     expect(w2.find('[data-testid="sbl-row-1"]').text()).toContain('未繳');

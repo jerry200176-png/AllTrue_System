@@ -15,7 +15,7 @@
       <span>未繳 <strong>{{ owingCount }}</strong> 位</span>
       <span v-if="pendingReviewCount" data-testid="sbl-pending-review">需核對金額 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，不在未繳內）</span>
     </div>
-    <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有未繳。</p>
+    <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有到期未繳。</p>
     <div class="sbl__tools">
       <input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="sbl-search" />
       <div class="sbl__chips" role="group" aria-label="篩選">
