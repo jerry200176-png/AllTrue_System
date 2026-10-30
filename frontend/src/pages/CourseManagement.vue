@@ -5713,8 +5713,7 @@ onUnmounted(() => {
   gap: 10px;
   margin-top: 18px;
   padding: 12px 14px;
-  border: 1px solid var(--ds-hairline);
-  border-left: 3px solid var(--ds-primary);
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
   border-radius: var(--ds-radius-lg);
   background: var(--ds-primary-wash);
   color: var(--ds-ink-secondary);
@@ -5746,15 +5745,14 @@ onUnmounted(() => {
   gap: 4px;
   padding: 14px 16px;
   border: 1px solid var(--ds-hairline);
-  border-top: 3px solid var(--ds-hairline);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-canvas);
   box-shadow: var(--ds-shadow-1);
 }
 
-.course-lens-metric--success { border-top-color: var(--ds-success); }
-.course-lens-metric--warning { border-top-color: var(--ds-warning); }
-.course-lens-metric--info { border-top-color: var(--ds-primary); }
+.course-lens-metric--success { border-color: color-mix(in srgb, var(--ds-success) 50%, var(--ds-hairline)); }
+.course-lens-metric--warning { border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline)); }
+.course-lens-metric--info { border-color: color-mix(in srgb, var(--ds-primary) 45%, var(--ds-hairline)); }
 
 .course-lens-metric__label {
   color: var(--ds-ink-mute);
@@ -5825,8 +5823,7 @@ onUnmounted(() => {
   gap: 12px;
   margin: 14px 0;
   padding: 14px 16px;
-  border: 1px solid var(--ds-hairline);
-  border-left: 4px solid var(--ds-primary);
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
   border-radius: 14px;
   background: var(--ds-canvas);
   box-shadow: var(--ds-shadow-1);
@@ -6672,7 +6669,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 5px 14px 5px 12px;
-  border-left: 3px solid var(--ds-brand-amber);
   font-size: 12px;
 }
 .paused-notice__dot {
@@ -6721,9 +6717,8 @@ onUnmounted(() => {
 .dates-row-paused .dates-panel {
   margin-top: 2px;
   padding-left: 12px;
-  border-left: 3px solid var(--ds-brand-amber);
   background: var(--ds-primary-wash);
-  border-radius: 0 8px 8px 0;
+  border-radius: 8px;
 }
 
 .cell-student {
@@ -7140,17 +7135,6 @@ button.danger:disabled {
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95));
   box-shadow: 0 22px 58px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.82);
 }
-.empty-state::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px);
-  background-size: 34px 34px;
-  pointer-events: none;
-  mask-image: radial-gradient(circle at center, #000, transparent 72%);
-}
 
 .empty-icon {
   display: inline-flex;
@@ -7375,7 +7359,7 @@ button.danger:disabled {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 4px;
+  height: 2px;
   background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
 }
 .premium-danger-modal::before {
@@ -8173,7 +8157,6 @@ button.danger:disabled {
   padding: 12px 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   position: relative;
-  border-left: 4px solid #64748b;
 }
 .history-course-card:hover {
   border-color: rgba(148, 163, 184, 0.55);
