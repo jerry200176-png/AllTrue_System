@@ -27,6 +27,22 @@ describe('CalendarSessionEditModal', () => {
     expect(w.text()).toContain('NT$ 2,000');
   });
 
+  it('shows no standard fee for a tutoring session (in-app #443)', () => {
+    const w = mount(CalendarSessionEditModal, {
+      props: { show: true, form: { ...form, class_type: 'tutoring' }, session, options: {} },
+      global: { stubs: { SearchableSelect: true } },
+    });
+    expect(w.text()).toContain('輔導課不另收費');
+    expect(w.text()).not.toContain('NT$ 2,000');
+    expect(w.text()).not.toContain('標準費用');
+  });
+
+  it('SmartCalendar passes the campus name to useCalendarSubstitute (in-app #443 wiring)', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/pages/SmartCalendar.vue'), 'utf8');
+    const call = src.slice(src.indexOf('} = useCalendarSubstitute({'));
+    expect(call.slice(0, 200)).toContain('branchName: computed(() => props.branchName)');
+  });
+
   it('shows conflict warning when provided', () => {
     const w = mount(CalendarSessionEditModal, {
       props: { show: true, form, session: { ...session, conflictWarning: '教室已滿' }, options: {} },
