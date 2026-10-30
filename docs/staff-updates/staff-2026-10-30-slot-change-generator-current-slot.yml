@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 改課程設定時段後，之後的預排堂次都跟著改
+    title: 改時段後預排堂次全更新
     summary: 在課程設定改上課時間，從當天起所有預排堂次都用新時間，系統自動補建的堂次也一樣。
     items:
       - category: fixed
