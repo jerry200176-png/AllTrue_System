@@ -20,6 +20,7 @@
         </AtHelpDisclosure>
       </template>
       <template #actions>
+        <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
         <AtButton
           variant="secondary"
           shape="rect"
