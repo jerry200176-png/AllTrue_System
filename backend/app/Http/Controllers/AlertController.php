@@ -847,6 +847,17 @@ class AlertController extends Controller
         $subject = $this->subjectLabel($sc);
         $remaining = max(0, (int) ($sc->RemainingSessions ?? 0));
         $mode = $sc->ScheduleMode ?? 'count';
+        // in-app #442: a count-mode shared package is one obligation (the charge below is already the package's), so its slip
+        // names every active member subject; whichever member the staff opens, it is the same one slip.
+        if ($mode === 'count' && $sc->isPartOfPackage()) {
+            $subjects = StudentClass::query()->where('PackageID', $sc->PackageID)->where('StudentID', $sc->StudentID)
+                ->where('Stop', 0)->orderBy('ID')->get()
+                ->reject(fn (StudentClass $m) => strtolower(trim((string) ($m->ClassType ?? ''))) === 'tutoring')
+                ->map(fn (StudentClass $m) => $this->subjectLabel($m))->unique()->values();
+            if ($subjects->count() > 1) {
+                $subject = $subjects->implode('、');
+            }
+        }
         $today = Carbon::today();
         $studentClassId = (int) $sc->getAttribute('ID');
         // The slip asks for the bill the queue shows (monthly = oldest owing period), so its period,

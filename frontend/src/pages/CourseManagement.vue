@@ -736,7 +736,7 @@
                   <td class="cell-actions">
                     <div class="action-btns-row">
                       <button
-                        v-if="isPaymentNoticeAvailable(row.course)"
+                        v-if="isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)"
                         class="small ghost btn-payment-slip"
                         data-testid="billing-payment-slip-action"
                         type="button"
@@ -744,7 +744,8 @@
                         @click="openPaymentSlip(row.course)"
                       >繳費單</button>
                       <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
-                      <button v-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <span v-if="billingPackageLead(row, group)" class="hint" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
+                      <button v-else-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
@@ -1459,7 +1460,7 @@ import { useMonthlyCorrectionPreview } from '../composables/course-management/us
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
   REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
-  ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL,
+  ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
@@ -4348,6 +4349,12 @@ const paymentStatusHelpTitle = (course) => {
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
 const reportStatusLabel = (status) => REPORT_STATUS_LABELS[status] || status || '—';
+// in-app #442: a count-mode shared package is one payment obligation, so only its lead row offers 繳費單 / 登記繳費回報;
+// the other member rows point to it. Returns the lead course for a follower row, else null.
+const billingPackageLead = (row, group) => {
+  const lead = sharedPackageBillingLead(row.course, studentBillingState.value[group.key]?.rows || []);
+  return lead && lead.id !== row.course.id && !isTutoringCourse(row.course) ? lead : null;
+};
 const hasMixedPackagePaymentStatuses = (key) => {
   const rows = studentBillingState.value[key]?.rows || [];
   const packageStatuses = rows
