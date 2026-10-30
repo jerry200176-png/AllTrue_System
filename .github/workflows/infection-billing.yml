@@ -53,13 +53,18 @@ jobs:
       - name: Install PHP dependencies
         working-directory: backend
         run: composer install --no-interaction --prefer-dist
+      - name: Allow the CI DB user to create per-thread test DBs
+        # Infection sets TEST_TOKEN per worker; Laravel ParallelTesting then uses AllTrue_test_test_<token>.
+        run: |
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306","root","root"); $p->exec("GRANT ALL ON `AllTrue\\_test%`.* TO \"admin\"@\"%\"");'
       - name: Run Infection on billing money code
         working-directory: backend
+        env:
+          LARAVEL_PARALLEL_TESTING: "1"
         run: |
           mkdir -p storage/infection
           set +e
-          # one thread: every mutant run shares the single AllTrue_test DB (RefreshDatabase), so workers would race
-          vendor/bin/infection --threads=1 --no-progress --min-msi=0 \
+          vendor/bin/infection --threads=4 --no-progress --min-msi=0 \
             --filter='Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php' \
             --test-framework-options='--filter=ContractMoney|BillingPayable|BillingCourseStatus|FreeGiftZeroBill|FullDiscountSettled|PaidStatus|TuitionSlipFollows|SharedPackage|CollectionQueueRequestShape' \
             2>&1 | tee storage/infection/run.out
