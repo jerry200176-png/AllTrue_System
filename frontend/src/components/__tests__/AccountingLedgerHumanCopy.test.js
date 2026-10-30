@@ -18,7 +18,7 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(ledger).not.toContain('對帳');
     expect(ledger).not.toContain('對齊帳單');
     expect(ledger).toContain('到今天未繳');
-    expect(ledger).toContain('多收待處理');
+    expect(ledger).toContain('多收');
     expect(ledger).toContain('撤銷收款');
   });
 
@@ -26,8 +26,8 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(tuition).not.toContain('Invoice/Payment/Receipt');
     expect(tuition).not.toContain('查看 / PNG');
     expect(tuition).toContain('查看收據');
-    expect(tuition).toContain('多收待處理');
-    expect(tuition).toContain('已記入收款');
+    expect(tuition).toContain('多收');
+    expect(tuition).toContain('多收');
   });
 
   it('course management stats and billing CTA use Chinese', () => {
@@ -47,7 +47,7 @@ describe('ledger anomaly with nothing to undo (in-app #446)', () => {
     expect(ledger).toContain('data-testid="ledger-exception-drift"');
     expect(ledger).toContain('回報給系統管理員');
     expect(ledger).toContain("new CustomEvent('alltrue-open-bug-report'");
-    expect(ledger).toContain('不會自動抵上面的未繳金額');
+    expect(ledger).toContain('這筆多收沒有對應的收款，系統無法自動處理');
   });
   it('the report launcher listens for the pre-filled open request', () => {
     const launcher = readFileSync(resolve(__dirname, '../BugReportLauncher.vue'), 'utf8');

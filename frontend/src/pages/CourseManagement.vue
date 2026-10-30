@@ -671,9 +671,9 @@
                 <div>
                   <strong>學生歷史帳務</strong>
                   <span v-if="Number(studentBillingState[group.key].ledgerSummary.outstanding_total || 0) > 0">
-                    尚有未結清 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}；各期帳務仍保留在原期間。
+                    尚有未繳 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}；各期帳務仍保留在原期間。
                   </span>
-                  <span v-else>目前沒有未結清帳務；各期帳務仍保留在原期間。</span>
+                  <span v-else>目前沒有未繳帳務；各期帳務仍保留在原期間。</span>
                 </div>
                 <button
                   v-if="shouldShowPaymentAction(studentBillingAnchorCourse(group))"
@@ -1579,7 +1579,7 @@ const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'nav
 // a report and voiding all happen inside it.
 const openTuitionLedger = (course) => openLedgerForCourse(course);
 const goToTuitionBilling = openTuitionLedger;
-// In-app #398: 「登記繳費回報」 opens the entry form for that course, with the ledger behind it.
+// In-app #398: 「登記收款」 opens the entry form for that course, with the ledger behind it.
 const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
@@ -4334,7 +4334,7 @@ const paymentStatusButtonLabel = (course) => paymentBadge(course).label;
 const paymentNextActionLabel = (course) => {
   const nextAction = paymentBadge(course).nextAction;
   if (nextAction === 'none') return '';
-  if (nextAction === 'report_payment') return '登記繳費回報';
+  if (nextAction === 'report_payment') return '登記收款';
   if (nextAction === 'view_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
   return '在這裡看帳務';
 };
@@ -4349,7 +4349,7 @@ const paymentStatusHelpTitle = (course) => {
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
 const reportStatusLabel = (status) => REPORT_STATUS_LABELS[status] || status || '—';
-// in-app #442: a count-mode shared package is one payment obligation, so only its lead row offers 繳費單 / 登記繳費回報;
+// in-app #442: a count-mode shared package is one payment obligation, so only its lead row offers 繳費單 / 登記收款;
 // the other member rows point to it. Returns the lead course for a follower row, else null.
 const billingPackageLead = (row, group) => {
   const lead = sharedPackageBillingLead(row.course, studentBillingState.value[group.key]?.rows || []);

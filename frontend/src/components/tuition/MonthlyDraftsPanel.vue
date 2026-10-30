@@ -94,7 +94,7 @@ defineExpose({ reload: load, loading });
         <AtButton :variant="monthOffset === 0 ? 'primary' : 'secondary'" shape="rect" size="sm" @click="monthOffset = 0">本月</AtButton>
         <AtButton :variant="monthOffset === 1 ? 'primary' : 'secondary'" shape="rect" size="sm" @click="monthOffset = 1">下個月</AtButton>
       </div>
-      <p class="mdp__hint">系統已算好新一期，確認金額和期間沒問題再開立。</p>
+      <p class="mdp__hint">下一期帳單已備好，核對後開立。</p>
     </div>
 
     <AtInlineAlert v-if="error" tone="danger" title="載入失敗">
@@ -102,7 +102,7 @@ defineExpose({ reload: load, loading });
       <template #action><AtButton variant="secondary" size="sm" shape="rect" @click="load">重新載入</AtButton></template>
     </AtInlineAlert>
     <p v-else-if="loading && !items.length">載入中…</p>
-    <AtEmpty v-else-if="!items.length" icon="check_circle" title="目前沒有待處理的帳單" description="這個月份沒有需要開立或補開的月繳帳單。" />
+    <AtEmpty v-else-if="!items.length" icon="check_circle" title="沒有要開的帳單" description="" />
 
     <template v-else>
       <section v-if="ready.length" class="mdp__sec" aria-label="可開立">
@@ -125,7 +125,7 @@ defineExpose({ reload: load, loading });
               <td>{{ r.due_date || '—' }}</td>
               <td>
                 <span v-if="results[r.student_class_id]" :class="results[r.student_class_id].ok ? 'mdp__ok' : 'mdp__fail'" role="status">{{ results[r.student_class_id].message }}</span>
-                <template v-else-if="isPast(r)"><span class="mdp__hint">新一期結束日已過，無法在此開立</span></template>
+                <template v-else-if="isPast(r)"><span class="mdp__hint">這一期已過，不能開立</span></template>
                 <AtButton v-else variant="secondary" size="sm" shape="rect" :disabled="running" @click="confirmRows([r])">確認開立</AtButton>
               </td>
             </tr>
@@ -138,7 +138,7 @@ defineExpose({ reload: load, loading });
 
       <section v-if="blocked.length" class="mdp__sec" aria-label="需補開">
         <h3>需補開（{{ blocked.length }}）</h3>
-        <p class="mdp__hint">請聯絡總部補開。</p>
+        <p class="mdp__hint">這幾筆缺上一期帳單，請聯絡總部補開。</p>
         <ul>
           <li v-for="r in blocked" :key="r.student_class_id">{{ r.student_name }}　{{ r.subject }}：{{ r.blocker_message }}</li>
         </ul>
@@ -146,7 +146,7 @@ defineExpose({ reload: load, loading });
 
       <section v-if="lapsed.length" class="mdp__sec" aria-label="已到期沒有上課">
         <h3>已到期、沒有上課（{{ lapsed.length }}）</h3>
-        <p class="mdp__hint">若已不上課，請到課程管理結案。</p>
+        <p class="mdp__hint">這些課已到期但沒上課。不再上的話，到課程管理結案。</p>
         <ul>
           <li v-for="r in lapsed" :key="r.student_class_id">{{ r.student_name }}　{{ r.subject }}（到 {{ r.current_end_date }}）</li>
         </ul>

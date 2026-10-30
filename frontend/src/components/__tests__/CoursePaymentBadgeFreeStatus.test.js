@@ -28,8 +28,8 @@ const CASES = [
   ['free', { payment_status: 'free' }, M.FREE_GIFT_LABEL, 'free', 'billing'],
   ['partial', { payment_status: 'partial' }, '繳了一部分', 'owing', 'report_payment'],
   ['unpaid', { payment_status: 'unpaid' }, UNPAID, 'owing', 'report_payment'],
-  ['pending_report', { payment_status: 'pending_report' }, '已回報付款，待你核對入帳', 'review', 'view_report'],
-  ['amount_review', { payment_status: 'amount_review' }, '金額待確認', 'review', 'billing'],
+  ['pending_report', { payment_status: 'pending_report' }, '待確認入帳', 'review', 'view_report'],
+  ['amount_review', { payment_status: 'amount_review' }, '還沒開帳單', 'review', 'billing'],
   ['review_required', { payment_status: 'review_required' }, M.REVIEW_REQUIRED_LABEL, 'review', 'billing'],
   ['waived', { payment_status: 'paid', closed_reason: 'waived' }, M.WAIVED_LABEL, 'settled', 'billing'],
   ['unknown status', { payment_status: 'something_new' }, M.UNKNOWN_STATUS_LABEL, 'neutral', 'billing'],
@@ -188,7 +188,7 @@ describe('#4150 StudentsList renders a free-gift course without 未繳', () => {
       expect(wrapper.find('.student-course-picker__status').text()).toBe(attention);
       if (payment_status === 'free' || payment_status === 'something_new') {
         expect(card.find('.payment-status-badge').classes()).not.toContain('primary');
-        expect(card.text()).not.toContain('登記繳費回報');
+        expect(card.text()).not.toContain('登記收款');
         expect(card.text()).not.toContain('先確認付款狀態');
       }
     } finally {

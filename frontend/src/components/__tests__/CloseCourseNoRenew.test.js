@@ -46,7 +46,7 @@ describe('shared close-course action', () => {
     const { calls, deps } = setup({ remaining: 2, settled: false });
     await closeCourseNoRenew(deps);
     expect(calls.confirms[0]).toContain('放棄這 2 堂剩餘額度');
-    expect(calls.confirms[0]).toContain('課已結束，尚未收款');
+    expect(calls.confirms[0]).toContain('已結束，未收');
     expect(calls.requests[0].url).toBe('/api/v1/student-classes/42/pause');
     expect(calls.requests[0].options.method).toBe('POST');
     expect(calls.requests[0].token).toBe('test-token');
@@ -55,7 +55,7 @@ describe('shared close-course action', () => {
       action: 'pause', reason: 'settled', forfeit_remaining: true,
     });
     expect(calls.reloads).toBe(1);
-    expect(calls.alerts[0]).toContain('「課已結束，尚未收款」分頁');
+    expect(calls.alerts[0]).toContain('「已結束，未收」分頁');
   });
 
   it('refuses to close when payment status is unknown (degraded load)', async () => {
@@ -162,7 +162,7 @@ describe('notice when the current filter hides the closed course', () => {
     expect(notice).toEqual({ courseId: 42, message: CLOSED_PENDING_HIDDEN_BY_ACTIVE_FILTER_NOTICE, canShowAll: true });
     expect(notice.message).toContain('「全部」');
     expect(notice.message).not.toContain('歷史課程');
-    expect(notice.message).toContain('課已結束，尚未收款');
+    expect(notice.message).toContain('已結束課程（尚未收款）');
   });
 
   it('points a paid close to 「全部」 or 「歷史課程」', () => {

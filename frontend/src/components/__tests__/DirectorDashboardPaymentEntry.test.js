@@ -82,7 +82,7 @@ describe('director payment shortcuts', () => {
 
   it('splits the unpaid alert badge by payment_status (in-app #395-#404)', () => {
     expect(dashboard).toContain("if (s.payment_status === 'partial') return '繳一部分';");
-    expect(dashboard).toContain("if (s.payment_status === 'pending_report') return '待核對入帳';");
+    expect(dashboard).toContain("if (s.payment_status === 'pending_report') return '待確認入帳';");
     expect(dashboard).toContain('return `${unpaidAlertLabel(s)} · ${s.remaining_lessons} 堂`;');
     expect(dashboard).not.toContain('return `未繳 · ${s.remaining_lessons} 堂`;');
   });

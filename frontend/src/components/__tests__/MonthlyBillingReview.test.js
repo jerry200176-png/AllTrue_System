@@ -18,7 +18,7 @@ it('finds missing-invoice courses independently of tuition alerts and navigates 
   expect(url.searchParams.get('branch_id')).toBe('16');
   expect(wrapper.findAll('tbody tr')).toHaveLength(1);
   expect(wrapper.text()).toContain('2026-09 · 已上 4 堂 · 試算 NT$ 6,000');
-  expect(wrapper.text()).toContain('4 堂沒有對應帳單服務期間');
+  expect(wrapper.text()).toContain('4 堂沒有帳單');
   expect(wrapper.text()).toContain('實收待核對');
   await wrapper.findAll('button').find(b => b.text() === '前往課程核對').trigger('click');
   expect(wrapper.emitted('navigate')[0][0]).toEqual({ target: 'course-mgmt', studentId: 172, courseId: 3304, studentName: '月結學生' });

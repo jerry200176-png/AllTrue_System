@@ -12,7 +12,7 @@ import LegacyPaidFlagActions from '../tuition/LegacyPaidFlagActions.vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
 
 const respond = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
-const HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
+const HELP = '標已收但查無收款。收過了：補登收款。沒收：改成未繳。';
 const q = (id) => document.body.querySelector(`[data-testid="${id}"]`);
 const posted = () => authedFetch.mock.calls.filter((c) => c[1]?.method === 'POST').map((c) => [c[0], JSON.parse(c[1].body)]);
 

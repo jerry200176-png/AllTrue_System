@@ -29,7 +29,7 @@ describe('useReceiptFlow', () => {
 
     expect(flow.receiptOpen.value).toBe(false);
     expect(flow.paymentEntryOpen.value).toBe(false);
-    expect(toast).toHaveBeenCalledWith('已送出，狀態改為「待核對入帳」；請到帳務中心按確認入帳後才會開收據');
+    expect(toast).toHaveBeenCalledWith('已送出，狀態改為「待確認入帳」；請到帳務中心按確認入帳');
     expect(refreshCourses).toHaveBeenCalledWith(99);
 
     resolveRefresh();
@@ -48,7 +48,7 @@ describe('useReceiptFlow', () => {
     expect(flow.receiptOpen.value).toBe(false);
     expect(refreshCourses).toHaveBeenCalledTimes(1);
     expect(toast).toHaveBeenCalledTimes(1);
-    expect(toast).toHaveBeenCalledWith('已送出，狀態改為「待核對入帳」；請到帳務中心按確認入帳後才會開收據');
+    expect(toast).toHaveBeenCalledWith('已送出，狀態改為「待確認入帳」；請到帳務中心按確認入帳');
   });
 
   it('no report_id (e.g. NT$0 settle with no receipt-eligible report) does not open the receipt', async () => {

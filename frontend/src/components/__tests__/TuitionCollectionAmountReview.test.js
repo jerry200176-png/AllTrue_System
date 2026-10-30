@@ -1,5 +1,5 @@
 // Founder D2 (in-app #394): a stopped review_required contract with an open bill is findable as 金額待確認,
-// but never counted in 待處理 / 課已結束，尚未收款 or summed into the confirmed money totals.
+// but never counted in 待處理 / 已結束，未收 or summed into the confirmed money totals.
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
@@ -37,13 +37,13 @@ describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
 
     expect(w.text()).toContain('測試生');
     expect(w.find('[data-testid="tc-amount-review-hint"]').exists()).toBe(true);
-    expect(tabBadge(w, '金額待確認')).toBe('1');
-    expect(tabBadge(w, '課已結束，尚未收款')).toBe('1');
+    expect(tabBadge(w, '還沒開帳單')).toBe('1');
+    expect(tabBadge(w, '已結束，未收')).toBe('1');
     expect(tabBadge(w, '待處理')).toBe('1');
 
     const summary = w.find('.tc-summary-disclosure__hint').text();
-    expect(summary).toContain('已開帳單未結清 NT$ 8,800');
-    expect(summary).toContain('另有金額待確認 1 筆 NT$ 3,400，未計入未收');
+    expect(summary).toContain('已開帳單未繳 NT$ 8,800');
+    expect(summary).toContain('還沒開帳單 1 筆 NT$ 3,400，未計入未收');
     expect(w.find('[data-testid="tc-pending-review-card"]').text()).toContain('NT$ 3,400');
     // 收款率 = confirmed paid / confirmed billed: the pending row's 1,000 / 4,400 stays out.
     expect(w.find('.tc-rate').text()).toContain('0%');
@@ -53,16 +53,16 @@ describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
   it('keeps a pending parent report on a 金額待確認 bill confirmable, but its amount out of debt totals and overdue', async () => {
     const w = await mountPage([CONFIRMED, REPORTED]);
 
-    expect(tabBadge(w, '待核對入帳')).toBe('1');
-    expect(tabBadge(w, '金額待確認')).toBe('1');
+    expect(tabBadge(w, '待確認入帳')).toBe('1');
+    expect(tabBadge(w, '還沒開帳單')).toBe('1');
     expect(tabBadge(w, '逾期應收')).toBe('0');
     const row = w.findAll('tr').find((tr) => tr.text().includes('回報生'));
     expect(row.text()).toContain('確認入帳');
     expect(row.find('[data-testid="tc-amount-review-hint"]').exists()).toBe(true);
 
     const summary = w.find('.tc-summary-disclosure__hint').text();
-    expect(summary).toContain('已開帳單未結清 NT$ 8,800');
-    expect(summary).toContain('另有金額待確認 1 筆 NT$ 4,400，未計入未收');
+    expect(summary).toContain('已開帳單未繳 NT$ 8,800');
+    expect(summary).toContain('還沒開帳單 1 筆 NT$ 4,400，未計入未收');
     w.unmount();
   });
 });

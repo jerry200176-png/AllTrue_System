@@ -21,14 +21,14 @@ async function mountLedger(courses) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('帳務面板 · 有繳費日期的試聽課不顯示需核對 (in-app #428)', () => {
-  it('a dated paid trial reads 已收清, not 需核對; a regular paid course without evidence still reads 需核對', async () => {
+  it('a dated paid trial reads 已收, not 需核對; a regular paid course without evidence still reads 需核對', async () => {
     const w = await mountLedger([course(1, '數學', { trial_fee_recorded_by_date: true }), course(2, '英文')]);
     const trial = w.find('[data-testid="contract-card-1"]');
     const regular = w.find('[data-testid="contract-card-2"]');
     expect(trial.exists()).toBe(true);
     expect(trial.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
-    expect(trial.find('[data-testid="contract-money"]').text()).toContain('已收清');
-    // #4339 review: the pay line shows the recorded trial payment, never 還沒繳費 beside 已收清.
+    expect(trial.find('[data-testid="contract-money"]').text()).toContain('已收');
+    // #4339 review: the pay line shows the recorded trial payment, never 還沒繳費 beside 已收.
     expect(trial.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/20　NT$ 500');
     expect(regular.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
   });
