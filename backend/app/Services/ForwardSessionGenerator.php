@@ -111,6 +111,20 @@ class ForwardSessionGenerator
         // Generate forward weekly dates from the day after the anchor (last session or today, whichever later).
         $course = StudentClass::query()->find($studentClassId);
         $course = $course instanceof StudentClass ? $course : null;
+        // in-app #450: the course's CURRENT slot wins over the history tally, so a time edit made in 課程設定
+        // is not undone by rows generated at the old time (history still holds more old-time rows).
+        $isoDow = $dow === 0 ? 7 : $dow;
+        $daySlots = array_values(array_filter(
+            $course ? ContractSessionSchedule::resolveScheduleSlotsForRebuild($course) : [],
+            fn ($slot) => (int) $slot['weekday'] === $isoDow
+        ));
+        $matchesHistory = array_filter($daySlots, fn ($slot) => substr((string) $slot['time'], 0, 5) === $start);
+        // A same-day multi-slot contract keeps the slot the history confirms; only a single, different slot is a time edit.
+        if (!$matchesHistory && count($daySlots) === 1) {
+            $start = substr((string) $daySlots[0]['time'], 0, 5);
+            $minutes = max(30, (int) ($daySlots[0]['duration_minutes'] ?? $course->SessionDuration ?? 120));
+            $end = Carbon::createFromFormat('H:i', $start)->addMinutes($minutes)->format('H:i');
+        }
         $cursor = $lastDate->gt($today) ? $lastDate->copy() : $today->copy();
         $count = min($remaining, $horizonWeeks);
         $slots = [];
