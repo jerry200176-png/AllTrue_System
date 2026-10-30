@@ -276,6 +276,55 @@ class StudentClassSplitContractTest extends TestCase
         }
     }
 
+    /** in-app #449: nothing used before the cutover moves the WHOLE paid contract; money is carried over intact. */
+    public function test_paid_transfer_with_zero_used_moves_whole_contract_and_keeps_paid_amount(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-01 10:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->createDirectorToken();
+            [$source, $invoice, $payment] = $this->createPaidSource();
+            DB::table('ClassSession')->where('StudentClassID', $source->ID)->update(['Status' => 'scheduled']);
+            $source->update(['RemainingSessions' => 8, 'UsedSessions' => 0]);
+            $body = ['teacher_id' => $this->makeTeacher(), 'start_date' => '2026-09-02', 'reason' => '換老師整期轉'];
+
+            $res = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+                ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", $body);
+            $res->assertCreated()->assertJsonPath('new_course.session_count', 8)->assertJsonPath('new_course.charge', 12000);
+            $newId = (int) $res->json('new_course.id');
+
+            $this->assertSame(8, DB::table('ClassSession')->where('StudentClassID', $newId)->where('Status', '!=', 'cancelled')->count());
+            $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $source->ID)->count());
+            $new = StudentClass::find($newId);
+            $this->assertSame([1, 12000, 8], [(int) $new->Paid, (int) $new->Charge, (int) $new->SessionCount]);
+            $this->assertSame([0, 0], [(int) $source->fresh()->SessionCount, (int) $source->fresh()->Charge]);
+            // Original payment untouched; the carry-over is the usual linked pair and nets to zero.
+            $this->assertSame(12000, (int) Payment::find($payment->id)->Amount);
+            $this->assertSame(12000, (int) Payment::where('InvoiceID', Invoice::where('StudentClassID', $newId)->value('id'))->sum('Amount'));
+            $this->assertSame(0, (int) Payment::where('InvoiceID', $invoice->id)->sum('Amount'));
+            $this->assertSame(0, (int) Payment::whereIn('Method', ['transfer_out', 'transfer_in'])->sum('Amount'));
+            $this->assertSame(12000, (int) Payment::where('Method', 'cash')->sum('Amount'));
+            $this->assertSame('completed', (string) $source->fresh()->closed_reason);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_transfer_with_everything_used_is_still_refused(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-01 10:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->createDirectorToken();
+            [$source] = $this->createPaidSource();
+            DB::table('ClassSession')->where('StudentClassID', $source->ID)->update(['Status' => 'attended']);
+            $this->withHeaders(['Authorization' => "Bearer {$token}"])
+                ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", ['teacher_id' => $this->makeTeacher(), 'start_date' => '2026-11-01', 'reason' => 'x'])
+                ->assertStatus(422)->assertJsonPath('code', 'split_contract_invalid_balance');
+            $this->assertSame(1, StudentClass::where('StudentID', $source->StudentID)->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_paid_transfer_refuses_partially_paid_contract(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-30 10:00:00', 'Asia/Taipei'));
