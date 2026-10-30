@@ -1,0 +1,88 @@
+name: Infection (billing money, advisory)
+
+# Mutation testing of ContractMoneyVerdict / ContractMoneyState / BillingPayableResolver (#4659 step 4).
+# Advisory only: never a required check, never fails the run. Read the MSI in the job summary.
+on:
+  schedule:
+    - cron: '30 19 * * *' # 03:30 Asia/Taipei
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/infection-billing.yml'
+      - 'backend/infection.json5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infection-billing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  infection:
+    name: Infection billing MSI (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    env:
+      DB_PASSWORD: ci-ephemeral # non-sensitive, ephemeral CI-only MySQL
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: AllTrue_test
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: ci-ephemeral
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype, pcov
+          coverage: pcov
+      - name: Install PHP dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist
+      - name: App key
+        working-directory: backend
+        run: |
+          cp .env.example .env 2>/dev/null || touch .env
+          php artisan key:generate --force
+      - name: Run Infection on billing money code
+        working-directory: backend
+        run: |
+          mkdir -p storage/infection
+          set +e
+          vendor/bin/infection --threads=2 --no-progress --min-msi=0 \
+            --filter='Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php' \
+            --test-framework-options='--filter=Billing|ContractMoney|FreeGift|FullDiscount|PaidStatus|TuitionSlip|SharedPackage' \
+            2>&1 | tee storage/infection/run.out
+          echo "infection exit: ${PIPESTATUS[0]} (advisory, ignored)"
+          exit 0
+      - name: Job summary
+        if: always()
+        working-directory: backend
+        run: |
+          {
+            echo '## Infection MSI (billing money code, advisory)'
+            echo '```'
+            cat storage/infection/summary.log 2>/dev/null || tail -40 storage/infection/run.out 2>/dev/null || echo 'no summary produced'
+            grep -E 'Mutation Score Indicator|Covered Code MSI|Mutation Code Coverage' storage/infection/run.out 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: infection-billing
+          path: backend/storage/infection/
+          if-no-files-found: ignore

@@ -1,0 +1,19 @@
+{
+    // Advisory mutation testing of the billing money code (#4659 step 4). Never a required check.
+    // The nightly workflow narrows the run with --filter (verdict, state, resolver) and --test-framework-options.
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "source": {
+        "directories": ["app/Services"]
+    },
+    "phpUnit": {
+        "configDir": "."
+    },
+    "timeout": 120,
+    "logs": {
+        "text": "storage/infection/infection.log",
+        "summary": "storage/infection/summary.log"
+    },
+    "mutators": {
+        "@default": true
+    }
+}

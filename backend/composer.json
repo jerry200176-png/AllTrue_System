@@ -13,6 +13,7 @@
   },
   "require-dev": {
     "fakerphp/faker": "^1.24",
+    "infection/infection": "^0.32.6",
     "larastan/larastan": "^3.0",
     "mockery/mockery": "^1.6",
     "nunomaduro/collision": "^8.6",
@@ -36,7 +37,8 @@
       "php": "8.2.35"
     },
     "allow-plugins": {
-      "pestphp/pest-plugin": true
+      "pestphp/pest-plugin": true,
+      "infection/extension-installer": false
     }
   },
   "minimum-stability": "dev",
