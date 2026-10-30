@@ -67,3 +67,17 @@ describe('SessionEditModal menu actions', () => {
     expect(wrapper.emitted('start-edit-note-time')).toBeTruthy();
   });
 });
+
+describe('SessionEditModal tutoring fee (in-app #443)', () => {
+  const base = { show: true, mode: 'edit-note-time', submitting: false, timeOptions: [], makeupLoading: false, computeEndTime: () => '' };
+  const mk = (classType) => mount(SessionEditModal, {
+    props: { ...base, form: { student_name: 's', session_date: '2026-08-08', start_time: '13:00', end_time: '15:00', edit_start_time: '13:00', edit_end_time: '15:00', current_status: 'scheduled', contract_rate: 500, contract_session_duration: 120, contract_rate_unit: 'session', course: { class_type: classType } } },
+  });
+  it('shows no per-session fee for tutoring', () => {
+    expect(mk('tutoring').text()).toContain('輔導課不另收費');
+    expect(mk('tutoring').text()).not.toContain('NT$ 500');
+  });
+  it('still shows the fee for a one-on-one course', () => {
+    expect(mk('one_on_one').text()).toContain('NT$ 500');
+  });
+});

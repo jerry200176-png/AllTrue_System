@@ -1018,6 +1018,7 @@ const {
   openTeacherLeaveBatch, onBatchSubstituteSubmitted,
 } = useCalendarSubstitute({
   branchId: computed(() => props.branchId),
+  branchName: computed(() => props.branchName),
   showModal,
   modalForm,
   editingCourseId,
