@@ -279,6 +279,7 @@ class MonthlyBillingSlipTest extends TestCase
         ]);
 
         \Illuminate\Support\Facades\DB::table('Subject')->updateOrInsert(['id' => 1], ['Subject_Name' => '數學', 'School_id' => 1, 'Grade_no' => 1]);
+        \Illuminate\Support\Facades\Cache::store('array')->flush();
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
             ->assertOk()
