@@ -8,8 +8,8 @@ updates:
     summary: 「當月學收」每列顯示已收／部分／未收，頂部顯示已收、應收與未收人數，可只看未收。
     items:
       - category: added
-        text: 帳務中心右上角點「當月學收」，選月份即可看每位學生該月是否已收，開股東會前可逐月確認。
+        text: 帳務中心點「當月學收」，選月份看每位學生該月是否已收。
       - category: added
-        text: 頂部顯示「已收 X / 應收 Y，未收 N 人」；全部收齊會顯示「本月學收已收齊」，也可勾「只看未收」，匯出 CSV 同步帶狀態。
+        text: 頂部顯示已收、應收與未收人數，收齊會顯示「本月學收已收齊」，可勾「只看未收」。
     source_refs:
       - "changelog:2026-10-30:monthly-tuition-pay-status"
