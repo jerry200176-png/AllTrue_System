@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Invoice;
 use App\Support\AttendanceStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +101,62 @@ class VerifyBugReproductions extends Command
                             AND sc.UsedSessions IS NOT NULL
                             AND sc.RemainingSessions <> (sc.SessionCount - sc.UsedSessions)",
             ],
+            [
+                'key' => 'package_over_debit',
+                'label' => 'Shared packages whose ledger used > taught + absent lessons (#4455 over-debit class)',
+                'issue' => '#4659/#4455', 'enforced' => true,
+                // Same lesson count as scripts/probes/inapp-package-ledger-probe.php (group types debit one slot, others one per lesson).
+                'sql' => "SELECT COUNT(*) AS c FROM (
+                            SELECT l.package_id, -SUM(l.delta) AS used FROM package_session_ledger l GROUP BY l.package_id HAVING -SUM(l.delta) > 0) u
+                          JOIN course_packages p ON p.id = u.package_id
+                          WHERE u.used > (
+                            SELECT COUNT(DISTINCT CASE WHEN p.class_type IN ('one_on_two','one_on_three','one_on_many','tutoring')
+                                                       THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) ELSE CONCAT('s', cs.id) END)
+                            FROM StudentClass sc JOIN ClassSession cs ON cs.StudentClassID = sc.ID
+                            WHERE sc.PackageID = u.package_id
+                              AND LOWER(cs.Status) IN ('attended','completed','late','absent'))",
+            ],
+            [
+                'key' => 'session_debited_twice',
+                'label' => 'Same session debited more than once on one package ledger or one course ledger',
+                'issue' => '#4659/#4455', 'enforced' => true,
+                'sql' => "SELECT (SELECT COUNT(*) FROM (
+                                    SELECT 1 FROM package_session_ledger WHERE class_session_id IS NOT NULL
+                                    GROUP BY package_id, class_session_id HAVING SUM(delta) < -1) a)
+                               + (SELECT COUNT(*) FROM (
+                                    SELECT 1 FROM session_deduction_ledger WHERE class_session_id IS NOT NULL
+                                    GROUP BY student_class_id, class_session_id
+                                    HAVING SUM(CASE event_type WHEN 'deduct' THEN 1 WHEN 'reverse' THEN -1 ELSE 0 END) > 1) b) AS c",
+            ],
+            [
+                'key' => 'unpaid_charge_vs_rate_count',
+                'label' => 'Unpaid count-mode contracts whose Charge is >5x off Rate x count (4050/4051 class, #4138)',
+                'issue' => '#4659/#4138', 'enforced' => true,
+                // Rate x count as in production-case-dump `charge_vs_rate_count` (hour-rated: Rate x hours); package members excluded.
+                'sql' => "SELECT COUNT(*) AS c FROM (
+                            SELECT sc.Charge AS charge, sc.Rate * (CASE WHEN LOWER(TRIM(COALESCE(sc.rate_unit, 'session'))) = 'hour'
+                                   THEN COALESCE(NULLIF(sc.TotalHours, 0), ROUND(sc.SessionCount * GREATEST(30, COALESCE(sc.SessionDuration, 120)) / 60))
+                                   ELSE sc.SessionCount END) AS rate_count
+                            FROM StudentClass sc
+                            WHERE sc.ScheduleMode = 'count' AND (sc.Stop = 0 OR sc.Stop IS NULL) AND COALESCE(sc.Paid, 0) = 0
+                              AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
+                              AND sc.PackageID IS NULL AND sc.Rate > 0 AND sc.SessionCount > 0) t
+                          WHERE COALESCE(t.charge, 0) * 5 < t.rate_count OR COALESCE(t.charge, 0) > t.rate_count * 5",
+            ],
+            [
+                'key' => 'paid_flag_vs_invoice',
+                'label' => 'Active contracts where Paid=1 beside an open positive invoice, or Paid=0 with every positive invoice fully paid (G-009)',
+                'issue' => '#4659/G-009', 'enforced' => true,
+                // Payment rows are the truth: Invoice::netPaidSql(). Package members are skipped (their package owns the paid flag).
+                'sql' => "SELECT COUNT(*) AS c FROM StudentClass sc
+                          WHERE (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.PackageID IS NULL AND (
+                            (sc.Paid = 1 AND EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = sc.ID AND COALESCE(i.Status, '') <> 'void'
+                                  AND i.TotalAmount > 0 AND i.TotalAmount > " . Invoice::netPaidSql('i') . "))
+                            OR (COALESCE(sc.Paid, 0) = 0
+                                AND EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = sc.ID AND COALESCE(i.Status, '') <> 'void' AND i.TotalAmount > 0)
+                                AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = sc.ID AND COALESCE(i.Status, '') <> 'void'
+                                  AND i.TotalAmount > 0 AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
+            ],
         ];
     }
 
@@ -110,7 +167,11 @@ class VerifyBugReproductions extends Command
 
         foreach ($this->conditions() as $cond) {
             $count = (int) (DB::selectOne($cond['sql'])->c ?? 0);
-            $isRegression = $cond['enforced'] && $count > 0;
+            // Known-baseline allowance (config/reproduction_baselines.php): an enforced condition fails only above it;
+            // a listed null means the baseline is not measured yet (reported, never failing).
+            $baseline = config('reproduction_baselines.' . $cond['key'], 0);
+            $pending = $cond['enforced'] && $baseline === null;
+            $isRegression = $cond['enforced'] && !$pending && $count > (int) $baseline;
             if ($isRegression) {
                 $regressed++;
             }
@@ -119,8 +180,9 @@ class VerifyBugReproductions extends Command
                 'issue' => $cond['issue'],
                 'enforced' => $cond['enforced'],
                 'count' => $count,
+                'baseline' => $baseline,
                 'state' => $cond['enforced']
-                    ? ($count === 0 ? 'FIXED-OK' : 'REGRESSED')
+                    ? ($count === 0 ? 'FIXED-OK' : ($pending ? 'BASELINE-PENDING' : ($isRegression ? 'REGRESSED' : 'WITHIN-BASELINE')))
                     : ($count === 0 ? 'OPEN-CLEARED' : 'OPEN'),
                 'label' => $cond['label'],
             ];
