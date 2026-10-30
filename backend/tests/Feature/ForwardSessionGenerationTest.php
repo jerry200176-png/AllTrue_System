@@ -55,6 +55,36 @@ class ForwardSessionGenerationTest extends TestCase
             ->where('Note', '系統向前生成 #1062')->count());
     }
 
+    /** in-app #450: after a 課程設定 time edit the generator uses the course's current slot, not the old-time history. */
+    public function test_generated_rows_use_the_courses_current_slot_not_the_history_tally(): void
+    {
+        $sc = $this->course(remaining: 10);
+        foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+            $this->sess($sc, $d, '16:00:00', '18:00:00', 'attended');
+        }
+        DB::table('StudentClass')->where('ID', $sc)->update(['week' => 1, 'time' => '20:00:00']);
+
+        $plan = $this->gen->planCourse($sc, 4, $this->today);
+        $this->assertSame('plan', $plan['status']);
+        foreach ($plan['slots'] as $s) {
+            $this->assertSame(['20:00:00', '22:00:00'], [$s['StartTime'], $s['EndTime']]);
+        }
+    }
+
+    public function test_same_day_multi_slot_keeps_the_slot_the_history_confirms(): void
+    {
+        $sc = $this->course(remaining: 10);
+        foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+            $this->sess($sc, $d, '17:00:00', '19:00:00', 'attended');
+        }
+        DB::table('StudentClass')->where('ID', $sc)->update(['week' => 1, 'time' => '13:00:00', 'week1' => 1, 'time1' => '17:00:00', 'duration1' => 120]);
+
+        $plan = $this->gen->planCourse($sc, 4, $this->today);
+        foreach ($plan['slots'] as $s) {
+            $this->assertSame('17:00:00', $s['StartTime']);
+        }
+    }
+
     public function test_dormant_course_is_skipped(): void
     {
         $sc = $this->course(remaining: 5);

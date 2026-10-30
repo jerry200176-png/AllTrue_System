@@ -34,13 +34,12 @@ it('In-App #345: a settled monthly course with Stop=0 is labelled history, never
     await flushPromises();
     await wrapper.find('.student-row').trigger('click');
     await flushPromises();
+    // in-app #448: the row lists active contracts only; history folds into one 「+N 歷史」 chip.
     const chips = wrapper.findAll('.student-row .subject-pill').map((c) => c.text());
-    // #3731 keeps closed rows visible as chips, but they must say 歷史 (the report saw a bare 「生物 月結」).
     expect(chips).toHaveLength(2);
-    expect(chips[0]).toContain('生物');
-    expect(chips[0]).toContain('歷史 · 已結算');
-    expect(chips[1]).toContain('數學');
-    expect(chips[1]).not.toContain('歷史');
+    expect(chips[0]).toContain('數學');
+    expect(chips.join('')).not.toContain('生物');
+    expect(chips[1]).toBe('+1 歷史');
   } finally {
     wrapper.unmount();
   }

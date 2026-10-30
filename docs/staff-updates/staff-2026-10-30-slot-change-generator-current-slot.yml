@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-slot-change-generator-current-slot
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 改時段後預排堂次全更新
+    summary: 在課程設定改上課時間，從當天起所有預排堂次都用新時間，系統自動補建的堂次也一樣。
+    items:
+      - category: fixed
+        text: 系統自動補建的堂次改用課程目前的固定時段，不再照舊時間補建。
+      - category: fixed
+        text: 已上課、請假與個別調課或代課的堂次不會被改動。
+    source_refs:
+      - "changelog:2026-10-30:slot-change-generator-current-slot"

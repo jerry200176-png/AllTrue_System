@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-student-row-history-chip
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 學生列表不再被歷史合約洗版
+    summary: 學生列表只顯示進行中課程，已結算的歷史合約合併成一個「+N 歷史」小標籤。
+    items:
+      - category: fixed
+        text: 學生列表的課程標籤只留進行中的課程，已結算或已完課的歷史合約合併成灰色「+N 歷史」。
+      - category: fixed
+        text: 歷史合約的細節仍可在展開學生後的課程安排裡查看。
+    source_refs:
+      - "changelog:2026-10-30:student-row-history-chip"
