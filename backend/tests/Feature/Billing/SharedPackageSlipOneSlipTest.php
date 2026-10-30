@@ -27,6 +27,10 @@ class SharedPackageSlipOneSlipTest extends TestCase
             'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0,
             'rate' => 1650, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
         ]);
+        foreach ([1 => '國文', 2 => '英文'] as $sid => $name) {
+            DB::table('Subject')->updateOrInsert(['id' => $sid], ['Subject_Name' => $name, 'School_id' => 1, 'Grade_no' => 1]);
+        }
+        \Illuminate\Support\Facades\Cache::store('array')->flush();
         $members = [];
         foreach ([1, 2] as $id) {
             $members[] = StudentClass::create([
@@ -52,7 +56,7 @@ class SharedPackageSlipOneSlipTest extends TestCase
             $res = $this->withHeaders(['Authorization' => "Bearer {$tok}", 'Accept' => 'application/json'])
                 ->getJson("/api/v1/alerts/tuition-slip/{$m->ID}")->assertOk();
             $this->assertSame(16500, $res->json('charge'));
-            $this->assertSame('Chinese、English', $res->json('subject'));
+            $this->assertSame('國文、英文', $res->json('subject'));
         }
     }
 
@@ -61,6 +65,6 @@ class SharedPackageSlipOneSlipTest extends TestCase
         [$members, $tok] = $this->package('date');
         $res = $this->withHeaders(['Authorization' => "Bearer {$tok}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/alerts/tuition-slip/{$members[0]->ID}");
-        $this->assertNotSame('Chinese、English', $res->json('subject'));
+        $this->assertNotSame('國文、英文', $res->json('subject'));
     }
 }
