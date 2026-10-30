@@ -819,7 +819,7 @@ class FinanceController extends Controller
 
         $unpaidOnly = $request->boolean('unpaid_only');
         if ($unpaidOnly) {
-            $regularRows = $regularRows->filter(fn ($c) => $courseStatus[(int) $c->ID]['pay_status'] !== 'paid');
+            $regularRows = $regularRows->filter(fn ($c) => !in_array($courseStatus[(int) $c->ID]['pay_status'], ['paid', 'waived'], true));
             $monthlyPkgs = $monthlyPkgs->filter(fn ($p) => $pkgStatus[$p->id]['pay_status'] !== 'paid');
         }
 
@@ -941,7 +941,7 @@ class FinanceController extends Controller
 
         // Export lists regular course rows only (monthly package rows are not exported today).
         $exportStatus = $this->monthPaymentStatuses($allRows, collect(), [], sprintf('%04d-%02d', $year, $month))['course'];
-        $statusLabels = ['paid' => '已收', 'partial' => '部分', 'unpaid' => '未收', 'review' => '待確認'];
+        $statusLabels = ['paid' => '已收', 'partial' => '部分', 'unpaid' => '未收', 'review' => '待確認', 'waived' => '已免收'];
 
         $branchIds = $campusIds ?: [];
         $branchName = !empty($branchIds)
@@ -1005,20 +1005,29 @@ class FinanceController extends Controller
             }
         };
 
-        // Oldest-first allocation base for partially paid count-mode contracts: attended lessons value through month end.
+        // Count-mode contracts backed by an invoice: lesson counts to spread the authoritative contract amount over
+        // the lessons (a discounted contract must never show more than its ledger value, partial or settled).
         $monthEnd = date('Y-m-t', strtotime($period . '-01'));
-        $partialIds = [];
+        $countIds = [];
+        $monthlyIds = [];
         foreach ($courses as $c) {
             $v = $verdicts[(int) $c->ID] ?? null;
-            if ($v !== null && $v->status === 'partial' && !((string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0)) {
-                $partialIds[] = (int) $c->ID;
+            if ($v === null) {
+                continue;
+            }
+            if ((string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0) {
+                $monthlyIds[] = $c;
+            } elseif ($v->source === 'invoice' && $v->owed > 0) {
+                $countIds[] = (int) $c->ID;
             }
         }
-        $throughEnd = $partialIds === [] ? [] : DB::table('ClassSession')
-            ->whereIn('StudentClassID', $partialIds)
+        $throughEnd = $countIds === [] ? [] : DB::table('ClassSession')
+            ->whereIn('StudentClassID', $countIds)
             ->whereIn('Status', AttendanceStatus::payableSessionStatuses())
             ->select('StudentClassID', DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN SessionDate <= '{$monthEnd}' THEN 1 ELSE 0 END) as thru"))
             ->groupBy('StudentClassID')->get()->keyBy('StudentClassID')->all();
+        // Selected-month coverage evidence (invoice range gaps / lessons outside the contract) from the period engine.
+        $coverage = $monthlyIds === [] ? [] : app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($monthlyIds));
 
         $course = [];
         foreach ($courses as $c) {
@@ -1027,10 +1036,17 @@ class FinanceController extends Controller
             $monthlyBilled = (string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0;
             $owed = $out = 0.0;
             $p = ($v !== null && $monthlyBilled) ? collect($v->periods)->first(fn ($x) => ($x['billing_period'] ?? null) === $period) : null;
+            $gap = collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains(
+                fn ($r) => ($r['calendar_month'] ?? null) === $period && (($r['uncovered_sessions'] ?? 0) > 0 || ($r['outside_contract_sessions'] ?? 0) > 0)
+            );
+            if ((string) $c->closed_reason === 'waived') {
+                $course[(int) $c->ID] = ['pay_status' => 'waived', 'due_amount' => 0.0, 'outstanding_amount' => 0.0];
+                continue; // written off by the director: neither collected nor outstanding
+            }
             if ($v === null) {
                 $st = 'review';
             } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
-                $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy'])) ? 'review' : $p['status'];
+                $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy']) || $gap) ? 'review' : $p['status'];
                 [$owed, $out] = [(float) $p['total'], (float) $p['outstanding']];
             } elseif ($monthlyBilled && $p !== null) {
                 $st = 'review'; // this month's lessons cannot be attributed to an invoice
@@ -1038,21 +1054,23 @@ class FinanceController extends Controller
                 $st = 'review';
             } elseif ($v->source === 'legacy_flag') {
                 $st = 'review'; // Paid flag only, no invoice/payment evidence: never green, never debt
-            } elseif ($v->isSettled()) {
-                [$st, $owed, $out] = ['paid', $tuition, 0.0];
             } elseif ($monthlyBilled) {
-                [$st, $owed, $out] = ['unpaid', $tuition, $tuition];
-            } elseif ($v->status === 'partial') {
+                [$st, $owed, $out] = $v->isSettled() ? ['paid', $tuition, 0.0] : ['unpaid', $tuition, $tuition];
+            } else {
                 // Spread the authoritative contract amount (invoice total) over the lessons, then apply receipts oldest-first.
                 $rate = $this->resolveRate($c);
                 $agg = $throughEnd[(int) $c->ID] ?? null;
                 $gross = (int) ($agg->total ?? 0) * $rate;
                 $scale = ($gross > 0 && $v->owed < $gross) ? $v->owed / $gross : 1.0;
                 $owed = round($tuition * $scale, 2);
-                $out = max(0.0, min($owed, (int) ($agg->thru ?? 0) * $rate * $scale - (float) $v->applied));
-                $st = $out <= 0 ? 'paid' : ($out >= $owed ? 'unpaid' : 'partial');
-            } else {
-                [$st, $owed, $out] = ['unpaid', $tuition, $tuition];
+                if ($v->isSettled()) {
+                    [$st, $out] = ['paid', 0.0];
+                } elseif ($v->status === 'partial') {
+                    $out = max(0.0, min($owed, (int) ($agg->thru ?? 0) * $rate * $scale - (float) $v->applied));
+                    $st = $out <= 0 ? 'paid' : ($out >= $owed ? 'unpaid' : 'partial');
+                } else {
+                    [$st, $out] = ['unpaid', $owed];
+                }
             }
             if ($st === 'review') {
                 $unconfirmed += $tuition;

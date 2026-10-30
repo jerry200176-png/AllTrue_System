@@ -3,7 +3,7 @@ import { collectionSummary, payStatusLabel } from '../../lib/tuitionPayStatus';
 
 describe('tuitionPayStatus (in-app #447)', () => {
   it('labels every backend status', () => {
-    expect(['paid', 'partial', 'unpaid', 'review', 'x'].map(payStatusLabel)).toEqual(['已收', '部分', '未收', '待確認', '—']);
+    expect(['paid', 'partial', 'unpaid', 'review', 'waived', 'x'].map(payStatusLabel)).toEqual(['已收', '部分', '未收', '待確認', '已免收', '—']);
   });
   it('shows 已收 X / 應收 Y，未收 N 人 while something is outstanding', () => {
     expect(collectionSummary({ total_due: 30000, total_collected: 13000, total_outstanding: 17000, unpaid_students: 3 }))

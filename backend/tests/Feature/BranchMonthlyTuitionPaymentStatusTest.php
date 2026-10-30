@@ -157,4 +157,30 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertSame(['partial', 1000, 4000], [$by($disc)['pay_status'], (int) $by($disc)['outstanding_amount'], (int) $by($disc)['due_amount']]);
         $this->assertSame('review', $by($mism)['pay_status']);
     }
+
+    /** Codex P1 round 3: settled discounted contract, same-month coverage gap, waived contract. */
+    public function test_settled_discount_coverage_gap_and_waived(): void
+    {
+        // discounted contract fully paid: collected stays at the 4000 August share of the 10000 ledger value
+        $settled = $this->course([['2026-08', 10000, 'paid', 10000, [[10000, 'cash']]]], ['Charge' => 10000], self::AUG);
+        foreach (['2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04', '2026-07-05', '2026-07-06'] as $d) {
+            \App\Models\ClassSession::create(['StudentClassID' => $settled->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        // August invoice only covers Aug 1-15 while lessons also fall on Aug 17 and 24
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-01'];
+        $gap = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, self::AUG);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $gap->ID)->delete();
+        \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $gap->ID)->value('id'), 'StudentClassID' => $gap->ID,
+            'Description' => 'gap', 'Amount' => 6000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-15']);
+        // waived contract with attended lessons
+        $waived = $this->course([], ['closed_reason' => 'waived', 'Stop' => 1, 'Paid' => 1], self::AUG);
+
+        $res = $this->fetchReport()->assertOk();
+        $by = fn ($c) => collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame(['paid', 4000], [$by($settled)['pay_status'], (int) $by($settled)['due_amount']]);
+        $this->assertSame('review', $by($gap)['pay_status']);
+        $this->assertSame(['waived', 0], [$by($waived)['pay_status'], (int) $by($waived)['due_amount']]);
+        $this->assertSame(0, (int) $res->json('summary.total_outstanding'));
+        $this->assertNotContains((int) $waived->ID, collect($this->fetchReport('&unpaid_only=1')->json('data'))->pluck('student_class_id')->map(fn ($i) => (int) $i)->all());
+    }
 }
