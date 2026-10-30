@@ -22,7 +22,7 @@ describe('課程帳務列 · 不重複顯示「在這裡看帳務」 (#3982)', (
   });
 
   it('hides the main action when its label equals the ledger button', () => {
-    const mainAction = billingRowActions.match(/<button v-if="([^"]+)" class="small primary"[^>]*>\{\{ paymentNextActionLabel\(row\.course\) \}\}<\/button>/);
+    const mainAction = billingRowActions.match(/<button v-(?:else-)?if="([^"]+)" class="small primary"[^>]*>\{\{ paymentNextActionLabel\(row\.course\) \}\}<\/button>/);
     expect(mainAction).not.toBeNull();
     expect(mainAction[1]).toBe('showsBillingRowNextAction(row.course)');
     expect(source).toContain(

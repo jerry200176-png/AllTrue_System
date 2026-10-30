@@ -243,3 +243,22 @@ assert.deepEqual(['settled_pending', 'completed', 'converted_trial', null].map((
   [false, true, true, false], 'CourseManagement keeps 待對帳結案 in its working list');
 
 console.log('courseMoneyState passed');
+
+// in-app #442: one lead row per count-mode shared package carries 繳費單 / 登記繳費回報.
+{
+  const m = (id, extra = {}) => ({ course: { id, PackageID: 7, payment_type: 'session', payment_status: 'unpaid', ...extra }, reports: extra.reports || [] });
+  const lead = (rows, i = 0) => M.sharedPackageBillingLead(rows[i].course, rows)?.id ?? null;
+  assert.equal(lead([m(1), m(2)], 0), 1);
+  assert.equal(lead([m(1), m(2)], 1), 1);
+  assert.equal(lead([m(1), m(2, { reports: [{ status: 'pending' }] })]), 2);
+  assert.equal(lead([m(1, { class_type: 'tutoring' }), m(2, { payment_status: 'paid' }), m(3)]), 3);
+  const bill = (id) => ({ ...m(id), invoices: [{ status: 'unpaid' }] });
+  assert.equal(M.sharedPackageBillingLead(bill(1).course, [bill(1), bill(2)]), null); // two open bills: per-member actions
+  assert.equal(M.sharedPackageBillingLead(bill(1).course, [bill(1), m(2)])?.id, 1);
+  assert.equal(lead([m(1), { ...m(2), invoices: [{ status: 'partial' }] }]), 2); // the member holding the open bill leads
+  assert.equal(lead([{ ...m(1, { class_type: 'tutoring' }), invoices: [{ status: 'unpaid' }] }, m(2)]), 2); // tutoring invoice never leads
+  const monthly = [m(1, { payment_type: 'monthly' }), m(2, { payment_type: 'monthly' })];
+  assert.equal(M.sharedPackageBillingLead(monthly[0].course, monthly), null);
+  assert.equal(M.sharedPackageBillingLead(m(1).course, [m(1)]), null);
+  assert.equal(M.sharedPackageBillingLead({ id: 9 }, [m(1), m(2)]), null);
+}

@@ -86,7 +86,7 @@ describe('CourseManagement student billing tab', () => {
     expect(moneyState).toContain("{ label: '帳務資料需修正', tone: 'anomaly', nextAction: 'none' }");
     expect(moneyState).toContain("{ label: '無須繳費', tone: 'no_payment', nextAction: 'none' }");
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isTutoringCourse(course);');
-    expect(source).toContain('v-if="showsBillingRowNextAction(row.course)"');
+    expect(source).toContain('v-else-if="showsBillingRowNextAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');
     expect(source).toContain("anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment'");
@@ -113,5 +113,14 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('<span v-else class="hint">核對入帳後才能開收據</span>');
     expect(source).not.toContain('確認入帳後可開');
     expect(moneyState).toContain("if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };");
+  });
+});
+
+describe('shared package billing rows (in-app #442)', () => {
+  it('only the package lead row keeps 繳費單 / 登記繳費回報; followers point to it', () => {
+    expect(source).toContain('const billingPackageLead = (row, group)');
+    expect(source).toContain('isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)');
+    expect(source).toContain('data-testid="billing-package-follower"');
+    expect(source).toContain('v-else-if="showsBillingRowNextAction(row.course)"');
   });
 });
