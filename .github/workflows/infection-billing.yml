@@ -1,13 +1,15 @@
 name: Infection (billing money, advisory)
 
-# Mutation testing of ContractMoneyVerdict / ContractMoneyState / BillingPayableResolver (#4659 step 4).
-# Advisory only: never a required check, never fails the run. Read the MSI in the job summary.
+# Incremental mutation testing of ContractMoneyVerdict / ContractMoneyState / BillingPayableResolver (#4659 step 4).
+# Pull requests: only the changed lines of those files are mutated (--git-diff-lines), so a run takes minutes.
+# workflow_dispatch: full run of the three files (hours; per-mutant RefreshDatabase). Advisory only: never required, never fails.
 on:
-  schedule:
-    - cron: '30 19 * * *' # 03:30 Asia/Taipei
   workflow_dispatch:
   pull_request:
     paths:
+      - 'backend/app/Services/Billing/ContractMoneyVerdict.php'
+      - 'backend/app/Services/Billing/ContractMoneyState.php'
+      - 'backend/app/Services/BillingPayableResolver.php'
       - '.github/workflows/infection-billing.yml'
       - 'backend/infection.json5'
 
@@ -22,7 +24,7 @@ jobs:
   infection:
     name: Infection billing MSI (advisory)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     continue-on-error: true
     env:
       DB_PASSWORD: ci-ephemeral # non-sensitive, ephemeral CI-only MySQL
@@ -45,6 +47,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: "8.2"
@@ -64,7 +67,12 @@ jobs:
         run: |
           mkdir -p storage/infection
           set +e
-          vendor/bin/infection --threads=4 --no-progress --min-msi=0 \
+          DIFF=""
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git fetch -q origin main
+            DIFF="--git-diff-lines --git-diff-base=origin/main"
+          fi
+          vendor/bin/infection --threads=4 --no-progress --min-msi=0 $DIFF \
             --filter='Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php' \
             --test-framework-options='--filter=ContractMoney|BillingPayable|BillingCourseStatus|FreeGiftZeroBill|FullDiscountSettled|PaidStatus|TuitionSlipFollows|SharedPackage|CollectionQueueRequestShape' \
             2>&1 | tee storage/infection/run.out
