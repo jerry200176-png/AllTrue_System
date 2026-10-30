@@ -44,7 +44,7 @@ final class ContractMoneyVerdict
             $invoiceId = $s['current_invoice_id'];
             $current = $invoiceId === null ? null : collect($periods)->first(fn ($p) => in_array($invoiceId, $p['invoice_ids'], true));
             $out[$id] = new ContractVerdict(
-                $id, (string) $s['status'], (int) $s['payable_total'], (int) $s['applied'], (int) $s['outstanding'],
+                $id, (string) $s['status'], (int) ($s['payable_total'] + 0), (int) $s['applied'], (int) $s['outstanding'],
                 (int) $s['overpaid'], (string) $s['source'], $invoiceId, $current['billing_period'] ?? null, $periods,
             );
         }
