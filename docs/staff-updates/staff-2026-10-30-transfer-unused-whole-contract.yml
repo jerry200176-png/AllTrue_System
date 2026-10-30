@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-transfer-unused-whole-contract
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 還沒上過課的整期課程可以直接轉課
+    summary: 已繳費但尚未上課的合約，轉課時整份轉到新課程，已繳金額不變。
+    items:
+      - category: fixed
+        text: 轉課日之前沒有已上堂數時，不再出現「不足以分成兩份合約」，整份合約直接轉過去。
+      - category: fixed
+        text: 已繳金額完整帶到新合約，舊合約收成歷史；有上過課的合約仍照原本方式分成兩份。
+    source_refs:
+      - "changelog:2026-10-30:transfer-unused-whole-contract"
