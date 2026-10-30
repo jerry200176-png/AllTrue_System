@@ -58,7 +58,8 @@ jobs:
         run: |
           mkdir -p storage/infection
           set +e
-          vendor/bin/infection --threads=2 --no-progress --min-msi=0 \
+          # one thread: every mutant run shares the single AllTrue_test DB (RefreshDatabase), so workers would race
+          vendor/bin/infection --threads=1 --no-progress --min-msi=0 \
             --filter='Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php' \
             --test-framework-options='--filter=ContractMoney|BillingPayable|BillingCourseStatus|FreeGiftZeroBill|FullDiscountSettled|PaidStatus|TuitionSlipFollows|SharedPackage|CollectionQueueRequestShape' \
             2>&1 | tee storage/infection/run.out
