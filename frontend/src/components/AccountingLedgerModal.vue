@@ -44,7 +44,7 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}。下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（記在同一張帳單上，不會自動抵上面的未繳金額）。{{ ledgerExceptions.some((x) => x.can_void) ? '下面「需先處理」會寫是哪一筆，可以撤銷多出來的那一筆。' : '這筆沒有可以直接撤銷的收款，請用下面的「回報給系統管理員」。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -62,7 +62,10 @@
                   @click="voidReport(x.report_id)"
                 >{{ x.action_label || '撤銷收款' }}</button>
                 <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
-                <span v-if="!x.can_void && !x.report_id" class="ledger-muted">這筆沒有可撤銷的收款，請找老闆確認。</span>
+                <template v-if="!x.can_void && !x.report_id">
+                  <span class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
+                  <button class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給系統管理員</button>
+                </template>
               </div>
             </div>
             <button
@@ -325,6 +328,8 @@ import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  formatLedgerDriftLine,
+  buildLedgerIssueReport,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
@@ -407,6 +412,11 @@ const busyReportId = ref(null);
 const busyInvoiceId = ref(null);
 const expandedIds = ref(new Set());
 const showAllExceptions = ref(false);
+// in-app #446: the one action a director can take on a drift they cannot undo; the launcher opens pre-filled with IDs.
+const reportToAdmin = (x) => {
+  const inv = (payload.value?.invoices || []).find((i) => Number(i.id) === Number(x.anomaly?.invoice_id));
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: buildLedgerIssueReport(x.anomaly, inv, payload.value?.student?.id) }));
+};
 const showOtherReceipts = ref(false);
 // 涵蓋上課日, loaded lazily per expanded row: { 'inv-41': { state, sessions, showAll } }.
 const coverage = ref({});
@@ -584,6 +594,8 @@ const ledgerExceptions = computed(() => {
       detail: formatLedgerAnomalyDetail(a),
       report_id: a.report_id || null,
       can_void: a.action?.type === 'void_report',
+      drift_line: formatLedgerDriftLine((payload.value?.invoices || []).find((i) => Number(i.id) === Number(a.invoice_id))),
+      anomaly: a,
       severity: a.severity === 'critical' ? 0 : 1,
     });
   });
@@ -599,6 +611,8 @@ const ledgerExceptions = computed(() => {
         hint: '多收的錢沒有記進任何帳單。如果是重複收款，撤銷這筆就好；要保留請找老闆處理。',
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
+        drift_line: formatLedgerDriftLine(inv),
+        anomaly: { code: 'overpayment_pending_review', invoice_id: inv.id, student_class_id: inv.student_class_id },
         severity: 1,
       });
     });
