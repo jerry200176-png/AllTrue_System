@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-10-30-ledger-anomaly-actionable
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務異常卡片更好懂
+    summary: 沒有可撤銷收款的異常會寫出金額差異，並可一鍵回報給系統管理員。
+    items:
+      - category: improved
+        text: 學生帳務的「需先處理」會寫出應收、收款紀錄合計與多收金額，不再只寫請找老闆。
+      - category: improved
+        text: 新增「回報給系統管理員」，按下去會帶入學生、帳單、課程編號開好回報表單。
+      - category: fixed
+        text: 同一筆多收不再另外跳出「帳單金額不一致」。
+    source_refs:
+      - "changelog:2026-10-30:ledger-anomaly-actionable"

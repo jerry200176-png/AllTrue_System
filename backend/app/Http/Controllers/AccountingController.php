@@ -522,7 +522,8 @@ class AccountingController extends Controller
                 );
             }
 
-            if ($paidAmount !== $appliedAmount) {
+            // The stored amount equal to the whole payment total is the overpay above, not a second mismatch (in-app #446).
+            if ($paidAmount !== $appliedAmount && !($overpaidAmount > 0 && $paidAmount === $netApplied)) {
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'paid_amount_mismatch',
                     'warning',
