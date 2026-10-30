@@ -648,13 +648,16 @@ const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_tot
 // F-1: one-line conclusion. Only sums figures already on screen (owedSplit.now, pending receipts); no new money rule.
 const pendingConfirmTotal = computed(() => (payload.value?.receipts || [])
   .filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount || 0), 0));
+// A combined bill covers every course it lists (invoiceCoversCourse), not only its anchor.
+const courseHasBill = (id) => (payload.value?.invoices || []).some((inv) => inv.status !== 'void' && invoiceCoversCourse(inv, id));
 const conclusion = computed(() => {
   const parts = [];
   if (owedSplit.value.now > 0) parts.push(`未繳 ${formatCurrency(owedSplit.value.now)}`);
   if (pendingConfirmTotal.value > 0) parts.push(`待確認入帳 ${formatCurrency(pendingConfirmTotal.value)}`);
-  const unbilled = (payload.value?.courses || []).some((c) => !c.paid && c.waived !== true && c.class_type !== 'tutoring' && owedFor(c.id) === 0);
+  const unbilled = (payload.value?.courses || []).some((c) => !c.paid && c.waived !== true && c.class_type !== 'tutoring' && !courseHasBill(c.id));
   if (unbilled) parts.push('還沒開帳單');
-  return parts.length ? parts.join('・') : '已收齊';
+  if (parts.length) return parts.join('・');
+  return owedSplit.value.later > 0 ? '到今天沒有未繳' : '已收齊'; // a future-due bill is not 已收齊
 });
 
 const owedFor = (id) => (payload.value?.invoices || [])
@@ -1046,7 +1049,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-owed p{margin:0}
 .ledger-owed__label{font-size:12px;color:var(--ds-ink-mute)}
 .ledger-owed__now{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
-.ledger-conclusion{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:var(--ds-font-size-md)}
+.ledger-conclusion{position:relative;display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:var(--ds-font-size-md)}
 .ledger-owed__later{font-size:12px;color:var(--ds-ink-mute)}
 .ledger-owed__over{margin-top:8px !important;padding:8px 10px;border-radius:8px;background:var(--ds-warning-wash);color:var(--ds-ink);font-size:13px}
 

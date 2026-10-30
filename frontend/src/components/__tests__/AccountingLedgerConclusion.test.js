@@ -53,4 +53,20 @@ describe('ledger drawer conclusion', () => {
     expect(w.get('[data-testid="ledger-conclusion"]').text()).toContain('還沒開帳單');
     w.unmount(); vi.unstubAllGlobals();
   });
+  it('does not say 已收齊 when the only bill is not due yet', async () => {
+    const w = await open({ ...base, courses: [course()], invoices: [inv({ due_date: '2999-01-01' })] });
+    const text = w.get('[data-testid="ledger-conclusion"]').text();
+    expect(text).toContain('到今天沒有未繳');
+    expect(text).not.toContain('已收齊');
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('does not call a course unbilled when a combined bill covers it', async () => {
+    const w = await open({
+      ...base, courses: [course(), course({ id: 3, subject: '英文' })],
+      invoices: [inv({ covered_student_class_ids: [2, 3] })],
+    });
+    expect(w.get('[data-testid="ledger-conclusion"]').text()).not.toContain('還沒開帳單');
+    w.unmount(); vi.unstubAllGlobals();
+  });
 });
