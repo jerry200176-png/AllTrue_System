@@ -40,3 +40,18 @@ describe('billing human copy — no engineering jargon on director surfaces', ()
     expect(course).toContain('學生帳務');
   });
 });
+
+describe('ledger anomaly with nothing to undo (in-app #446)', () => {
+  it('explains the drift and offers a working action, not a dead end', () => {
+    expect(ledger).not.toContain('請找老闆確認');
+    expect(ledger).toContain('data-testid="ledger-exception-drift"');
+    expect(ledger).toContain('回報給系統管理員');
+    expect(ledger).toContain("new CustomEvent('alltrue-open-bug-report'");
+    expect(ledger).toContain('不會自動抵上面的未繳金額');
+  });
+  it('the report launcher listens for the pre-filled open request', () => {
+    const launcher = readFileSync(resolve(__dirname, '../BugReportLauncher.vue'), 'utf8');
+    expect(launcher).toContain("addEventListener('alltrue-open-bug-report', onOpenRequest)");
+    expect(launcher).toContain("removeEventListener('alltrue-open-bug-report', onOpenRequest)");
+  });
+});

@@ -2969,7 +2969,9 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.payments.2.applied_amount', 0)
             ->assertJsonPath('invoices.0.payments.2.unapplied_amount', 4000)
             ->assertJsonPath('invoices.0.payments.2.application_status', 'overpayment_pending_review')
-            ->assertJsonPath('anomalies.0.code', 'overpayment_pending_review');
+            ->assertJsonPath('anomalies.0.code', 'overpayment_pending_review')
+            // in-app #446: PaidAmount that equals the payment total is one overpay, not a second 金額不一致.
+            ->assertJsonMissing(['code' => 'paid_amount_mismatch']);
     }
 
     public function test_accounting_settled_courses_includes_paid_count_course_without_low_sessions(): void
