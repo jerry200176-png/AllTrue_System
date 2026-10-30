@@ -325,10 +325,10 @@ export const sharedPackageBillingLead = (course, rows) => {
   if (members.length < 2) return null;
   // Legacy package whose bills are open on several members: each bill is its own, so every member keeps its actions (ledger rule).
   const openBill = (r) => (r.invoices || []).some((i) => ['unpaid', 'partial'].includes(i?.status));
-  if (members.filter(openBill).length > 1) return null;
+  if (members.filter((r) => r.course.class_type !== 'tutoring').filter(openBill).length > 1) return null;
   const regular = members.filter((r) => r.course.class_type !== 'tutoring');
   const lead = members.find((r) => r.reports?.some((x) => x.status === 'pending'))
-    || members.find(openBill) // its slip/payment resolves that bill, not the package's full estimate
+    || regular.find(openBill) // its slip/payment resolves that bill, not the package's full estimate
     || regular.find((r) => !['paid', 'free'].includes(String(r.course.payment_status || '')))
     || regular[0] || members[0];
   return lead.course;

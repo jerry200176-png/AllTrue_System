@@ -256,6 +256,7 @@ console.log('courseMoneyState passed');
   assert.equal(M.sharedPackageBillingLead(bill(1).course, [bill(1), bill(2)]), null); // two open bills: per-member actions
   assert.equal(M.sharedPackageBillingLead(bill(1).course, [bill(1), m(2)])?.id, 1);
   assert.equal(lead([m(1), { ...m(2), invoices: [{ status: 'partial' }] }]), 2); // the member holding the open bill leads
+  assert.equal(lead([{ ...m(1, { class_type: 'tutoring' }), invoices: [{ status: 'unpaid' }] }, m(2)]), 2); // tutoring invoice never leads
   const monthly = [m(1, { payment_type: 'monthly' }), m(2, { payment_type: 'monthly' })];
   assert.equal(M.sharedPackageBillingLead(monthly[0].course, monthly), null);
   assert.equal(M.sharedPackageBillingLead(m(1).course, [m(1)]), null);
