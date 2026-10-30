@@ -310,3 +310,26 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
   if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };
   return { label: TUITION_STATUS_CONFIG[status]?.label || UNKNOWN_STATUS_LABEL, tone, nextAction };
 };
+
+/**
+ * in-app #442: members of one count-mode shared package are ONE payment obligation (PaymentReportController: one report
+ * covers every member; the ledger gives the package a single lead card). Returns the member course whose billing row
+ * carries 繳費單 / 登記繳費回報, or null when `course` is not in such a package. Lead = member holding a pending report, else the one with the open bill,
+ * else the first regular (non-tutoring) member that is not settled, else the first member. Monthly members stay per course.
+ * @param {{course: object, reports?: object[], invoices?: object[]}[]} rows
+ */
+export const sharedPackageBillingLead = (course, rows) => {
+  const pid = Number(course?.PackageID ?? course?.package_id ?? 0);
+  if (!(pid > 0) || !isSessionPayment(course)) return null;
+  const members = (rows || []).filter((r) => Number(r.course?.PackageID ?? r.course?.package_id ?? 0) === pid && isSessionPayment(r.course));
+  if (members.length < 2) return null;
+  // Legacy package whose bills are open on several members: each bill is its own, so every member keeps its actions (ledger rule).
+  const openBill = (r) => (r.invoices || []).some((i) => ['unpaid', 'partial'].includes(i?.status));
+  if (members.filter((r) => r.course.class_type !== 'tutoring').filter(openBill).length > 1) return null;
+  const regular = members.filter((r) => r.course.class_type !== 'tutoring');
+  const lead = members.find((r) => r.reports?.some((x) => x.status === 'pending'))
+    || regular.find(openBill) // its slip/payment resolves that bill, not the package's full estimate
+    || regular.find((r) => !['paid', 'free'].includes(String(r.course.payment_status || '')))
+    || regular[0] || members[0];
+  return lead.course;
+};
