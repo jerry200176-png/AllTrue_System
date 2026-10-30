@@ -2022,6 +2022,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("rollback_deploy()", self.workflow)
         self.assertIn("abort_deploy()", self.workflow)
         self.assertIn('if ! (cd /home/admin/backend && composer install', self.workflow)
+        # A source-installed vendor package with local changes must not block composer (run 41066600125).
+        self.assertIn('          export COMPOSER_DISCARD_CHANGES=true\n', self.workflow)
+        self.assertLess(self.workflow.index('export COMPOSER_DISCARD_CHANGES=true'),
+                        self.workflow.index('cd /home/admin/backend && composer install'))
         self.assertIn('if ! (cd /home/admin/frontend && npm install', self.workflow)
         self.assertIn('if ! write_deployment_manifest "$TARGET_SHA"', self.workflow)
         self.assertIn('if ! php artisan optimize; then', self.workflow)
