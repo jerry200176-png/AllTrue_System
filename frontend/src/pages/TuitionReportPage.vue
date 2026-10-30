@@ -424,12 +424,12 @@ loadData();
 .tuition-report-page :deep(.at-icon-btn) {
   min-height: var(--ds-control-height-touch, 44px) !important;
 }
-.tr-stat--ok { color: var(--success, #1a7f37); font-weight: 600; }
+.tr-stat--ok { color: var(--ds-success); font-weight: 600; }
 .tr-stat--warn { color: var(--danger); font-weight: 600; }
 .tr-filter { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; min-height: var(--ds-control-height-touch, 44px); }
 .pay-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg); white-space: nowrap; }
-.pay-tag--paid { color: var(--success, #1a7f37); }
-.pay-tag--partial, .pay-tag--review { color: var(--warning, #b26a00); }
+.pay-tag--paid { color: var(--ds-success); }
+.pay-tag--partial, .pay-tag--review { color: var(--ds-warning); }
 .pay-tag--unpaid { color: var(--danger); }
 .pay-owed { display: block; color: var(--text-light); font-size: 11px; }
 </style>
