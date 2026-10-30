@@ -177,14 +177,19 @@
             <td>
               <div class="subject-tags" v-if="getStudentCourses(student.id).length > 0">
                 <span
-                  v-for="course in getStudentCourses(student.id)"
+                  v-for="course in getStudentRowChipCourses(student.id)"
                   :key="course.id"
                   :class="['subject-pill', { low: isSessionPaymentLow(course) }]"
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ courseHistoryReason(course) === 'waived' ? WAIVED_LABEL : courseHistoryReason(course) === 'settled_pending' ? ENDED_PENDING_LABEL : (courseHistoryReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
+                <span
+                  v-if="getStudentRowHistoryCount(student.id) > 0"
+                  class="subject-pill subject-pill--history"
+                  data-testid="history-chip"
+                  title="已結算或已完課的歷史合約，展開後在課程安排查看"
+                >+{{ getStudentRowHistoryCount(student.id) }} 歷史</span>
               </div>
               <span class="hint" v-else>尚未設定</span>
             </td>
@@ -1631,6 +1636,9 @@ const getStudentCourses = (id) => {
   if (showHistoricalCourses.value) return all;
   return all.filter((course) => !isHistoricalCourse(course));
 };
+// Row chips show active contracts only; history folds into one 「+N 歷史」 chip (in-app #448).
+const getStudentRowChipCourses = (id) => getStudentCourses(id).filter((c) => !isHistoryCourseByReason(c));
+const getStudentRowHistoryCount = (id) => getStudentCourses(id).filter(isHistoryCourseByReason).length;
 const getStudentCourseCount = (id) => getStudentCourses(id).length;
 const studentStatusLabel = (s) => ({ active: '在學中', graduated: '已畢業', paused: '暫停中', transferred: '已轉校' }[s] || s);
 const getLaravelStudentId = (student) => {
@@ -3896,6 +3904,10 @@ table th { font-size: 12.5px; }
 .subject-pill strong {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+.subject-pill--history {
+  background: var(--ds-surface-sunken);
+  color: var(--ds-ink-mute);
 }
 .subject-pill.low {
   background: var(--ds-danger-wash);
