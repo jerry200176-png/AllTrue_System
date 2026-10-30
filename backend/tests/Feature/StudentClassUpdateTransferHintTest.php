@@ -55,6 +55,20 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $this->assertSame($this->subjectId('English'), (int) $course->fresh()->SubjectID);
     }
 
+    /** in-app #449: nothing used yet is now a whole-contract 轉課, so the block offers it from the first lesson. */
+    public function test_unused_course_is_offered_a_whole_contract_transfer(): void
+    {
+        $course = $this->course();
+        $this->makeSession($course, '2026-09-23', 'scheduled');
+        $this->makeSession($course, '2026-10-07', 'scheduled');
+
+        $this->putCourse($course, ['subject' => 'Math'])
+            ->assertStatus(422)
+            ->assertJsonPath('next_step', 'course_transfer')
+            ->assertJsonPath('transfer_hint.start_date', '2026-09-23')
+            ->assertJsonPath('transfer_hint.changes', ['subject']);
+    }
+
     public function test_locked_contract_with_teacher_and_slot_change_offers_transfer(): void
     {
         $course = $this->course();
@@ -91,7 +105,6 @@ class StudentClassUpdateTransferHintTest extends TestCase
         $cases = [
             'monthly' => [['ScheduleMode' => 'date', 'EndDate' => '2026-12-31'], ['2026-09-23' => 'attended', '2026-10-07' => 'scheduled']],
             'no unmarked lesson' => [[], ['2026-09-23' => 'attended']],
-            'no usage yet' => [[], ['2026-09-23' => 'scheduled', '2026-10-07' => 'scheduled']],
             'stale row before history' => [[], ['2026-09-09' => 'attended', '2026-09-16' => 'scheduled', '2026-09-23' => 'leave_adjusted', '2026-10-07' => 'scheduled']],
             'paid but not the simple case' => [['Paid' => 1], ['2026-09-23' => 'attended', '2026-10-07' => 'scheduled']],
         ];
