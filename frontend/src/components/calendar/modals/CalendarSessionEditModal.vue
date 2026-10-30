@@ -41,7 +41,11 @@
             <span>{{ session.rollCallStatus.text }}</span>
           </span>
         </div>
-        <div v-if="!session.isTeacher && session.chargeDisplay" class="session-info-row">
+        <div v-if="!session.isTeacher && form.class_type === 'tutoring'" class="session-info-row">
+          <span class="session-info-key">本堂費用</span>
+          <span class="session-info-val" data-testid="calendar-tutoring-no-fee">輔導課不另收費</span>
+        </div>
+        <div v-else-if="!session.isTeacher && session.chargeDisplay" class="session-info-row">
           <span class="session-info-key">本堂費用</span>
           <span class="session-info-val">
             <strong>NT$ {{ session.chargeDisplay.value.toLocaleString() }}</strong>
