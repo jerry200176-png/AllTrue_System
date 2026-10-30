@@ -706,7 +706,8 @@ class FinanceController extends Controller
             return response()->json([
                 'data'    => [],
                 'summary' => ['total_students' => 0, 'total_sessions' => 0, 'total_tuition' => 0,
-                    'total_due' => 0, 'total_collected' => 0, 'total_outstanding' => 0, 'unpaid_students' => 0],
+                    'total_due' => 0, 'total_collected' => 0, 'total_outstanding' => 0, 'unpaid_students' => 0,
+                    'unconfirmed_amount' => 0, 'review_students' => 0],
                 'meta'    => ['current_page' => 1, 'last_page' => 1, 'per_page' => 50, 'total' => 0],
             ]);
         }
@@ -980,19 +981,22 @@ class FinanceController extends Controller
 
     /**
      * Month-scoped payment status for 當月學收 rows, from the existing Contract Money Verdict (no new money rule).
-     * - Monthly-billed course (ScheduleMode=date, no package): the invoice period of this month (YYYY-MM);
-     *   no invoice for the month => unpaid (or paid when the verdict itself is settled/free).
-     * - Count-mode / other course: the verdict of the contract covering the sessions (worst period wins).
+     * - Monthly-billed course (ScheduleMode=date, no package): the verdict period of this month (YYYY-MM) only; other
+     *   periods' review state never leaks in. Invoiced period => its status; unattributed period => review;
+     *   no period => unpaid (paid only when the verdict itself is settled/free with an invoice or free).
+     * - Count-mode / other course: the verdict of the contract covering the sessions. A partial contract balance is
+     *   allocated oldest-sessions-first (receipts cover earlier lessons), so months never double-count one balance.
      * - Monthly package row: follows the package paid flag (CoursePackage.paid is not month-scoped).
-     * review_required verdicts show as 'review' (待確認) and count as not collected.
+     * - review (待確認): review_required verdicts and legacy Paid flags without invoice/payment evidence. Their amount is
+     *   an estimate kept in `estimated_amount` and the summary's `unconfirmed_amount`, never in confirmed due/outstanding.
      *
      * @return array{course: array<int, array>, package: array<int, array>, summary: array}
      */
     private function monthPaymentStatuses($courses, $packages, array $pkgSessionTotals, string $period): array
     {
         $verdicts = app(\App\Services\Billing\ContractMoneyVerdict::class)->forCourses($courses->all());
-        $due = $collected = 0.0;
-        $unpaidStudents = [];
+        $due = $collected = $unconfirmed = 0.0;
+        $unpaidStudents = $reviewStudents = [];
         $note = function (int $studentId, float $owed, float $out) use (&$due, &$collected, &$unpaidStudents) {
             $due += $owed;
             $collected += $owed - $out;
@@ -1001,25 +1005,54 @@ class FinanceController extends Controller
             }
         };
 
+        // Oldest-first allocation base for partially paid count-mode contracts: attended lessons value through month end.
+        $monthEnd = date('Y-m-t', strtotime($period . '-01'));
+        $partialIds = [];
+        foreach ($courses as $c) {
+            $v = $verdicts[(int) $c->ID] ?? null;
+            if ($v !== null && $v->status === 'partial' && !((string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0)) {
+                $partialIds[] = (int) $c->ID;
+            }
+        }
+        $throughEnd = $partialIds === [] ? [] : DB::table('ClassSession')
+            ->whereIn('StudentClassID', $partialIds)->where('SessionDate', '<=', $monthEnd)
+            ->whereIn('Status', AttendanceStatus::payableSessionStatuses())
+            ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))->groupBy('StudentClassID')->pluck('cnt', 'StudentClassID')->all();
+
         $course = [];
         foreach ($courses as $c) {
             $tuition = round((int) $c->monthly_session_count * $this->resolveRate($c), 2);
             $v = $verdicts[(int) $c->ID] ?? null;
             $monthlyBilled = (string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0;
-            $row = $v === null ? null : collect($v->periods)->first(fn ($p) => ($p['billing_period'] ?? null) === $period && ($p['invoice_ids'] ?? []) !== []);
-            $status = $v === null ? 'review_required' : $v->status;
-            if ($v === null || $status === 'review_required') {
-                [$st, $owed, $out] = ['review', $tuition, $tuition];
-            } elseif ($monthlyBilled && $row) {
-                [$st, $owed, $out] = [$row['status'], (float) $row['total'], (float) $row['outstanding']];
-            } elseif ($monthlyBilled) {
-                $settled = $v->isSettled();
-                [$st, $owed, $out] = [$settled ? 'paid' : 'unpaid', $tuition, $settled ? 0.0 : $tuition];
+            $owed = $out = 0.0;
+            $p = ($v !== null && $monthlyBilled) ? collect($v->periods)->first(fn ($x) => ($x['billing_period'] ?? null) === $period) : null;
+            if ($v === null) {
+                $st = 'review';
+            } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
+                $st = $p['status'] === 'review_required' ? 'review' : $p['status'];
+                [$owed, $out] = [(float) $p['total'], (float) $p['outstanding']];
+            } elseif ($monthlyBilled && $p !== null) {
+                $st = 'review'; // this month's lessons cannot be attributed to an invoice
+            } elseif ($v->status === 'review_required' && !$monthlyBilled) {
+                $st = 'review';
+            } elseif ($v->source === 'legacy_flag') {
+                $st = 'review'; // Paid flag only, no invoice/payment evidence: never green, never debt
             } elseif ($v->isSettled()) {
                 [$st, $owed, $out] = ['paid', $tuition, 0.0];
+            } elseif ($monthlyBilled) {
+                [$st, $owed, $out] = ['unpaid', $tuition, $tuition];
+            } elseif ($v->status === 'partial') {
+                $thru = (int) ($throughEnd[(int) $c->ID] ?? 0) * $this->resolveRate($c);
+                $out = max(0.0, min($tuition, $thru - (float) $v->applied));
+                [$st, $owed] = [$out <= 0 ? 'paid' : ($out >= $tuition ? 'unpaid' : 'partial'), $tuition];
             } else {
-                $out = $status === 'partial' ? min((float) $v->outstanding, $tuition) : $tuition;
-                [$st, $owed] = [$status === 'partial' ? 'partial' : 'unpaid', $tuition];
+                [$st, $owed, $out] = ['unpaid', $tuition, $tuition];
+            }
+            if ($st === 'review') {
+                $unconfirmed += $tuition;
+                $reviewStudents[(int) $c->StudentID] = true;
+                $course[(int) $c->ID] = ['pay_status' => 'review', 'due_amount' => 0.0, 'outstanding_amount' => 0.0, 'estimated_amount' => $tuition];
+                continue;
             }
             $note((int) $c->StudentID, $owed, $out);
             $course[(int) $c->ID] = ['pay_status' => $st, 'due_amount' => round($owed, 2), 'outstanding_amount' => round($out, 2)];
@@ -1034,10 +1067,12 @@ class FinanceController extends Controller
         }
 
         return ['course' => $course, 'package' => $package, 'summary' => [
-            'total_due'         => round($due, 2),
-            'total_collected'   => round($collected, 2),
-            'total_outstanding' => round($due - $collected, 2),
-            'unpaid_students'   => count($unpaidStudents),
+            'total_due'          => round($due, 2),
+            'total_collected'    => round($collected, 2),
+            'total_outstanding'  => round($due - $collected, 2),
+            'unpaid_students'    => count($unpaidStudents),
+            'unconfirmed_amount' => round($unconfirmed, 2),
+            'review_students'    => count($reviewStudents),
         ]];
     }
 

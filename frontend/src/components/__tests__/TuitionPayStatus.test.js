@@ -13,6 +13,10 @@ describe('tuitionPayStatus (in-app #447)', () => {
     expect(collectionSummary({ total_due: 6000, total_collected: 6000, total_outstanding: 0, unpaid_students: 0 }))
       .toEqual({ allCollected: true, text: '本月學收已收齊' });
   });
+  it('never says 已收齊 while rows still need confirmation', () => {
+    expect(collectionSummary({ total_due: 6000, total_collected: 6000, total_outstanding: 0, unpaid_students: 0, review_students: 2 }))
+      .toEqual({ allCollected: false, text: '已收 6,000 / 應收 6,000，未收 0 人，另有 2 人待確認' });
+  });
   it('does not claim 已收齊 for an empty month', () => {
     expect(collectionSummary({}).allCollected).toBe(false);
   });

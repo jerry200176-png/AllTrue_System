@@ -70,17 +70,17 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
 
         $this->assertSame(['paid', 0], [$by($paid)['pay_status'], (int) $by($paid)['outstanding_amount']]);
         $this->assertSame(['partial', 5000, 6000], [$by($part)['pay_status'], (int) $by($part)['outstanding_amount'], (int) $by($part)['due_amount']]);
-        $this->assertSame(['review', 6000], [$by($none)['pay_status'], (int) $by($none)['outstanding_amount']]);
+        $this->assertSame(['review', 0], [$by($none)['pay_status'], (int) $by($none)['outstanding_amount']]);
         $this->assertSame(['unpaid', 6000], [$by($cUnpaid)['pay_status'], (int) $by($cUnpaid)['outstanding_amount']]);
         $this->assertSame('paid', $by($cPaid)['pay_status']);
         $this->assertSame('unpaid', collect($res->json('data'))->firstWhere('row_type', 'package')['pay_status']);
 
         $s = $res->json('summary');
-        $this->assertSame(30000, (int) $s['total_due']); // 5 course rows x 6000, package 0 sessions
+        $this->assertSame(24000, (int) $s['total_due']); // 4 confirmed course rows x 6000 (review row excluded), package 0 sessions
         // collected: paid 6000 + partial 1000 + prior-month-only 0 + count unpaid 0 + count paid 6000
         $this->assertSame(13000, (int) $s['total_collected']);
-        $this->assertSame(30000 - (int) $s['total_collected'], (int) $s['total_outstanding']);
-        $this->assertSame(3, (int) $s['unpaid_students']); // part, none, cUnpaid (package has 0 due)
+        $this->assertSame(24000 - (int) $s['total_collected'], (int) $s['total_outstanding']);
+        $this->assertSame([2, 1, 6000], [(int) $s['unpaid_students'], (int) $s['review_students'], (int) $s['unconfirmed_amount']]); // part, cUnpaid; none = review
     }
 
     public function test_unpaid_only_filters_rows_but_summary_stays_whole_month(): void
@@ -111,5 +111,32 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
             ->get('/api/v1/finance/branch-monthly-tuition/export?branch_id=1&year=2026&month=8')->streamedContent();
         $this->assertStringContainsString('收款狀態', $csv);
         $this->assertStringContainsString('部分,5000', $csv);
+    }
+
+    /** Codex P2 round: review scoped to the month, estimates kept out of confirmed totals, FIFO partial, legacy flag. */
+    public function test_review_scope_unconfirmed_totals_fifo_partial_and_legacy_flag(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-01'];
+        // paid August invoice + uninvoiced September lessons: August stays 已收
+        $augPaid = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, self::AUG);
+        foreach (['2026-09-07', '2026-09-14'] as $d) {
+            \App\Models\ClassSession::create(['StudentClassID' => $augPaid->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        // count-mode partial: 4 Aug lessons (6000) after 6 Jul lessons (9000); 10000 applied => Jul covered, Aug owes 5000
+        $partial = $this->course([['2026-08', 15000, 'partial', 10000, [[10000, 'cash']]]], ['Charge' => 15000], self::AUG);
+        foreach (['2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04', '2026-07-05', '2026-07-06'] as $d) {
+            \App\Models\ClassSession::create(['StudentClassID' => $partial->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        // Paid flag only, no invoice/payment evidence
+        $legacy = $this->course([], ['Paid' => 1, 'Charge' => 6000], self::AUG);
+
+        $res = $this->fetchReport()->assertOk();
+        $by = fn ($c) => collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame('paid', $by($augPaid)['pay_status']);
+        $this->assertSame(['partial', 5000], [$by($partial)['pay_status'], (int) $by($partial)['outstanding_amount']]);
+        $this->assertSame(['review', 0, 6000], [$by($legacy)['pay_status'], (int) $by($legacy)['outstanding_amount'], (int) $by($legacy)['estimated_amount']]);
+        $s = $res->json('summary');
+        $this->assertSame(5000, (int) $s['total_outstanding']); // review estimate is not debt
+        $this->assertSame([6000, 1, 1], [(int) $s['unconfirmed_amount'], (int) $s['review_students'], (int) $s['unpaid_students']]);
     }
 }
