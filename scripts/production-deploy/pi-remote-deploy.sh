@@ -1,4 +1,8 @@
 set -uo pipefail
+# The Laravel 12 deploy (run 41066600125) stopped because a source-installed vendor package
+# (vendor/nette/schema) had local changes, which non-interactive composer refuses to replace.
+# vendor/ is never edited by hand, so discard such changes instead of failing the deploy.
+export COMPOSER_DISCARD_CHANGES=true
 cd /home/admin
 
 PREV_COMMIT=$(git rev-parse HEAD)

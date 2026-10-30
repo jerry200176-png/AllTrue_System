@@ -1,0 +1,4 @@
+## 2026-10-30 — fix(deploy): composer discards local changes in source-installed vendor packages
+<!-- release-notes: silent_ship=silent-2026-10-30-deploy-composer-discard-vendor-changes -->
+<!-- silent-reason: deploy script only; no user-visible change -->
+- `pi-remote-deploy.sh` now exports `COMPOSER_DISCARD_CHANGES=true`. The Laravel 12 release train (run 41066600125, #4504) stopped at `composer install`: `vendor/nette/schema` on the Pi had been installed from source and showed local changes, and non-interactive composer refuses to replace such a package. The deploy rolled back automatically to 8b6221f03 and health stayed 200. `vendor/` is never edited by hand, so the deploy and its rollback now discard those changes instead of failing. Covered by `test_deploy_failures_are_fail_closed_and_share_rollback`.
