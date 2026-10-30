@@ -1006,9 +1006,9 @@ class FinanceController extends Controller
             $tuition = round((int) $c->monthly_session_count * $this->resolveRate($c), 2);
             $v = $verdicts[(int) $c->ID] ?? null;
             $monthlyBilled = (string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0;
-            $row = collect($v?->periods ?? [])->first(fn ($p) => ($p['billing_period'] ?? null) === $period && ($p['invoice_ids'] ?? []) !== []);
-            $status = $v?->status ?? 'review_required';
-            if ($status === 'review_required') {
+            $row = $v === null ? null : collect($v->periods)->first(fn ($p) => ($p['billing_period'] ?? null) === $period && ($p['invoice_ids'] ?? []) !== []);
+            $status = $v === null ? 'review_required' : $v->status;
+            if ($v === null || $status === 'review_required') {
                 [$st, $owed, $out] = ['review', $tuition, $tuition];
             } elseif ($monthlyBilled && $row) {
                 [$st, $owed, $out] = [$row['status'], (float) $row['total'], (float) $row['outstanding']];
