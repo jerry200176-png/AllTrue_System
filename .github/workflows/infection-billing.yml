@@ -60,7 +60,7 @@ jobs:
           set +e
           vendor/bin/infection --threads=2 --no-progress --min-msi=0 \
             --filter='Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php' \
-            --test-framework-options='--filter=Billing|ContractMoney|FreeGift|FullDiscount|PaidStatus|TuitionSlip|SharedPackage' \
+            --test-framework-options='--filter=ContractMoney|BillingPayable|BillingCourseStatus|FreeGiftZeroBill|FullDiscountSettled|PaidStatus|TuitionSlipFollows|SharedPackage|CollectionQueueRequestShape' \
             2>&1 | tee storage/infection/run.out
           echo "infection exit: ${PIPESTATUS[0]} (advisory, ignored)"
           exit 0
@@ -72,7 +72,7 @@ jobs:
             echo '## Infection MSI (billing money code, advisory)'
             echo '```'
             cat storage/infection/summary.log 2>/dev/null || tail -40 storage/infection/run.out 2>/dev/null || echo 'no summary produced'
-            grep -E 'Mutation Score Indicator|Covered Code MSI|Mutation Code Coverage' storage/infection/run.out 2>/dev/null
+            grep -E 'Mutation Score Indicator|Covered Code MSI|Mutation Code Coverage' storage/infection/run.out 2>/dev/null || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
