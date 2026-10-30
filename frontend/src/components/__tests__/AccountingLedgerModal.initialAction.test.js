@@ -139,7 +139,7 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     const w = mountLedger({ courses: [course(12, { stop: true, amount_pending_confirmation: true })], invoices: [inv(1, 12)] });
     await flushPromises();
     expect(w.get('[data-testid="contract-slip"]').element.disabled).toBe(true);
-    expect(w.get('[data-testid="contract-slip-reason"]').text()).toBe('還沒開帳單，不能產生繳費單');
+    expect(w.get('[data-testid="contract-slip-reason"]').text()).toBe('金額需核對，不能產生繳費單');
     w.unmount();
   });
 });

@@ -325,7 +325,7 @@ describe('金額待確認 rows (Founder D2)', () => {
     expect(summary).toContain('未繳 1 位');
     expect(w.find('[data-testid="sbl-pending-review"]').text()).toContain('NT$ 3,400（1 筆，不在未繳內）');
     const row = w.find('[data-testid="sbl-row-5"]').text();
-    expect(row).toContain('還沒開帳單');
+    expect(row).toContain('需核對金額');
     expect(row).not.toContain('已收');
     await w.find('[data-testid="sbl-filter-clear"]').trigger('click');
     expect(w.find('[data-testid="sbl-row-5"]').exists()).toBe(false);

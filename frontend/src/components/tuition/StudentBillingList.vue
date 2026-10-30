@@ -13,7 +13,7 @@
     <div class="sbl__summary" data-testid="sbl-summary">
       <span>本校區到今天未繳 <strong>{{ money(totalNow) }}</strong></span>
       <span>未繳 <strong>{{ owingCount }}</strong> 位</span>
-      <span v-if="pendingReviewCount" data-testid="sbl-pending-review">還沒開帳單 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，不在未繳內）</span>
+      <span v-if="pendingReviewCount" data-testid="sbl-pending-review">需核對金額 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，不在未繳內）</span>
     </div>
     <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有未繳。</p>
     <div class="sbl__tools">
@@ -71,7 +71,7 @@
                 <span>{{ c.period }}</span>
                 <span>未繳 {{ money(c.owed) }}</span>
                 <span>已繳 {{ money(c.paid) }}</span>
-                <span v-if="c.pending_review > 0">還沒開帳單 {{ money(c.pending_review) }}</span>
+                <span v-if="c.pending_review > 0">需核對金額 {{ money(c.pending_review) }}</span>
               </li>
             </ul>
           </template>
@@ -136,7 +136,7 @@ const visible = computed(() => {
 const badges = (r) => {
   const out = [];
   if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '待確認入帳' });
-  if (r.pending_review_count > 0) out.push({ tone: 'warning', label: '還沒開帳單' });
+  if (r.pending_review_count > 0) out.push({ tone: 'warning', label: '需核對金額' });
   if (r.owed_now > 0) out.push({ tone: 'danger', label: '未繳' });
   else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '還沒到期' });
   else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '還沒開帳單' });

@@ -180,7 +180,7 @@ export const TUITION_STATUS_CONFIG = {
   // Tab/badge (in-app #395-#404): no money received yet. Rows say ended vs paused (ENDED_/PAUSED_PENDING_LABEL).
   pending_reconciliation: { label: '已結束，未收', cls: 'st-pending' },
   // Founder D2 (in-app #394): an open bill whose amount is still to be confirmed. Listed, never summed as owed.
-  amount_review: { label: '還沒開帳單', cls: 'st-pending' },
+  amount_review: { label: '需核對金額', cls: 'st-pending' },
   paid: { label: '已收', cls: 'st-paid' },
   // #4150: free-gift contract (BillingPayableResolver 'free'). Settled, nothing to collect. Same text as FREE_GIFT_LABEL.
   free: { label: '免費／贈送', cls: 'st-paid' },

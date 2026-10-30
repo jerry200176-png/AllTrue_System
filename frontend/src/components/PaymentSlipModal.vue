@@ -81,13 +81,13 @@ async function fetchInvoiceSlip(id) {
     headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
   });
   if (!resp.ok) {
-    // Founder D2: a 422 says why (e.g. 還沒開帳單，不能產生繳費單); show it instead of a generic error.
+    // Founder D2: a 422 says why (e.g. 金額需核對，不能產生繳費單); show it instead of a generic error.
     const body = await resp.json().catch(() => ({}));
     throw new Error(body.message || '無法載入帳單資料');
   }
   const body = await resp.json();
   // Founder D2: an unpaid bill whose amount is still 金額待確認 never becomes a parent slip (no render, no share).
-  if (body?.amount_pending_confirmation === true) throw new Error('還沒開帳單，不能產生繳費單');
+  if (body?.amount_pending_confirmation === true) throw new Error('金額需核對，不能產生繳費單');
   return body;
 }
 

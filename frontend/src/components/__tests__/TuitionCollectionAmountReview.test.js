@@ -37,13 +37,13 @@ describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
 
     expect(w.text()).toContain('測試生');
     expect(w.find('[data-testid="tc-amount-review-hint"]').exists()).toBe(true);
-    expect(tabBadge(w, '還沒開帳單')).toBe('1');
+    expect(tabBadge(w, '需核對金額')).toBe('1');
     expect(tabBadge(w, '已結束，未收')).toBe('1');
     expect(tabBadge(w, '待處理')).toBe('1');
 
     const summary = w.find('.tc-summary-disclosure__hint').text();
     expect(summary).toContain('已開帳單未繳 NT$ 8,800');
-    expect(summary).toContain('還沒開帳單 1 筆 NT$ 3,400，未計入未收');
+    expect(summary).toContain('需核對金額 1 筆 NT$ 3,400，未計入未收');
     expect(w.find('[data-testid="tc-pending-review-card"]').text()).toContain('NT$ 3,400');
     // 收款率 = confirmed paid / confirmed billed: the pending row's 1,000 / 4,400 stays out.
     expect(w.find('.tc-rate').text()).toContain('0%');
@@ -54,7 +54,7 @@ describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
     const w = await mountPage([CONFIRMED, REPORTED]);
 
     expect(tabBadge(w, '待確認入帳')).toBe('1');
-    expect(tabBadge(w, '還沒開帳單')).toBe('1');
+    expect(tabBadge(w, '需核對金額')).toBe('1');
     expect(tabBadge(w, '逾期應收')).toBe('0');
     const row = w.findAll('tr').find((tr) => tr.text().includes('回報生'));
     expect(row.text()).toContain('確認入帳');
@@ -62,7 +62,7 @@ describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
 
     const summary = w.find('.tc-summary-disclosure__hint').text();
     expect(summary).toContain('已開帳單未繳 NT$ 8,800');
-    expect(summary).toContain('還沒開帳單 1 筆 NT$ 4,400，未計入未收');
+    expect(summary).toContain('需核對金額 1 筆 NT$ 4,400，未計入未收');
     w.unmount();
   });
 });

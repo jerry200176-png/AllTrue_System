@@ -29,7 +29,7 @@ const CASES = [
   ['partial', { payment_status: 'partial' }, '繳了一部分', 'owing', 'report_payment'],
   ['unpaid', { payment_status: 'unpaid' }, UNPAID, 'owing', 'report_payment'],
   ['pending_report', { payment_status: 'pending_report' }, '待確認入帳', 'review', 'view_report'],
-  ['amount_review', { payment_status: 'amount_review' }, '還沒開帳單', 'review', 'billing'],
+  ['amount_review', { payment_status: 'amount_review' }, '需核對金額', 'review', 'billing'],
   ['review_required', { payment_status: 'review_required' }, M.REVIEW_REQUIRED_LABEL, 'review', 'billing'],
   ['waived', { payment_status: 'paid', closed_reason: 'waived' }, M.WAIVED_LABEL, 'settled', 'billing'],
   ['unknown status', { payment_status: 'something_new' }, M.UNKNOWN_STATUS_LABEL, 'neutral', 'billing'],

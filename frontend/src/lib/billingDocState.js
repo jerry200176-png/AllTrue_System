@@ -5,7 +5,7 @@ import { isLegacyPaidNoInvoice, PAID_STATUSES as RECEIPT_STATUSES } from './lega
 
 const SLIP_STATUSES = ['unpaid', 'partial', 'pending_reconciliation'];
 export const NO_PERMISSION = '沒有權限';
-export const AMOUNT_PENDING_REASON = '還沒開帳單，不能產生繳費單';
+export const AMOUNT_PENDING_REASON = '金額需核對，不能產生繳費單';
 
 export function slipAvailability(row, canView = true) {
   if (!canView) return { ok: false, reason: NO_PERMISSION };

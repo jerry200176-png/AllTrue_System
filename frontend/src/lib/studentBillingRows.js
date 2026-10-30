@@ -129,6 +129,6 @@ export const STUDENT_FILTERS = {
   all: { label: '全部', test: () => true },
   owing: { label: '有未繳', test: (r) => r.owed_now > 0 },
   confirm: { label: '待確認入帳', test: (r) => r.waiting_confirm > 0 },
-  pending_review: { label: '還沒開帳單', test: (r) => r.pending_review_count > 0 },
+  pending_review: { label: '需核對金額', test: (r) => r.pending_review_count > 0 },
   clear: { label: '沒有未繳', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 && !r.unbilled && !r.pending_review_count },
 };

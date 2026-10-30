@@ -102,7 +102,7 @@
       <details class="tc-summary-disclosure" v-if="rows.length">
         <summary>
           <span>收款摘要</span>
-          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未繳 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template><template v-if="pendingReviewRows.length">・還沒開帳單 {{ pendingReviewRows.length }} 筆 {{ formatCurrency(pendingReviewTotal) }}，未計入未收</template></span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未繳 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template><template v-if="pendingReviewRows.length">・需核對金額 {{ pendingReviewRows.length }} 筆 {{ formatCurrency(pendingReviewTotal) }}，未計入未收</template></span>
           <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
         <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
@@ -469,7 +469,7 @@
 
                     <!-- Founder D2: open bill whose amount is still to be confirmed; no collection action until confirmed -->
                     <span v-if="isPendingConfirmation(r)" class="tc-renew-hint" data-testid="tc-amount-review-hint">
-                      {{ TUITION_STATUS_CONFIG.amount_review.label }}：到學生面板開帳單。
+                      {{ TUITION_STATUS_CONFIG.amount_review.label }}：先核對帳單金額，未計入未繳。
                     </span>
 
                     <!-- pending_report: confirm / reject -->
