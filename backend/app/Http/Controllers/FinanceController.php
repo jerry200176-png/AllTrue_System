@@ -1039,6 +1039,12 @@ class FinanceController extends Controller
             $gap = collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains(
                 fn ($r) => ($r['calendar_month'] ?? null) === $period && (($r['uncovered_sessions'] ?? 0) > 0 || ($r['outside_contract_sessions'] ?? 0) > 0)
             );
+            $cross = collect($coverage[(int) $c->ID]['periods'] ?? [])->contains(
+                // An invoice whose service range spans two months would be counted in both reports: show 待確認 in each.
+                fn ($r) => ($r['invoice_ids'] ?? []) !== [] && substr((string) $r['period_start'], 0, 7) !== substr((string) $r['period_end'], 0, 7)
+                    && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
+            );
+            $gap = $gap || $cross;
             if ((string) $c->closed_reason === 'waived') {
                 $course[(int) $c->ID] = ['pay_status' => 'waived', 'due_amount' => 0.0, 'outstanding_amount' => 0.0];
                 continue; // written off by the director: neither collected nor outstanding
@@ -1048,7 +1054,7 @@ class FinanceController extends Controller
             } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
                 $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy']) || $gap) ? 'review' : $p['status'];
                 [$owed, $out] = [(float) $p['total'], (float) $p['outstanding']];
-            } elseif ($monthlyBilled && $p !== null) {
+            } elseif ($monthlyBilled && ($p !== null || $cross)) {
                 $st = 'review'; // this month's lessons cannot be attributed to an invoice
             } elseif ($v->status === 'review_required' && !$monthlyBilled) {
                 $st = 'review';

@@ -183,4 +183,23 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertSame(0, (int) $res->json('summary.total_outstanding'));
         $this->assertNotContains((int) $waived->ID, collect($this->fetchReport('&unpaid_only=1')->json('data'))->pluck('student_class_id')->map(fn ($i) => (int) $i)->all());
     }
+
+    /** Coordinator P1: an invoice whose service range spans two months must not be counted as collected in both. */
+    public function test_cross_month_service_range_invoice_is_review_in_both_months(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-15', 'EndDate' => '2026-09-14'];
+        $c = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-08-17', '2026-08-24', '2026-09-07', '2026-09-14']);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
+        \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $c->ID,
+            'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-14']);
+
+        foreach ([8, 9] as $m) {
+            Carbon::setTestNow(Carbon::parse('2026-10-30', 'Asia/Taipei'));
+            $res = $this->withHeaders(['Authorization' => 'Bearer ' . $this->token(), 'Accept' => 'application/json'])
+                ->getJson("/api/v1/finance/branch-monthly-tuition?branch_id=1&year=2026&month={$m}")->assertOk();
+            $row = collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+            $this->assertSame('review', $row['pay_status'], "month {$m}");
+            $this->assertSame([0, 0], [(int) $res->json('summary.total_due'), (int) $res->json('summary.total_collected')], "month {$m}");
+        }
+    }
 }
