@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-29-calmer-accents
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 主任總覽與課程管理外觀更清爽
+    summary: 提醒卡片改用淡色外框與底色標示狀態，不再用厚重色條。
+    items:
+      - category: improved
+        text: 主任總覽與課程管理的待辦、提醒卡片，紅黃藍狀態仍分得清楚，畫面更乾淨。
+    source_refs:
+      - "changelog:2026-10-29:calmer-accents"
