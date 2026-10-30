@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-29-reminders-follow-verdict
+    published_at: "2026-10-29"
+    audiences:
+      - director
+    importance: digest
+    title: 提醒跟著帳務判定走
+    summary: 催繳與學費提醒改以課程帳務判定為準。
+    items:
+      - category: fixed
+        text: 沒填學費但別張帳單有收費明細的課程，不再被當成免費而漏掉提醒。
+      - category: improved
+        text: 月結課程與月結方案的提醒，已繳或未繳以帳務判定為準。
+    source_refs:
+      - "changelog:2026-10-29:reminders-follow-verdict"
