@@ -590,6 +590,13 @@ class BillingController extends Controller
                 );
             }
 
+            // in-app #445: a stored monthly line (「月結費用 2026年10月」) names no subject; every slip names the course it bills.
+            $itemCourse = $item->getRelationValue('studentClass') ?? $invoice->getRelationValue('studentClass');
+            $itemSubject = $itemCourse?->displaySubjectName();
+            if ($itemSubject && $itemSubject !== '課程' && str_starts_with($itemDescription, '月結費用')) {
+                $itemDescription = $itemSubject . $itemDescription;
+            }
+
             return [
                 'description' => $itemDescription,
                 'amount'      => $itemAmount,

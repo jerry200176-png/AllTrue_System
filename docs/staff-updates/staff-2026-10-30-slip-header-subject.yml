@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-slip-header-subject
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費單抬頭與月結科目
+    summary: 繳費單抬頭不再掉字，月結項目會寫出科目。
+    items:
+      - category: fixed
+        text: 繳費單與收據左上角的補習班名稱不再斷行壓到分校名稱，頁尾也不再被浮水印蓋住。
+      - category: improved
+        text: 月結項目會寫出科目，例如「數學月結費用 2026年10月」。
+    source_refs:
+      - "changelog:2026-10-30:slip-header-subject"
