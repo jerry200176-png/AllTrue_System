@@ -31,6 +31,7 @@ class ExamScore extends Model
         'recorded_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ExamRoundSubject, $this> */
     public function subject()
     {
         return $this->belongsTo(ExamRoundSubject::class, 'exam_round_subject_id');

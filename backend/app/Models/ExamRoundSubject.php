@@ -20,6 +20,7 @@ class ExamRoundSubject extends Model
 
     protected $casts = ['max_score' => 'decimal:2'];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ExamRound, $this> */
     public function round()
     {
         return $this->belongsTo(ExamRound::class, 'exam_round_id');

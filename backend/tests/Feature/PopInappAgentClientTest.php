@@ -99,7 +99,7 @@ final class PopInappAgentClientTest extends TestCase
         // The key never approves: the approval route takes a human session only (and there is no HTTP execute route).
         $this->withHeader('X-POP-MACHINE-KEY', 'k-ok')->postJson('/api/v1/pop/operations/requests/' . $draft->json('data.id') . '/approvals',
             ['approval_reference' => 'inapp-machine', 'commit_sha' => str_repeat('a', 40)])->assertUnauthorized();
-        $this->assertSame(['awaiting_approval', 0], [$this->status((string) $draft->json('data.id')), DB::table('pop_approval_events')->count()]);
+        $this->assertSame(['awaiting_approval', 0], [$this->storedStatus((string) $draft->json('data.id')), DB::table('pop_approval_events')->count()]);
     }
 
     public function test_key_is_refused_for_another_campus_another_operation_or_another_requesters_request(): void
@@ -202,7 +202,7 @@ final class PopInappAgentClientTest extends TestCase
         }
 
         $this->assertFalse($client->fresh()->Active);
-        $this->assertSame(['cancelled', 'approved', 'awaiting_approval'], [$this->status($policyApproved), $this->status($humanApproved), $this->status($waiting)]);
+        $this->assertSame(['cancelled', 'approved', 'awaiting_approval'], [$this->storedStatus($policyApproved), $this->storedStatus($humanApproved), $this->storedStatus($waiting)]);
         $revoked = DB::table('pop_approval_events')->where('operation_id', $policyApproved)->where('event_type', 'policy_revoked')->sole();
         $this->assertSame(['policy', $this->policy()->approverRef(), null], [$revoked->approver_role, $revoked->approver, $revoked->token_hash]);
         $this->assertSame('skipped', $this->service()->runApprovedLocally($policyApproved)['status']);
@@ -292,7 +292,7 @@ final class PopInappAgentClientTest extends TestCase
         return $user;
     }
 
-    private function status(string $id): string
+    private function storedStatus(string $id): string
     {
         return (string) DB::table('pop_operation_requests')->where('id', $id)->value('status');
     }

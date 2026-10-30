@@ -16,7 +16,7 @@ class InvoiceCorrectionReissueTest extends TestCase
     {
         $this->artisan('migrate:fresh');
         config(['billing.receipt_correction_reissue_enabled' => true]);
-        if (str_starts_with($this->getName(false), 'test_4132_') && !\Illuminate\Support\Facades\Schema::hasColumn('invoice_corrections', 'kind')) {
+        if (str_starts_with($this->name(), 'test_4132_') && !\Illuminate\Support\Facades\Schema::hasColumn('invoice_corrections', 'kind')) {
             \Illuminate\Support\Facades\Schema::table('invoice_corrections', fn ($t) => $t->string('kind', 32)->nullable()->default('receipt_reissue'));
         }
         \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = true;

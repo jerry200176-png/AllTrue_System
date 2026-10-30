@@ -51,11 +51,13 @@ class QuestionBankItem extends Model
         'reviewed_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<QuestionBank, $this> */
     public function bank()
     {
         return $this->belongsTo(QuestionBank::class, 'question_bank_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<QuestionBankAuditLog, $this> */
     public function auditLogs()
     {
         return $this->hasMany(QuestionBankAuditLog::class, 'question_bank_item_id');

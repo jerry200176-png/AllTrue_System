@@ -33,6 +33,7 @@ class PartTimeRateCard extends Model
         'effective_until' => 'date',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function teacher()
     {
         return $this->belongsTo(User::class, 'user_id');

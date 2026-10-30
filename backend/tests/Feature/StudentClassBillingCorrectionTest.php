@@ -645,7 +645,7 @@ class StudentClassBillingCorrectionTest extends TestCase
     }
 
     /** @return array<string, array{string, bool}> */
-    public function taipeiMidnightBoundaryProvider(): array
+    public static function taipeiMidnightBoundaryProvider(): array
     {
         return [
             '2026-10-15 23:59 Taipei: tail dated today is retirable' => ['2026-10-15T15:59:00Z', true],

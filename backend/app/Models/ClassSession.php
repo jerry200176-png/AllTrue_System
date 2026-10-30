@@ -26,6 +26,19 @@ use App\Services\ClassSessionMaterializationService;
  * @property string|null $OriginalSessionDate  Frozen series slot date (occurrence identity P1); null = extra/legacy.
  * @property string|null $OriginalStartTimeHM  Frozen series slot HH:MM (occurrence identity P1); immutable once set.
  * @property \App\Models\StudentClass|null $studentClass
+ * @property int|string|null $sid Optional projection/aggregate attribute; no schema change.
+ * @property string|null $first_live Optional projection/aggregate attribute; no schema change.
+ * @property string|null $first_any Optional projection/aggregate attribute; no schema change.
+ * @property int|string|null $cnt Optional projection/aggregate attribute; no schema change.
+ * @property int|string|null $TeacherID Optional projection/aggregate attribute; no schema change.
+ * @property int|null $campus_id Optional projection/aggregate attribute; no schema change.
+ * @property string|null $campus_name Optional projection/aggregate attribute; no schema change.
+ * @property string|null $LeaveWorkflowStatus Optional projection/aggregate attribute; no schema change.
+ * @property string|null $LeaveWorkflowReason Optional projection/aggregate attribute; no schema change.
+ * @property bool|null $is_past_or_started Optional projection/aggregate attribute; no schema change.
+ * @property bool|null $is_late_leave Optional projection/aggregate attribute; no schema change.
+ * @property string|null $leave_cutoff_at Optional projection/aggregate attribute; no schema change.
+ * @property string|null $session_start_at Optional projection/aggregate attribute; no schema change.
  */
 
 class ClassSession extends Model
@@ -182,16 +195,19 @@ class ClassSession extends Model
         }
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Subject, $this> */
     public function subject()
     {
         return $this->belongsTo(\App\Models\Subject::class, 'SubjectID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentSignIn, $this> */
     public function signIns()
     {
         return $this->hasMany(StudentSignIn::class, 'ClassSessionID', 'id');

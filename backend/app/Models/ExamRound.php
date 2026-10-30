@@ -36,11 +36,13 @@ class ExamRound extends Model
         'closed_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ExamRoundSubject, $this> */
     public function subjects()
     {
         return $this->hasMany(ExamRoundSubject::class, 'exam_round_id')->orderBy('sort_order')->orderBy('id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ExamScore, $this> */
     public function scores()
     {
         return $this->hasMany(ExamScore::class, 'exam_round_id');

@@ -64,6 +64,7 @@ class ExceptionWorkflowService
 
     /**
      * @param  array<int>  $campusIds  Empty array means all campuses.
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\ExceptionWorkflow>
      */
     public function queryForCampusIds(array $campusIds): Builder
     {

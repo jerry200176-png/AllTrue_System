@@ -64,26 +64,31 @@ class PaymentReport extends Model
         'reported_amount' => 'decimal:2',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Invoice, $this> */
     public function invoice()
     {
         return $this->belongsTo(Invoice::class, 'InvoiceID', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function confirmedByUser()
     {
         return $this->belongsTo(User::class, 'confirmed_by', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Payment, $this> */
     public function payment()
     {
         return $this->belongsTo(Payment::class, 'payment_id', 'id');
@@ -103,6 +108,7 @@ class PaymentReport extends Model
         return (string) ($paymentNote ?? $this->note ?? '');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function voidedByUser()
     {
         return $this->belongsTo(User::class, 'voided_by', 'id');

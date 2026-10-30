@@ -292,7 +292,7 @@ class OrdinaryCloseActivityCensusTest extends TestCase
     {
         [$student, $course] = $this->owner();
         DB::shouldReceive('transactionLevel')->once()->andThrow(
-            new QueryException('select * from Student where Phone = ?', ['PRIVATE_PHONE'], new PDOException('PRIVATE_SQL_DETAIL'))
+            new QueryException('mysql', 'select * from Student where Phone = ?', ['PRIVATE_PHONE'], new PDOException('PRIVATE_SQL_DETAIL'))
         );
         try {
             app(OrdinaryCloseActivityCensus::class)->captureLocked($course, $student);

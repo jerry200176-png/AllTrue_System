@@ -14,6 +14,7 @@ class TeacherMonthlyStat extends Model
         'SessionCount',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function teacher()
     {
         return $this->belongsTo(User::class, 'TeacherID');

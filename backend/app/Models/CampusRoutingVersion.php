@@ -29,6 +29,7 @@ class CampusRoutingVersion extends Model
 
     protected $casts = ['published_at' => 'datetime'];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<CampusRoutingRule, $this> */
     public function rules()
     {
         return $this->hasMany(CampusRoutingRule::class, 'routing_version_id');

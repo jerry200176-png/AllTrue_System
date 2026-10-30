@@ -19,11 +19,13 @@ class BugReportComment extends Model
         'created_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<BugReport, $this> */
     public function bugReport()
     {
         return $this->belongsTo(BugReport::class, 'bug_report_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function author()
     {
         return $this->belongsTo(User::class, 'author_user_id');

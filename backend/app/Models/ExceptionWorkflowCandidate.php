@@ -28,6 +28,7 @@ class ExceptionWorkflowCandidate extends Model
         'expires_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ExceptionWorkflow, $this> */
     public function workflow()
     {
         return $this->belongsTo(ExceptionWorkflow::class, 'workflow_id', 'id');

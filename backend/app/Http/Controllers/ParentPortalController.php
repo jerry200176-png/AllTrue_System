@@ -47,13 +47,11 @@ class ParentPortalController extends Controller
 {
     private function portalStudents()
     {
-        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
         return Student::withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function portalCampuses()
     {
-        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
         return \App\Models\Campus::withoutGlobalScope(OperationalTenantScope::class);
     }
 
@@ -838,7 +836,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $courseStatuses, $packageMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $courseStatuses, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
@@ -905,11 +903,11 @@ class ParentPortalController extends Controller
         // in-app #418: this course's own lesson dates (package members: own subject only), newest first.
         // Queried only for the visible count-mode cards (already parent-scoped).
         $attendedLessons = $this->attendedLessonsByClass(
-            $perCourse->filter(fn (array $row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
+            $perCourse->filter(fn (array $row) => (string) $row['schedule_mode'] === 'count')
                 ->pluck('id')->all()
         );
         $perCourse = $perCourse->map(fn (array $row) => $row + [
-            'attended_lessons' => (string) ($row['schedule_mode'] ?? 'count') === 'count'
+            'attended_lessons' => (string) $row['schedule_mode'] === 'count'
                 ? ($attendedLessons[(int) $row['id']] ?? [])
                 : null,
         ]);
@@ -917,9 +915,9 @@ class ParentPortalController extends Controller
 
         // 總剩餘堂數：非共用方案逐課加總；共用方案「每池只算一次」（避免每科重複加總成數倍）。
         $nonPackageRemaining = $perCourse
-            ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
+            ->filter(fn ($row) => (string) $row['schedule_mode'] === 'count')
             ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) <= 0)
-            ->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0));
+            ->sum(fn ($row) => (int) $row['remaining_sessions']);
         $visiblePackageIds = $perCourse
             ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) > 0)
             ->pluck('package_id')->unique()->values();
@@ -931,13 +929,13 @@ class ParentPortalController extends Controller
         // 不再每科都掛上池總堂數。
         $remainingBySubject = [];
         foreach ($perCourse as $row) {
-            if ((string) ($row['schedule_mode'] ?? 'count') !== 'count') {
+            if ((string) $row['schedule_mode'] !== 'count') {
                 continue;
             }
             if ((int) ($row['package_id'] ?? 0) > 0) {
                 continue;
             }
-            $rem = (int) ($row['remaining_sessions'] ?? 0);
+            $rem = (int) $row['remaining_sessions'];
             if ($rem <= 0) {
                 continue;
             }
@@ -1032,7 +1030,7 @@ class ParentPortalController extends Controller
                 ->keyBy('class_session_id');
             $upcomingSessions = $upcomingSessions->map(function ($session) use ($classes, $leaveWorkflows, $studentCampusMap) {
                 $c = $classes->firstWhere('ID', $session->StudentClassID);
-                $session->Subject = $c ? $this->resolveSubjectName($c) : null;
+                $session->setAttribute('Subject', $c ? $this->resolveSubjectName($c) : null);
                 $campus = $c ? $studentCampusMap->get((int) $c->StudentID, []) : [];
                 $session->campus_id = $campus['campus_id'] ?? null;
                 $session->campus_name = $campus['campus_name'] ?? null;
@@ -1044,9 +1042,10 @@ class ParentPortalController extends Controller
                     ? ($workflow->payload['rejection_reason'] ?? null)
                     : null;
 
-                $dateStr = is_string($session->SessionDate)
-                    ? substr($session->SessionDate, 0, 10)
-                    : (is_object($session->SessionDate) ? $session->SessionDate->format('Y-m-d') : '');
+                $rawSessionDate = $session->getAttribute('SessionDate');
+                $dateStr = is_string($rawSessionDate)
+                    ? substr($rawSessionDate, 0, 10)
+                    : (is_object($rawSessionDate) ? $rawSessionDate->format('Y-m-d') : '');
                 $timeStr = $session->StartTime ?: '00:00';
                 $tz = config('app.timezone', 'Asia/Taipei');
                 $sessionStart = Carbon::parse("{$dateStr} {$timeStr}", $tz);

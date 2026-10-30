@@ -1,5 +1,10 @@
 parameters:
     level: 5
+    # Preserve established live maintenance/credential gates. This optional new
+    # Larastan style rule was not part of the previous PHPStan contract.
+    noEnvCallsOutsideOfConfig: false
+    # Keep existing already-loaded collection/filter semantics; no new SQL policy.
+    noUnnecessaryCollectionCall: false
     paths:
         - app
     excludePaths:
@@ -8,4 +13,6 @@ parameters:
     # #545：baseline 既有問題，讓 PHPStan 之後只對「新增」問題報錯，
     # 以便穩定全綠後可從 advisory 升為 backend PR required gate。
 includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
     - phpstan-baseline.neon

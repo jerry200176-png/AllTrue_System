@@ -43,21 +43,25 @@ class AssessmentResult extends Model
         'reviewed_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Assessment, $this> */
     public function assessment()
     {
         return $this->belongsTo(Assessment::class, 'assessment_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<AssessmentRemediationAction, $this> */
     public function remediationActions()
     {
         return $this->hasMany(AssessmentRemediationAction::class, 'assessment_result_id');

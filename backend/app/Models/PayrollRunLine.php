@@ -19,6 +19,7 @@ class PayrollRunLine extends Model
         'payload' => 'array',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<PayrollRun, $this> */
     public function run()
     {
         return $this->belongsTo(PayrollRun::class, 'run_id');

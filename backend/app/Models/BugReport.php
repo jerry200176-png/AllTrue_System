@@ -42,31 +42,37 @@ class BugReport extends Model
         });
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function reporter()
     {
         return $this->belongsTo(User::class, 'reporter_user_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
     public function assignee()
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<BugReportComment, $this> */
     public function comments()
     {
         return $this->hasMany(BugReportComment::class, 'bug_report_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<BugReportStatusLog, $this> */
     public function statusLogs()
     {
         return $this->hasMany(BugReportStatusLog::class, 'bug_report_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<BugReportEvidence, $this> */
     public function evidence()
     {
         return $this->hasMany(BugReportEvidence::class, 'bug_report_id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<BugReportAttachment, $this> */
     public function attachments()
     {
         return $this->hasMany(BugReportAttachment::class, 'bug_report_id');

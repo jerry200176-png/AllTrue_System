@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property string|null $student_name Optional projection/aggregate attribute; no schema change.
+ */
 class ExceptionWorkflow extends Model
 {
     protected $table = 'exception_workflows';
@@ -34,21 +37,25 @@ class ExceptionWorkflow extends Model
         'closed_at' => 'datetime',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ExceptionWorkflowCandidate, $this> */
     public function candidates()
     {
         return $this->hasMany(ExceptionWorkflowCandidate::class, 'workflow_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
     public function classSession()
     {
         return $this->belongsTo(ClassSession::class, 'class_session_id', 'id');

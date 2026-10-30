@@ -27,6 +27,14 @@ use LogicException;
  * @property int|null $VoidedByUserID
  * @property string|null $VoidReason
  * @property string $PersonType
+ * @property string|null $status_label Optional projection/aggregate attribute; no schema change.
+ * @property bool|null $is_late Optional projection/aggregate attribute; no schema change.
+ * @property string|null $date Optional projection/aggregate attribute; no schema change.
+ * @property string|null $time Optional projection/aggregate attribute; no schema change.
+ * @property string|null $subject Optional projection/aggregate attribute; no schema change.
+ * @property int|null $campus_id Optional projection/aggregate attribute; no schema change.
+ * @property string|null $campus_name Optional projection/aggregate attribute; no schema change.
+ * @property string|null $teacher_name Optional projection/aggregate attribute; no schema change.
  */
 class StudentSignIn extends Model
 {

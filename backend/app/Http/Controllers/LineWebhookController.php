@@ -428,7 +428,7 @@ class LineWebhookController extends Controller
             $rules["settings.{$type}"] = 'sometimes|boolean';
         }
         $data = $request->validate($rules);
-        $unknown = array_diff(array_keys($data['settings']), array_keys(LineNotifySettings::DEFAULTS));
+        $unknown = array_diff(array_keys($request->input('settings', [])), array_keys(LineNotifySettings::DEFAULTS));
         if ($unknown) {
             return response()->json(['message' => '不明的通知類型：' . implode(', ', $unknown)], 422);
         }

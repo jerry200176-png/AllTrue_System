@@ -242,6 +242,7 @@ class QuestionBankController extends Controller
         return $request->validate($rules);
     }
 
+    /** @return \Illuminate\Database\Eloquent\Builder<\App\Models\QuestionBank> */
     private function accessibleBanks(Request $request): Builder
     {
         $query = QuestionBank::query();

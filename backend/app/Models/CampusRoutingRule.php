@@ -33,6 +33,7 @@ class CampusRoutingRule extends Model
         'enabled'   => 'boolean',
     ];
 
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<CampusRoutingVersion, $this> */
     public function version()
     {
         return $this->belongsTo(CampusRoutingVersion::class, 'routing_version_id');
