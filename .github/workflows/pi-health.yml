@@ -426,6 +426,20 @@ jobs:
           echo "::error::Pi thermal telemetry is unsafe or unavailable; see the thermal check output."
           exit 1
 
+      # A red nightly check (incl. bugs:verify-reproductions drift, #4659) otherwise sits in the Actions tab; push it to the
+      # same ops channel monitor-alert.sh already feeds (same call as docs-integrity's notify job, no new capability).
+      - name: Notify ops channel on scheduled failure
+        if: failure() && github.event_name == 'schedule' && steps.secrets.outputs.configured == 'true'
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/pi_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" "bash /home/admin/scripts/monitor-alert.sh notify '🖥️ Pi Health Monitor（每日排程）失敗，含夜間資料不變式檢查：${RUN_URL}'"
+
       - name: Report to GitHub Step Summary
         if: always()
         run: |
