@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-billing-backend-copy-sync
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 登記收款的提示文字統一
+    summary: 登記收款後的提示與重複登記的警告，改用「待確認入帳」和「確認入帳／退回」。
+    items:
+      - category: improved
+        text: 登記收款成功後顯示「已送出，待確認入帳」。
+      - category: improved
+        text: 同一門課已有待確認入帳的回報時，提示改為「請先確認入帳或退回，再登記」。
+    source_refs:
+      - "changelog:2026-10-30:billing-backend-copy-sync"
