@@ -47,7 +47,7 @@ describe('ledger anomaly with nothing to undo (in-app #446)', () => {
     expect(ledger).toContain('data-testid="ledger-exception-drift"');
     expect(ledger).toContain('回報給系統管理員');
     expect(ledger).toContain("new CustomEvent('alltrue-open-bug-report'");
-    expect(ledger).toContain('這筆多收沒有對應的收款，系統無法自動處理');
+    expect(ledger).toContain('不會自動抵上面的未繳金額');
   });
   it('the report launcher listens for the pre-filled open request', () => {
     const launcher = readFileSync(resolve(__dirname, '../BugReportLauncher.vue'), 'utf8');

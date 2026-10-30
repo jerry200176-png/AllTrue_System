@@ -44,7 +44,7 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料，記在同一張帳單上，不會自動抵上面的未繳金額）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
