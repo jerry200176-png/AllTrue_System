@@ -41,10 +41,18 @@
           <p v-if="initialActionNote" class="ledger-empty" role="status" data-testid="ledger-initial-action-note">{{ initialActionNote }}</p>
           <!-- PRD v2 D8: owed-by-today first, same rule as the student list. -->
           <div class="ledger-owed" data-testid="ledger-owed">
+            <p class="ledger-conclusion" data-testid="ledger-conclusion">
+              <strong>{{ conclusion }}</strong>
+              <AtHelpDisclosure label="為什麼？">
+                <p>「未繳」是到今天已到期、還沒收到的金額；之後才到期的另列在下面。</p>
+                <p>「待確認入帳」是家長說繳了、你還沒按「確認入帳」的金額，確認前不算已收。</p>
+                <p v-if="overpaidTotal > 0">多收記在同一張帳單上，不會自動抵上面的未繳金額。</p>
+              </AtHelpDisclosure>
+            </p>
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料，記在同一張帳單上，不會自動抵上面的未繳金額）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -342,6 +350,7 @@ import ReceiptModal from './ReceiptModal.vue';
 import PaymentSlipModal from './PaymentSlipModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
+import AtHelpDisclosure from './design-system/AtHelpDisclosure.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import PaymentEntryModal from './PaymentEntryModal.vue';
 import PaymentAllocation from './tuition/PaymentAllocation.vue';
@@ -636,6 +645,17 @@ const owedLabel = computed(() => {
   return scopeId && dueNow ? '此學生到今天未繳（含其他課程）' : '到今天未繳';
 });
 const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_total || 0));
+// F-1: one-line conclusion. Only sums figures already on screen (owedSplit.now, pending receipts); no new money rule.
+const pendingConfirmTotal = computed(() => (payload.value?.receipts || [])
+  .filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount || 0), 0));
+const conclusion = computed(() => {
+  const parts = [];
+  if (owedSplit.value.now > 0) parts.push(`未繳 ${formatCurrency(owedSplit.value.now)}`);
+  if (pendingConfirmTotal.value > 0) parts.push(`待確認入帳 ${formatCurrency(pendingConfirmTotal.value)}`);
+  const unbilled = (payload.value?.courses || []).some((c) => !c.paid && c.waived !== true && c.class_type !== 'tutoring' && owedFor(c.id) === 0);
+  if (unbilled) parts.push('還沒開帳單');
+  return parts.length ? parts.join('・') : '已收齊';
+});
 
 const owedFor = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id))
@@ -1026,6 +1046,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-owed p{margin:0}
 .ledger-owed__label{font-size:12px;color:var(--ds-ink-mute)}
 .ledger-owed__now{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.ledger-conclusion{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:var(--ds-font-size-md)}
 .ledger-owed__later{font-size:12px;color:var(--ds-ink-mute)}
 .ledger-owed__over{margin-top:8px !important;padding:8px 10px;border-radius:8px;background:var(--ds-warning-wash);color:var(--ds-ink);font-size:13px}
 
