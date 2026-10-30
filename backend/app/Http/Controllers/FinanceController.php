@@ -1015,9 +1015,10 @@ class FinanceController extends Controller
             }
         }
         $throughEnd = $partialIds === [] ? [] : DB::table('ClassSession')
-            ->whereIn('StudentClassID', $partialIds)->where('SessionDate', '<=', $monthEnd)
+            ->whereIn('StudentClassID', $partialIds)
             ->whereIn('Status', AttendanceStatus::payableSessionStatuses())
-            ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))->groupBy('StudentClassID')->pluck('cnt', 'StudentClassID')->all();
+            ->select('StudentClassID', DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN SessionDate <= '{$monthEnd}' THEN 1 ELSE 0 END) as thru"))
+            ->groupBy('StudentClassID')->get()->keyBy('StudentClassID')->all();
 
         $course = [];
         foreach ($courses as $c) {
@@ -1029,7 +1030,7 @@ class FinanceController extends Controller
             if ($v === null) {
                 $st = 'review';
             } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
-                $st = $p['status'] === 'review_required' ? 'review' : $p['status'];
+                $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy'])) ? 'review' : $p['status'];
                 [$owed, $out] = [(float) $p['total'], (float) $p['outstanding']];
             } elseif ($monthlyBilled && $p !== null) {
                 $st = 'review'; // this month's lessons cannot be attributed to an invoice
@@ -1042,9 +1043,14 @@ class FinanceController extends Controller
             } elseif ($monthlyBilled) {
                 [$st, $owed, $out] = ['unpaid', $tuition, $tuition];
             } elseif ($v->status === 'partial') {
-                $thru = (int) ($throughEnd[(int) $c->ID] ?? 0) * $this->resolveRate($c);
-                $out = max(0.0, min($tuition, $thru - (float) $v->applied));
-                [$st, $owed] = [$out <= 0 ? 'paid' : ($out >= $tuition ? 'unpaid' : 'partial'), $tuition];
+                // Spread the authoritative contract amount (invoice total) over the lessons, then apply receipts oldest-first.
+                $rate = $this->resolveRate($c);
+                $agg = $throughEnd[(int) $c->ID] ?? null;
+                $gross = (int) ($agg->total ?? 0) * $rate;
+                $scale = ($gross > 0 && $v->owed < $gross) ? $v->owed / $gross : 1.0;
+                $owed = round($tuition * $scale, 2);
+                $out = max(0.0, min($owed, (int) ($agg->thru ?? 0) * $rate * $scale - (float) $v->applied));
+                $st = $out <= 0 ? 'paid' : ($out >= $owed ? 'unpaid' : 'partial');
             } else {
                 [$st, $owed, $out] = ['unpaid', $tuition, $tuition];
             }

@@ -139,4 +139,22 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertSame(5000, (int) $s['total_outstanding']); // review estimate is not debt
         $this->assertSame([6000, 1, 1], [(int) $s['unconfirmed_amount'], (int) $s['review_students'], (int) $s['unpaid_students']]);
     }
+
+    /** Codex P1 round: invoice total below gross lesson value bounds FIFO; a same-month discrepancy stays review. */
+    public function test_discounted_contract_bounds_fifo_and_same_month_discrepancy_is_review(): void
+    {
+        // 6 Jul + 4 Aug lessons at 1500 (gross 15000), invoice total 10000, applied 9000 => only 1000 owed in total
+        $disc = $this->course([['2026-08', 10000, 'partial', 9000, [[9000, 'cash']]]], ['Charge' => 10000], self::AUG);
+        foreach (['2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04', '2026-07-05', '2026-07-06'] as $d) {
+            \App\Models\ClassSession::create(['StudentClassID' => $disc->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        // paid 6000 August invoice while 5 August lessons imply 7500
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-01'];
+        $mism = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, [...self::AUG, '2026-08-31']);
+
+        $res = $this->fetchReport()->assertOk();
+        $by = fn ($c) => collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame(['partial', 1000, 4000], [$by($disc)['pay_status'], (int) $by($disc)['outstanding_amount'], (int) $by($disc)['due_amount']]);
+        $this->assertSame('review', $by($mism)['pay_status']);
+    }
 }
