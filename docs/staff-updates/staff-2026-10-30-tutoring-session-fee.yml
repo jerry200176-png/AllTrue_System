@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-tutoring-session-fee
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 輔導課單堂不再顯示標準費用
+    summary: 輔導課的單堂檢視與單堂編輯改顯示「輔導課不另收費」，分校欄位也改顯示分校名稱。
+    items:
+      - category: fixed
+        text: 輔導課不按堂收費，單堂畫面不會再出現「本堂費用 NT$ 500（標準費用）」。
+      - category: fixed
+        text: 行事曆單堂檢視的分校欄位顯示分校名稱，不再顯示「分校#編號」。
+    source_refs:
+      - "changelog:2026-10-30:tutoring-session-fee"

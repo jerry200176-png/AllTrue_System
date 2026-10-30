@@ -22,6 +22,7 @@ function sessionRowById(sessions, sessionId) {
 /** #740 Step 7b2a：代課 modal 流程（legacy + V2 + batch） */
 export function useCalendarSubstitute({
   branchId,
+  branchName,
   showModal,
   modalForm,
   editingCourseId,
@@ -200,7 +201,7 @@ export function useCalendarSubstitute({
   const branchNameMap = computed(() => {
     const m = {};
     const bid = Number(branchId.value ?? branchId ?? 0);
-    if (bid > 0) m[bid] = `分校#${bid}`;
+    if (bid > 0) m[bid] = branchName?.value || `分校#${bid}`; // in-app #443: real name when the app knows it
     return m;
   });
 

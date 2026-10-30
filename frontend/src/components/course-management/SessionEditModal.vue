@@ -127,7 +127,11 @@
         <p v-if="timeRangeError" class="se-inline-error" role="alert">{{ timeRangeError }}</p>
 
         <div class="se-charge-preview" :class="chargePreviewClass" aria-live="polite">
-          <template v-if="chargePreview.kind === 'ok'">
+          <template v-if="chargePreview.kind === 'tutoring'">
+            <span class="se-charge-label">此堂費用</span>
+            <span class="se-charge-empty">輔導課不另收費</span>
+          </template>
+          <template v-else-if="chargePreview.kind === 'ok'">
             <span class="se-charge-label">此堂費用</span>
             <span class="se-charge-value">NT$ {{ chargePreview.value.toLocaleString() }}</span>
             <span v-if="chargePreview.unit === 'hour' && chargePreview.deltaText" class="se-charge-delta">{{ chargePreview.deltaText }}</span>
@@ -245,6 +249,7 @@ const timeRangeError = computed(() => {
 });
 
 const chargePreview = computed(() => {
+  if (props.form?.course?.class_type === 'tutoring') return { kind: 'tutoring' };
   const rate = Number(props.form?.contract_rate ?? 0);
   const dur = Number(props.form?.contract_session_duration ?? 0);
   const unit = String(props.form?.contract_rate_unit || 'session').toLowerCase();
