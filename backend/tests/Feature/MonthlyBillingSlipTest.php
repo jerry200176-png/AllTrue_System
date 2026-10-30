@@ -278,13 +278,15 @@ class MonthlyBillingSlipTest extends TestCase
             'PeriodEnd' => '2026-08-31',
         ]);
 
+        \Illuminate\Support\Facades\DB::table('Subject')->updateOrInsert(['id' => 1], ['Subject_Name' => '數學', 'School_id' => 1, 'Grade_no' => 1]);
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
             ->assertOk()
             ->assertJsonCount(2, 'sessions')
             ->assertJsonPath('sessions.0.date', '2026-08-03')
             ->assertJsonPath('sessions.1.date', '2026-08-10')
-            ->assertJsonPath('total_amount', 6000);
+            ->assertJsonPath('total_amount', 6000)
+            ->assertJsonPath('items.0.description', '數學月結費用 2026年8月'); // in-app #445
     }
 
     public function test_prepaid_next_period_slip_lists_dates_in_item_service_range(): void

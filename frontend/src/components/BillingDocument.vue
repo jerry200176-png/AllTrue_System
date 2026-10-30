@@ -3,7 +3,7 @@
     <header class="slip-top">
       <div class="slip-brand">
         <img :src="logoUrl" alt="" class="slip-logo" />
-        <div>
+        <div class="slip-brand-text">
           <div class="slip-brand-name">{{ BRAND_TITLE }}</div>
           <div v-if="doc.campus_name" class="slip-brand-campus">{{ doc.campus_name }}</div>
         </div>
@@ -182,8 +182,10 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
 }
 .slip-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .slip-logo { width: 56px; height: 56px; object-fit: contain; flex: 0 0 auto; }
-.slip-brand-name { font-size: 15px; font-weight: 700; }
-.slip-brand-campus { font-size: 12.5px; color: var(--slip-mute); }
+/* in-app #444: the brand block may shrink but never wraps, so the name cannot drop onto the campus line. */
+.slip-brand-text { min-width: 0; flex: 1 1 auto; }
+.slip-brand-name { font-size: 15px; font-weight: 700; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slip-brand-campus { font-size: 12.5px; line-height: 1.4; color: var(--slip-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slip-doc { text-align: right; flex: 0 0 auto; }
 .slip-doc-title { font-size: 20px; font-weight: 800; color: var(--slip-accent); letter-spacing: 0.04em; }
 .slip-doc-ref { font-size: 12px; color: var(--slip-mute); }
@@ -343,7 +345,12 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
   padding-top: 14px;
   border-top: 1px solid var(--slip-line);
   font-size: 11px;
+  line-height: 1.5;
   color: var(--slip-mute);
   text-align: center;
 }
+.slip-foot > span { max-width: 100%; }
+/* in-app #444: the watermark sits behind the text, so footer glyphs are not smudged by it. */
+.slip-watermark { z-index: 0; }
+.slip > :not(.slip-watermark) { position: relative; z-index: 1; }
 </style>
