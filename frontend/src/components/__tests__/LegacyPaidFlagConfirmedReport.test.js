@@ -53,7 +53,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     ] } });
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').exists()).toBe(false);
-    expect(w.find('[data-testid="contract-amounts"]').text()).toContain('未收 NT$ 6,000');
+    expect(w.find('[data-testid="contract-amounts"]').text()).toContain('未繳 NT$ 6,000');
     expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(false);
   });

@@ -69,7 +69,7 @@ for (const [name, width, height] of SIZES) {
     const dialog = page.locator('.ledger-modal');
     await expect(dialog.getByText('目前只有繳費單')).toHaveCount(0);
     await expect(dialog.locator('.ledger-owed__label')).toHaveText('此學生到今天未繳（含其他課程）');
-    await expect(page.getByTestId('ledger-target-empty')).toContainText('這門課目前沒有帳單和收款');
+    await expect(page.getByTestId('ledger-target-empty')).toContainText('這門課沒有帳單和收款');
     await expect(page.getByTestId('ledger-other-course')).toHaveText('其他課程');
     await page.screenshot({ path: path.join(outDir, `legacy-ledger-${name}.png`), fullPage: true });
     expect(requests.filter((r) => !r.startsWith('GET '))).toEqual([]);

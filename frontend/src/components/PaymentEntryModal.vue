@@ -13,7 +13,7 @@
         <span class="pe-info-item"><strong>科目</strong>{{ row?.subject }}</span>
         <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}</span>
         <span v-if="row?.payable_status !== 'unbilled'" class="pe-info-item"><strong>{{ row?.payable_status === 'invoiced' ? '帳單應繳' : '應繳' }}</strong>NT$ {{ Number(row?.payable_amount ?? 0).toLocaleString('zh-TW') }}</span>
-        <span v-else class="pe-info-item pe-info-item--pending"><strong>應繳</strong>待開單／尚無帳單</span>
+        <span v-else class="pe-info-item pe-info-item--pending"><strong>應繳</strong>還沒開帳單</span>
         <span v-if="row?.estimated_amount != null" class="pe-info-item pe-info-item--muted"><strong>估算</strong>NT$ {{ Number(row.estimated_amount).toLocaleString('zh-TW') }}</span>
         <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ row.billing_period }}</span>
       </div>
@@ -70,14 +70,14 @@
             <input type="checkbox" v-model="form.free_gift" data-testid="pe-free-gift" />
             這期是「{{ FREE_GIFT_LABEL }}」：登錄一張 NT$ 0 帳單（不是收款）
           </label>
-          <p v-if="isZeroCharge && !legacyBackfill" class="pe-hint">課程沒填費用不會自動當免費；確定免費才勾選，否則請先到課程管理設定費用。</p>
+          <p v-if="isZeroCharge && !legacyBackfill" class="pe-hint">沒填費用不算免費。免費才勾，要收費請先到課程管理設定。</p>
         </div>
 
         <div class="pe-workflow-hint" role="note" data-testid="pe-workflow-hint">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
           <span v-if="legacyBackfill" data-testid="pe-legacy-hint">送出即入帳，不需要再確認：會建立已確認的收款紀錄（沒有帳單時一併開帳單）。收齊時維持已收；少於帳單未收額時，剩下的會列為未繳。</span>
           <span v-else-if="form.free_gift">送出後直接留下一張 NT$ 0「{{ FREE_GIFT_LABEL }}」帳單，不是收款，不需要確認入帳。</span>
-          <span v-else>送出後會顯示「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，你在這裡按「確認入帳」才算收到。</span>
+          <span v-else>送出後是「{{ TUITION_STATUS_CONFIG.pending_report.label }}」，按「確認入帳」才算已收。</span>
         </div>
 
         <div class="pe-field">
@@ -168,7 +168,7 @@ async function submit() {
   }
   // #3875: NT$0 is never a report on a course that charges; only free courses settle at 0.
   if (amount === 0 && !isZeroCharge.value) {
-    submitError.value = '金額為 0 不能登記。請填實際收到的金額；若畫面顯示應繳 0 但課程仍未繳，請到學生帳務核對帳單。';
+    submitError.value = '金額要大於 0。';
     return;
   }
   // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself; NT$0 needs the explicit 免費／贈送 mark.
@@ -209,7 +209,7 @@ async function submit() {
       : await recordPayment(body);
     if (!res.ok) {
       if (res.code === 'pending_report_exists') {
-        submitError.value = `此課程已有「${REPORT_STATUS_LABELS.pending}」回報，不要重複送出。請先核對該回報金額與實收金額；相符才確認入帳，金額不符請先退回，再重新登記。退回回報不會更改帳單應繳金額。`;
+        submitError.value = `這門課已有${REPORT_STATUS_LABELS.pending}的回報。請先「確認入帳」或「退回」，再登記。`;
         // Refresh authoritative owner data without closing or resetting the entered amount.
         emit('conflict', res.data);
         return;

@@ -18,6 +18,8 @@ import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  formatLedgerDriftLine,
+  buildLedgerIssueReport,
   humanizeDocumentRef,
   humanizeBulkLeaveSkipReason,
   formatBulkLeaveSkippedLine,
@@ -263,3 +265,16 @@ assert.equal(buildAccountingCsvRows([]).length, 0);
 assert.equal(buildAccountingCsvRows(undefined).length, 0);
 
 console.log('studentClassDisplay.test.js: all assertions passed');
+
+// in-app #446: a drift with no revocable payment is explained with the bill's numbers, never "請找老闆確認".
+{
+  const inv = { id: 2032, student_class_id: 7, total_amount: 6000, paid_amount: 7500, calculated_applied_amount: 6000, overpaid_amount: 1500 };
+  const line = formatLedgerDriftLine(inv);
+  assert.ok(line.includes('應收 NT$ 6,000') && line.includes('收款紀錄合計 NT$ 7,500') && line.includes('多收 NT$ 1,500'));
+  assert.ok(!line.includes('老闆'));
+  assert.ok(!formatLedgerDriftLine({ ...inv, paid_amount: 7500 }).includes('帳單上記錄已收'));
+  assert.ok(formatLedgerDriftLine({ ...inv, paid_amount: 6000 }).includes('帳單上記錄已收 NT$ 6,000'));
+  const rpt = buildLedgerIssueReport({ code: 'paid_amount_mismatch', invoice_id: 2032, student_class_id: 7 }, inv, 55);
+  assert.equal(rpt.relatedReference, '學生ID 55 / 帳單ID 2032 / 課程ID 7');
+  assert.ok(rpt.description.includes('paid_amount_mismatch') && rpt.description.includes('7500'));
+}

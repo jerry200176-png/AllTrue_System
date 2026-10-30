@@ -15,7 +15,7 @@
         <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
-        <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未收 {{ money(amounts.owed) }}</p>
+        <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
       </div>
       <p v-if="!isMonthly && state === 'ready'" class="contract__left" data-testid="contract-left">剩 <strong>{{ upcomingCount }}</strong> 堂</p>
     </div>
@@ -25,14 +25,14 @@
       <span v-else-if="waived" class="contract__muted" data-testid="contract-waived">{{ WAIVED_LABEL }}</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
       <template v-else-if="!course.paid">
-        <span class="contract__muted">還沒開帳單，金額待確認</span>
+        <span class="contract__muted">還沒開帳單</span>
         <AtButton v-if="billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       </template>
-      <span v-else-if="!legacyUnverified">已收清</span>
+      <span v-else-if="!legacyUnverified">已收</span>
       <template v-if="pendingReport">
-        <span class="contract__chip pay-partial">家長回報{{ pendingReport.date ? ` ${shortDate(pendingReport.date)} ` : '' }}已付 {{ money(pendingReport.amount) }}，待你核對入帳</span>
+        <span class="contract__chip pay-partial">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</span>
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
-        <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回</AtButton>
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回這筆</AtButton>
       </template>
       <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid || legacyUnverified)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
@@ -48,7 +48,7 @@
     <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
       <p>開單時金額 {{ money(rateNote.issued) }} ／ 目前課程金額 {{ money(rateNote.current) }}</p>
-      <p class="contract__muted">帳單不會跟著課程金額自動改。金額不同可能是約定調整，不代表帳單有誤；請先確認原約定與應收金額，確認開錯才更正。</p>
+      <p class="contract__muted">帳單金額不會隨課程金額變動。</p>
     </div>
 
     <div class="contract__memo">
@@ -69,7 +69,7 @@
 
     <p v-if="state === 'loading'" class="contract__muted">上課日載入中…</p>
     <p v-else-if="state === 'error'" class="contract__muted">
-      上課日暫時無法載入，金額不受影響。
+      上課日載入失敗，金額不受影響。
       <button class="contract__link" type="button" @click="load">重試</button>
     </p>
     <template v-else>
@@ -93,7 +93,7 @@
     </template>
     <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
       <p class="contract__confirm-text" data-testid="contract-confirm-text">
-        確認實際收到 {{ money(pendingReport?.amount) }}，這筆會算已收。這裡只確認回報金額，不能修改金額；不符請取消並退回回報。撤銷收款不會更改帳單應繳金額，帳單開錯需另行作廢並更正。
+        確認收到 {{ money(pendingReport?.amount) }}？確認後算「已收」。金額不對請取消，改按「退回」。
       </p>
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-confirm-cancel" @click="confirmOpen = false">取消</AtButton>
@@ -101,12 +101,12 @@
       </template>
     </AtDialog>
     <AtDialog :open="rejectOpen" title="退回這筆繳費回報" size="sm" title-id="contract-reject-title" @close="rejectOpen = false">
-      <p class="contract__confirm-text">退回只處理這筆待核對回報，不會更改帳單應繳金額，也不代表退款。</p>
+      <p class="contract__confirm-text">退回後這筆回到未繳，不是退款。</p>
       <label class="contract__reject-label" :for="`contract-reject-reason-${course.id}`">退回原因（家長會看到）</label>
       <AtTextarea :id="`contract-reject-reason-${course.id}`" v-model="rejectReason" :rows="3" data-testid="contract-reject-reason" />
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="contract-reject-cancel" @click="rejectOpen = false">取消</AtButton>
-        <AtButton size="sm" shape="rect" :disabled="!rejectReason.trim()" data-testid="contract-reject-submit" @click="submitReject">退回</AtButton>
+        <AtButton size="sm" shape="rect" :disabled="!rejectReason.trim()" data-testid="contract-reject-submit" @click="submitReject">退回這筆</AtButton>
       </template>
     </AtDialog>
   </article>
@@ -157,7 +157,7 @@ const props = defineProps({
 const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
-const PAYMENT_LABELS = { paid: '已付', partial: '付了一部分', unpaid: '未付', no_invoice: '還沒開帳單' };
+const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
 const HELD = ['attended', 'completed', 'late', 'absent'];
 const UPCOMING = ['scheduled', 'rescheduled', 'expected'];
 
@@ -228,7 +228,7 @@ function monthPayState(list) {
   if (pays.every((p) => p === 'paid')) return '已收';
   if (pays.every((p) => p === 'no_invoice')) return '還沒開帳單';
   if (pays.every((p) => p === 'unpaid' || p === 'no_invoice')) return '未繳';
-  return '部分已收';
+  return '繳了一部分';
 }
 
 // Excel-card numbering: only held/upcoming lessons count, same as the summary line.

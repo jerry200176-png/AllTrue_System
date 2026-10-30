@@ -2063,6 +2063,57 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     /**
      * @return array{0: string, 1: Student, 2: StudentClass}
      */
+    /** in-app #450: a 課程設定 time change moves EVERY later pre-scheduled row, not just the first few. */
+    public function test_time_change_moves_all_future_scheduled_rows_but_keeps_exceptions_and_leave(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        // Course 7 = Sunday 15:00. Add later rows (as the forward generator / top-up would) plus a leave row and a 調課 exception.
+        foreach (['2026-05-17', '2026-05-24', '2026-05-31'] as $d) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $d, 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled', 'Note' => '系統向前生成 #1062']);
+        }
+        $leave = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-06-07', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'leave']);
+        $exc = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-06-10', 'StartTime' => '18:00:00', 'EndTime' => '20:00:00', 'Status' => 'scheduled', 'IsContractException' => 1]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'Math', 'class_type' => 'one_on_one', 'duration_hours' => 2, 'days_of_week' => [7],
+                'start_time' => '20:00', 'day_time_slots' => [['day' => 7, 'start_time' => '20:00']],
+                'sessions_purchased' => 8, 'remaining_sessions' => 4, 'payment_type' => 'session',
+            ])->assertOk();
+
+        $rows = ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->where('IsContractException', 0)->orderBy('SessionDate')->get();
+        $this->assertCount(7, $rows);
+        foreach ($rows as $r) {
+            $this->assertSame(['20:00', '22:00'], [substr($r->StartTime, 0, 5), substr($r->EndTime, 0, 5)], (string) $r->SessionDate);
+        }
+        $this->assertSame('15:00', substr($leave->fresh()->StartTime, 0, 5));
+        $this->assertSame('18:00', substr($exc->fresh()->StartTime, 0, 5));
+        $this->assertSame('attended', ClassSession::where('StudentClassID', $course->ID)->orderBy('SessionDate')->first()->Status);
+    }
+
+    /** in-app #450: only a real 調課 exception (IsContractException) blocks a template change; a manual edit that landed on the template time is a regular row again. */
+    public function test_manual_edit_matching_the_template_does_not_block_a_later_time_change(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        $manual = ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->orderBy('SessionDate')->first();
+        $manual->update(['StartTime' => '18:00:00', 'EndTime' => '20:00:00']); // observer flags it as an exception (off the 15:00 template)
+        $this->assertSame(1, (int) $manual->fresh()->IsContractException);
+
+        foreach (['18:00', '20:00'] as $time) {
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->putJson("/api/v1/student-classes/{$course->ID}", [
+                    'subject' => 'Math', 'class_type' => 'one_on_one', 'duration_hours' => 2, 'days_of_week' => [7],
+                    'start_time' => $time, 'day_time_slots' => [['day' => 7, 'start_time' => $time]],
+                    'sessions_purchased' => 8, 'remaining_sessions' => 4, 'payment_type' => 'session',
+                ])->assertOk();
+        }
+
+        foreach (ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->get() as $r) {
+            $this->assertSame('20:00', substr($r->StartTime, 0, 5), (string) $r->SessionDate);
+            $this->assertSame(0, (int) $r->IsContractException);
+        }
+    }
+
     private function seedCourseWithHistory(bool $allFutureCompleted = false): array
     {
         $token = $this->createDirectorToken([1]);

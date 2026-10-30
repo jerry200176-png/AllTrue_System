@@ -671,9 +671,9 @@
                 <div>
                   <strong>學生歷史帳務</strong>
                   <span v-if="Number(studentBillingState[group.key].ledgerSummary.outstanding_total || 0) > 0">
-                    尚有未結清 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}；各期帳務仍保留在原期間。
+                    尚有未繳 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}；各期帳務仍保留在原期間。
                   </span>
-                  <span v-else>目前沒有未結清帳務；各期帳務仍保留在原期間。</span>
+                  <span v-else>目前沒有未繳帳務；各期帳務仍保留在原期間。</span>
                 </div>
                 <button
                   v-if="shouldShowPaymentAction(studentBillingAnchorCourse(group))"
@@ -736,7 +736,7 @@
                   <td class="cell-actions">
                     <div class="action-btns-row">
                       <button
-                        v-if="isPaymentNoticeAvailable(row.course)"
+                        v-if="isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)"
                         class="small ghost btn-payment-slip"
                         data-testid="billing-payment-slip-action"
                         type="button"
@@ -744,7 +744,8 @@
                         @click="openPaymentSlip(row.course)"
                       >繳費單</button>
                       <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
-                      <button v-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <span v-if="billingPackageLead(row, group)" class="hint" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
+                      <button v-else-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                       <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
@@ -1459,7 +1460,7 @@ import { useMonthlyCorrectionPreview } from '../composables/course-management/us
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
   REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
-  ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL,
+  ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
@@ -1578,7 +1579,7 @@ const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'nav
 // a report and voiding all happen inside it.
 const openTuitionLedger = (course) => openLedgerForCourse(course);
 const goToTuitionBilling = openTuitionLedger;
-// In-app #398: 「登記繳費回報」 opens the entry form for that course, with the ledger behind it.
+// In-app #398: 「登記收款」 opens the entry form for that course, with the ledger behind it.
 const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
@@ -4333,7 +4334,7 @@ const paymentStatusButtonLabel = (course) => paymentBadge(course).label;
 const paymentNextActionLabel = (course) => {
   const nextAction = paymentBadge(course).nextAction;
   if (nextAction === 'none') return '';
-  if (nextAction === 'report_payment') return '登記繳費回報';
+  if (nextAction === 'report_payment') return '登記收款';
   if (nextAction === 'view_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
   return '在這裡看帳務';
 };
@@ -4348,6 +4349,12 @@ const paymentStatusHelpTitle = (course) => {
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
 const reportStatusLabel = (status) => REPORT_STATUS_LABELS[status] || status || '—';
+// in-app #442: a count-mode shared package is one payment obligation, so only its lead row offers 繳費單 / 登記收款;
+// the other member rows point to it. Returns the lead course for a follower row, else null.
+const billingPackageLead = (row, group) => {
+  const lead = sharedPackageBillingLead(row.course, studentBillingState.value[group.key]?.rows || []);
+  return lead && lead.id !== row.course.id && !isTutoringCourse(row.course) ? lead : null;
+};
 const hasMixedPackagePaymentStatuses = (key) => {
   const rows = studentBillingState.value[key]?.rows || [];
   const packageStatuses = rows
@@ -5706,8 +5713,7 @@ onUnmounted(() => {
   gap: 10px;
   margin-top: 18px;
   padding: 12px 14px;
-  border: 1px solid var(--ds-hairline);
-  border-left: 3px solid var(--ds-primary);
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
   border-radius: var(--ds-radius-lg);
   background: var(--ds-primary-wash);
   color: var(--ds-ink-secondary);
@@ -5739,15 +5745,14 @@ onUnmounted(() => {
   gap: 4px;
   padding: 14px 16px;
   border: 1px solid var(--ds-hairline);
-  border-top: 3px solid var(--ds-hairline);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-canvas);
   box-shadow: var(--ds-shadow-1);
 }
 
-.course-lens-metric--success { border-top-color: var(--ds-success); }
-.course-lens-metric--warning { border-top-color: var(--ds-warning); }
-.course-lens-metric--info { border-top-color: var(--ds-primary); }
+.course-lens-metric--success { border-color: color-mix(in srgb, var(--ds-success) 50%, var(--ds-hairline)); }
+.course-lens-metric--warning { border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline)); }
+.course-lens-metric--info { border-color: color-mix(in srgb, var(--ds-primary) 45%, var(--ds-hairline)); }
 
 .course-lens-metric__label {
   color: var(--ds-ink-mute);
@@ -5818,8 +5823,7 @@ onUnmounted(() => {
   gap: 12px;
   margin: 14px 0;
   padding: 14px 16px;
-  border: 1px solid var(--ds-hairline);
-  border-left: 4px solid var(--ds-primary);
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
   border-radius: 14px;
   background: var(--ds-canvas);
   box-shadow: var(--ds-shadow-1);
@@ -6665,7 +6669,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 5px 14px 5px 12px;
-  border-left: 3px solid var(--ds-brand-amber);
   font-size: 12px;
 }
 .paused-notice__dot {
@@ -6714,9 +6717,8 @@ onUnmounted(() => {
 .dates-row-paused .dates-panel {
   margin-top: 2px;
   padding-left: 12px;
-  border-left: 3px solid var(--ds-brand-amber);
   background: var(--ds-primary-wash);
-  border-radius: 0 8px 8px 0;
+  border-radius: 8px;
 }
 
 .cell-student {
@@ -7133,17 +7135,6 @@ button.danger:disabled {
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95));
   box-shadow: 0 22px 58px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.82);
 }
-.empty-state::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px);
-  background-size: 34px 34px;
-  pointer-events: none;
-  mask-image: radial-gradient(circle at center, #000, transparent 72%);
-}
 
 .empty-icon {
   display: inline-flex;
@@ -7368,7 +7359,7 @@ button.danger:disabled {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 4px;
+  height: 2px;
   background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
 }
 .premium-danger-modal::before {
@@ -8166,7 +8157,6 @@ button.danger:disabled {
   padding: 12px 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   position: relative;
-  border-left: 4px solid #64748b;
 }
 .history-course-card:hover {
   border-color: rgba(148, 163, 184, 0.55);

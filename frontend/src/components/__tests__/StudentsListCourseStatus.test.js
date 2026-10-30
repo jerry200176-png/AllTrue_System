@@ -40,7 +40,7 @@ describe('In-App #353: existing course history stays distinct from current balan
   it.each([
     ['completed', '歷史 · 已完課'],
     ['settled', '歷史 · 已結算'],
-    ['settled_pending', '歷史 · 課已結束，尚未收款'],
+    ['settled_pending', '歷史 · 已結束，未收'],
   ])('labels an existing %s row without hiding its recorded balance or reconciliation task', async (closed_reason, label) => {
     await withCourses([{ ...ordinary, closed_reason, history_reason: closed_reason }], async (wrapper) => {
       if (closed_reason === 'settled_pending') {
@@ -48,10 +48,9 @@ describe('In-App #353: existing course history stays distinct from current balan
         wrapper.findAllComponents({ name: 'AtButton' }).find(b => b.text().includes('顯示已結業')).vm.$emit('click');
         await flushPromises();
       }
-      const pill = wrapper.find('.subject-pill');
-      expect(pill.exists()).toBe(true);
-      expect(pill.find('strong').text()).toBe('0堂');
-      expect(pill.text()).toContain(label);
+      // in-app #448: history is one muted 「+N 歷史」 chip, never a per-contract chip.
+      expect(wrapper.findAll('.subject-pill')).toHaveLength(1);
+      expect(wrapper.find('[data-testid="history-chip"]').text()).toBe('+1 歷史');
       expect(wrapper.findAll('.student-course-card')).toHaveLength(0);
       await wrapper.find('.sl-history-toggle').trigger('click');
       const history = wrapper.find('.sl-history-card');

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-package-one-slip
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 多科共用方案只開一張繳費單
+    summary: 課程管理的帳務資料裡，共用方案只在一列提供繳費單與登記繳費回報。
+    items:
+      - category: fixed
+        text: 共用方案的每一科不再各有一顆繳費單與登記繳費回報；只在一列處理，其他科會指向那一列。
+      - category: improved
+        text: 共用方案的繳費單科目欄會列出方案內所有科目，金額不變。
+    source_refs:
+      - "changelog:2026-10-30:package-one-slip"

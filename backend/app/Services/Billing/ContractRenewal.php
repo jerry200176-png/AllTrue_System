@@ -1241,7 +1241,10 @@ final class ContractRenewal
                 'TotalAmount'    => $totalAmount,
                 'ScheduleModeAtIssue' => $newCourse->ScheduleMode,
                 'billing_period' => $billingPeriod,
-            ], [[
+            ] + ($totalAmount <= 0 ? [ // #4018: a fully discounted term is settled; the discount's approver stays on the bill (reconciled_by) and the snapshot is the evidence
+                'Status' => 'paid', 'zero_amount_reason' => Invoice::ZERO_REASON_FULL_DISCOUNT,
+                'reconciled_at' => now(), 'reconciled_by' => $actorId > 0 ? $actorId : null, 'billing_snapshot' => $discountSnapshot,
+            ] : []), [[
                 'StudentClassID' => (int) $newCourse->ID,
                 'Description' => '月結費用 ' . $periodLabel,
                 'Amount'      => $totalAmount,

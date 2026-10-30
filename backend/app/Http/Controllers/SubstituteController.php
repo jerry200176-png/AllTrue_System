@@ -289,6 +289,7 @@ class SubstituteController extends Controller
                 }
                 $lrRow = $lrRowQuery->first();
                 if ($lrRow && $oldTeacherId > 0) {
+                    \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, $oldTeacherId, $currentOperatorId ?: null, '代課撤銷（Undo）');
                     $lrUpdate = [
                         'TeacherID' => $oldTeacherId,
                         'updated_at' => now(),

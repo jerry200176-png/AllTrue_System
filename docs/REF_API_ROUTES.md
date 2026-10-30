@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 537 api/* routes · generated 2026-10-29
+> Source: `php artisan route:list --json` · 538 api/* routes · generated 2026-10-29
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -518,7 +518,7 @@
 |--------|-----|--------|------|
 | POST | `api/v1/learning-record-teacher-comments/{comment}/read` | `LearningRecordTeacherCommentController@markRead` | role+campus |
 
-## /api/v1/learning-records (19)
+## /api/v1/learning-records (20)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -536,6 +536,7 @@
 | PUT | `api/v1/learning-records/{learningRecord}` | `LearningRecordController@update` | role+campus |
 | DELETE | `api/v1/learning-records/{learningRecord}` | `LearningRecordController@destroy` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/approve` | `LearningRecordController@approve` | role+campus |
+| GET | `api/v1/learning-records/{learningRecord}/author-snapshots` | `LearningRecordAuthorSnapshotController@index` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/reject` | `LearningRecordController@reject` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/request-changes` | `LearningRecordController@requestChanges` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/rollback-approval` | `LearningRecordController@rollbackApproval` | role+campus |

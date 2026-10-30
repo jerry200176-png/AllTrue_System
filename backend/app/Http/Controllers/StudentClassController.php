@@ -5423,9 +5423,11 @@ class StudentClassController extends Controller
         $oldCount = (int) ($source->getAttribute('SessionCount') ?? 0);
         $used = (int) (SessionDeductionService::batchObservedUsedSessions([$cid])[$cid] ?? 0);
         $remaining = $oldCount - $used;
-        if ($used < 1 || $remaining < 1) {
+        // in-app #449: used = 0 is a whole-contract move (the old side keeps 0 lessons / 0 charge and the
+        // whole paid balance carries over); only a contract with nothing left to move is refused.
+        if ($used < 0 || $remaining < 1) {
             abort(response()->json([
-                'message' => '轉課日之前已上堂數或剩餘堂數不足以分成兩份合約，請重新選擇轉課日。',
+                'message' => '這份合約在轉課日之後已沒有剩餘堂數可轉，請重新選擇轉課日。',
                 'code' => 'split_contract_invalid_balance', 'observed_used_sessions' => $used,
             ], 422));
         }
@@ -5439,6 +5441,9 @@ class StudentClassController extends Controller
         }
         $source->setAttribute('SessionCount', $used);
         $source->setAttribute('Charge', $sourceCharge);
+        if ($used === 0) {
+            $source->setAttribute('closed_reason', 'completed'); // emptied shell: history, not a live 0-lesson chip
+        }
         $source->save();
         $new->setAttribute('SessionCount', $remaining);
         $new->setAttribute('Charge', $newCharge);

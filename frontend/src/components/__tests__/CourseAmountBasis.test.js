@@ -26,14 +26,14 @@ afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 describe('amount-source synthetic characterization', () => {
   it('issued8800 paid8000 due800 is ledger arithmetic', async () => {
     const { w, card } = await ledger({ invoices: [invoice()] });
-    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 8,000・未收 NT$ 800');
+    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 8,000・未繳 NT$ 800');
     expect(card.find('[data-testid="contract-last-payment"]').text()).toContain('NT$ 8,000'); w.unmount();
   });
   it('manual issued8000 paid8000 remains settled despite current course8800', async () => {
     const { w, card, course } = await ledger({ invoices: [invoice({ total_amount: 8000, stored_total_amount: 8000,
       outstanding_amount: 0, status: 'paid', hand_priced: true })], course: { paid: true } });
     expect(getCourseTotalFee(course)).toBe(8800);
-    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未收 NT$ 0');
+    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未繳 NT$ 0');
     expect(card.find('[data-testid="contract-rate-note"]').exists()).toBe(false); w.unmount();
   });
   it('unpaid issued8000 current8800 comparison stays neutral without rewriting invoice', async () => {
@@ -44,14 +44,14 @@ describe('amount-source synthetic characterization', () => {
     // in-app #414 / #4155: contract Charge is shown apart from the stored bill total
     expect(card.find('[data-testid="contract-charge"]').text()).toBe('合約金額 NT$ 8,800');
     expect(card.find('[data-testid="contract-rate-note"]').text()).toContain('開單時金額 NT$ 8,000 ／ 目前課程金額 NT$ 8,800');
-    expect(card.find('[data-testid="contract-rate-note"]').text()).toContain('不代表帳單有誤');
+    expect(card.find('[data-testid="contract-rate-note"]').text()).toContain('帳單金額不會隨課程金額變動');
     expect(card.find('[data-testid="contract-amounts"]').text()).toContain('本合約帳單 應收 NT$ 8,000'); w.unmount();
   });
   it('monthly projection8800 does not invent a payment from stored8000', async () => {
     const { w, card } = await ledger({ course: { schedule_mode: 'date' }, invoices: [invoice({ stored_total_amount: 8000,
       computed_total_amount: 8800, amount_source: 'billable_sessions', calculated_applied_amount: 0, paid_amount: 0,
       outstanding_amount: 8800, status: 'unpaid', payments: [], billing_period: '2026-01' })] });
-    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 0・未收 NT$ 8,800');
+    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 0・未繳 NT$ 8,800');
     expect(card.text()).not.toContain('已收 NT$ 8,000'); expect(w.text()).toContain('8,800'); w.unmount();
   });
   it('aggregates active invoices once and excludes void bills from8800/8000/800', async () => {
@@ -60,12 +60,12 @@ describe('amount-source synthetic characterization', () => {
       calculated_applied_amount: 0, paid_amount: 0, outstanding_amount: 800, payments: [] });
     const voided = invoice({ id: 33, status: 'void', total_amount: 9900, calculated_applied_amount: 0, outstanding_amount: 9900, payments: [] });
     const { w, card } = await ledger({ invoices: [paid, extra, voided] });
-    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 8,000・未收 NT$ 800');
+    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 8,000・未繳 NT$ 800');
     w.unmount();
   });
   it('legacy paid flag without receipts never invents8000 received or payment date', async () => {
     const { w, card } = await ledger({ course: { paid: true, paid_at: '2026-01-10', legacy_paid_flag_only: true } });
-    expect(card.text()).toContain('需核對：舊資料標記已收，缺付款紀錄');
+    expect(card.text()).toContain('需核對（舊資料標已收，查無收款）');
     expect(card.find('[data-testid="contract-amounts"]').exists()).toBe(false);
     expect(card.find('[data-testid="contract-last-payment"]').exists()).toBe(false); w.unmount();
   });

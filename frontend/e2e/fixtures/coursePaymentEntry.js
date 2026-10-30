@@ -3,7 +3,7 @@ import { recordLatestGetJson } from './latestGetJson.js';
 import { expect } from '@playwright/test';
 import { REPORT_STATUS_LABELS, coursePaymentBadge } from '../../src/lib/courseMoneyState.js';
 
-const UNPAID_ACTION = '登記繳費回報';
+const UNPAID_ACTION = '登記收款';
 const PENDING_REPORT_ACTION = `查看「${REPORT_STATUS_LABELS.pending}」`;
 /** The billing action every course offers; 課程查找 rows show it once (#3982). */
 export const BILLING_ACTION = '在這裡看帳務';
@@ -13,8 +13,8 @@ export const COURSE_PAYMENT_ACTION_NAME = new RegExp(`^(?:${UNPAID_ACTION}|${PEN
 
 /**
  * The next action a 課程查找 course row must offer for its payment state
- * (CourseManagement.vue paymentNextActionLabel): unpaid/partial → 登記繳費回報,
- * pending report → 查看「待核對入帳」, anything else → 在這裡看帳務; tutoring has none.
+ * (CourseManagement.vue paymentNextActionLabel): unpaid/partial → 登記收款,
+ * pending report → 查看「待確認入帳」, anything else → 在這裡看帳務; tutoring has none.
  *
  * @param {{ class_type?: string, payment_status?: string }} course
  * @returns {string | null}

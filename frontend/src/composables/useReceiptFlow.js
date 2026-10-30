@@ -42,7 +42,7 @@ export function useReceiptFlow({ refreshCourses, toast } = {}) {
 
   async function onPaymentEntryConfirmed(result) {
     paymentEntryOpen.value = false;
-    toast?.(`已送出，狀態改為「${REPORT_STATUS_LABELS.pending}」；請到帳務中心按確認入帳後才會開收據`);
+    toast?.(`已送出，狀態改為「${REPORT_STATUS_LABELS.pending}」；請到帳務中心按確認入帳`);
 
     // #1827: admin report is pending — do not open a receipt (R79: receipt is confirmed-only).
     const studentId = paymentEntryStudentId.value;

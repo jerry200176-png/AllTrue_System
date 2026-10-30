@@ -58,7 +58,7 @@ describe('PaymentEntryModal — director-record submission contract', () => {
   it('blocks a NT$0 report on a course that charges instead of dropping the invoice id', async () => {
     const covered = await submitRow({ payable_invoice_id: 78, payable_outstanding: 0 });
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(covered.text()).toContain('金額為 0 不能登記');
+    expect(covered.text()).toContain('金額要大於 0');
     // Typing a real amount sends it against the displayed bill; the backend refuses a covered bill, it never re-targets.
     await covered.find('input[type="number"]').setValue(500);
     await covered.find('form').trigger('submit');
@@ -125,14 +125,14 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     await wrapper.setProps({ show: true });
     await nextTick();
 
-    expect(wrapper.text()).toContain('你在這裡按「確認入帳」才算收到');
+    expect(wrapper.text()).toContain('按「確認入帳」才算已收');
     expect(wrapper.text()).toContain('登記收款');
     await wrapper.find('form').trigger('submit');
     await tick();
 
     expect(wrapper.emitted('confirmed')).toBeUndefined();
     expect(wrapper.emitted('pending')).toBeUndefined();
-    expect(wrapper.text()).toContain('不要重複送出');
+    expect(wrapper.text()).toContain('請先「確認入帳」或「退回」');
   });
 
   it('does not emit confirmed on a network error either', async () => {

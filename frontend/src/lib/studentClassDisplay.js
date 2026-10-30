@@ -401,3 +401,29 @@ export function buildAccountingCsvRows(rows) {
     r.confirmed_by_name || '',
   ]);
 }
+
+const money = (n) => `NT$ ${Number(n || 0).toLocaleString()}`;
+
+/**
+ * in-app #446: an anomaly with no payment to undo must say what is wrong in director terms, with the bill's own numbers.
+ * Recorded money = applied (capped at the bill) + overpaid, i.e. the net of its payment rows.
+ */
+export function formatLedgerDriftLine(inv) {
+  if (!inv) return '這張帳單的收款紀錄和帳單金額對不起來。';
+  const recorded = Number(inv.calculated_applied_amount || 0) + Number(inv.overpaid_amount || 0);
+  const parts = [`應收 ${money(inv.total_amount)}`, `收款紀錄合計 ${money(recorded)}`];
+  if (Number(inv.paid_amount || 0) !== recorded) parts.push(`帳單上記錄已收 ${money(inv.paid_amount)}`);
+  const over = Number(inv.overpaid_amount || 0);
+  return `這張帳單${parts.join('，')}${over > 0 ? `，多收 ${money(over)}` : ''}。這一筆沒有可以直接撤銷的收款，需要系統管理員核對。`;
+}
+
+/** Pre-filled in-app report for the 回報給系統管理員 action: IDs only, never names. */
+export function buildLedgerIssueReport(a, inv, studentId) {
+  const ids = [`學生ID ${studentId || '-'}`, `帳單ID ${a?.invoice_id || inv?.id || '-'}`, `課程ID ${a?.student_class_id || inv?.student_class_id || '-'}`];
+  const recorded = inv ? Number(inv.calculated_applied_amount || 0) + Number(inv.overpaid_amount || 0) : null;
+  const nums = inv ? `應收 ${inv.total_amount}、帳單記錄已收 ${inv.paid_amount}、收款紀錄合計 ${recorded}` : '';
+  return {
+    description: `學生帳務出現「${a?.code || 'ledger'}」，沒有可撤銷的收款，請核對。${nums}`,
+    relatedReference: ids.join(' / '),
+  };
+}

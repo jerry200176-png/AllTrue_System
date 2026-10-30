@@ -176,11 +176,11 @@ export const TUITION_STATUS_CONFIG = {
   unpaid: { label: '未繳', cls: 'st-unpaid' },
   partial: { label: '繳了一部分', cls: 'st-partial' },
   waived: { label: '不收了', cls: 'st-paid' },
-  pending_report: { label: '已回報付款，待你核對入帳', cls: 'st-pending' },
+  pending_report: { label: '待確認入帳', cls: 'st-pending' },
   // Tab/badge (in-app #395-#404): no money received yet. Rows say ended vs paused (ENDED_/PAUSED_PENDING_LABEL).
-  pending_reconciliation: { label: '課已結束，尚未收款', cls: 'st-pending' },
+  pending_reconciliation: { label: '已結束，未收', cls: 'st-pending' },
   // Founder D2 (in-app #394): an open bill whose amount is still to be confirmed. Listed, never summed as owed.
-  amount_review: { label: '金額待確認', cls: 'st-pending' },
+  amount_review: { label: '需核對金額', cls: 'st-pending' },
   paid: { label: '已收', cls: 'st-paid' },
   // #4150: free-gift contract (BillingPayableResolver 'free'). Settled, nothing to collect. Same text as FREE_GIFT_LABEL.
   free: { label: '免費／贈送', cls: 'st-paid' },
@@ -234,10 +234,10 @@ export const latestStandingPayment = (payments) => {
   return latest ? { date: latest.paidAt.slice(0, 10), amount: latest.left } : null;
 };
 // #4114 (Founder Q3): paid only by the legacy Paid / package flag, no Payment on record. Neutral: never green 已收, never 未繳.
-export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對：舊資料標記已收，缺付款紀錄';
+export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對（舊資料標已收，查無收款）';
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
 // Founder GO 2026-10-21: on the ledger card the director gets the next step, not a dead-end label.
-export const LEGACY_FLAG_ACTION_HELP = '這門課標記已收，但找不到收款紀錄。已經收過就補登收款；其實沒收就改成未繳。';
+export const LEGACY_FLAG_ACTION_HELP = '標已收但查無收款。收過了：補登收款。沒收：改成未繳。';
 export const LEGACY_SHARED_PACKAGE_NOTE = '這門課屬於共用方案：方案內所有課程會一起改成未繳。';
 export const LEGACY_CONFIRMED_REPORT_HELP = '這門課已有確認過的收款回報，請先在學生帳務的「收款紀錄」核對。';
 // The ledger shortcut and card must use the same existing backfill eligibility. In-app #428/#438: every course mode
@@ -248,14 +248,14 @@ export const canResolveLegacyPaidFlag = (course, {
 } = {}) => Boolean(legacyUnverified && canResolveLegacy && course?.paid === true
   && course.class_type !== 'tutoring' && !course.free_gift_settled && !waived
   && !pendingReport && !sharedFollower);
-export const ENDED_PENDING_LABEL = '課已結束，尚未收款';
-export const PAUSED_PENDING_LABEL = '暫停中，尚未收款';
+export const ENDED_PENDING_LABEL = '已結束，未收';
+export const PAUSED_PENDING_LABEL = '暫停中，未收';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.
 export const ZERO_REASON_FREE_GIFT = 'free_gift';
 export const FREE_GIFT_LABEL = '免費／贈送';
 // `voided` only exists in the ledger, the one screen that lists voids.
-export const REPORT_STATUS_LABELS = { pending: '待核對入帳', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
+export const REPORT_STATUS_LABELS = { pending: '待確認入帳', confirmed: '已收', rejected: '已退回', voided: '已撤銷' };
 
 // ── monthly period payment labels (folded from monthlyPaymentDisplay.js) ──
 // Review wording only for review cases; any other unmapped status stays neutral (in-app #395-#404).
@@ -309,4 +309,27 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
   if (monthly) return { label: monthly, tone: course.monthly_payment.review_required ? 'review' : tone, nextAction };
   if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };
   return { label: TUITION_STATUS_CONFIG[status]?.label || UNKNOWN_STATUS_LABEL, tone, nextAction };
+};
+
+/**
+ * in-app #442: members of one count-mode shared package are ONE payment obligation (PaymentReportController: one report
+ * covers every member; the ledger gives the package a single lead card). Returns the member course whose billing row
+ * carries 繳費單 / 登記繳費回報, or null when `course` is not in such a package. Lead = member holding a pending report, else the one with the open bill,
+ * else the first regular (non-tutoring) member that is not settled, else the first member. Monthly members stay per course.
+ * @param {{course: object, reports?: object[], invoices?: object[]}[]} rows
+ */
+export const sharedPackageBillingLead = (course, rows) => {
+  const pid = Number(course?.PackageID ?? course?.package_id ?? 0);
+  if (!(pid > 0) || !isSessionPayment(course)) return null;
+  const members = (rows || []).filter((r) => Number(r.course?.PackageID ?? r.course?.package_id ?? 0) === pid && isSessionPayment(r.course));
+  if (members.length < 2) return null;
+  // Legacy package whose bills are open on several members: each bill is its own, so every member keeps its actions (ledger rule).
+  const openBill = (r) => (r.invoices || []).some((i) => ['unpaid', 'partial'].includes(i?.status));
+  if (members.filter((r) => r.course.class_type !== 'tutoring').filter(openBill).length > 1) return null;
+  const regular = members.filter((r) => r.course.class_type !== 'tutoring');
+  const lead = members.find((r) => r.reports?.some((x) => x.status === 'pending'))
+    || regular.find(openBill) // its slip/payment resolves that bill, not the package's full estimate
+    || regular.find((r) => !['paid', 'free'].includes(String(r.course.payment_status || '')))
+    || regular[0] || members[0];
+  return lead.course;
 };

@@ -55,7 +55,7 @@ defineExpose({ reload, loading });
 
 <template>
   <div class="monthly-review">
-    <p>列出月結帳單與上課堂數不符的課程，包含已上課卻沒有對應帳單的月份。先核對，再更正合約與建立帳單。</p>
+    <p>這些月結課程的上課堂數和帳單對不上。</p>
     <form class="monthly-review__search" @submit.prevent="search">
       <label>學生姓名 <input v-model="name" type="search" placeholder="搜尋學生" /></label>
       <AtButton type="submit" variant="secondary" size="sm" shape="rect">搜尋</AtButton>
@@ -72,10 +72,10 @@ defineExpose({ reload, loading });
             <td data-label="合約期間／登錄收款">{{ course.monthly_payment.contract_start }} ～ {{ course.monthly_payment.contract_end }}<small>系統登錄 {{ money(course.monthly_payment.registered_paid_amount) }}，實收待核對</small><small v-if="course.monthly_payment.periods?.some(period => period.amount_discrepancy)">帳單總額與堂次試算不同，需核對約定</small></td>
             <td data-label="上課月份與帳單"><div v-for="month in course.monthly_payment.session_review" :key="month.calendar_month">
               {{ month.calendar_month }} · 已上 {{ month.completed_sessions }} 堂 · 試算 {{ money(month.estimated_charge) }}
-              <small v-if="month.uncovered_sessions">{{ month.uncovered_sessions }} 堂沒有對應帳單服務期間</small>
+              <small v-if="month.uncovered_sessions">{{ month.uncovered_sessions }} 堂沒有帳單</small>
               <small v-if="month.outside_contract_sessions">{{ month.outside_contract_sessions }} 堂超出合約日期</small>
-            </div><small>試算尚未成為應收帳單。</small></td>
-            <td data-label="下一步"><AtButton variant="ghost" shape="rect" size="sm" @click="emit('ledger', { id: course.ID })">核對登錄收款</AtButton><AtButton variant="secondary" shape="rect" size="sm" @click="emit('navigate', { target: 'course-mgmt', studentId: course.StudentID, courseId: course.ID, studentName: course.student_name })">前往課程核對</AtButton></td>
+            </div><small>估算，不等於帳單。</small></td>
+            <td data-label="下一步"><AtButton variant="ghost" shape="rect" size="sm" @click="emit('ledger', { id: course.ID })">看收款</AtButton><AtButton variant="secondary" shape="rect" size="sm" @click="emit('navigate', { target: 'course-mgmt', studentId: course.StudentID, courseId: course.ID, studentName: course.student_name })">前往課程核對</AtButton></td>
           </tr></tbody>
         </table>
       </div>

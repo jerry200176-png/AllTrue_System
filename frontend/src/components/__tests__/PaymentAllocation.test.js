@@ -67,7 +67,7 @@ describe('PaymentAllocation', () => {
       { student_class_id: 2, amount: 8000, invoice_id: 11, account_last5: '12345' },
       { student_class_id: 3, amount: 2000, invoice_id: 12, account_last5: '12345' },
     ]);
-    expect(w.find('[data-testid="alloc-verdict"]').text()).toBe('已登記 2 份合約，待核對入帳。');
+    expect(w.find('[data-testid="alloc-verdict"]').text()).toBe('已登記 2 份合約，待確認入帳。');
     await w.find('[data-testid="alloc-done"]').trigger('click');
     expect(w.emitted('done')).toHaveLength(1);
   });
@@ -90,7 +90,7 @@ describe('PaymentAllocation', () => {
     await flushPromises();
     const retry = JSON.parse(authedFetch.mock.calls[1][1].body);
     expect(retry.entries.map((e) => e.student_class_id)).toEqual([3]);
-    expect(w.find('[data-testid="alloc-verdict"]').text()).toBe('已登記 2 份合約，待核對入帳。');
+    expect(w.find('[data-testid="alloc-verdict"]').text()).toBe('已登記 2 份合約，待確認入帳。');
   });
 
   it('never claims success when nothing was recorded, and keeps the form on a request error', async () => {

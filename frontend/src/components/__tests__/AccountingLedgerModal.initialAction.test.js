@@ -1,4 +1,4 @@
-// In-app #398: 「登記繳費回報」 from 課程查找 opened the student ledger and the director still had to find the card
+// In-app #398: 「登記收款」 from 課程查找 opened the student ledger and the director still had to find the card
 // and click 「登記這筆」. With initialAction='record' the entry form opens for that course once the ledger has loaded;
 // a course whose card would not offer 登記這筆 just shows the ledger (no new eligibility rule).
 // In-app #425: the ledger also offers 查看收據 on confirmed receipt rows and 繳費單 on contract cards.
@@ -139,7 +139,7 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     const w = mountLedger({ courses: [course(12, { stop: true, amount_pending_confirmation: true })], invoices: [inv(1, 12)] });
     await flushPromises();
     expect(w.get('[data-testid="contract-slip"]').element.disabled).toBe(true);
-    expect(w.get('[data-testid="contract-slip-reason"]').text()).toBe('金額待確認，請先確認應收金額');
+    expect(w.get('[data-testid="contract-slip-reason"]').text()).toBe('金額需核對，不能產生繳費單');
     w.unmount();
   });
 });

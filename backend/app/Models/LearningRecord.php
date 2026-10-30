@@ -208,6 +208,12 @@ class LearningRecord extends Model
         return $this->hasOne(LearningRecordFeedback::class, 'learning_record_id', 'id');
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<LearningRecordAuthorSnapshot, $this> */
+    public function authorSnapshots()
+    {
+        return $this->hasMany(LearningRecordAuthorSnapshot::class, 'learning_record_id', 'id');
+    }
+
     /** @return \Illuminate\Database\Eloquent\Relations\HasOne<LearningRecordTeacherComment, $this> */
     public function teacherComment()
     {

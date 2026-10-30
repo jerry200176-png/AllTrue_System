@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-monthly-tuition-pay-status
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 當月學收可直接看本月是否收齊
+    summary: 「當月學收」每列顯示已收／部分／未收，頂部顯示已收、應收與未收人數，可只看未收。
+    items:
+      - category: added
+        text: 帳務中心點「當月學收」，選月份看每位學生該月是否已收。
+      - category: added
+        text: 頂部顯示已收、應收與未收人數，收齊會顯示「本月學收已收齊」，可勾「只看未收」。
+    source_refs:
+      - "changelog:2026-10-30:monthly-tuition-pay-status"

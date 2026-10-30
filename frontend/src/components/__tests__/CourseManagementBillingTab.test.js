@@ -32,7 +32,7 @@ describe('CourseManagement student billing tab', () => {
     // #4150: the label comes from the shared coursePaymentBadge (courseMoneyState.js), never a local 未繳 fallback.
     expect(source).toContain('const paymentStatusButtonLabel = (course) => paymentBadge(course).label;');
     expect(source).toContain('在這裡看帳務');
-    expect(source).toContain('登記繳費回報');
+    expect(source).toContain('登記收款');
     expect(source).toContain('return `查看「${REPORT_STATUS_LABELS.pending}」`;');
     expect(source).toContain('goToTuitionBilling');
     expect(source).not.toContain('PaymentEntryModal');
@@ -68,7 +68,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('class="small ghost payment-next-action"');
     expect(source).toContain('@click="onPaymentNextAction(c)"');
     // PRD v2 D2: every billing action opens the ledger panel in place, never another page
-    // In-app #398: 登記繳費回報 (report_payment) opens the ledger with the entry form; other next actions open the ledger only.
+    // In-app #398: 登記收款 (report_payment) opens the ledger with the entry form; other next actions open the ledger only.
     expect(source).toContain("const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);");
     expect(source).toContain(':initial-action="ledgerInitialAction"');
     expect(source).toContain('ledgerInitialAction.value = initialAction;');
@@ -86,7 +86,7 @@ describe('CourseManagement student billing tab', () => {
     expect(moneyState).toContain("{ label: '帳務資料需修正', tone: 'anomaly', nextAction: 'none' }");
     expect(moneyState).toContain("{ label: '無須繳費', tone: 'no_payment', nextAction: 'none' }");
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isTutoringCourse(course);');
-    expect(source).toContain('v-if="showsBillingRowNextAction(row.course)"');
+    expect(source).toContain('v-else-if="showsBillingRowNextAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');
     expect(source).toContain("anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment'");
@@ -113,5 +113,14 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('<span v-else class="hint">核對入帳後才能開收據</span>');
     expect(source).not.toContain('確認入帳後可開');
     expect(moneyState).toContain("if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };");
+  });
+});
+
+describe('shared package billing rows (in-app #442)', () => {
+  it('only the package lead row keeps 繳費單 / 登記收款; followers point to it', () => {
+    expect(source).toContain('const billingPackageLead = (row, group)');
+    expect(source).toContain('isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)');
+    expect(source).toContain('data-testid="billing-package-follower"');
+    expect(source).toContain('v-else-if="showsBillingRowNextAction(row.course)"');
   });
 });

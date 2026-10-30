@@ -58,6 +58,25 @@ final class ContractChargeCorrectionStrategyTest extends TestCase
         self::assertSame(['case_parameters_mismatch'], $s->plan(['decision_reference' => 'x'])['errors']);
     }
 
+    public function test_4138_manifest_sets_the_total_from_the_keyed_lesson_price_and_reverses(): void
+    {
+        // #4138: 455 per lesson keyed as the total of a 20-lesson contract; Rate x 20 = 9100.
+        $this->course(4050, 4050, rate: 455, sessions: 20, charge: 455);
+        $this->course(4051, 4051, rate: 455, sessions: 20, charge: 455);
+        $s = new ContractChargeCorrectionStrategy();
+        $repair = ['decision_reference' => 'repair-contract-charge-4138-20261029'];
+        $plan = $s->plan($repair);
+        self::assertTrue($plan['ok'], implode(',', $plan['errors']));
+        self::assertSame(['courses' => 2, 'to_change' => 2], $plan['counts']);
+        self::assertSame([4050, 4051], array_keys($plan['courses']), 'the 3868 courses are out of scope');
+        self::assertSame(2, $s->execute($plan, [])['updated']);
+        $charges = fn () => DB::table('StudentClass')->whereIn('ID', [4050, 4051])->orderBy('ID')->pluck('Charge')->map(fn ($c) => (int) $c)->all();
+        self::assertSame([9100, 9100], $charges());
+        self::assertSame([8000, 8800], array_values($this->charges()));
+        $s->execute($s->plan(['decision_reference' => 'rollback-contract-charge-4138-20261029']), []);
+        self::assertSame([455, 455], $charges());
+    }
+
     public function test_execute_writes_only_the_two_charges_audits_and_verifies(): void
     {
         $s = new ContractChargeCorrectionStrategy();
