@@ -767,7 +767,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
     const billingButton = page.getByRole('button', { name: '前往帳務中心' }).first();
     await expect(billingButton).toBeVisible();
     await expect(page.getByRole('button', { name: '標記已繳費' })).toHaveCount(0);
-    await expect(page.getByRole('dialog', { name: '登記已回報' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '登記收款' })).toHaveCount(0);
   });
 
   test('student management labels its add-student workspace as a dialog', async ({ page }) => {
@@ -1219,7 +1219,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
       const review = page.locator('#tuition-accounting-panel-monthly-review');
       await expect(review).toContainText('測試月結學生');
       await expect(review).toContainText('2026-09 · 已上 4 堂 · 試算 NT$ 6,000');
-      await expect(review).toContainText('4 堂沒有對應帳單服務期間');
+      await expect(review).toContainText('4 堂沒有帳單');
       await expect(review).toContainText('2 堂超出合約日期');
       await expect(review.getByRole('button', { name: '前往課程核對' })).toBeVisible();
       await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(0);
