@@ -53,11 +53,6 @@ jobs:
       - name: Install PHP dependencies
         working-directory: backend
         run: composer install --no-interaction --prefer-dist
-      - name: App key
-        working-directory: backend
-        run: |
-          cp .env.example .env 2>/dev/null || touch .env
-          php artisan key:generate --force
       - name: Run Infection on billing money code
         working-directory: backend
         run: |
