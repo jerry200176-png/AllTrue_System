@@ -57,8 +57,8 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $part = $this->course([['2026-08', 6000, 'partial', 1000, [[1000, 'cash']]]], $date, self::AUG);
         $none = $this->course([['2026-07', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, self::AUG);
         // count-mode prepaid contract: unpaid invoice vs paid invoice
-        $cUnpaid = $this->course([['2026-08', 10000, 'unpaid', 0, []]], [], self::AUG);
-        $cPaid = $this->course([['2026-08', 10000, 'paid', 10000, [[10000, 'cash']]]], [], self::AUG);
+        $cUnpaid = $this->course([['2026-08', 15000, 'unpaid', 0, []]], [], self::AUG);
+        $cPaid = $this->course([['2026-08', 15000, 'paid', 15000, [[15000, 'cash']]]], [], self::AUG);
         // monthly package follows the package paid flag
         $pkgStudent = $this->student();
         CoursePackage::create(['student_id' => $pkgStudent->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => CoursePackage::BILLING_MODE_MONTHLY, 'rate' => 1500,
@@ -184,8 +184,8 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertNotContains((int) $waived->ID, collect($this->fetchReport('&unpaid_only=1')->json('data'))->pluck('student_class_id')->map(fn ($i) => (int) $i)->all());
     }
 
-    /** Coordinator P1: an invoice whose service range spans two months must not be counted as collected in both. */
-    public function test_cross_month_service_range_invoice_is_review_in_both_months(): void
+    /** Founder 2026-10-31: a cross-month service-range invoice counts once, in the month its range starts. */
+    public function test_cross_month_service_range_invoice_counts_once_in_start_month(): void
     {
         $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-15', 'EndDate' => '2026-09-14'];
         $c = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-08-17', '2026-08-24', '2026-09-07', '2026-09-14']);
@@ -193,13 +193,46 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $c->ID,
             'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-14']);
 
-        foreach ([8, 9] as $m) {
-            Carbon::setTestNow(Carbon::parse('2026-10-30', 'Asia/Taipei'));
-            $res = $this->withHeaders(['Authorization' => 'Bearer ' . $this->token(), 'Accept' => 'application/json'])
-                ->getJson("/api/v1/finance/branch-monthly-tuition?branch_id=1&year=2026&month={$m}")->assertOk();
+        $expect = [8 => [6000, 6000], 9 => [0, 0]];
+        foreach ($expect as $m => [$due, $collected]) {
+            $res = $this->fetchReport("&month={$m}")->assertOk();
             $row = collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
-            $this->assertSame('review', $row['pay_status'], "month {$m}");
-            $this->assertSame([0, 0], [(int) $res->json('summary.total_due'), (int) $res->json('summary.total_collected')], "month {$m}");
+            $this->assertSame(['paid', $due], [$row['pay_status'], (int) $row['due_amount']], "month {$m}");
+            $this->assertSame([$due, $collected, 0], [(int) $res->json('summary.total_due'), (int) $res->json('summary.total_collected'), (int) $res->json('summary.total_outstanding')], "month {$m}");
         }
+    }
+
+    /** #4682 item 1: a discounted count-mode contract with no invoice yet is bounded by the verdict's owed (Charge). */
+    public function test_unbilled_discounted_contract_uses_verdict_owed(): void
+    {
+        $c = $this->course([], ['Charge' => 10000], self::AUG); // 10 lessons x 1500 gross 15000, 4 in August
+        $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame(['unpaid', 4000, 4000], [$row['pay_status'], (int) $row['due_amount'], (int) $row['outstanding_amount']]);
+    }
+
+    /** #4682 item 2: later attendance must not move an earlier month's allocation. */
+    public function test_earlier_month_allocation_is_stable_as_lessons_happen(): void
+    {
+        // 10-lesson, 10000 contract, 6000 applied; only the 6 July lessons attended so far => July fully covered
+        $c = $this->course([['2026-07', 10000, 'partial', 6000, [[6000, 'cash']]]], ['Charge' => 10000], []);
+        foreach (['2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04', '2026-07-05', '2026-07-06'] as $d) {
+            \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        $row = collect($this->fetchReport('&month=7')->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame(['paid', 6000, 0], [$row['pay_status'], (int) $row['due_amount'], (int) $row['outstanding_amount']]);
+    }
+
+    /** #4682 item 4: a member of a paid shared package is not 待確認 just because its own bills are empty. */
+    public function test_shared_package_member_with_package_receipt_is_not_review(): void
+    {
+        $student = $this->student();
+        $pkg = CoursePackage::create(['student_id' => $student->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => CoursePackage::BILLING_MODE_SESSION, 'rate' => 1500,
+            'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+            'total_sessions' => 0, 'remaining_sessions' => 0, 'used_sessions' => 0]);
+        $this->course([['2026-08', 10000, 'paid', 10000, [[10000, 'cash']]]], ['PackageID' => $pkg->id], [], $student);
+        $member = $this->course([], ['PackageID' => $pkg->id, 'Paid' => 1, 'Charge' => 6000], self::AUG, $student);
+
+        $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $member->ID);
+        $this->assertSame(['paid', 0], [$row['pay_status'], (int) $row['outstanding_amount']]);
     }
 }
