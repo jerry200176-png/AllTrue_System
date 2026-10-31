@@ -43,6 +43,16 @@ describe('student list panel chips', () => {
     expect(p.find('[data-testid="sbl-error"]').exists()).toBe(false);
   });
 
+  it('alerts failed on the default view: the error shows, the panel chips are still there, no rows or empty text', async () => {
+    const w = make('students', { alertRows: [], error: '連線失敗' });
+    expect(w.find('[data-testid="sbl-error"]').exists()).toBe(true);
+    expect(w.find('[data-testid="sbl-panel-monthly-drafts"]').exists()).toBe(true);
+    expect(w.find('[data-testid="sbl-empty"]').exists()).toBe(false);
+    expect(w.find('[data-testid="sbl-summary"]').exists()).toBe(false);
+    await w.get('[data-testid="sbl-panel-monthly-review"]').trigger('click');
+    expect(w.emitted('view')[0]).toEqual(['monthly-review']);
+  });
+
   it('an unknown view falls back to the rows (no empty page)', () => {
     const w = make('monthly-drafts', { panels: [] });
     expect(w.find('[data-testid="sbl-row-1"]').exists()).toBe(true);
