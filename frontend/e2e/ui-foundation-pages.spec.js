@@ -1211,12 +1211,12 @@ test.describe('UI foundation — real Vue page evidence', () => {
     test(`billing missing monthly invoices are discoverable at ${width}px`, async ({ page }) => {
       await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width, height: 900 } });
       const request = page.waitForRequest(req => req.url().includes('/student-classes?'));
-      await page.locator('[data-testid="tc-reminder-monthly-review"]').click();
+      await page.locator('[data-testid="sbl-panel-monthly-review"]').click();
       const query = await request;
       expect(query.method()).toBe('GET');
       expect(new URL(query.url()).searchParams.get('branch_id')).toBe('1');
       expect(new URL(query.url()).searchParams.get('schedule_mode')).toBe('date');
-      const review = page.locator('#tuition-accounting-panel-monthly-review');
+      const review = page.locator('#tuition-accounting-panel-students');
       await expect(review).toContainText('測試月結學生');
       await expect(review).toContainText('2026-09 · 已上 4 堂 · 試算 NT$ 6,000');
       await expect(review).toContainText('4 堂沒有帳單');

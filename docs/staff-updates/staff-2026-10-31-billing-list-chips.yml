@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-31-billing-list-chips
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務清單合併開帳單與核對
+    summary: 「要開帳單」和「月結要核對」現在是學生清單上的篩選按鈕。
+    items:
+      - category: improved
+        text: 學生清單的篩選列多了「要開帳單」和「月結要核對」，不用再找另一個頁面。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-f4-list-chips"

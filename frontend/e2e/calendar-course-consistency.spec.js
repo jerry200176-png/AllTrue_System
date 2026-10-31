@@ -702,8 +702,9 @@ test.describe('production acceptance — calendar/course parity', () => {
       notePreconditionAbsent('receivables_queue');
     }
 
-    await page.getByTestId('tc-reminder-monthly-review').click();
-    const monthly = page.locator('#tuition-accounting-panel-monthly-review .monthly-review');
+    await page.locator('#tuition-accounting-tab-students').click();
+    await page.getByTestId('sbl-panel-monthly-review').click();
+    const monthly = page.locator('#tuition-accounting-panel-students .monthly-review');
     await expect(monthly, '月結要核對').toBeVisible({ timeout: 15_000 });
     await expect(monthly.locator('.at-skeleton')).toHaveCount(0, { timeout: 20_000 });
     await expect(monthly.getByText('無法載入月結待核對課程', { exact: true }), '月結要核對 loads').toHaveCount(0);

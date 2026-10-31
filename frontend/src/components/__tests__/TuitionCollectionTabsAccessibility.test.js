@@ -10,7 +10,9 @@ describe('TuitionCollectionPage top-level tabs', () => {
   it('connects each accounting tab to its controlled panel', () => {
     expect(source).toContain(':id="`tuition-accounting-tab-${tab.key}`"');
     expect(source).toContain(':aria-controls="`tuition-accounting-panel-${tab.key}`"');
-    expect(source).toContain(':aria-selected="activeAccountingTab === tab.key"');
+    // F-4: 學生 stays selected while one of its chip panels (要開帳單, 月結要核對) is open.
+    expect(source).toContain(':aria-selected="tabHighlighted(tab.key)"');
+    expect(source).toContain("const tabHighlighted = (key) => activeAccountingTab.value === key || (key === 'students' && STUDENT_PANEL_VIEWS.includes(activeAccountingTab.value));");
   });
 
   it('renders only the selected accounting view and keeps its relationship explicit', () => {
