@@ -131,6 +131,30 @@ class PackageCreateWithScheduleTest extends TestCase
         $this->assertSame([3, 3], $members->map(fn ($m) => $this->futurePlanned($m->ID))->all());
     }
 
+    public function test_group_pool_joining_a_slot_a_sibling_already_planned_costs_nothing(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $start = now()->addDay()->toDateString();
+        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start];
+        $pkgId = $this->postCreate($token, [
+            'student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 4,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1), $spec(2)],
+        ])->assertStatus(201)->json('package_id');
+        [$a, $b] = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get()->all();
+        $this->assertSame([4, 4], [$this->futurePlanned($a->ID), $this->futurePlanned($b->ID)]); // 4 shared slots
+
+        // B is missing its first two rows; A still has them, so they are already in the pool's plan.
+        ClassSession::where('StudentClassID', $b->ID)->orderBy('SessionDate')->limit(2)->get()->each->delete();
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 6])->assertOk();
+
+        $slots = ClassSession::whereIn('StudentClassID', [$a->ID, $b->ID])->where('Status', 'scheduled')
+            ->get()->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->unique()->count();
+        $this->assertSame(6, $slots, 'raising 4 → 6 plans 6 distinct group lessons');
+    }
+
     public function test_auto_fill_never_plans_past_a_fully_planned_pool(): void
     {
         $token = $this->createDirectorToken([1]);

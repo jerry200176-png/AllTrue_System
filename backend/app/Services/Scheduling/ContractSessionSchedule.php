@@ -706,15 +706,22 @@ class ContractSessionSchedule
         $isGroup = in_array((string) ($package->class_type ?? ''), SharedPackagePlanningService::GROUP_CLASS_TYPES, true);
         $now = Carbon::now();
         $candidates = [];
+        $slotPlanned = []; // group slots already in future_planned_sessions cost nothing to join (#4455)
+        $today = Carbon::today()->toDateString();
         foreach ($members as $member) {
+            $classId = (int) $member->ID;
+            $taken = [];
+            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime', 'Status']) as $row) {
+                $date = (string) self::normalizeDateString($row->SessionDate);
+                $key = $date . '|' . substr((string) $row->StartTime, 0, 5);
+                $taken[$key] = true;
+                if ($isGroup && $date >= $today && in_array((string) $row->Status, ['scheduled', 'rescheduled', 'leave_requested'], true)) {
+                    $slotPlanned[$key] = true;
+                }
+            }
             $slots = self::resolveScheduleSlotsForRebuild($member);
             if ($slots === [] || (string) ($member->scheduling_policy ?? '') === ManualSessionBookingService::POLICY) {
                 continue;
-            }
-            $classId = (int) $member->ID;
-            $taken = [];
-            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime']) as $row) {
-                $taken[self::normalizeDateString($row->SessionDate) . '|' . substr((string) $row->StartTime, 0, 5)] = true;
             }
             $startFrom = self::normalizeDateString($member->StartDate ?? null) ?: Carbon::today()->toDateString();
             // Longer than $count so a member whose contract dates are taken still offers the next weekly dates.
@@ -728,9 +735,8 @@ class ContractSessionSchedule
         }
         sort($candidates); // "Y-m-d|H:i" keys: date, then time
         $share = [];
-        $slotPlanned = [];
         foreach ($candidates as [$key, $classId]) {
-            $free = $isGroup && isset($slotPlanned[$key]); // a group slot is debited once (#4455)
+            $free = $isGroup && isset($slotPlanned[$key]);
             if (!$free && $budget <= 0) {
                 continue;
             }
