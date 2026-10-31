@@ -10,6 +10,8 @@ updates:
       - category: improved
         text: 免收、撤銷收款、結案在課程卡；批次回報、批次確認入帳、匯出 CSV、上課明細在學生清單。
       - category: improved
+        text: 要找快上完或月結快到期的學生，點學生清單的「需續課」。
+      - category: improved
         text: 從通知或首頁點進來，會直接停在學生清單對應的篩選，或打開該課程的學生帳務。
     source_refs:
       - "changelog:2026-10-31:billing-ux-f5-1-unlink-queue"
