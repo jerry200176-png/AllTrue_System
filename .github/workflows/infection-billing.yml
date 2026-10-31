@@ -72,6 +72,8 @@ jobs:
           SCOPE="--filter=Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php"
           if [ "${{ github.event_name }}" = pull_request ]; then
             git fetch -q origin main
+            # Infection runs in backend/; make `git diff` print paths relative to it (backend/app/... -> app/...).
+            git config diff.relative true
             SCOPE="--git-diff-lines --git-diff-base=origin/main"
           fi
           vendor/bin/infection --threads=4 --no-progress --min-msi=0 $SCOPE \
