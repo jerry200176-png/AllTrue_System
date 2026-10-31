@@ -927,7 +927,6 @@ const selectedIdSet = computed(() => new Set(selectedIds.value));
 // A batch report needs a real amount: unbilled rows with a null/0 payable would be sent as amount 0.
 const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;
 
-// A pick is made in the student list, which only offers its visible students.
 const selectedRows = computed(() => rows.value.filter((r) => selectedIdSet.value.has(r.id)));
 const batchMode = computed(() => {
   const modes = new Set(selectedRows.value.map((r) => r.payment_status === 'pending_report' ? 'confirm' : 'report'));
@@ -1254,7 +1253,6 @@ function openLedgerForReport(row) {
 
 // ═══ CSV Export ═══
 const csvExporting = ref(false);
-// The student list passes the rows of the students it shows.
 function exportCSV(data) {
   if (!data.length) return;
   csvExporting.value = true;
