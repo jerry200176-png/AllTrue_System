@@ -77,6 +77,20 @@ describe('drawer opens on the step', () => {
   });
 });
 
+describe('shared package', () => {
+  it("initialAction='confirm' on the anchor opens the card that actually holds the pending report", async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    const payload = { summary: {}, scope: { student_class_id: 11 }, anomalies: [], invoices: [],
+      courses: [{ ...course(11), package_id: 3 }, { ...course(12), package_id: 3 }],
+      receipts: [{ report_id: 8, student_class_id: 12, status: 'pending', amount: 4400, payment_date: '2026-10-02' }] };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => payload })));
+    const w = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 11, branchId: 1, initialAction: 'confirm' }, global: { stubs: { Transition: false, PaymentEntryModal: EntryStub, ReceiptModal: ReceiptStub } } });
+    await flushPromises();
+    expect(body('contract-confirm-text').textContent).toContain('NT$ 4,400');
+    w.unmount();
+  });
+});
+
 describe('現在確認入帳 after 登記', () => {
   const recorded = [{ report_id: 8, student_class_id: 11, status: 'pending', amount: 4400, payment_date: '2026-10-02' }];
 
@@ -136,8 +150,13 @@ describe('現在確認入帳 in the allocation result', () => {
     await w.get('[data-testid="alloc-submit"]').trigger('submit');
     await flushPromises();
     expect(f.mock.calls.some(([u]) => String(u).includes('/confirm'))).toBe(false);
+    let release;
+    f.mockImplementationOnce(() => new Promise((r) => { release = () => r(respond({})); }));
     await w.get('[data-testid="alloc-confirm-2"]').trigger('click');
+    expect(w.get('[data-testid="alloc-done"]').attributes('disabled')).toBeDefined(); // no 完成 while confirming
+    release();
     await flushPromises();
+    expect(w.get('[data-testid="alloc-done"]').attributes('disabled')).toBeUndefined();
     expect(f.mock.calls.filter(([u]) => String(u).includes('/payment-reports/55/confirm'))).toHaveLength(1);
     expect(w.get('[data-testid="alloc-result-2"]').text()).toContain('已確認入帳');
     expect(w.find('[data-testid="alloc-confirm-2"]').exists()).toBe(false);

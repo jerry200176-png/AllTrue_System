@@ -915,7 +915,10 @@ function runInitialAction() {
   pendingInitialAction = null;
   const id = Number(props.studentClassId || 0);
   if (action === 'confirm') {
-    if (pendingReportFor(id)) autoConfirmId.value = id;
+    // A shared package shows its one pending report on the lead card, which may not be the alert's anchor id.
+    const course = contractCourses.value.find((c) => Number(c.id) === id);
+    const leadId = course ? Number(packageLeadOf(course).id) : id;
+    if (pendingReportFor(leadId)) autoConfirmId.value = leadId;
     return;
   }
   if (action !== 'record') return;

@@ -73,7 +73,7 @@
       <footer class="alloc__foot">
         <AtSubmitButton v-if="failed.length && accepted" variant="secondary" shape="rect" :pending="submitting" pending-text="重新送出中…" data-testid="alloc-retry" @click="retryFailed">再試一次（只送沒登記的）</AtSubmitButton>
         <AtButton v-if="failed.length && !accepted" variant="secondary" shape="rect" data-testid="alloc-edit" @click="view = 'form'">回去修改</AtButton>
-        <AtButton v-if="accepted" shape="rect" data-testid="alloc-done" @click="$emit('done')">完成</AtButton>
+        <AtButton v-if="accepted" shape="rect" :disabled="results.some((r) => r.confirming)" data-testid="alloc-done" @click="$emit('done')">完成</AtButton>
       </footer>
     </div>
   </section>
