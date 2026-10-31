@@ -522,6 +522,8 @@ watch(() => props.branchId, () => { status.value = null; notify.value = null; lo
   justify-content: space-between;
 }
 .url-box .at-btn { flex-shrink: 0; }
+.url-box :deep(.at-copy) { flex-shrink: 0; }
+.url-box :deep(.at-copy .at-btn) { min-height: var(--ds-control-height-touch, 44px); }
 .save-row { flex-wrap: wrap; }
 
 h2 { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: var(--ds-ink); }
@@ -796,5 +798,7 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
   .save-row .at-btn,
   .url-box .at-btn,
   .copy-row .at-btn { width: 100%; }
+  .url-box :deep(.at-copy),
+  .url-box :deep(.at-copy .at-btn) { width: 100%; }
 }
 </style>
