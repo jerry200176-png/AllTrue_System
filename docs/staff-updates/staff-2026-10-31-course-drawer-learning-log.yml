@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-31-course-drawer-learning-log
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 管理課程可以直接看學習日誌
+    summary: 課程的「更多操作」多了「學習日誌」，一鍵看到這位學生的所有學習紀錄。
+    items:
+      - category: improved
+        text: 在課程查找打開管理課程，按「更多操作 → 學習日誌」，會直接開學習日誌並只顯示這位學生的全部紀錄。
+      - category: improved
+        text: 不用再切到學習日誌頁、自己打名字搜尋。
+    source_refs:
+      - "changelog:2026-10-31:course-drawer-learning-log"
