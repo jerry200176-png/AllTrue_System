@@ -1281,7 +1281,8 @@ class BugReportService
         });
         Log::info('bug_closed_legacy_batch', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId, 'ok' => $result['ok']]);
 
-        return $result['ok'] ? ['ok' => true, 'action' => 'closed'] : ['ok' => false, 'action' => 'failed', 'code' => $result['code'] ?? 'close_failed'];
+        // A failed close throws inside the transaction; the only false result is the locked recheck.
+        return $result['ok'] ? ['ok' => true, 'action' => 'closed'] : ['ok' => false, 'action' => 'skip', 'code' => 'not_eligible'];
     }
 
     /**
