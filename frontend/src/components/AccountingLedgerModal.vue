@@ -968,14 +968,15 @@ async function onEntryRecorded(result) {
     && (payload.value?.receipts || []).some((r) => Number(r.report_id) === reportId && r.status === 'pending');
   if (offer && stillHere) justRecorded.value = { reportId, busy: false, error: '' };
 }
+let promptSeq = 0;
 async function confirmJustRecorded() {
   const cur = justRecorded.value;
   if (!cur || cur.busy) return;
-  const prompt = { ...cur, busy: true, error: '' };
-  justRecorded.value = prompt;
+  const seq = ++promptSeq;
+  justRecorded.value = { ...cur, busy: true, error: '', seq };
   const res = await confirmReport(cur.reportId);
   // A dismissed or replaced prompt must not come back (or confirm a report the drawer no longer shows).
-  const same = justRecorded.value === prompt;
+  const same = justRecorded.value?.seq === seq;
   if (!res.ok) { if (same) justRecorded.value = { ...cur, busy: false, error: res.message }; return; }
   if (same) justRecorded.value = null;
   await onPanelChanged();
