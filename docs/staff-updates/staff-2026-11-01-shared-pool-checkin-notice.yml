@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-01-shared-pool-checkin-notice
+    published_at: "2026-11-01"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 點名時提醒共用方案已用完
+    summary: 共用堂數方案用完後還是可以點名，畫面會提醒先續課。
+    items:
+      - category: improved
+        text: 點到方案最後一堂時，顯示「共用方案堂數已用完，請安排續課。」
+      - category: improved
+        text: 超過買的堂數還點名時，顯示「共用方案已超出幾堂，請先續課。」，點名照常完成。
+    source_refs:
+      - "changelog:2026-11-01:shared-pool-checkin-notice"

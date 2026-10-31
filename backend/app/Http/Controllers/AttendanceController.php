@@ -18,6 +18,7 @@ use App\Services\LeaveAttendanceService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
+use App\Services\SharedPackagePlanningService;
 use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -653,6 +654,10 @@ class AttendanceController extends Controller
                 $payload['campus_name'] = optional(Campus::find((int) $student->CampusID))->name;
             }
             $payload['recorded_by_name'] = $recordedByUserId > 0 ? ($authUser->Name ?? '') : '';
+            // Check-in still goes through past the pool (Founder 2026-11-01, choice A); the screen says so.
+            $payload['package_notice'] = in_array($status, AttendanceStatus::deductibleCodes(), true)
+                ? app(SharedPackagePlanningService::class)->usedUpNotice((int) $studentClass->getAttribute('PackageID'))
+                : null;
             return response()->json($payload, 201);
         };
 

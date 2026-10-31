@@ -19,6 +19,23 @@ class SharedPackagePlanningService
         })->limit(2)->count() > 1;
     }
 
+    /** Check-in heads-up once a shared count pool has used everything it bought; null before that. */
+    public function usedUpNotice(int $packageId): ?string
+    {
+        $package = $packageId > 0 ? CoursePackage::find($packageId) : null;
+        if ($package === null || $package->billing_mode !== CoursePackage::BILLING_MODE_SESSION || !$this->isSharedPackage($package)) {
+            return null;
+        }
+        $p = $this->summarize($package);
+        $over = $p['actual_consumed'] - $p['purchased_entitlement'];
+
+        return match (true) {
+            $over > 0 => "共用方案已超出 {$over} 堂，請先續課。",
+            $over === 0 => '共用方案堂數已用完，請安排續課。',
+            default => null,
+        };
+    }
+
     public function summarize(CoursePackage $package, int $additionalPlanned = 0): array
     {
         return $this->summarizeMany(collect([$package]), [$package->getKey() => max(0, $additionalPlanned)])[(int) $package->getKey()];
