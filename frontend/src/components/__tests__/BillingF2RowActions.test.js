@@ -125,6 +125,16 @@ describe('現在確認入帳 after 登記', () => {
     w.unmount();
   });
 
+  it('offers nothing when the drawer moved to another student while the ledger reloaded', async () => {
+    const { w } = mountLedger({ receipts: recorded });
+    await flushPromises();
+    w.findComponent(EntryStub).vm.$emit('confirmed', { report_id: 8, status: 'pending' });
+    await w.setProps({ studentClassId: 99 }); // stepped on before the reload resolved
+    await flushPromises();
+    expect(body('ledger-recorded-text')).toBeNull();
+    w.unmount();
+  });
+
   it('offers nothing when the response is already confirmed (補登) or has no report', async () => {
     const { w } = mountLedger({ receipts: recorded });
     await flushPromises();

@@ -314,7 +314,7 @@
       <!-- F-2 (Founder A): step 2 right after step 1, same person, but its own button and its own request. -->
       <AtDialog :open="!!justRecorded" title="已登記，待確認入帳" size="sm" title-id="ledger-recorded-title" @close="justRecorded = null">
         <p v-if="justRecorded" class="ledger-issue" data-testid="ledger-recorded-text">
-          已登記{{ justRecordedAmount != null ? ` ${formatCurrency(justRecordedAmount)}` : '' }}，現在是「待確認入帳」。確認收到款項後，按「現在確認入帳」才算已收；也可以稍後在課程卡確認。
+          {{ payload?.student?.name || '這位學生' }}已登記{{ justRecordedAmount != null ? ` ${formatCurrency(justRecordedAmount)}` : '' }}，現在是「待確認入帳」。確認收到款項後，按「現在確認入帳」才算已收；也可以稍後在課程卡確認。
         </p>
         <p v-if="justRecorded?.error" class="ledger-error-text" role="alert" data-testid="ledger-recorded-error">{{ justRecorded.error }}</p>
         <template #actions>
@@ -961,8 +961,12 @@ const justRecordedAmount = computed(() => {
 async function onEntryRecorded(result) {
   const reportId = Number(result?.report_id);
   const offer = entryMode.value === 'record' && result?.status === 'pending' && reportId > 0 && canManageInvoices();
+  const scope = `${props.show}|${props.studentClassId}|${props.studentId}`;
   await onPanelChanged();
-  if (offer) justRecorded.value = { reportId, busy: false, error: '' };
+  // The director may have stepped to another student while the ledger reloaded: offer only for a drawer that still shows this report.
+  const stillHere = scope === `${props.show}|${props.studentClassId}|${props.studentId}`
+    && (payload.value?.receipts || []).some((r) => Number(r.report_id) === reportId && r.status === 'pending');
+  if (offer && stillHere) justRecorded.value = { reportId, busy: false, error: '' };
 }
 async function confirmJustRecorded() {
   const cur = justRecorded.value;
