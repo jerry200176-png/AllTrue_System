@@ -47,6 +47,18 @@ describe('開帳單 row action and chip order (spec T3, §6)', () => {
   });
 });
 
+describe('需續課 chip (old 續課/將到期 tab)', () => {
+  it('lists students with a course to renew, and only them', () => {
+    const rows = buildStudentBillingRows([
+      { id: 41, student_id: 5, student_name: '戊', payment_status: 'renew_needed', remaining_sessions: 1 },
+      { id: 51, student_id: 6, student_name: '己', payment_status: 'monthly_due_soon' },
+      { id: 61, student_id: 7, student_name: '庚', payment_status: 'paid' },
+    ], [], '2026-10-07');
+    expect(rows.filter(STUDENT_FILTERS.renew.test).map((r) => r.student_id).sort()).toEqual([5, 6]);
+    expect(STUDENT_FILTERS.renew.label).toBe('需續課');
+  });
+});
+
 describe('buildStudentBillingRows with open_periods (same bills as the student panel)', () => {
   it('sums every open bill of a contract and splits each by its own due date', () => {
     const rows = buildStudentBillingRows([

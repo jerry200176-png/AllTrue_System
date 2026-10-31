@@ -43,18 +43,23 @@ async function captureBatch({ row: r }) {
   const sent = [];
   global.fetch = vi.fn((url, init = {}) => {
     const u = String(url);
-    if (u.includes('/api/v1/alerts/tuition')) return Promise.resolve(json(200, [r]));
+    // the student list groups by student: give the synthetic queue row one (the fixture keeps the row as the backend sends it)
+    if (u.includes('/api/v1/alerts/tuition')) return Promise.resolve(json(200, [{ ...r, student_id: 1 }]));
     if (u.includes('/director-record-batch')) { sent.push(JSON.parse(init.body)); return Promise.resolve(json(200, { message: 'ok', accepted: 1, results: [] })); }
     return Promise.resolve(json(200, []));
   });
   const wrapper = mount(TuitionCollectionPage, {
     props: { branchId: 1, initialTab: 'unpaid' },
-    global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
+    global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, teleport: true } },
   });
   await flushPromises();
-  for (const box of wrapper.findAll('input[type="checkbox"][aria-label^="選取"]')) await box.setValue(true);
-  await wrapper.find('select').setValue('cash');
-  for (const label of ['送出已回報', '確認送出回報']) { await wrapper.findAll('button').find((b) => b.text().includes(label)).trigger('click'); await flushPromises(); }
+  // F-5: the batch starts from the student list; the 回報 fields live in the 送出前確認 dialog.
+  await wrapper.find('[data-testid="sbl-pick-1"]').setValue(true);
+  await wrapper.find('[data-testid="sbl-batch-report"]').trigger('click');
+  await flushPromises();
+  await wrapper.find('[data-testid="batch-report-fields"] select').setValue('cash');
+  await wrapper.findAll('button').find((b) => b.text().includes('確認送出回報')).trigger('click');
+  await flushPromises();
   wrapper.unmount();
   return { endpoint: 'director-record-batch', request: sent[0] ?? null, blocked_message: null };
 }
