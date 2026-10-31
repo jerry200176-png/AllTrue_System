@@ -2775,10 +2775,11 @@ function onCourseManagerTab(tab) {
 const courseManagerActionModel = (c) => {
   const m = rowModelFor(c, { fallback: 'manage', details: false });
   // The drawer is already "管理課程", so that entry (primary or displaced) never shows.
-  return {
-    primary: m.primary.id === 'manage' ? null : m.primary,
-    groups: m.groups.map((g) => ({ ...g, items: g.items.filter((i) => i.id !== 'manage') })).filter((g) => g.items.length),
-  };
+  const groups = m.groups.map((g) => ({ ...g, items: g.items.filter((i) => i.id !== 'manage') })).filter((g) => g.items.length);
+  // in-app #29 (#4541): open this student's 學習日誌 from the drawer instead of switching pages and searching by hand.
+  const end = groups.findIndex((g) => g.id === 'end');
+  groups.splice(end < 0 ? groups.length : end, 0, { id: 'records', label: '紀錄', items: [{ id: 'learning-log', label: '學習日誌' }] });
+  return { primary: m.primary.id === 'manage' ? null : m.primary, groups };
 };
 function onCourseManagerMoveLesson({ mode, unit }) {
   const c = courseManagerCourse.value;
@@ -2807,6 +2808,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     reschedule: () => runRowAction(c, 'reschedule'), substitute: () => runRowAction(c, 'substitute'),
     transfer: () => runRowAction(c, 'transfer'), 'contract-revert': () => openContractRevertModal(c),
     'sibling-transfer': () => openSiblingTransfer(c),
+    'learning-log': () => emit('navigate', { target: 'learning', studentName: c.student_name || '' }),
   };
   map[name]?.();
 }

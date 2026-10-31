@@ -1621,8 +1621,8 @@ import {
 import { createLearningRecordSaver } from '../composables/useLearningRecordSave';
 import { useSelection } from '../composables/useSelection';
 
-const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'feedbackFocusToken']);
-const emit = defineEmits(['feedback-read']);
+const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'targetStudentName', 'feedbackFocusToken']);
+const emit = defineEmits(['feedback-read', 'clear-target-student']);
 
 const feedbackPreviewOpen = ref(new Set());
 const recentlyReadFeedbackIds = ref(new Set());
@@ -1799,6 +1799,14 @@ const teacherFilterTab = ref('pending');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const pageMode = ref('records'); // 'records' | 'parent_messages'
+// in-app #29 (#4541): opened from a course drawer's 學習日誌 = this student's whole history, every status. Set before
+// the watchers below are registered, so the first fetch already carries it.
+if (String(props.targetStudentName || '').trim()) {
+  filters.student_name = String(props.targetStudentName).trim();
+  defaultWindowDisabled.value = true;
+  reviewTab.value = 'all';
+  emit('clear-target-student'); // consumed once: a later plain visit to 學習日誌 must not keep this filter
+}
 const replyMode = ref(false);
 const feedbackReplyTextareaEl = ref(null);
 const onlyUnfilled = ref(false);

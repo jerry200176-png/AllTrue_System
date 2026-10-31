@@ -585,7 +585,7 @@
         @navigate-learning="onNavigateLearningFromTeacherHome"
         @navigate-context="onNavigateFromNotifications"
       />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :target-student-name="learningTargetStudentName" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" @clear-target-student="learningTargetStudentName = ''" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
       <ExamGradesPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'exam-grades'" :branch-id="currentBranch" :user-role="role" :focus-round-id="examFocusRoundId" />
       <QuestionBankPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
@@ -1412,6 +1412,7 @@ const currentBranchName = computed(() => {
 });
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
+const learningTargetStudentName = ref('');
 const learningFeedbackFocusToken = ref(0);
 
 // Sidebar collapse state (desktop)
@@ -1862,6 +1863,7 @@ function onNavigateFromNotifications(payload = {}) {
   } else {
     learningTargetRecordId.value = null;
   }
+  learningTargetStudentName.value = target === 'learning' ? String(studentName || '').trim() : '';
   if (target === 'students') {
     const normalizedStudentId = Number(studentId);
     const normalizedCourseId = Number(courseId);
