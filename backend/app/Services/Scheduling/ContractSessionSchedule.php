@@ -476,10 +476,11 @@ class ContractSessionSchedule
      *         caller already batch-fetched this class's existing ClassSession rows (e.g. TD-018-style
      *         batch preload across many classes in one query), pass them here to skip the per-class
      *         query. Pass null (default) to have this method query them itself, as before.
-     * @param  int|null  $futureCap  Most future (not yet ended) lessons to add. Null: a shared count
-     *         package member is capped at the pool's unplanned remainder, anything else is uncapped.
+     * @param  int|array<string, true>|null  $futureCap  Future (not yet ended) lessons it may add: at most N (int), or
+     *         only these "Y-m-d|H:i" slots (array, from fillSharedPool). Null: a shared count package member is capped at
+     *         the pool's unplanned remainder, anything else is uncapped.
      */
-    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount, ?\Illuminate\Support\Collection $preloadedExistingSessions = null, ?int $futureCap = null): void
+    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount, ?\Illuminate\Support\Collection $preloadedExistingSessions = null, int|array|null $futureCap = null): void
     {
         if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
             return;
@@ -621,8 +622,13 @@ class ContractSessionSchedule
         $futureCap ??= self::sharedPoolUnplanned($studentClass);
         if ($futureCap !== null) {
             $newSessions = array_values(array_filter($newSessions, static function (array $s) use (&$futureCap, $now): bool {
-                return self::sessionEndedByEndTime((string) ($s['SessionDate'] ?? ''), (string) ($s['EndTime'] ?? '18:00:00'), $now)
-                    || $futureCap-- > 0;
+                if (self::sessionEndedByEndTime((string) ($s['SessionDate'] ?? ''), (string) ($s['EndTime'] ?? '18:00:00'), $now)) {
+                    return true;
+                }
+
+                return is_array($futureCap)
+                    ? isset($futureCap[self::normalizeDateString($s['SessionDate'] ?? null) . '|' . substr((string) ($s['StartTime'] ?? ''), 0, 5)])
+                    : $futureCap-- > 0;
             }));
         }
         $teacherId = (int) ($studentClass->TeacherID ?? 0);
@@ -742,10 +748,11 @@ class ContractSessionSchedule
             }
             $budget -= $free ? 0 : 1;
             $slotPlanned[$key] = true;
-            $share[$classId] = ($share[$classId] ?? 0) + 1;
+            $share[$classId][$key] = true;
         }
         foreach ($members as $member) {
-            $this->extendSessionsIfNeeded($member, $count, null, $share[(int) $member->ID] ?? 0);
+            // The selected slots themselves, not a count: a member with a moved lesson would fill different dates (#4730).
+            $this->extendSessionsIfNeeded($member, $count, null, $share[(int) $member->ID] ?? []);
         }
     }
 
