@@ -112,7 +112,7 @@ jobs:
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
-          php artisan tinker --execute='
+          OUT="$(php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
           $disposition = (string)getenv("DISPOSITION");
@@ -180,8 +180,11 @@ jobs:
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           });
           }
-          ' \
-          </dev/null
+          echo "WRITEBACK_OK ".$bugId, PHP_EOL;
+          ' </dev/null 2>&1)"
+          printf '%s\n' "$OUT"
+          # tinker prints an uncaught exception yet exits 0 (run 41187017152 counted a refused row): count a row only on its marker.
+          grep -qx "WRITEBACK_OK $BUG_ID" <<<"$OUT" || { echo "row $BUG_ID was not written"; exit 1; }
           applied=$((applied + 1))
           echo "applied_row=$BUG_ID"
           done 3< <(printf '%s' "$ROWS_B64" | base64 -d; echo)
