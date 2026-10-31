@@ -174,13 +174,13 @@ defineExpose({ show, dismiss });
   overflow: hidden;
 }
 .twu--success {
-  border-left: 4px solid var(--ds-success);
+  border-color: color-mix(in srgb, var(--ds-success) 50%, var(--ds-hairline));
 }
 .twu--error {
-  border-left: 4px solid var(--ds-danger);
+  border-color: color-mix(in srgb, var(--ds-danger) 50%, var(--ds-hairline));
 }
 .twu--info {
-  border-left: 4px solid var(--ds-ink-mute);
+  border-color: var(--ds-hairline-input);
 }
 .twu--voided {
   opacity: 0.85;
