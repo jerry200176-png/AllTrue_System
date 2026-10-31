@@ -113,7 +113,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { authedFetch } from '../../lib/authedFetch.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import AtButton from '../design-system/AtButton.vue';
@@ -153,6 +153,8 @@ const props = defineProps({
   // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
   canResolveLegacy: { type: Boolean, default: false },
   hasConfirmedReport: { type: Boolean, default: false },
+  // F-2: the list row's 確認入帳 opens the drawer with this card's confirm dialog already asking (once).
+  autoConfirm: { type: Boolean, default: false },
 });
 const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill']);
 
@@ -297,7 +299,8 @@ async function saveMemo() {
 }
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
-const noObligation = computed(() => data.value?.class_type === 'tutoring');
+// #4699: the ledger row says it up front (courses[].no_payment_obligation); the loaded course detail is the fallback.
+const noObligation = computed(() => props.course.no_payment_obligation === true || data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
 // In-app #425: 繳費單 uses the 帳務中心 rule (lib/billingDocState.js); the card only maps its state into a list row.
@@ -353,6 +356,7 @@ async function decide(action, note = '') {
 }
 
 watch(() => props.course.id, load, { immediate: true });
+onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); });
 </script>
 
 <style scoped>

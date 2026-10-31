@@ -5417,7 +5417,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  border-left: 4px solid var(--ds-warning);
+  border: 1px solid color-mix(in srgb, var(--ds-warning) 40%, var(--ds-hairline));
   background: var(--ds-warning-wash);
 }
 
@@ -5545,8 +5545,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   padding: 10px 12px;
   min-height: 48px;
   background: var(--primary-bg);
-  border-left: 3px solid var(--primary);
-  border-radius: 0 8px 8px 0;
+  border-radius: 8px;
   cursor: pointer;
   transition: var(--transition);
 }
@@ -5761,14 +5760,12 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .ts-event-sm.substituted {
   opacity: 0.6;
   background: var(--ds-canvas-soft);
-  border-left: 3px solid var(--ds-ink-mute);
 }
 
 .ts-event-sm.ts-event-leave,
 .ts-event-sm.ts-event-cancelled {
   opacity: 0.72;
   background: var(--ds-canvas-soft);
-  border-left: 3px solid var(--ds-canvas-soft);
   cursor: not-allowed;
 }
 
@@ -5786,7 +5783,6 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .ts-event.ts-event-leave,
 .ts-event.ts-event-cancelled {
   background: var(--ds-canvas-soft);
-  border-left: 4px solid var(--ds-canvas-soft);
 }
 
 .ts-event.ts-event-leave .ts-fill-btn,
@@ -6240,11 +6236,7 @@ select.lr-input {
   box-shadow: 0 12px 26px rgba(15, 23, 42, .1);
 }
 
-.lr-record-card.has-feedback {
-  border-left: 3px solid var(--ds-hairline);
-}
 .lr-record-card.is-unread {
-  border-left: 3px solid var(--ds-warning);
   border-color: var(--ds-warning);
   box-shadow: 0 8px 20px rgba(249, 115, 22, .12);
 }
@@ -6588,7 +6580,6 @@ select.lr-input {
   padding: 10px 14px;
   background: var(--ds-warning-wash);
   border: 1px solid var(--ds-warning);
-  border-left: 4px solid var(--ds-warning);
   border-radius: 8px;
   font-size: 13px;
   color: var(--ds-warning);
@@ -6657,7 +6648,6 @@ select.lr-input {
   padding: 10px 14px;
   background: var(--ds-warning-wash);
   border: 1px solid var(--ds-warning);
-  border-left: 4px solid var(--ds-warning);
   border-radius: 8px;
   font-size: 13px;
   color: var(--ds-warning);
@@ -6914,7 +6904,7 @@ select.lr-input {
   background: var(--ds-primary-wash);
 }
 .lr-table-row.lr-row-unfilled {
-  border-left: 3px solid var(--ds-warning);
+  background: var(--ds-warning-wash);
 }
 .lr-table-row.lr-row-urgent {
   background: rgba(251, 146, 60, 0.08);
@@ -6952,8 +6942,7 @@ select.lr-input {
 .lr-teacher-comment-chip.read { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); border:1px solid var(--ds-canvas-soft); }
 
 /* 列表視圖 row 高亮 */
-tr.lr-row-has-feedback { border-left: 3px solid var(--ds-hairline); }
-tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(249,115,22,.03); }
+tr.lr-row-unread { background: var(--ds-warning-wash); }
 .lr-parent-feedback-box { margin-top:12px; padding:12px; border:1px solid var(--ds-canvas-soft); border-radius:12px; background:rgba(92,107,192,.06); }
 .lr-parent-feedback-title { font-weight:700; color:var(--ds-ink-mute); margin-bottom:6px; }
 .lr-parent-feedback-content { white-space:pre-wrap; line-height:1.6; }
@@ -7088,7 +7077,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   gap: 6px;
   padding: 8px 12px;
   border: 1px solid var(--ds-warning-wash);
-  border-left: 3px solid var(--ds-warning);
   border-radius: 8px;
   background: var(--ds-warning-wash);
   color: var(--ds-warning);
@@ -7155,7 +7143,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   box-shadow: var(--shadow);
   cursor: pointer;
   transition: var(--transition);
-  border-left: 3px solid transparent;
 }
 
 .lr-record-card:active {
@@ -7565,8 +7552,8 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 /* ── Reject Note ── */
 .lr-reject-note {
   background: var(--danger-bg);
-  border-left: 4px solid var(--danger);
-  border-radius: 0 8px 8px 0;
+  border: 1px solid color-mix(in srgb, var(--ds-danger) 40%, var(--ds-hairline));
+  border-radius: 8px;
   padding: 14px 18px;
   margin-bottom: 20px;
 }
@@ -7847,7 +7834,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
     padding: 8px 12px;
     gap: 10px;
     border-radius: 0;
-    border-left: 3px solid var(--primary);
     border-top: none;
     margin: 2px 0;
   }
@@ -8633,7 +8619,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   background: rgba(0, 0, 0, 0.05);
 }
 .lr-page--teacher .lr-record-card.is-unread {
-  border-left: 3px solid var(--ds-warning);
   border-color: var(--ios-separator);
   box-shadow: none;
 }

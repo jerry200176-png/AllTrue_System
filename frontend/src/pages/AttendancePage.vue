@@ -2674,7 +2674,7 @@ watch(() => props.branchId, () => {
 .att-followup-card {
   margin-top: 12px;
   padding: 16px 20px;
-  border-left: 3px solid var(--ds-warning);
+  border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline));
 }
 .att-secondary-summary {
   margin-top: 12px;
@@ -2992,7 +2992,7 @@ watch(() => props.branchId, () => {
 .att-load-more { text-align: center; padding: 12px 0; }
 
 /* Pending card */
-.att-pending-card { padding: 20px 24px; border-left: 4px solid var(--warning); }
+.att-pending-card { padding: 20px 24px; border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline)); }
 
 /* ──────── Responsive ──────── */
 @media (max-width: 768px) {

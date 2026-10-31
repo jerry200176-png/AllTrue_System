@@ -1281,6 +1281,16 @@ class LearningRecordController extends Controller
             'Comment' => 'nullable|string|max:2000',
         ]);
 
+        // #4661: lock and re-read the row before the ownership checks. A teacher change (AssessmentAuthorSnapshot takes the
+        // same row lock) and this edit then serialize: the edit lands first and is captured in the snapshot, or it sees the
+        // new owner and is rejected. It can no longer refill the new teacher's cleared row.
+        return DB::transaction(fn () => $this->updateLocked(
+            $request, $data, LearningRecord::query()->whereKey($learningRecord->getKey())->lockForUpdate()->firstOrFail()
+        ));
+    }
+
+    private function updateLocked(Request $request, array $data, LearningRecord $learningRecord)
+    {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         if ($role === 'teacher') {

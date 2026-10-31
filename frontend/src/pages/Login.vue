@@ -369,7 +369,7 @@ onBeforeUnmount(() => {
   background: rgba(255, 235, 238, 0.9);
   color: #d32f2f;
   border-radius: 12px;
-  border-left: 4px solid #d32f2f;
+  border: 1px solid color-mix(in srgb, var(--ds-danger) 40%, transparent);
   font-size: 0.875rem;
   line-height: 1.4;
   font-weight: 500;
@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
   padding: 12px 16px;
   background: rgba(255, 243, 224, 0.9);
   border-radius: 12px;
-  border-left: 4px solid #ff9800;
+  border: 1px solid color-mix(in srgb, var(--ds-warning) 40%, transparent);
   font-size: 0.8125rem;
   text-align: center;
   font-weight: 600;
