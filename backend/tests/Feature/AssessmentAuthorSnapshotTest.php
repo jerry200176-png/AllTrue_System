@@ -203,6 +203,27 @@ class AssessmentAuthorSnapshotTest extends TestCase
         $this->assertSame(1, LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->count());
     }
 
+    public function test_third_contract_transfer_before_any_refill_still_moves_the_owner(): void
+    {
+        // #4663: A→B→C→D with no refill. After B→C no snapshot names C, and the C→D move used to leave TeacherID at C (D got 403).
+        [$s, $lr] = $this->filled();
+        $contractFor = function (string $name) {
+            $u = User::create(['LoginName' => "{$name}@snap3824.example.com", 'Name' => $name, 'PSW' => 'x', 'type' => 'T',
+                'phone' => '09' . random_int(10000000, 99999999), 'MustChangePassword' => false, 'TeachingSessionCount' => 0]);
+            UserCampus::create(['CampusID' => 1, 'UserID' => $u->id, 'Admin' => 0, 'Approved' => 1]);
+
+            return [$u, StudentClass::create($this->scB->only(['StudentID', 'GradeID', 'SubjectID', 'by1', 'Period', 'StartDate', 'TotalHours', 'Charge', 'Rate', 'SessionCount', 'RemainingSessions', 'SessionDuration', 'week', 'time', 'class_type', 'ScheduleMode', 'Stop', 'Paid']) + ['TeacherID' => $u->id, 'MDT' => now()])];
+        };
+        [, $scC] = $contractFor('teacherc');
+        [$d, $scD] = $contractFor('teacherd');
+        foreach ([$this->scB, $scC, $scD] as $i => $to) {
+            $this->api()->postJson("/api/v1/class-sessions/{$s->id}/reassign-contract", ['new_student_class_id' => $to->ID, 'reason' => "move {$i}"])->assertOk();
+        }
+        $this->assertSame((int) $d->id, (int) $lr->fresh()->TeacherID);
+        $this->assertSame(1, LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->count()); // A's body, captured once
+        $this->assertTrue(\App\Support\LearningRecordMutableOwnership::isActionableOwner($lr->fresh(), (int) $d->id));
+    }
+
     public function test_second_contract_transfer_after_b_wrote_snapshots_bs_content(): void
     {
         [$s, $lr] = $this->filled();
