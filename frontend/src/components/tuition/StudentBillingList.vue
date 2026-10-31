@@ -153,7 +153,8 @@ const props = defineProps({
   batchCounts: { type: Object, default: null },
   exportDisabled: { type: Boolean, default: false },
   // Deep links (notifications, 首頁) pick the filter chip the old 待處理 tab used to show.
-  presetFilter: { type: String, default: 'all' },
+  // { key } so that following the same deep link again re-applies the chip after the director changed it.
+  presetFilter: { type: Object, default: () => ({ key: 'all' }) },
 });
 const alertsFailed = computed(() => Boolean(props.error) && !props.alertRows.length);
 const inPanel = computed(() => props.view !== 'students' && props.panels.some((p) => p.key === props.view));
@@ -169,8 +170,8 @@ const toggle = (id) => {
   expanded.value = next;
 };
 const query = ref('');
-const filter = ref(STUDENT_FILTERS[props.presetFilter] ? props.presetFilter : 'all');
-watch(() => props.presetFilter, (key) => { if (STUDENT_FILTERS[key]) filter.value = key; });
+const filter = ref(STUDENT_FILTERS[props.presetFilter?.key] ? props.presetFilter.key : 'all');
+watch(() => props.presetFilter, (p) => { if (STUDENT_FILTERS[p?.key]) filter.value = p.key; });
 const rows = computed(() => buildStudentBillingRows(props.alertRows, props.students, props.today));
 const totalNow = computed(() => rows.value.reduce((s, r) => s + r.owed_now, 0));
 const owingCount = computed(() => rows.value.filter((r) => r.owed_now > 0).length);

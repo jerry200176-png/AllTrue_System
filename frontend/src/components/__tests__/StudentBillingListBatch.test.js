@@ -68,6 +68,18 @@ describe('student list batch toolbar (F-5a2)', () => {
   });
 });
 
+describe('deep-link preset filter (F-5-1)', () => {
+  it('re-applies the same chip when the same link is followed again after the director changed it', async () => {
+    const w = mountList({ presetFilter: { key: 'confirm' } });
+    const shown = () => w.findAll('[data-testid^="sbl-row-"]').length;
+    expect(shown()).toBe(1);
+    await w.get('[data-testid="sbl-filter-all"]').trigger('click');
+    expect(shown()).toBe(3);
+    await w.setProps({ presetFilter: { key: 'confirm' } }); // a new object, same chip
+    expect(shown()).toBe(1);
+  });
+});
+
 describe('page wiring (F-5a2)', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/TuitionCollectionPage.vue'), 'utf8');
   it('reuses the table batch preview, submit functions and CSV/session handlers', () => {

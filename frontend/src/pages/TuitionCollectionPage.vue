@@ -1232,7 +1232,7 @@ async function loadCampusStudents() {
 }
 // ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).
 const studentList = ref(null);
-const listFilter = ref('all'); // set by deep links (initialTab); the list owns it afterwards
+const listFilter = ref({ key: 'all' }); // a new object per deep link, so the same chip is re-applied; the list owns it in between
 const ledgerNavStudentId = ref(null);
 function stepLedger(dir) {
   const next = studentList.value?.neighbor(ledgerNavStudentId.value, dir);
@@ -2604,14 +2604,14 @@ watch(() => props.initialTab, (tab) => {
   if (!tab) return;
   if (LIST_FILTER_FOR_TAB[tab]) {
     activeAccountingTab.value = 'students';
-    listFilter.value = LIST_FILTER_FOR_TAB[tab];
+    listFilter.value = { key: LIST_FILTER_FOR_TAB[tab] };
   } else if (tab === 'receipts' || tab === 'payments') {
     activeAccountingTab.value = 'payments';
   } else if (tab === 'settled') {
     activeAccountingTab.value = 'settled';
   } else if (tab === 'ledger') {
     activeAccountingTab.value = 'students';
-    listFilter.value = 'all';
+    listFilter.value = { key: 'all' };
     const courseId = normalizeNavigationId(props.initialCourseId);
     if (courseId) {
       ledgerOpenedFromDeepLink.value = true;
