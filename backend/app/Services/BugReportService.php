@@ -61,6 +61,7 @@ class BugReportService
     ];
 
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
+    public const RETEST_REQUEST_PATTERN = '/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u';
     public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
 
     private const VALID_TRANSITIONS = [
@@ -904,7 +905,8 @@ class BugReportService
                 ->where('bug_report_id', $bugId)
                 ->where('author_user_id', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolvedAt)
-                ->exists()) {
+                ->get()
+                ->contains(fn (BugReportComment $comment) => !self::isTrackedStaffReply($comment, self::RETEST_REQUEST_PATTERN))) {
                 continue;
             }
 
@@ -913,12 +915,12 @@ class BugReportService
             $retestRequest = BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
-                ->where('author_user_id', '!=', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolvedAt->copy()->subDay())
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->get()
-                ->first(fn (BugReportComment $comment) => preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', (string) $comment->getAttribute('body')) === 1);
+                ->first(fn (BugReportComment $comment) => ((int) $comment->author_user_id !== (int) $rawReporterId || self::isTrackedStaffReply($comment, self::RETEST_REQUEST_PATTERN))
+                    && preg_match(self::RETEST_REQUEST_PATTERN, (string) $comment->getAttribute('body')) === 1);
             if (!$retestRequest || $retestRequest->created_at->gt($cutoff)) {
                 continue;
             }
@@ -959,6 +961,22 @@ class BugReportService
      *
      * @return array{bug_id:int,asked_at:string,days_waiting:int}|null
      */
+    /**
+     * A public ask written back by staff tooling: it links its GitHub issue (bug-phase-a-triage /
+     * bug-followup-comment refuse a reply without it) AND asks the reporter in our wording ($askPattern). It can
+     * carry the reporter's own user id when the reporter is the super_admin the writer acts as, so the author id
+     * alone cannot tell a reporter reply from ours (37 of the reports since #327 are self-filed). A reporter's
+     * "still broken, see <issue link>" has the link but not the ask, so it still counts as the reporter's.
+     * ponytail: a reporter typing 「請再試一次 + issue link」 reads as staff; add an author-role column if that happens.
+     */
+    private static function isTrackedStaffReply(BugReportComment $comment, string $askPattern): bool
+    {
+        $body = (string) $comment->body;
+
+        return preg_match('#https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/\d+#', $body) === 1
+            && preg_match($askPattern, $body) === 1;
+    }
+
     private static function awaitingReporterRow(int $bugId, int $reporterId, Carbon $now): ?array
     {
         $cutoff = $now->copy()->subDays(self::AWAITING_REPORTER_TIMEOUT_DAYS);
@@ -968,7 +986,7 @@ class BugReportService
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->first();
-        if (!$last || (int) $last->author_user_id === $reporterId || $last->created_at->gt($cutoff)) {
+        if (!$last || ((int) $last->author_user_id === $reporterId && !self::isTrackedStaffReply($last, self::AWAITING_REPORTER_QUESTION_PATTERN)) || $last->created_at->gt($cutoff)) {
             return null;
         }
         // Only a real question waits on the reporter; "noted your suggestion" waits on us (in-app #290).
@@ -1191,6 +1209,80 @@ class BugReportService
                 'created_at' => $b->created_at ? Carbon::parse($b->created_at)->toIso8601String() : null,
             ])
             ->all();
+    }
+
+    public const LEGACY_CLOSE_MIN_DAYS = 60;
+
+    /**
+     * Founder GO 2026-10-31 (one reviewed batch): a resolve logged before the Evidence Contract carries no
+     * production evidence, so the reporter timeout above never closes it, even after the reporter confirmed.
+     *
+     * @return list<array{bug_id:int,resolved_at:string,reporter_replied:bool}>
+     */
+    public static function listLegacyResolvedWithoutEvidence(?Carbon $now = null): array
+    {
+        $out = [];
+        foreach (BugReport::query()->where('status', 'resolved')->orderBy('id')->pluck('reporter_user_id', 'id') as $bugId => $reporterId) {
+            if ($row = self::legacyResolvedRow((int) $bugId, (int) $reporterId, $now ?: Carbon::now())) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array{bug_id:int,resolved_at:string,reporter_replied:bool}|null */
+    private static function legacyResolvedRow(int $bugId, int $reporterId, Carbon $now): ?array
+    {
+        $log = BugReportStatusLog::query()->where('bug_report_id', $bugId)->where('to_status', 'resolved')->orderByDesc('id')->first();
+        $resolvedAt = Carbon::make($log?->created_at);
+        if ($resolvedAt === null || $resolvedAt->gt($now->copy()->subDays(self::LEGACY_CLOSE_MIN_DAYS))
+            || str_contains((string) $log->note, self::RESOLUTION_EVIDENCE_MARKER)
+            || self::hasValidAppendOnlyResolutionEvidence($bugId, $resolvedAt)) {
+            return null;
+        }
+
+        return [
+            'bug_id' => $bugId,
+            'resolved_at' => $resolvedAt->toIso8601String(),
+            'reporter_replied' => BugReportComment::query()->where('bug_report_id', $bugId)->where('author_user_id', $reporterId)
+                ->where('is_internal_note', false)->where('created_at', '>=', $resolvedAt)->exists(),
+        ];
+    }
+
+    /**
+     * Close one listed legacy resolve with the timeout reply. The closed_by_timeout note keeps the existing
+     * reopen-on-reporter-reply path (back to in_progress); the row is re-checked under its lock.
+     *
+     * @return array{ok:bool,action:string,code?:string}
+     */
+    public static function closeLegacyResolved(int $bugId, int $actorUserId, bool $dryRun = false): array
+    {
+        $eligible = static fn (?BugReport $bug) => $bug && $bug->status === 'resolved'
+            && self::legacyResolvedRow($bugId, (int) $bug->reporter_user_id, Carbon::now()) !== null;
+        if (!$eligible(BugReport::query()->find($bugId))) {
+            return ['ok' => false, 'action' => 'skip', 'code' => 'not_eligible'];
+        }
+        if ($dryRun) {
+            return ['ok' => true, 'action' => 'would_close'];
+        }
+        $result = DB::transaction(function () use ($bugId, $actorUserId, $eligible) {
+            if (!$eligible(BugReport::query()->where('id', $bugId)->lockForUpdate()->first())) {
+                return ['ok' => false, 'code' => 'not_eligible'];
+            }
+            self::addComment($bugId, $actorUserId, '這張回報之前已處理完成，先結案。還有問題直接在這裡回覆就會重開。');
+            $res = self::changeStatus($bugId, $actorUserId, 'closed',
+                'closed_by_timeout — Evidence Contract legacy batch: resolve without production evidence (Founder GO 2026-10-31)');
+            if (!$res['ok']) {
+                throw new \RuntimeException($res['message'] ?? 'close failed');
+            }
+
+            return $res;
+        });
+        Log::info('bug_closed_legacy_batch', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId, 'ok' => $result['ok']]);
+
+        // A failed close throws inside the transaction; the only false result is the locked recheck.
+        return $result['ok'] ? ['ok' => true, 'action' => 'closed'] : ['ok' => false, 'action' => 'skip', 'code' => 'not_eligible'];
     }
 
     /**

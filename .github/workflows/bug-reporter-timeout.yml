@@ -5,6 +5,9 @@ name: Bug reporter verification timeout
 # has waited 14 days (F11). Every apply is individually reviewed. Never scheduled.
 # Update 2026-10-08 (Founder 2A): the manual modes below stay unscheduled; only `auto` runs daily.
 # - dry-run / apply (manual): every apply is individually reviewed (reviewed_ids).
+# - legacy-dry-run / legacy-apply (manual, Founder GO 2026-10-31, one reviewed batch): resolves logged
+#   before the Evidence Contract (no production evidence, 60+ days old) that the timeout can never close.
+#   Same confirmation + reviewed_ids gate as apply; a reporter reply reopens to in_progress.
 # - auto (daily schedule, Founder 2A 2026-10-08): `bugs:close-stale-resolved --auto` closes resolved
 #   reports with no reporter reply for 14 days, with the standard plain public reply. Resolved queue
 #   only, capped per run, re-checked under a row lock, idempotent. A reporter reply (or 問題仍存在)
@@ -24,6 +27,8 @@ on:
           - apply
           - auto-dry-run
           - auto
+          - legacy-dry-run
+          - legacy-apply
       days:
         description: "Calendar days after resolved before timeout (resolved queue only; awaiting-reporter queue is fixed at 14 days)"
         required: true
@@ -98,11 +103,11 @@ jobs:
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "main only" >&2; exit 1; }
           [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid workflow SHA" >&2; exit 1; }
-          [[ "$MODE" == "dry-run" || "$MODE" == "apply" || "$MODE" == "auto-dry-run" || "$MODE" == "auto" ]] || { echo "invalid mode" >&2; exit 1; }
+          [[ "$MODE" =~ ^(dry-run|apply|auto-dry-run|auto|legacy-dry-run|legacy-apply)$ ]] || { echo "invalid mode" >&2; exit 1; }
           [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || { echo "days must be a positive integer" >&2; exit 1; }
           if [[ "$MODE" == auto* ]]; then
             [[ -z "$REVIEWED_IDS" && -z "$CONFIRMATION" ]] || { echo "auto modes take no reviewed_ids or confirmation" >&2; exit 1; }
-          elif [[ "$MODE" == "apply" ]]; then
+          elif [[ "$MODE" == "apply" || "$MODE" == "legacy-apply" ]]; then
             [[ "$CONFIRMATION" == "CLOSE_STALE_RESOLVED" ]] || { echo "apply requires confirmation=CLOSE_STALE_RESOLVED" >&2; exit 1; }
             [[ "$REVIEWED_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || { echo "apply requires reviewed_ids=ID[,ID]" >&2; exit 1; }
             IFS=, read -r -a reviewed_id_list <<< "$REVIEWED_IDS"
@@ -133,12 +138,28 @@ jobs:
           cd /home/admin/backend
           PROD_SHA="$(git rev-parse HEAD)"
           echo "prod_head=$PROD_SHA"
-          if [[ "$MODE" == "apply" ]]; then
+          if [[ "$MODE" == "apply" || "$MODE" == "legacy-apply" ]]; then
             git merge-base --is-ancestor "$WORKFLOW_SHA" "$PROD_SHA" || { echo "workflow SHA is not in production" >&2; exit 1; }
             command_help="$(php artisan bugs:close-stale-resolved --help)"
             [[ "$command_help" == *--reviewed-ids* ]] || { echo "deployed command lacks reviewed-ID gate" >&2; exit 1; }
           fi
           php artisan list --format=txt | grep -q 'bugs:close-stale-resolved'
+          if [[ "$MODE" == legacy* ]]; then
+            command_help="$(php artisan bugs:close-stale-resolved --help)"
+            [[ "$command_help" == *--legacy* ]] || { echo "deployed command lacks --legacy" >&2; exit 1; }
+            echo "=== LEGACY DRY-RUN ==="
+            php artisan bugs:close-stale-resolved --legacy --dry-run $ACTOR_ARG
+            if [[ "$MODE" == "legacy-dry-run" ]]; then
+              echo "result=DRY_RUN_ONLY"
+              exit 0
+            fi
+            echo "=== LEGACY APPLY ==="
+            php artisan bugs:close-stale-resolved --legacy $ACTOR_ARG --reviewed-ids="$REVIEWED_IDS"
+            echo "=== POST-APPLY LEGACY DRY-RUN ==="
+            php artisan bugs:close-stale-resolved --legacy --dry-run $ACTOR_ARG
+            echo "result=APPLIED_AND_RECHECKED"
+            exit 0
+          fi
           if [[ "$MODE" == auto* ]]; then
             # The command enforces the 14-day window, the resolved-only queue and the per-run cap itself,
             # so only its presence matters here (main may be ahead of production by docs-only commits).
