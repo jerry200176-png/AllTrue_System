@@ -252,8 +252,8 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__list>li.has-action>:not(.sbl__row):not(.sbl__action):not(.sbl__check){grid-column:1/-1}
 .sbl__action{min-height:44px;white-space:nowrap}
 .sbl__bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.sbl__bulk-all{display:flex;align-items:center;gap:6px;font-size:13px;min-height:32px}
-.sbl__bulk-count{font-size:13px;font-weight:700}
+.sbl__bulk-all{display:flex;align-items:center;gap:6px;font-size:var(--ds-font-size-sm);min-height:32px}
+.sbl__bulk-count{font-size:var(--ds-font-size-sm);font-weight:700}
 .sbl__bulk-csv{margin-left:auto}
 .sbl__check{width:20px;height:20px;margin:0 8px 0 0;align-self:center}
 .sbl__list>li.has-check{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 0;align-items:center}
