@@ -64,8 +64,10 @@
       <p class="alloc__verdict" role="status" data-testid="alloc-verdict">{{ verdict }}</p>
       <ul class="alloc__list">
         <li v-for="r in results" :key="r.id" :class="r.ok ? 'is-ok' : 'is-fail'" :data-testid="`alloc-result-${r.id}`">
-          <span v-if="r.ok">{{ r.subject }} 已登記 {{ money(r.amount) }}</span>
+          <span v-if="r.ok">{{ r.subject }} 已登記 {{ money(r.amount) }}{{ r.confirmed ? '，已確認入帳' : '' }}</span>
           <span v-else>{{ r.subject }} 沒有登記：{{ r.message }}</span>
+          <AtButton v-if="r.ok && r.report_id && !r.confirmed" variant="secondary" size="sm" shape="rect" :disabled="r.confirming" :data-testid="`alloc-confirm-${r.id}`" @click="confirmNow(r)">現在確認入帳</AtButton>
+          <small v-if="r.confirm_error" class="alloc__err" role="alert">{{ r.confirm_error }}</small>
         </li>
       </ul>
       <footer class="alloc__foot">
@@ -81,7 +83,7 @@
 import { computed, reactive, ref } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
-import { recordPaymentBatch } from '../../lib/paymentActions.js';
+import { confirmReport, recordPaymentBatch } from '../../lib/paymentActions.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import { formatDate } from '../../lib/billingDocumentView.js';
 
@@ -171,7 +173,7 @@ async function send(entries) {
       const c = payable.value.find((x) => x.id === e.student_class_id);
       const r = byClass.get(Number(e.student_class_id));
       const ok = Boolean(r) && r.http_status < 300;
-      return { id: e.student_class_id, subject: c?.subject || '課程', amount: e.amount, ok, message: ok ? '' : reasonOf(r || {}) };
+      return { id: e.student_class_id, subject: c?.subject || '課程', amount: e.amount, ok, message: ok ? '' : reasonOf(r || {}), report_id: ok ? r.report_id : null };
     });
     // keep earlier successes when retrying only the failed rows
     const kept = results.value.filter((r) => r.ok && !next.some((n) => n.id === r.id));
@@ -196,10 +198,19 @@ function retryFailed() {
   return send(buildEntries(ids));
 }
 
+// F-2: 確認入帳 stays a separate explicit step per contract (its own request), offered right where 登記 reported.
+async function confirmNow(r) {
+  r.confirming = true;
+  r.confirm_error = '';
+  const res = await confirmReport(r.report_id);
+  r.confirming = false;
+  if (res.ok) r.confirmed = true; else r.confirm_error = res.message;
+}
+
 const accepted = computed(() => results.value.filter((r) => r.ok).length);
 const failed = computed(() => results.value.filter((r) => !r.ok));
 const verdict = computed(() => {
-  if (!failed.value.length) return `已登記 ${accepted.value} 份合約，待確認入帳。`;
+  if (!failed.value.length) return results.value.every((r) => r.confirmed) ? `已登記並確認入帳 ${accepted.value} 份合約。` : `已登記 ${accepted.value} 份合約，待確認入帳。`;
   if (!accepted.value) return '都沒有登記成功，沒有任何金額被記下。';
   return `只有部分登記成功：${accepted.value} 份已登記、${failed.value.length} 份沒有登記。`;
 });
@@ -231,7 +242,7 @@ const verdict = computed(() => {
 .alloc__sum strong{font-size:18px;font-variant-numeric:tabular-nums}
 .alloc__verdict{margin:0;font-weight:700}
 .alloc__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.alloc__list li{padding:8px 12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px)}
+.alloc__list li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px)}
 .alloc__list li.is-ok{color:var(--ds-success)}
 .alloc__list li.is-fail{color:var(--ds-danger)}
 @media (max-width:768px){

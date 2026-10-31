@@ -107,6 +107,7 @@
                 :rate-note="issuedBillRateNote(c, payload.invoices)"
                 :can-resolve-legacy="canManageInvoices()"
                 :has-confirmed-report="hasConfirmedReportFor(c.id)"
+                :auto-confirm="autoConfirmId === Number(c.id)"
                 @record="openEntry"
                 @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
@@ -310,6 +311,17 @@
           </div>
         </template>
       </div>
+      <!-- F-2 (Founder A): step 2 right after step 1, same person, but its own button and its own request. -->
+      <AtDialog :open="!!justRecorded" title="已登記，待確認入帳" size="sm" title-id="ledger-recorded-title" @close="justRecorded = null">
+        <p v-if="justRecorded" class="ledger-issue" data-testid="ledger-recorded-text">
+          已登記{{ justRecordedAmount != null ? ` ${formatCurrency(justRecordedAmount)}` : '' }}，現在是「待確認入帳」。確認收到款項後，按「現在確認入帳」才算已收；也可以稍後在課程卡確認。
+        </p>
+        <p v-if="justRecorded?.error" class="ledger-error-text" role="alert" data-testid="ledger-recorded-error">{{ justRecorded.error }}</p>
+        <template #actions>
+          <AtButton variant="secondary" size="sm" shape="rect" data-testid="ledger-recorded-later" @click="justRecorded = null">稍後再確認</AtButton>
+          <AtButton size="sm" shape="rect" :loading="justRecorded?.busy === true" data-testid="ledger-recorded-confirm" @click="confirmJustRecorded">現在確認入帳</AtButton>
+        </template>
+      </AtDialog>
       <AtDialog :open="!!issueDraft" title="開立這期帳單？" size="sm" title-id="ledger-issue-title" @close="closeIssue">
         <p v-if="issueDraft" class="ledger-issue" data-testid="ledger-issue-text">
           {{ issueDraft.subject }}・{{ fmtDate(issueDraft.proposed_start_date) }}–{{ fmtDate(issueDraft.proposed_end_date) }}・{{ issueDraft.period_sessions }} 堂・{{ formatCurrency(issueDraft.amount) }}<template v-if="issueDraft.due_date">・繳費期限 {{ fmtDate(issueDraft.due_date) }}</template>
@@ -320,7 +332,7 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onPanelChanged" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -340,7 +352,7 @@ import {
   buildLedgerIssueReport,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
-import { voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
+import { confirmReport, voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
 import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
@@ -895,11 +907,18 @@ watch(() => props.show, () => { initialActionNote.value = ''; });
 watch(() => entryOpen.value && entryMode.value === 'legacy-backfill' && hasConfirmedReportFor(entryRow.value?.id), (blocked) => {
   if (blocked) { entryOpen.value = false; initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP; }
 });
+// F-2: 'confirm' (list row 確認入帳) asks the card's own confirm question straight away.
+const autoConfirmId = ref(null);
+watch(() => props.show, () => { autoConfirmId.value = null; });
 function runInitialAction() {
   const action = pendingInitialAction;
   pendingInitialAction = null;
-  if (action !== 'record') return;
   const id = Number(props.studentClassId || 0);
+  if (action === 'confirm') {
+    if (pendingReportFor(id)) autoConfirmId.value = id;
+    return;
+  }
+  if (action !== 'record') return;
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
   if (needsLegacyChoice(course)) {
@@ -929,6 +948,30 @@ async function onEntryConflict() {
   await loadLedger();
   emit('changed');
 }
+
+// F-2: a recorded (pending) report offers 現在確認入帳; legacy backfill is already confirmed and offers nothing.
+const justRecorded = ref(null);
+const justRecordedAmount = computed(() => {
+  const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === justRecorded.value?.reportId);
+  return r ? Number(r.amount) : null;
+});
+async function onEntryRecorded(result) {
+  const reportId = Number(result?.report_id);
+  const offer = entryMode.value === 'record' && result?.status === 'pending' && reportId > 0 && canManageInvoices();
+  await onPanelChanged();
+  if (offer) justRecorded.value = { reportId, busy: false, error: '' };
+}
+async function confirmJustRecorded() {
+  const cur = justRecorded.value;
+  if (!cur || cur.busy) return;
+  justRecorded.value = { ...cur, busy: true, error: '' };
+  const res = await confirmReport(cur.reportId);
+  if (!res.ok) { justRecorded.value = { ...cur, busy: false, error: res.message }; return; }
+  justRecorded.value = null;
+  await onPanelChanged();
+  openReceipt(cur.reportId);
+}
+watch(() => props.show, () => { justRecorded.value = null; });
 
 async function onPanelChanged() {
   entryOpen.value = false;

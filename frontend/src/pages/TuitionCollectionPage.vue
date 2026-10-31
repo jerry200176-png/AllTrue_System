@@ -71,7 +71,7 @@
     </nav>
 
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
-      <StudentBillingList ref="studentList" :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @retry="loadAlerts" />
+      <StudentBillingList ref="studentList" :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @action="(r, a) => openLedgerForStudent(r, a)" @retry="loadAlerts" />
     </section>
 
     <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
@@ -933,6 +933,7 @@
       :student-class-id="ledgerStudentClassId"
       :report-id="ledgerReportId"
       :student-id="ledgerStudentId"
+      :initial-action="ledgerInitialAction"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
       :student-wide="ledgerNavStudentId != null"
@@ -1203,10 +1204,12 @@ function stepLedger(dir) {
   const next = studentList.value?.neighbor(ledgerNavStudentId.value, dir);
   if (next) openLedgerForStudent(next);
 }
-function openLedgerForStudent(r) {
+// F-2: the row button opens the drawer on the contract the action is about, with that step already open.
+function openLedgerForStudent(r, action = null) {
   ledgerNavStudentId.value = r.student_id;
-  ledgerStudentClassId.value = r.first_class_id || null;
-  ledgerStudentId.value = r.first_class_id ? null : r.student_id;
+  ledgerInitialAction.value = action?.kind || null;
+  ledgerStudentClassId.value = action?.classId || r.first_class_id || null;
+  ledgerStudentId.value = ledgerStudentClassId.value ? null : r.student_id;
   ledgerReportId.value = null;
   ledgerOpen.value = true;
 }
@@ -1718,6 +1721,7 @@ const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerReportId = ref(null);
 const ledgerStudentId = ref(null);
+const ledgerInitialAction = ref(null);
 // Closing returns focus to the row of the student last viewed, not the one first opened.
 watch(ledgerOpen, async (open) => {
   if (open || ledgerNavStudentId.value == null) return;
@@ -1729,6 +1733,7 @@ watch(ledgerOpen, async (open) => {
 
 function openLedgerForClass(row) {
   ledgerNavStudentId.value = null;
+  ledgerInitialAction.value = null;
   ledgerStudentId.value = null;
   ledgerStudentClassId.value = row?.id || row?.student_class_id || null;
   ledgerReportId.value = null;
@@ -1737,6 +1742,7 @@ function openLedgerForClass(row) {
 
 function openLedgerForReport(row) {
   ledgerNavStudentId.value = null;
+  ledgerInitialAction.value = null;
   ledgerStudentId.value = null;
   ledgerStudentClassId.value = row?.student_class_id || null;
   ledgerReportId.value = row?.report_id || null;
@@ -2562,6 +2568,7 @@ watch(() => props.initialTab, (tab) => {
     if (courseId) {
       ledgerOpenedFromDeepLink.value = true;
       ledgerStudentClassId.value = courseId;
+      ledgerInitialAction.value = null;
       ledgerReportId.value = null;
       ledgerOpen.value = true;
     }
