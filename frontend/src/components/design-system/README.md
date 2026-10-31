@@ -158,7 +158,7 @@ const selection = useSelection(visibleRows, { key: 'id', canSelect: (r) => r.sta
 
 | 元件 | 用途 | 重點 props |
 |---|---|---|
-| `AtField` | 欄位外殼（label + hint/error caption） | `label` `hint` `error` `required` |
+| `AtField` | 欄位外殼（label + hint/error caption）；錯誤第一次出現或文字改變時輕微晃一下＋訊息滑入（reduced-motion 關閉） | `label` `hint` `error` `required` |
 | `AtInput` | text/number/tel | `v-model` `type` `error` `disabled` |
 | `AtTextarea` | 多行 | `v-model` `rows` `error` |
 | `AtSelect` | native select 薄封裝（含 chevron） | `v-model` `options` `error` |

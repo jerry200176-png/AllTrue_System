@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { mount } from '@vue/test-utils';
 import AtField from '../AtField.vue';
 import AtSelect from '../AtSelect.vue';
@@ -18,6 +21,32 @@ describe('AtField', () => {
     const w = mount(AtField, { props: { label: 'x', hint: '提示' } });
     expect(w.find('.at-field__msg').text()).toBe('提示');
     expect(w.find('.at-field__msg--error').exists()).toBe(false);
+  });
+});
+
+describe('AtField error nudge (#4697 item 3)', () => {
+  it('nudges on first error, replays when the text changes, not on re-render or hint change', async () => {
+    const w = mount(AtField, { props: { label: 'x', hint: '提示' } });
+    expect(w.classes()).not.toContain('at-field--nudge-a');
+    await w.setProps({ error: '太大' });
+    expect(w.classes()).toContain('at-field--nudge-a');
+    const msg = w.get('.at-field__msg--error').element;
+    await w.setProps({ label: 'y' }); // unrelated update
+    expect(w.classes()).toContain('at-field--nudge-a');
+    expect(w.get('.at-field__msg--error').element).toBe(msg);
+    await w.setProps({ error: '太小' });
+    expect(w.classes()).toContain('at-field--nudge-b');
+    expect(w.classes()).not.toContain('at-field--nudge-a');
+    expect(w.get('.at-field__msg--error').element).not.toBe(msg);
+    await w.setProps({ error: '' });
+    expect(w.classes()).not.toContain('at-field--error');
+  });
+
+  it('turns the motion off for reduced motion', async () => {
+    const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../AtField.vue'), 'utf8');
+    expect(src).toMatch(/prefers-reduced-motion: reduce[\s\S]*animation: none/);
+    expect(src).not.toMatch(/translate[a-wyz]\(/); // valid CSS transform functions only
+    expect(src.match(/translateX\(/g).length).toBeGreaterThanOrEqual(8);
   });
 });
 
