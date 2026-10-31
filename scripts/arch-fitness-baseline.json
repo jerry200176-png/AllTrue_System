@@ -9,6 +9,7 @@
   "teacherDirectWrites": 0,
   "moneyWritesOutsideBilling": 3,
   "readPathWritesInQueryMethods": 0,
+  "feeMathInControllers": 4,
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
     "docs/RULE_ARCHITECTURE_GOVERNANCE.md",
