@@ -17,6 +17,7 @@
  * FIT-11 Art. V        Ownership Registry completeness (every fact row has owner + single|ADR)
  * FIT-12 invariants    every DI-n has a present, resolvable automated enforcement
  * FIT-13 L3            required SOP docs present
+ * FIT-16 #4659 step 3  fee math (Rate × count) in controllers ratchet (one fee source)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -133,6 +134,20 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   const limit = baseline.moneyWritesOutsideBilling;
   if (n > limit) failures.push(`FIT-14 (cross-context write): ${n} money-model create(s) outside Billing (${hits.join(', ')}) > baseline ${limit}. Route through a Billing service/event.`);
   else note(`FIT-14: money-model writes outside Billing = ${n} (baseline ${limit})${n < limit ? ' — improved; lower baseline.' : ''}.`);
+}
+
+// FIT-16 one fee source (#4659 step 3): screens drifted when each controller multiplied Rate by a
+// count itself (calendar fee, slip vs reminder). New fee math belongs in the pricing/verdict services.
+// ponytail: matches the direct `->Rate *` / `* (float) $x->rate` shapes only; a rate copied into a local
+// first is not counted. Widen the pattern if that shape starts appearing.
+{
+  const re = /->(?:Rate|rate)\b\s*\*|\*\s*(?:\(float\)|\(int\))?\s*\$\w+(?:->\w+)*->(?:Rate|rate)\b/g;
+  let n = 0; const hits = [];
+  for (const f of walk(path.join(ROOT, 'backend/app/Http/Controllers'), (p) => p.endsWith('.php'))) {
+    const m = (read(f).match(re) || []).length;
+    if (m > 0) { n += m; hits.push(path.basename(f, '.php')); }
+  }
+  ratchet('FIT-16', `fee math in controllers (${hits.join(', ') || 'none'}); use StudentClassPricingService / ContractMoneyVerdict`, n, 'feeMathInControllers');
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)
