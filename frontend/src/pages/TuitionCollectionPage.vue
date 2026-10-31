@@ -88,445 +88,7 @@
     </section>
 
     <section
-      v-if="activeAccountingTab === 'receivables'"
-      id="tuition-accounting-panel-receivables"
-      role="tabpanel"
-      aria-labelledby="tuition-accounting-tab-receivables"
-      tabindex="0"
-    >
-    <!-- Skeleton loading -->
-    <div v-if="loading && !rows.length" class="tc-skeleton-area">
-      <AtSkeleton :rows="8" height="28px" />
-    </div>
-
-    <AtInlineAlert v-else-if="error" tone="danger" title="帳務待處理資料載入失敗">
-      {{ error }}
-      <template #action>
-        <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" @click="loadAlerts">重新載入</AtButton>
-      </template>
-    </AtInlineAlert>
-
-    <template v-else>
-      <!-- The row-level queue is the primary surface; totals remain available on demand. -->
-      <details class="tc-summary-disclosure" v-if="rows.length">
-        <summary>
-          <span>收款摘要</span>
-          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未繳 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template><template v-if="pendingReviewRows.length">・需核對金額 {{ pendingReviewRows.length }} 筆 {{ formatCurrency(pendingReviewTotal) }}，未計入未收</template></span>
-          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
-        </summary>
-        <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
-          <div class="tc-card tc-card--total">
-            <span class="tc-card-num">{{ rows.length }}</span>
-            <span class="tc-card-label">筆提醒</span>
-          </div>
-          <div class="tc-card tc-card--danger">
-            <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
-            <span class="tc-card-label">應收／未完成</span>
-          </div>
-          <div class="tc-card tc-card--overdue">
-            <span class="tc-card-num">{{ overdueRows.length }}</span>
-            <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
-          </div>
-          <div class="tc-card tc-card--warn">
-            <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
-            <!-- counts parent reports and closed-course reconciliations: neutral wording for both -->
-            <span class="tc-card-label">{{ REPORT_STATUS_LABELS.pending }}</span>
-          </div>
-          <div class="tc-card tc-card--outstanding">
-            <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
-            <span class="tc-card-label">
-              已開帳單未繳
-              <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
-                收款率 {{ collectionRate }}%
-              </span>
-              <span v-else class="tc-rate">收款率 —</span>
-            </span>
-          </div>
-          <div v-if="pendingReviewRows.length" class="tc-card tc-card--warn" data-testid="tc-pending-review-card">
-            <span class="tc-card-num">{{ formatCurrency(pendingReviewTotal) }}</span>
-            <span class="tc-card-label">{{ TUITION_STATUS_CONFIG.amount_review.label }} {{ pendingReviewRows.length }} 筆（不在未繳內）</span>
-          </div>
-        </div>
-      </details>
-
-      <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
-        <div>
-          <strong>{{ tabCounts.action ? `今天先處理 ${tabCounts.action} 筆` : '今天待處理已清空' }}</strong>
-          <span>{{ tabCounts.action ? '未繳與待確認入帳的課集中在待處理。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
-        </div>
-        <button v-if="activeTab !== 'action'" class="tc-queue-link" type="button" @click="activeTab = 'action'">
-          回到待處理
-        </button>
-      </div>
-
-      <div v-if="!rows.length" class="tc-empty">
-        <AtEmpty icon="check_circle" title="本分校目前無待催繳課程" description="待催繳佇列已清空，仍可從學收報表查看當月明細。">
-          <template #action>
-            <AtButton variant="primary" shape="rect" @click="$emit('navigate', 'tuition-report')">查看當月學收</AtButton>
-          </template>
-        </AtEmpty>
-      </div>
-
-      <div v-else>
-        <!-- Status Tabs -->
-        <div class="tc-tabs">
-          <button
-            v-for="tab in TAB_DEFS"
-            :key="tab.key"
-            class="tc-tab"
-            :class="{ 'tc-tab--active': activeTab === tab.key }"
-            @click="activeTab = tab.key"
-          >
-            {{ tab.label }}
-            <span class="tc-tab-badge">{{ tabCounts[tab.key] }}</span>
-          </button>
-        </div>
-
-        <!-- Toolbar: Search + CSV export -->
-        <div class="tc-toolbar">
-          <div class="tc-search-wrap">
-            <span class="material-symbols-outlined tc-search-icon">search</span>
-            <input
-              v-model="searchQuery"
-              class="tc-search-input"
-              type="text"
-              placeholder="搜尋學生姓名…"
-              autocomplete="off"
-            />
-            <button v-if="searchQuery" class="tc-search-clear" @click="searchQuery = ''" title="清除">
-              <span class="material-symbols-outlined" style="font-size:16px">close</span>
-            </button>
-          </div>
-          <span v-if="searchQuery" class="tc-search-hint">
-            {{ filteredRows.length }} 筆符合「{{ searchQuery }}」
-          </span>
-          <div class="tc-toolbar-right">
-            <div v-if="loading" class="tc-inline-loading">
-              <span class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-              更新中…
-            </div>
-            <button
-              class="tc-btn tc-btn--csv"
-              @click="exportCSV()"
-              :disabled="!filteredRows.length || csvExporting"
-              :title="!filteredRows.length ? '目前無資料可匯出' : '匯出 CSV'"
-            >
-              <span class="material-symbols-outlined" :class="{ spin: csvExporting }" style="font-size:16px">download</span>
-              匯出 CSV
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-if="selectedRows.length"
-          class="tc-batch-bar tc-batch-bar--sticky"
-          role="region"
-          :aria-label="batchMode === 'confirm' ? '批次確認入帳' : batchMode === 'mixed' ? '混合選取，請分開處理' : '今日批次回報'"
-        >
-          <span class="tc-batch-count">已選 {{ selectedRows.length }} 筆</span>
-          <template v-if="batchMode === 'report'">
-            <label class="tc-batch-field">
-              繳費日
-              <input v-model="batchForm.payment_date" type="date" :max="todayYmd" />
-            </label>
-            <label class="tc-batch-field">
-              方式
-              <select v-model="batchForm.payment_method">
-                <option value="transfer">匯款</option>
-                <option value="cash">現金</option>
-              </select>
-            </label>
-            <label class="tc-batch-field tc-batch-note">
-              備註
-              <input v-model="batchForm.note" type="text" maxlength="500" placeholder="選填" />
-            </label>
-            <button
-              class="tc-btn tc-btn--confirm"
-              type="button"
-              :disabled="batchBusy || !batchForm.payment_date"
-              @click="openBatchPreview"
-            >送出已回報</button>
-          </template>
-          <template v-else-if="batchMode === 'confirm'">
-            <button
-              class="tc-btn tc-btn--confirm"
-              type="button"
-              :disabled="batchBusy"
-              @click="openBatchPreview"
-            >批次確認入帳</button>
-          </template>
-          <span v-else class="tc-batch-help">一次只能選同一種：未繳，或待確認入帳。</span>
-          <button class="tc-btn tc-btn--ghost" type="button" :disabled="batchBusy" @click="clearSelection">取消選取</button>
-        </div>
-
-        <!-- Empty state for current tab -->
-        <div v-if="!filteredRows.length" class="tc-empty" style="padding:32px 0">
-          <AtEmpty
-            :icon="searchQuery ? 'person_search' : 'inbox'"
-            :title="searchQuery ? `找不到包含「${searchQuery}」的學生` : '此分類目前無資料'"
-          >
-            <template #action>
-              <AtButton v-if="searchQuery" variant="secondary" shape="rect" @click="searchQuery = ''">清除搜尋</AtButton>
-              <AtButton v-else-if="activeTab !== 'all'" variant="secondary" shape="rect" @click="activeTab = 'all'">查看全部</AtButton>
-            </template>
-          </AtEmpty>
-        </div>
-
-        <!-- Table -->
-        <div v-else class="tc-table-wrap">
-          <div class="tc-mobile-list-controls" aria-label="待處理行動版清單控制">
-            <label>
-              排序
-              <select :value="sortKey" aria-label="待處理排序" @change="chooseMobileSort($event.target.value)">
-                <option value="">不排序</option>
-                <option v-for="column in SORTABLE_COLS" :key="column.key" :value="column.key">{{ column.label }}</option>
-              </select>
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                :checked="allVisibleSelected"
-                :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
-                :disabled="!selectableRows.length"
-                @change="toggleSelectAll($event.target.checked)"
-                aria-label="行動版全選待處理"
-              />
-              全選
-            </label>
-          </div>
-          <table class="tc-table">
-            <thead>
-              <tr>
-                <th class="tc-col-check">
-                  <input
-                    type="checkbox"
-                    :checked="allVisibleSelected"
-                    :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
-                    :disabled="!selectableRows.length"
-                    @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選待確認入帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
-                  />
-                </th>
-                <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('student_name')" @keydown.enter.prevent="toggleSort('student_name')" @keydown.space.prevent="toggleSort('student_name')">
-                  學生
-                  <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
-                  剩餘堂數
-                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('subject')" @keydown.enter.prevent="toggleSort('subject')" @keydown.space.prevent="toggleSort('subject')">
-                  科目
-                  <span v-if="sortKey === 'subject'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-mode">模式</th>
-                <th>狀態</th>
-                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('payable_amount')" @keydown.enter.prevent="toggleSort('payable_amount')" @keydown.space.prevent="toggleSort('payable_amount')">
-                  應繳
-                  <span v-if="sortKey === 'payable_amount'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-currency">已繳</th>
-                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('outstanding')" @keydown.enter.prevent="toggleSort('outstanding')" @keydown.space.prevent="toggleSort('outstanding')">
-                  未繳
-                  <span v-if="sortKey === 'outstanding'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-date">最近付款</th>
-                <th class="tc-col-date tc-th-sort" role="button" tabindex="0" @click="toggleSort('due_date')" @keydown.enter.prevent="toggleSort('due_date')" @keydown.space.prevent="toggleSort('due_date')">
-                  到期／逾期
-                  <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-actions">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in filteredRows" :id="`tuition-row-${r.id}`" :key="r.id" :class="[rowClass(r), { 'tc-row--focused': tuitionFocusRowId === Number(r.id || r.student_class_id) }]">
-                <td class="tc-col-check">
-                  <input
-                    v-if="isRowSelectable(r)"
-                    type="checkbox"
-                    :checked="selectedIdSet.has(r.id)"
-                    @change="toggleSelect(r.id, $event.target.checked)"
-                    :aria-label="`選取 ${r.student_name}`"
-                  />
-                </td>
-                <td class="tc-cell-name">
-                  {{ r.student_name }}
-                  <input
-                    v-if="batchMode === 'report' && selectedIdSet.has(r.id) && batchForm.payment_method === 'transfer'"
-                    v-model="batchLast5ById[r.id]"
-                    class="tc-last5-input"
-                    type="text"
-                    inputmode="numeric"
-                    maxlength="5"
-                    placeholder="後5碼"
-                    @click.stop
-                  />
-                </td>
-                <td class="tc-col-sessions">
-                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
-                    <button
-                      v-if="r.id"
-                      class="tc-sessions-link"
-                      @click="openSessionDetail(r)"
-                      :title="'點入查看上課明細'"
-                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
-                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
-                  </template>
-                  <span v-else class="text-light">—</span>
-                </td>
-                <td>
-                  <div>{{ r.subject }}</div>
-                  <span v-if="r.id" class="tc-course-ref">
-                    {{ formatCourseRef(r.id) }}<template v-if="r.course_start_date || r.course_end_date"> · {{ r.course_start_date || '—' }} ~ {{ r.course_end_date || '—' }}</template>
-                  </span>
-                </td>
-                <td class="tc-col-mode">
-                  <span class="mode-tag" :class="r.schedule_mode">
-                    {{ r.schedule_mode === 'date' ? '月結' : '堂數' }}
-                  </span>
-                </td>
-                <td>
-                  <span class="status-tag" :class="statusClass(r)">
-                    {{ statusLabel(r) }}
-                  </span>
-                </td>
-                <td class="tc-col-currency">
-                  <div v-if="r.payable_status === 'invoiced'">{{ formatCurrency(r.payable_amount) }}</div>
-                  <div v-else class="tc-payable-pending">待開單</div>
-                  <span v-if="r.payable_status !== 'invoiced' && r.estimated_amount != null" class="tc-payable-estimate">估算 {{ formatCurrency(r.estimated_amount) }}</span>
-                  <span v-if="r.billing_period" class="tc-billing-period">期間 {{ r.billing_period }}</span>
-                  <span
-                    v-if="r.invoice_amount_discrepancy"
-                    class="tc-amount-warning"
-                    :title="`原始帳單 ${formatCurrency(r.invoice_stored_amount)}；依 ${r.invoice_period_sessions} 堂實際上課計算 ${formatCurrency(r.invoice_computed_amount)}`"
-                  >
-                    依實際 {{ r.invoice_period_sessions }} 堂計算
-                  </span>
-                </td>
-                <td class="tc-col-currency">{{ r.paid_amount != null ? formatCurrency(r.paid_amount) : '—' }}</td>
-                <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.payable_outstanding > 0 }">
-                  {{ r.payable_status === 'invoiced' ? formatCurrency(r.payable_outstanding) : '—' }}
-                </td>
-                <td class="tc-col-date">
-                  <span v-if="r.last_paid_at" class="paid-date" :title="'最後一筆付款日，非本期是否結清的依據'">{{ r.last_paid_at }}</span>
-                  <span v-else class="text-light">—</span>
-                </td>
-                <td class="tc-col-date">
-                  <template v-if="r.due_date">
-                    {{ r.due_date }}
-                    <span v-if="r.days_until_settlement != null && r.days_until_settlement < 0" class="overdue-tag">
-                      逾期{{ Math.abs(r.days_until_settlement) }}天
-                    </span>
-                    <span v-else-if="r.days_until_settlement != null && r.days_until_settlement <= 2" class="soon-tag">
-                      {{ r.days_until_settlement }}天後
-                    </span>
-                  </template>
-                  <span v-else class="text-light">—</span>
-                </td>
-                <td class="tc-col-actions">
-                  <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(r)" title="查看學生繳費明細">
-                      <span class="material-symbols-outlined">account_balance</span>
-                      繳費明細
-                    </button>
-
-                    <!-- #3894: 繳費單／收據固定兩顆入口，不可用時 disabled 並說明原因 -->
-                    <TuitionDocActions
-                      :row="r"
-                      :can-view="canViewBillingDocs"
-                      :busy="receiptLoading !== null && receiptLoading === r.id"
-                      @slip="openSlip"
-                      @receipt="viewReceiptForClass"
-                      @ledger="openLedgerForClass"
-                    />
-
-                    <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->
-                    <span
-                      v-if="r.newer_course_overlap"
-                      class="tc-overlap-badge"
-                      :title="overlapWarningTitle(r)"
-                    >{{ overlapWarningLabel(r) }}</span>
-
-                    <!-- unpaid / partial: slip + 登記收款 -->
-                    <span
-                      v-if="r.invoice_amount_discrepancy"
-                      class="tc-amount-warning"
-                      :title="`原始帳單 ${formatCurrency(r.invoice_stored_amount)}；依 ${r.invoice_period_sessions} 堂實際上課計算 ${formatCurrency(r.invoice_computed_amount)}`"
-                    >
-                      依實際 {{ r.invoice_period_sessions }} 堂計算
-                    </span>
-
-                    <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
-                      <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記收款" :disabled="actionLoading === r.id">
-                        <span class="material-symbols-outlined">check_circle</span>
-                        登記收款
-                      </button>
-                    </template>
-
-                    <!-- settled_pending: closed for scheduling, payment still actionable -->
-                    <template v-if="r.payment_status === 'pending_reconciliation'">
-                      <span class="tc-renew-hint">已結案，尚未完成繳費</span>
-                      <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記收款" :disabled="actionLoading === r.id">
-                        <span class="material-symbols-outlined">check_circle</span>
-                        登記收款
-                      </button>
-                      <button v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)" title="確認這筆不會收，從待處理移除並留稽核紀錄">
-                        <span class="material-symbols-outlined">money_off</span>
-                        改成「{{ WAIVED_LABEL }}」
-                      </button>
-                    </template>
-
-                    <!-- Founder D2: open bill whose amount is still to be confirmed; no collection action until confirmed -->
-                    <span v-if="isPendingConfirmation(r)" class="tc-renew-hint" data-testid="tc-amount-review-hint">
-                      {{ TUITION_STATUS_CONFIG.amount_review.label }}：先核對帳單金額，未計入未繳。
-                    </span>
-
-                    <!-- pending_report: confirm / reject -->
-                    <template v-if="r.payment_status === 'pending_report'">
-                      <button class="tc-btn tc-btn--confirm" @click="confirmReport(r)" :disabled="actionLoading === r.id" title="確認入帳">
-                        <span v-if="actionLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
-                        <span v-else class="material-symbols-outlined">check_circle</span>
-                        確認入帳
-                      </button>
-                      <button class="tc-btn tc-btn--reject" @click="rejectReport(r)" :disabled="actionLoading === r.id" title="退回">
-                        <span class="material-symbols-outlined">cancel</span>
-                        退回
-                      </button>
-                    </template>
-
-                    <!-- paid / renew_needed / monthly_due_soon: void + receipt -->
-                    <template v-if="r.payment_status === 'paid' || r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
-                      <button v-if="canVoid && hasVoidableReceipt(r)" class="tc-btn tc-btn--void" data-testid="tc-void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id" title="撤銷收款">
-                        <span class="material-symbols-outlined">undo</span>
-                        撤銷
-                      </button>
-                      <template v-if="r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
-                        <span
-                          v-if="r.payment_status === 'renew_needed' && r.has_newer_course"
-                          class="tc-newer-badge"
-                          :title="newerCourseBadgeTitle(r)"
-                        >{{ newerCourseBadgeLabel(r) }}</span>
-                        <span v-else class="tc-renew-hint">{{ r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課' }}</span>
-                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="結案且不續報">
-                          <span v-if="settleLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
-                          <span v-else class="material-symbols-outlined">task_alt</span>
-                          結案（不續報）
-                        </button>
-                      </template>
-                    </template>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-    </template>
-    </section>
-
-    <section
-      v-else-if="activeAccountingTab === 'payments'"
+      v-if="activeAccountingTab === 'payments'"
       id="tuition-accounting-panel-payments"
       class="acct-panel"
       role="tabpanel"
@@ -938,27 +500,9 @@
       </div>
     </Transition>
 
-    <PaymentSlipModal
-      :show="slipOpen"
-      :invoice-id="slipInvoiceId"
-      :student-class-id="slipStudentClassId"
-      @click.capture="onSlipBackdropClick"
-      @close="slipOpen = false"
-    />
-
-    <PaymentEntryModal
-      :show="entryOpen"
-      :row="entryRow"
-      @close="entryOpen = false"
-      @confirmed="onEntryConfirmed"
-      @pending="onPendingReportConflict"
-      @conflict="loadAlerts"
-    />
-
     <ReceiptModal
       :show="receiptOpen"
       :report-id="receiptReportId"
-      @click.capture="onSlipBackdropClick"
       @close="receiptOpen = false"
     />
 
@@ -1144,17 +688,12 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { summarizeBatchResults } from '../lib/batchResultSummary.js';
-import { rowOwedTotal } from '../lib/studentBillingRows.js';
-import { isPendingConfirmation, pendingReviewAmount } from '../lib/studentBillingRows.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
 import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
 import FeeLedgerPanel from '../components/tuition/FeeLedgerPanel.vue';
-import PaymentSlipModal from '../components/PaymentSlipModal.vue';
-import TuitionDocActions from '../components/TuitionDocActions.vue';
-import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import StudentBillingList from '../components/tuition/StudentBillingList.vue';
@@ -1170,7 +709,6 @@ import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.
 import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
-  formatNewerCourseOverlapWarning,
   humanizeDocumentRef,
   formatAccountingReceiptSubject,
   formatAccountingFirstSession,
@@ -1181,7 +719,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL, FREE_GIFT_LABEL, ZERO_REASON_FREE_GIFT } from '../lib/courseMoneyState.js';
+import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1194,7 +732,6 @@ const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-contex
 
 const loading = ref(false);
 const error = ref('');
-const actionLoading = ref(null);
 
 // PRD v2 D10: two tabs. The former tabs stay reachable from the reminder bar.
 const ACCOUNTING_TABS = [
@@ -1331,7 +868,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-drafts' ? Boolean(monthlyDrafts.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1344,7 +881,6 @@ function getAuthRole() {
   return session?.user?.role || session?.role || '';
 }
 
-const canViewBillingDocs = computed(() => isDirectorRole(getAuthRole()));
 const canVoid = computed(() => {
   const role = getAuthRole();
   return isDirectorRole(role);
@@ -1358,23 +894,6 @@ function formatTodayYmd() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 const todayYmd = computed(() => formatTodayYmd());
-
-// Tab filter state must be declared before batchMode / isRowSelectable / watch(activeTab)
-// (TDZ: accessing const activeTab before this line crashes the page as blank white).
-const activeTab = ref('action');
-const TAB_DEFS = [
-  { key: 'action', label: '待處理' },
-  { key: 'all', label: '全部' },
-  // The tab also lists partly paid courses (filter below), so it names both.
-  { key: 'unpaid', label: `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}` },
-  { key: 'overdue', label: '逾期應收' },
-  // Short tab name; every pointer to this tab uses the same REPORT_STATUS_LABELS.pending.
-  { key: 'pending_report', label: REPORT_STATUS_LABELS.pending },
-  { key: 'pending_reconciliation', label: TUITION_STATUS_CONFIG.pending_reconciliation.label },
-  // Founder D2: listed on its own; never counted in 待處理 / 未繳 or summed into the money totals.
-  { key: 'amount_review', label: TUITION_STATUS_CONFIG.amount_review.label },
-  { key: 'renewal', label: '續課/將到期' },
-];
 
 const billingWorkflowStarts = new Map();
 function startBillingWorkflow(step) {
@@ -1408,19 +927,7 @@ const selectedIdSet = computed(() => new Set(selectedIds.value));
 // A batch report needs a real amount: unbilled rows with a null/0 payable would be sent as amount 0.
 const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;
 
-function isRowSelectable(r) {
-  const ps = r?.payment_status;
-  if (ps !== 'pending_report' && !hasBatchAmount(r)) return false;
-  if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
-  if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
-  if (r?.payable_status !== 'invoiced') return false;
-  if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';
-  return ps === 'unpaid' || ps === 'partial' || ps === 'pending_reconciliation';
-}
-
-const selectableRows = computed(() => filteredRows.value.filter(isRowSelectable));
-// F-5a2: a pick can come from the student list as well as the table, so it is read from all rows; both surfaces only
-// ever pick rows they show (the table clears on tab / search change, the list only offers its visible students).
+// A pick is made in the student list, which only offers its visible students.
 const selectedRows = computed(() => rows.value.filter((r) => selectedIdSet.value.has(r.id)));
 const batchMode = computed(() => {
   const modes = new Set(selectedRows.value.map((r) => r.payment_status === 'pending_report' ? 'confirm' : 'report'));
@@ -1434,26 +941,6 @@ const batchPreviewRows = computed(() => {
   return selectedRows.value.filter((r) => (r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation') && hasBatchAmount(r));
 });
 const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.payable_outstanding ?? row.payable_amount ?? 0), 0));
-const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
-const someVisibleSelected = computed(() => selectableRows.value.some((r) => selectedIdSet.value.has(r.id)));
-
-function toggleSelect(id, checked) {
-  const next = new Set(selectedIds.value);
-  if (checked) next.add(id);
-  else next.delete(id);
-  selectedIds.value = [...next];
-}
-
-function toggleSelectAll(checked) {
-  if (!checked) {
-    const visible = new Set(selectableRows.value.map((r) => r.id));
-    selectedIds.value = selectedIds.value.filter((id) => !visible.has(id));
-    return;
-  }
-  const next = new Set(selectedIds.value);
-  selectableRows.value.forEach((r) => next.add(r.id));
-  selectedIds.value = [...next];
-}
 
 const batchRowLabel = (r) => [r.student_name, r.subject].filter(Boolean).join(' ') || `課程 ${r.id}`;
 
@@ -1504,10 +991,7 @@ function confirmBatchPreview() {
   else submitBatchReport();
 }
 
-watch(activeTab, () => {
-  clearSelection();
-});
-watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; }); // list and table never share a pick
+watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; }); // a pick never outlives the view it was made in
 
 // F-5a2: batch actions from the student list. Which contracts a student brings follows the table's rules:
 // 回報 = invoiced and still owing with an amount; 確認入帳 = a parent report is waiting.
@@ -1656,12 +1140,6 @@ function statusClass(r) {
   return r.paid ? 'st-paid' : 'st-unpaid';
 }
 
-function rowClass(r) {
-  const ps = r.payment_status;
-  if ((ps === 'paid' || ps === 'renew_needed') && !isLegacyPaidFlagOnly(r)) return 'row-paid';
-  return '';
-}
-
 function formatCurrency(v) {
   if (v == null || isNaN(v)) return '—';
   return 'NT$ ' + Number(v).toLocaleString('zh-TW');
@@ -1682,10 +1160,6 @@ function defaultAccountingFilters() {
   };
 }
 
-function paymentMethodLabel(method) {
-  return method === 'transfer' ? '匯款' : method === 'cash' ? '現金' : method || '—';
-}
-
 function openReceiptByReport(reportId) {
   receiptReportId.value = Number(reportId);
   receiptOpen.value = true;
@@ -1698,7 +1172,7 @@ function refreshActiveTab() {
     feeLedger.value?.reload();
   } else if (activeAccountingTab.value === 'monthly-review') {
     monthlyReview.value?.reload();
-  } else if (activeAccountingTab.value === 'receivables' || activeAccountingTab.value === 'students') {
+  } else if (activeAccountingTab.value === 'students') {
     loadAlerts();
   } else if (activeAccountingTab.value === 'settled') {
     loadSettledCourses();
@@ -1709,8 +1183,6 @@ function refreshActiveTab() {
 
 // ═══ Alerts ═══
 const rows = ref([]);
-const searchQuery = ref('');
-watch(searchQuery, clearSelection); // a pick never outlives the search that showed it
 const ledgerOpenedFromDeepLink = ref(false);
 const tuitionFocusMessage = ref('');
 const consumedTuitionFocusKey = ref('');
@@ -1748,9 +1220,6 @@ async function applyTuitionFocus() {
   if (!openedLedger) openLedgerForClass({ id: Number(row.id || row.student_class_id) || null });
 }
 
-const slipOpen = ref(false);
-const slipInvoiceId = ref(null);
-const slipStudentClassId = ref(null);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerReportId = ref(null);
@@ -1783,150 +1252,10 @@ function openLedgerForReport(row) {
   ledgerOpen.value = true;
 }
 
-// ═══ Tab Filter counts / overdue (activeTab + TAB_DEFS declared above batch UI) ═══
-function isOverdue(r) {
-  return (r.days_until_settlement != null && r.days_until_settlement < 0) && !isPendingConfirmation(r) &&
-    ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(r.payment_status);
-}
-
-const tabCounts = computed(() => {
-  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, pending_reconciliation: 0, amount_review: 0, renewal: 0 };
-  rows.value.forEach(r => {
-    c.all++;
-    const ps = r.payment_status;
-    if (['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(ps)) c.action++;
-    if (isOverdue(r)) c.overdue++;
-    if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
-    else if (ps === 'pending_report') c.pending_report++;
-    else if (ps === 'pending_reconciliation') c.pending_reconciliation++;
-    else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.renewal++;
-    if (isPendingConfirmation(r)) c.amount_review++;
-  });
-  return c;
-});
-
-const statusCounts = computed(() => {
-  const c = { unpaid: 0, partial: 0, pending_report: 0, pending_reconciliation: 0, paid: 0, renew_needed: 0, monthly_due_soon: 0 };
-  rows.value.forEach(r => {
-    const ps = r.payment_status || (r.paid ? 'paid' : 'unpaid');
-    if (c[ps] !== undefined) c[ps]++;
-  });
-  return c;
-});
-
-const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'];
-const totalOutstanding = computed(() => {
-  return rows.value
-    .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && !isPendingConfirmation(r))
-    .reduce((sum, r) => sum + rowOwedTotal(r), 0);
-});
-
-// 未開帳單（payable_status !== 'invoiced'）的提醒 payable_outstanding 為 null，金額只有估算值，
-// 故不計入「已開帳單未繳」；另計筆數讓主任知道還有多少筆金額尚未確定。
-const unbilledOutstandingCount = computed(() => rows.value
-  .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && r.payable_status !== 'invoiced' && !isPendingConfirmation(r)).length);
-
-// ═══ Summary Computed ═══
-const overdueRows = computed(() => rows.value.filter(isOverdue));
-const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + rowOwedTotal(r), 0));
-// Founder D2: 金額待確認 rows are listed and totalled on their own line, never in the confirmed money totals.
-const confirmedRows = computed(() => rows.value.filter((r) => !isPendingConfirmation(r)));
-const pendingReviewRows = computed(() => rows.value.filter(isPendingConfirmation));
-const pendingReviewTotal = computed(() => pendingReviewRows.value.reduce((s, r) => s + pendingReviewAmount(r), 0));
-const totalCharge = computed(() => confirmedRows.value.reduce((s, r) => s + (r.payable_amount || 0), 0));
-const totalPaid = computed(() => confirmedRows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
-const collectionRate = computed(() => {
-  if (totalCharge.value === 0) return null;
-  return Math.round((totalPaid.value / totalCharge.value) * 100);
-});
-function collectionRateColor(rate) {
-  if (rate === null) return '';
-  if (rate === 0) return 'var(--danger)';
-  if (rate < 80) return 'var(--ds-warning)';
-  return 'var(--success)';
-}
-
-// ═══ Sort ═══
-const sortKey = ref('');
-const sortDir = ref('');
-const SORTABLE_COLS = [
-  { key: 'student_name', label: '學生' },
-  { key: 'subject', label: '科目' },
-  { key: 'payable_amount', label: '應繳' },
-  { key: 'outstanding', label: '未繳' },
-  { key: 'due_date', label: '到期／逾期' },
-  { key: 'remaining_sessions', label: '剩餘堂數' },
-];
-
-function toggleSort(key) {
-  if (sortKey.value !== key) {
-    sortKey.value = key;
-    sortDir.value = 'asc';
-  } else if (sortDir.value === 'asc') {
-    sortDir.value = 'desc';
-  } else {
-    sortKey.value = '';
-    sortDir.value = '';
-  }
-}
-
-function chooseMobileSort(key) {
-  if (!key) {
-    sortKey.value = '';
-    sortDir.value = '';
-    return;
-  }
-  if (sortKey.value !== key) toggleSort(key);
-}
-
-// ═══ Filtered + Sorted Rows (3-layer pipeline) ═══
-const tabFilteredRows = computed(() => {
-  const tab = activeTab.value;
-  if (tab === 'action') return rows.value.filter(r => OUTSTANDING_STATUSES.includes(r.payment_status));
-  if (tab === 'all') return rows.value;
-  if (tab === 'overdue') return rows.value.filter(isOverdue);
-  if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
-  if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
-  if (tab === 'pending_reconciliation') return rows.value.filter(r => r.payment_status === 'pending_reconciliation');
-  if (tab === 'amount_review') return rows.value.filter(isPendingConfirmation);
-  if (tab === 'renewal') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
-  return rows.value;
-});
-
-const searchFilteredRows = computed(() => {
-  const q = searchQuery.value.trim();
-  if (!q) return tabFilteredRows.value;
-  return tabFilteredRows.value.filter(r => r.student_name && r.student_name.includes(q));
-});
-
-const filteredRows = computed(() => {
-  const list = [...searchFilteredRows.value];
-  if (!sortKey.value) return list;
-  const k = sortKey.value;
-  const dir = sortDir.value === 'desc' ? -1 : 1;
-  list.sort((a, b) => {
-    let va = a[k], vb = b[k];
-    const numericKeys = ['charge', 'outstanding', 'remaining_sessions'];
-    const payableNumericKeys = ['payable_amount', 'payable_outstanding'];
-    const isNumericKey = numericKeys.includes(k) || payableNumericKeys.includes(k);
-    if (va == null) va = isNumericKey ? -Infinity : '';
-    if (vb == null) vb = isNumericKey ? -Infinity : '';
-    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
-    // remaining_sessions may arrive as numeric strings from JSON
-    if (k === 'remaining_sessions') {
-      const na = Number(va);
-      const nb = Number(vb);
-      if (Number.isFinite(na) && Number.isFinite(nb)) return (na - nb) * dir;
-    }
-    return String(va).localeCompare(String(vb), 'zh-TW') * dir;
-  });
-  return list;
-});
-
 // ═══ CSV Export ═══
 const csvExporting = ref(false);
-// The table exports what it shows; the student list passes the rows of the students it shows (F-5a2).
-function exportCSV(data = filteredRows.value) {
+// The student list passes the rows of the students it shows.
+function exportCSV(data) {
   if (!data.length) return;
   csvExporting.value = true;
   const headers = ['學生姓名', '科目', '模式', '狀態', '應繳', '已繳', '未繳', '最近付款日', '到期日', '逾期天數'];
@@ -1954,19 +1283,6 @@ function exportCSV(data = filteredRows.value) {
   a.click();
   URL.revokeObjectURL(url);
   setTimeout(() => { csvExporting.value = false; }, 500);
-}
-
-let slipOpenedAt = 0;
-// 雙擊時第二下會落在剛出現的遮罩上；只吞掉剛開啟 400ms 內的遮罩點擊，X／關閉鈕照常立即關閉。
-function onSlipBackdropClick(e) {
-  if (e.target.classList?.contains('modal-overlay') && Date.now() - slipOpenedAt < 400) e.stopImmediatePropagation();
-}
-function openSlip(row) {
-  if (slipOpen.value) return;
-  slipOpenedAt = Date.now();
-  slipInvoiceId.value = row.invoice_id || null;
-  slipStudentClassId.value = row.invoice_id ? null : row.id;
-  slipOpen.value = true;
 }
 
 async function loadAlerts() {
@@ -2223,91 +1539,6 @@ function showToast(msg, type = 'success') {
   ({ error: _toast.error, warning: _toast.warning, success: _toast.success }[type] || _toast.success)(msg);
 }
 
-// ═══ Payment Entry (登記收款) ═══
-const entryOpen = ref(false);
-const entryRow = ref(null);
-
-function openPaymentEntry(row) {
-  entryRow.value = row;
-  entryOpen.value = true;
-}
-
-function formatCourseRef(id) {
-  const numericId = Number(id);
-  return Number.isInteger(numericId) && numericId > 0
-    ? `課程 ${String(numericId).padStart(6, '0')}`
-    : '課程';
-}
-
-async function onEntryConfirmed(result) {
-  entryOpen.value = false;
-  if (result?.status === ZERO_REASON_FREE_GIFT) { // issue 3991: a NT$0 free/gift bill, not a payment to confirm
-    showToast(result.message || `已登錄「${FREE_GIFT_LABEL}」帳單`);
-    await loadAlerts();
-    return;
-  }
-  activeTab.value = 'pending_report';
-  showToast(`已送出，畫面已切到「${REPORT_STATUS_LABELS.pending}」；請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據`);
-  await loadAlerts();
-}
-
-async function onPendingReportConflict(_result) {
-  entryOpen.value = false;
-  activeTab.value = 'pending_report';
-  showToast(`這筆已經在「${REPORT_STATUS_LABELS.pending}」，畫面已切過去；請按確認入帳，不要重複送出`, 'warning');
-  await loadAlerts();
-}
-
-// ═══ Confirm / Reject pending reports ═══
-async function confirmReport(row) {
-  const workflowStep = 'confirm';
-  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
-  if (!row.latest_payment_report_id) {
-    showToast('找不到待確認的回報', 'error');
-    billingWorkflowError(workflowStep, 'validation');
-    return;
-  }
-  actionLoading.value = row.id;
-  try {
-    const res = await paymentActions.confirmReport(row.latest_payment_report_id);
-    if (!res.ok) throw new Error(res.message);
-    showToast(`已確認，狀態改為「${TUITION_STATUS_CONFIG.paid.label}」`);
-    if (row.latest_payment_report_id) {
-      receiptReportId.value = row.latest_payment_report_id;
-      receiptOpen.value = true;
-    }
-    loadAlerts();
-    finishBillingWorkflow(workflowStep);
-    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
-  } catch (e) {
-    showToast(e.message || '確認入帳失敗', 'error');
-    billingWorkflowError(workflowStep, e);
-  } finally {
-    actionLoading.value = null;
-  }
-}
-
-async function rejectReport(row) {
-  if (!row.latest_payment_report_id) {
-    showToast('找不到待確認的回報', 'error');
-    return;
-  }
-  const reason = prompt('請輸入退回原因：');
-  if (!reason || !reason.trim()) return;
-
-  actionLoading.value = row.id;
-  try {
-    const res = await paymentActions.rejectReport(row.latest_payment_report_id, reason.trim());
-    if (!res.ok) throw new Error(res.message);
-    showToast('已退回此回報', 'warning');
-    loadAlerts();
-  } catch (e) {
-    showToast(e.message || '退回失敗', 'error');
-  } finally {
-    actionLoading.value = null;
-  }
-}
-
 // ═══ Waive (確認不收) Dialog — director only ═══
 const canWaive = computed(() => isDirectorRole(getAuthRole()));
 const waiveDialogOpen = ref(false);
@@ -2434,42 +1665,6 @@ async function findConfirmedReportForClass(row) {
 const receiptOpen = ref(false);
 const receiptReportId = ref(null);
 
-const receiptLoading = ref(null);
-
-async function viewReceiptForClass(row) {
-  if (receiptLoading.value !== null) return; // one lookup at a time: a late reply can never replace a newer row's receipt
-  if (row.receipt_report_id) { // issue 3942: the row names the confirmed report of its current bill; open exactly that one
-    if (receiptOpen.value) return;
-    slipOpenedAt = Date.now(); // same 400ms backdrop guard as the slip: a double-click's second press must not close it
-    receiptReportId.value = row.receipt_report_id;
-    receiptOpen.value = true;
-    return;
-  }
-  receiptLoading.value = row.id ?? 0;
-  try {
-    const token = getToken();
-    const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
-    if (props.branchId != null && props.branchId !== '')
-      params.set('branch_id', String(Number(props.branchId)));
-    const resp = await authedFetch(`/api/v1/payment-reports?${params}`, {
-      headers: { Accept: 'application/json' },
-    }, token);
-    if (!resp.ok) return;
-    const match = ((await resp.json()).data || [])[0];
-    if (match) {
-      receiptReportId.value = match.id;
-      receiptOpen.value = true;
-    } else {
-      const isPaid = row.payment_status === 'paid' || row.payment_status === 'renew_needed' || row.payment_status === 'monthly_due_soon';
-      showToast(isPaid ? '此課程透過舊系統繳費，無電子收據紀錄' : '找不到此課程的核帳收據', 'warning');
-    }
-  } catch {
-    showToast('查詢收據失敗', 'error');
-  } finally {
-    receiptLoading.value = null;
-  }
-}
-
 // ═══ Settle (Close) ═══
 const settleDialogOpen = ref(false);
 const settleTarget = ref(null);
@@ -2487,22 +1682,6 @@ watch([waiveDialogOpen, voidDialogOpen, settleDialogOpen], (now, before) => {
 function openSettleDialog(row) {
   settleTarget.value = row;
   settleDialogOpen.value = true;
-}
-
-function newerCourseBadgeTitle(row) {
-  return formatTuitionNewerCourseHint(row).primary;
-}
-
-function newerCourseBadgeLabel(row) {
-  return formatTuitionNewerCourseHint(row).shortBadge;
-}
-
-function overlapWarningTitle(row) {
-  return formatNewerCourseOverlapWarning(row).primary;
-}
-
-function overlapWarningLabel(row) {
-  return formatNewerCourseOverlapWarning(row).shortBadge;
 }
 
 async function confirmSettle() {
@@ -2631,7 +1810,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 
 watch(activeAccountingTab, (tab) => {
   if (tab === 'monthly-review' || tab === 'monthly-drafts' || tab === 'fees') return;
-  if (tab === 'receivables' || tab === 'students') {
+  if (tab === 'students') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {
     loadSettledCourses();

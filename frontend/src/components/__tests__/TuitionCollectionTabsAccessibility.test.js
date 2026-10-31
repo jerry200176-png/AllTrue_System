@@ -16,13 +16,13 @@ describe('TuitionCollectionPage top-level tabs', () => {
   });
 
   it('renders only the selected accounting view and keeps its relationship explicit', () => {
-    expect(source).toContain('v-if="activeAccountingTab === \'receivables\'"');
-    expect(source).toContain('v-else-if="activeAccountingTab === \'payments\'"');
-    expect(source).toContain('id="tuition-accounting-panel-receivables"');
+    expect(source).not.toContain("activeAccountingTab === 'receivables'"); // F-5: the queue table is gone
+    expect(source).toContain('v-if="activeAccountingTab === \'payments\'"');
+    expect(source).toContain('id="tuition-accounting-panel-students"');
     expect(source).toContain('id="tuition-accounting-panel-payments"');
     expect(source).toContain('id="tuition-accounting-panel-settled"');
     expect(source).toContain('role="tabpanel"');
-    expect(source).toContain('aria-labelledby="tuition-accounting-tab-receivables"');
+    expect(source).toContain('aria-labelledby="tuition-accounting-tab-students"');
     expect(source).toContain('aria-labelledby="tuition-accounting-tab-payments"');
     expect(source).toContain('aria-labelledby="tuition-accounting-tab-settled"');
     expect(source).toContain('tabindex="0"');

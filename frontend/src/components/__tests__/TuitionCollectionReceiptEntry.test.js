@@ -20,17 +20,12 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toMatch(/receiptReportId\.value\s*=\s*Number\(reportId\)/);
   });
 
-  it('accounting confirm auto-open uses latest_payment_report_id', () => {
-    expect(source).toMatch(/receiptReportId\.value\s*=\s*row\.latest_payment_report_id/);
-  });
 
-  it('uses explicit accounting-stage labels on collection tabs and sticky batch bar when rows are selected', () => {
-    // The tab label must follow the shared status config, not a second literal.
-    expect(source).toContain("{ key: 'pending_report', label: REPORT_STATUS_LABELS.pending }");
+  it('F-5: the queue table, its tabs and its sticky batch bar are gone; batches start from the student list', () => {
     expect(source).toContain('const STATUS_CONFIG = TUITION_STATUS_CONFIG;');
-    expect(source).toContain('tc-batch-bar--sticky');
-    expect(source).toContain('v-if="selectedRows.length"');
-    expect(source).not.toContain('勾選最左欄後才會出現批次回報或確認列。');
+    expect(source).not.toContain('TAB_DEFS');
+    expect(source).not.toContain("activeAccountingTab === 'receivables'");
+    expect(source).toContain('@batch="onListBatch"');
   });
 
   it('receipt records fetch accounting/payments without a page-local PIN modal', () => {
@@ -38,39 +33,14 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).not.toContain('PinLockModal');
   });
 
-  it('declares activeTab before batchMode / isRowSelectable / watch(activeTab) (TDZ)', () => {
-    const decl = source.indexOf("const activeTab = ref('action')");
-    expect(decl).toBeGreaterThan(-1);
-    expect(decl).toBeLessThan(source.indexOf('function isRowSelectable'));
-    expect(decl).toBeLessThan(source.indexOf('const batchMode = computed'));
-    expect(decl).toBeLessThan(source.indexOf('watch(activeTab,'));
-  });
 
-  it('opens on a mixed-status action queue and prevents mixed batch operations', () => {
-    expect(source).toContain("{ key: 'action', label: '待處理' }");
-    expect(source).toContain('aria-label="主任待處理佇列"');
-    expect(source).toContain("if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';");
+  it('prevents mixed batch operations', () => {
     expect(source).toContain("if (modes.size > 1) return 'mixed';");
     expect(source).toContain('一次只能選同一種：未繳，或待確認入帳。');
   });
 
-  it('admin reported-paid path does not auto-open a receipt', () => {
-    expect(source).toContain('已送出，畫面已切到「${REPORT_STATUS_LABELS.pending}」；請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據');
-    expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
-  });
 
-  it('moves successful or duplicate reports into the pending-accounting flow', () => {
-    expect(source).toContain('@pending="onPendingReportConflict"');
-    expect(source).toContain("activeTab.value = 'pending_report'");
-    expect(source).toContain('畫面已切過去');
-    expect(source).toContain('請按確認入帳後才會變成${TUITION_STATUS_CONFIG.paid.label}並開收據');
-  });
 
-  it('shows a stable course reference so duplicate subjects cannot be mistaken for one course', () => {
-    expect(source).toContain('formatCourseRef(r.id)');
-    expect(source).toContain('course_start_date || r.course_end_date');
-    expect(source).toContain('function formatCourseRef(id)');
-  });
 
   it('batch confirm does not auto-open receipts', () => {
     expect(source).toContain('submitBatchConfirm');
@@ -83,7 +53,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('requires a read-only batch preview before either batch endpoint can run', () => {
-    expect(source).toContain('@click="openBatchPreview"');
+    expect(source).toMatch(/function onListBatch[\s\S]{0,400}openBatchPreview\(\);/);
     expect(source).toContain('role="dialog"');
     expect(source).toContain('aria-modal="true"');
     expect(source).toContain('送出前確認');
@@ -94,10 +64,6 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('只處理上面這幾筆');
   });
 
-  it('class-list receipt lookup opens with match.id (payment report id)', () => {
-    expect(source).toContain('async function viewReceiptForClass(row)');
-    expect(source).toMatch(/receiptReportId\.value\s*=\s*match\.id/);
-  });
 
   it('requires explicit forfeiture when settling with remaining sessions (#1839)', () => {
     expect(source).toContain('settleTargetStillOwesSessions');
@@ -107,10 +73,8 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).not.toContain('請先排課後再結案');
   });
 
-  it('offers no-renew settlement for the paid monthly reminder state', () => {
-    expect(source).toContain("r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
-    expect(source).toContain("r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課'");
-    expect(source).toContain('title="結案且不續報"');
-    expect(source).toContain('結案（不續報）');
+  it('offers no-renew settlement for the paid monthly reminder state (now on the drawer card)', () => {
+    expect(source).toContain("settle: r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
+    expect(readFileSync(resolve(__dirname, '../tuition/ContractCard.vue'), 'utf8')).toContain('結案（不續報）');
   });
 });
