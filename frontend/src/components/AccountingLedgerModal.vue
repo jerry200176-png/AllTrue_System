@@ -662,9 +662,11 @@ const overpaidTotal = computed(() => Number(payload.value?.summary?.overpaid_tot
 const pendingConfirmTotal = computed(() => (payload.value?.receipts || [])
   .filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount || 0), 0));
 // F-1: the headline summarises the per-course state the cards below already show, so it cannot contradict them.
-// Tutoring: the API only flags the opened course (scope.no_payment_obligation); class_type is read when present.
-const courseNeedsMoney = (c) => !(c.class_type === 'tutoring' || isWaivedContract(c)
-  || (payload.value?.scope?.no_payment_obligation && Number(c.id) === Number(payload.value?.scope?.student_class_id)));
+// Tutoring (#4699): the API flags every course (courses[].no_payment_obligation, the scope.no_payment_obligation rule);
+// the scope flag still covers the opened course for an older payload.
+const hasNoObligation = (c) => c.no_payment_obligation === true || c.class_type === 'tutoring'
+  || (payload.value?.scope?.no_payment_obligation === true && Number(c.id) === Number(payload.value?.scope?.student_class_id));
+const courseNeedsMoney = (c) => !(hasNoObligation(c) || isWaivedContract(c));
 const conclusion = computed(() => {
   const cs = (payload.value?.courses || []).filter(courseNeedsMoney);
   const parts = [];
@@ -753,7 +755,7 @@ const packageLeadOf = (c) => {
   return (pending && members.find((m) => Number(m.id) === Number(pending.student_class_id)))
     // #4002: a tutoring member has no payment obligation (the server answers tutoring_no_payment_obligation),
     // so a payable regular member leads; the lines below stay as fallbacks (e.g. an all-tutoring package).
-    || members.find((m) => m.class_type !== 'tutoring' && !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
+    || members.find((m) => !hasNoObligation(m) && !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     // #4205: a waiver is terminal (Paid=0 only), so a member that still owes leads before a waived one.
     || members.find((m) => !isWaivedContract(m) && (owedFor(m.id) > 0 || !m.paid))
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
@@ -774,7 +776,7 @@ const needsLegacyChoice = (course) => !payload.value?.scope?.no_payment_obligati
   waived: isWaivedContract(course), pendingReport: pendingReportFor(course.id), sharedFollower: !packageLead(course),
 });
 const allocContracts = computed(() => (payload.value?.scope?.no_payment_obligation ? [] : contractCourses.value
-  .filter((c) => c.class_type !== 'tutoring' && !needsLegacyChoice(c) && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
+  .filter((c) => !hasNoObligation(c) && !needsLegacyChoice(c) && !hasMultiplePackageBills(c) && packageLead(c) && !pendingReportFor(c.id) && !isWaivedContract(c) && (owedFor(c.id) > 0 || !c.paid))
   .map((c) => {
     const inv = oldestOpenInvoice(c.id);
     return { id: c.id, subject: c.subject, start_date: c.start_date, end_date: c.end_date, owed: Number(owedFor(c.id)) || 0, invoice_id: inv?.id || null, key: String(inv?.due_date || inv?.billing_period || inv?.issue_date || '~') };
@@ -951,7 +953,7 @@ function runInitialAction() {
   initialActionNote.value = recordBlockedReason(course);
 }
 function recordBlockedReason(c) {
-  if (payload.value?.scope?.no_payment_obligation || c.class_type === 'tutoring') return '輔導課不用繳費，所以沒有打開登記表。';
+  if (payload.value?.scope?.no_payment_obligation || hasNoObligation(c)) return '輔導課不用繳費，所以沒有打開登記表。';
   if (pendingReportFor(c.id)) return '這門課已有待確認入帳的回報，請在下面的課程卡按「確認入帳」或「退回」。';
   if (isWaivedContract(c)) return '這門課已確認不收，所以沒有打開登記表。';
   if (c.package_id) return '這是共用方案，請在下面的課程卡處理收款。';

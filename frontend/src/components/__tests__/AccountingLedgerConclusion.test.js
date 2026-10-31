@@ -83,4 +83,16 @@ describe('ledger drawer conclusion', () => {
     expect(w.get('[data-testid="ledger-conclusion"]').text()).not.toContain('還沒開帳單');
     w.unmount(); vi.unstubAllGlobals();
   });
+
+  it('#4699: a tutoring course that is not the opened one is not unbilled, on the headline or on its card', async () => {
+    const w = await open({
+      ...base, scope: { student_class_id: 2, no_payment_obligation: false },
+      courses: [course({ paid: true }), course({ id: 3, subject: '輔導', class_type: undefined, no_payment_obligation: true })],
+      invoices: [inv({ outstanding_amount: 0, status: 'paid', calculated_applied_amount: 3000 })],
+    });
+    expect(w.get('[data-testid="ledger-conclusion"]').text()).not.toContain('還沒開帳單');
+    expect(w.get('[data-testid="contract-card-3"]').text()).not.toContain('還沒開帳單');
+    expect(w.get('[data-testid="contract-card-3"]').text()).toContain('輔導課不用繳費');
+    w.unmount(); vi.unstubAllGlobals();
+  });
 });
