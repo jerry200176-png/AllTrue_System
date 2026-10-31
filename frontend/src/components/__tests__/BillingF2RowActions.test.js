@@ -206,6 +206,8 @@ describe('現在確認入帳 in the allocation result', () => {
     expect(f.mock.calls.filter(([u]) => String(u).includes('/payment-reports/55/confirm'))).toHaveLength(1);
     expect(w.get('[data-testid="alloc-result-2"]').text()).toContain('已確認入帳');
     expect(w.find('[data-testid="alloc-confirm-2"]').exists()).toBe(false);
+    await w.get('[data-testid="alloc-back"]').trigger('click');
+    expect(w.emitted('close')[0]).toEqual([true]); // the ledger behind it reloads
     w.unmount();
   });
 });

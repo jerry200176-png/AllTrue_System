@@ -34,7 +34,7 @@
             v-if="allocating"
             :student-name="payload.student?.name || '學生'"
             :contracts="allocContracts"
-            @close="allocating = false"
+            @close="onAllocClose"
             @done="onAllocDone"
           />
           <div v-show="!allocating">
@@ -792,6 +792,11 @@ const payScopeText = computed(() => {
     : `這個按鈕是登記「${subjects}」的收款，不含你點開的「${opened.subject}」；「${opened.subject}」請看它自己的課程卡。`;
 });
 const allocating = ref(false);
+// Back from the result page after money was reported (or confirmed there): the ledger behind it is stale.
+async function onAllocClose(changed) {
+  allocating.value = false;
+  if (changed === true) await onPanelChanged();
+}
 async function onAllocDone() {
   allocating.value = false;
   await onPanelChanged();
