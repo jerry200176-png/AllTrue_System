@@ -55,7 +55,11 @@ describe('student list batch toolbar (F-5a2)', () => {
   it('exports CSV and opens 上課明細 for a contract', async () => {
     const w = mountList();
     await w.get('[data-testid="sbl-export"]').trigger('click');
-    expect(w.emitted('export')).toHaveLength(1);
+    expect(w.emitted('export')).toEqual([[[1, 2, 3]]]);
+    await w.get('[data-testid="sbl-search"]').setValue('乙');
+    await w.get('[data-testid="sbl-export"]').trigger('click');
+    expect(w.emitted('export')[1]).toEqual([[2]]); // only the students on screen
+    await w.get('[data-testid="sbl-search"]').setValue('');
     await w.get('[data-testid="sbl-expand-1"]').trigger('click');
     await w.get('[data-testid="sbl-sessions-11"]').trigger('click');
     expect(w.emitted('sessions')).toEqual([[11]]);
@@ -68,7 +72,8 @@ describe('page wiring (F-5a2)', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/TuitionCollectionPage.vue'), 'utf8');
   it('reuses the table batch preview, submit functions and CSV/session handlers', () => {
     expect(page).toContain('@batch="onListBatch"');
-    expect(page).toContain('@export="exportCSV"');
+    expect(page).toContain('exportCSV(rows.filter((r) => studentIds.includes(r.student_id)))');
+    expect(page).toContain('watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; })');
     expect(page).toContain('openSessionDetail(r)');
     expect(page).toMatch(/function onListBatch[\s\S]{0,400}openBatchPreview\(\);/);
     // the list picks contracts with the table's own rules

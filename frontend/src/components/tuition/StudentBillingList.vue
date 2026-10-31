@@ -57,7 +57,7 @@
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="!pickedCount.report" data-testid="sbl-batch-report" @click="$emit('batch', 'report', pickedIds)">批次回報（{{ pickedCount.report }} 筆）</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="sbl-clear-picked" @click="clearSelection">取消選取</AtButton>
       </template>
-      <AtButton class="sbl__bulk-csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled" data-testid="sbl-export" @click="$emit('export')">匯出 CSV</AtButton>
+      <AtButton class="sbl__bulk-csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="sbl-export" @click="$emit('export', visible.map((r) => r.student_id))">匯出 CSV</AtButton>
     </div>
     <slot v-if="inPanel" :name="view" />
     <!-- Alerts failed: the error above says so; the panel chips stay usable because the panels load their own data. -->

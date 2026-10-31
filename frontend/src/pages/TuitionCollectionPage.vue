@@ -81,9 +81,9 @@
         :view="activeAccountingTab"
         :panels="studentPanels"
         :batch-counts="listBatchCounts"
-        :export-disabled="!filteredRows.length || csvExporting"
+        :export-disabled="csvExporting"
         @batch="onListBatch"
-        @export="exportCSV"
+        @export="(studentIds) => exportCSV(rows.filter((r) => studentIds.includes(r.student_id)))"
         @sessions="(id) => { const r = rows.find((x) => Number(x.id) === Number(id)); if (r) openSessionDetail(r); }"
         @view="activeAccountingTab = $event"
         @open="openLedgerForStudent"
@@ -219,7 +219,7 @@
             </div>
             <button
               class="tc-btn tc-btn--csv"
-              @click="exportCSV"
+              @click="exportCSV()"
               :disabled="!filteredRows.length || csvExporting"
               :title="!filteredRows.length ? '目前無資料可匯出' : '匯出 CSV'"
             >
@@ -1536,6 +1536,8 @@ function closeBatchPreview() {
     void trackWorkflowEvent('billing', 'returned', props.branchId, { step, target: 'queue' });
   }
   batchPreviewOpen.value = false;
+  // A cancelled list batch leaves no hidden pick behind for the table (the list keeps its own checked students).
+  if (batchFromList) { selectedIds.value = []; batchFromList = false; }
 }
 
 function confirmBatchPreview() {
@@ -1546,6 +1548,7 @@ function confirmBatchPreview() {
 watch(activeTab, () => {
   clearSelection();
 });
+watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; }); // list and table never share a pick
 
 // F-5a2: batch actions from the student list. Which contracts a student brings follows the table's rules:
 // 回報 = invoiced and still owing with an amount; 確認入帳 = a parent report is waiting.
@@ -1561,7 +1564,9 @@ const listBatchCounts = computed(() => {
   }
   return out;
 });
+let batchFromList = false;
 function onListBatch(mode, studentIds) {
+  batchFromList = true;
   const ids = new Set(studentIds);
   const pick = mode === 'confirm' ? isBatchConfirmable : isBatchReportable;
   selectedIds.value = rows.value.filter((r) => ids.has(r.student_id) && pick(r)).map((r) => r.id);
@@ -1968,8 +1973,8 @@ const filteredRows = computed(() => {
 
 // ═══ CSV Export ═══
 const csvExporting = ref(false);
-function exportCSV() {
-  const data = filteredRows.value;
+// The table exports what it shows; the student list passes the rows of the students it shows (F-5a2).
+function exportCSV(data = filteredRows.value) {
   if (!data.length) return;
   csvExporting.value = true;
   const headers = ['學生姓名', '科目', '模式', '狀態', '應繳', '已繳', '未繳', '最近付款日', '到期日', '逾期天數'];
