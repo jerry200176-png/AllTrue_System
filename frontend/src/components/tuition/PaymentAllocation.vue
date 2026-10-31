@@ -1,7 +1,7 @@
 <template>
   <section class="alloc" data-testid="alloc" aria-labelledby="alloc-title">
     <header class="alloc__head">
-      <button type="button" class="alloc__back" data-testid="alloc-back" @click="$emit('close', accepted > 0)">← 回{{ studentName }}的帳務</button>
+      <button type="button" class="alloc__back" data-testid="alloc-back" :disabled="results.some((r) => r.confirming)" @click="$emit('close', accepted > 0)">← 回{{ studentName }}的帳務</button>
       <h4 id="alloc-title">登記收款・{{ studentName }}</h4>
     </header>
 

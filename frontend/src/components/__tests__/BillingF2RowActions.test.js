@@ -200,6 +200,7 @@ describe('現在確認入帳 in the allocation result', () => {
     f.mockImplementationOnce(() => new Promise((r) => { release = () => r(respond({})); }));
     await w.get('[data-testid="alloc-confirm-2"]').trigger('click');
     expect(w.get('[data-testid="alloc-done"]').attributes('disabled')).toBeDefined(); // no 完成 while confirming
+    expect(w.get('[data-testid="alloc-back"]').attributes('disabled')).toBeDefined(); // nor the back link
     release();
     await flushPromises();
     expect(w.get('[data-testid="alloc-done"]').attributes('disabled')).toBeUndefined();
