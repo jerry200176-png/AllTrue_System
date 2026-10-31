@@ -102,6 +102,9 @@
             :aria-label="`${rowPrimaryAction(r).label}：${r.student_name}`"
             @click="$emit('action', r, rowPrimaryAction(r))"
           >{{ rowPrimaryAction(r).label }}</AtButton>
+          <ul v-if="r.notes.length" class="sbl__notes" :data-testid="`sbl-notes-${r.student_id}`">
+            <li v-for="n in r.notes" :key="n">{{ n }}</li>
+          </ul>
           <template v-if="r.contracts.length">
             <button
               type="button"
@@ -275,6 +278,7 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__last,.sbl__overdue{font-size:13px;font-variant-numeric:tabular-nums}
 .sbl__muted{font-size:12px;color:var(--ds-ink-mute)}
 .sbl__toggle{background:none;border:0;padding:4px 12px;min-height:32px;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
+.sbl__notes{list-style:none;margin:0;padding:0 12px;font-size:var(--ds-font-size-sm);color:var(--ds-warning-text,var(--ds-ink-mute))}
 .sbl__contracts{list-style:none;margin:0;padding:0 12px 8px}
 .sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){

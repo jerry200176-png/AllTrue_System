@@ -62,7 +62,7 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
       const ledger = wrapper.findComponent({ name: 'AccountingLedgerModal' });
       expect(ledger.props('show')).toBe(true);
       expect(ledger.props('studentClassId')).toBe(6201);
-      expect(wrapper.findComponent({ name: 'StudentBillingList' }).props('presetFilter')).toEqual({ key: 'owing' });
+      expect(wrapper.findComponent({ name: 'StudentBillingList' }).props('presetFilter')).toEqual({ key: 'all' });
       expect(wrapper.find('.tc-focus-context').text()).toContain('已定位：合成學生甲');
     } finally { wrapper.unmount(); }
   });

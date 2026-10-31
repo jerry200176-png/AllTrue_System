@@ -2599,7 +2599,7 @@ watch(() => props.branchId, () => {
 }, { flush: 'post' });
 
 // The old 待處理 table is unreachable: deep links to one of its filters land on the matching chip of the student list.
-const LIST_FILTER_FOR_TAB = { pending: 'confirm', pending_report: 'confirm', unpaid: 'owing', pending_reconciliation: 'owing', amount_review: 'pending_review', renewal: 'all', all: 'all' };
+const LIST_FILTER_FOR_TAB = { pending: 'confirm', pending_report: 'confirm', unpaid: 'all', pending_reconciliation: 'all', amount_review: 'pending_review', renewal: 'all', all: 'all' };
 watch(() => props.initialTab, (tab) => {
   if (!tab) return;
   if (LIST_FILTER_FOR_TAB[tab]) {

@@ -68,7 +68,7 @@ describe('director payment shortcuts', () => {
 
   it('keeps dashboard payment actions on the Billing Center authority', () => {
     expect(dashboard).toContain('paymentCenterIntentFor');
-    expect(tuition).toContain("pending_reconciliation: 'owing'");
+    expect(tuition).toContain("pending_reconciliation: 'all'");
   });
 
   it('carries notification context into the existing billing and calendar pages', () => {

@@ -1,4 +1,5 @@
 import { isLegacyPaidFlagOnly } from './courseMoneyState.js';
+import { formatNewerCourseOverlapWarning } from './studentClassDisplay.js';
 
 // Billing redesign PRD v2 D1/D3/D8/D12: one row per student, built from the
 // existing per-contract alert rows (same numbers as the queue), plus every
@@ -68,7 +69,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
       });
     }
     return byStudent.get(id);
@@ -81,6 +82,11 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     const row = ensure(id, r.student_name);
     row.first_class_id ??= r.id != null ? Number(r.id) : null;
     if (r.last_paid_at && (!row.last_paid_at || r.last_paid_at > row.last_paid_at)) row.last_paid_at = r.last_paid_at;
+    // Facts the old queue table showed beside the row and the list must not lose (director-facing, no dates are shifted).
+    const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
+    const who = r.subject ? `${r.subject}：` : '';
+    if (r.newer_course_overlap) row.notes.push(`${who}${formatNewerCourseOverlapWarning(r).primary}`);
+    if (r.invoice_amount_discrepancy) row.notes.push(`${who}依實際 ${r.invoice_period_sessions} 堂計算（原始帳單 ${money(r.invoice_stored_amount)}；實際計算 ${money(r.invoice_computed_amount)}）`);
     if (r.id != null) {
       row.contracts.push({
         id: Number(r.id), ref: formatCourseRef(r.id), period: formatCoursePeriod(r.course_start_date, r.course_end_date),
