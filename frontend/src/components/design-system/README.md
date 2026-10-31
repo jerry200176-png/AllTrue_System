@@ -92,6 +92,18 @@ const selection = useSelection(visibleRows, { key: 'id', canSelect: (r) => r.sta
 
 ---
 
+## AtNumberStepper（#4697 堂數步進器）
+
+```vue
+<AtNumberStepper v-model.number="form.total_sessions" :min="1" :max="999" aria-label="總堂數" />
+```
+
+- 中間仍是原生 `<input type="number">`（`min`／`max`／`step`、`v-model` 語意不變，其餘屬性如 `id`／`aria-*`／`disabled` 直接轉給 input）；左右 −／＋ 按鈕依 `step` 增減、夾在 min/max 內，到頂/底時 disabled。
+- 按鈕改值時數字輕輕滾動一下；手動輸入不滾。`prefers-reduced-motion` 關閉動畫。
+- 空值按 ＋ 從 `min` 開始。金額相關的堂數欄位用它，讓數量變動看得見。
+
+---
+
 ## AtCard
 
 ```vue

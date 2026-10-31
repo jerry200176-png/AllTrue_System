@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { getRoleFeatureMap } from '../lib/roleFeatureMap.js';
+import AtTabs from './design-system/AtTabs.vue';
 
 const props = defineProps({
   role: { type: String, default: 'director' },
@@ -37,11 +38,17 @@ const filteredGroups = computed(() => {
     </header>
 
     <div class="rfm-controls">
-      <div class="rfm-filters" role="tablist">
-        <button type="button" class="rfm-btn" :class="{ active: activeFilter === 'all' }" @click="activeFilter = 'all'">全部 ({{ featureMap.totalCount }})</button>
-        <button type="button" class="rfm-btn" :class="{ active: activeFilter === 'high' }" data-testid="filter-high" @click="activeFilter = 'high'">⭐ 常用高頻 ({{ featureMap.highFrequencyCount }})</button>
-        <button type="button" class="rfm-btn" :class="{ active: activeFilter === 'advanced' }" data-testid="filter-advanced" @click="activeFilter = 'advanced'">🛠️ 進階工具 ({{ featureMap.advancedCount }})</button>
-      </div>
+      <AtTabs
+        v-model="activeFilter"
+        class="rfm-filters"
+        variant="segmented"
+        label="功能篩選"
+        :tabs="[
+          { value: 'all', label: `全部 (${featureMap.totalCount})` },
+          { value: 'high', label: `⭐ 常用高頻 (${featureMap.highFrequencyCount})`, testid: 'filter-high' },
+          { value: 'advanced', label: `🛠️ 進階工具 (${featureMap.advancedCount})`, testid: 'filter-advanced' },
+        ]"
+      />
       <div class="rfm-search">
         <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
         <input v-model="searchQuery" type="search" placeholder="搜尋功能或時機…" class="search-input" aria-label="搜尋功能" />
@@ -84,9 +91,6 @@ const filteredGroups = computed(() => {
 .tag-high { background: var(--ds-primary-wash); color: var(--ds-primary-text); padding: 1px 5px; border-radius: 4px; font-weight: 600; font-size: 11px; }
 .tag-adv { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); padding: 1px 5px; border-radius: 4px; font-weight: 600; font-size: 11px; }
 .rfm-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 12px 0 14px; }
-.rfm-filters { display: flex; gap: 4px; background: var(--ds-canvas-soft); padding: 3px; border-radius: 8px; }
-.rfm-btn { padding: 5px 10px; border: none; background: transparent; color: var(--ds-ink-mute); font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: all .15s; }
-.rfm-btn.active { background: var(--ds-canvas); color: var(--ds-primary-text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .rfm-search { position: relative; display: flex; align-items: center; min-width: 180px; flex: 1; max-width: 260px; }
 .search-icon { position: absolute; left: 8px; font-size: 16px; color: var(--ds-ink-mute); pointer-events: none; }
 .search-input { width: 100%; padding: 6px 12px 6px 28px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; font-size: 12px; outline: none; }
