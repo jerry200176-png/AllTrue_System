@@ -360,6 +360,7 @@ class CoursePackageController extends Controller
 
             $createdMembers = [];
             $membersScheduled = [];
+            $poolMembers = [];
             $scController = app(\App\Services\Scheduling\ContractSessionSchedule::class);
             $materializer = app(ClassSessionMaterializationService::class);
 
@@ -485,9 +486,6 @@ class CoursePackageController extends Controller
                     ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val')
                     ?? '課程';
 
-                $scheduledCount = 0;
-                $firstSessionDate = null;
-
                 if ($isMonthly && $hasSchedule && $pkgEndDate) {
                     $sessions = \App\Services\Scheduling\ContractSessionSchedule::buildSessionsFromWeeklySchedule(
                         (int) $sc->ID,
@@ -510,19 +508,7 @@ class CoursePackageController extends Controller
                         ]);
                     }
                 } elseif (!$isMonthly && $hasSchedule && $totalSessions > 0) {
-                    $member = $sc->fresh();
-                    $scController->extendSessionsIfNeeded($member, $totalSessions);
-                }
-
-                // 統計補排後實際 ClassSession 數量與首堂日期
-                $sessionAgg = ClassSession::where('StudentClassID', $sc->ID)
-                    ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
-                    ->orderBy('SessionDate')
-                    ->orderBy('StartTime')
-                    ->get(['SessionDate']);
-                $scheduledCount = $sessionAgg->count();
-                if ($scheduledCount > 0) {
-                    $firstSessionDate = substr((string) $sessionAgg->first()->SessionDate, 0, 10);
+                    $poolMembers[] = $sc->fresh(); // filled together below so subjects share the pool by date
                 }
 
                 $createdMembers[] = [
@@ -536,11 +522,21 @@ class CoursePackageController extends Controller
                 $membersScheduled[] = [
                     'student_class_id'   => (int) $sc->ID,
                     'subject'            => $subjectName,
-                    'scheduled_count'    => $scheduledCount,
-                    'first_session_date' => $firstSessionDate,
                     'has_schedule'       => $hasSchedule,
                 ];
             }
+
+            if ($poolMembers !== []) {
+                $scController->fillSharedPool($pkg->fresh(), $poolMembers, $totalSessions);
+            }
+            // 統計補排後實際 ClassSession 數量與首堂日期
+            foreach ($membersScheduled as &$ms) {
+                $first = ClassSession::where('StudentClassID', $ms['student_class_id'])
+                    ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted']);
+                $ms['scheduled_count'] = (clone $first)->count();
+                $ms['first_session_date'] = ($d = $first->orderBy('SessionDate')->orderBy('StartTime')->value('SessionDate')) ? substr((string) $d, 0, 10) : null;
+            }
+            unset($ms);
 
             $pkg->recomputeCounters();
             $planning = app(SharedPackagePlanningService::class)->summarize($pkg->fresh());
@@ -1259,6 +1255,8 @@ class CoursePackageController extends Controller
                     ]);
 
                 $members = StudentClass::where('PackageID', $pkg->id)->get();
+                $countMembers = [];
+                $beforeActive = [];
 
                 foreach ($members as $member) {
                     if ((string) ($member->ScheduleMode ?? 'count') !== 'count') {
@@ -1282,17 +1280,12 @@ class CoursePackageController extends Controller
                         }
                     }
 
-                    $beforeActive = $beforeAll->count();
+                    $beforeActive[(int) $member->ID] = $beforeAll->count();
+                    if (empty($member->Stop)) {
+                        $countMembers[] = $member;
+                    }
 
                     app(\App\Services\Scheduling\ContractSessionSchedule::class)->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
-                    app(\App\Services\Scheduling\ContractSessionSchedule::class)->extendSessionsIfNeeded($member, $newTotal);
-
-                    $afterActive = ClassSession::where('StudentClassID', $member->ID)
-                        ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
-                        ->count();
-                    if ($afterActive > $beforeActive) {
-                        $extendedCount += ($afterActive - $beforeActive);
-                    }
 
                     foreach ($candidateCancelIds as $sid) {
                         $cancelledSessions[] = [
@@ -1306,6 +1299,15 @@ class CoursePackageController extends Controller
                 $pkg->total_sessions     = $newTotal;
                 $pkg->remaining_sessions = max(0, $newTotal - (int) $pkg->used_sessions);
                 $pkg->save();
+
+                // Pool-wide, after the new total is saved, so the added lessons alternate subjects by date.
+                app(\App\Services\Scheduling\ContractSessionSchedule::class)->fillSharedPool($pkg, $countMembers, $newTotal);
+                foreach ($countMembers as $member) {
+                    $afterActive = ClassSession::where('StudentClassID', $member->ID)
+                        ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                        ->count();
+                    $extendedCount += max(0, $afterActive - $beforeActive[(int) $member->ID]);
+                }
             });
 
             // in-app #208: the bulk update above only cascades SessionCount /

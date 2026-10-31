@@ -527,6 +527,8 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 
 本次需求將 shared package 分為 `purchased_entitlement`、`actual_consumed` 與 `future_planned_sessions`；多科共用 entitlement，未來 recurring／scheduled 可建立但不寫 ledger、不阻擋其他科，超過 remaining 必須回傳 `renewal_warning` 與續約／加購文案。
 群組同一日期＋開始時間只計一個實體時段，`leave_requested` 仍算預排意圖；其餘沿用既有 lifecycle／ledger，且不做 production data repair 或 migration。
+
+**2026-11-01 Founder 決定（A）：** 自動預排（建立方案、改總堂數、`extendSessionsIfNeeded` 的所有補排路徑）以整包為單位，只排到「剩餘 − 已預排」為止，各科照日期先後輪流（`ContractSessionSchedule::fillSharedPool`）；主任手動加課仍可超排並提示續課。上線前已多排的方案不在本次自動處理。
  
 
 ---

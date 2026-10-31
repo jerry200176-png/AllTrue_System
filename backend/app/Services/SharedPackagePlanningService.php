@@ -12,6 +12,9 @@ use Illuminate\Support\Collection;
 /** Read-only purchased/consumed/future-plan projection for shared packages. */
 class SharedPackagePlanningService
 {
+    /** Class types whose members' same date/time is one debited lesson. */
+    public const GROUP_CLASS_TYPES = ['one_on_two', 'one_on_three', 'one_on_many', 'tutoring'];
+
     public function isSharedPackage(CoursePackage $package): bool
     {
         return StudentClass::query()->where('PackageID', $package->getKey())->where(static function ($query): void {
@@ -64,9 +67,7 @@ class SharedPackagePlanningService
                     continue;
                 }
 
-                $isGroup = in_array($packageClassTypes[$packageId] ?? '', [
-                    'one_on_two', 'one_on_three', 'one_on_many', 'tutoring',
-                ], true);
+                $isGroup = in_array($packageClassTypes[$packageId] ?? '', self::GROUP_CLASS_TYPES, true);
                 if ($isGroup) {
                     $slotKey = $packageId . '|' . substr((string) $row->SessionDate, 0, 10)
                         . '|' . substr((string) $row->StartTime, 0, 5);
