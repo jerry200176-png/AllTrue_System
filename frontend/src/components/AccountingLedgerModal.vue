@@ -34,6 +34,7 @@
             v-if="allocating"
             :student-name="payload.student?.name || '學生'"
             :contracts="allocContracts"
+            :on-confirmed="onAllocConfirmed"
             @close="onAllocClose"
             @done="onAllocDone"
           />
@@ -793,6 +794,11 @@ const payScopeText = computed(() => {
 });
 const allocating = ref(false);
 // Back from the result page after money was reported (or confirmed there): the ledger behind it is stale.
+// Money was booked from the allocation result: tell the list (and reload here unless 完成／back will).
+function onAllocConfirmed() {
+  emit('changed');
+  if (!allocating.value) loadLedger();
+}
 async function onAllocClose(changed) {
   allocating.value = false;
   if (changed === true) await onPanelChanged();

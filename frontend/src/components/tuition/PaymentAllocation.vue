@@ -93,6 +93,8 @@ const props = defineProps({
   studentName: { type: String, default: '學生' },
   // Oldest first: { id, subject, start_date, end_date, owed, invoice_id }
   contracts: { type: Array, default: () => [] },
+  // Called after a 現在確認入帳 succeeds, even if the drawer was closed or moved on in the meantime.
+  onConfirmed: { type: Function, default: null },
 });
 defineEmits(['close', 'done']);
 
@@ -204,7 +206,11 @@ async function confirmNow(r) {
   r.confirm_error = '';
   const res = await confirmReport(r.report_id);
   r.confirming = false;
-  if (res.ok) r.confirmed = true; else r.confirm_error = res.message;
+  if (res.ok) {
+    r.confirmed = true;
+    // A plain callback, not emit(): Vue drops emits from an unmounted component, and the drawer may have closed meanwhile.
+    props.onConfirmed?.();
+  } else r.confirm_error = res.message;
 }
 
 const accepted = computed(() => results.value.filter((r) => r.ok).length);

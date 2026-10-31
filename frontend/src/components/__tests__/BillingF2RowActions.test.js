@@ -185,6 +185,24 @@ describe('現在確認入帳 after 登記', () => {
 });
 
 describe('現在確認入帳 in the allocation result', () => {
+  it('reports a confirmation through the callback even after the component is unmounted', async () => {
+    const onConfirmed = vi.fn();
+    let release;
+    const f = vi.fn(async (url) => (String(url).includes('director-record-batch')
+      ? { ok: true, status: 200, json: async () => ({ results: [{ student_class_id: 2, http_status: 200, report_id: 55 }] }) }
+      : new Promise((r) => { release = () => r({ ok: true, status: 200, json: async () => ({}) }); })));
+    vi.stubGlobal('fetch', f);
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
+    const w = mount(PaymentAllocation, { props: { onConfirmed, studentName: '王小明', contracts: [{ id: 2, subject: '數學', start_date: '2026-09-01', end_date: '2026-12-31', owed: 8000, invoice_id: 11 }] } });
+    await w.get('[data-testid="alloc-submit"]').trigger('submit');
+    await flushPromises();
+    await w.get('[data-testid="alloc-confirm-2"]').trigger('click');
+    w.unmount(); // the drawer closed or stepped to another student mid-request
+    release();
+    await flushPromises();
+    expect(onConfirmed).toHaveBeenCalledTimes(1);
+  });
+
   const respond = (b, status = 200) => ({ ok: status < 400, status, json: async () => b });
   it('confirms one contract with its own request after the batch reported it', async () => {
     const f = vi.fn(async (url) => (String(url).includes('director-record-batch')
