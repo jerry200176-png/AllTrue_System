@@ -1058,6 +1058,8 @@ class FinanceController extends Controller
             $spanReview = $monthlyBilled && $spans->isNotEmpty() && (
                 (bool) ($coverage[(int) $c->ID]['review_required'] ?? false)
                 || $spans->contains(fn ($r) => substr((string) $r['billing_period'], 0, 7) !== substr((string) $r['period_start'], 0, 7))
+                // the start month's row only exists when it has lessons; else nothing would carry the invoice amount
+                || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['period_start'], 0, 7)))
             );
             if ($spanReview) {
                 $spans = collect();

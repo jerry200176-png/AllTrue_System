@@ -289,4 +289,16 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
             $this->assertSame('review', $row['pay_status'], "month {$m}");
         }
     }
+
+    /** Codex P2 on #4726 head 25fc0f5: no lessons in the range's start month => no start-month row, so stay review. */
+    public function test_cross_month_invoice_without_start_month_lessons_stays_review(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-30', 'EndDate' => '2026-09-29'];
+        $c = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28']);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
+        \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $c->ID,
+            'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-30', 'PeriodEnd' => '2026-09-29']);
+        $row = collect($this->fetchReport('&month=9')->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame('review', $row['pay_status']);
+    }
 }
