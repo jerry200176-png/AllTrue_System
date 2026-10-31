@@ -758,10 +758,12 @@ class ContractSessionSchedule
             $this->extendSessionsIfNeeded($member, $count, null, $picked = $share[$classId] ?? []);
             // That walks only the first $count contract dates; a selected slot past them (a member missing rows) is added here.
             $have = [];
-            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime']) as $row) {
+            $room = $count; // never past the member's own count, as extendSessionsIfNeeded keeps it
+            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime', 'Status']) as $row) {
                 $have[self::normalizeDateString($row->SessionDate) . '|' . substr((string) $row->StartTime, 0, 5)] = true;
+                $room -= in_array(strtolower((string) $row->Status), ['cancelled', 'leave', 'leave_adjusted', 'excused'], true) ? 0 : 1;
             }
-            foreach (array_keys(array_diff_key($picked, $have)) as $key) {
+            foreach (array_slice(array_keys(array_diff_key($picked, $have)), 0, max(0, $room)) as $key) {
                 app(ClassSessionMaterializationService::class)->upsertSlot(['Status' => 'scheduled'] + $rowsByKey[$classId][$key]);
             }
         }
