@@ -28,7 +28,7 @@ const teacher = {
 
 const mountTeachers = () => shallowMount(TeachersList, {
   props: { branchId: 1 },
-  global: { stubs: { AtFilterBar: false, AtSkeleton: false } },
+  global: { stubs: { AtTabs: false, AtFilterBar: false, AtSkeleton: false } },
 });
 
 const defaultFetch = (teachersResponse) => vi.fn((input) => {
