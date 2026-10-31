@@ -128,8 +128,13 @@ class InappPackageLedgerProbeTest extends TestCase
             $this->lesson($course, Carbon::today()->addWeek()->toDateString(), 'scheduled'); // one group lesson, two member rows
         }
 
+        [$monthly, [$monthlyCourse]] = $this->pool(1, 0);
+        $monthly->update(['billing_mode' => 'date']);
+        $this->lesson($monthlyCourse, Carbon::today()->addWeek()->toDateString(), 'scheduled');
+
         $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
         $summary = array_column($out['summary'], null, 'package_id');
+        $this->assertSame(0, $summary[(int) $monthly->id]['overplanned'], 'a monthly package has no bought-lesson limit');
         $this->assertSame(['future_planned' => 6, 'overplanned' => 3], array_intersect_key($summary[(int) $pool->id], ['future_planned' => 0, 'overplanned' => 0]));
         $this->assertSame(['future_planned' => 1, 'overplanned' => 0], array_intersect_key($summary[(int) $group->id], ['future_planned' => 0, 'overplanned' => 0]));
         $this->assertOnlyAllowedKeys($out);

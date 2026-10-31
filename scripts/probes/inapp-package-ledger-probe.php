@@ -178,7 +178,9 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         'absent_slots' => (int) ($lessons[$id][0]['absent_slots'] ?? 0),
         // Lessons on the calendar past what the pool has left: pre-planned per subject before #4730.
         'future_planned' => $planned = (int) ($lessons[$id][0]['future_planned'] ?? 0),
-        'overplanned' => max(0, $planned - max(0, (int) ($packages[$id][0]['total_sessions'] ?? 0) + (int) ($packages[$id][0]['ledger_net'] ?? 0))),
+        // Session-count pools only, as summarizeMany(): a monthly (date) package has no bought-lesson limit.
+        'overplanned' => ($packages[$id][0]['billing_mode'] ?? 'count') !== 'count' ? 0
+            : max(0, $planned - max(0, (int) ($packages[$id][0]['total_sessions'] ?? 0) + (int) ($packages[$id][0]['ledger_net'] ?? 0))),
         'sessions_debited_twice' => count($sessionsTwice[$id] ?? []),
         'slots_debited_twice' => count($slotsTwice[$id] ?? []),
         'debits_on_unchargeable_sessions' => array_sum(array_map(
