@@ -33,10 +33,17 @@
       </template>
     </AtPageHeader>
 
-    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs at-tabs" role="tablist" :aria-label="isTeacher ? '評量待辦與家長回覆' : '學習評量與家長留言'">
-      <button type="button" role="tab" :class="['lr-tab', 'at-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">{{ isTeacher ? '評量待辦' : '學習評量' }}</button>
-      <button type="button" role="tab" :class="['lr-tab', 'at-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">{{ isTeacher ? '家長回覆' : '家長留言' }}</button>
-    </div>
+    <AtTabs
+      v-if="isTeacher || isDirectorRole"
+      :model-value="pageMode"
+      class="lr-mode-tabs"
+      :label="isTeacher ? '評量待辦與家長回覆' : '學習評量與家長留言'"
+      :tabs="[
+        { value: 'records', label: isTeacher ? '評量待辦' : '學習評量' },
+        { value: 'parent_messages', label: isTeacher ? '家長回覆' : '家長留言' },
+      ]"
+      @update:model-value="setPageMode"
+    />
 
     <!-- Teacher quick-filter tabs -->
     <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs" data-guide="learning-teacher-tabs">
@@ -1572,6 +1579,7 @@ import AtSelectAll from '../components/design-system/AtSelectAll.vue';
 import AtDisclosureCard from '../components/design-system/AtDisclosureCard.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';

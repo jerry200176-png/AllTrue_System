@@ -17,10 +17,13 @@
         </template>
         <template #actions>
           <AtButton v-if="!isTeacher" shape="rect" variant="secondary" icon="print" @click="showCalendarPrint = true">列印課表</AtButton>
-          <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
-            <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
-            <button v-if="!isTeacher" id="calendar-tab-teacher" type="button" role="tab" aria-controls="calendar-panel-teacher" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
-          </div>
+          <AtTabs
+            v-model="viewMode"
+            class="view-tabs"
+            variant="segmented"
+            label="課表檢視方式"
+            :tabs="viewTabs"
+          />
         </template>
       </AtPageHeader>
       <details v-if="!isTeacher" class="calendar-process-disclosure">
@@ -556,6 +559,7 @@ import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -642,6 +646,10 @@ const props = defineProps({
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context', 'navigate']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
+const viewTabs = computed(() => [
+  { value: 'week', label: '課表', id: 'calendar-tab-week', controls: 'calendar-panel-week' },
+  ...(isTeacher.value ? [] : [{ value: 'teacher', label: '老師清單', id: 'calendar-tab-teacher', controls: 'calendar-panel-teacher' }]),
+]);
 const currentTeacherId = computed(() => {
   const raw = props.userId;
   if (raw == null || raw === '') return null;
@@ -2970,33 +2978,6 @@ onMounted(() => {
   border-color: var(--ds-primary, var(--ds-ink-mute));
   background: var(--ds-primary-wash, var(--ds-canvas-soft));
 }
-.view-tabs {
-  display: inline-flex;
-  background: var(--bg-muted, var(--ds-canvas-soft));
-  border-radius: 10px;
-  padding: 4px;
-  gap: 2px;
-}
-.view-tabs button {
-  padding: 8px 18px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--text-light, var(--ds-ink-mute));
-  transition: background 0.2s, color 0.2s;
-}
-.view-tabs button:hover {
-  color: var(--text-color, var(--ds-ink));
-}
-.view-tabs button.active {
-  background: var(--ds-canvas);
-  color: var(--ds-primary-text);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
 .smart-cal-toolbar {
   display: flex;
   flex-direction: column;
@@ -3742,10 +3723,7 @@ onMounted(() => {
     gap: 10px;
   }
   .smart-cal-header-actions { justify-content: space-between; }
-  .view-tabs button {
-    padding: 6px 12px;
-    font-size: 12px;
-  }
+  .view-tabs :deep(.at-tab) { padding: 0 12px; font-size: 12px; }
   .teacher-col { min-width: 80px; }
   .week-view { overflow-x: auto; }
   .teacher-grid-wrapper { overflow-x: auto; }
@@ -3774,7 +3752,7 @@ onMounted(() => {
   .smart-cal-header-actions { gap: 8px; }
   .calendar-today-btn { min-height: 40px; }
   .view-tabs { justify-content: center; flex: 1; }
-  .view-tabs button { padding: 6px 10px; font-size: 11px; }
+  .view-tabs :deep(.at-tab) { padding: 0 10px; font-size: 11px; min-height: 36px; }
   .toolbar-filters {
     width: 100%;
   }
