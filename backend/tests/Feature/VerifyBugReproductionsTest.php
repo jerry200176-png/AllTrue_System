@@ -173,6 +173,7 @@ class VerifyBugReproductionsTest extends TestCase
 
     public function test_baseline_allows_known_drift_and_fails_only_above_it(): void
     {
+        config(['reproduction_baselines.unpaid_charge_vs_rate_count' => null]); // production pins a number; test the unmeasured path
         $this->course(['Rate' => 500, 'SessionCount' => 10, 'Charge' => 500, 'Paid' => 0]);
         $this->assertSame(0, Artisan::call('bugs:verify-reproductions')); // null baseline = pending, reported not failing
         $this->assertSame('BASELINE-PENDING', $this->condition('unpaid_charge_vs_rate_count')['state']);
