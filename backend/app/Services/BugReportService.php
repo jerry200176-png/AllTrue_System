@@ -904,7 +904,8 @@ class BugReportService
                 ->where('bug_report_id', $bugId)
                 ->where('author_user_id', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolvedAt)
-                ->exists()) {
+                ->get()
+                ->contains(fn (BugReportComment $comment) => !self::isTrackedStaffReply($comment))) {
                 continue;
             }
 
@@ -913,12 +914,12 @@ class BugReportService
             $retestRequest = BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
-                ->where('author_user_id', '!=', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolvedAt->copy()->subDay())
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->get()
-                ->first(fn (BugReportComment $comment) => preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', (string) $comment->getAttribute('body')) === 1);
+                ->first(fn (BugReportComment $comment) => ((int) $comment->author_user_id !== (int) $rawReporterId || self::isTrackedStaffReply($comment))
+                    && preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', (string) $comment->getAttribute('body')) === 1);
             if (!$retestRequest || $retestRequest->created_at->gt($cutoff)) {
                 continue;
             }
@@ -959,6 +960,18 @@ class BugReportService
      *
      * @return array{bug_id:int,asked_at:string,days_waiting:int}|null
      */
+    /**
+     * A public reply written back by staff tooling: every write-back reply must link its GitHub issue
+     * (bug-phase-a-triage / bug-followup-comment refuse a reply without it). It can carry the reporter's own
+     * user id when the reporter is the super_admin the writer acts as, so the author id alone cannot tell a
+     * reporter reply from ours (37 of the reports since #327 are self-filed).
+     * ponytail: a reporter who pastes an issue link reads as staff; add an author-role column if that happens.
+     */
+    private static function isTrackedStaffReply(BugReportComment $comment): bool
+    {
+        return preg_match('#https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/\d+#', (string) $comment->body) === 1;
+    }
+
     private static function awaitingReporterRow(int $bugId, int $reporterId, Carbon $now): ?array
     {
         $cutoff = $now->copy()->subDays(self::AWAITING_REPORTER_TIMEOUT_DAYS);
@@ -968,7 +981,7 @@ class BugReportService
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->first();
-        if (!$last || (int) $last->author_user_id === $reporterId || $last->created_at->gt($cutoff)) {
+        if (!$last || ((int) $last->author_user_id === $reporterId && !self::isTrackedStaffReply($last)) || $last->created_at->gt($cutoff)) {
             return null;
         }
         // Only a real question waits on the reporter; "noted your suggestion" waits on us (in-app #290).

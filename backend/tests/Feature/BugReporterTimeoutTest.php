@@ -153,6 +153,28 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    /** A super_admin's own report: the write-back reply carries the reporter's id but links its issue, so it is ours. */
+    public function test_self_filed_report_times_out_on_the_linked_reply_but_a_real_reply_still_blocks(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin] = $this->seedUsers();
+        $resolvedAt = Carbon::parse('2026-07-01 12:00:00');
+        $linkedAsk = '已修好並上線，請按「確認已修好」。追蹤：https://github.com/o/r/issues/12';
+        $self = $this->makeResolvedBug($admin->id, $admin->id, $resolvedAt, true);
+        BugReportComment::query()->where('bug_report_id', $self->id)->update(['body' => $linkedAsk]);
+        $unlinked = $this->makeResolvedBug($admin->id, $admin->id, $resolvedAt, true);
+        $replied = $this->makeResolvedBug($admin->id, $admin->id, $resolvedAt, true);
+        BugReportComment::query()->where('bug_report_id', $replied->id)->update(['body' => $linkedAsk]);
+        $this->comment($replied, $admin->id, $resolvedAt->copy()->addDay(), false, '還是不行');
+
+        $ids = array_column(BugReportService::listEligibleForReporterTimeout(7), 'bug_id');
+        $this->assertContains($self->id, $ids);
+        $this->assertNotContains($unlinked->id, $ids, 'an unlinked comment by the reporter is the reporter talking');
+        $this->assertNotContains($replied->id, $ids);
+        $this->assertSame('closed', BugReportService::closeByReporterTimeout($self->id, $admin->id, false, 7)['action']);
+        Carbon::setTestNow();
+    }
+
     public function test_retest_request_must_be_recent_to_resolve_and_at_least_seven_days_old(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
