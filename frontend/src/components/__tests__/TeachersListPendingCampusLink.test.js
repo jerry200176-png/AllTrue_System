@@ -38,7 +38,7 @@ describe('TeachersList pending campus links (#4433)', () => {
 
   const mountTeachers = () => shallowMount(TeachersList, {
     props: { branchId: 2 },
-    global: { stubs: { AtFilterBar: false, AtDialog: false, AtButton: false, teleport: true } },
+    global: { stubs: { AtTabs: false, AtFilterBar: false, AtDialog: false, AtButton: false, teleport: true } },
   });
   const cardFor = (wrapper, name) => wrapper.findAll('.teacher-profile-card').find((c) => c.text().includes(name));
 

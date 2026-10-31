@@ -37,30 +37,14 @@
           </template>
         </AtPageHeader>
 
-        <nav class="director-workbench-v2__nav at-tabs" role="tablist" aria-label="總覽檢視模式">
-          <button
-            type="button"
-            role="tab"
-            id="director-workbench-tab-focus"
-            aria-controls="director-workbench-panel-focus"
-            :aria-selected="dashboardViewMode === 'focus'"
-            :class="['at-tab', { 'is-active': dashboardViewMode === 'focus' }]"
-            @click="setDashboardViewMode('focus')"
-          >
-            今天
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="director-workbench-tab-full"
-            aria-controls="director-workbench-panel-full"
-            :aria-selected="dashboardViewMode === 'full'"
-            :class="['at-tab', { 'is-active': dashboardViewMode === 'full' }]"
-            @click="setDashboardViewMode('full')"
-          >
-            完整營運
-          </button>
-        </nav>
+        <AtTabs
+          :model-value="dashboardViewMode"
+          class="director-workbench-v2__nav"
+          label="總覽檢視模式"
+          id-prefix="director-workbench"
+          :tabs="[{ value: 'focus', label: '今天' }, { value: 'full', label: '完整營運' }]"
+          @update:model-value="setDashboardViewMode"
+        />
 
         <section
           v-if="dashboardViewMode === 'focus'"
@@ -368,6 +352,7 @@ import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import TodayProgressCard from '../components/TodayProgressCard.vue';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
