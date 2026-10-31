@@ -530,7 +530,7 @@
       <div v-if="batchResults.length > 0" class="att-batch-results">
         <div v-for="r in batchResults" :key="r.class_session_id" :class="['att-batch-result-item', r.success ? 'success' : 'error']">
           <span>{{ r.student_name || `#${r.class_session_id}` }}</span>
-          <span>{{ r.success ? '✓' : ('✕ ' + (r.error || '')) }}</span>
+          <span>{{ r.success ? ['✓', r.data?.package_notice].filter(Boolean).join(' ') : ('✕ ' + (r.error || '')) }}</span>
         </div>
       </div>
 
@@ -1087,6 +1087,7 @@
 </template>
 
 <script setup>
+import { withPoolNotice } from '../lib/sharedPoolNotice.js';
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
@@ -1594,7 +1595,7 @@ async function submitDirQuick() {
       }),
     });
     if (res.ok) {
-      manualMsg.value = '已補建堂次並完成點名';
+      manualMsg.value = withPoolNotice('已補建堂次並完成點名', await res.json().catch(() => ({})));
       manualMsgType.value = 'success';
       dirForm.value.studentId = '';
       dirForm.value.studentClassId = '';
@@ -1738,7 +1739,7 @@ async function submitQuickAttend() {
       quickForm.value.startTime = roundToHalfHour();
       quickForm.value.endTime = halfHourLater();
       quickForm.value.status = 'present';
-      showDiscrepancyToast('已補建堂次並完成點名', 'success');
+      showDiscrepancyToast(withPoolNotice('已補建堂次並完成點名', await res.json().catch(() => ({}))), 'success');
       fetchRecords();
     } else {
       const err = await res.json().catch(() => ({}));
@@ -1975,6 +1976,7 @@ async function doSubmitPendingMark(s, status) {
       } else {
         pendingMarkMsg.value = `已核課：${s.student_name} ${label}`;
       }
+      pendingMarkMsg.value = withPoolNotice(pendingMarkMsg.value, json);
       pendingMarkMsgType.value = 'success';
       trackAdoptionEvent('attendance_marked', props.branchId, { role: props.userRole, status });
       await Promise.all([fetchPendingSessions(), fetchRecords()]);
@@ -2164,6 +2166,7 @@ const submitMakeupMark = async (s) => {
       } else {
         makeupMsg.value = `已補登：${s.student_name} ${label}`;
       }
+      makeupMsg.value = withPoolNotice(makeupMsg.value, json);
       makeupMsgType.value = 'success';
       makeupSessions.value = makeupSessions.value.filter(r => r.class_session_id !== s.class_session_id);
       makeupTotal.value = Math.max(0, makeupTotal.value - 1);
@@ -2339,7 +2342,7 @@ const submitManual = async () => {
     });
     if (res.ok) {
       const data = await res.json();
-      manualMsg.value = `已登記：${data.person_name || ''}`;
+      manualMsg.value = withPoolNotice(`已登記：${data.person_name || ''}`, data);
       manualMsgType.value = 'success';
       manualForm.value.personKey = '';
       manualForm.value.memo = '';
