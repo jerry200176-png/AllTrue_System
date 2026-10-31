@@ -958,13 +958,14 @@ const justRecordedAmount = computed(() => {
   const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === justRecorded.value?.reportId);
   return r ? Number(r.amount) : null;
 });
+const drawerScope = () => `${props.show}|${props.studentClassId}|${props.studentId}`;
 async function onEntryRecorded(result) {
   const reportId = Number(result?.report_id);
   const offer = entryMode.value === 'record' && result?.status === 'pending' && reportId > 0 && canManageInvoices();
-  const scope = `${props.show}|${props.studentClassId}|${props.studentId}`;
+  const scope = drawerScope();
   await onPanelChanged();
   // The director may have stepped to another student while the ledger reloaded: offer only for a drawer that still shows this report.
-  const stillHere = scope === `${props.show}|${props.studentClassId}|${props.studentId}`
+  const stillHere = scope === drawerScope()
     && (payload.value?.receipts || []).some((r) => Number(r.report_id) === reportId && r.status === 'pending');
   if (offer && stillHere) justRecorded.value = { reportId, busy: false, error: '' };
 }
@@ -979,8 +980,9 @@ async function confirmJustRecorded() {
   const same = justRecorded.value?.seq === seq;
   if (!res.ok) { if (same) justRecorded.value = { ...cur, busy: false, error: res.message }; return; }
   if (same) justRecorded.value = null;
+  const scope = drawerScope();
   await onPanelChanged();
-  if (same) openReceipt(cur.reportId);
+  if (same && scope === drawerScope()) openReceipt(cur.reportId);
 }
 watch(() => props.show, () => { justRecorded.value = null; });
 

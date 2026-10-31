@@ -151,6 +151,26 @@ describe('現在確認入帳 after 登記', () => {
     w.unmount();
   });
 
+  it('does not open the receipt over another student when the drawer moved during the reload after confirming', async () => {
+    const { w, fetchMock } = mountLedger({ receipts: recorded });
+    await flushPromises();
+    w.findComponent(EntryStub).vm.$emit('confirmed', { report_id: 8, status: 'pending' });
+    await flushPromises();
+    const ledgerFetch = fetchMock.getMockImplementation();
+    const releases = [];
+    fetchMock.mockImplementation(async (url, opts) => {
+      if (String(url).startsWith('/api/v1/accounting/ledger')) await new Promise((r) => { releases.push(r); });
+      return ledgerFetch(url, opts);
+    });
+    body('ledger-recorded-confirm').click();
+    await flushPromises();
+    await w.setProps({ studentClassId: 99 });
+    releases.forEach((r) => r());
+    await flushPromises();
+    expect(w.find('[data-testid="receipt-stub"]').exists()).toBe(false);
+    w.unmount();
+  });
+
   it('offers nothing when the response is already confirmed (補登) or has no report', async () => {
     const { w } = mountLedger({ receipts: recorded });
     await flushPromises();
