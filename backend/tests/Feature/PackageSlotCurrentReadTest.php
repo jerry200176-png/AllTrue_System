@@ -111,6 +111,31 @@ class PackageSlotCurrentReadTest extends TestCase
             'the counter is recomputed from current rows, not the snapshot');
     }
 
+    public function test_the_used_up_notice_sees_a_debit_committed_after_the_callers_snapshot(): void
+    {
+        // #4731: two subjects checking in at once on the pool's last lesson must not both be told "用完".
+        $pkg = $this->makePackage(); // 10 bought
+        [$first, $second] = [$this->makeMember($pkg), $this->makeMember($pkg)];
+        $debit = fn (int $course, int $n) => DB::table('package_session_ledger')->insert(array_fill(0, $n, ['package_id' => $pkg,
+            'student_class_id' => $course, 'class_session_id' => null, 'delta' => -1, 'reason' => 'attendance', 'created_at' => now(), 'updated_at' => now()]));
+        $debit($first, 9);
+
+        $reader = DB::connection('package_current');
+        $reader->statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        $reader->beginTransaction();
+        $this->assertSame(-9, (int) $reader->table('package_session_ledger')->where('package_id', $pkg)->sum('delta'));
+        $debit($first, 1); // the other subject's check-in commits the 10th lesson first
+        $debit($second, 1); // this request's own debit: the 11th
+
+        DB::setDefaultConnection('package_current');
+        try {
+            $this->assertSame('共用方案已超出 1 堂，請先續課。', app(\App\Services\SharedPackagePlanningService::class)->usedUpNotice($pkg));
+            $reader->commit();
+        } finally {
+            DB::setDefaultConnection($this->originalConnection);
+        }
+    }
+
     public function test_the_current_read_does_not_hold_up_another_package_debiting_the_next_lesson(): void
     {
         // Lessons created together get adjacent ids; a lock on a class_session_id range would make them wait on each other.

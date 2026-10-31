@@ -530,7 +530,7 @@
       <div v-if="batchResults.length > 0" class="att-batch-results">
         <div v-for="r in batchResults" :key="r.class_session_id" :class="['att-batch-result-item', r.success ? 'success' : 'error']">
           <span>{{ r.student_name || `#${r.class_session_id}` }}</span>
-          <span>{{ r.success ? '✓' : ('✕ ' + (r.error || '')) }}</span>
+          <span>{{ r.success ? ['✓', r.data?.package_notice].filter(Boolean).join(' ') : ('✕ ' + (r.error || '')) }}</span>
         </div>
       </div>
 
@@ -2048,7 +2048,7 @@ async function batchMarkAllPresent() {
     }
 
     if (json.success_count > 0) {
-      pendingMarkMsg.value = withPoolNotice(`批次完成：${json.success_count} 成功` + (json.fail_count > 0 ? `，${json.fail_count} 失敗` : ''), ...json.results.map((r) => r.data));
+      pendingMarkMsg.value = `批次完成：${json.success_count} 成功` + (json.fail_count > 0 ? `，${json.fail_count} 失敗` : '');
       pendingMarkMsgType.value = json.fail_count > 0 ? 'error' : 'success';
       trackAdoptionEvent('attendance_batch_marked', props.branchId, { count: json.success_count, role: props.userRole });
     } else {
