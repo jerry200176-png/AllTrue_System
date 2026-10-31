@@ -44,6 +44,12 @@
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
         <span v-if="!slipState.ok" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
       </template>
+      <!-- F-5a1: the table's money actions, offered where the director already works. Each opens the page's existing dialog. -->
+      <template v-if="rowActions">
+        <AtButton v-if="rowActions.waive" variant="secondary" size="sm" shape="rect" data-testid="contract-waive" @click="emit('row-action', 'waive')">改成「{{ WAIVED_LABEL }}」</AtButton>
+        <AtButton v-if="rowActions.void" variant="secondary" size="sm" shape="rect" data-testid="contract-void" @click="emit('row-action', 'void')">撤銷收款</AtButton>
+        <AtButton v-if="rowActions.settle" variant="secondary" size="sm" shape="rect" data-testid="contract-settle" @click="emit('row-action', 'settle')">結案（不續報）</AtButton>
+      </template>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -159,8 +165,10 @@ const props = defineProps({
   hasConfirmedReport: { type: Boolean, default: false },
   // F-2: the list row's 確認入帳 opens the drawer with this card's confirm dialog already asking (once).
   autoConfirm: { type: Boolean, default: false },
+  // F-5a1: { waive, void, settle } booleans the page derives from the same alert row and rules the old table used.
+  rowActions: { type: Object, default: null },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };

@@ -109,6 +109,15 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     w.unmount();
   });
 
+  it('F-5a1: a card action is passed up with the contract id, and only where the page allowed it', async () => {
+    const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11)], props: { rowActions: { 11: { waive: true } } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-card-12"] [data-testid="contract-waive"]').exists()).toBe(false);
+    await w.get('[data-testid="contract-card-11"] [data-testid="contract-waive"]').trigger('click');
+    expect(w.emitted('row-action')).toEqual([[{ kind: 'waive', courseId: 11 }]]);
+    w.unmount();
+  });
+
   it('without initialAction the ledger opens as before', async () => {
     const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)] });
     await flushPromises();
