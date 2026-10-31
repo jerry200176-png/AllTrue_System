@@ -31,7 +31,7 @@ describe('operations quick-start UX contract', () => {
     for (const marker of ['收款與核帳', '新增排課', '調課／代課', "intent: 'pending'", "intent: 'quick-add'", "intent: 'reschedule'"]) {
       expect(director).toContain(marker);
     }
-    for (const marker of ['帳務處理流程', '登記收款', '確認入帳', 'clear-initial-tab']) {
+    for (const marker of ['clear-initial-tab']) {
       expect(billing).toContain(marker);
     }
     for (const marker of ['排課處理流程', '調課', '換代課', 'clear-initial-intent']) {
@@ -61,8 +61,7 @@ describe('operations quick-start UX contract', () => {
 
     expect(course).toContain('<AtHelpDisclosure label="先看懂這一頁">');
     expect(course).toContain('class="course-stats-disclosure"');
-    expect(billing).toContain('<AtHelpDisclosure label="帳務處理流程">');
-    expect(billing).toContain('class="tc-summary-disclosure"');
+    expect(billing).not.toContain('帳務處理流程'); // F-5: the step guidance went with the queue table
     expect(calendar).toContain('class="calendar-process-disclosure"');
     expect(calendar).toContain('data-guide="calendar-toolbar"');
   });

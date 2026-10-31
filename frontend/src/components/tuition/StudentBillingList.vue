@@ -102,6 +102,9 @@
             :aria-label="`${rowPrimaryAction(r).label}：${r.student_name}`"
             @click="$emit('action', r, rowPrimaryAction(r))"
           >{{ rowPrimaryAction(r).label }}</AtButton>
+          <ul v-if="r.notes.length" class="sbl__notes" :data-testid="`sbl-notes-${r.student_id}`">
+            <li v-for="n in r.notes" :key="n">{{ n }}</li>
+          </ul>
           <template v-if="r.contracts.length">
             <button
               type="button"
@@ -130,7 +133,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AtBadge from '../design-system/AtBadge.vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
@@ -152,6 +155,9 @@ const props = defineProps({
   // F-5a2: { [studentId]: { confirm, report } } = how many contracts each batch action would touch; null hides the batch toolbar.
   batchCounts: { type: Object, default: null },
   exportDisabled: { type: Boolean, default: false },
+  // Deep links (notifications, 首頁) pick the filter chip the old 待處理 tab used to show.
+  // { key } so that following the same deep link again re-applies the chip after the director changed it.
+  presetFilter: { type: Object, default: () => ({ key: 'all' }) },
 });
 const alertsFailed = computed(() => Boolean(props.error) && !props.alertRows.length);
 const inPanel = computed(() => props.view !== 'students' && props.panels.some((p) => p.key === props.view));
@@ -167,7 +173,8 @@ const toggle = (id) => {
   expanded.value = next;
 };
 const query = ref('');
-const filter = ref('all');
+const filter = ref(STUDENT_FILTERS[props.presetFilter?.key] ? props.presetFilter.key : 'all');
+watch(() => props.presetFilter, (p) => { if (STUDENT_FILTERS[p?.key]) filter.value = p.key; });
 const rows = computed(() => buildStudentBillingRows(props.alertRows, props.students, props.today));
 const totalNow = computed(() => rows.value.reduce((s, r) => s + r.owed_now, 0));
 const owingCount = computed(() => rows.value.filter((r) => r.owed_now > 0).length);
@@ -271,6 +278,7 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__last,.sbl__overdue{font-size:13px;font-variant-numeric:tabular-nums}
 .sbl__muted{font-size:12px;color:var(--ds-ink-mute)}
 .sbl__toggle{background:none;border:0;padding:4px 12px;min-height:32px;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
+.sbl__notes{list-style:none;margin:0;padding:0 12px;font-size:var(--ds-font-size-sm);color:var(--ds-warning-text,var(--ds-ink-mute))}
 .sbl__contracts{list-style:none;margin:0;padding:0 12px 8px}
 .sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){
