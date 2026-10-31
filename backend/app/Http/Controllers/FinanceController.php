@@ -1053,6 +1053,15 @@ class FinanceController extends Controller
                 fn ($r) => ($r['invoice_ids'] ?? []) !== [] && substr((string) $r['period_start'], 0, 7) !== substr((string) $r['period_end'], 0, 7)
                     && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
             );
+            // Only the clean case follows the rule: label month = start month and the period engine sees no ambiguity.
+            // Otherwise keep 待確認 in each covered month, uncounted, so nothing is double-counted or shown paid.
+            $spanReview = $monthlyBilled && $spans->isNotEmpty() && (
+                (bool) ($coverage[(int) $c->ID]['review_required'] ?? false)
+                || $spans->contains(fn ($r) => substr((string) $r['billing_period'], 0, 7) !== substr((string) $r['period_start'], 0, 7))
+            );
+            if ($spanReview) {
+                $spans = collect();
+            }
             $own = $spans->first(fn ($r) => substr((string) $r['period_start'], 0, 7) === $period);
             // a separate invoice that starts in the selected month keeps its own status and amounts
             $carried = ($own === null && ($p === null || ($p['invoice_ids'] ?? []) === [])) ? $spans->first() : null;
@@ -1064,6 +1073,8 @@ class FinanceController extends Controller
                 continue; // written off by the director: neither collected nor outstanding
             }
             if ($v === null) {
+                $st = 'review';
+            } elseif ($spanReview) {
                 $st = 'review';
             } elseif ($monthlyBilled && $carried !== null) {
                 // counted in the month the range starts: due and outstanding stay 0 here

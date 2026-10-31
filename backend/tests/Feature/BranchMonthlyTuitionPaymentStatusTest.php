@@ -258,4 +258,35 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
         $this->assertSame([10000, 1000], [(int) $row['due_amount'], (int) $row['outstanding_amount']]);
     }
+
+    /** #4727(a): label month differs from the range start month => review in each covered month, uncounted. */
+    public function test_cross_month_invoice_with_other_label_month_stays_review(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-15', 'EndDate' => '2026-09-14'];
+        $c = $this->course([['2026-09', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-08-17', '2026-08-24', '2026-09-07', '2026-09-14']);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
+        \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $c->ID,
+            'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-14']);
+        foreach ([8, 9] as $m) {
+            $res = $this->fetchReport("&month={$m}")->assertOk();
+            $this->assertSame('review', collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID)['pay_status'], "month {$m}");
+            $this->assertSame([0, 0], [(int) $res->json('summary.total_due'), (int) $res->json('summary.total_collected')], "month {$m}");
+        }
+    }
+
+    /** #4727(b): a multi-item cross-month invoice is ambiguous for the period engine => never paid. */
+    public function test_ambiguous_multi_item_cross_month_invoice_is_review(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-15', 'EndDate' => '2026-09-14'];
+        $c = $this->course([['2026-08', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-08-17', '2026-08-24', '2026-09-07', '2026-09-14']);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
+        $inv = \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id');
+        foreach ([['2026-08-15', '2026-08-31'], ['2026-09-01', '2026-09-14']] as [$a, $b]) {
+            \App\Models\InvoiceItem::create(['InvoiceID' => $inv, 'StudentClassID' => $c->ID, 'Description' => 'x', 'Amount' => 3000, 'PeriodStart' => $a, 'PeriodEnd' => $b]);
+        }
+        foreach ([8, 9] as $m) {
+            $row = collect($this->fetchReport("&month={$m}")->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+            $this->assertSame('review', $row['pay_status'], "month {$m}");
+        }
+    }
 }
