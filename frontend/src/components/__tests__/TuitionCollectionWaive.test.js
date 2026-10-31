@@ -8,8 +8,9 @@ const source = readFileSync(resolve(__dirname, '../../pages/TuitionCollectionPag
 
 describe('tuition 確認不收 (waive) action', () => {
   it('is shown on the settled_pending row only for directors', () => {
-    const row = source.slice(source.indexOf("r.payment_status === 'pending_reconciliation'\">"));
-    expect(row.slice(0, 1400)).toContain('v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)"');
+    // F-5: the button moved to the drawer's contract card; the page still decides who sees it.
+    expect(source).toContain("waive: canWaive.value && r.payment_status === 'pending_reconciliation' && Boolean(r.closed_reason)");
+    expect(source).toContain("if (kind === 'waive') openWaiveDialog(row);");
     expect(source).toContain('const canWaive = computed(() => isDirectorRole(getAuthRole()));');
   });
 
@@ -33,12 +34,12 @@ describe('tuition 確認不收 (waive) action', () => {
   });
 
   it('hides 確認不收 on paused rows (no closed_reason) because the waive endpoint rejects them', () => {
-    expect(source).toContain('v-if="canWaive && r.closed_reason" class="tc-btn tc-btn--reject" @click="openWaiveDialog(r)"');
+    expect(source).toContain("pending_reconciliation' && Boolean(r.closed_reason)");
   });
 
   it('refuses to batch-select or submit rows whose payable is null or 0', () => {
     expect(source).toContain("const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;");
-    expect(source).toContain("if (ps !== 'pending_report' && !hasBatchAmount(r)) return false;");
-    expect(source.match(/&& hasBatchAmount\(r\)\)/g)).toHaveLength(3);
+    expect(source).toContain("r.payable_status === 'invoiced' && hasBatchAmount(r)"); // what the student list may pick
+    expect(source.match(/&& hasBatchAmount\(r\)\)/g)).toHaveLength(3); // preview rows, submit rows, open-preview rows
   });
 });
