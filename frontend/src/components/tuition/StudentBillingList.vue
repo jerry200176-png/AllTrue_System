@@ -41,7 +41,7 @@
         <span>學生</span><span class="sbl__col-now">到今天未繳</span><span>逾期</span><span>狀態</span><span>最近繳費</span>
       </div>
       <ul class="sbl__list">
-        <li v-for="r in visible" :key="r.student_id">
+        <li v-for="r in visible" :key="r.student_id" :class="{ 'has-action': rowPrimaryAction(r) }">
           <button type="button" class="sbl__row" :data-testid="`sbl-row-${r.student_id}`" @click="$emit('open', r)">
             <span class="sbl__meta">{{ metaLine(r) }}</span>
             <span class="sbl__name">{{ r.student_name }}</span>
@@ -56,6 +56,16 @@
             </span>
             <span class="sbl__last">{{ r.last_paid_at ? formatDate(r.last_paid_at) : '—' }}</span>
           </button>
+          <AtButton
+            v-if="rowPrimaryAction(r)"
+            class="sbl__action"
+            size="sm"
+            shape="rect"
+            :variant="rowPrimaryAction(r).kind === 'confirm' ? 'primary' : 'secondary'"
+            :data-testid="`sbl-action-${r.student_id}`"
+            :aria-label="`${rowPrimaryAction(r).label}：${r.student_name}`"
+            @click="$emit('action', r, rowPrimaryAction(r))"
+          >{{ rowPrimaryAction(r).label }}</AtButton>
           <template v-if="r.contracts.length">
             <button
               type="button"
@@ -91,7 +101,7 @@ import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import AtSkeleton from '../design-system/AtSkeleton.vue';
 import { formatDate } from '../../lib/billingDocumentView.js';
 import { LEGACY_FLAG_UNVERIFIED_LABEL } from '../../lib/courseMoneyState.js';
-import { buildStudentBillingRows, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
+import { buildStudentBillingRows, rowPrimaryAction, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
 
 const props = defineProps({
   alertRows: { type: Array, default: () => [] },
@@ -100,7 +110,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
 });
-defineEmits(['open', 'retry']);
+defineEmits(['open', 'action', 'retry']);
 // No alert data yet: zeros would read as "all paid".
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
@@ -173,6 +183,9 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__head{padding:0 12px;font-size:12px;color:var(--ds-ink-mute)}
 .sbl__col-now{text-align:right}
 .sbl__row{width:100%;min-height:52px;text-align:left;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;cursor:pointer;font:inherit;color:inherit}
+.sbl__list>li.has-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center}
+.sbl__list>li.has-action>:not(.sbl__row):not(.sbl__action){grid-column:1/-1}
+.sbl__action{min-height:44px;white-space:nowrap}
 .sbl__row:hover{border-color:var(--ds-ink-mute)}
 .sbl__meta{display:none}
 .sbl__name{font-weight:700}
@@ -187,6 +200,8 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__contracts{list-style:none;margin:0;padding:0 12px 8px}
 .sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){
+  .sbl__list>li.has-action{grid-template-columns:1fr}
+  .sbl__action{width:100%}
   .sbl__toggle{min-height:44px}
   .sbl__head{display:none}
   .sbl__chips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:2px}
