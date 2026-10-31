@@ -12,7 +12,6 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -153,14 +152,17 @@ class PackageCreateWithScheduleTest extends TestCase
         }
     }
 
-    private function trim(int $pkgId, ?string $sha = null): string
+    private function excess(int $pkgId): array
     {
-        Artisan::call('packages:trim-shared-pool', ['--package' => [$pkgId]] + ($sha === null ? [] : ['--execute' => true, '--plan-sha' => $sha]));
-
-        return Artisan::output();
+        return app(\App\Services\SharedPackagePlanningService::class)->sharedPoolExcess(CoursePackage::findOrFail($pkgId));
     }
 
-    public function test_trim_removes_only_what_the_pool_has_no_room_for_keeps_history_and_a_renewal_refills_without_a_gap(): void
+    private function dates($rows): array
+    {
+        return $rows->map(fn ($r) => substr((string) $r->SessionDate, 0, 10))->sort()->values()->all();
+    }
+
+    public function test_pool_excess_keeps_the_earliest_and_lessons_with_history_and_a_renewal_refills_deleted_dates(): void
     {
         $token = $this->createDirectorToken([1]);
         [$pkgId, $members] = $this->createMonWedPool($token, 4);
@@ -172,23 +174,22 @@ class PackageCreateWithScheduleTest extends TestCase
         StudentSignIn::create(['StudentClassID' => $last->StudentClassID, 'StudentID' => $members[0]->StudentID,
             'ClassSessionID' => $last->id, 'Status' => 'leave', 'SignInDT' => ($at = substr((string) $last->SessionDate, 0, 10) . ' 16:00:00'), 'SignOutDT' => $at]);
 
-        $dry = $this->trim($pkgId);
-        $this->assertStringContainsString("package={$pkgId} remaining=4 planned=8 remove=4 blocked=0", $dry);
-        $this->assertCount(8, $this->plannedDates($members), 'a dry run changes nothing');
-        $this->assertStringContainsString('plan_sha does not match', $this->trim($pkgId, 'not-the-plan'));
-        $this->assertCount(8, $this->plannedDates($members));
+        $x = $this->excess($pkgId);
+        $this->assertSame(['remaining' => 4, 'planned' => 8, 'blocked' => 0], array_intersect_key($x, ['remaining' => 0, 'planned' => 0, 'blocked' => 0]));
+        $this->assertSame(array_slice($all, 3, 4), $this->dates($x['rows']), 'keeps the earliest 3 and the lesson with a leave');
 
-        preg_match('/plan_sha=([0-9a-f]{64})/', $dry, $m);
-        $this->assertStringContainsString('removed=4 result=APPLIED', $this->trim($pkgId, $m[1]));
-        $this->assertSame([$all[0], $all[1], $all[2], $all[7]], $this->plannedDates($members), 'the earliest 3 and the kept leave lesson');
-        $this->assertSame(4, DB::table('schedule_audit_logs')->where('action_type', 'delete')->count(), 'every removed row is kept in the audit log');
+        // The cleanup deletes through the model (the observer keeps each row in schedule_audit_logs).
+        $x['rows']->each->delete();
+        $this->assertSame([$all[0], $all[1], $all[2], $all[7]], $this->plannedDates($members));
+        $this->assertSame(4, DB::table('schedule_audit_logs')->where('action_type', 'delete')->count());
+        $this->assertTrue($this->excess($pkgId)['rows']->isEmpty());
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 8])->assertOk();
         $this->assertSame($all, $this->plannedDates($members), 'a renewal re-fills the removed dates, no gap');
     }
 
-    public function test_trim_removes_a_whole_group_slot_from_every_member(): void
+    public function test_pool_excess_takes_a_whole_group_slot_from_every_member(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->makeStudent(1);
@@ -200,9 +201,11 @@ class PackageCreateWithScheduleTest extends TestCase
         $this->overPlan($members, 1);
         $this->assertCount(6, $this->plannedDates($members), '3 group lessons, 2 rows each');
 
-        preg_match('/plan_sha=([0-9a-f]{64})/', $dry = $this->trim($pkgId), $m);
-        $this->assertStringContainsString('remaining=2 planned=3 remove=2 blocked=0', $dry);
-        $this->trim($pkgId, $m[1]);
+        $x = $this->excess($pkgId);
+        $this->assertSame([2, 3], [$x['remaining'], $x['planned']]);
+        $this->assertCount(2, $x['rows'], 'the last group lesson, one row per member');
+        $this->assertCount(1, array_unique($this->dates($x['rows'])));
+        $x['rows']->each->delete();
         $this->assertCount(4, $this->plannedDates($members));
         $this->assertCount(2, array_unique($this->plannedDates($members)), 'both members keep the same 2 group lessons');
     }
