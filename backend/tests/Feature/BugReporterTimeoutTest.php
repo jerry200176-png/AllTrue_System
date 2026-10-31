@@ -166,11 +166,15 @@ class BugReporterTimeoutTest extends TestCase
         $replied = $this->makeResolvedBug($admin->id, $admin->id, $resolvedAt, true);
         BugReportComment::query()->where('bug_report_id', $replied->id)->update(['body' => $linkedAsk]);
         $this->comment($replied, $admin->id, $resolvedAt->copy()->addDay(), false, '還是不行');
+        $linkedComplaint = $this->makeResolvedBug($admin->id, $admin->id, $resolvedAt, true);
+        BugReportComment::query()->where('bug_report_id', $linkedComplaint->id)->update(['body' => $linkedAsk]);
+        $this->comment($linkedComplaint, $admin->id, $resolvedAt->copy()->addDay(), false, '還是不行，見 https://github.com/o/r/issues/12');
 
         $ids = array_column(BugReportService::listEligibleForReporterTimeout(7), 'bug_id');
         $this->assertContains($self->id, $ids);
         $this->assertNotContains($unlinked->id, $ids, 'an unlinked comment by the reporter is the reporter talking');
         $this->assertNotContains($replied->id, $ids);
+        $this->assertNotContains($linkedComplaint->id, $ids, 'a reporter reply that pastes the issue link still blocks');
         $this->assertSame('closed', BugReportService::closeByReporterTimeout($self->id, $admin->id, false, 7)['action']);
         Carbon::setTestNow();
     }
