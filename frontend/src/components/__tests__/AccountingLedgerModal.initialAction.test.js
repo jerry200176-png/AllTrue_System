@@ -144,6 +144,18 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     w.unmount();
   });
 
+  // Moved from the old queue-table doc-entry test (#3894): opening a slip or a receipt only ever reads.
+  it('opening 繳費單 and 查看收據 sends no write request', async () => {
+    const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts });
+    await flushPromises();
+    await w.get('[data-testid="contract-slip"]').trigger('click');
+    await w.get('[data-testid="ledger-other-receipts-toggle"]').trigger('click');
+    await w.get('[data-testid="ledger-receipt-view-7"]').trigger('click');
+    const writes = global.fetch.mock.calls.filter(([, init]) => (init?.method || 'GET').toUpperCase() !== 'GET');
+    expect(writes).toEqual([]);
+    w.unmount();
+  });
+
   it('non-director sees no receipt button and no 繳費單', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts, role: 'teacher' });
     await flushPromises();

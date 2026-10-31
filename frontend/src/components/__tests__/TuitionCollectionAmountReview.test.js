@@ -23,46 +23,33 @@ async function mountPage(alertRows = [CONFIRMED, REVIEW]) {
   global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/api/v1/alerts/tuition') ? alertRows : [])));
   const wrapper = mount(TuitionCollectionPage, {
     props: { branchId: 1, initialTab: 'all' },
-    global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
+    global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, teleport: true } },
   });
   await flushPromises();
   return wrapper;
 }
 
-const tabBadge = (w, label) => w.findAll('.tc-tab').find((t) => t.text().startsWith(label)).find('.tc-tab-badge').text();
+// F-5: the queue table is gone; the same rules are read off the student list.
+const badges = (w, id) => w.find(`[data-testid="sbl-row-${id}"]`).findAll('.at-badge').map((b) => b.text());
 
-describe('金額待確認 rows in the tuition queue (Founder D2)', () => {
-  it('lists the row with the pending marker and keeps it out of confirmed counts and totals', async () => {
+describe('金額待確認 rows in the student list (Founder D2)', () => {
+  it('marks the row 需核對 and keeps its amount out of the 未繳 total', async () => {
     const w = await mountPage();
-
-    expect(w.text()).toContain('測試生');
-    expect(w.find('[data-testid="tc-amount-review-hint"]').exists()).toBe(true);
-    expect(tabBadge(w, '需核對金額')).toBe('1');
-    expect(tabBadge(w, '已結束，未收')).toBe('1');
-    expect(tabBadge(w, '待處理')).toBe('1');
-
-    const summary = w.find('.tc-summary-disclosure__hint').text();
-    expect(summary).toContain('已開帳單未繳 NT$ 8,800');
-    expect(summary).toContain('需核對金額 1 筆 NT$ 3,400，未計入未收');
-    expect(w.find('[data-testid="tc-pending-review-card"]').text()).toContain('NT$ 3,400');
-    // 收款率 = confirmed paid / confirmed billed: the pending row's 1,000 / 4,400 stays out.
-    expect(w.find('.tc-rate').text()).toContain('0%');
+    expect(badges(w, 2)).toEqual(['需核對']);
+    expect(badges(w, 1)).toEqual(['未繳']);
+    const summary = w.find('[data-testid="sbl-summary"]').text();
+    expect(summary).toContain('本校區到今天未繳 NT$ 8,800');
+    expect(summary).toContain('NT$ 3,400（1 筆，不在未繳內）');
     w.unmount();
   });
 
-  it('keeps a pending parent report on a 金額待確認 bill confirmable, but its amount out of debt totals and overdue', async () => {
+  it('keeps a pending parent report on a 金額待確認 bill confirmable, but its amount out of the 未繳 total', async () => {
     const w = await mountPage([CONFIRMED, REPORTED]);
-
-    expect(tabBadge(w, '待確認入帳')).toBe('1');
-    expect(tabBadge(w, '需核對金額')).toBe('1');
-    expect(tabBadge(w, '逾期應收')).toBe('0');
-    const row = w.findAll('tr').find((tr) => tr.text().includes('回報生'));
-    expect(row.text()).toContain('確認入帳');
-    expect(row.find('[data-testid="tc-amount-review-hint"]').exists()).toBe(true);
-
-    const summary = w.find('.tc-summary-disclosure__hint').text();
-    expect(summary).toContain('已開帳單未繳 NT$ 8,800');
-    expect(summary).toContain('需核對金額 1 筆 NT$ 4,400，未計入未收');
+    expect(badges(w, 3)).toEqual(['需核對', '待確認入帳']);
+    expect(w.find('[data-testid="sbl-action-3"]').text()).toBe('確認入帳');
+    const summary = w.find('[data-testid="sbl-summary"]').text();
+    expect(summary).toContain('本校區到今天未繳 NT$ 8,800');
+    expect(summary).toContain('NT$ 4,400（1 筆，不在未繳內）');
     w.unmount();
   });
 });
