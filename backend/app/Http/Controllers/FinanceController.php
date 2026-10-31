@@ -1017,10 +1017,18 @@ class FinanceController extends Controller
             }
             if ((string) $c->ScheduleMode === 'date' && (int) ($c->PackageID ?? 0) <= 0) {
                 $monthlyIds[] = $c;
-            } elseif ($v->source === 'invoice' && $v->owed > 0) {
-                $countIds[] = (int) $c->ID;
+            } elseif ($v->owed > 0) {
+                $countIds[] = (int) $c->ID; // invoiced or not: the verdict's owed is the authoritative contract amount
             }
         }
+        // Shared-package members hold no bill of their own: a paid sibling's receipt is valid evidence for the flag.
+        $pkgMembers = [];
+        foreach ($courses as $c) {
+            if ((int) ($c->PackageID ?? 0) > 0 && ($verdicts[(int) $c->ID] ?? null)?->source === 'legacy_flag') {
+                $pkgMembers[] = (int) $c->ID;
+            }
+        }
+        $evidence = $pkgMembers === [] ? ['classes' => []] : app(\App\Services\BillingPayableResolver::class)->validPaymentEvidence($pkgMembers);
         $throughEnd = $countIds === [] ? [] : DB::table('ClassSession')
             ->whereIn('StudentClassID', $countIds)
             ->whereIn('Status', AttendanceStatus::payableSessionStatuses())
@@ -1039,26 +1047,48 @@ class FinanceController extends Controller
             $gap = collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains(
                 fn ($r) => ($r['calendar_month'] ?? null) === $period && (($r['uncovered_sessions'] ?? 0) > 0 || ($r['outside_contract_sessions'] ?? 0) > 0)
             );
-            $cross = collect($coverage[(int) $c->ID]['periods'] ?? [])->contains(
-                // An invoice whose service range spans two months would be counted in both reports: show 待確認 in each.
+            // An invoice whose service range spans months counts once, in the month its range starts (Founder 2026-10-31);
+            // later covered months show its status with nothing due, so totals never double-count it.
+            $spans = collect($coverage[(int) $c->ID]['periods'] ?? [])->filter(
                 fn ($r) => ($r['invoice_ids'] ?? []) !== [] && substr((string) $r['period_start'], 0, 7) !== substr((string) $r['period_end'], 0, 7)
                     && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
             );
-            $gap = $gap || $cross;
+            // Only the clean case follows the rule: label month = start month and the period engine sees no ambiguity.
+            // Otherwise keep 待確認 in each covered month, uncounted, so nothing is double-counted or shown paid.
+            $spanReview = $monthlyBilled && $spans->isNotEmpty() && (
+                (bool) ($coverage[(int) $c->ID]['review_required'] ?? false)
+                || $spans->contains(fn ($r) => substr((string) $r['billing_period'], 0, 7) !== substr((string) $r['period_start'], 0, 7))
+                // the start month's row only exists when it has lessons; else nothing would carry the invoice amount
+                || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['period_start'], 0, 7)))
+            );
+            if ($spanReview) {
+                $spans = collect();
+            }
+            $own = $spans->first(fn ($r) => substr((string) $r['period_start'], 0, 7) === $period);
+            // a separate invoice that starts in the selected month keeps its own status and amounts
+            $carried = ($own === null && ($p === null || ($p['invoice_ids'] ?? []) === [])) ? $spans->first() : null;
+            if ($monthlyBilled && ($own ?? $carried) !== null) {
+                $p = collect($v->periods ?? [])->first(fn ($x) => ($x['billing_period'] ?? null) === ($own ?? $carried)['billing_period']);
+            }
             if ((string) $c->closed_reason === 'waived') {
                 $course[(int) $c->ID] = ['pay_status' => 'waived', 'due_amount' => 0.0, 'outstanding_amount' => 0.0];
                 continue; // written off by the director: neither collected nor outstanding
             }
             if ($v === null) {
                 $st = 'review';
+            } elseif ($spanReview) {
+                $st = 'review';
+            } elseif ($monthlyBilled && $carried !== null) {
+                // counted in the month the range starts: due and outstanding stay 0 here
+                $st = ($p === null || $gap || $p['status'] === 'review_required' || !empty($p['amount_discrepancy'])) ? 'review' : $p['status'];
             } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
                 $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy']) || $gap) ? 'review' : $p['status'];
                 [$owed, $out] = [(float) $p['total'], (float) $p['outstanding']];
-            } elseif ($monthlyBilled && ($p !== null || $cross)) {
+            } elseif ($monthlyBilled && $p !== null) {
                 $st = 'review'; // this month's lessons cannot be attributed to an invoice
             } elseif ($v->status === 'review_required' && !$monthlyBilled) {
                 $st = 'review';
-            } elseif ($v->source === 'legacy_flag') {
+            } elseif ($v->source === 'legacy_flag' && !isset($evidence['classes'][(int) $c->ID])) {
                 $st = 'review'; // Paid flag only, no invoice/payment evidence: never green, never debt
             } elseif ($monthlyBilled) {
                 [$st, $owed, $out] = $v->isSettled() ? ['paid', $tuition, 0.0] : ['unpaid', $tuition, $tuition];
@@ -1066,13 +1096,17 @@ class FinanceController extends Controller
                 // Spread the authoritative contract amount (invoice total) over the lessons, then apply receipts oldest-first.
                 $rate = $this->resolveRate($c);
                 $agg = $throughEnd[(int) $c->ID] ?? null;
-                $gross = (int) ($agg->total ?? 0) * $rate;
+                // Stable contracted lesson count (as resolveRate does), so later attendance never moves an earlier month.
+                $gross = ((int) ($c->SessionCount ?? 0) > 0 ? (int) $c->SessionCount : (int) ($agg->total ?? 0)) * $rate;
                 $scale = ($gross > 0 && $v->owed < $gross) ? $v->owed / $gross : 1.0;
-                $owed = round($tuition * $scale, 2);
+                $thru = (int) ($agg->thru ?? 0);
+                $cap = $agg === null ? INF : (float) $v->owed; // cumulative allocation never exceeds the authoritative amount
+                $cum = fn (int $n) => min($cap, $n * $rate * $scale);
+                $owed = $agg === null ? round($tuition * $scale, 2) : round($cum($thru) - $cum(max(0, $thru - (int) $c->monthly_session_count)), 2);
                 if ($v->isSettled()) {
                     [$st, $out] = ['paid', 0.0];
                 } elseif ($v->status === 'partial') {
-                    $out = max(0.0, min($owed, (int) ($agg->thru ?? 0) * $rate * $scale - (float) $v->applied));
+                    $out = max(0.0, min($owed, $cum($thru) - (float) $v->applied));
                     $st = $out <= 0 ? 'paid' : ($out >= $owed ? 'unpaid' : 'partial');
                 } else {
                     [$st, $out] = ['unpaid', $owed];
