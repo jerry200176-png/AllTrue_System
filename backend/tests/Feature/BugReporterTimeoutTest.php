@@ -175,6 +175,42 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_legacy_batch_closes_only_reviewed_old_resolves_without_evidence_and_a_reply_reopens(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-31 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $silent = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-05-01 12:00:00'), false);
+        $confirmed = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-05-01 12:00:00'), false);
+        $this->comment($confirmed, $reporter->id, Carbon::parse('2026-05-02 12:00:00'), false, '可以了，謝謝');
+        $recent = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-10-01 12:00:00'), false);
+        $withEvidence = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-05-01 12:00:00'), true);
+
+        $rows = collect(BugReportService::listLegacyResolvedWithoutEvidence())->keyBy('bug_id');
+        $this->assertSame([$silent->id, $confirmed->id], $rows->keys()->all());
+        $this->assertFalse($rows[$silent->id]['reporter_replied']);
+        $this->assertTrue($rows[$confirmed->id]['reporter_replied']);
+
+        $this->artisan('bugs:close-stale-resolved', ['--legacy' => true, '--actor' => $admin->id])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', ['--legacy' => true, '--actor' => $admin->id, '--reviewed-ids' => $recent->id . ''])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', ['--legacy' => true, '--days' => 7, '--actor' => $admin->id, '--dry-run' => true])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', ['--legacy' => true, '--actor' => $admin->id, '--dry-run' => true])->assertSuccessful();
+        $this->assertSame('resolved', $silent->fresh()->status);
+        $this->artisan('bugs:close-stale-resolved', ['--legacy' => true, '--actor' => $admin->id, '--reviewed-ids' => $silent->id . ',' . $confirmed->id])
+            ->assertSuccessful();
+
+        foreach ([$silent, $confirmed] as $bug) {
+            $this->assertSame('closed', $bug->fresh()->status);
+            $this->assertTrue(BugReportComment::where('bug_report_id', $bug->id)->where('body', 'like', '這張回報之前已處理完成%')->exists());
+        }
+        $this->assertSame('resolved', $recent->fresh()->status);
+        $this->assertSame('resolved', $withEvidence->fresh()->status);
+        $this->assertSame('skip', BugReportService::closeLegacyResolved($silent->id, $admin->id)['action'], 'a repeat is a no-op');
+
+        BugReportService::addReporterCommentAndReopen($silent->id, $reporter->id, '還是不行');
+        $this->assertSame('in_progress', $silent->fresh()->status);
+        Carbon::setTestNow();
+    }
+
     public function test_retest_request_must_be_recent_to_resolve_and_at_least_seven_days_old(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));

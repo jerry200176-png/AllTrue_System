@@ -1206,6 +1206,79 @@ class BugReportService
             ->all();
     }
 
+    public const LEGACY_CLOSE_MIN_DAYS = 60;
+
+    /**
+     * Founder GO 2026-10-31 (one reviewed batch): a resolve logged before the Evidence Contract carries no
+     * production evidence, so the reporter timeout above never closes it, even after the reporter confirmed.
+     *
+     * @return list<array{bug_id:int,resolved_at:string,reporter_replied:bool}>
+     */
+    public static function listLegacyResolvedWithoutEvidence(?Carbon $now = null): array
+    {
+        $out = [];
+        foreach (BugReport::query()->where('status', 'resolved')->orderBy('id')->pluck('reporter_user_id', 'id') as $bugId => $reporterId) {
+            if ($row = self::legacyResolvedRow((int) $bugId, (int) $reporterId, $now ?: Carbon::now())) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array{bug_id:int,resolved_at:string,reporter_replied:bool}|null */
+    private static function legacyResolvedRow(int $bugId, int $reporterId, Carbon $now): ?array
+    {
+        $log = BugReportStatusLog::query()->where('bug_report_id', $bugId)->where('to_status', 'resolved')->orderByDesc('id')->first();
+        $resolvedAt = Carbon::make($log?->created_at);
+        if ($resolvedAt === null || $resolvedAt->gt($now->copy()->subDays(self::LEGACY_CLOSE_MIN_DAYS))
+            || str_contains((string) $log->note, self::RESOLUTION_EVIDENCE_MARKER)
+            || self::hasValidAppendOnlyResolutionEvidence($bugId, $resolvedAt)) {
+            return null;
+        }
+
+        return [
+            'bug_id' => $bugId,
+            'resolved_at' => $resolvedAt->toIso8601String(),
+            'reporter_replied' => BugReportComment::query()->where('bug_report_id', $bugId)->where('author_user_id', $reporterId)
+                ->where('is_internal_note', false)->where('created_at', '>=', $resolvedAt)->exists(),
+        ];
+    }
+
+    /**
+     * Close one listed legacy resolve with the timeout reply. The closed_by_timeout note keeps the existing
+     * reopen-on-reporter-reply path (back to in_progress); the row is re-checked under its lock.
+     *
+     * @return array{ok:bool,action:string,code?:string}
+     */
+    public static function closeLegacyResolved(int $bugId, int $actorUserId, bool $dryRun = false): array
+    {
+        $eligible = static fn (?BugReport $bug) => $bug && $bug->status === 'resolved'
+            && self::legacyResolvedRow($bugId, (int) $bug->reporter_user_id, Carbon::now()) !== null;
+        if (!$eligible(BugReport::query()->find($bugId))) {
+            return ['ok' => false, 'action' => 'skip', 'code' => 'not_eligible'];
+        }
+        if ($dryRun) {
+            return ['ok' => true, 'action' => 'would_close'];
+        }
+        $result = DB::transaction(function () use ($bugId, $actorUserId, $eligible) {
+            if (!$eligible(BugReport::query()->where('id', $bugId)->lockForUpdate()->first())) {
+                return ['ok' => false, 'code' => 'not_eligible'];
+            }
+            self::addComment($bugId, $actorUserId, '這張回報之前已處理完成，先結案。還有問題直接在這裡回覆就會重開。');
+            $res = self::changeStatus($bugId, $actorUserId, 'closed',
+                'closed_by_timeout — Evidence Contract legacy batch: resolve without production evidence (Founder GO 2026-10-31)');
+            if (!$res['ok']) {
+                throw new \RuntimeException($res['message'] ?? 'close failed');
+            }
+
+            return $res;
+        });
+        Log::info('bug_closed_legacy_batch', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId, 'ok' => $result['ok']]);
+
+        return $result['ok'] ? ['ok' => true, 'action' => 'closed'] : ['ok' => false, 'action' => 'failed', 'code' => $result['code'] ?? 'close_failed'];
+    }
+
     /**
      * Close one eligible bug with closed_by_timeout note. Idempotent if already closed.
      *

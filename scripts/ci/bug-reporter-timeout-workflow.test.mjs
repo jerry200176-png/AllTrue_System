@@ -62,4 +62,14 @@ assert.match(shell, /\[\[ "\$command_help" == \*--auto\* \]\] \|\| \{ echo "depl
 assert.match(shell, /php artisan bugs:close-stale-resolved --auto \$ACTOR_ARG\n/, 'auto apply uses only --auto');
 assert.doesNotMatch(shell.slice(shell.indexOf('=== AUTO APPLY ==='), shell.indexOf('exit 0', shell.indexOf('=== AUTO APPLY ==='))), /reviewed-ids|--days/, 'auto apply carries no reviewed IDs or days');
 
+// Founder GO 2026-10-31: one reviewed legacy batch, same gate as apply.
+assert.equal(request({ MODE: 'legacy-dry-run' }), 0, 'legacy dry-run is allowed');
+assert.equal(request({ MODE: 'legacy-apply', CONFIRMATION: 'CLOSE_STALE_RESOLVED', REVIEWED_IDS: '2,3' }), 0, 'reviewed legacy apply is allowed');
+assert.notEqual(request({ MODE: 'legacy-apply', CONFIRMATION: 'CLOSE_STALE_RESOLVED' }), 0, 'legacy apply needs reviewed IDs');
+assert.notEqual(request({ MODE: 'legacy-apply', REVIEWED_IDS: '2' }), 0, 'legacy apply needs confirmation');
+assert.notEqual(request({ MODE: 'legacy-dry-run', REVIEWED_IDS: '2' }), 0, 'legacy dry-run rejects IDs');
+assert.match(shell, /if \[\[ "\$MODE" == "apply" \|\| "\$MODE" == "legacy-apply" \]\]; then\n {2}git merge-base --is-ancestor/, 'legacy apply checks production ancestry');
+assert.match(shell, /\[\[ "\$command_help" == \*--legacy\* \]\] \|\| \{ echo "deployed command lacks --legacy"/, 'legacy fails closed on an old deploy');
+assert.match(shell, /php artisan bugs:close-stale-resolved --legacy \$ACTOR_ARG --reviewed-ids="\$REVIEWED_IDS"\n/, 'legacy apply passes exact reviewed IDs');
+
 console.log('bug-reporter-timeout workflow contract: PASS');
