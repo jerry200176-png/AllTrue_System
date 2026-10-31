@@ -156,6 +156,33 @@ class AssessmentAuthorSnapshotTest extends TestCase
         $this->assertSame(0, DB::table('LearningRecord as lr')->where('lr.id', $lr->id)->where(fn ($q) => $own::constrainWhereTeacherIdIsHistoricalOwner($q, 'lr'))->count());
     }
 
+    public function test_update_reads_the_record_under_the_row_lock_the_snapshot_takes(): void
+    {
+        // #4661: without the lock an in-flight author save could land after sendBackForRefill and refill B's cleared row.
+        [$s, $lr] = $this->filled();
+        $locked = 0;
+        DB::listen(function ($q) use (&$locked) {
+            if (preg_match('/from [`"]?LearningRecord[`"]?.* for update/i', $q->sql)) {
+                $locked++;
+            }
+        });
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '主任修改'])->assertOk()->assertJsonPath('Content', '主任修改');
+        $this->assertGreaterThanOrEqual(1, $locked);
+    }
+
+    public function test_original_author_edit_after_a_teacher_change_is_rejected_and_the_cleared_row_stays_clear(): void
+    {
+        [$s, $lr] = $this->filled();
+        $s->update(['Status' => 'scheduled']);
+        DB::table('StudentSingIn')->where('ClassSessionID', $s->id)->delete();
+        $lr->update(['SessionDeducted' => false]);
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+        $authorToken = $this->tok(User::findOrFail($this->aId));
+        $this->withHeaders(['Authorization' => "Bearer {$authorToken}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '晚到的舊老師存檔'])->assertForbidden();
+        $this->assertSame('', (string) $lr->fresh()->Content);
+    }
+
     public function test_attachment_url_must_be_http_or_site_relative(): void
     {
         [$s, $lr] = $this->filled();
