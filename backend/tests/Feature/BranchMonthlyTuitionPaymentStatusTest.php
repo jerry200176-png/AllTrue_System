@@ -235,4 +235,27 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $member->ID);
         $this->assertSame(['paid', 0], [$row['pay_status'], (int) $row['outstanding_amount']]);
     }
+
+    /** Codex P2 on #4726: a separate invoice starting in the selected month is not hidden by an earlier carried range. */
+    public function test_own_month_invoice_is_kept_beside_a_carried_range(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-07-15', 'EndDate' => '2026-08-31'];
+        $c = $this->course([['2026-07', 6000, 'paid', 6000, [[6000, 'cash']]], ['2026-08', 6000, 'unpaid', 0, []]], $date, ['2026-07-20', '2026-07-27', ...self::AUG]);
+        $items = fn ($start, $end, $inv) => \App\Models\InvoiceItem::create(['InvoiceID' => $inv, 'StudentClassID' => $c->ID, 'Description' => 'x', 'Amount' => 6000, 'PeriodStart' => $start, 'PeriodEnd' => $end]);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
+        $ids = \App\Models\Invoice::where('StudentClassID', $c->ID)->orderBy('billing_period')->pluck('id');
+        $items('2026-07-15', '2026-08-14', $ids[0]);
+        $items('2026-08-15', '2026-08-31', $ids[1]);
+
+        $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame(['unpaid', 6000], [$row['pay_status'], (int) $row['outstanding_amount']]);
+    }
+
+    /** Codex P2 on #4726: more payable lesson rows than SessionCount never allocate beyond the contract amount. */
+    public function test_allocation_is_capped_at_contract_amount_when_lessons_exceed_session_count(): void
+    {
+        $c = $this->course([['2026-08', 10000, 'partial', 9000, [[9000, 'cash']]]], ['Charge' => 10000], [...self::AUG, ...array_map(fn ($d) => "2026-08-$d", ['04', '05', '06', '07', '11', '12', '13'])]);
+        $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+        $this->assertSame([10000, 1000], [(int) $row['due_amount'], (int) $row['outstanding_amount']]);
+    }
 }

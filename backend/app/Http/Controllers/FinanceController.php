@@ -1054,7 +1054,8 @@ class FinanceController extends Controller
                     && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
             );
             $own = $spans->first(fn ($r) => substr((string) $r['period_start'], 0, 7) === $period);
-            $carried = $own === null ? $spans->first() : null;
+            // a separate invoice that starts in the selected month keeps its own status and amounts
+            $carried = ($own === null && ($p === null || ($p['invoice_ids'] ?? []) === [])) ? $spans->first() : null;
             if ($monthlyBilled && ($own ?? $carried) !== null) {
                 $p = collect($v?->periods ?? [])->first(fn ($x) => ($x['billing_period'] ?? null) === ($own ?? $carried)['billing_period']);
             }
@@ -1085,11 +1086,14 @@ class FinanceController extends Controller
                 // Stable contracted lesson count (as resolveRate does), so later attendance never moves an earlier month.
                 $gross = ((int) ($c->SessionCount ?? 0) > 0 ? (int) $c->SessionCount : (int) ($agg->total ?? 0)) * $rate;
                 $scale = ($gross > 0 && $v->owed < $gross) ? $v->owed / $gross : 1.0;
-                $owed = round($tuition * $scale, 2);
+                $thru = (int) ($agg->thru ?? 0);
+                $cap = $agg === null ? INF : (float) $v->owed; // cumulative allocation never exceeds the authoritative amount
+                $cum = fn (int $n) => min($cap, $n * $rate * $scale);
+                $owed = $agg === null ? round($tuition * $scale, 2) : round($cum($thru) - $cum(max(0, $thru - (int) $c->monthly_session_count)), 2);
                 if ($v->isSettled()) {
                     [$st, $out] = ['paid', 0.0];
                 } elseif ($v->status === 'partial') {
-                    $out = max(0.0, min($owed, (int) ($agg->thru ?? 0) * $rate * $scale - (float) $v->applied));
+                    $out = max(0.0, min($owed, $cum($thru) - (float) $v->applied));
                     $st = $out <= 0 ? 'paid' : ($out >= $owed ? 'unpaid' : 'partial');
                 } else {
                     [$st, $out] = ['unpaid', $owed];
