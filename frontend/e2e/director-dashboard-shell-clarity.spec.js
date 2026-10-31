@@ -207,11 +207,12 @@ for (const viewport of [VIEWPORTS[0], VIEWPORTS[4]]) {
     await openPilot(page, { mode: 'payment-navigation', pageName: 'app', viewport, paymentAlerts: PAYMENT_NAVIGATION_ALERTS });
 
     const navigationCases = [
-      { student: '合成應收學生', tab: '未繳／繳了一部分' },
-      { student: '合成部分入帳學生', tab: '未繳／繳了一部分' },
-      { student: '合成已回報學生', tab: '待確認入帳' },
-      { student: '合成結案待查學生', tab: '已結束，未收' },
-      { student: '合成續課學生', tab: '續課/將到期' },
+      // F-5-1: the queue table is gone; each link lands on the matching student-list chip with the contract's drawer open.
+      { student: '合成應收學生', chip: '全部' },
+      { student: '合成部分入帳學生', chip: '全部' },
+      { student: '合成已回報學生', chip: '待確認入帳' },
+      { student: '合成結案待查學生', chip: '全部' },
+      { student: '合成續課學生', chip: '需續課' },
     ];
 
     for (const [index, navigationCase] of navigationCases.entries()) {
@@ -226,9 +227,9 @@ for (const viewport of [VIEWPORTS[0], VIEWPORTS[4]]) {
       await paymentRow.getByRole('button', { name: '前往帳務中心', exact: true }).click();
 
       await expect(page.getByRole('heading', { name: '帳務中心', exact: true })).toBeVisible();
-      await expect(page.locator('.tc-tab--active')).toContainText(navigationCase.tab);
+      await expect(page.locator('.sbl__chip.is-on')).toHaveText(navigationCase.chip);
       await expect(page.locator('.tc-focus-context')).toContainText(navigationCase.student);
-      await expect(page.locator('.tc-row--focused')).toHaveCount(1);
+      await expect(page.locator('.ledger-modal')).toBeVisible();
     }
 
     expect(consoleErrors, consoleErrors.join('\n')).toEqual([]);
