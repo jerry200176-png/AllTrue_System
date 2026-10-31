@@ -41,6 +41,25 @@ class AccountingLedgerPayloadSnapshotTest extends TestCase
         $this->assertSame(json_decode((string) file_get_contents(self::FIXTURE), true), $payload);
     }
 
+    public function test_each_course_carries_no_payment_obligation_with_the_scope_rule(): void
+    {
+        $user = User::create(['LoginName' => 'snap2@example.com', 'Name' => 'snap2', 'PSW' => bcrypt('x'), 'type' => 'D', 'status' => 'active']);
+        UserCampus::create(['UserID' => $user->id, 'CampusID' => 1, 'Admin' => 1, 'Approved' => 1]);
+        AuthToken::create(['user_id' => $user->id, 'token' => 'snap-token-2', 'expires_at' => now()->addDay()]);
+        $this->seedStudent();
+        DB::table('StudentClass')->where('ID', 9102)->update(['ClassType' => 'tutoring']);
+
+        $json = $this->getJson('/api/v1/accounting/ledger?student_class_id=9101', ['Authorization' => 'Bearer snap-token-2'])->assertOk()->json();
+        $byId = collect($json['courses'])->pluck('no_payment_obligation', 'id')->sortKeys()->all();
+        $this->assertSame([9101 => false, 9102 => true, 9103 => false], $byId);
+        $this->assertFalse($json['scope']['no_payment_obligation']);
+
+        // Opened on the tutoring course, scope and its own course row agree.
+        $opened = $this->getJson('/api/v1/accounting/ledger?student_class_id=9102', ['Authorization' => 'Bearer snap-token-2'])->assertOk()->json();
+        $this->assertTrue($opened['scope']['no_payment_obligation']);
+        $this->assertTrue(collect($opened['courses'])->firstWhere('id', 9102)['no_payment_obligation']);
+    }
+
     private function seedStudent(): void
     {
         DB::table('Student')->insert(['id' => 9001, 'name' => 'snap', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
