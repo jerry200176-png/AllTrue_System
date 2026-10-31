@@ -96,6 +96,108 @@ class PackageCreateWithScheduleTest extends TestCase
         ])->postJson('/api/v1/course-packages/create-multi-subject', $payload);
     }
 
+    private function futurePlanned(int $classId): int
+    {
+        return ClassSession::where('StudentClassID', $classId)->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', now()->toDateString())->count();
+    }
+
+    /** Two subjects (Mon 16:00 / Wed 14:00) sharing $total lessons, starting tomorrow. */
+    private function createMonWedPool(string $token, int $total): array
+    {
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $start = now()->addDay()->toDateString();
+        $res = $this->postCreate($token, [
+            'student_id' => $student->id, 'branch_id' => 1, 'name' => '共用方案', 'total_sessions' => $total,
+            'rate' => 500, 'class_type' => 'one_on_one',
+            'subjects' => [
+                ['subject_id' => 1, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start],
+                ['subject_id' => 2, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [3], 'start_time' => '14:00', 'start_date' => $start],
+            ],
+        ])->assertStatus(201);
+
+        return [(int) $res->json('package_id'), StudentClass::where('PackageID', $res->json('package_id'))->orderBy('ID')->get()];
+    }
+
+    public function test_raising_the_pool_total_adds_only_the_new_lessons_across_subjects(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        [$pkgId, $members] = $this->createMonWedPool($token, 4);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 6])->assertOk();
+
+        $this->assertSame([3, 3], $members->map(fn ($m) => $this->futurePlanned($m->ID))->all());
+    }
+
+    public function test_group_pool_joining_a_slot_a_sibling_already_planned_costs_nothing(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $start = now()->addDay()->toDateString();
+        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start];
+        $pkgId = $this->postCreate($token, [
+            'student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 4,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1), $spec(2)],
+        ])->assertStatus(201)->json('package_id');
+        [$a, $b] = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get()->all();
+        $this->assertSame([4, 4], [$this->futurePlanned($a->ID), $this->futurePlanned($b->ID)]); // 4 shared slots
+
+        // B is missing its first two rows; A still has them, so they are already in the pool's plan.
+        ClassSession::where('StudentClassID', $b->ID)->orderBy('SessionDate')->limit(2)->get()->each->delete();
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 6])->assertOk();
+
+        $slots = ClassSession::whereIn('StudentClassID', [$a->ID, $b->ID])->where('Status', 'scheduled')
+            ->get()->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->unique()->count();
+        $this->assertSame(6, $slots, 'raising 4 → 6 plans 6 distinct group lessons');
+    }
+
+    public function test_group_pool_with_a_moved_lesson_fills_the_selected_slots_not_a_count(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $start = now()->addDay()->toDateString();
+        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start];
+        $pkgId = $this->postCreate($token, [
+            'student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 4,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1), $spec(2)],
+        ])->assertStatus(201)->json('package_id');
+        [$a, $b] = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get()->all();
+        // A: weekly slots 1, 2, 3 and 6 (its 4th lesson moved two weeks later); B: only slot 1. 4 distinct lessons planned.
+        $rows = fn ($m) => ClassSession::where('StudentClassID', $m->ID)->orderBy('SessionDate')->get();
+        $fourth = $rows($a)[3];
+        $fourth->update(['SessionDate' => \Carbon\Carbon::parse($fourth->SessionDate)->addWeeks(2)->toDateString()]);
+        $rows($b)->slice(1)->each->delete();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 5])->assertOk();
+
+        $slots = ClassSession::whereIn('StudentClassID', [$a->ID, $b->ID])->where('Status', 'scheduled')
+            ->get()->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->unique()->count();
+        $this->assertSame(5, $slots, '5 bought = 5 distinct group lessons, even with a moved lesson');
+        // Each member sits in every group lesson: weekly slots 1, 2, 3, 4 and 6 (B's slot 6 is past its first five contract dates).
+        $dates = fn ($m) => ClassSession::where('StudentClassID', $m->ID)->where('Status', 'scheduled')->orderBy('SessionDate')
+            ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all();
+        $this->assertSame($dates($a), $dates($b));
+        $this->assertCount(5, $dates($b));
+    }
+
+    public function test_auto_fill_never_plans_past_a_fully_planned_pool(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        [, $members] = $this->createMonWedPool($token, 4);
+        $this->assertSame([2, 2], $members->map(fn ($m) => $this->futurePlanned($m->ID))->all());
+
+        // Any other refill path (course edit, sync command, transfer) goes through the same function.
+        app(\App\Services\Scheduling\ContractSessionSchedule::class)->extendSessionsIfNeeded($members[0]->fresh(), 4);
+
+        $this->assertSame(2, $this->futurePlanned($members[0]->ID));
+    }
+
     // ─── FR-001 / FR-003：含時段，自動補排 ───
 
     public function test_create_with_days_of_week_generates_class_sessions(): void
@@ -143,19 +245,18 @@ class PackageCreateWithScheduleTest extends TestCase
             ->where('Status', 'scheduled')
             ->whereDate('SessionDate', '>=', now()->toDateString())
             ->count();
-        $this->assertSame($futurePlanned, $json['package']['future_planned_sessions']);
-        $this->assertSame(max(0, $futurePlanned - 8), $json['package']['overage_sessions']);
-        $this->assertTrue($json['package']['renewal_warning']);
+        // The pool pre-plans what was bought (8), not 8 per subject; Mon/Wed alternate by date.
+        $this->assertSame(8, $futurePlanned);
+        $this->assertSame(8, $json['package']['future_planned_sessions']);
+        $this->assertSame(0, $json['package']['overage_sessions']);
+        $this->assertFalse($json['package']['renewal_warning']);
 
         foreach ($members as $m) {
-            $count = ClassSession::where('StudentClassID', $m->ID)
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
-                ->count();
-            $this->assertEquals(8, $count, "Member {$m->ID} should have 8 ClassSession rows");
+            $this->assertSame(4, $this->futurePlanned($m->ID), "Member {$m->ID} takes every other lesson");
         }
 
         foreach ($json['members_scheduled'] as $ms) {
-            $this->assertEquals(8, $ms['scheduled_count']);
+            $this->assertGreaterThanOrEqual(4, $ms['scheduled_count']);
             $this->assertNotNull($ms['first_session_date']);
             $this->assertTrue((bool) $ms['has_schedule']);
         }

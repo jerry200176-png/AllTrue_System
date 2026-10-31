@@ -3,6 +3,7 @@
 namespace App\Services\Scheduling;
 
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\LearningRecord;
 use App\Models\ScheduleAuditLog;
 use App\Models\StudentClass;
@@ -11,6 +12,7 @@ use App\Services\ClassSessionContractReflowService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ManualSessionBookingService;
 use App\Services\SessionDeductionService;
+use App\Services\SharedPackagePlanningService;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -474,8 +476,11 @@ class ContractSessionSchedule
      *         caller already batch-fetched this class's existing ClassSession rows (e.g. TD-018-style
      *         batch preload across many classes in one query), pass them here to skip the per-class
      *         query. Pass null (default) to have this method query them itself, as before.
+     * @param  int|array<string, true>|null  $futureCap  Future (not yet ended) lessons it may add: at most N (int), or
+     *         only these "Y-m-d|H:i" slots (array, from fillSharedPool). Null: a shared count package member is capped at
+     *         the pool's unplanned remainder, anything else is uncapped.
      */
-    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount, ?\Illuminate\Support\Collection $preloadedExistingSessions = null): void
+    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount, ?\Illuminate\Support\Collection $preloadedExistingSessions = null, int|array|null $futureCap = null): void
     {
         if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
             return;
@@ -613,6 +618,19 @@ class ContractSessionSchedule
         }
 
         $now = Carbon::now();
+        // Shared pool: auto-fill never pre-plans past what was bought; a director can still add by hand.
+        $futureCap ??= self::sharedPoolUnplanned($studentClass);
+        if ($futureCap !== null) {
+            $newSessions = array_values(array_filter($newSessions, static function (array $s) use (&$futureCap, $now): bool {
+                if (self::sessionEndedByEndTime((string) ($s['SessionDate'] ?? ''), (string) ($s['EndTime'] ?? '18:00:00'), $now)) {
+                    return true;
+                }
+
+                return is_array($futureCap)
+                    ? isset($futureCap[self::normalizeDateString($s['SessionDate'] ?? null) . '|' . substr((string) ($s['StartTime'] ?? ''), 0, 5)])
+                    : $futureCap-- > 0;
+            }));
+        }
         $teacherId = (int) ($studentClass->TeacherID ?? 0);
         $subjectName = DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name')
             ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
@@ -679,6 +697,91 @@ class ContractSessionSchedule
         }
 
         SessionDeductionService::syncCounters($studentClass);
+    }
+
+    /**
+     * Pre-plan a shared count package's members in date order, so subjects alternate the way the
+     * lessons happen, up to the pool's unplanned remainder (bought − used − already planned).
+     *
+     * @param  array<int, StudentClass>  $members
+     */
+    public function fillSharedPool(CoursePackage $package, array $members, int $count): void
+    {
+        $planning = app(SharedPackagePlanningService::class)->summarize($package);
+        $budget = max(0, $planning['remaining_sessions'] - $planning['future_planned_sessions']);
+        $isGroup = in_array((string) ($package->class_type ?? ''), SharedPackagePlanningService::GROUP_CLASS_TYPES, true);
+        $now = Carbon::now();
+        $candidates = [];
+        $rowsByKey = [];
+        $slotPlanned = []; // group slots already in future_planned_sessions cost nothing to join (#4455)
+        $today = Carbon::today()->toDateString();
+        foreach ($members as $member) {
+            $classId = (int) $member->ID;
+            $taken = [];
+            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime', 'Status']) as $row) {
+                $date = (string) self::normalizeDateString($row->SessionDate);
+                $key = $date . '|' . substr((string) $row->StartTime, 0, 5);
+                $taken[$key] = true;
+                if ($isGroup && $date >= $today && in_array((string) $row->Status, ['scheduled', 'rescheduled', 'leave_requested'], true)) {
+                    $slotPlanned[$key] = true;
+                }
+            }
+            $slots = self::resolveScheduleSlotsForRebuild($member);
+            if ($slots === [] || (string) ($member->scheduling_policy ?? '') === ManualSessionBookingService::POLICY) {
+                continue;
+            }
+            $startFrom = self::normalizeDateString($member->StartDate ?? null) ?: Carbon::today()->toDateString();
+            // Longer than $count so a member whose contract dates are taken still offers the next weekly dates.
+            $sequence = self::buildSessionsForCount($classId, $startFrom, $count + count($taken), $slots, max(30, (int) ($member->SessionDuration ?? 120)));
+            foreach ($sequence as $s) {
+                $key = self::normalizeDateString($s['SessionDate'] ?? null) . '|' . substr((string) ($s['StartTime'] ?? ''), 0, 5);
+                if (!isset($taken[$key]) && !self::sessionEndedByEndTime((string) $s['SessionDate'], (string) ($s['EndTime'] ?? '18:00:00'), $now)) {
+                    $candidates[] = [$key, $classId];
+                    $rowsByKey[$classId][$key] = $s;
+                }
+            }
+        }
+        sort($candidates); // "Y-m-d|H:i" keys: date, then time
+        $share = [];
+        foreach ($candidates as [$key, $classId]) {
+            $free = $isGroup && isset($slotPlanned[$key]);
+            if (!$free && $budget <= 0) {
+                continue;
+            }
+            $budget -= $free ? 0 : 1;
+            $slotPlanned[$key] = true;
+            $share[$classId][$key] = true;
+        }
+        foreach ($members as $member) {
+            $classId = (int) $member->ID;
+            // The selected slots themselves, not a count: a member with a moved lesson would fill different dates (#4730).
+            $this->extendSessionsIfNeeded($member, $count, null, $picked = $share[$classId] ?? []);
+            // That walks only the first $count contract dates; a selected slot past them (a member missing rows) is added here.
+            $have = [];
+            $room = $count; // never past the member's own count, as extendSessionsIfNeeded keeps it
+            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime', 'Status']) as $row) {
+                $have[self::normalizeDateString($row->SessionDate) . '|' . substr((string) $row->StartTime, 0, 5)] = true;
+                $room -= in_array(strtolower((string) $row->Status), ['cancelled', 'leave', 'leave_adjusted', 'excused'], true) ? 0 : 1;
+            }
+            foreach (array_slice(array_keys(array_diff_key($picked, $have)), 0, max(0, $room)) as $key) {
+                app(ClassSessionMaterializationService::class)->upsertSlot(['Status' => 'scheduled'] + $rowsByKey[$classId][$key]);
+            }
+        }
+    }
+
+    /** Shared count package member: how many more lessons its pool may auto-plan. Null for anything else. */
+    private static function sharedPoolUnplanned(StudentClass $studentClass): ?int
+    {
+        $packageId = (int) ($studentClass->PackageID ?? 0);
+        $package = $packageId > 0 ? CoursePackage::find($packageId) : null;
+        $planning = app(SharedPackagePlanningService::class);
+        if ($package === null || $package->billing_mode !== CoursePackage::BILLING_MODE_SESSION || !$planning->isSharedPackage($package)) {
+            return null;
+        }
+        $p = $planning->summarize($package);
+
+        // ponytail: a group slot a sibling already planned still costs 1 here (under-fills, never over-fills); fillSharedPool is exact.
+        return max(0, $p['remaining_sessions'] - $p['future_planned_sessions']);
     }
 
     /**

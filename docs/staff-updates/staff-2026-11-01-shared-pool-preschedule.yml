@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-01-shared-pool-preschedule
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 共用堂數方案只預排買的堂數
+    summary: 幾科共用一包堂數時，行事曆上預排的課加起來不會超過買的堂數。
+    items:
+      - category: fixed
+        text: 建立方案時，各科照日期先後輪流排，總數等於方案堂數；以前每一科都會各排滿一次。
+      - category: fixed
+        text: 增加方案總堂數時，只補上多買的堂數，一樣各科輪流排。
+      - category: improved
+        text: 堂數用完後還是可以手動加課，系統會提醒先安排續課。
+    source_refs:
+      - "changelog:2026-11-01:shared-pool-preschedule-cap"
