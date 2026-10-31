@@ -389,7 +389,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'changed', 'step', 'row-action']);
-defineExpose({ reload: () => loadLedger() });
+defineExpose({ reload: () => loadLedger(), focus: () => modalEl.value?.focus() });
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
 const modalEl = ref(null);

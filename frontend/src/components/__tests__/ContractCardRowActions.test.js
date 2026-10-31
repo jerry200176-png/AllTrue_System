@@ -38,5 +38,8 @@ describe('page wiring (F-5a1)', () => {
     expect(page).toContain("else if (kind === 'void') openVoidDialog(row);");
     expect(page).toContain("else if (kind === 'settle') openSettleDialog(row);");
     expect(page).toContain('@row-action="onLedgerRowAction"');
+    // keyboard: into the dialog on open, back to the drawer on close
+    expect(page).toContain("document.querySelector('.tc-overlay textarea, .tc-overlay .tc-btn--primary')?.focus()");
+    expect(page).toContain('ledgerModal.value?.focus()');
   });
 });

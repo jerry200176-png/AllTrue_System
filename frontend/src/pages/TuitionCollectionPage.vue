@@ -2360,6 +2360,8 @@ function onLedgerRowAction({ kind, courseId }) {
   if (kind === 'waive') openWaiveDialog(row);
   else if (kind === 'void') openVoidDialog(row);
   else if (kind === 'settle') openSettleDialog(row);
+  // The dialog sits outside the drawer: move the keyboard into it (reason field, or the confirm button).
+  nextTick(() => document.querySelector('.tc-overlay textarea, .tc-overlay .tc-btn--primary')?.focus());
 }
 
 // ═══ Void Dialog ═══
@@ -2463,7 +2465,9 @@ const settleNewerHint = computed(() => formatTuitionNewerCourseHint(settleTarget
 const settleTargetStillOwesSessions = computed(() => Number(settleTarget.value?.remaining_sessions ?? 0) > 0);
 // The drawer shows the money state, so it rereads after one of those dialogs closes (done or cancelled).
 watch([waiveDialogOpen, voidDialogOpen, settleDialogOpen], (now, before) => {
-  if (ledgerOpen.value && now.some((open, i) => !open && before[i])) ledgerModal.value?.reload();
+  if (!ledgerOpen.value || !now.some((open, i) => !open && before[i])) return;
+  ledgerModal.value?.reload();
+  ledgerModal.value?.focus(); // keyboard goes back to the drawer, where Esc and Tab work again
 });
 
 function openSettleDialog(row) {
