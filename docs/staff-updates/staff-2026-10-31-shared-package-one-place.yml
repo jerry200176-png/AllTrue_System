@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-31-shared-package-one-place
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 共用方案只在一張卡收款
+    summary: 共用方案的收款集中在一張課程卡，其他科目只告訴你去哪裡收。
+    items:
+      - category: improved
+        text: 負責收款的卡寫出一起收款的科目，其他卡不再各自顯示未繳。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-f3-shared-package"
