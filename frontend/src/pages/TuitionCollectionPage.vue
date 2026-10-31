@@ -39,11 +39,11 @@
         :key="tab.key"
         type="button"
         class="acct-tab at-tab"
-        :class="{ active: activeAccountingTab === tab.key }"
+        :class="{ active: tabHighlighted(tab.key) }"
         role="tab"
         :id="`tuition-accounting-tab-${tab.key}`"
         :aria-controls="`tuition-accounting-panel-${tab.key}`"
-        :aria-selected="activeAccountingTab === tab.key"
+        :aria-selected="tabHighlighted(tab.key)"
         @click="activeAccountingTab = tab.key"
       >
         <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px">{{ tab.icon }}</span>
@@ -59,7 +59,7 @@
     </div>
 
     <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
-      <button v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
+      <button v-if="!['students', 'payments', 'fees', ...STUDENT_PANEL_VIEWS].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
         v-for="v in visibleReminders"
         :key="v.key"
@@ -70,12 +70,28 @@
       >{{ reminderLabel(v) }}</button>
     </nav>
 
-    <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
-      <StudentBillingList ref="studentList" :alert-rows="rows" :students="campusStudents" :loading="loading" :error="error" @open="openLedgerForStudent" @action="(r, a) => openLedgerForStudent(r, a)" @retry="loadAlerts" />
-    </section>
-
-    <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
-      <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
+    <!-- F-4: 要開帳單 / 月結要核對 are chips of the student list; their panels render inside it instead of as separate pages. -->
+    <section v-if="['students', ...STUDENT_PANEL_VIEWS].includes(activeAccountingTab)" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
+      <StudentBillingList
+        ref="studentList"
+        :alert-rows="rows"
+        :students="campusStudents"
+        :loading="loading"
+        :error="error"
+        :view="activeAccountingTab"
+        :panels="studentPanels"
+        @view="activeAccountingTab = $event"
+        @open="openLedgerForStudent"
+        @action="(r, a) => openLedgerForStudent(r, a)"
+        @retry="loadAlerts"
+      >
+        <template #monthly-drafts>
+          <MonthlyDraftsPanel ref="monthlyDrafts" :branch-id="branchId" />
+        </template>
+        <template #monthly-review>
+          <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
+        </template>
+      </StudentBillingList>
     </section>
 
     <section
@@ -751,10 +767,6 @@
       </template>
     </section>
 
-    <section v-if="activeAccountingTab === 'monthly-drafts' && canVoid" id="tuition-accounting-panel-monthly-drafts" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-drafts" tabindex="0">
-      <MonthlyDraftsPanel ref="monthlyDrafts" :branch-id="branchId" />
-    </section>
-
     <section v-if="activeAccountingTab === 'fees' && canVoid" id="tuition-accounting-panel-fees" role="tabpanel" aria-labelledby="tuition-accounting-tab-fees" tabindex="0">
       <FeeLedgerPanel ref="feeLedger" :branch-id="branchId" :students="campusStudents" />
     </section>
@@ -1170,11 +1182,16 @@ const ACCOUNTING_TABS = [
 ];
 const REMINDER_VIEWS = [
   { key: 'receivables', label: '待處理清單' },
-  { key: 'monthly-review', label: '月結要核對' },
-  { key: 'monthly-drafts', label: '本月待開帳單', directorOnly: true },
   { key: 'settled', label: '已結清' },
 ];
+// F-4: these two used to be reminder-bar pages; they are chips on the student list now.
+const STUDENT_PANEL_VIEWS = ['monthly-drafts', 'monthly-review'];
+const tabHighlighted = (key) => activeAccountingTab.value === key || (key === 'students' && STUDENT_PANEL_VIEWS.includes(activeAccountingTab.value));
 const activeAccountingTab = ref('students');
+const studentPanels = computed(() => [
+  ...(canVoid.value ? [{ key: 'monthly-drafts', label: '要開帳單' }] : []),
+  { key: 'monthly-review', label: '月結要核對' },
+]);
 // PRD §0.3: counts only where the page already holds the data (the alert rows);
 // monthly review / drafts / settled load lazily, so they show no number.
 const reminderCount = (v) => (v.key === 'receivables' && !loading.value && !error.value ? tabCounts.value.action : null);

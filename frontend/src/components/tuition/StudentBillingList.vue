@@ -1,41 +1,52 @@
 <template>
   <section class="sbl" aria-label="學生帳務清單">
-    <AtInlineAlert v-if="error" tone="danger" title="帳務資料載入失敗" data-testid="sbl-error">
+    <AtInlineAlert v-if="error && !inPanel" tone="danger" title="帳務資料載入失敗" data-testid="sbl-error">
       {{ error }}。載入失敗，金額先不顯示。
       <template #action>
         <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" data-testid="sbl-retry" @click="$emit('retry')">重試</AtButton>
       </template>
     </AtInlineAlert>
-    <div v-else-if="pending" class="sbl__loading" data-testid="sbl-loading" role="status" aria-label="載入帳務資料中">
+    <div v-else-if="pending && !inPanel" class="sbl__loading" data-testid="sbl-loading" role="status" aria-label="載入帳務資料中">
       <AtSkeleton :rows="6" height="28px" />
     </div>
-    <template v-if="!pending && !(error && !alertRows.length)">
-    <div class="sbl__summary" data-testid="sbl-summary">
+    <template v-if="inPanel || (!pending && !(error && !alertRows.length))">
+    <div v-if="!inPanel" class="sbl__summary" data-testid="sbl-summary">
       <span>本校區到今天未繳 <strong>{{ money(totalNow) }}</strong></span>
       <span>未繳 <strong>{{ owingCount }}</strong> 位</span>
       <span v-if="pendingReviewCount" data-testid="sbl-pending-review">需核對金額 <strong>{{ money(pendingReviewTotal) }}</strong>（{{ pendingReviewCount }} 筆，不在未繳內）</span>
     </div>
-    <p v-if="rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有到期未繳。</p>
+    <p v-if="!inPanel && rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有到期未繳。</p>
     <div class="sbl__tools">
-      <input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="sbl-search" />
+      <input v-if="!inPanel" v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="sbl-search" />
       <div class="sbl__chips" role="group" aria-label="篩選">
         <button
           v-for="(f, key) in STUDENT_FILTERS"
           :key="key"
           type="button"
           :class="['sbl__chip', { 'is-on': filter === key }]"
-          :aria-pressed="filter === key"
+          :aria-pressed="!inPanel && filter === key"
           :data-testid="`sbl-filter-${key}`"
-          @click="filter = key"
+          @click="filter = key; if (inPanel) $emit('view', 'students')"
         >{{ f.label }}</button>
+        <!-- F-4: chips that open a whole panel (要開帳單, 月結要核對) in place of the rows. -->
+        <button
+          v-for="p in panels"
+          :key="p.key"
+          type="button"
+          :class="['sbl__chip', { 'is-on': view === p.key }]"
+          :aria-pressed="view === p.key"
+          :data-testid="`sbl-panel-${p.key}`"
+          @click="$emit('view', p.key)"
+        >{{ p.label }}</button>
       </div>
-      <label class="sbl__sort">排序
+      <label v-if="!inPanel" class="sbl__sort">排序
         <select v-model="sortKey" data-testid="sbl-sort">
           <option v-for="(o, key) in SORTS" :key="key" :value="key">{{ o.label }}</option>
         </select>
       </label>
     </div>
-    <AtEmpty v-if="!visible.length" icon="search_off" title="找不到符合的學生" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋或篩選。` : '請調整篩選。'" data-testid="sbl-empty" />
+    <slot v-if="inPanel" :name="view" />
+    <AtEmpty v-else-if="!visible.length" icon="search_off" title="找不到符合的學生" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋或篩選。` : '請調整篩選。'" data-testid="sbl-empty" />
     <template v-else>
       <div class="sbl__head" aria-hidden="true">
         <span>學生</span><span class="sbl__col-now">到今天未繳</span><span>逾期</span><span>狀態</span><span>最近繳費</span>
@@ -109,8 +120,12 @@ const props = defineProps({
   today: { type: String, default: undefined },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
+  // F-4: 'students' shows the rows; a panel key shows that panel's slot instead (the page owns the panels).
+  view: { type: String, default: 'students' },
+  panels: { type: Array, default: () => [] },
 });
-defineEmits(['open', 'action', 'retry']);
+const inPanel = computed(() => props.view !== 'students' && props.panels.some((p) => p.key === props.view));
+defineEmits(['open', 'action', 'retry', 'view']);
 // No alert data yet: zeros would read as "all paid".
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
