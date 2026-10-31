@@ -561,8 +561,7 @@ async function loadLedger() {
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
-    loadDrafts();
-    runInitialAction();
+    runInitialAction(loadDrafts());
   } catch (e) {
     if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
@@ -927,7 +926,7 @@ watch(() => entryOpen.value && entryMode.value === 'legacy-backfill' && hasConfi
 // F-2: 'confirm' (list row 確認入帳) asks the card's own confirm question straight away.
 const autoConfirmId = ref(null);
 watch(() => props.show, () => { autoConfirmId.value = null; });
-function runInitialAction() {
+async function runInitialAction(draftsReady) {
   const action = pendingInitialAction;
   pendingInitialAction = null;
   const id = Number(props.studentClassId || 0);
@@ -936,6 +935,16 @@ function runInitialAction() {
     const course = contractCourses.value.find((c) => Number(c.id) === id);
     const leadId = course ? Number(packageLeadOf(course).id) : id;
     if (pendingReportFor(leadId)) autoConfirmId.value = leadId;
+    return;
+  }
+  if (action === 'issue') {
+    // Spec T3: 開帳單 on the list row asks the same 開立這期帳單？ question as the card button.
+    await draftsReady;
+    // The drawer may have moved to another student (↑/↓) or closed while the drafts loaded.
+    if (!props.show || Number(props.studentClassId || 0) !== id) return;
+    const draft = draftFor(id);
+    if (draft) openIssue(draft);
+    else initialActionNote.value = '這門課目前沒有可以開立的帳單。';
     return;
   }
   if (action !== 'record') return;
