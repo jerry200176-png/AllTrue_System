@@ -174,13 +174,24 @@ class PackageCreateWithScheduleTest extends TestCase
         StudentSignIn::create(['StudentClassID' => $last->StudentClassID, 'StudentID' => $members[0]->StudentID,
             'ClassSessionID' => $last->id, 'Status' => 'leave', 'SignInDT' => ($at = substr((string) $last->SessionDate, 0, 10) . ' 16:00:00'), 'SignOutDT' => $at]);
 
+        // A substitute on the 7th lesson: the substitute action writes dated schedules rows by course and date, not lesson id.
+        $sub = ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->orderBy('SessionDate')->skip(6)->first();
+        DB::table('schedules')->insert(['student_id' => $members[0]->StudentID, 'teacher_id' => $this->makeTeacher()->id, 'subject' => 'Math',
+            'day_of_week' => Carbon::parse($sub->SessionDate)->dayOfWeekIso, 'start_time' => $sub->StartTime, 'end_time' => $sub->EndTime,
+            'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1, 'branch_id' => 1,
+            'schedule_date' => substr((string) $sub->SessionDate, 0, 10), 'student_course_id' => $sub->StudentClassID]);
+        // A parent's feedback whose login session id happens to equal an extra lesson's id protects nothing (Codex P2).
+        $coincidence = ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->orderBy('SessionDate')->skip(5)->first();
+        DB::table('learning_record_feedbacks')->insert(['learning_record_id' => 1, 'student_id' => $members[0]->StudentID, 'student_class_id' => 999,
+            'teacher_id' => 1, 'campus_id' => 1, 'content' => 'x', 'parent_session_id' => $coincidence->id]);
+
         $x = $this->excess($pkgId);
         $this->assertSame(['remaining' => 4, 'planned' => 8, 'blocked' => 0], array_intersect_key($x, ['remaining' => 0, 'planned' => 0, 'blocked' => 0]));
-        $this->assertSame(array_slice($all, 3, 4), $this->dates($x['rows']), 'keeps the earliest 3 and the lesson with a leave');
+        $this->assertSame(array_slice($all, 2, 4), $this->dates($x['rows']), 'keeps the earliest 2, the substituted lesson and the one with a leave');
 
         // The cleanup deletes through the model (the observer keeps each row in schedule_audit_logs).
         $x['rows']->each->delete();
-        $this->assertSame([$all[0], $all[1], $all[2], $all[7]], $this->plannedDates($members));
+        $this->assertSame([$all[0], $all[1], $all[6], $all[7]], $this->plannedDates($members));
         $this->assertSame(4, DB::table('schedule_audit_logs')->where('action_type', 'delete')->count());
         $this->assertTrue($this->excess($pkgId)['rows']->isEmpty());
 

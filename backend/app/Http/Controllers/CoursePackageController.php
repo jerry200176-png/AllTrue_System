@@ -1304,7 +1304,7 @@ class CoursePackageController extends Controller
                 app(\App\Services\Scheduling\ContractSessionSchedule::class)->fillSharedPool($pkg, $countMembers, $newTotal);
                 // A cut trims the pool, not each subject: cancel the latest planned lessons past what is left (#4734).
                 // Only a cut: a raise never cancels (old over-planned pools are cleaned by a POP operation, #4734).
-                foreach ($newTotal < $oldTotal ? app(SharedPackagePlanningService::class)->sharedPoolExcess($pkg)['rows'] : [] as $excess) {
+                foreach ($newTotal < $oldTotal ? app(SharedPackagePlanningService::class)->sharedPoolExcess($pkg, true)['rows'] : [] as $excess) {
                     $excess->Status = 'cancelled';
                     $excess->save();
                     $cancelledSessions[] = ['student_class_id' => (int) $excess->StudentClassID, 'session_id' => (int) $excess->id];

@@ -55,12 +55,15 @@ final class ClassSessionDeleteGuard
         return $out;
     }
 
-    /** Every column that points at a lesson (schedule_audit_logs aside: it records every row, and keeps the delete). */
+    /**
+     * Every column that points at a lesson (schedule_audit_logs aside: it records every row, and keeps the delete).
+     * `parent_session_id` columns hold a parent's login session, not a lesson, so they are not listed.
+     */
     private const REFERENCES = [
         'StudentSingIn' => ['ClassSessionID', 'class_session_id'], 'LearningRecord' => ['ClassSessionID'],
-        'class_session_reassignments' => ['class_session_id'], 'exception_workflows' => ['class_session_id', 'parent_session_id'],
-        'exception_workflow_candidates' => ['class_session_id', 'parent_session_id'],
-        'learning_record_feedbacks' => ['class_session_id', 'parent_session_id'], 'learning_record_teacher_comments' => ['class_session_id'],
+        'class_session_reassignments' => ['class_session_id'], 'exception_workflows' => ['class_session_id'],
+        'exception_workflow_candidates' => ['class_session_id'],
+        'learning_record_feedbacks' => ['class_session_id'], 'learning_record_teacher_comments' => ['class_session_id'],
         'package_session_ledger' => ['class_session_id'], 'session_deduction_ledger' => ['class_session_id'],
         'payroll_runs' => ['class_session_id'], 'payroll_run_lines' => ['class_session_id'], 'schedule_discrepancies' => ['class_session_id'],
         'session_charge_backfill_log' => ['class_session_id'], 'session_corrections' => ['session_id', 'replaced_by_session_id'],
@@ -89,6 +92,36 @@ final class ClassSessionDeleteGuard
                     foreach (DB::table($table)->whereIn($column, $chunk)->distinct()->pluck($column) as $id) {
                         $out[(int) $id] = true;
                     }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Lessons whose course has a dated `schedules` row on that day: a substitute (ClassSessionController::substitute writes
+     * the substitute and the original teacher's rows by course and date, not by lesson id), a move or a make-up.
+     *
+     * @param  iterable<\App\Models\ClassSession>  $sessions
+     * @return array<int, true> class_session_id => true
+     */
+    public static function datedScheduleSessionIds(iterable $sessions): array
+    {
+        $byDay = [];
+        foreach ($sessions as $s) {
+            $byDay[(int) $s->StudentClassID . '|' . substr((string) $s->SessionDate, 0, 10)][] = (int) $s->id;
+        }
+        if ($byDay === []) {
+            return [];
+        }
+        $courses = array_values(array_unique(array_map(fn (string $k) => (int) explode('|', $k)[0], array_keys($byDay))));
+        $out = [];
+        foreach (array_chunk($courses, 500) as $chunk) {
+            foreach (DB::table('schedules')->whereIn('student_course_id', $chunk)->whereNotNull('schedule_date')
+                ->get(['student_course_id', 'schedule_date']) as $row) {
+                foreach ($byDay[(int) $row->student_course_id . '|' . substr((string) $row->schedule_date, 0, 10)] ?? [] as $id) {
+                    $out[$id] = true;
                 }
             }
         }
