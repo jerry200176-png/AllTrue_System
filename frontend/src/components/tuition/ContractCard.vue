@@ -299,7 +299,8 @@ async function saveMemo() {
 }
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
-const noObligation = computed(() => data.value?.class_type === 'tutoring');
+// #4699: the ledger row says it up front (courses[].no_payment_obligation); the loaded course detail is the fallback.
+const noObligation = computed(() => props.course.no_payment_obligation === true || data.value?.class_type === 'tutoring');
 const busy = ref(false);
 const actionError = ref('');
 // In-app #425: 繳費單 uses the 帳務中心 rule (lib/billingDocState.js); the card only maps its state into a list row.

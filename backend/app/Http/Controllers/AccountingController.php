@@ -776,7 +776,7 @@ class AccountingController extends Controller
                 'report_id' => $anchorReport ? (int) $anchorReport->id : null,
                 'class_count' => count($classIds),
                 // Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked).
-                'no_payment_obligation' => strtolower(trim((string) $anchorClass->getAttribute('ClassType'))) === 'tutoring',
+                'no_payment_obligation' => $this->hasNoPaymentObligation($anchorClass),
             ],
             'summary' => [
                 'invoice_total' => $invoiceTotal,
@@ -800,6 +800,8 @@ class AccountingController extends Controller
 
                 return [
                 'id' => (int) $class->ID,
+                // #4699: the same rule as scope.no_payment_obligation, for every course of the student-wide view.
+                'no_payment_obligation' => $this->hasNoPaymentObligation($class),
                 'course_ref' => $this->courseRef((int) $class->ID),
                 'subject' => $class->displaySubjectName($subjectNames),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
@@ -1183,6 +1185,12 @@ class AccountingController extends Controller
                 'notes' => $entries,
             ];
         })->filter()->values()->all();
+    }
+
+    /** Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked); one rule for scope and courses[]. */
+    private function hasNoPaymentObligation(StudentClass $class): bool
+    {
+        return strtolower(trim((string) $class->getAttribute('ClassType'))) === 'tutoring';
     }
 
     private function courseRef(int $studentClassId): string
