@@ -80,6 +80,11 @@
         :error="error"
         :view="activeAccountingTab"
         :panels="studentPanels"
+        :batch-counts="listBatchCounts"
+        :export-disabled="csvExporting"
+        @batch="onListBatch"
+        @export="(studentIds) => exportCSV(rows.filter((r) => studentIds.includes(r.student_id)))"
+        @sessions="(id) => { const r = rows.find((x) => Number(x.id) === Number(id)); if (r) openSessionDetail(r); }"
         @view="activeAccountingTab = $event"
         @open="openLedgerForStudent"
         @action="(r, a) => openLedgerForStudent(r, a)"
@@ -214,7 +219,7 @@
             </div>
             <button
               class="tc-btn tc-btn--csv"
-              @click="exportCSV"
+              @click="exportCSV()"
               :disabled="!filteredRows.length || csvExporting"
               :title="!filteredRows.length ? '目前無資料可匯出' : '匯出 CSV'"
             >
@@ -887,11 +892,40 @@
             <div v-if="batchPreviewMode === 'report'"><strong>{{ batchForm.payment_method === 'transfer' ? '匯款' : '現金' }}</strong><span>付款方式</span></div>
           </div>
 
+          <!-- F-5a2: the 回報 fields live here now (they used to be in the table's batch bar). -->
+          <div v-if="batchPreviewMode === 'report'" class="tc-batch-bar" data-testid="batch-report-fields">
+            <label class="tc-batch-field">
+              繳費日
+              <input v-model="batchForm.payment_date" type="date" :max="todayYmd" />
+            </label>
+            <label class="tc-batch-field">
+              方式
+              <select v-model="batchForm.payment_method">
+                <option value="transfer">匯款</option>
+                <option value="cash">現金</option>
+              </select>
+            </label>
+            <label class="tc-batch-field tc-batch-note">
+              備註
+              <input v-model="batchForm.note" type="text" maxlength="500" placeholder="選填" />
+            </label>
+          </div>
+
           <div class="tc-batch-preview-list" role="list" aria-label="選取的課程">
             <div v-for="row in batchPreviewRows" :key="row.id" class="tc-batch-preview-row" role="listitem">
               <div>
                 <strong>{{ row.student_name }}</strong>
                 <span>{{ row.subject }}<template v-if="row.course_start_date || row.course_end_date"> · {{ row.course_start_date || '—' }} ~ {{ row.course_end_date || '—' }}</template></span>
+                <input
+                  v-if="batchPreviewMode === 'report' && batchForm.payment_method === 'transfer'"
+                  v-model="batchLast5ById[row.id]"
+                  class="tc-last5-input"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="5"
+                  placeholder="後5碼"
+                  :aria-label="`${row.student_name} 匯款帳號後5碼`"
+                />
               </div>
               <div class="tc-batch-preview-row__amount">
                 <span class="status-tag" :class="statusClass(row)">{{ statusLabel(row) }}</span>
@@ -907,7 +941,7 @@
 
           <div class="tc-dialog-btns">
             <button class="tc-btn tc-btn--ghost" type="button" @click="closeBatchPreview" :disabled="batchBusy">返回修改</button>
-            <button class="tc-btn tc-btn--confirm" type="button" @click="confirmBatchPreview" :disabled="batchBusy">
+            <button class="tc-btn tc-btn--confirm" type="button" @click="confirmBatchPreview" :disabled="batchBusy || (batchPreviewMode === 'report' && !batchForm.payment_date)">
               <span v-if="batchBusy" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               {{ batchPreviewMode === 'confirm' ? '確認入帳' : '確認送出回報' }}
             </button>
@@ -1426,10 +1460,10 @@ function isRowSelectable(r) {
 }
 
 const selectableRows = computed(() => filteredRows.value.filter(isRowSelectable));
-const selectedRows = computed(() => filteredRows.value.filter((r) => selectedIdSet.value.has(r.id)));
+// F-5a2: a pick can come from the student list as well as the table, so it is read from all rows; both surfaces only
+// ever pick rows they show (the table clears on tab / search change, the list only offers its visible students).
+const selectedRows = computed(() => rows.value.filter((r) => selectedIdSet.value.has(r.id)));
 const batchMode = computed(() => {
-  if (activeTab.value === 'pending_report') return 'confirm';
-  if (activeTab.value !== 'action') return 'report';
   const modes = new Set(selectedRows.value.map((r) => r.payment_status === 'pending_report' ? 'confirm' : 'report'));
   if (modes.size > 1) return 'mixed';
   return modes.has('confirm') ? 'confirm' : 'report';
@@ -1466,6 +1500,7 @@ const batchRowLabel = (r) => [r.student_name, r.subject].filter(Boolean).join(' 
 
 function clearSelection() {
   selectedIds.value = [];
+  studentList.value?.clearSelection?.();
 }
 
 function openBatchPreview() {
@@ -1501,6 +1536,8 @@ function closeBatchPreview() {
     void trackWorkflowEvent('billing', 'returned', props.branchId, { step, target: 'queue' });
   }
   batchPreviewOpen.value = false;
+  // A cancelled list batch leaves no hidden pick behind for the table (the list keeps its own checked students).
+  if (batchFromList) { selectedIds.value = []; batchFromList = false; }
 }
 
 function confirmBatchPreview() {
@@ -1511,6 +1548,30 @@ function confirmBatchPreview() {
 watch(activeTab, () => {
   clearSelection();
 });
+watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; }); // list and table never share a pick
+
+// F-5a2: batch actions from the student list. Which contracts a student brings follows the table's rules:
+// 回報 = invoiced and still owing with an amount; 確認入帳 = a parent report is waiting.
+const isBatchReportable = (r) => ['unpaid', 'partial', 'pending_reconciliation'].includes(r.payment_status) && r.payable_status === 'invoiced' && hasBatchAmount(r);
+const isBatchConfirmable = (r) => r.payment_status === 'pending_report' && Boolean(r.latest_payment_report_id);
+const listBatchCounts = computed(() => {
+  const out = {};
+  for (const r of rows.value) {
+    const mode = isBatchConfirmable(r) ? 'confirm' : isBatchReportable(r) ? 'report' : null;
+    if (!mode) continue;
+    const c = (out[r.student_id] ||= { confirm: 0, report: 0 });
+    c[mode] += 1;
+  }
+  return out;
+});
+let batchFromList = false;
+function onListBatch(mode, studentIds) {
+  batchFromList = true;
+  const ids = new Set(studentIds);
+  const pick = mode === 'confirm' ? isBatchConfirmable : isBatchReportable;
+  selectedIds.value = rows.value.filter((r) => ids.has(r.student_id) && pick(r)).map((r) => r.id);
+  openBatchPreview();
+}
 
 async function submitBatchReport() {
   const workflowStep = 'report';
@@ -1690,6 +1751,7 @@ function refreshActiveTab() {
 // ═══ Alerts ═══
 const rows = ref([]);
 const searchQuery = ref('');
+watch(searchQuery, clearSelection); // a pick never outlives the search that showed it
 const ledgerOpenedFromDeepLink = ref(false);
 const tuitionFocusRowId = ref(null);
 const tuitionFocusMessage = ref('');
@@ -1911,8 +1973,8 @@ const filteredRows = computed(() => {
 
 // ═══ CSV Export ═══
 const csvExporting = ref(false);
-function exportCSV() {
-  const data = filteredRows.value;
+// The table exports what it shows; the student list passes the rows of the students it shows (F-5a2).
+function exportCSV(data = filteredRows.value) {
   if (!data.length) return;
   csvExporting.value = true;
   const headers = ['學生姓名', '科目', '模式', '狀態', '應繳', '已繳', '未繳', '最近付款日', '到期日', '逾期天數'];

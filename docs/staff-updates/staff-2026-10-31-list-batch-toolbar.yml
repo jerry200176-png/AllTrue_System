@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-31-list-batch-toolbar
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 學生清單可以勾選後批次處理
+    summary: 批次回報、批次確認入帳、匯出 CSV 和上課明細，現在在學生清單就找得到。
+    items:
+      - category: improved
+        text: 勾選學生後按「批次確認入帳」或「批次回報」，會先列出要處理的課程和金額讓你核對。
+      - category: improved
+        text: 清單上方有「匯出 CSV」，展開合約可以看「上課明細」。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-f5a2-list-batch-toolbar"
