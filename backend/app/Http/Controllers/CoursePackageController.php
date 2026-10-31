@@ -1245,7 +1245,7 @@ class CoursePackageController extends Controller
             $newTotal = (int) $data['total_sessions'];
             $oldTotal = (int) $pkg->total_sessions;
 
-            DB::transaction(function () use ($pkg, $newTotal, &$cancelledSessions, &$extendedCount) {
+            DB::transaction(function () use ($pkg, $newTotal, $oldTotal, &$cancelledSessions, &$extendedCount) {
                 // RISK-002 守護：bulk update 僅更新 SessionCount 與 PackageTotalSessions，
                 // 絕不碰 Charge / Rate / RemainingSessions（這些由 preserved_delta 與 ledger 保護）
                 StudentClass::where('PackageID', $pkg->id)
@@ -1302,6 +1302,13 @@ class CoursePackageController extends Controller
 
                 // Pool-wide, after the new total is saved, so the added lessons alternate subjects by date.
                 app(\App\Services\Scheduling\ContractSessionSchedule::class)->fillSharedPool($pkg, $countMembers, $newTotal);
+                // A cut trims the pool, not each subject: cancel the latest planned lessons past what is left (#4734).
+                // Only a cut: a raise never cancels (old over-planned pools are cleaned by a POP operation, #4734).
+                foreach ($newTotal < $oldTotal ? app(SharedPackagePlanningService::class)->sharedPoolExcess($pkg, true)['rows'] : [] as $excess) {
+                    $excess->Status = 'cancelled';
+                    $excess->save();
+                    $cancelledSessions[] = ['student_class_id' => (int) $excess->StudentClassID, 'session_id' => (int) $excess->id];
+                }
                 foreach ($countMembers as $member) {
                     $afterActive = ClassSession::where('StudentClassID', $member->ID)
                         ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])

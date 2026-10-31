@@ -529,6 +529,8 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 群組同一日期＋開始時間只計一個實體時段，`leave_requested` 仍算預排意圖；其餘沿用既有 lifecycle／ledger，且不做 production data repair 或 migration。
 
 **2026-11-01 Founder 決定（A）：** 自動預排（建立方案、改總堂數、`extendSessionsIfNeeded` 的所有補排路徑）以整包為單位，只排到「剩餘 − 已預排」為止，各科照日期先後輪流（`ContractSessionSchedule::fillSharedPool`）；主任手動加課仍可超排並提示續課。上線前已多排的方案不在本次自動處理。
+
+**2026-11-01 Founder 決定（A，清理）：** 改少總堂數時以整包為單位取消最後面多排的課（`SharedPackagePlanningService::sharedPoolExcess`）。上線前已多排的方案用另一個 POP 操作清理：先 dry run，再由 Founder 核准執行。被移除的課是從沒發生過的未來課（沒有任何點名、帳、備註、代課、薪資紀錄指向它），所以用刪除而不是取消：取消的日期會一直佔著，續課就會跳過它、留下空檔。每一筆都完整留在 `schedule_audit_logs`（#4734）。
  
 
 ---

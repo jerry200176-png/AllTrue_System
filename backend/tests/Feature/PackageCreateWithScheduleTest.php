@@ -7,9 +7,11 @@ use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -129,6 +131,107 @@ class PackageCreateWithScheduleTest extends TestCase
             ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 6])->assertOk();
 
         $this->assertSame([3, 3], $members->map(fn ($m) => $this->futurePlanned($m->ID))->all());
+    }
+
+    /** Each member's scheduled dates, all members together in date order. */
+    private function plannedDates($members): array
+    {
+        return ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->where('Status', 'scheduled')
+            ->orderBy('SessionDate')->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all();
+    }
+
+    /** A pre-#4730 pool: the old fill gave each member $extra more weekly lessons past its own. */
+    private function overPlan($members, int $extra): void
+    {
+        foreach ($members as $m) {
+            $last = ClassSession::where('StudentClassID', $m->ID)->orderByDesc('SessionDate')->first();
+            foreach (range(1, $extra) as $w) {
+                ClassSession::create(['StudentClassID' => $m->ID, 'SessionDate' => Carbon::parse($last->SessionDate)->addWeeks($w)->toDateString(),
+                    'StartTime' => $last->StartTime, 'EndTime' => $last->EndTime, 'Status' => 'scheduled', 'Note' => '']);
+            }
+        }
+    }
+
+    private function excess(int $pkgId): array
+    {
+        return app(\App\Services\SharedPackagePlanningService::class)->sharedPoolExcess(CoursePackage::findOrFail($pkgId));
+    }
+
+    private function dates($rows): array
+    {
+        return $rows->map(fn ($r) => substr((string) $r->SessionDate, 0, 10))->sort()->values()->all();
+    }
+
+    public function test_pool_excess_keeps_the_earliest_and_lessons_with_history_and_a_renewal_refills_deleted_dates(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        [$pkgId, $members] = $this->createMonWedPool($token, 4);
+        $this->overPlan($members, 2);
+        $all = $this->plannedDates($members);
+        $this->assertCount(8, $all);
+        // A leave on the very last extra lesson: something points at it, so it stays and keeps its place.
+        $last = ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->orderByDesc('SessionDate')->first();
+        StudentSignIn::create(['StudentClassID' => $last->StudentClassID, 'StudentID' => $members[0]->StudentID,
+            'ClassSessionID' => $last->id, 'Status' => 'leave', 'SignInDT' => ($at = substr((string) $last->SessionDate, 0, 10) . ' 16:00:00'), 'SignOutDT' => $at]);
+
+        // A substitute on the 7th lesson: the substitute action writes dated schedules rows by course and date, not lesson id.
+        $sub = ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->orderBy('SessionDate')->skip(6)->first();
+        DB::table('schedules')->insert(['student_id' => $members[0]->StudentID, 'teacher_id' => $this->makeTeacher()->id, 'subject' => 'Math',
+            'day_of_week' => Carbon::parse($sub->SessionDate)->dayOfWeekIso, 'start_time' => $sub->StartTime, 'end_time' => $sub->EndTime,
+            'duration_hours' => 2, 'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1, 'branch_id' => 1,
+            'schedule_date' => substr((string) $sub->SessionDate, 0, 10), 'student_course_id' => $sub->StudentClassID]);
+        // A parent's feedback whose login session id happens to equal an extra lesson's id protects nothing (Codex P2).
+        $coincidence = ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->orderBy('SessionDate')->skip(5)->first();
+        DB::table('learning_record_feedbacks')->insert(['learning_record_id' => 1, 'student_id' => $members[0]->StudentID, 'student_class_id' => 999,
+            'teacher_id' => 1, 'campus_id' => 1, 'content' => 'x', 'parent_session_id' => $coincidence->id]);
+
+        $x = $this->excess($pkgId);
+        $this->assertSame(['remaining' => 4, 'planned' => 8, 'blocked' => 0], array_intersect_key($x, ['remaining' => 0, 'planned' => 0, 'blocked' => 0]));
+        $this->assertSame(array_slice($all, 2, 4), $this->dates($x['rows']), 'keeps the earliest 2, the substituted lesson and the one with a leave');
+
+        // The cleanup deletes through the model (the observer keeps each row in schedule_audit_logs).
+        $x['rows']->each->delete();
+        $this->assertSame([$all[0], $all[1], $all[6], $all[7]], $this->plannedDates($members));
+        $this->assertSame(4, DB::table('schedule_audit_logs')->where('action_type', 'delete')->count());
+        $this->assertTrue($this->excess($pkgId)['rows']->isEmpty());
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 8])->assertOk();
+        $this->assertSame($all, $this->plannedDates($members), 'a renewal re-fills the removed dates, no gap');
+    }
+
+    public function test_pool_excess_takes_a_whole_group_slot_from_every_member(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => now()->addDay()->toDateString()];
+        $pkgId = $this->postCreate($token, ['student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 2,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1), $spec(2)]])->assertStatus(201)->json('package_id');
+        $members = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get();
+        $this->overPlan($members, 1);
+        $this->assertCount(6, $this->plannedDates($members), '3 group lessons, 2 rows each');
+
+        $x = $this->excess($pkgId);
+        $this->assertSame([2, 3], [$x['remaining'], $x['planned']]);
+        $this->assertCount(2, $x['rows'], 'the last group lesson, one row per member');
+        $this->assertCount(1, array_unique($this->dates($x['rows'])));
+        $x['rows']->each->delete();
+        $this->assertCount(4, $this->plannedDates($members));
+        $this->assertCount(2, array_unique($this->plannedDates($members)), 'both members keep the same 2 group lessons');
+    }
+
+    public function test_lowering_the_pool_total_cancels_the_latest_lessons_across_subjects(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        [$pkgId, $members] = $this->createMonWedPool($token, 6);
+        $before = $this->plannedDates($members);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 4])->assertOk();
+
+        $this->assertSame(array_slice($before, 0, 4), $this->plannedDates($members));
+        $this->assertSame(2, ClassSession::whereIn('StudentClassID', $members->pluck('ID'))->where('Status', 'cancelled')->count());
     }
 
     public function test_group_pool_joining_a_slot_a_sibling_already_planned_costs_nothing(): void

@@ -41,6 +41,42 @@ class SharedPackagePlanningService
         };
     }
 
+    /**
+     * A shared count pool's planned lessons past what it has left (#4734), counted as summarizeMany() counts them
+     * (active members, today on, scheduled/rescheduled/leave_requested, a group slot once). A slot that cannot go
+     * keeps its place first: today's, not `scheduled`, a contract exception, any row pointing at it
+     * (ClassSessionDeleteGuard::referencedSessionIds) or a dated schedules row on its day (a substitute, datedScheduleSessionIds).
+     * `$lock` (inside a transaction) locks the planned rows before they are judged, so a concurrent reschedule waits or is seen. The removable rest keep the earliest dates up to what is
+     * left; `rows` are the others. `blocked` is how far the kept slots alone still exceed the pool.
+     *
+     * @return array{remaining: int, planned: int, rows: Collection<int, ClassSession>, blocked: int}
+     */
+    public function sharedPoolExcess(CoursePackage $package, bool $lock = false): array
+    {
+        $summary = $this->summarize($package);
+        $out = ['remaining' => $summary['remaining_sessions'], 'planned' => $summary['future_planned_sessions'], 'rows' => collect(), 'blocked' => 0];
+        if ($package->billing_mode !== CoursePackage::BILLING_MODE_SESSION || $out['planned'] <= $out['remaining'] || !$this->isSharedPackage($package)) {
+            return $out;
+        }
+        $today = Carbon::today()->toDateString();
+        $memberIds = StudentClass::where('PackageID', $package->getKey())->where(static fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))->pluck('ID');
+        $rows = ClassSession::whereIn('StudentClassID', $memberIds)->whereDate('SessionDate', '>=', $today)
+            ->whereIn('Status', ['scheduled', 'rescheduled', 'leave_requested'])
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')->when($lock, fn ($q) => $q->lockForUpdate())->get();
+        $isGroup = in_array((string) ($package->class_type ?? ''), self::GROUP_CLASS_TYPES, true);
+        $referenced = Scheduling\ClassSessionDeleteGuard::referencedSessionIds($rows->pluck('id')->all())
+            + Scheduling\ClassSessionDeleteGuard::datedScheduleSessionIds($rows);
+        $removable = static fn (ClassSession $s): bool => $s->Status === 'scheduled' && empty($s->IsContractException)
+            && substr((string) $s->SessionDate, 0, 10) > $today && !isset($referenced[(int) $s->id]);
+        [$free, $fixed] = $rows->groupBy(static fn (ClassSession $s): string => $isGroup
+            ? substr((string) $s->SessionDate, 0, 10) . '|' . substr((string) $s->StartTime, 0, 5) : '#' . $s->id)
+            ->partition(static fn (Collection $slot): bool => $slot->every($removable));
+        $out['rows'] = $free->values()->slice(max(0, $out['remaining'] - $fixed->count()))->flatten(1)->values();
+        $out['blocked'] = max(0, $fixed->count() - $out['remaining']);
+
+        return $out;
+    }
+
     public function summarize(CoursePackage $package, int $additionalPlanned = 0): array
     {
         return $this->summarizeMany(collect([$package]), [$package->getKey() => max(0, $additionalPlanned)])[(int) $package->getKey()];
