@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-shared-pool-trim
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 共用堂數方案減少堂數時，整包一起調整
+    summary: 幾科共用一包堂數時，把總堂數改少，系統會從最後面的課開始取消，留下的課剛好等於剩下的堂數。
+    items:
+      - category: fixed
+        text: 以前改少堂數只會各科分開算，課可能還是比剩下的堂數多；現在整包一起算。
+      - category: improved
+        text: 已點名、請假或排了代課的課不會被取消。
+    source_refs:
+      - "changelog:2026-11-01:shared-pool-trim"

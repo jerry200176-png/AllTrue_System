@@ -3,6 +3,7 @@
 namespace App\Services\Scheduling;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * #4455 (class C): which lessons a delete path must never remove.
@@ -48,6 +49,47 @@ final class ClassSessionDeleteGuard
                 ->pluck('class_session_id');
             foreach ($course->merge($package) as $id) {
                 $out[(int) $id] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Every column that points at a lesson (schedule_audit_logs aside: it records every row, and keeps the delete). */
+    private const REFERENCES = [
+        'StudentSingIn' => ['ClassSessionID', 'class_session_id'], 'LearningRecord' => ['ClassSessionID'],
+        'class_session_reassignments' => ['class_session_id'], 'exception_workflows' => ['class_session_id', 'parent_session_id'],
+        'exception_workflow_candidates' => ['class_session_id', 'parent_session_id'],
+        'learning_record_feedbacks' => ['class_session_id', 'parent_session_id'], 'learning_record_teacher_comments' => ['class_session_id'],
+        'package_session_ledger' => ['class_session_id'], 'session_deduction_ledger' => ['class_session_id'],
+        'payroll_runs' => ['class_session_id'], 'payroll_run_lines' => ['class_session_id'], 'schedule_discrepancies' => ['class_session_id'],
+        'session_charge_backfill_log' => ['class_session_id'], 'session_corrections' => ['session_id', 'replaced_by_session_id'],
+        'session_coverages' => ['class_session_id'], 'session_entitlement_transfers' => ['class_session_id'],
+        'truefit_diagnoses' => ['class_session_id'], 'truefit_lesson_preps' => ['class_session_id'],
+        'truefit_mastery_evidence' => ['class_session_id'], 'truefit_observations' => ['class_session_id'], 'truefit_remediations' => ['class_session_id'],
+    ];
+
+    /**
+     * Lessons any other row points at, whatever its value: a sign-in, a ledger row (even netted to zero), a
+     * substitute, a note, a payroll line. Only a lesson with none of these never happened anywhere (#4734).
+     *
+     * @param  array<int|string>  $sessionIds
+     * @return array<int, true> class_session_id => true
+     */
+    public static function referencedSessionIds(array $sessionIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $sessionIds), fn (int $id) => $id > 0)));
+        $out = [];
+        foreach (self::REFERENCES as $table => $columns) {
+            foreach ($columns as $column) {
+                if ($ids === [] || !Schema::hasColumn($table, $column)) {
+                    continue;
+                }
+                foreach (array_chunk($ids, 500) as $chunk) {
+                    foreach (DB::table($table)->whereIn($column, $chunk)->distinct()->pluck($column) as $id) {
+                        $out[(int) $id] = true;
+                    }
+                }
             }
         }
 
