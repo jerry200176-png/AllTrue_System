@@ -179,6 +179,11 @@ class PackageCreateWithScheduleTest extends TestCase
         $slots = ClassSession::whereIn('StudentClassID', [$a->ID, $b->ID])->where('Status', 'scheduled')
             ->get()->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->unique()->count();
         $this->assertSame(5, $slots, '5 bought = 5 distinct group lessons, even with a moved lesson');
+        // Each member sits in every group lesson: weekly slots 1, 2, 3, 4 and 6 (B's slot 6 is past its first five contract dates).
+        $dates = fn ($m) => ClassSession::where('StudentClassID', $m->ID)->where('Status', 'scheduled')->orderBy('SessionDate')
+            ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all();
+        $this->assertSame($dates($a), $dates($b));
+        $this->assertCount(5, $dates($b));
     }
 
     public function test_auto_fill_never_plans_past_a_fully_planned_pool(): void

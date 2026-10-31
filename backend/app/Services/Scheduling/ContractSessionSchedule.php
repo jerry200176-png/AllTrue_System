@@ -712,6 +712,7 @@ class ContractSessionSchedule
         $isGroup = in_array((string) ($package->class_type ?? ''), SharedPackagePlanningService::GROUP_CLASS_TYPES, true);
         $now = Carbon::now();
         $candidates = [];
+        $rowsByKey = [];
         $slotPlanned = []; // group slots already in future_planned_sessions cost nothing to join (#4455)
         $today = Carbon::today()->toDateString();
         foreach ($members as $member) {
@@ -736,6 +737,7 @@ class ContractSessionSchedule
                 $key = self::normalizeDateString($s['SessionDate'] ?? null) . '|' . substr((string) ($s['StartTime'] ?? ''), 0, 5);
                 if (!isset($taken[$key]) && !self::sessionEndedByEndTime((string) $s['SessionDate'], (string) ($s['EndTime'] ?? '18:00:00'), $now)) {
                     $candidates[] = [$key, $classId];
+                    $rowsByKey[$classId][$key] = $s;
                 }
             }
         }
@@ -751,8 +753,17 @@ class ContractSessionSchedule
             $share[$classId][$key] = true;
         }
         foreach ($members as $member) {
+            $classId = (int) $member->ID;
             // The selected slots themselves, not a count: a member with a moved lesson would fill different dates (#4730).
-            $this->extendSessionsIfNeeded($member, $count, null, $share[(int) $member->ID] ?? []);
+            $this->extendSessionsIfNeeded($member, $count, null, $picked = $share[$classId] ?? []);
+            // That walks only the first $count contract dates; a selected slot past them (a member missing rows) is added here.
+            $have = [];
+            foreach (ClassSession::where('StudentClassID', $classId)->get(['SessionDate', 'StartTime']) as $row) {
+                $have[self::normalizeDateString($row->SessionDate) . '|' . substr((string) $row->StartTime, 0, 5)] = true;
+            }
+            foreach (array_keys(array_diff_key($picked, $have)) as $key) {
+                app(ClassSessionMaterializationService::class)->upsertSlot(['Status' => 'scheduled'] + $rowsByKey[$classId][$key]);
+            }
         }
     }
 
