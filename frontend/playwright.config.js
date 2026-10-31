@@ -65,7 +65,6 @@ export default defineConfig({
     /chat-accessibility\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.tuition-collection.config.js.
     /tuition-collection-clarity\.spec\.js$/,
-    /tuition-doc-entries-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
     /line-integration-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
