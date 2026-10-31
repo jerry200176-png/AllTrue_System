@@ -67,13 +67,14 @@ jobs:
         run: |
           mkdir -p storage/infection
           set +e
-          DIFF=""
+          # --filter and --git-diff-* are mutually exclusive in Infection: PRs mutate only changed lines,
+          # manual runs mutate the three money files in full.
+          SCOPE="--filter=Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php"
           if [ "${{ github.event_name }}" = pull_request ]; then
             git fetch -q origin main
-            DIFF="--git-diff-lines --git-diff-base=origin/main"
+            SCOPE="--git-diff-lines --git-diff-base=origin/main"
           fi
-          vendor/bin/infection --threads=4 --no-progress --min-msi=0 $DIFF \
-            --filter='Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php' \
+          vendor/bin/infection --threads=4 --no-progress --min-msi=0 $SCOPE \
             --test-framework-options='--filter=ContractMoney|BillingPayable|BillingCourseStatus|FreeGiftZeroBill|FullDiscountSettled|PaidStatus|TuitionSlipFollows|SharedPackage|CollectionQueueRequestShape' \
             2>&1 | tee storage/infection/run.out
           echo "infection exit: ${PIPESTATUS[0]} (advisory, ignored)"

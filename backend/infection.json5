@@ -1,6 +1,6 @@
 {
     // Advisory mutation testing of the billing money code (#4659 step 4). Never a required check.
-    // The nightly workflow narrows the run with --filter (verdict, state, resolver) and --test-framework-options.
+    // PRs mutate only changed lines (--git-diff-lines); manual runs narrow to verdict/state/resolver with --filter.
     "$schema": "vendor/infection/infection/resources/schema.json",
     "source": {
         "directories": ["app/Services"]
