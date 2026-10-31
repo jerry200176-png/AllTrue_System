@@ -8,6 +8,7 @@ use App\Models\PackageSessionLedger;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /** Read-only purchased/consumed/future-plan projection for shared packages. */
 class SharedPackagePlanningService
@@ -17,6 +18,24 @@ class SharedPackagePlanningService
         return StudentClass::query()->where('PackageID', $package->getKey())->where(static function ($query): void {
             $query->where('Stop', 0)->orWhereNull('Stop');
         })->limit(2)->count() > 1;
+    }
+
+    /** Check-in heads-up once a shared count pool has used everything it bought; null before that. */
+    public function usedUpNotice(int $packageId): ?string
+    {
+        $package = $packageId > 0 ? CoursePackage::find($packageId) : null;
+        if ($package === null || $package->billing_mode !== CoursePackage::BILLING_MODE_SESSION || !$this->isSharedPackage($package)) {
+            return null;
+        }
+        // A current read, not the request's snapshot: two subjects checking in at once must not both read "用完" (#4454).
+        $consumed = -(int) DB::table('package_session_ledger')->where('package_id', $packageId)->sharedLock()->sum('delta');
+        $over = $consumed - max(0, (int) ($package->total_sessions ?? 0));
+
+        return match (true) {
+            $over > 0 => "共用方案已超出 {$over} 堂，請先續課。",
+            $over === 0 => '共用方案堂數已用完，請安排續課。',
+            default => null,
+        };
     }
 
     public function summarize(CoursePackage $package, int $additionalPlanned = 0): array

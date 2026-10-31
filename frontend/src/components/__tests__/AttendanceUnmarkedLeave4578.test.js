@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { leaveWithRenewalShift } from '../../lib/leaveSuccessorShift.js';
+import { withPoolNotice } from '../../lib/sharedPoolNotice.js';
 
 // Run the page's own pending-list command (and its shift runner) with synthetic boundary adapters.
 const source = readFileSync(resolve(__dirname, '../../pages/AttendancePage.vue'), 'utf8');
@@ -18,7 +19,7 @@ function setup({ role = 'director', preview = plan, accepted = true } = {}) {
     props: { userRole: role, branchId: 1, userId: 3 }, statusEditOwner: { value: 0 }, getToken: async () => 'synthetic',
     leaveBlockers: { value: [] }, leaveBlockerDate: { value: '' }, pendingMarkMsg: { value: '' }, pendingMarkMsgType: { value: '' }, pendingMarkSubmitting: { value: {} },
     confirmSuccessorLeave: vi.fn().mockResolvedValue(accepted), leaveWithRenewalShift, statusLabelMap: { leave: '請假', present: '出席' },
-    trackAdoptionEvent: vi.fn(), fetchPendingSessions: vi.fn(), fetchRecords: vi.fn(), extractApiError: e => e.message,
+    trackAdoptionEvent: vi.fn(), fetchPendingSessions: vi.fn(), fetchRecords: vi.fn(), extractApiError: e => e.message, withPoolNotice,
   };
   vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, status: 200, json: async () => url.endsWith('/preview') ? preview : url.endsWith('/apply') ? { applied: true } : {} })));
   const names = Object.keys(deps);
