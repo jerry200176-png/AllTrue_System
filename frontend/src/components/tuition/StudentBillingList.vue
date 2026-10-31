@@ -45,6 +45,20 @@
         </select>
       </label>
     </div>
+    <!-- F-5a2: the table's list-wide actions. Rows are picked here; the page owns the batch dialog and requests. -->
+    <div v-if="!inPanel && !alertsFailed && batchCounts" class="sbl__bulk" role="toolbar" aria-label="清單操作" data-testid="sbl-bulk">
+      <label v-if="batchableVisible.length" class="sbl__bulk-all">
+        <input type="checkbox" :checked="allPicked" :indeterminate.prop="picked.length > 0 && !allPicked" data-testid="sbl-select-all" @change="togglePickAll($event.target.checked)" />
+        全選
+      </label>
+      <template v-if="picked.length">
+        <span class="sbl__bulk-count" data-testid="sbl-picked-count">已選 {{ picked.length }} 位</span>
+        <AtButton size="sm" shape="rect" :disabled="!pickedCount.confirm" data-testid="sbl-batch-confirm" @click="$emit('batch', 'confirm', pickedIds)">批次確認入帳（{{ pickedCount.confirm }} 筆）</AtButton>
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="!pickedCount.report" data-testid="sbl-batch-report" @click="$emit('batch', 'report', pickedIds)">批次回報（{{ pickedCount.report }} 筆）</AtButton>
+        <AtButton variant="secondary" size="sm" shape="rect" data-testid="sbl-clear-picked" @click="clearSelection">取消選取</AtButton>
+      </template>
+      <AtButton class="sbl__bulk-csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled" data-testid="sbl-export" @click="$emit('export')">匯出 CSV</AtButton>
+    </div>
     <slot v-if="inPanel" :name="view" />
     <!-- Alerts failed: the error above says so; the panel chips stay usable because the panels load their own data. -->
     <template v-else-if="alertsFailed" />
@@ -54,7 +68,16 @@
         <span>學生</span><span class="sbl__col-now">到今天未繳</span><span>逾期</span><span>狀態</span><span>最近繳費</span>
       </div>
       <ul class="sbl__list">
-        <li v-for="r in visible" :key="r.student_id" :class="{ 'has-action': rowPrimaryAction(r) }">
+        <li v-for="r in visible" :key="r.student_id" :class="{ 'has-action': rowPrimaryAction(r), 'has-check': batchCounts && isBatchable(r) }">
+          <input
+            v-if="batchCounts && isBatchable(r)"
+            type="checkbox"
+            class="sbl__check"
+            :checked="selected.has(r.student_id)"
+            :aria-label="`選取 ${r.student_name}`"
+            :data-testid="`sbl-pick-${r.student_id}`"
+            @change="pick(r.student_id, $event.target.checked)"
+          />
           <button type="button" class="sbl__row" :data-testid="`sbl-row-${r.student_id}`" @click="$emit('open', r)">
             <span class="sbl__meta">{{ metaLine(r) }}</span>
             <span class="sbl__name">{{ r.student_name }}</span>
@@ -95,6 +118,7 @@
                 <span>未繳 {{ money(c.owed) }}</span>
                 <span>已繳 {{ money(c.paid) }}</span>
                 <span v-if="c.pending_review > 0">需核對金額 {{ money(c.pending_review) }}</span>
+                <button type="button" class="sbl__link" :data-testid="`sbl-sessions-${c.id}`" :aria-label="`上課明細：${r.student_name} ${c.ref}`" @click="$emit('sessions', c.id)">上課明細</button>
               </li>
             </ul>
           </template>
@@ -125,10 +149,13 @@ const props = defineProps({
   // F-4: 'students' shows the rows; a panel key shows that panel's slot instead (the page owns the panels).
   view: { type: String, default: 'students' },
   panels: { type: Array, default: () => [] },
+  // F-5a2: { [studentId]: { confirm, report } } = how many contracts each batch action would touch; null hides the batch toolbar.
+  batchCounts: { type: Object, default: null },
+  exportDisabled: { type: Boolean, default: false },
 });
 const alertsFailed = computed(() => Boolean(props.error) && !props.alertRows.length);
 const inPanel = computed(() => props.view !== 'students' && props.panels.some((p) => p.key === props.view));
-defineEmits(['open', 'action', 'retry', 'view']);
+defineEmits(['open', 'action', 'retry', 'view', 'batch', 'export', 'sessions']);
 // No alert data yet: zeros would read as "all paid".
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
@@ -181,7 +208,26 @@ function neighbor(studentId, dir) {
   const i = visible.value.findIndex((r) => r.student_id === Number(studentId));
   return i < 0 ? null : (visible.value[i + dir] || null);
 }
-defineExpose({ neighbor });
+// F-5a2: picked students are always a subset of the rows on screen, so a batch never touches a hidden student.
+const selected = ref(new Set());
+const countsOf = (r) => props.batchCounts?.[r.student_id] || { confirm: 0, report: 0 };
+const isBatchable = (r) => countsOf(r).confirm + countsOf(r).report > 0;
+const batchableVisible = computed(() => visible.value.filter(isBatchable));
+const picked = computed(() => batchableVisible.value.filter((r) => selected.value.has(r.student_id)));
+const pickedIds = computed(() => picked.value.map((r) => r.student_id));
+const pickedCount = computed(() => ({
+  confirm: picked.value.reduce((n, r) => n + countsOf(r).confirm, 0),
+  report: picked.value.reduce((n, r) => n + countsOf(r).report, 0),
+}));
+const allPicked = computed(() => batchableVisible.value.length > 0 && picked.value.length === batchableVisible.value.length);
+function pick(id, on) {
+  const next = new Set(selected.value);
+  if (on) next.add(id); else next.delete(id);
+  selected.value = next;
+}
+const togglePickAll = (on) => { selected.value = on ? new Set(batchableVisible.value.map((r) => r.student_id)) : new Set(); };
+const clearSelection = () => { selected.value = new Set(); };
+defineExpose({ neighbor, clearSelection });
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 </script>
 
@@ -203,8 +249,17 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__col-now{text-align:right}
 .sbl__row{width:100%;min-height:52px;text-align:left;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;cursor:pointer;font:inherit;color:inherit}
 .sbl__list>li.has-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center}
-.sbl__list>li.has-action>:not(.sbl__row):not(.sbl__action){grid-column:1/-1}
+.sbl__list>li.has-action>:not(.sbl__row):not(.sbl__action):not(.sbl__check){grid-column:1/-1}
 .sbl__action{min-height:44px;white-space:nowrap}
+.sbl__bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sbl__bulk-all{display:flex;align-items:center;gap:6px;font-size:13px;min-height:32px}
+.sbl__bulk-count{font-size:13px;font-weight:700}
+.sbl__bulk-csv{margin-left:auto}
+.sbl__check{width:20px;height:20px;margin:0 8px 0 0;align-self:center}
+.sbl__list>li.has-check{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 0;align-items:center}
+.sbl__list>li.has-check.has-action{grid-template-columns:auto minmax(0,1fr) auto;gap:6px 8px}
+.sbl__list>li.has-check>:not(.sbl__check):not(.sbl__row):not(.sbl__action){grid-column:1/-1}
+.sbl__link{background:none;border:0;padding:0;font:inherit;color:var(--ds-ink-mute);text-decoration:underline;cursor:pointer;min-height:32px}
 .sbl__row:hover{border-color:var(--ds-ink-mute)}
 .sbl__meta{display:none}
 .sbl__name{font-weight:700}
@@ -220,6 +275,9 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){
   .sbl__list>li.has-action{grid-template-columns:1fr}
+  .sbl__list>li.has-check.has-action{grid-template-columns:auto minmax(0,1fr)}
+  .sbl__list>li.has-check.has-action>.sbl__action{grid-column:1/-1}
+  .sbl__check{width:24px;height:24px}
   .sbl__action{width:100%}
   .sbl__toggle{min-height:44px}
   .sbl__head{display:none}
