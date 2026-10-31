@@ -130,7 +130,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AtBadge from '../design-system/AtBadge.vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
@@ -152,6 +152,8 @@ const props = defineProps({
   // F-5a2: { [studentId]: { confirm, report } } = how many contracts each batch action would touch; null hides the batch toolbar.
   batchCounts: { type: Object, default: null },
   exportDisabled: { type: Boolean, default: false },
+  // Deep links (notifications, 首頁) pick the filter chip the old 待處理 tab used to show.
+  presetFilter: { type: String, default: 'all' },
 });
 const alertsFailed = computed(() => Boolean(props.error) && !props.alertRows.length);
 const inPanel = computed(() => props.view !== 'students' && props.panels.some((p) => p.key === props.view));
@@ -167,7 +169,8 @@ const toggle = (id) => {
   expanded.value = next;
 };
 const query = ref('');
-const filter = ref('all');
+const filter = ref(STUDENT_FILTERS[props.presetFilter] ? props.presetFilter : 'all');
+watch(() => props.presetFilter, (key) => { if (STUDENT_FILTERS[key]) filter.value = key; });
 const rows = computed(() => buildStudentBillingRows(props.alertRows, props.students, props.today));
 const totalNow = computed(() => rows.value.reduce((s, r) => s + r.owed_now, 0));
 const owingCount = computed(() => rows.value.filter((r) => r.owed_now > 0).length);

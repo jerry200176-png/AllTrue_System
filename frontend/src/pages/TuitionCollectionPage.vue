@@ -2,23 +2,10 @@
   <div class="tc-page at-page">
     <AtPageHeader
       title="帳務中心"
-      :description="`處理未繳、${REPORT_STATUS_LABELS.pending}、確認入帳與續課提醒。`"
+      :description="`處理未繳、${REPORT_STATUS_LABELS.pending}與確認入帳。`"
       icon="payments"
       data-guide="tuition-header"
     >
-      <template #help>
-        <AtHelpDisclosure label="帳務處理流程">
-          <OperationsQuickStart
-            compact
-            eyebrow="帳務處理流程"
-            heading="照順序完成，不用記入口"
-            description="先找到對象，再送出回報，最後由主任確認入帳。"
-            :current-id="billingFlowCurrentId"
-            :steps="billingFlowSteps"
-            @select="selectBillingFlowStep"
-          />
-        </AtHelpDisclosure>
-      </template>
       <template #actions>
         <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
         <AtButton
@@ -61,13 +48,13 @@
     <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="!['students', 'payments', 'fees', ...STUDENT_PANEL_VIEWS].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
-        v-for="v in visibleReminders"
+        v-for="v in REMINDER_VIEWS"
         :key="v.key"
         type="button"
         :class="['tc-reminder', { 'is-on': activeAccountingTab === v.key }]"
         :data-testid="`tc-reminder-${v.key}`"
         @click="activeAccountingTab = v.key"
-      >{{ reminderLabel(v) }}</button>
+      >{{ v.label }}</button>
     </nav>
 
     <!-- F-4: 要開帳單 / 月結要核對 are chips of the student list; their panels render inside it instead of as separate pages. -->
@@ -79,6 +66,7 @@
         :loading="loading"
         :error="error"
         :view="activeAccountingTab"
+        :preset-filter="listFilter"
         :panels="studentPanels"
         :batch-counts="listBatchCounts"
         :export-disabled="csvExporting"
@@ -645,7 +633,7 @@
         <div v-if="!accountingRows.length" class="tc-empty">
           <AtEmpty icon="receipt_long" :title="accountingFilters.status === 'confirmed' ? '此區間尚無已核帳收款' : '此區間尚無符合狀態的收據紀錄'" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
             <template #action>
-              <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'receivables'">前往待處理</AtButton>
+              <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'students'">回學生清單</AtButton>
             </template>
           </AtEmpty>
         </div>
@@ -1170,7 +1158,6 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import StudentBillingList from '../components/tuition/StudentBillingList.vue';
-import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSelectAll from '../components/design-system/AtSelectAll.vue';
 import { useSelection } from '../composables/useSelection';
@@ -1178,7 +1165,6 @@ import AtDialog from '../components/design-system/AtDialog.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
@@ -1218,7 +1204,6 @@ const ACCOUNTING_TABS = [
   { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
 ];
 const REMINDER_VIEWS = [
-  { key: 'receivables', label: '待處理清單' },
   { key: 'settled', label: '已結清' },
 ];
 // F-4: these two used to be reminder-bar pages; they are chips on the student list now.
@@ -1229,12 +1214,6 @@ const studentPanels = computed(() => [
   ...(canVoid.value ? [{ key: 'monthly-drafts', label: '要開帳單' }] : []),
   { key: 'monthly-review', label: '月結要核對' },
 ]);
-// PRD §0.3: counts only where the page already holds the data (the alert rows);
-// monthly review / drafts / settled load lazily, so they show no number.
-const reminderCount = (v) => (v.key === 'receivables' && !loading.value && !error.value ? tabCounts.value.action : null);
-const visibleReminders = computed(() => REMINDER_VIEWS.filter((x) => (!x.directorOnly || canVoid.value)
-  && !(reminderCount(x) === 0 && activeAccountingTab.value !== x.key)));
-const reminderLabel = (v) => { const n = reminderCount(v); return n ? `${v.label} ${n} 筆` : v.label; };
 const campusStudents = ref([]);
 let campusStudentsSeq = 0; // a slow reply for the previous campus must not refill the picker
 async function loadCampusStudents() {
@@ -1253,6 +1232,7 @@ async function loadCampusStudents() {
 }
 // ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).
 const studentList = ref(null);
+const listFilter = ref('all'); // set by deep links (initialTab); the list owns it afterwards
 const ledgerNavStudentId = ref(null);
 function stepLedger(dir) {
   const next = studentList.value?.neighbor(ledgerNavStudentId.value, dir);
@@ -1396,19 +1376,6 @@ const TAB_DEFS = [
   { key: 'renewal', label: '續課/將到期' },
 ];
 
-const billingFlowCurrentId = computed(() => {
-  if (activeTab.value === 'pending_report') return 'confirm';
-  if (activeTab.value === 'pending_reconciliation') return 'report';
-  if (activeTab.value === 'unpaid' || activeTab.value === 'overdue') return 'report';
-  return 'queue';
-});
-
-const billingFlowSteps = [
-  { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
-  { id: 'report', icon: 'mark_email_read', title: '登記收款', description: '收到錢先登記。', action: '查看未繳' },
-  { id: 'confirm', icon: 'verified', title: '確認入帳', description: '核對無誤後算「已收」。', action: `查看「${REPORT_STATUS_LABELS.pending}」` },
-];
-
 const billingWorkflowStarts = new Map();
 function startBillingWorkflow(step) {
   const startedAt = Date.now();
@@ -1423,14 +1390,6 @@ function finishBillingWorkflow(step, phase = 'completed', meta = {}) {
 }
 function billingWorkflowError(step, errorOrStatus) {
   finishBillingWorkflow(step, 'error', { error_type: adoptionErrorType(errorOrStatus) });
-}
-
-function selectBillingFlowStep(stepId) {
-  startBillingWorkflow(stepId);
-  activeAccountingTab.value = 'receivables';
-  if (stepId === 'report') activeTab.value = 'unpaid';
-  else if (stepId === 'confirm') activeTab.value = 'pending_report';
-  else activeTab.value = 'action';
 }
 
 const selectedIds = ref([]);
@@ -1753,7 +1712,6 @@ const rows = ref([]);
 const searchQuery = ref('');
 watch(searchQuery, clearSelection); // a pick never outlives the search that showed it
 const ledgerOpenedFromDeepLink = ref(false);
-const tuitionFocusRowId = ref(null);
 const tuitionFocusMessage = ref('');
 const consumedTuitionFocusKey = ref('');
 
@@ -1762,7 +1720,6 @@ function tuitionFocusKey() {
 }
 
 function clearTuitionFocus() {
-  tuitionFocusRowId.value = null;
   tuitionFocusMessage.value = '';
   consumedTuitionFocusKey.value = tuitionFocusKey();
   emit('clear-initial-context');
@@ -1779,21 +1736,16 @@ async function applyTuitionFocus() {
     courseId: props.initialCourseId,
   });
   if (!row) {
-    tuitionFocusRowId.value = null;
     tuitionFocusMessage.value = openedLedger
       ? '這門課目前沒有待處理項目，已直接打開學生帳務。'
-      : '通知對象目前不在這份待處理清單，請切換分類或重新整理。';
+      : '通知對象目前沒有待處理項目，請到學生清單搜尋。';
     emit('clear-initial-context');
     return;
   }
-  tuitionFocusRowId.value = Number(row.id || row.student_class_id) || null;
   tuitionFocusMessage.value = `已定位：${row.student_name || '指定學生'}${row.subject ? `／${row.subject}` : ''}`;
   emit('clear-initial-context');
-  await nextTick();
-  const element = tuitionFocusRowId.value
-    ? document.getElementById(`tuition-row-${tuitionFocusRowId.value}`)
-    : null;
-  element?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  // The table row is gone: show the contract in the student drawer instead.
+  if (!openedLedger) openLedgerForClass({ id: Number(row.id || row.student_class_id) || null });
 }
 
 const slipOpen = ref(false);
@@ -2646,33 +2598,20 @@ watch(() => props.branchId, () => {
   refreshActiveTab();
 }, { flush: 'post' });
 
+// The old 待處理 table is unreachable: deep links to one of its filters land on the matching chip of the student list.
+const LIST_FILTER_FOR_TAB = { pending: 'confirm', pending_report: 'confirm', unpaid: 'owing', pending_reconciliation: 'owing', amount_review: 'pending_review', renewal: 'all', all: 'all' };
 watch(() => props.initialTab, (tab) => {
   if (!tab) return;
-  if (tab === 'pending' || tab === 'pending_report') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'pending_report';
-  } else if (tab === 'unpaid') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'unpaid';
-  } else if (tab === 'pending_reconciliation') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'pending_reconciliation';
-  } else if (tab === 'amount_review') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'amount_review';
-  } else if (tab === 'renewal') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'renewal';
-  } else if (tab === 'all') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'all';
+  if (LIST_FILTER_FOR_TAB[tab]) {
+    activeAccountingTab.value = 'students';
+    listFilter.value = LIST_FILTER_FOR_TAB[tab];
   } else if (tab === 'receipts' || tab === 'payments') {
     activeAccountingTab.value = 'payments';
   } else if (tab === 'settled') {
     activeAccountingTab.value = 'settled';
   } else if (tab === 'ledger') {
-    activeAccountingTab.value = 'receivables';
-    activeTab.value = 'all';
+    activeAccountingTab.value = 'students';
+    listFilter.value = 'all';
     const courseId = normalizeNavigationId(props.initialCourseId);
     if (courseId) {
       ledgerOpenedFromDeepLink.value = true;

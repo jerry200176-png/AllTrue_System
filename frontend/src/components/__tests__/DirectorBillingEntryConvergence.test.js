@@ -35,7 +35,7 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
     });
   });
 
-  it('opens the student billing file for a ledger deep link and still focuses the queue row', async () => {
+  it('opens the student billing file for a ledger deep link and says which student it is', async () => {
     const wrapper = await mountTuition({ initialTab: 'ledger', initialStudentId: 501, initialCourseId: 6201 });
     try {
       const ledger = wrapper.findComponent({ name: 'AccountingLedgerModal' });
@@ -56,10 +56,13 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
     } finally { wrapper.unmount(); }
   });
 
-  it('keeps payment deep links on the queue row without opening the billing file', async () => {
+  it('a payment deep link picks the list chip and shows the contract in the billing drawer (the queue table is gone)', async () => {
     const wrapper = await mountTuition({ initialTab: 'unpaid', initialStudentId: 501, initialCourseId: 6201 });
     try {
-      expect(wrapper.findComponent({ name: 'AccountingLedgerModal' }).props('show')).toBe(false);
+      const ledger = wrapper.findComponent({ name: 'AccountingLedgerModal' });
+      expect(ledger.props('show')).toBe(true);
+      expect(ledger.props('studentClassId')).toBe(6201);
+      expect(wrapper.findComponent({ name: 'StudentBillingList' }).props('presetFilter')).toBe('owing');
       expect(wrapper.find('.tc-focus-context').text()).toContain('已定位：合成學生甲');
     } finally { wrapper.unmount(); }
   });

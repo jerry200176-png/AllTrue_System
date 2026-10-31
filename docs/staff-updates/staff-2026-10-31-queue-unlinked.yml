@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-31-queue-unlinked
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心只剩一份待辦清單
+    summary: 「待處理清單」表格不再有入口，所有動作都在學生清單和課程卡。
+    items:
+      - category: improved
+        text: 免收、撤銷收款、結案在課程卡；批次回報、批次確認入帳、匯出 CSV、上課明細在學生清單。
+      - category: improved
+        text: 從通知或首頁點進來，會直接停在學生清單對應的篩選，或打開該課程的學生帳務。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-f5-1-unlink-queue"

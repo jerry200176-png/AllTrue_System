@@ -20,28 +20,25 @@ beforeAll(() => {
 afterAll(() => vi.useRealTimers());
 
 describe('legacy paid flag without a payment record (#4114)', () => {
-  it('shows 需核對 in amber instead of 已收, and keeps the row out of every owed count', async () => {
+  it('shows 需核對 instead of 已收, keeps the row out of every owed count, and offers no 撤銷 without a receipt', async () => {
     global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/api/v1/alerts/tuition') ? [FLAG_ONLY, RECEIVED, FLAG_WITH_RECEIPT] : [])));
     const w = mount(TuitionCollectionPage, {
       props: { branchId: 1, initialTab: 'all' },
-      global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, StudentBillingList: true, OperationsQuickStart: true, teleport: true } },
+      global: { stubs: { MonthlyBillingReview: true, MonthlyDraftsPanel: true, PaymentSlipModal: true, ReceiptModal: true, AccountingLedgerModal: true, teleport: true } },
     });
     await flushPromises();
 
-    const tag = (name) => w.findAll('tr').find((tr) => tr.text().includes(name)).find('.status-tag');
-    expect(tag('旗標生').text()).toBe('需核對（舊資料標已收，查無收款）');
-    expect(tag('旗標生').classes()).toContain('st-pending');
-    expect(tag('旗標生').classes()).not.toContain('st-paid');
-    expect(tag('收款生').text()).toBe('已收');
-    expect(tag('收款生').classes()).toContain('st-paid');
-    const badge = (label) => w.findAll('.tc-tab').find((t) => t.text().startsWith(label)).find('.tc-tab-badge').text();
-    expect(badge('待處理')).toBe('0');
+    // F-5: the queue table is gone; the student list and the drawer's card actions carry these rules.
+    const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).findAll('.at-badge').map((b) => b.text());
+    expect(badge(1)).toEqual(['需核對（舊資料標已收，查無收款）']);
+    expect(badge(2)).toEqual(['已收']);
+    expect(w.find('[data-testid="sbl-summary"]').text()).toContain('本校區到今天未繳 NT$ 0');
 
     // #4174 review: no receipt stands behind a flag-only row, so there is nothing to 撤銷
-    const voidBtn = (name) => w.findAll('tr').find((tr) => tr.text().includes(name)).find('[data-testid="tc-void"]');
-    expect(voidBtn('旗標生').exists()).toBe(false);
-    expect(voidBtn('收款生').exists()).toBe(true);
-    expect(voidBtn('收據生').exists()).toBe(true);
+    const actions = w.findComponent({ name: 'AccountingLedgerModal' }).props('rowActions');
+    expect(actions[1].void).toBe(false);
+    expect(actions[2].void).toBe(true);
+    expect(actions[3].void).toBe(true);
     w.unmount();
   });
 });
