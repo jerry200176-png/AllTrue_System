@@ -539,20 +539,14 @@
         <summary class="att-manual-toggle">+ 手動登記</summary>
 
         <!-- Mode tabs -->
-        <div class="att-dir-mode-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            :class="['att-dir-mode-tab', { active: dirMode === 'system' }]"
-            @click="switchDirMode('system')"
-          >已排課程學生</button>
-          <button
-            type="button"
-            role="tab"
-            :class="['att-dir-mode-tab', { active: dirMode === 'external' }]"
-            @click="switchDirMode('external')"
-          >系統外人員</button>
-        </div>
+        <AtTabs
+          :model-value="dirMode"
+          class="att-dir-mode-tabs"
+          variant="segmented"
+          label="點名對象"
+          :tabs="[{ value: 'system', label: '已排課程學生' }, { value: 'external', label: '系統外人員' }]"
+          @update:model-value="switchDirMode"
+        />
 
         <!-- System student mode -->
         <div v-if="dirMode === 'system'" class="att-manual-grid">
@@ -1105,6 +1099,7 @@ import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
 import { useSelection } from '../composables/useSelection';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
@@ -3126,29 +3121,7 @@ watch(() => props.branchId, () => {
 @keyframes att-spin-anim { to { transform: rotate(360deg); } }
 
 /* ── Director mode tabs ─────────────────────────────────────── */
-.att-dir-mode-tabs {
-  display: flex;
-  gap: 0;
-  margin-top: 14px;
-  margin-bottom: 12px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 8px;
-  overflow: hidden;
-  width: fit-content;
-}
-.att-dir-mode-tab {
-  padding: 6px 16px;
-  border: none;
-  background: var(--ds-canvas);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ds-ink-mute);
-  transition: background 0.12s, color 0.12s;
-  min-height: 36px;
-}
-.att-dir-mode-tab + .att-dir-mode-tab { border-left: 1px solid var(--ds-hairline); }
-.att-dir-mode-tab.active { background: var(--ds-primary); color: var(--ds-canvas); font-weight: 600; }
+.att-dir-mode-tabs { margin: 14px 0 12px; }
 
 @media (max-width: 768px) {
   .att-quick-grid { grid-template-columns: 1fr; }
