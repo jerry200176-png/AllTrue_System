@@ -8,10 +8,9 @@ const source = readFileSync(resolve(__dirname, '../../pages/DirectorDashboard.vu
 
 describe('DirectorDashboard view switcher accessibility', () => {
   it('connects each view tab to its controlled panel', () => {
-    expect(source).toContain('id="director-workbench-tab-focus"');
-    expect(source).toContain('aria-controls="director-workbench-panel-focus"');
-    expect(source).toContain('id="director-workbench-tab-full"');
-    expect(source).toContain('aria-controls="director-workbench-panel-full"');
+    expect(source).toContain('id-prefix="director-workbench"');
+    expect(source).toContain("{ value: 'focus', label: '今天' }");
+    expect(source).toContain("{ value: 'full', label: '完整營運' }");
   });
 
   it('exposes both dashboard views as labelled tab panels', () => {

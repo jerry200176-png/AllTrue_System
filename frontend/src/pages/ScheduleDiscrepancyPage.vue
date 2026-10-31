@@ -21,22 +21,19 @@
     </AtPageHeader>
 
     <!-- Tabs -->
-    <nav class="sdp-tabs at-tabs" role="tablist" aria-label="回報狀態">
-      <button
-        v-for="tab in tabs"
-        :key="tab.value"
-        role="tab"
-        :id="`sdp-tab-${tab.value}`"
-        :aria-controls="`sdp-panel-${tab.value}`"
-        :aria-selected="activeTab === tab.value"
-        :class="['sdp-tab', 'at-tab', { active: activeTab === tab.value }]"
-        type="button"
-        @click="setTab(tab.value)"
-      >
+    <AtTabs
+      :model-value="activeTab"
+      class="sdp-tabs"
+      label="回報狀態"
+      id-prefix="sdp"
+      :tabs="tabs"
+      @update:model-value="setTab"
+    >
+      <template #tab="{ tab }">
         {{ tab.label }}
         <span v-if="counts[tab.value] > 0" class="sdp-tab-badge" :class="`sdp-tab-badge-${tab.value}`">{{ counts[tab.value] }}</span>
-      </button>
-    </nav>
+      </template>
+    </AtTabs>
 
     <section :id="`sdp-panel-${activeTab}`" class="sdp-list-wrap" role="tabpanel" :aria-labelledby="`sdp-tab-${activeTab}`" :aria-busy="loading">
       <div v-if="!hasBranch" class="sdp-state sdp-state-empty sdp-state-no-branch">
@@ -291,6 +288,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { scheduleDiscrepancyActionLabel } from '../lib/calendarViewDisplay.js';
