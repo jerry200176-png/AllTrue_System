@@ -5,6 +5,8 @@ namespace App\Operations\Strategies;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\SecurityAuditEvent;
+use App\Models\StudentClass;
+use App\Services\ClassSessionMaterializationService;
 use App\Services\SharedPackagePlanningService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -16,45 +18,83 @@ use RuntimeException;
  * a total cut already applies. Those rows never happened (no sign-in, ledger, note, coverage or payroll row points at them), so
  * they are deleted, not cancelled: a cancelled date stays taken and a renewal would plan past it, leaving a gap. No billing,
  * ledger, Charge, Paid or SessionCount value is written. The plan is computed live and execute is bound to the reviewed dry
- * run by `expected_digest` (Td076 pattern). The snapshot keeps every deleted row whole; rollback re-inserts a row only where
- * its course has nothing at that date and time again.
+ * run by `expected_digest` (Td076 pattern). The snapshot keeps every deleted row whole.
+ *
+ * Restore = a new Founder-approved request of this operation with `restore_request_id` = the trim request: its plan reads that
+ * request's stored execute snapshot and lists, digest-pinned the same way, the rows it can put back (future, id and course slot
+ * free, student slot free by the write path's own guard). A row whose slot was taken since is reported, never doubled.
  */
 final class SharedPoolTrimStrategy
 {
     private const REF = 'trim-shared-pool-overplan-20261101';
+    private const OPERATION = 'shared-pool-trim-overplan-20261101';
     private const GENERATED = ['StartTimeHM' => true, 'ActiveSlotFlag' => true];
 
     public function plan(array $parameters): array
     {
         $campuses = $this->campusIds($parameters['campus_ids'] ?? null);
         $want = (string) ($parameters['expected_digest'] ?? '');
+        $source = (string) ($parameters['restore_request_id'] ?? '');
         $errors = [];
         if (($parameters['decision_reference'] ?? null) !== self::REF) $errors[] = 'case_parameters_mismatch';
         if ($campuses === []) $errors[] = 'campus_ids_required';
         if ($want !== '' && !preg_match('/^[0-9a-f]{64}$/', $want)) $errors[] = 'digest_format';
+        if ($source !== '' && !Str::isUuid($source)) $errors[] = 'restore_request_id_format';
         if ($errors !== []) {
             return ['ok' => false, 'errors' => $errors, 'state' => 'invalid'];
         }
-        [$rows, $totals] = $this->build($campuses);
+        if ($source !== '') {
+            $snapshot = $this->sourceSnapshot($source, $campuses);
+            if ($snapshot === null) {
+                return ['ok' => false, 'errors' => ['restore_source_not_found'], 'state' => 'invalid'];
+            }
+            [$rows, $totals] = $this->restoreRows($snapshot);
+            $todo = array_filter($rows, fn ($r) => $r['action'] === 'restore');
+        } else {
+            [$rows, $totals] = $this->build($campuses);
+            $todo = $rows;
+        }
         $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
-        $state = $want === '' ? 'unpinned' : ($rows === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
+        $state = $want === '' ? 'unpinned' : ($todo === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
 
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
-            'state' => $state, 'campus_ids' => $campuses, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
+            'state' => $state, 'mode' => $source === '' ? 'trim' : 'restore', 'restore_request_id' => $source, 'campus_ids' => $campuses,
+            'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
     }
 
     public function execute(array $plan, array $context): array
     {
+        $restore = ($plan['mode'] ?? 'trim') === 'restore';
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
-            // Nothing left to remove (retry after the execution record failed to persist): the deleted rows are in
+            // Nothing left to do (retry after the execution record failed to persist): the rows touched are in
             // schedule_audit_logs, not in this run's result, so no snapshot is guessed. Operator resolves.
-            return ['ok' => true, 'already_applied' => true, 'deleted' => 0, 'snapshot' => ['rows' => [], 'incomplete' => true]];
+            return ['ok' => true, 'already_applied' => true, 'deleted' => 0, 'restored' => 0, 'snapshot' => ['rows' => [], 'incomplete' => true]];
         }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'pinned') {
             throw new RuntimeException('shared_pool_trim_plan_not_pinned');
         }
 
-        return DB::transaction(function () use ($plan, $context): array {
+        return DB::transaction(function () use ($plan, $context, $restore): array {
+            if ($restore) {
+                $snapshot = $this->sourceSnapshot((string) $plan['restore_request_id'], $plan['campus_ids']);
+                $byId = array_column($snapshot ?? [], null, 'id');
+                [$rows] = $this->restoreRows($snapshot ?? [], true);
+                if (hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)) !== $plan['digest']) {
+                    throw new RuntimeException('shared_pool_trim_digest_drift');
+                }
+                $ids = [];
+                foreach ($rows as $r) {
+                    if ($r['action'] === 'restore') {
+                        // The model's creating guard re-checks course and student slot (fail closed); the observer audits it.
+                        (new ClassSession())->forceFill(array_diff_key($byId[$r['session_id']], self::GENERATED))->save();
+                        $ids[] = $r['session_id'];
+                    }
+                }
+                $this->audit(['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
+                    'source_request_id' => (string) $plan['restore_request_id'], 'row_count' => count($ids), 'outcome' => 'success'], '.restore');
+
+                return ['ok' => true, 'restored' => count($ids), 'snapshot' => ['restored_ids' => $ids]];
+            }
             // Lock the reviewed lessons, then the pools' planned rows, before recomputing: a concurrent reschedule waits or is seen.
             ClassSession::query()->whereIn('id', array_column($plan['manifest'], 'session_id'))->lockForUpdate()->get();
             CoursePackage::query()->whereIn('id', array_unique(array_column($plan['manifest'], 'package_id')))->lockForUpdate()->get();
@@ -80,6 +120,12 @@ final class SharedPoolTrimStrategy
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
         if (($result['snapshot']['incomplete'] ?? false) === true) $errors[] = 'snapshot_incomplete_manual_resolution';
         if (($plan['campus_ids'] ?? []) === []) $errors[] = 'verify_plan_missing';
+        if (($plan['mode'] ?? 'trim') === 'restore') {
+            $ids = $result['snapshot']['restored_ids'] ?? [];
+            if (DB::table('ClassSession')->whereIn('id', $ids)->count() !== count($ids)) $errors[] = 'restored_rows_missing';
+
+            return ['ok' => $errors === [], 'errors' => array_values(array_unique($errors)), 'checks' => ['restored']];
+        }
         $ids = array_column($result['snapshot']['rows'] ?? [], 'id');
         if ($ids !== [] && DB::table('ClassSession')->whereIn('id', $ids)->exists()) $errors[] = 'deleted_rows_present';
         // Executed pools now plan no more than they have left (lessons that something points at stay and are only reported).
@@ -91,12 +137,17 @@ final class SharedPoolTrimStrategy
         return ['ok' => $errors === [], 'errors' => array_values(array_unique($errors)), 'checks' => ['deleted', 'no_executed_pool_over']];
     }
 
+    /** In-request rollback (inside the approval window); later recovery is a restore request (see the class doc). */
     public function rollback(array $snapshot, array $context): array
     {
-        $rows = $snapshot['rows'] ?? null;
         if (($snapshot['incomplete'] ?? false) === true) {
             return ['ok' => false, 'partial' => true, 'restored' => 0, 'errors' => ['snapshot_incomplete_manual_resolution']];
         }
+        if (isset($snapshot['restored_ids'])) {
+            // Undoing a restore is a new trim dry-run: the restored rows are ordinary planned lessons again.
+            return ['ok' => false, 'partial' => true, 'restored' => 0, 'errors' => ['restore_is_undone_by_a_new_trim']];
+        }
+        $rows = $snapshot['rows'] ?? null;
         if (!is_array($rows)) {
             throw new RuntimeException('shared_pool_trim_rollback_snapshot_invalid');
         }
@@ -105,21 +156,67 @@ final class SharedPoolTrimStrategy
             $restored = 0;
             $skipped = [];
             foreach ($rows as $r) {
-                // A renewal may have planned the date again since: never put a second lesson on one course slot.
-                $taken = DB::table('ClassSession')->lockForUpdate()->where('id', $r['id'])->exists()
-                    || DB::table('ClassSession')->where('StudentClassID', $r['StudentClassID'])->whereDate('SessionDate', substr((string) $r['SessionDate'], 0, 10))
-                        ->where('StartTime', $r['StartTime'])->exists();
-                if ($taken) {
+                if ($this->restoreAction($r, true) !== 'restore') {
                     $skipped[] = (int) $r['id'];
                     continue;
                 }
-                DB::table('ClassSession')->insert(array_diff_key($r, self::GENERATED)); // the DB computes these
+                (new ClassSession())->forceFill(array_diff_key($r, self::GENERATED))->save();
                 $restored++;
             }
             $this->audit(['reason_code' => self::REF, 'row_count' => $restored, 'skipped' => count($skipped), 'outcome' => 'success'], '.rollback');
 
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'restored' => $restored, 'skipped_ids' => $skipped];
         }, 3);
+    }
+
+    /** The deleted rows of a succeeded trim request of this operation over the same campuses; null when there is none. */
+    private function sourceSnapshot(string $requestId, array $campuses): ?array
+    {
+        $request = DB::table('pop_operation_requests')->where('id', $requestId)->first();
+        $parameters = $request ? json_decode((string) $request->parameters, true) : null;
+        if (!$request || (string) $request->operation_id !== self::OPERATION || !is_array($parameters)
+            || ($parameters['restore_request_id'] ?? '') !== '' || $this->campusIds($parameters['campus_ids'] ?? null) !== $campuses) {
+            return null;
+        }
+        $execute = DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')
+            ->where('result', 'succeeded')->orderByDesc('attempt_no')->first();
+        $snapshot = $execute ? json_decode((string) $execute->snapshot, true) : null;
+
+        return is_array($snapshot['rows'] ?? null) && $snapshot['rows'] !== [] ? $snapshot['rows'] : null;
+    }
+
+    /** @return array{0: list<array<string,mixed>>, 1: array<string,int>} ids-only rows, each with the action restore would take */
+    private function restoreRows(array $snapshot, bool $lock = false): array
+    {
+        $rows = [];
+        foreach (collect($snapshot)->sortBy('id') as $r) {
+            $rows[] = ['session_id' => (int) $r['id'], 'course_id' => (int) $r['StudentClassID'], 'date' => substr((string) $r['SessionDate'], 0, 10),
+                'start' => substr((string) $r['StartTime'], 0, 5), 'action' => $this->restoreAction($r, $lock)];
+        }
+        $totals = ['rows' => count($rows)];
+        foreach ($rows as $r) {
+            $totals[$r['action']] = ($totals[$r['action']] ?? 0) + 1;
+        }
+
+        return [$rows, $totals];
+    }
+
+    /** restore, or why not: present (id back), course_slot (that course has a lesson then), student_slot, past, course_missing. */
+    private function restoreAction(array $r, bool $lock): string
+    {
+        $date = substr((string) $r['SessionDate'], 0, 10);
+        $course = StudentClass::query()->whereKey($r['StudentClassID'])->first();
+
+        return match (true) {
+            DB::table('ClassSession')->where('id', $r['id'])->when($lock, fn ($q) => $q->lockForUpdate())->exists() => 'present',
+            $date <= now()->toDateString() => 'past',
+            !$course => 'course_missing',
+            DB::table('ClassSession')->where('StudentClassID', $r['StudentClassID'])->whereDate('SessionDate', $date)
+                ->where('StartTime', $r['StartTime'])->exists() => 'course_slot',
+            app(ClassSessionMaterializationService::class)->findStudentSlotConflict($course, $date, (string) $r['StartTime'],
+                (string) $r['EndTime'], null, [], $lock) !== null => 'student_slot',
+            default => 'restore',
+        };
     }
 
     /** @return list<int> */

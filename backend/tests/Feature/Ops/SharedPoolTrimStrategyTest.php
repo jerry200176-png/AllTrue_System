@@ -52,7 +52,7 @@ final class SharedPoolTrimStrategyTest extends TestCase
 
     private function params(array $campuses, string $digest = ''): array
     {
-        return ['campus_ids' => $campuses, 'decision_reference' => self::REF, 'expected_digest' => $digest];
+        return ['campus_ids' => $campuses, 'decision_reference' => self::REF, 'expected_digest' => $digest, 'restore_request_id' => ''];
     }
 
     /** @return list<string> week-and-course labels of a pool's scheduled lessons */
@@ -151,13 +151,60 @@ final class SharedPoolTrimStrategyTest extends TestCase
         $this->assertSame($before, $this->planned($this->poolA));
     }
 
+    /** One POP request through the real catalog and service: draft, dry-run, Founder approve, execute, verify. */
+    private function popRun(array $params): array
+    {
+        $service = new PopOperationService(new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
+        $id = (string) $service->createDraft('shared-pool-trim-overplan-20261101', $params, 'pool-trim-test-' . bin2hex(random_bytes(4)),
+            'user:1', 'super_admin', [], 1)['id'];
+        $dry = $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
+        $digest = (string) ($dry['plan']['digest'] ?? '');
+        if ($params['expected_digest'] === '') {
+            return [$id, $digest, $dry];
+        }
+        $sha = str_repeat('c', 40);
+        $token = $service->approve($id, 'founder-go-pool-trim-test', 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
+        $execute = $service->run($id, 'execute', $token, $sha, 'pop-pi-local');
+        $verify = $service->run($id, 'verify', $token, $sha, 'pop-pi-local');
+
+        return [$id, $digest, $execute, $verify];
+    }
+
+    public function test_a_restore_request_puts_back_a_trim_from_its_stored_snapshot_and_skips_a_taken_student_slot(): void
+    {
+        [, $digest] = $this->popRun($this->params([2]));
+        [$trimId, , $execute, $verify] = $this->popRun($this->params([2], $digest));
+        $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']]);
+        $this->assertCount(4, $this->planned($this->poolA));
+        $deleted = json_decode((string) DB::table('pop_execution_records')->where('operation_id', $trimId)->where('phase', 'execute')->value('snapshot'), true)['rows'];
+        // Since the trim, the student booked another course (another package) in one freed slot (Codex P2).
+        $taken = $deleted[0];
+        DB::table('StudentClass')->insert(['ID' => 300, 'StudentID' => 1, 'GradeID' => 1, 'SubjectID' => 9, 'TeacherID' => 1, 'by1' => 1, 'Period' => 1,
+            'Pay' => 0, 'Rate' => 500, 'TotalHours' => 2, 'StartDate' => now()->toDateString(), 'ClassType' => 'one_on_one', 'ScheduleMode' => 'count',
+            'Stop' => 0, 'Paid' => 0, 'Charge' => 0]);
+        ClassSession::create(['StudentClassID' => 300, 'SessionDate' => $taken['SessionDate'], 'StartTime' => $taken['StartTime'],
+            'EndTime' => $taken['EndTime'], 'Status' => 'scheduled', 'Note' => '']);
+
+        $restore = ['restore_request_id' => $trimId] + $this->params([2]);
+        [, $restoreDigest, $dry] = $this->popRun($restore);
+        $this->assertSame('succeeded', $dry['result']);
+        [, , $execute, $verify] = $this->popRun(['expected_digest' => $restoreDigest] + $restore);
+
+        $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']]);
+        $this->assertCount(7, $this->planned($this->poolA), 'three come back; the slot the student booked since stays theirs');
+        $this->assertFalse(ClassSession::whereKey($taken['id'])->exists());
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'pop.shared_pool_trim.restore')->count());
+        $again = (new SharedPoolTrimStrategy())->plan(['expected_digest' => $restoreDigest] + $restore);
+        $this->assertSame('after', $again['state'], 'a second restore puts nothing back twice');
+    }
+
     public function test_catalog_entry_requires_the_exact_founder_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml');
         $service = new PopOperationService($catalog);
         $roles = new ReflectionMethod($service, 'approvalRoles');
         $entry = $catalog->operation('shared-pool-trim-overplan-20261101');
-        $this->assertSame(['campus_ids', 'decision_reference', 'expected_digest'], $entry['parameter_keys']);
+        $this->assertSame(['campus_ids', 'decision_reference', 'expected_digest', 'restore_request_id'], $entry['parameter_keys']);
         $this->assertSame(['super_admin'], $roles->invoke($service, $entry));
         $entry['blast_radius'] = 'global';
         $this->expectException(RuntimeException::class);

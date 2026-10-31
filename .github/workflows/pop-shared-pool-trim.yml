@@ -21,8 +21,13 @@ on:
         required: false
         type: string
         default: ''
+      restore_request_id:
+        description: Empty to trim. To restore a trim, its POP request id (the plan reads that request's stored snapshot)
+        required: false
+        type: string
+        default: ''
       confirm:
-        description: "DRY_RUN_SHARED_POOL_TRIM or APPROVE_SHARED_POOL_TRIM"
+        description: "DRY_RUN_SHARED_POOL_TRIM / APPROVE_SHARED_POOL_TRIM (or ..._RESTORE with restore_request_id)"
         required: true
         type: string
       deployed_backend_sha:
@@ -48,19 +53,22 @@ jobs:
           INPUT_SHA: ${{ inputs.deployed_backend_sha }}
           CAMPUS: ${{ inputs.campus_ids }}
           DIGEST: ${{ inputs.expected_digest }}
+          RESTORE: ${{ inputs.restore_request_id }}
         run: |
           set -euo pipefail
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
+          [[ "$RESTORE" =~ ^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$ ]] || { echo '::error::restore_request_id must be empty or a POP request UUID'; exit 1; }
+          KIND=$([[ -n "$RESTORE" ]] && echo RESTORE || echo TRIM)
           [[ "$CAMPUS" =~ ^[1-9][0-9]{0,5}(,[1-9][0-9]{0,5}){0,9}$ ]] || { echo '::error::campus_ids must be comma-separated numbers'; exit 1; }
           [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] || { echo '::error::expected_digest must be empty or 64 hex'; exit 1; }
           [[ "$MODE" == dry-run || -n "$DIGEST" ]] || { echo '::error::approve requires the reviewed expected_digest'; exit 1; }
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
           if [[ "$MODE" == dry-run ]]; then
-            [[ "$CONFIRM" == DRY_RUN_SHARED_POOL_TRIM ]] || { echo '::error::confirm must be DRY_RUN_SHARED_POOL_TRIM'; exit 1; }
+            [[ "$CONFIRM" == "DRY_RUN_SHARED_POOL_$KIND" ]] || { echo "::error::confirm must be DRY_RUN_SHARED_POOL_$KIND"; exit 1; }
           else
-            [[ "$CONFIRM" == APPROVE_SHARED_POOL_TRIM ]] || { echo '::error::confirm must be APPROVE_SHARED_POOL_TRIM'; exit 1; }
+            [[ "$CONFIRM" == "APPROVE_SHARED_POOL_$KIND" ]] || { echo "::error::confirm must be APPROVE_SHARED_POOL_$KIND"; exit 1; }
           fi
-          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA campus=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
+          echo "Founder gate passed: mode=$MODE kind=$KIND restore=${RESTORE:--} backend_sha=$INPUT_SHA campus=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
   founder-approval:
     # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
     name: Founder approval (approve mode only)
@@ -106,6 +114,7 @@ jobs:
           TARGET_SHA: ${{ inputs.deployed_backend_sha }}
           CAMPUS: ${{ inputs.campus_ids }}
           DIGEST: ${{ inputs.expected_digest }}
+          RESTORE: ${{ inputs.restore_request_id }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -113,6 +122,7 @@ jobs:
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CAMPUS" =~ ^[1-9][0-9]{0,5}(,[1-9][0-9]{0,5}){0,9}$ ]] && [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RESTORE" =~ ^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$ ]]
           SSH_DIR="$RUNNER_TEMP/pop-pooltrim-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
@@ -121,13 +131,13 @@ jobs:
           ssh -i "$SSH_DIR/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' CAMPUS='$CAMPUS' DIGEST='$DIGEST' RUN_ID='$RUN_ID' bash -s" <<'REMOTE'
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' CAMPUS='$CAMPUS' DIGEST='$DIGEST' RESTORE='$RESTORE' RUN_ID='$RUN_ID' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
           OPERATION=shared-pool-trim-overplan-20261101; REF=trim-shared-pool-overplan-20261101; AUDIT=pop.shared_pool_trim
-          CAMPUS_KEY="${CAMPUS//,/-}"
+          CAMPUS_KEY="${CAMPUS//,/-}${RESTORE:+-r${RESTORE:0:8}}"
           APPROVAL_REF="founder-go-pool-trim-c$CAMPUS_KEY-${DIGEST:0:12}"
           WORK_DIR="$(mktemp -d /tmp/pop-pooltrim.XXXXXX)"
           TOKEN=''
@@ -160,7 +170,7 @@ jobs:
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
           # Exact catalog-bound parameters (campus_ids list); campus and digest were allowlisted by the guard job. The run id keeps each dry-run fresh.
-          PARAMETERS_JSON="{\"parameters\":{\"campus_ids\":[$CAMPUS],\"decision_reference\":\"$REF\",\"expected_digest\":\"$DIGEST\"},\"idempotency_key\":\"pool-trim-c$CAMPUS_KEY-${DIGEST:0:12}-$RUN_ID\"}"
+          PARAMETERS_JSON="{\"parameters\":{\"campus_ids\":[$CAMPUS],\"decision_reference\":\"$REF\",\"expected_digest\":\"$DIGEST\",\"restore_request_id\":\"$RESTORE\"},\"idempotency_key\":\"pool-trim-c$CAMPUS_KEY-${DIGEST:0:12}-$RUN_ID\"}"
           draft="$WORK_DIR/draft.json"
           draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
           [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }
@@ -189,8 +199,8 @@ jobs:
               print('pool package=%s remaining=%s planned=%s remove=%s blocked=%s' % tuple(
                   re.sub(r'[^0-9-]', '?', str(r.get(k))) for k in ('package_id', 'remaining', 'planned', 'remove', 'blocked')))
           for r in plan.get('manifest') or []:
-              print('row package=%s session=%s course=%s date=%s start=%s' % tuple(
-                  re.sub(r'[^0-9:-]', '?', str(r.get(k))) for k in ('package_id', 'session_id', 'course_id', 'date', 'start')))
+              print('row package=%s session=%s course=%s date=%s start=%s action=%s' % tuple(
+                  re.sub(r'[^0-9a-z_:-]', '?', str(r.get(k, '-'))) for k in ('package_id', 'session_id', 'course_id', 'date', 'start', 'action')))
           PY
           [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
           if [[ "$MODE" == approve ]]; then

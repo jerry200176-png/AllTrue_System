@@ -43,9 +43,17 @@ A rerun removes nothing (`state=after`).
 3. Execute (Pi-local), then verify: the deleted ids are gone and no executed pool still has removable excess.
 4. Closeout: re-run the probe (`overplanned` should be 0, apart from blocked slots), post on #4734, and publish a staff update card.
 
-## Rollback
+## Rollback (restore)
 
-From the stored snapshot, re-insert each row with its id (computed columns `StartTimeHM` and `ActiveSlotFlag` are left to the DB). A row is skipped when its id exists again, or its course has a lesson at that date and time again (for example, a renewal re-planned it). Skips are reported as `ok=false, partial=true`. Rollback is a new Founder-approved POP request.
+A restore is a new request of the same operation, run through the same adapter with `restore_request_id` set to the trim's POP request id. The confirmation phrases are `DRY_RUN_SHARED_POOL_RESTORE` and `APPROVE_SHARED_POOL_RESTORE`, and `campus_ids` must match the trim's.
+
+- **Plan**: reads that request's stored execute snapshot. It lists each deleted row with one action: `restore`, `present` (the id exists again), `past`, `course_missing`, `course_slot` (that course has a lesson at that date and time again) or `student_slot` (the write path's `findStudentSlotConflict`, same-package exception included).
+- **Approve and execute**: the Founder approves that exact digest. Execute recomputes under row locks and aborts on any drift. It re-inserts only the `restore` rows through the model (the creating guard re-checks the slots and the observer audits each row), then writes `pop.shared_pool_trim.restore`.
+- **Verify**: every restored id exists.
+- A second restore is `state=after`.
+- Undoing a restore is a new trim dry-run.
+
+Inside the approval window, the in-request `rollback` phase applies the same checks.
 
 ## Dispatch adapter
 

@@ -690,10 +690,10 @@ operations:
     verification_required: true
     approval_required: true
     execution_authority: pop-pi-local
-    blast_radius: campus_scoped_unreferenced_future_scheduled_rows_deleted_only
+    blast_radius: campus_scoped_unreferenced_future_scheduled_rows_deleted_or_restored
     estimated_duration: 5m
     invariant_packs: [session-pack@1.0.0]
     strategy_class: App\Operations\Strategies\SharedPoolTrimStrategy
-    parameter_keys: [campus_ids, decision_reference, expected_digest]
+    parameter_keys: [campus_ids, decision_reference, expected_digest, restore_request_id]
     tags: [repair, session, shared-pool, issue-4734]
     notes: Founder GO 2026-11-01 (A, #4734). Deletes the planned lessons shared count pools pre-planned before #4730 past what each pool has left (SharedPackagePlanningService::sharedPoolExcess). Only future `scheduled` rows nothing points at; no billing, ledger or counter is written. Execute is pinned to the dry-run digest; the snapshot keeps every row whole for rollback. Pi-local POP only.
