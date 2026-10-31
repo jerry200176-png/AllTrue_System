@@ -35,7 +35,7 @@ final class MonthlyRenewalPeriodService
         return ['start_date' => $start->toDateString(), 'billing_period' => $end ? $start->format('Y-m') : null,
             'due_date' => $end ? $month->day(min($day, $month->daysInMonth))->toDateString() : null,
             'blockers' => $outside ? [['code' => 'monthly_completed_sessions_outside_contract',
-                'message' => "有 {$outside} 堂已上課落在合約日期外。請先到月結核對確認堂次與帳務歸屬，再建立新一期。"]] : []];
+                'message' => "有 {$outside} 堂上課日在合約日期之外，先處理這幾堂才能開下一期。"]] : []];
     }
 
     public static function chargeFromRate(float $rate, string $rateUnit, int $sessionCount, int $totalHours): int

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-30-ledger-conclusion-why
+    published_at: "2026-10-30"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務面板一眼看結論
+    summary: 面板最上面一行直接告訴你已收齊，或還有多少未繳、待確認入帳。
+    items:
+      - category: added
+        text: 面板頂部新增一行結論：已收齊，或「未繳 X・待確認入帳 Y」。
+      - category: improved
+        text: 旁邊的「為什麼？」展開看說明，多收的長說明收進去。
+    source_refs:
+      - "changelog:2026-10-30:ledger-conclusion-why"
