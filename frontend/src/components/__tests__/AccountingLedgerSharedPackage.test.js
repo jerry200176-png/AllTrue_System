@@ -32,6 +32,17 @@ describe('帳務面板 · 共用方案只有一個收款入口 (#3753)', () => {
     expect(w.findAll('[data-testid="contract-shared-follower"]')).toHaveLength(1);
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').text()).toContain('2 份合約');
   });
+  it('F-3: one 未繳 and one button for the package; the follower shows only where to pay, the lead names its members', async () => {
+    const w = await mountLedger(ledger({ invoices: [{ id: 11, student_class_id: 1, status: 'unpaid', total_amount: 6000, outstanding_amount: 6000, calculated_applied_amount: 0, due_date: '2026-08-15', payments: [] }] }));
+    const card = (id) => w.get(`[data-testid="contract-card-${id}"]`);
+    expect(card(1).text()).toContain('未繳');
+    expect(card(1).text()).toContain('共用方案：和「英文」一起收款');
+    expect(card(2).text()).not.toContain('未繳');
+    expect(card(2).text()).not.toContain('還沒開帳單');
+    expect(card(2).find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(card(2).get('[data-testid="contract-shared-follower"]').text()).toContain('「數學」');
+    expect(card(2).find('[data-testid="contract-package-members"]').exists()).toBe(false);
+  });
   it('#4002: a tutoring member never leads a package that also has a payable member', async () => {
     const w = await mountLedger(ledger({
       courses: [{ ...course(1, '輔導', 9), class_type: 'tutoring' }, course(2, '英文', 9), course(3, '理化', null)],
