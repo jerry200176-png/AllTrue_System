@@ -28,4 +28,20 @@ defineProps({
 .at-field__req { color: var(--ds-danger); margin-left: 2px; }
 .at-field__msg { margin: 0; font-size: 12px; color: var(--ds-ink-mute); line-height: 1.4; }
 .at-field__msg--error { color: var(--ds-danger); }
+/* #4697 item 3: one gentle nudge when an error appears, so a wrong value is noticed. */
+.at-field--error { animation: at-field-nudge var(--ds-motion-slow, 240ms) var(--ds-ease-standard, ease-out); }
+.at-field__msg--error { animation: at-field-msg-in var(--ds-motion-base, 180ms) var(--ds-ease-standard, ease-out); }
+@keyframes at-field-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
+}
+@keyframes at-field-msg-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .at-field--error, .at-field__msg--error { animation: none; }
+}
 </style>
