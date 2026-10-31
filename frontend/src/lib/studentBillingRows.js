@@ -69,7 +69,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0, renewing: 0,
       });
     }
     return byStudent.get(id);
@@ -101,6 +101,8 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     // #4114 (Founder Q3): paid by the legacy flag alone is 需核對, not 已收; still not owed (status unchanged).
     if (paidSignal && isLegacyPaidFlagOnly(r)) row.legacy_flag_only += 1;
     else if (paidSignal) row.has_paid = true;
+    // The old queue's 續課/將到期 tab: few lessons left (renew_needed) or a monthly term ending (monthly_due_soon).
+    if (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon') row.renewing += 1;
     if (r.payment_status === 'pending_report') { row.waiting_confirm += 1; row.confirm_class_id ??= r.id != null ? Number(r.id) : null; }
     // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
     if (pendingReviewAmount(r) > 0) {
@@ -149,5 +151,6 @@ export const STUDENT_FILTERS = {
   owing: { label: '有未繳', test: (r) => r.owed_now > 0 },
   confirm: { label: '待確認入帳', test: (r) => r.waiting_confirm > 0 },
   pending_review: { label: '需核對金額', test: (r) => r.pending_review_count > 0 },
+  renew: { label: '需續課', test: (r) => r.renewing > 0 },
   clear: { label: '沒有未繳', test: (r) => r.owed_now === 0 && r.owed_later === 0 && r.waiting_confirm === 0 && !r.unbilled && !r.pending_review_count },
 };
