@@ -16,7 +16,7 @@
       <p>不要貼到 GitHub、LINE 群組或任何公開的地方：拿到金鑰的人可以看到回報內容，包含老師姓名和截圖。</p>
       <div class="secret-row">
         <input class="secret-input" :value="plaintext" readonly aria-label="新的金鑰" data-testid="triage-token-secret" @focus="$event.target.select()" />
-        <AtCopyButton :text="plaintext" data-testid="triage-token-copy" @error="errorMsg = '瀏覽器不允許自動複製，請手動選取金鑰後複製。'" />
+        <AtButton shape="rect" size="sm" variant="secondary" data-testid="triage-token-copy" @click="copy">{{ copied ? '已複製' : '複製' }}</AtButton>
       </div>
       <template #action>
         <AtButton shape="rect" size="sm" variant="ghost" data-testid="triage-token-dismiss" @click="dismiss">我存好了，關閉</AtButton>
@@ -61,7 +61,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import AtButton from './design-system/AtButton.vue';
-import AtCopyButton from './design-system/AtCopyButton.vue';
 import AtInlineAlert from './design-system/AtInlineAlert.vue';
 import { createTriageToken, listTriageTokens, revokeTriageToken } from '../lib/triageTokenService';
 
@@ -78,6 +77,7 @@ const ttlDays = ref(90);
 const name = ref('');
 const plaintext = computed(() => props.secret);
 const listLoaded = ref(false);
+const copied = ref(false);
 const loading = ref(false);
 const creating = ref(false);
 const confirmingId = ref(null);
@@ -126,6 +126,7 @@ async function create() {
   try {
     const res = await createTriageToken(props.token, name.value.trim());
     emit('update:secret', res.token);
+    copied.value = false;
     name.value = '';
     await load();
   } catch (e) {
@@ -136,8 +137,18 @@ async function create() {
   }
 }
 
+async function copy() {
+  try {
+    await navigator.clipboard.writeText(plaintext.value);
+    copied.value = true;
+  } catch {
+    errorMsg.value = '瀏覽器不允許自動複製，請手動選取金鑰後複製。';
+  }
+}
+
 function dismiss() {
   emit('update:secret', '');
+  copied.value = false;
 }
 
 async function revoke(id) {
