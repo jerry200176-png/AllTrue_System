@@ -41,6 +41,10 @@ test('decide: cancelled-only required checks rerun their workflow runs (#4700); 
   assert.equal(decide(pr({ rollup: [cx('A', 'CANCELLED', null), ok[1]] }), req).reason, 'checks'); // no run to rerun
   assert.equal(decide(pr({ rollup: [cx('A', 'TIMED_OUT', 7), ok[1]] }), req).reason, 'checks');
   assert.equal(decide(pr({ unresolvedThreads: 1, rollup: [cx('A', 'CANCELLED', 7), ok[1]] }), req).reason, 'threads');
+  // The accepted rerun is queued (no startedAt yet): it is the latest attempt, so wait instead of re-judging the cancel.
+  const queued = { name: 'A', status: 'QUEUED', conclusion: null, startedAt: null, checkSuite: { workflowRun: { databaseId: 7 } } };
+  assert.equal(decide(pr({ rollup: [cx('A', 'CANCELLED', 7), queued, ok[1]] }), req).action, 'wait');
+  assert.deepEqual(checkStates([cx('A', 'CANCELLED', 7), queued], ['A']), { A: 'pending' });
 });
 
 test('decide: unresolved review threads reject; known zero keeps merge behavior', () => {

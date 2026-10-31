@@ -54,7 +54,8 @@ function latestRuns(rollup) {
   const latest = new Map();
   for (const c of rollup || []) {
     const name = c.name || c.context;
-    const at = c.startedAt || c.createdAt || '';
+    // A check still waiting for a runner (e.g. an accepted rerun) has no startedAt yet; it is the newest attempt (#4705).
+    const at = c.startedAt || c.createdAt || (c.status && String(c.status).toUpperCase() !== 'COMPLETED' ? '~' : '');
     if (name && (!latest.has(name) || at >= latest.get(name).at)) latest.set(name, { c, at });
   }
   return new Map([...latest].map(([n, v]) => [n, v.c]));
