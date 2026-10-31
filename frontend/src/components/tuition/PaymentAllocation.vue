@@ -210,7 +210,7 @@ async function confirmNow(r) {
 const accepted = computed(() => results.value.filter((r) => r.ok).length);
 const failed = computed(() => results.value.filter((r) => !r.ok));
 const verdict = computed(() => {
-  if (!failed.value.length) return results.value.every((r) => r.confirmed) ? `已登記並確認入帳 ${accepted.value} 份合約。` : `已登記 ${accepted.value} 份合約，待確認入帳。`;
+  if (!failed.value.length) return `已登記 ${accepted.value} 份合約，待確認入帳。`;
   if (!accepted.value) return '都沒有登記成功，沒有任何金額被記下。';
   return `只有部分登記成功：${accepted.value} 份已登記、${failed.value.length} 份沒有登記。`;
 });
