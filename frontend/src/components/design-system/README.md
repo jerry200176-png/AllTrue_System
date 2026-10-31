@@ -79,6 +79,19 @@ const selection = useSelection(visibleRows, { key: 'id', canSelect: (r) => r.sta
 
 ---
 
+## AtTabs（#4697 滑動分頁）
+
+```vue
+<AtTabs v-model="tab" label="課表檢視方式" variant="segmented"
+        :tabs="[{ value: 'week', label: '課表' }, { value: 'teacher', label: '老師清單', badge: 3 }]" />
+```
+
+- `variant`：`underline`（預設，底線滑動）／`segmented`（膠囊容器）。單一指示條滑到選取的分頁；`prefers-reduced-motion` 時直接切換。
+- 分頁項：`value`、`label`、`icon?`、`badge?`、`disabled?`、`id?`／`controls?`（對應既有面板 id）或 `id-prefix` 自動產生 `{prefix}-tab-{value}`／`{prefix}-panel-{value}`。
+- 鍵盤：左右（上下）箭頭、Home／End 移動並選取，跳過 disabled；roving tabindex。
+
+---
+
 ## AtCard
 
 ```vue

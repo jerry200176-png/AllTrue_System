@@ -8,10 +8,10 @@ const source = readFileSync(resolve(__dirname, '../../pages/SmartCalendar.vue'),
 
 describe('SmartCalendar accessibility contracts', () => {
   it('connects the calendar view tabs to labelled panels', () => {
-    expect(source).toContain('id="calendar-tab-week"');
-    expect(source).toContain('aria-controls="calendar-panel-week"');
-    expect(source).toContain('id="calendar-tab-teacher"');
-    expect(source).toContain('aria-controls="calendar-panel-teacher"');
+    expect(source).toContain("id: 'calendar-tab-week'");
+    expect(source).toContain("controls: 'calendar-panel-week'");
+    expect(source).toContain("id: 'calendar-tab-teacher'");
+    expect(source).toContain("controls: 'calendar-panel-teacher'");
     expect(source).toContain('role="tabpanel" aria-labelledby="calendar-tab-week"');
     expect(source).toContain('role="tabpanel" aria-labelledby="calendar-tab-teacher"');
   });

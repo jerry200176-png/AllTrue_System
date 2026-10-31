@@ -206,10 +206,13 @@
 
     <!-- ── New Chat Dialog ──────────────────────────────────────── -->
     <AtDialog :open="showNewChat" title="新對話" panel-class="chat-dialog" @close="showNewChat = false">
-        <div class="new-chat-tabs" role="tablist" aria-label="新對話類型">
-          <button type="button" role="tab" :aria-selected="newChatTab === 'dm'" :class="{ active: newChatTab === 'dm' }" @click="newChatTab = 'dm'">私訊</button>
-          <button type="button" role="tab" :aria-selected="newChatTab === 'group'" :class="{ active: newChatTab === 'group' }" @click="newChatTab = 'group'">群組</button>
-        </div>
+        <AtTabs
+          v-model="newChatTab"
+          class="new-chat-tabs"
+          variant="segmented"
+          label="新對話類型"
+          :tabs="[{ value: 'dm', label: '私訊' }, { value: 'group', label: '群組' }]"
+        />
 
         <div v-if="newChatTab === 'dm'">
           <label>搜尋對象</label>
@@ -424,6 +427,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import {
   fetchThreads, createDm, createGroup, fetchMessages,
   sendMessage, markThreadRead, fetchStaffList,
@@ -1269,12 +1273,8 @@ function formatTime(iso) {
 }
 .modal-card-sm { width: 320px; }
 .modal-card h3 { margin: 0 0 16px; }
-.new-chat-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-.new-chat-tabs button {
-  flex: 1; min-height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: 8px;
-  background: var(--card-bg); cursor: pointer; font-size: 14px;
-}
-.new-chat-tabs button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.new-chat-tabs { display: flex; margin-bottom: 16px; }
+.new-chat-tabs :deep(.at-tab) { flex: 1; justify-content: center; }
 .form-select, .form-input {
   width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border);
   border-radius: 8px; font-size: 14px; margin: 4px 0 12px; box-sizing: border-box;
