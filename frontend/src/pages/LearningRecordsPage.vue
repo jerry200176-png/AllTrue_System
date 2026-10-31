@@ -1801,7 +1801,8 @@ const feedbackFilter = ref('all');
 const pageMode = ref('records'); // 'records' | 'parent_messages'
 // in-app #29 (#4541): opened from a course drawer's 學習日誌 = this student's whole history, every status. Set before
 // the watchers below are registered, so the first fetch already carries it.
-if (String(props.targetStudentName || '').trim()) {
+const openedForStudent = Boolean(String(props.targetStudentName || '').trim());
+if (openedForStudent) {
   filters.student_name = String(props.targetStudentName).trim();
   defaultWindowDisabled.value = true;
   reviewTab.value = 'all';
@@ -5053,7 +5054,8 @@ onMounted(async () => {
 
   nextTick(() => openTargetRecord());
   // 首次掛載即帶有回饋 focus（從其他頁點 CTA 切過來）→ 套用回饋篩選。(#138)
-  if (props.feedbackFocusToken) nextTick(() => applyFeedbackFocus());
+  // App keeps the feedback-focus token after a past 家長回饋 jump; a 學習日誌 entry for one student wins over it (Codex r4430425687).
+  if (props.feedbackFocusToken && !openedForStudent) nextTick(() => applyFeedbackFocus());
 });
 
 onBeforeUnmount(() => {

@@ -23,10 +23,16 @@ describe('Course drawer 學習日誌 entry (#4541)', () => {
   });
 
   it('the learning page filters to that student, lifts the 90-day window and shows every status before the first fetch', () => {
-    const init = lr.slice(lr.indexOf("if (String(props.targetStudentName || '').trim()) {"), lr.indexOf("emit('clear-target-student');"));
+    const init = lr.slice(lr.indexOf('if (openedForStudent) {'), lr.indexOf("emit('clear-target-student');"));
     expect(init).toContain('filters.student_name = String(props.targetStudentName).trim();');
     expect(init).toContain('defaultWindowDisabled.value = true;');
     expect(init).toContain("reviewTab.value = 'all';");
-    expect(lr.indexOf("if (String(props.targetStudentName || '').trim()) {")).toBeLessThan(lr.indexOf('watch(reviewTab,'));
+    expect(lr.indexOf('if (openedForStudent) {')).toBeLessThan(lr.indexOf('watch(reviewTab,'));
+  });
+
+  it('a stale 家長回饋 focus token does not switch the student entry to parent messages (Codex r4430425687)', () => {
+    expect(lr).toContain("const openedForStudent = Boolean(String(props.targetStudentName || '').trim());");
+    expect(lr).toContain('if (props.feedbackFocusToken && !openedForStudent) nextTick(() => applyFeedbackFocus());');
+    expect(lr).not.toContain('  if (props.feedbackFocusToken) nextTick(() => applyFeedbackFocus());');
   });
 });
