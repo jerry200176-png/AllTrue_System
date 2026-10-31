@@ -29,10 +29,10 @@ class InappPackageLedgerProbeTest extends TestCase
         'same_session_debited_twice' => ['package_id', 'class_session_id', 'net', 'reasons', 'session_date', 'start_time', 'status'],
         'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
-        'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots'],
+        'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots', 'future_planned'],
         'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
-        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'charged_since_package_not_debited', 'lists_capped'],
+        'summary' => ['package_id', 'total_sessions', 'ledger_used', 'attended_slots', 'taught_slots', 'absent_slots', 'future_planned', 'overplanned', 'sessions_debited_twice', 'slots_debited_twice', 'debits_on_unchargeable_sessions', 'debits_without_session', 'charged_since_package_not_debited', 'lists_capped'],
         'unchargeable_session_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'last_status', 'deleted_at', 'session_date', 'start_time', 'slot_source', 'session_net', 'course_net', 'twin_session_id', 'twin_student_class_id', 'twin_start_time', 'twin_status', 'twin_package_net', 'twin_course_net'],
         'shared_slot_rows' => ['package_id', 'ledger_id', 'class_session_id', 'student_class_id', 'reason', 'delta', 'created_at', 'status', 'session_date', 'start_time', 'course_net', 'slot_net'],
     ];
@@ -81,6 +81,7 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertSame([], $out['same_slot_debited_twice']);
         $this->assertSame([
             'package_id' => (int) $over->id, 'total_sessions' => 2, 'ledger_used' => 3, 'attended_slots' => 2, 'taught_slots' => 2, 'absent_slots' => 0,
+            'future_planned' => 0, 'overplanned' => 0,
             'sessions_debited_twice' => 1, 'slots_debited_twice' => 0, 'debits_on_unchargeable_sessions' => 0, 'debits_without_session' => 0,
             'charged_since_package_not_debited' => 0, 'lists_capped' => false,
         ], $out['summary'][0]);
@@ -109,6 +110,29 @@ class InappPackageLedgerProbeTest extends TestCase
 
         $this->assertSame([], inapp_package_ledger_probe(DB::connection(), 1, (int) $otherCampus->id)['target_package_ids'], 'another campus package is never read');
         $this->assertSame([], inapp_package_ledger_probe(DB::connection(), 3, 0)['target_package_ids']);
+    }
+
+    public function test_it_counts_lessons_pre_planned_past_what_the_pool_has_left(): void
+    {
+        // Before #4730 each subject pre-planned the whole total: 2 subjects x 3 future lessons on a 4-lesson pool, 1 used.
+        [$pool, [$math, $english]] = $this->pool(1, 4, 2);
+        $this->debit($pool, $math, $this->lesson($math, Carbon::today()->subWeek()->toDateString()), 'attendance');
+        foreach ([1, 2, 3] as $week) {
+            foreach ([$math, $english] as $course) {
+                $this->lesson($course, Carbon::today()->addWeeks($week)->toDateString(), 'scheduled', $course === $math ? '16:00' : '18:00');
+            }
+        }
+        $this->lesson($english, Carbon::today()->addWeeks(4)->toDateString(), 'cancelled');
+        [$group, [$a, $b]] = $this->pool(1, 2, 2, null, 'one_on_two');
+        foreach ([$a, $b] as $course) {
+            $this->lesson($course, Carbon::today()->addWeek()->toDateString(), 'scheduled'); // one group lesson, two member rows
+        }
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
+        $summary = array_column($out['summary'], null, 'package_id');
+        $this->assertSame(['future_planned' => 6, 'overplanned' => 3], array_intersect_key($summary[(int) $pool->id], ['future_planned' => 0, 'overplanned' => 0]));
+        $this->assertSame(['future_planned' => 1, 'overplanned' => 0], array_intersect_key($summary[(int) $group->id], ['future_planned' => 0, 'overplanned' => 0]));
+        $this->assertOnlyAllowedKeys($out);
     }
 
     public function test_all_packages_lists_every_campus_pool_including_one_carrying_another_campus_id(): void

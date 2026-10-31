@@ -83,10 +83,14 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         . " COUNT(DISTINCT CASE WHEN cs.Status = 'attended' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS attended_slots,"
         . " COUNT(DISTINCT CASE WHEN cs.Status IN ('attended', 'completed', 'late') THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS taught_slots,"
         . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'absent' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS absent_slots,"
-        . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'scheduled' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS scheduled_slots"
-        . " FROM StudentClass sc LEFT JOIN ClassSession cs ON cs.StudentClassID = sc.ID WHERE sc.PackageID IN ($in)"
+        . " COUNT(DISTINCT CASE WHEN LOWER(cs.Status) = 'scheduled' THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5)) END) AS scheduled_slots,"
+        // Future planned as SharedPackagePlanningService counts it: active members, from today; a group slot once, else each lesson.
+        . " COUNT(DISTINCT CASE WHEN cs.SessionDate >= ? AND cs.Status IN ('scheduled', 'rescheduled', 'leave_requested') AND (sc.Stop = 0 OR sc.Stop IS NULL)"
+        . " THEN (CASE WHEN p.class_type IN ('one_on_two', 'one_on_three', 'one_on_many', 'tutoring') THEN CONCAT(cs.SessionDate, ' ', SUBSTRING(cs.StartTime, 1, 5))"
+        . " ELSE CONCAT('#', cs.id) END) END) AS future_planned"
+        . " FROM StudentClass sc JOIN course_packages p ON p.id = sc.PackageID LEFT JOIN ClassSession cs ON cs.StudentClassID = sc.ID WHERE sc.PackageID IN ($in)"
         . ' GROUP BY sc.PackageID ORDER BY sc.PackageID',
-        $targets
+        [\Carbon\Carbon::today()->toDateString(), ...$targets]
     );
     // Repair candidates for #4275: a member lesson still charged on its course ledger (deduct minus reverse > 0) whose
     // package debit is missing. Group class types debit one (date + start) slot for all members, so they are reconciled per
@@ -172,6 +176,9 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         'attended_slots' => (int) ($lessons[$id][0]['attended_slots'] ?? 0),
         'taught_slots' => (int) ($lessons[$id][0]['taught_slots'] ?? 0),
         'absent_slots' => (int) ($lessons[$id][0]['absent_slots'] ?? 0),
+        // Lessons on the calendar past what the pool has left: pre-planned per subject before #4730.
+        'future_planned' => $planned = (int) ($lessons[$id][0]['future_planned'] ?? 0),
+        'overplanned' => max(0, $planned - max(0, (int) ($packages[$id][0]['total_sessions'] ?? 0) + (int) ($packages[$id][0]['ledger_net'] ?? 0))),
         'sessions_debited_twice' => count($sessionsTwice[$id] ?? []),
         'slots_debited_twice' => count($slotsTwice[$id] ?? []),
         'debits_on_unchargeable_sessions' => array_sum(array_map(
