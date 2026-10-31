@@ -318,7 +318,7 @@
         </p>
         <p v-if="justRecorded?.error" class="ledger-error-text" role="alert" data-testid="ledger-recorded-error">{{ justRecorded.error }}</p>
         <template #actions>
-          <AtButton variant="secondary" size="sm" shape="rect" data-testid="ledger-recorded-later" @click="justRecorded = null">稍後再確認</AtButton>
+          <AtButton variant="secondary" size="sm" shape="rect" data-testid="ledger-recorded-later" :disabled="justRecorded?.busy === true" @click="justRecorded = null">稍後再確認</AtButton>
           <AtButton size="sm" shape="rect" :loading="justRecorded?.busy === true" data-testid="ledger-recorded-confirm" @click="confirmJustRecorded">現在確認入帳</AtButton>
         </template>
       </AtDialog>
@@ -971,12 +971,15 @@ async function onEntryRecorded(result) {
 async function confirmJustRecorded() {
   const cur = justRecorded.value;
   if (!cur || cur.busy) return;
-  justRecorded.value = { ...cur, busy: true, error: '' };
+  const prompt = { ...cur, busy: true, error: '' };
+  justRecorded.value = prompt;
   const res = await confirmReport(cur.reportId);
-  if (!res.ok) { justRecorded.value = { ...cur, busy: false, error: res.message }; return; }
-  justRecorded.value = null;
+  // A dismissed or replaced prompt must not come back (or confirm a report the drawer no longer shows).
+  const same = justRecorded.value === prompt;
+  if (!res.ok) { if (same) justRecorded.value = { ...cur, busy: false, error: res.message }; return; }
+  if (same) justRecorded.value = null;
   await onPanelChanged();
-  openReceipt(cur.reportId);
+  if (same) openReceipt(cur.reportId);
 }
 watch(() => props.show, () => { justRecorded.value = null; });
 

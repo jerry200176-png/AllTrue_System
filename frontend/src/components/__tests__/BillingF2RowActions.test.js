@@ -135,6 +135,22 @@ describe('現在確認入帳 after 登記', () => {
     w.unmount();
   });
 
+  it('a failed confirm that returns after the prompt was dismissed does not bring it back', async () => {
+    const { w, fetchMock } = mountLedger({ receipts: recorded });
+    await flushPromises();
+    w.findComponent(EntryStub).vm.$emit('confirmed', { report_id: 8, status: 'pending' });
+    await flushPromises();
+    let fail;
+    fetchMock.mockImplementationOnce(() => new Promise((r) => { fail = () => r({ ok: false, status: 500, json: async () => ({}) }); }));
+    body('ledger-recorded-confirm').click();
+    await flushPromises();
+    await w.setProps({ show: false }); // dismissed / moved on while the request is in flight
+    fail();
+    await flushPromises();
+    expect(body('ledger-recorded-text')).toBeNull();
+    w.unmount();
+  });
+
   it('offers nothing when the response is already confirmed (補登) or has no report', async () => {
     const { w } = mountLedger({ receipts: recorded });
     await flushPromises();
