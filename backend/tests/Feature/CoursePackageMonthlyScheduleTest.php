@@ -277,11 +277,12 @@ class CoursePackageMonthlyScheduleTest extends TestCase
         $members = StudentClass::where('PackageID', $pkgId)->get();
         $this->assertCount(2, $members);
 
+        // Count mode shares one pool: 8 bought = 8 pre-planned, Mon/Wed taking turns (Founder 2026-11-01).
         foreach ($members as $m) {
-            $count = ClassSession::where('StudentClassID', $m->ID)
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+            $count = ClassSession::where('StudentClassID', $m->ID)->where('Status', 'scheduled')
+                ->whereDate('SessionDate', '>=', now()->toDateString())
                 ->count();
-            $this->assertEquals(8, $count, 'Count mode: each member should have 8 sessions');
+            $this->assertEquals(4, $count, 'Count mode: each member takes every other pool lesson');
         }
     }
 }
