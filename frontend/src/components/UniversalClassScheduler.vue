@@ -111,7 +111,7 @@
               <transition name="pkg-fade-slide">
                 <div v-if="pkgForm.payment_type === 'session'" class="form-group">
                   <label>總堂數 *</label>
-                  <input v-model.number="pkgForm.total_sessions" type="number" min="1" max="999" />
+                  <AtNumberStepper v-model.number="pkgForm.total_sessions" :min="1" :max="999" aria-label="總堂數" />
                 </div>
               </transition>
               <transition name="pkg-fade-slide">
@@ -879,6 +879,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import AtNumberStepper from './design-system/AtNumberStepper.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
