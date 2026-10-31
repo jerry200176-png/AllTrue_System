@@ -123,7 +123,7 @@ jobs:
             echo "prod_head=$PROD_HEAD"
             git merge-base --is-ancestor "$PRODUCTION_REVISION" "$PROD_HEAD" || { echo "production_revision is not in production"; exit 1; }
           fi
-          php artisan tinker --execute='
+          OUT="$(php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $expected = (string)getenv("EXPECTED_STATUS");
           $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
@@ -152,8 +152,11 @@ jobs:
           if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
           echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment_id" => is_array($comment) ? ($comment["skipped"] ?? false) : $comment->id, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
           }
-          ' \
-          </dev/null
+          echo "WRITEBACK_OK ".$bugId, PHP_EOL;
+          ' </dev/null 2>&1)"
+          printf '%s\n' "$OUT"
+          # tinker prints an uncaught exception yet exits 0 (run 41187017152 counted a refused row): count a row only on its marker.
+          grep -qx "WRITEBACK_OK $BUG_ID" <<<"$OUT" || { echo "row $BUG_ID was not written"; exit 1; }
           applied=$((applied + 1))
           echo "applied_row=$BUG_ID"
           done 3< <(printf '%s' "$ROWS_B64" | base64 -d; echo)

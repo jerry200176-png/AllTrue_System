@@ -40,7 +40,8 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
   assert.ok(write.includes(`PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"`), `${workflow} must decode each reply remotely`);
   assert.ok(write.includes('[[ "$GITHUB_ISSUE_URL" =~ ^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]]'),
     `${workflow} must strictly validate issue URLs on the remote too`);
-  assert.ok(write.includes("          ' \\\n          </dev/null\n"), `${workflow} tinker must never read the script's stdin`);
+  assert.ok(write.includes("          ' </dev/null 2>&1)\"\n"), `${workflow} tinker must never read the script's stdin`);
+  assert.ok(write.includes('grep -qx "WRITEBACK_OK $BUG_ID" <<<"$OUT" || {'), `${workflow} counts a row only on its success marker (tinker exits 0 on a throw)`);
   assert.ok(write.includes('[[ "$applied" == "$ROW_COUNT" ]]'), `${workflow} must prove every row ran`);
   assert.ok(jobBlock(source, nextJob).includes(`needs: [preview, ${writeJob}]`), `${nextJob} runs only after every write succeeded`);
   assert.ok(!source.includes('inputs.public_reply') && !source.includes('inputs.rows_json') && !/^\s+(PUBLIC_REPLY|ROWS_JSON):/m.test(source),
@@ -313,7 +314,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
     // for tinker. Replies must round-trip exactly, and a mid-batch failure publishes only written rows.
     const stubs = path.join(dir, 'bin');
     fs.mkdirSync(stubs);
-    fs.writeFileSync(path.join(stubs, 'php'), '#!/usr/bin/env bash\n[[ "$BUG_ID" == "$FAIL_BUG" ]] && exit 1\n{ printf "%s %s %s " "$BUG_ID" "$GITHUB_ISSUE_URL" "${DISPOSITION:-$EXPECTED_STATUS}"; printf "%s" "$PUBLIC_REPLY" | base64 -w0; printf " %s\\n" "$(cat | wc -c)"; } >> "$CALLS"\n');
+    fs.writeFileSync(path.join(stubs, 'php'), '#!/usr/bin/env bash\n[[ "$BUG_ID" == "$FAIL_BUG" ]] && exit 1\n# tinker prints an uncaught exception and still exits 0\n[[ "$BUG_ID" == "$SWALLOW_BUG" ]] && { echo "RuntimeException  status changed: in_progress."; exit 0; }\n{ printf "%s %s %s " "$BUG_ID" "$GITHUB_ISSUE_URL" "${DISPOSITION:-$EXPECTED_STATUS}"; printf "%s" "$PUBLIC_REPLY" | base64 -w0; printf " %s\\n" "$(cat | wc -c)"; } >> "$CALLS"\necho "WRITEBACK_OK $BUG_ID"\n');
     fs.writeFileSync(path.join(stubs, 'git'), '#!/usr/bin/env bash\n[[ "$1" == rev-parse ]] && echo deadbeef; exit 0\n');
     fs.writeFileSync(path.join(stubs, 'ssh'), '#!/usr/bin/env bash\nexec bash -c "${@: -1}"\n');
     for (const name of ['php', 'git', 'ssh']) fs.chmodSync(path.join(stubs, name), 0o755);
@@ -322,7 +323,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       const runBlock = source.match(/\n        run: \|\n          set -euo pipefail\n          ROWS="\$\(python3[\s\S]*?\n          exit "\$rc"\n/)[0];
       const script = runBlock.split('\n').slice(2).map((l) => l.replace(/^ {10}/, '')).join('\n')
         .replace('cd /home/admin/backend', 'cd "$BACKEND"');
-      const writeStep = (failBug) => {
+      const writeStep = (failBug, swallowBug = 'none') => {
         const calls = path.join(dir, `${kind}-${failBug}.calls`);
         fs.writeFileSync(calls, '');
         fs.writeFileSync(output, '');
@@ -331,7 +332,7 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
         let ok = true;
         try {
           execFileSync('bash', ['-c', script], { stdio: 'ignore', env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`,
-            CALLS: calls, BACKEND: dir, RUNNER_TEMP: dir, FAIL_BUG: failBug, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary,
+            CALLS: calls, BACKEND: dir, RUNNER_TEMP: dir, FAIL_BUG: failBug, SWALLOW_BUG: swallowBug, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary,
             GITHUB_EVENT_PATH: eventPath, GITHUB_REPOSITORY: 'o/r', GITHUB_REF: 'refs/heads/main', PI_SSH_USER: 'u', PI_SSH_HOST: 'h' } });
         } catch { ok = false; }
         const got = fs.readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map((l) => l.split(' '));
@@ -354,6 +355,10 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
       assert.ok(!partial.ok, `${workflow} a failing row must fail the job`);
       assert.equal(partial.output, `applied=${JSON.stringify([String(rows[0].bug_id)])}\n`,
         `${workflow} must still publish the rows written before the failure`);
+      const swallowed = writeStep('none', String(rows[1].bug_id));
+      assert.ok(!swallowed.ok, `${workflow} a row whose tinker run threw (exit 0) must fail the job`);
+      assert.equal(swallowed.output, `applied=${JSON.stringify([String(rows[0].bug_id)])}\n`,
+        `${workflow} must not count a row without its WRITEBACK_OK marker`);
       const downstream = jobBlock(source, workflows.find((w) => w[0] === workflow)[3]);
       assert.ok(downstream.includes('if: always() && ') && downstream.includes('--argjson a "$APPLIED"'),
         `${workflow} follow-on job must run for, and only for, applied rows`);
