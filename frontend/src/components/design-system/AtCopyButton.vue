@@ -46,7 +46,7 @@ onBeforeUnmount(() => clearTimeout(timer));
       v-bind="$attrs"
       @click="copy"
     >{{ copied ? copiedLabel : label }}</AtButton>
-    <span class="at-copy__live" role="status" aria-live="polite">{{ copied ? copiedLabel : '' }}</span>
+    <span class="at-copy__live" aria-live="polite">{{ copied ? copiedLabel : '' }}</span>
   </span>
 </template>
 
