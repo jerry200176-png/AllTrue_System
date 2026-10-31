@@ -202,7 +202,7 @@
 
         <div v-if="showRemaining && !packageInfo" class="form-group">
           <label>剩餘堂數</label>
-          <input v-model.number="form.remaining_sessions" type="number" />
+          <AtNumberStepper v-model.number="form.remaining_sessions" :min="0" aria-label="剩餘堂數" />
         </div>
       </div>
     </section>
@@ -317,6 +317,7 @@ import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constan
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
+import AtNumberStepper from './design-system/AtNumberStepper.vue';
 import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
 import { TRIAL_TARGET_CLASS_TYPE_OPTIONS } from '../lib/trialTarget.js';
 

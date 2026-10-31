@@ -831,7 +831,7 @@
         </p>
         <div v-if="!(isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly')" class="form-group">
           <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : `${RENEW_LESSONS_LABEL}堂數` }}</label>
-          <input v-model.number="addSessionCount" type="number" placeholder="8" />
+          <AtNumberStepper v-model.number="addSessionCount" :min="1" aria-label="續課堂數" placeholder="8" />
         </div>
         <div v-if="!isPackageMember(selectedCourse)" class="form-group">
           <label>{{ isTutoringCourse(selectedCourse) ? '下一期開始日期（須在原課程最後堂次之後）' : '新批次開始日期' }}</label>
@@ -1057,6 +1057,7 @@ import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import { buildEditTeacherOptions, isAssignableTeacher } from '../lib/courseTeacherOptions.js';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import AtNumberStepper from '../components/design-system/AtNumberStepper.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {

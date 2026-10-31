@@ -8,12 +8,9 @@ const source = readFileSync(resolve(__dirname, '../../pages/TeachersList.vue'), 
 
 describe('TeachersList status workspace accessibility', () => {
   it('connects each status tab to its controlled panel', () => {
-    expect(source).toContain('id="teachers-tab-active"');
-    expect(source).toContain('aria-controls="teachers-panel-active"');
-    expect(source).toContain('id="teachers-tab-pending"');
-    expect(source).toContain('aria-controls="teachers-panel-pending"');
-    expect(source).toContain('id="teachers-tab-suspended"');
-    expect(source).toContain('aria-controls="teachers-panel-suspended"');
+    // AtTabs derives teachers-tab-{value} / teachers-panel-{value} from id-prefix
+    expect(source).toContain('id-prefix="teachers"');
+    for (const v of ['active', 'pending', 'suspended']) expect(source).toContain(`value: '${v}'`);
   });
 
   it('keeps the selected status content in a labelled tabpanel', () => {

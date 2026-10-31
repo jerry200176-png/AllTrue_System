@@ -17,13 +17,19 @@
     </AtPageHeader>
 
   <div class="card teachers-card">
-    <div class="teachers-view-tabs" role="tablist" aria-label="老師狀態">
-      <div class="tabs at-tabs">
-        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="['at-tab', { active: tab === 'active' }]" @click="tab = 'active'">正式老師</button>
-        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="['at-tab', { active: tab === 'pending' }]" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
-        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="['at-tab', { active: tab === 'suspended' }]" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
-      </div>
-    </div>
+    <AtTabs
+      v-model="tab"
+      class="teachers-view-tabs"
+      label="老師狀態"
+      id-prefix="teachers"
+      :tabs="[{ value: 'active', label: '正式老師' }, { value: 'pending', label: '待審核' }, { value: 'suspended', label: '停用' }]"
+    >
+      <template #tab="{ tab: t }">
+        {{ t.label }}
+        <span v-if="t.value === 'pending' && pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span>
+        <span v-if="t.value === 'suspended' && suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span>
+      </template>
+    </AtTabs>
 
     <AtFilterBar label="老師篩選" data-guide="teachers-filters">
       <div class="filter-item filter-item-search">
@@ -528,6 +534,7 @@ import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import AtTabs from '../components/design-system/AtTabs.vue';
 import { isCurrentListRequest, shouldShowInitialListSkeleton } from '../lib/listRefreshState.js';
 import { useToast } from '../composables/useToast';
 
@@ -1729,13 +1736,6 @@ watch(showBulkModal, (opened) => {
   border: 1px solid var(--ds-hairline);
 }
 
-.teachers-view-tabs {
-  display: flex;
-  align-items: center;
-}
-.teachers-view-tabs > .tabs {
-  flex: 1;
-}
 
 .teacher-summary {
   display: grid;
