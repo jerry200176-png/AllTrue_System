@@ -1,7 +1,7 @@
 <template>
   <section class="alloc" data-testid="alloc" aria-labelledby="alloc-title">
     <header class="alloc__head">
-      <button type="button" class="alloc__back" data-testid="alloc-back" @click="$emit('close')">← 回{{ studentName }}的帳務</button>
+      <button type="button" class="alloc__back" data-testid="alloc-back" :disabled="results.some((r) => r.confirming)" @click="$emit('close', accepted > 0)">← 回{{ studentName }}的帳務</button>
       <h4 id="alloc-title">登記收款・{{ studentName }}</h4>
     </header>
 
@@ -64,14 +64,16 @@
       <p class="alloc__verdict" role="status" data-testid="alloc-verdict">{{ verdict }}</p>
       <ul class="alloc__list">
         <li v-for="r in results" :key="r.id" :class="r.ok ? 'is-ok' : 'is-fail'" :data-testid="`alloc-result-${r.id}`">
-          <span v-if="r.ok">{{ r.subject }} 已登記 {{ money(r.amount) }}</span>
+          <span v-if="r.ok">{{ r.subject }} 已登記 {{ money(r.amount) }}{{ r.confirmed ? '，已確認入帳' : '' }}</span>
           <span v-else>{{ r.subject }} 沒有登記：{{ r.message }}</span>
+          <AtButton v-if="r.ok && r.report_id && !r.confirmed" variant="secondary" size="sm" shape="rect" :disabled="r.confirming" :data-testid="`alloc-confirm-${r.id}`" @click="confirmNow(r)">現在確認入帳</AtButton>
+          <small v-if="r.confirm_error" class="alloc__err" role="alert">{{ r.confirm_error }}</small>
         </li>
       </ul>
       <footer class="alloc__foot">
         <AtSubmitButton v-if="failed.length && accepted" variant="secondary" shape="rect" :pending="submitting" pending-text="重新送出中…" data-testid="alloc-retry" @click="retryFailed">再試一次（只送沒登記的）</AtSubmitButton>
         <AtButton v-if="failed.length && !accepted" variant="secondary" shape="rect" data-testid="alloc-edit" @click="view = 'form'">回去修改</AtButton>
-        <AtButton v-if="accepted" shape="rect" data-testid="alloc-done" @click="$emit('done')">完成</AtButton>
+        <AtButton v-if="accepted" shape="rect" :disabled="results.some((r) => r.confirming)" data-testid="alloc-done" @click="$emit('done')">完成</AtButton>
       </footer>
     </div>
   </section>
@@ -81,7 +83,7 @@
 import { computed, reactive, ref } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
-import { recordPaymentBatch } from '../../lib/paymentActions.js';
+import { confirmReport, recordPaymentBatch } from '../../lib/paymentActions.js';
 import { humanizeApiErrorMessage } from '../../lib/humanizeApiErrorMessage.js';
 import { formatDate } from '../../lib/billingDocumentView.js';
 
@@ -91,6 +93,8 @@ const props = defineProps({
   studentName: { type: String, default: '學生' },
   // Oldest first: { id, subject, start_date, end_date, owed, invoice_id }
   contracts: { type: Array, default: () => [] },
+  // Called after a 現在確認入帳 succeeds, even if the drawer was closed or moved on in the meantime.
+  onConfirmed: { type: Function, default: null },
 });
 defineEmits(['close', 'done']);
 
@@ -171,7 +175,7 @@ async function send(entries) {
       const c = payable.value.find((x) => x.id === e.student_class_id);
       const r = byClass.get(Number(e.student_class_id));
       const ok = Boolean(r) && r.http_status < 300;
-      return { id: e.student_class_id, subject: c?.subject || '課程', amount: e.amount, ok, message: ok ? '' : reasonOf(r || {}) };
+      return { id: e.student_class_id, subject: c?.subject || '課程', amount: e.amount, ok, message: ok ? '' : reasonOf(r || {}), report_id: ok ? r.report_id : null };
     });
     // keep earlier successes when retrying only the failed rows
     const kept = results.value.filter((r) => r.ok && !next.some((n) => n.id === r.id));
@@ -194,6 +198,19 @@ function submit() {
 function retryFailed() {
   const ids = results.value.filter((r) => !r.ok).map((r) => r.id);
   return send(buildEntries(ids));
+}
+
+// F-2: 確認入帳 stays a separate explicit step per contract (its own request), offered right where 登記 reported.
+async function confirmNow(r) {
+  r.confirming = true;
+  r.confirm_error = '';
+  const res = await confirmReport(r.report_id);
+  r.confirming = false;
+  if (res.ok) {
+    r.confirmed = true;
+    // A plain callback, not emit(): Vue drops emits from an unmounted component, and the drawer may have closed meanwhile.
+    props.onConfirmed?.();
+  } else r.confirm_error = res.message;
 }
 
 const accepted = computed(() => results.value.filter((r) => r.ok).length);
@@ -231,7 +248,7 @@ const verdict = computed(() => {
 .alloc__sum strong{font-size:18px;font-variant-numeric:tabular-nums}
 .alloc__verdict{margin:0;font-weight:700}
 .alloc__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.alloc__list li{padding:8px 12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px)}
+.alloc__list li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px)}
 .alloc__list li.is-ok{color:var(--ds-success)}
 .alloc__list li.is-fail{color:var(--ds-danger)}
 @media (max-width:768px){

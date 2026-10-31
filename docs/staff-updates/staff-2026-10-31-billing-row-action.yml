@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-31-billing-row-action
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務清單直接登記與確認
+    summary: 學生帳務清單每列有一顆主按鈕；登記收款後可以馬上確認入帳。
+    items:
+      - category: improved
+        text: 清單每列多一顆「登記收款」或「確認入帳」，按下去直接開到那一步。
+      - category: added
+        text: 登記收款成功後出現「現在確認入帳」；不按就維持待確認入帳。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-f2-row-action"
