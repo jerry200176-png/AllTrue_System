@@ -68,6 +68,33 @@ describe('student list batch toolbar (F-5a2)', () => {
   });
 });
 
+describe('facts the old queue table showed beside a row (F-5-1)', () => {
+  it('keeps the 期間重疊 warning and the 依實際堂數計算 note on the student row', () => {
+    const w = mountList({ alertRows: [
+      { id: 11, student_id: 1, student_name: '甲', subject: '數學', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 3000, newer_course_overlap: true, current_course_end_date: '2026-12-20', newer_course_start_date: '2026-12-15',
+        invoice_amount_discrepancy: true, invoice_period_sessions: 3, invoice_stored_amount: 4000, invoice_computed_amount: 3000 },
+    ] });
+    const notes = w.get('[data-testid="sbl-notes-1"]').text();
+    expect(notes).toContain('數學：本期順延與下一期重疊，請調整');
+    expect(notes).toContain('數學：依實際 3 堂計算（原始帳單 NT$ 4,000；實際計算 NT$ 3,000）');
+  });
+  it('shows no notes list when nothing is wrong', () => {
+    expect(mountList().find('[data-testid="sbl-notes-1"]').exists()).toBe(false);
+  });
+});
+
+describe('deep-link preset filter (F-5-1)', () => {
+  it('re-applies the same chip when the same link is followed again after the director changed it', async () => {
+    const w = mountList({ presetFilter: { key: 'confirm' } });
+    const shown = () => w.findAll('[data-testid^="sbl-row-"]').length;
+    expect(shown()).toBe(1);
+    await w.get('[data-testid="sbl-filter-all"]').trigger('click');
+    expect(shown()).toBe(3);
+    await w.setProps({ presetFilter: { key: 'confirm' } }); // a new object, same chip
+    expect(shown()).toBe(1);
+  });
+});
+
 describe('page wiring (F-5a2)', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/TuitionCollectionPage.vue'), 'utf8');
   it('reuses the table batch preview, submit functions and CSV/session handlers', () => {

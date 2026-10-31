@@ -42,7 +42,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     const decl = source.indexOf("const activeTab = ref('action')");
     expect(decl).toBeGreaterThan(-1);
     expect(decl).toBeLessThan(source.indexOf('function isRowSelectable'));
-    expect(decl).toBeLessThan(source.indexOf("if (activeTab.value === 'pending_report') return 'confirm';"));
+    expect(decl).toBeLessThan(source.indexOf('const batchMode = computed'));
     expect(decl).toBeLessThan(source.indexOf('watch(activeTab,'));
   });
 
