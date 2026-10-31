@@ -444,11 +444,14 @@ function processQueue() {
     }
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     if (d.action === 'rerun') {
-      // Once per head: the marker is written only after a rerun was accepted; a second cancellation rejects.
-      if (seen(n, marker(d.reason, pr.sha))) { reject(n, pr.sha, { reason: 'checks', text: `required checks were cancelled again after one rerun on this head. Rerun them and re-add \`queue\`` }); continue; }
-      let ok = 0;
-      for (const id of d.runs) try { gh('api', '-X', 'POST', `/repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`); ok++; } catch (e) { console.log(`#${n} rerun ${id}: ${e.message}`); }
-      if (ok) note(n, pr.sha, d.reason, d.text);
+      // Once per workflow run per head: each accepted rerun leaves its own marker (a refused request stays eligible);
+      // a run cancelled again after its rerun rejects.
+      const key = (id) => `${pr.sha}:${id}`;
+      if (d.runs.some((id) => seen(n, marker(d.reason, key(id))))) { reject(n, pr.sha, { reason: 'checks', text: `required checks were cancelled again after one rerun on this head. Rerun them and re-add \`queue\`` }); continue; }
+      for (const id of d.runs) {
+        try { gh('api', '-X', 'POST', `/repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`); } catch (e) { console.log(`#${n} rerun ${id}: ${e.message}`); continue; }
+        note(n, key(id), d.reason, `${d.text} (run ${id})`);
+      }
       continue;
     }
     // One serial merge per run: main moved, so every other head's behindBy is stale (strict used to refuse them).
