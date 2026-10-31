@@ -324,7 +324,8 @@ export const sharedPackageBillingLead = (course, rows) => {
   const members = (rows || []).filter((r) => Number(r.course?.PackageID ?? r.course?.package_id ?? 0) === pid && isSessionPayment(r.course));
   if (members.length < 2) return null;
   // Legacy package whose bills are open on several members: each bill is its own, so every member keeps its actions (ledger rule).
-  const openBill = (r) => (r.invoices || []).some((i) => ['unpaid', 'partial'].includes(i?.status));
+  // #4672: what the bill still owes, not its stored status (a fully collected bill can keep a stale 'unpaid').
+  const openBill = (r) => (r.invoices || []).some((i) => Number(i?.outstanding_amount) > 0);
   if (members.filter((r) => r.course.class_type !== 'tutoring').filter(openBill).length > 1) return null;
   const regular = members.filter((r) => r.course.class_type !== 'tutoring');
   const lead = members.find((r) => r.reports?.some((x) => x.status === 'pending'))
