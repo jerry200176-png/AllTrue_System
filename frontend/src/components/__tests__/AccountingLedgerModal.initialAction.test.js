@@ -13,11 +13,12 @@ const EntryStub = { name: 'PaymentEntryModal', props: ['show', 'row', 'mode'], t
 const ReceiptStub = { name: 'ReceiptModal', props: ['show', 'reportId', 'laterLabel'], template: '<div v-if="show" data-testid="receipt-stub">{{ reportId }}|{{ laterLabel }}</div>' };
 const SlipStub = { name: 'PaymentSlipModal', props: ['show', 'invoiceId', 'studentClassId'], template: '<div v-if="show" data-testid="slip-stub">{{ invoiceId }}|{{ studentClassId }}</div>' };
 
-function mountLedger({ courses, invoices = [], receipts = [], props = {}, role = 'director' }) {
+function mountLedger({ courses, invoices = [], receipts = [], props = {}, role = 'director', drafts = [] }) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role } }));
   const payload = { summary: {}, scope: { student_class_id: props.studentClassId ?? 11 }, anomalies: [], courses, invoices, receipts };
   const fetchMock = vi.fn(async (url) => (String(url).startsWith('/api/v1/accounting/ledger')
     ? { ok: true, status: 200, json: async () => payload }
+    : String(url).startsWith('/api/v1/accounting/monthly-drafts') ? { ok: true, status: 200, json: async () => ({ data: drafts }) }
     : { ok: false, status: 500, json: async () => ({}) }));
   vi.stubGlobal('fetch', fetchMock);
   return mount(AccountingLedgerModal, {
@@ -82,6 +83,21 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     await flushPromises();
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
     expect(w.get('[data-testid="ledger-initial-action-note"]').attributes('role')).toBe('status');
+    w.unmount();
+  });
+
+  it("initialAction='issue' opens the 開立這期帳單 question straight away when a draft is ready", async () => {
+    const w = mountLedger({ courses: [course(11)], props: { initialAction: 'issue' }, drafts: [{ student_class_id: 11, status: 'ready', subject: '科目11', proposed_start_date: '2026-11-01', proposed_end_date: '2999-11-30', period_sessions: 4, amount: 4400 }] });
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="ledger-issue-text"]')).not.toBeNull();
+    w.unmount();
+  });
+
+  it("initialAction='issue' without a ready draft says so instead of opening nothing", async () => {
+    const w = mountLedger({ courses: [course(11)], props: { initialAction: 'issue' } });
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="ledger-issue-text"]')).toBeNull();
+    expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('沒有可以開立');
     w.unmount();
   });
 

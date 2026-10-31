@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-10-31-row-open-bill
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 學生清單直接開帳單
+    summary: 還沒開帳單的學生，清單那一列就有「開帳單」按鈕。
+    items:
+      - category: improved
+        text: 按「開帳單」直接問你要不要開立這期帳單，不用先打開課程卡。
+      - category: improved
+        text: 狀態標籤改成固定順序，名稱也更好懂：需核對、待確認入帳、未繳、要開帳單、快到期。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-row-actions"

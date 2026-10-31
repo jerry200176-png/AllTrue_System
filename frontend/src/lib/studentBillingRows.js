@@ -68,7 +68,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, contracts: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
       });
     }
     return byStudent.get(id);
@@ -104,7 +104,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (!OWING.has(r.payment_status) || isPendingConfirmation(r)) continue;
     const items = owedItems(r);
     // in-app #407: an owing contract with no bill yet must not read as 已收.
-    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled' && !paidSignal) row.unbilled += 1; continue; }
+    if (!items.some((it) => it.amount > 0)) { if (r.payable_status === 'unbilled' && !paidSignal) { row.unbilled += 1; row.unbilled_class_id ??= r.id != null ? Number(r.id) : null; } continue; }
     row.open_contracts += 1;
     for (const it of items) {
       if (it.amount <= 0) continue;
@@ -133,6 +133,8 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
 export function rowPrimaryAction(r) {
   if (r.waiting_confirm > 0 && r.confirm_class_id) return { kind: 'confirm', label: '確認入帳', classId: r.confirm_class_id };
   if (r.owed_now > 0 && r.record_class_id) return { kind: 'record', label: '登記收款', classId: r.record_class_id };
+  // Spec T3: an unbilled student's button opens the drawer's issue dialog directly.
+  if (r.unbilled > 0 && r.unbilled_class_id) return { kind: 'issue', label: '開帳單', classId: r.unbilled_class_id };
   return null;
 }
 

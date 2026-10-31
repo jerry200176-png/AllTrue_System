@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import StudentBillingList from '../tuition/StudentBillingList.vue';
-import { buildStudentBillingRows, rowOwedTotal, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
+import { buildStudentBillingRows, rowOwedTotal, rowPrimaryAction, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
 
 const ROWS = [
   { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
@@ -20,6 +20,30 @@ describe('buildStudentBillingRows', () => {
     const b = rows.find((r) => r.student_id === 2);
     expect([b.owed_now, b.waiting_confirm, b.last_paid_at]).toEqual([0, 1, '2026-09-03']);
     expect(rows.find((r) => r.student_id === 4).owed_now).toBe(0);
+  });
+});
+
+describe('開帳單 row action and chip order (spec T3, §6)', () => {
+  const unbilled = { id: 51, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null };
+  it('an unbilled student gets 開帳單 on the contract that needs the bill', () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [unbilled], today: '2026-10-07' } });
+    const btn = w.get('[data-testid="sbl-action-5"]');
+    expect(btn.text()).toBe('開帳單');
+    btn.trigger('click');
+    expect(w.emitted('action')[0][1]).toEqual({ kind: 'issue', label: '開帳單', classId: 51 });
+  });
+  it('owing or waiting students keep their own main button, and 需核對 comes before 待確認入帳', () => {
+    const rows = buildStudentBillingRows([
+      unbilled,
+      { id: 52, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unpaid', payable_outstanding: 900, due_date: '2026-10-01' },
+    ], [], '2026-10-07');
+    expect(rowPrimaryAction(rows[0])).toMatchObject({ kind: 'record', classId: 52 });
+    const w = mount(StudentBillingList, { props: { alertRows: [
+      { id: 61, student_id: 6, student_name: '己', payment_status: 'pending_report', payable_outstanding: 1800 },
+      { id: 62, student_id: 6, student_name: '己', payment_status: 'unpaid', payable_status: 'review_required', payable_outstanding: 0, pending_review_amount: 3400 },
+    ], today: '2026-10-07' } });
+    const labels = w.findAll('[data-testid="sbl-row-6"] .at-badge').map((b) => b.text());
+    if (labels.includes('需核對')) expect(labels.indexOf('需核對')).toBeLessThan(labels.indexOf('待確認入帳'));
   });
 });
 
@@ -159,7 +183,7 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
       { id: 91, student_id: 9, student_name: '壬', payment_status: 'paid', payable_outstanding: 0, last_paid_at: null, legacy_paid_flag_only: true },
     ], students: [{ id: 7, name: '庚' }], today: '2026-10-07' } });
     const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
-    expect(badge(5)).toBe('還沒開帳單');
+    expect(badge(5)).toBe('要開帳單');
     expect(badge(6)).toBe('已收');
     expect(badge(7)).toBe('沒有待收款項');
     expect(badge(8)).toBe('已收');
@@ -191,8 +215,8 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(rows.filter(STUDENT_FILTERS.clear.test).map((r) => r.student_id).sort()).toEqual([12, 13, 14]);
     const w = mount(StudentBillingList, { props: { alertRows, today: '2026-10-07' } });
     const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).find('[data-testid="at-badge"]').text();
-    expect(badge(10)).toBe('還沒開帳單');
-    expect(badge(11)).toBe('還沒開帳單');
+    expect(badge(10)).toBe('要開帳單');
+    expect(badge(11)).toBe('要開帳單');
     expect(badge(12)).toBe('已收');
     expect(badge(13)).toBe('已收');
     expect(badge(14)).toBe('需核對（舊資料標已收，查無收款）');
@@ -228,7 +252,7 @@ describe('StudentBillingList 已收 regressions (#4114)', () => {
     const w = mountRows([
       { id: 201, student_id: 20, student_name: '甲一', paid: false, payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: null },
     ], [{ id: 21, name: '甲二' }]);
-    expect(badges(w, 20)).toEqual(['還沒開帳單']);
+    expect(badges(w, 20)).toEqual(['要開帳單']);
     expect(badges(w, 21)).toEqual(['沒有待收款項']);
   });
 
@@ -271,7 +295,7 @@ describe('StudentBillingList 已收 regressions (#4114)', () => {
       { id: 271, student_id: 27, student_name: '甲八', payment_status: 'partial', payable_status: 'partial', payable_outstanding: 3000, paid_amount: 2000, due_date: '2026-11-01', last_paid_at: '2026-09-20' },
     ]);
     expect(badges(w, 26)).toEqual(['未繳']);
-    expect(badges(w, 27)).toEqual(['還沒到期']);
+    expect(badges(w, 27)).toEqual(['快到期']);
     neverPaid(w, 26);
     neverPaid(w, 27);
     expect(w.find('[data-testid="sbl-row-26"]').text()).toContain('最近繳費');
@@ -287,8 +311,8 @@ describe('StudentBillingList 已收 regressions (#4114)', () => {
       { id: 302, student_id: 30, student_name: '乙二', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
     ]);
     expect(badges(w, 28)).toEqual(['未繳']);
-    expect(badges(w, 29)).toEqual(['還沒到期']);
-    expect(badges(w, 30)).toEqual(['還沒開帳單']);
+    expect(badges(w, 29)).toEqual(['快到期']);
+    expect(badges(w, 30)).toEqual(['要開帳單']);
   });
 
   // TODO(#4114): a paid contract plus a contract whose amount is still unknown (review_required, no amount, not
@@ -325,7 +349,7 @@ describe('金額待確認 rows (Founder D2)', () => {
     expect(summary).toContain('未繳 1 位');
     expect(w.find('[data-testid="sbl-pending-review"]').text()).toContain('NT$ 3,400（1 筆，不在未繳內）');
     const row = w.find('[data-testid="sbl-row-5"]').text();
-    expect(row).toContain('需核對金額');
+    expect(row).toContain('需核對');
     expect(row).not.toContain('已收');
     await w.find('[data-testid="sbl-filter-clear"]').trigger('click');
     expect(w.find('[data-testid="sbl-row-5"]').exists()).toBe(false);

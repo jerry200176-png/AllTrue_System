@@ -163,11 +163,12 @@ const visible = computed(() => {
 // Status lozenges use the one §0.2 wording; text is always shown, never colour alone.
 const badges = (r) => {
   const out = [];
+  // Spec §6 chip priority: 需核對 > 待確認入帳 > 未繳 > 要開帳單 > 快到期.
+  if (r.pending_review_count > 0) out.push({ tone: 'info', label: '需核對' });
   if (r.waiting_confirm > 0) out.push({ tone: 'warning', label: '待確認入帳' });
-  if (r.pending_review_count > 0) out.push({ tone: 'warning', label: '需核對金額' });
   if (r.owed_now > 0) out.push({ tone: 'danger', label: '未繳' });
-  else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '還沒到期' });
-  else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '還沒開帳單' });
+  else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '快到期' });
+  else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '要開帳單' });
   // #4114 (Founder Q3): a contract paid by the legacy flag alone reads 需核對, never 已收 (not owed either).
   else if (!out.length && r.legacy_flag_only > 0) out.push({ tone: 'warning', label: LEGACY_FLAG_UNVERIFIED_LABEL });
   // in-app #407: 已收 only when the server says a contract is paid (never a payment date alone).
