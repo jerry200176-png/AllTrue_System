@@ -1057,7 +1057,7 @@ class FinanceController extends Controller
             // a separate invoice that starts in the selected month keeps its own status and amounts
             $carried = ($own === null && ($p === null || ($p['invoice_ids'] ?? []) === [])) ? $spans->first() : null;
             if ($monthlyBilled && ($own ?? $carried) !== null) {
-                $p = collect($v?->periods ?? [])->first(fn ($x) => ($x['billing_period'] ?? null) === ($own ?? $carried)['billing_period']);
+                $p = collect($v->periods ?? [])->first(fn ($x) => ($x['billing_period'] ?? null) === ($own ?? $carried)['billing_period']);
             }
             if ((string) $c->closed_reason === 'waived') {
                 $course[(int) $c->ID] = ['pay_status' => 'waived', 'due_amount' => 0.0, 'outstanding_amount' => 0.0];
