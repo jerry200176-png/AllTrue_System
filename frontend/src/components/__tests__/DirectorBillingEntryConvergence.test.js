@@ -67,6 +67,13 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
     } finally { wrapper.unmount(); }
   });
 
+  it('a low-sessions (renewal) notification lands on the 需續課 chip', async () => {
+    const wrapper = await mountTuition({ initialTab: 'renewal' });
+    try {
+      expect(wrapper.findComponent({ name: 'StudentBillingList' }).props('presetFilter')).toEqual({ key: 'renew' });
+    } finally { wrapper.unmount(); }
+  });
+
   it('course management no longer keeps its own invoice list; billing CTAs deep-link to 帳務中心', () => {
     expect(courseManagement).not.toContain('帳單與對帳紀錄');
     expect(courseManagement).not.toMatch(/openInvoiceModal|invoiceModalOpen/);
