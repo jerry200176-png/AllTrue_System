@@ -31,6 +31,18 @@ test('decide: failed check names it; latest rerun wins', () => {
   assert.equal(decide(pr({ rollup: rerun }), req).action, 'merge');
 });
 
+test('decide: cancelled-only required checks rerun their workflow runs (#4700); any real failure rejects', () => {
+  const cx = (name, conclusion, id) => ({ name, conclusion, startedAt: '1', checkSuite: { workflowRun: id ? { databaseId: id } : null } });
+  const d = decide(pr({ rollup: [cx('A', 'CANCELLED', 7), cx('B', 'CANCELLED', 7)] }), req);
+  assert.equal(d.action, 'rerun');
+  assert.equal(d.reason, 'rerun-cancelled');
+  assert.deepEqual(d.runs, [7]); // one workflow run behind both contexts: rerun once
+  assert.equal(decide(pr({ rollup: [cx('A', 'CANCELLED', 7), cx('B', 'FAILURE', 8)] }), req).reason, 'checks');
+  assert.equal(decide(pr({ rollup: [cx('A', 'CANCELLED', null), ok[1]] }), req).reason, 'checks'); // no run to rerun
+  assert.equal(decide(pr({ rollup: [cx('A', 'TIMED_OUT', 7), ok[1]] }), req).reason, 'checks');
+  assert.equal(decide(pr({ unresolvedThreads: 1, rollup: [cx('A', 'CANCELLED', 7), ok[1]] }), req).reason, 'threads');
+});
+
 test('decide: unresolved review threads reject; known zero keeps merge behavior', () => {
   const d = decide(pr({ unresolvedThreads: 2 }), req);
   assert.equal(d.action, 'reject');

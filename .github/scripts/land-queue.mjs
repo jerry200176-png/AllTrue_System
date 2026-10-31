@@ -49,16 +49,22 @@ export function orderQueue(prs) {
     .sort((a, b) => (a.labeledAt || '').localeCompare(b.labeledAt || '') || a.number - b.number);
 }
 
-// Latest run per required context -> 'pass' | 'fail' | 'pending'.
-export function checkStates(rollup, required) {
+// Latest run per context name.
+function latestRuns(rollup) {
   const latest = new Map();
   for (const c of rollup || []) {
     const name = c.name || c.context;
     const at = c.startedAt || c.createdAt || '';
     if (name && (!latest.has(name) || at >= latest.get(name).at)) latest.set(name, { c, at });
   }
+  return new Map([...latest].map(([n, v]) => [n, v.c]));
+}
+
+// Latest run per required context -> 'pass' | 'fail' | 'pending'.
+export function checkStates(rollup, required) {
+  const latest = latestRuns(rollup);
   return Object.fromEntries(required.map((name) => {
-    const c = latest.get(name)?.c;
+    const c = latest.get(name);
     if (!c) return [name, 'pending'];
     const v = String(c.conclusion || c.state || '').toUpperCase();
     return [name, FAILED.has(v) ? 'fail' : PASSED.has(v) ? 'pass' : 'pending'];
@@ -94,7 +100,13 @@ export function decide(pr, required) {
   if (Number.isInteger(open) && open > 0) return { action: 'reject', reason: 'threads', text: `${open} unresolved review thread(s); reply to and resolve them, then re-add \`queue\`` };
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
-  if (failed.length) return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
+  if (failed.length) {
+    // Only cancelled (runner starvation, concurrency): rerun those workflow runs once per head instead of dropping (#4700).
+    const latest = latestRuns(pr.rollup);
+    const runs = failed.map((n) => String(latest.get(n)?.conclusion).toUpperCase() === 'CANCELLED' && latest.get(n)?.checkSuite?.workflowRun?.databaseId);
+    if (runs.every(Boolean)) return { action: 'rerun', reason: 'rerun-cancelled', runs: [...new Set(runs)], text: `required checks were cancelled, not failed (${failed.join(', ')}); rerunning them once on this head. The label stays.` };
+    return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
+  }
   const allGreen = Object.values(states).every((s) => s === 'pass');
   // CLEAN = GitHub happy path. UNSTABLE = a non-required check failed/cancelled while
   // required contexts can still be green (e.g. advisory "Warn if production change lacks
@@ -187,7 +199,7 @@ const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pul
   mergeStateStatus headRefName headRefOid authorAssociation
   labels(first:50){nodes{name}}
   commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
+    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner} workflowRun{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
 
 const QC = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{statusCheckRollup{contexts(first:100){nodes{
     __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}`;
@@ -229,16 +241,16 @@ function load(n) {
   };
 }
 
+const seen = (n, m) => apiPages(`issues/${n}/comments?per_page=100`).some((c) => c.body?.includes(m));
+
 function note(n, sha, reason, text) {
   const m = marker(reason, sha);
-  const seen = apiPages(`issues/${n}/comments?per_page=100`).some((c) => c.body?.includes(m));
-  if (!seen) gh('pr', 'comment', String(n), '--repo', REPO, '--body', `land-queue: ${text}\n\n${m}`);
+  if (!seen(n, m)) gh('pr', 'comment', String(n), '--repo', REPO, '--body', `land-queue: ${text}\n\n${m}`);
 }
 
 function reject(n, sha, d) {
   const m = marker(d.reason, sha);
-  const seen = apiPages(`issues/${n}/comments?per_page=100`).some((c) => c.body?.includes(m));
-  if (!seen) gh('pr', 'comment', String(n), '--repo', REPO, '--body', `land-queue: ${d.text}\n\n${m}`);
+  if (!seen(n, m)) gh('pr', 'comment', String(n), '--repo', REPO, '--body', `land-queue: ${d.text}\n\n${m}`);
   try { gh('pr', 'edit', String(n), '--repo', REPO, '--remove-label', 'queue'); } catch (e) { console.log(`label removal: ${e.message}`); }
 }
 
@@ -431,6 +443,14 @@ function processQueue() {
       break;
     }
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
+    if (d.action === 'rerun') {
+      // Once per head: the marker is written only after a rerun was accepted; a second cancellation rejects.
+      if (seen(n, marker(d.reason, pr.sha))) { reject(n, pr.sha, { reason: 'checks', text: `required checks were cancelled again after one rerun on this head. Rerun them and re-add \`queue\`` }); continue; }
+      let ok = 0;
+      for (const id of d.runs) try { gh('api', '-X', 'POST', `/repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`); ok++; } catch (e) { console.log(`#${n} rerun ${id}: ${e.message}`); }
+      if (ok) note(n, pr.sha, d.reason, d.text);
+      continue;
+    }
     // One serial merge per run: main moved, so every other head's behindBy is stale (strict used to refuse them).
     // load()'s thread count may be stale; guardedSquash re-reads it and skips this PR unless it is still 0.
     if (d.action === 'merge') { if (guardedSquash(n, pr.sha, unresolvedThreads, readReview, squash)) break; continue; }
