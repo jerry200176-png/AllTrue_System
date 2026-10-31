@@ -72,7 +72,7 @@ describe('PopInappAgentKeyPanel', () => {
     await w.get('[data-testid="pop-key-copy"]').trigger('click');
     await flushPromises();
     expect(writeText).toHaveBeenCalledWith(SECRET);
-    expect(w.get('[data-testid="pop-key-copy"]').text()).toBe('已複製');
+    expect(w.get('[data-testid="pop-key-copy"]').text()).toContain('已複製');
 
     await w.get('[data-testid="pop-key-dismiss"]').trigger('click');
     expect(w.find('[data-testid="pop-key-secret"]').exists()).toBe(false);

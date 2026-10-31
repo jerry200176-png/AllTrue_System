@@ -138,17 +138,13 @@
       <div class="webhook-label">LINE Webhook</div>
       <div class="url-box">
         <code>{{ status.webhook_url }}</code>
-        <AtButton shape="rect" size="sm" variant="ghost" @click="copy(status.webhook_url, 'webhook')">
-          {{ copied === 'webhook' ? '✓ 已複製' : '複製' }}
-        </AtButton>
+        <AtCopyButton variant="ghost" :text="status.webhook_url" />
       </div>
       <p class="field-hint">到 LINE Developers → Messaging API → Webhook settings，貼上此網址並開啟「Use webhook」。</p>
       <div class="webhook-label mt">Telegram Webhook</div>
       <div class="url-box">
         <code>{{ telegramWebhookUrl }}</code>
-        <AtButton shape="rect" size="sm" variant="ghost" @click="copy(telegramWebhookUrl, 'telegram-webhook')">
-          {{ copied === 'telegram-webhook' ? '✓ 已複製' : '複製' }}
-        </AtButton>
+        <AtCopyButton variant="ghost" :text="telegramWebhookUrl" />
       </div>
       <p class="field-hint">Telegram Bot 請用 BotFather 或 setWebhook 將上方網址設為 webhook。</p>
     </div>
@@ -210,6 +206,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtCopyButton from '../components/design-system/AtCopyButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';

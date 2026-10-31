@@ -73,7 +73,7 @@ describe('TriageTokenPanel', () => {
     await w.get('[data-testid="triage-token-copy"]').trigger('click');
     await flushPromises();
     expect(writeText).toHaveBeenCalledWith('7|alltrue_triage_SECRET');
-    expect(w.get('[data-testid="triage-token-copy"]').text()).toBe('已複製');
+    expect(w.get('[data-testid="triage-token-copy"]').text()).toContain('已複製');
 
     await w.get('[data-testid="triage-token-revoke"]').trigger('click');
     expect(calls.some((c) => c.startsWith('DELETE'))).toBe(false);

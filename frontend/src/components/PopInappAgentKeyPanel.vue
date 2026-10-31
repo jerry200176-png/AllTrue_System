@@ -56,7 +56,7 @@
         </AtInlineAlert>
         <div class="secret-row">
           <input class="secret-input" :value="issued.key" readonly aria-label="新的金鑰" data-testid="pop-key-secret" @focus="$event.target.select()" />
-          <AtButton shape="rect" size="sm" variant="secondary" data-testid="pop-key-copy" @click="copy">{{ copied ? '已複製' : '複製' }}</AtButton>
+          <AtCopyButton :text="issued?.key || ''" data-testid="pop-key-copy" @error="errorMsg = '瀏覽器不允許自動複製，請手動選取金鑰後複製。'" />
         </div>
         <dl class="key-meta">
           <div><dt>可處理分校</dt><dd>{{ campusNames(issued.record.campus_ids) }}</dd></div>
@@ -84,6 +84,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AtBadge from './design-system/AtBadge.vue';
 import AtButton from './design-system/AtButton.vue';
+import AtCopyButton from './design-system/AtCopyButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
 import AtEmpty from './design-system/AtEmpty.vue';
 import AtInlineAlert from './design-system/AtInlineAlert.vue';
@@ -105,7 +106,6 @@ const campusError = ref('');
 const name = ref('');
 const selectedIds = ref([]);
 const issued = ref(null);
-const copied = ref(false);
 const listLoaded = ref(false);
 const loading = ref(false);
 const issuing = ref(false);
@@ -189,7 +189,6 @@ async function issue() {
     const ids = [...selectedIds.value].sort((a, b) => a - b);
     const res = await issuePopInappAgentKey(props.token, name.value.trim(), ids);
     issued.value = { key: res.key, record: res.record };
-    copied.value = false;
     name.value = '';
     selectedIds.value = [];
     await load();
@@ -201,18 +200,8 @@ async function issue() {
   }
 }
 
-async function copy() {
-  try {
-    await navigator.clipboard.writeText(issued.value?.key || '');
-    copied.value = true;
-  } catch {
-    errorMsg.value = '瀏覽器不允許自動複製，請手動選取金鑰後複製。';
-  }
-}
-
 function closeIssued() {
   issued.value = null;
-  copied.value = false;
 }
 
 function askRevoke(item) {
