@@ -25,13 +25,18 @@ class CloseStaleResolvedBugsCommand extends Command
                             {--dry-run : List eligible bugs without changing status}
                             {--reviewed-ids= : Comma-separated eligible IDs individually reviewed for regression signals (required for apply)}
                             {--auto : Unattended daily run: close resolved reports silent for AUTO_DAYS days, no --reviewed-ids; fail-closed (resolved queue only, capped)}
-                            {--actor= : User id for status log (default: first super_admin type S)}';
+                            {--actor= : User id for status log (default: first super_admin type S)}
+                            {--legacy : One reviewed batch (Founder GO 2026-10-31): resolves without production evidence, 60+ days old}';
 
     protected $description = 'Close resolved in-app bugs after reporter-verify timeout (Evidence Contract). Manual by default.';
 
     public function handle(): int
     {
         $auto = (bool) $this->option('auto');
+        if ($this->option('legacy') && ($auto || $this->input->hasParameterOption('--days'))) {
+            $this->error('--legacy takes no --auto or --days');
+            return self::FAILURE;
+        }
         if ($auto && ((string) $this->option('reviewed-ids') !== '' || $this->input->hasParameterOption('--days'))) {
             $this->error('--auto fixes its own window and takes no --reviewed-ids or --days');
             return self::FAILURE;
@@ -55,6 +60,10 @@ class CloseStaleResolvedBugsCommand extends Command
         if ($actorId <= 0 || !User::query()->where('id', $actorId)->where('type', 'S')->exists()) {
             $this->error('No actor user id (pass --actor= of a type=S super_admin, or ensure one exists)');
             return self::FAILURE;
+        }
+
+        if ($this->option('legacy')) {
+            return $this->legacy($dryRun, $actorId);
         }
 
         $queues = [];
@@ -123,6 +132,37 @@ class CloseStaleResolvedBugsCommand extends Command
         ]);
 
         $this->info("done acted={$closed} skipped={$skipped}");
+        return self::SUCCESS;
+    }
+
+    private function legacy(bool $dryRun, int $actorId): int
+    {
+        $rows = BugReportService::listLegacyResolvedWithoutEvidence();
+        $eligibleIds = array_column($rows, 'bug_id');
+        $reviewedIds = [];
+        if (!$dryRun) {
+            $raw = trim((string) $this->option('reviewed-ids'));
+            $reviewedIds = preg_match('/^[0-9]+(?:,[0-9]+)*$/', $raw) ? array_map('intval', explode(',', $raw)) : [];
+            if ($reviewedIds === [] || count($reviewedIds) !== count(array_unique($reviewedIds)) || array_diff($reviewedIds, $eligibleIds)) {
+                $this->error('Legacy apply requires --reviewed-ids, each unique and currently listed; no status was changed');
+                return self::FAILURE;
+            }
+        }
+        $this->info(($dryRun ? '[dry-run] ' : '') . 'legacy eligible=' . count($rows) . ' min_days=' . BugReportService::LEGACY_CLOSE_MIN_DAYS . " actor={$actorId}");
+        $closed = 0;
+        foreach ($rows as $row) {
+            $bugId = $row['bug_id'];
+            $tag = $row['reporter_replied'] ? 'reporter_replied' : 'silent';
+            if (!$dryRun && !in_array($bugId, $reviewedIds, true)) {
+                $this->line("bug #{$bugId} [legacy {$tag}]: not_in_reviewed_ids");
+                continue;
+            }
+            $result = BugReportService::closeLegacyResolved($bugId, $actorId, $dryRun);
+            $this->line("bug #{$bugId} [legacy {$tag} resolved " . substr($row['resolved_at'], 0, 10) . "]: {$result['action']}");
+            $closed += in_array($result['action'], ['closed', 'would_close'], true) ? 1 : 0;
+        }
+        $this->info("done acted={$closed}");
+
         return self::SUCCESS;
     }
 }
