@@ -15,14 +15,17 @@
         <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
-        <p v-if="amounts" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
+        <p v-if="amounts && !followerPointer" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
       </div>
+      <p v-if="memberLine" class="contract__muted" data-testid="contract-package-members">{{ memberLine }}</p>
       <p v-if="!isMonthly && state === 'ready'" class="contract__left" data-testid="contract-left">剩 <strong>{{ upcomingCount }}</strong> 堂</p>
     </div>
 
     <div class="contract__money" data-testid="contract-money">
       <span v-if="noObligation" class="contract__muted">輔導課不用繳費</span>
       <span v-else-if="waived" class="contract__muted" data-testid="contract-waived">{{ WAIVED_LABEL }}</span>
+      <!-- F-3: a shared package is one obligation. A follower shows no 未繳 / 還沒開帳單 of its own, only where to pay. -->
+      <span v-else-if="followerPointer" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
       <template v-else-if="!course.paid">
         <span class="contract__muted">還沒開帳單</span>
@@ -34,9 +37,8 @@
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回這筆</AtButton>
       </template>
-      <span v-else-if="sharedFollower && !noObligation && !waived && (outstanding > 0 || !course.paid || legacyUnverified)" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
-      <AtButton v-else-if="!legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <AtButton v-else-if="!followerPointer && !legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
       <template v-if="showSlip">
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
@@ -148,6 +150,8 @@ const props = defineProps({
   sharedFollower: { type: Boolean, default: false },
   // Subject of the member card that actually carries the package's 確認入帳 / 登記這筆 action.
   sharedLeadSubject: { type: String, default: '' },
+  // F-3: on the card that carries a shared package's payment, the other members' subjects (one card, one 未繳).
+  sharedMemberSubjects: { type: Array, default: () => [] },
   // #4115: { invoiceId, issued, current } from issuedBillRateNote(); null hides the note.
   rateNote: { type: Object, default: null },
   // Director/super_admin: may resolve a legacy-flag-only contract (Founder GO 2026-10-21).
@@ -208,6 +212,11 @@ const waived = computed(() => isWaivedContract(props.course));
 const legacyUnverified = computed(() => props.lastPayment?.legacyUnverified === true && !noObligation.value);
 // Same scope the server allows (PaymentReportController::legacyFlagRefusal): any contract flagged paid with no report
 // waiting for review. An open bill is fine: the server collects against it and caps the amount by its balance.
+// F-3: same condition the follower pointer always used.
+const followerPointer = computed(() => props.sharedFollower && !noObligation.value && !waived.value
+  && (props.outstanding > 0 || !props.course.paid || legacyUnverified.value));
+const memberLine = computed(() => (props.sharedMemberSubjects.length && !props.sharedFollower
+  ? `共用方案：和「${props.sharedMemberSubjects.join('」「')}」一起收款，這張卡處理全部。` : ''));
 const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
   legacyUnverified: legacyUnverified.value, canResolveLegacy: props.canResolveLegacy,
   waived: waived.value, pendingReport: props.pendingReport, sharedFollower: props.sharedFollower,

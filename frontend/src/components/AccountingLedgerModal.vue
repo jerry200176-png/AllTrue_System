@@ -101,6 +101,7 @@
                 :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
                 :shared-follower="!packageLead(c)"
                 :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
+                :shared-member-subjects="sharedMembersOf(c)"
                 :last-payment="payLineFor(c)"
                 :amounts="amountsFor(c.id)"
                 :month-lines="monthLinesFor(c.id)"
@@ -761,6 +762,9 @@ const packageLeadOf = (c) => {
     || members.find((m) => owedFor(m.id) > 0 || !m.paid) || members[0];
 };
 const packageLead = (c) => packageLeadOf(c).id === c.id;
+// F-3: the lead card of a shared package names the members that follow it (empty when members are billed separately).
+const sharedMembersOf = (c) => (c.package_id && packageLead(c)
+  ? contractCourses.value.filter((m) => m.package_id === c.package_id && m.id !== c.id && !packageLead(m)).map((m) => m.subject) : []);
 // Multiple existing member bills cannot share one batch: the first report blocks siblings. Keep explicit card actions.
 const hasMultiplePackageBills = (c) => !!c.package_id && contractCourses.value.filter((m) => m.package_id === c.package_id && owedFor(m.id) > 0).length > 1;
 
