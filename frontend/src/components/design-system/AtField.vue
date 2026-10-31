@@ -39,16 +39,16 @@ watch(() => props.error, (next, prev) => { if (next && prev && next !== prev) fl
 .at-field--nudge-b { animation: at-field-nudge-b var(--ds-motion-slow) var(--ds-ease-standard); }
 .at-field__msg--error { animation: at-field-msg-in var(--ds-motion-base) var(--ds-ease-standard); }
 @keyframes at-field-nudge-a {
-  0%, 100% { transform: translatea(0); }
-  25% { transform: translatea(-4px); }
-  50% { transform: translatea(3px); }
-  75% { transform: translatea(-2px); }
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
 }
 @keyframes at-field-nudge-b {
-  0%, 100% { transform: translateb(0); }
-  25% { transform: translateb(-4px); }
-  50% { transform: translateb(3px); }
-  75% { transform: translateb(-2px); }
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
 }
 @keyframes at-field-msg-in {
   from { opacity: 0; transform: translateY(-2px); }

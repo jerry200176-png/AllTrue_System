@@ -45,6 +45,8 @@ describe('AtField error nudge (#4697 item 3)', () => {
   it('turns the motion off for reduced motion', async () => {
     const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../AtField.vue'), 'utf8');
     expect(src).toMatch(/prefers-reduced-motion: reduce[\s\S]*animation: none/);
+    expect(src).not.toMatch(/translate[a-wyz]\(/); // valid CSS transform functions only
+    expect(src.match(/translateX\(/g).length).toBeGreaterThanOrEqual(8);
   });
 });
 
