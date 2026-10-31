@@ -68,7 +68,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, contracts: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, contracts: [], unbilled: 0, has_paid: false, legacy_flag_only: 0,
       });
     }
     return byStudent.get(id);
@@ -95,7 +95,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     // #4114 (Founder Q3): paid by the legacy flag alone is 需核對, not 已收; still not owed (status unchanged).
     if (paidSignal && isLegacyPaidFlagOnly(r)) row.legacy_flag_only += 1;
     else if (paidSignal) row.has_paid = true;
-    if (r.payment_status === 'pending_report') row.waiting_confirm += 1;
+    if (r.payment_status === 'pending_report') { row.waiting_confirm += 1; row.confirm_class_id ??= r.id != null ? Number(r.id) : null; }
     // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
     if (pendingReviewAmount(r) > 0) {
       row.pending_review_amount += pendingReviewAmount(r);
@@ -113,6 +113,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         row.owed_later += it.amount;
       } else {
         row.owed_now += it.amount;
+        row.record_class_id ??= r.id != null ? Number(r.id) : null;
         if (it.due_date) row.overdue_days = Math.max(row.overdue_days, Math.round((now - dayStart(it.due_date)) / 86400000));
       }
     }
@@ -123,6 +124,16 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     || b.waiting_confirm - a.waiting_confirm
     || b.owed_later - a.owed_later
     || a.student_name.localeCompare(b.student_name, 'zh-Hant'));
+}
+
+/**
+ * Billing UX F-2 (L3): the one button a list row offers, named after the result. It only picks which contract the
+ * drawer opens on; the drawer decides (with the same card rules) whether the form can really open.
+ */
+export function rowPrimaryAction(r) {
+  if (r.waiting_confirm > 0 && r.confirm_class_id) return { kind: 'confirm', label: '確認入帳', classId: r.confirm_class_id };
+  if (r.owed_now > 0 && r.record_class_id) return { kind: 'record', label: '登記收款', classId: r.record_class_id };
+  return null;
 }
 
 export const STUDENT_FILTERS = {
