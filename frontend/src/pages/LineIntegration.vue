@@ -138,17 +138,13 @@
       <div class="webhook-label">LINE Webhook</div>
       <div class="url-box">
         <code>{{ status.webhook_url }}</code>
-        <AtButton shape="rect" size="sm" variant="ghost" @click="copy(status.webhook_url, 'webhook')">
-          {{ copied === 'webhook' ? '✓ 已複製' : '複製' }}
-        </AtButton>
+        <AtCopyButton variant="ghost" :text="status.webhook_url" />
       </div>
       <p class="field-hint">到 LINE Developers → Messaging API → Webhook settings，貼上此網址並開啟「Use webhook」。</p>
       <div class="webhook-label mt">Telegram Webhook</div>
       <div class="url-box">
         <code>{{ telegramWebhookUrl }}</code>
-        <AtButton shape="rect" size="sm" variant="ghost" @click="copy(telegramWebhookUrl, 'telegram-webhook')">
-          {{ copied === 'telegram-webhook' ? '✓ 已複製' : '複製' }}
-        </AtButton>
+        <AtCopyButton variant="ghost" :text="telegramWebhookUrl" />
       </div>
       <p class="field-hint">Telegram Bot 請用 BotFather 或 setWebhook 將上方網址設為 webhook。</p>
     </div>
@@ -210,6 +206,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtCopyButton from '../components/design-system/AtCopyButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
@@ -525,6 +522,8 @@ watch(() => props.branchId, () => { status.value = null; notify.value = null; lo
   justify-content: space-between;
 }
 .url-box .at-btn { flex-shrink: 0; }
+.url-box :deep(.at-copy) { flex-shrink: 0; }
+.url-box :deep(.at-copy .at-btn) { min-height: var(--ds-control-height-touch, 44px); }
 .save-row { flex-wrap: wrap; }
 
 h2 { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: var(--ds-ink); }
@@ -799,5 +798,7 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
   .save-row .at-btn,
   .url-box .at-btn,
   .copy-row .at-btn { width: 100%; }
+  .url-box :deep(.at-copy),
+  .url-box :deep(.at-copy .at-btn) { width: 100%; }
 }
 </style>
