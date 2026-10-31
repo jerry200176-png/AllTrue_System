@@ -33,7 +33,7 @@ class ExamRoundApiTest extends TestCase
         ])->assertForbidden();
 
         $created = $this->withAuth($director['token'])->postJson('/api/v1/exam-rounds', [
-            'campus_id' => $campus, 'title' => '113-1 第一次段考', 'entry_deadline' => '2026-10-31',
+            'campus_id' => $campus, 'title' => '113-1 第一次段考', 'entry_deadline' => now()->addWeek()->toDateString(),
             'grade_ids' => [3], 'subjects' => [['name' => '國文'], ['name' => '英文']],
         ])->assertCreated();
         $roundId = (int) $created->json('data.id');
