@@ -93,6 +93,14 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     w.unmount();
   });
 
+  it("initialAction='issue' does nothing when the drawer moved on while drafts loaded", async () => {
+    const w = mountLedger({ courses: [course(11)], props: { initialAction: 'issue' }, drafts: [{ student_class_id: 11, status: 'ready', subject: '科目11', proposed_start_date: '2026-11-01', proposed_end_date: '2999-11-30', period_sessions: 4, amount: 4400 }] });
+    await w.setProps({ show: false });
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="ledger-issue-text"]')).toBeNull();
+    w.unmount();
+  });
+
   it("initialAction='issue' without a ready draft says so instead of opening nothing", async () => {
     const w = mountLedger({ courses: [course(11)], props: { initialAction: 'issue' } });
     await flushPromises();
