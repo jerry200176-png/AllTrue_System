@@ -3823,16 +3823,7 @@ table th { font-size: 12.5px; }
   border-bottom-color: var(--ds-primary);
 }
 
-/* Status left border on student rows.
-   active/paused 對應 ds-success/ds-warning；graduated 藍、transferred 紫
-   屬多態語意色（無對應 ds semantic token），維持 raw 待 token 擴充。*/
-.student-row td:first-child {
-  border-left: 3px solid transparent;
-}
-.student-row.status-active td:first-child { border-left-color: var(--ds-success); }
-.student-row.status-graduated td:first-child { border-left-color: #1565c0; }
-.student-row.status-paused td:first-child { border-left-color: var(--ds-warning); }
-.student-row.status-transferred td:first-child { border-left-color: #7b1fa2; }
+/* Row status is carried by .student-status-badge (text), not a left stripe. */
 
 /* Expand icon */
 .expand-icon {
@@ -4138,7 +4129,6 @@ table th { font-size: 12.5px; }
 }
 .course-panel {
   padding: 20px 24px;
-  border-left: 3px solid var(--ds-primary);
   margin: 0;
 }
 .course-panel-header {
@@ -4439,7 +4429,6 @@ table th { font-size: 12.5px; }
 .student-course-dates__list li {
   align-items: center;
   background: var(--ds-canvas-soft);
-  border-left: 2px solid var(--ds-primary);
   display: flex;
   gap: 10px;
   justify-content: space-between;
@@ -4676,7 +4665,7 @@ table th { font-size: 12.5px; }
 }
 .student-course-card__context {
   background: var(--ds-canvas-soft);
-  border-left: 3px solid var(--ds-hairline-input);
+  border: 1px solid var(--ds-hairline);
   color: var(--ds-ink-secondary);
   display: grid;
   font-size: 12px;
@@ -5091,7 +5080,6 @@ table th { font-size: 12.5px; }
 .sl-history-card {
   background: var(--ds-canvas);
   border: 1px solid var(--ds-hairline);
-  border-left: 3px solid var(--ds-hairline-input);
   border-radius: 10px;
   padding: 10px 14px;
   transition: box-shadow 0.15s;

@@ -1188,7 +1188,7 @@ onBeforeUnmount(() => {
 .th-priority-rules-panel { margin: 12px 0 4px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
 .th-priority-rules-panel h4 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
 .th-priority-rules { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.th-priority-rules__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); border-left: 3px solid var(--ds-primary); }
+.th-priority-rules__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); }
 .th-priority-rules__item strong { color: var(--ds-ink); font-size: 13px; }
 .th-priority-rules__item span { color: var(--ds-ink-mute); font-size: 12px; }
 .th-work-queue__list { display: grid; gap: 8px; padding-top: 12px; }
@@ -1284,13 +1284,6 @@ onBeforeUnmount(() => {
   border-radius: 20px;
   background: linear-gradient(112deg, var(--ds-primary-wash) 0%, var(--ds-canvas) 58%, color-mix(in srgb, var(--ds-primary-soft) 18%, var(--ds-canvas)) 100%);
   box-shadow: 0 8px 22px color-mix(in srgb, var(--ds-cta) 12%, transparent);
-}
-.th-companion::before {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 6px;
-  content: '';
-  background: var(--ds-brand-gradient);
 }
 .th-companion::after {
   position: absolute;
@@ -1530,7 +1523,7 @@ onBeforeUnmount(() => {
 
 .th-event-done { opacity: 0.7; }
 .th-event-leave {
-  border-left-color: var(--ds-warning);
+  border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline));
   background: linear-gradient(90deg, rgba(249,115,22,0.10), transparent 55%);
 }
 
@@ -1581,7 +1574,7 @@ onBeforeUnmount(() => {
 .th-clockin-card {
   display: flex; flex-direction: column; gap: 10px;
   padding: 14px 16px; cursor: pointer; min-height: 72px;
-  border: 1px solid var(--border); border-left-width: 4px; border-radius: 12px;
+  border: 1px solid var(--border); border-radius: 12px;
   width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--card-bg);
   transition: background 0.15s, transform 0.1s;
   margin-bottom: 12px;
@@ -1590,11 +1583,10 @@ onBeforeUnmount(() => {
 .th-clockin-card:active { transform: scale(0.99); }
 .th-clockin-card:focus-visible { outline: 3px solid var(--ds-focus-ring); outline-offset: 2px; }
 
-/* Status: left border colour */
-.th-ckin-empty   { border-left-color: var(--border); }
-.th-ckin-working { border-left-color: var(--primary); }
-.th-ckin-done    { border-left-color: var(--success); }
-.th-ckin-late    { border-left-color: var(--ds-danger); }
+/* Status: full-border tint (status text stays in the card header) */
+.th-ckin-working { border-color: color-mix(in srgb, var(--ds-primary) 50%, var(--ds-hairline)); }
+.th-ckin-done    { border-color: color-mix(in srgb, var(--ds-success) 50%, var(--ds-hairline)); }
+.th-ckin-late    { border-color: color-mix(in srgb, var(--ds-danger) 50%, var(--ds-hairline)); }
 
 /* Header row */
 .th-clockin-header {

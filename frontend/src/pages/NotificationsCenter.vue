@@ -1211,7 +1211,7 @@ onUnmounted(() => {
 }
 
 .error-card {
-  border-left: 4px solid var(--danger);
+  border-color: color-mix(in srgb, var(--ds-danger) 50%, var(--ds-hairline));
   color: var(--danger);
 }
 
@@ -1231,8 +1231,6 @@ onUnmounted(() => {
 
 .urgent-panel h4 {
   color: var(--ds-ink);
-  border-left: 3px solid var(--ds-danger);
-  padding-left: 6px;
   margin: 0 0 8px;
   font-size: 13px;
 }
@@ -1276,7 +1274,6 @@ onUnmounted(() => {
 
 .notification-item {
   border: 1px solid var(--ds-hairline);
-  border-left: 3px solid transparent;
   border-radius: var(--ds-radius-md, 6px);
   padding: 10px 12px;
   margin-bottom: 8px;
@@ -1286,12 +1283,11 @@ onUnmounted(() => {
 
 .notification-item.unread {
   border-color: var(--ds-ink-mute);
-  border-left-color: var(--ds-ink-mute);
   background: var(--ds-canvas-soft);
 }
 
 .notification-item.severity-high-item {
-  border-left-color: var(--ds-danger);
+  border-color: color-mix(in srgb, var(--ds-danger) 50%, var(--ds-hairline));
   background: var(--ds-danger-wash);
 }
 
@@ -1373,8 +1369,8 @@ onUnmounted(() => {
 .stats-box { margin-bottom: 0; font-variant-numeric: tabular-nums; }
 .case-reason { opacity: 0.75; font-size: 13px; }
 .pager-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
-.case-item { border-left-color: var(--ds-warning); }
-.leave-case-item { overflow: hidden; border: 1px solid var(--ds-hairline); border-left: 3px solid var(--ds-warning); border-radius: 14px; background: var(--ds-canvas); box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05); }
+.case-item { border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline)); }
+.leave-case-item { overflow: hidden; border: 1px solid color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline)); border-radius: 14px; background: var(--ds-canvas); box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05); }
 .leave-case-item .title-row { padding-top: 2px; }
 .leave-case-item .main-title { color: var(--ds-ink); font-size: 17px; }
 .leave-case-step { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; padding: 9px 10px; border-radius: 9px; background: var(--ds-canvas-soft); color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
