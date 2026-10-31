@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-10-31-drawer-money-actions
+    published_at: "2026-10-31"
+    audiences:
+      - director
+    importance: digest
+    title: 課程卡可以直接改成不收、撤銷、結案
+    summary: 這些動作原本只在待處理清單的表格裡，現在學生帳務的課程卡也有。
+    items:
+      - category: improved
+        text: 課程卡出現「改成「不收」」「撤銷收款」「結案（不續報）」，原因欄位和稽核紀錄跟以前一樣。
+    source_refs:
+      - "changelog:2026-10-31:billing-ux-f5a1-drawer-money-actions"

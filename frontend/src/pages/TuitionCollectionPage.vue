@@ -941,17 +941,20 @@
     />
 
     <AccountingLedgerModal
+      ref="ledgerModal"
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
       :report-id="ledgerReportId"
       :student-id="ledgerStudentId"
       :initial-action="ledgerInitialAction"
+      :row-actions="ledgerRowActions"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
       :student-wide="ledgerNavStudentId != null"
       @close="ledgerOpen = false"
       @step="stepLedger"
       @changed="onLedgerChanged"
+      @row-action="onLedgerRowAction"
     />
 
     <!-- Void Confirmation Dialog -->
@@ -2340,6 +2343,25 @@ async function confirmWaive() {
   }
 }
 
+// F-5a1: 改成不收 / 撤銷收款 / 結案 on the drawer's contract cards. The page decides who may see them (the rules the old
+// table used) and answers a click with its existing dialog and request; nothing about the money path is new.
+const ledgerModal = ref(null);
+const ledgerRowActions = computed(() => Object.fromEntries(rows.value.filter((r) => r?.id != null).map((r) => {
+  const paidGroup = ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status);
+  return [Number(r.id), {
+    waive: canWaive.value && r.payment_status === 'pending_reconciliation' && Boolean(r.closed_reason),
+    void: canVoid.value && paidGroup && hasVoidableReceipt(r),
+    settle: r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon',
+  }];
+})));
+function onLedgerRowAction({ kind, courseId }) {
+  const row = rows.value.find((r) => Number(r.id) === Number(courseId));
+  if (!row || !ledgerRowActions.value[Number(courseId)]?.[kind]) return;
+  if (kind === 'waive') openWaiveDialog(row);
+  else if (kind === 'void') openVoidDialog(row);
+  else if (kind === 'settle') openSettleDialog(row);
+}
+
 // ═══ Void Dialog ═══
 const voidDialogOpen = ref(false);
 const voidTarget = ref(null);
@@ -2439,6 +2461,10 @@ const settleLoading = ref(null);
 const settleSummary = computed(() => formatTuitionSettleSummary(settleTarget.value || {}));
 const settleNewerHint = computed(() => formatTuitionNewerCourseHint(settleTarget.value || {}));
 const settleTargetStillOwesSessions = computed(() => Number(settleTarget.value?.remaining_sessions ?? 0) > 0);
+// The drawer shows the money state, so it rereads after one of those dialogs closes (done or cancelled).
+watch([waiveDialogOpen, voidDialogOpen, settleDialogOpen], (now, before) => {
+  if (ledgerOpen.value && now.some((open, i) => !open && before[i])) ledgerModal.value?.reload();
+});
 
 function openSettleDialog(row) {
   settleTarget.value = row;

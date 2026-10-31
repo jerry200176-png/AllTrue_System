@@ -110,6 +110,8 @@
                 :can-resolve-legacy="canManageInvoices()"
                 :has-confirmed-report="hasConfirmedReportFor(c.id)"
                 :auto-confirm="autoConfirmId === Number(c.id)"
+                :row-actions="rowActions[Number(c.id)] || null"
+                @row-action="(kind) => emit('row-action', { kind, courseId: Number(c.id) })"
                 @record="openEntry"
                 @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
@@ -382,9 +384,12 @@ const props = defineProps({
   show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean, studentWide: Boolean,
   // In-app #398: 'record' opens 登記收款 for the opened course once the ledger has loaded (only if its card offers it).
   initialAction: { type: String, default: null },
+  // F-5a1: { [studentClassId]: { waive, void, settle } } from the page's alert rows (the old table's rules).
+  rowActions: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(['close', 'changed', 'step']);
+const emit = defineEmits(['close', 'changed', 'step', 'row-action']);
+defineExpose({ reload: () => loadLedger() });
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
 const modalEl = ref(null);
