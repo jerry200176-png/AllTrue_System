@@ -11,19 +11,11 @@
       </template>
     </AtPageHeader>
 
-    <AtTabs
-      :model-value="activeTab"
-      class="profile-tabs card"
-      data-guide="profile-tabs"
-      label="個人資料工作區"
-      id-prefix="profile"
-      :tabs="[
-        { value: 'profile', label: '基本資料', disabled: forcePasswordChange },
-        { value: 'security', label: '安全性' },
-        { value: 'notifications', label: '通知偏好', disabled: forcePasswordChange },
-      ]"
-      @update:model-value="setActiveTab"
-    />
+    <div class="profile-tabs card" data-guide="profile-tabs" role="tablist" aria-label="個人資料工作區">
+      <button id="profile-tab-profile" type="button" role="tab" aria-controls="profile-panel-profile" :aria-selected="activeTab === 'profile'" :class="['tab-btn', { active: activeTab === 'profile' }]" :disabled="forcePasswordChange" @click="setActiveTab('profile')">基本資料</button>
+      <button id="profile-tab-security" type="button" role="tab" aria-controls="profile-panel-security" :aria-selected="activeTab === 'security'" :class="['tab-btn', { active: activeTab === 'security' }]" @click="setActiveTab('security')">安全性</button>
+      <button id="profile-tab-notifications" type="button" role="tab" aria-controls="profile-panel-notifications" :aria-selected="activeTab === 'notifications'" :class="['tab-btn', { active: activeTab === 'notifications' }]" :disabled="forcePasswordChange" @click="setActiveTab('notifications')">通知偏好</button>
+    </div>
 
     <div v-if="loading" class="card" role="status" aria-live="polite">載入中...</div>
 
@@ -371,7 +363,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtTabs from '../components/design-system/AtTabs.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import TriageTokenPanel from '../components/TriageTokenPanel.vue';
 import PopInappAgentKeyPanel from '../components/PopInappAgentKeyPanel.vue';
@@ -915,6 +906,35 @@ onMounted(loadData);
   border-bottom: 1px solid var(--ds-hairline);
 }
 
+.tab-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-text-secondary, var(--text));
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  border-bottom-color: var(--ds-primary);
+  color: var(--ds-primary-text);
+  background: transparent;
+}
+
+.tab-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tab-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
 
 .muted {
   color: var(--text-light);
@@ -1138,7 +1158,10 @@ onMounted(loadData);
 @media (max-width: 900px) {
   .profile-tabs { padding: 0; }
 
-  .profile-tabs :deep(.at-tab) { flex: 1 0 auto; min-width: 0; }
+  .tab-btn {
+    flex: 1 0 auto;
+    min-width: 0;
+  }
 
   .actions .at-btn { width: 100%; }
 
