@@ -871,7 +871,7 @@ class AccountingController extends Controller
         $billing->preloadSessions($candidates->pluck('ID')->all());
         $out = [];
         foreach ($candidates as $c) {
-            if ($dates = $billing->taughtLessonsOutsideContract($c)) {
+            if ($dates = $billing->lessonsOnlyOutsideContract($c)) {
                 $outsideContract[(int) $c->ID] = $dates;
                 continue; // never offer the stored Charge as the amount of an empty month
             }

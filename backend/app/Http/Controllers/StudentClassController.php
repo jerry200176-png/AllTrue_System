@@ -1715,8 +1715,11 @@ class StudentClassController extends Controller
         $newStart = array_key_exists('StartDate', $mapped) ? $dateOf($mapped['StartDate']) : null;
         $newEnd = array_key_exists('EndDate', $mapped) ? $dateOf($mapped['EndDate']) : null;
         if (($newStart !== null && $newStart !== $dateOf($studentClass->StartDate)) || ($newEnd !== null && $newEnd !== $dateOf($studentClass->EndDate))) {
-            $stranded = app(\App\Services\MonthlyBillingService::class)->taughtLessonsOutsideContract(
-                $studentClass, $newStart ?? $dateOf($studentClass->StartDate), $newEnd ?? $dateOf($studentClass->EndDate));
+            // Only lessons this edit pushes out: one already outside (e.g. a makeup after the end) does not block other edits.
+            $billing = app(\App\Services\MonthlyBillingService::class);
+            $stranded = array_values(array_diff($billing->taughtLessonsOutsideContract(
+                $studentClass, $newStart ?? $dateOf($studentClass->StartDate), $newEnd ?? $dateOf($studentClass->EndDate)),
+                $billing->taughtLessonsOutsideContract($studentClass)));
             if ($stranded !== [] && (string) ($mapped['ScheduleMode'] ?? $oldScheduleMode) === 'date') {
                 $this->auditEditBlocked($studentClass, 'contract_dates_strand_lessons', 422);
                 return response()->json([

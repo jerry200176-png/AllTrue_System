@@ -1545,7 +1545,7 @@ class PaymentReportController extends Controller
     /** #4765: lessons already taught outside the contract dates are invisible to billing; never price such a month from the stored Charge. */
     private function lessonsOutsideContractRefusal(\Illuminate\Database\Eloquent\Model $course): ?JsonResponse
     {
-        $dates = $this->monthlyBilling->taughtLessonsOutsideContract($course);
+        $dates = $this->monthlyBilling->lessonsOnlyOutsideContract($course);
         if ($dates === []) {
             return null;
         }

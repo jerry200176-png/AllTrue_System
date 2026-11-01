@@ -568,7 +568,7 @@ class MonthlyBillingSlipTest extends TestCase
         $token = $this->createDirectorToken('director-ended-monthly@example.com');
         [, $course] = $this->makeMonthlyCourse('月結結束測試', '2026-09-01', '2026-09-30');
         $course->update(['Rate' => 1300, 'Charge' => 5200, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
-        foreach (['2026-09-05' => 'leave', '2026-09-12' => 'attended', '2026-09-19' => 'attended', '2026-09-26' => 'attended', '2026-10-03' => 'scheduled'] as $date => $status) {
+        foreach (['2026-09-05' => 'leave', '2026-09-12' => 'attended', '2026-09-19' => 'attended', '2026-09-26' => 'attended', '2026-10-03' => 'attended'] as $date => $status) {
             ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
         }
         $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];

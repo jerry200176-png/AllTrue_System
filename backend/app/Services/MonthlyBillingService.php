@@ -92,13 +92,33 @@ class MonthlyBillingService
         }
         $start = Carbon::parse($start)->toDateString();
         $end = Carbon::parse($end)->toDateString();
+
+        return $this->countableLessonDates($course)->filter(fn (string $d) => $d < $start || $d > $end)->unique()->sort()->values()->all();
+    }
+
+    /**
+     * #4765: the outside dates only when no countable lesson lies inside the contract dates: then billing prices the
+     * contract's month from the stored Charge. A makeup taught after the end beside lessons inside stays collectable.
+     *
+     * @return list<string>
+     */
+    public function lessonsOnlyOutsideContract(Model $course): array
+    {
+        $outside = $this->taughtLessonsOutsideContract($course);
+
+        return $outside !== [] && $this->countableLessonDates($course)->every(fn (string $d) => in_array($d, $outside, true)) ? $outside : [];
+    }
+
+    /** @return \Illuminate\Support\Collection<int, string> dates of the course's countable lessons (one per lesson) */
+    private function countableLessonDates(Model $course): \Illuminate\Support\Collection
+    {
         $id = (int) $course->getKey();
         $preloaded = $this->preloadedSessions[$id] ?? null;
         $dates = $preloaded !== null
             ? $preloaded->filter(fn (ClassSession $s) => in_array(strtolower(rtrim((string) $s->Status)), self::BILLABLE_STATUSES, true))->pluck('SessionDate')
             : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate');
 
-        return $dates->map(fn ($d) => substr((string) $d, 0, 10))->filter(fn (string $d) => $d < $start || $d > $end)->unique()->sort()->values()->all();
+        return $dates->map(fn ($d) => substr((string) $d, 0, 10))->values();
     }
 
     /**

@@ -99,6 +99,22 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->assertSame(3600, $billing->summarizePeriod($sc->fresh(), '2026-09')['charge']);
     }
 
+    public function test_a_makeup_after_the_end_beside_lessons_inside_stays_collectable_and_editable(): void
+    {
+        // Common: a September contract's makeup taught 10/3. September is billable from its own lessons, so nothing is blocked.
+        $sc = $this->course(['2026-09-12' => 'attended', '2026-09-19' => 'attended', '2026-10-03' => 'attended'],
+            ['StartDate' => '2026-09-01', 'EndDate' => '2026-09-30']);
+        $billing = app(MonthlyBillingService::class);
+        $this->assertSame(['2026-10-03'], $billing->taughtLessonsOutsideContract($sc));
+        $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+
+        $card = collect($this->api('getJson', "/api/v1/accounting/ledger?student_class_id={$sc->ID}")->assertOk()->json('courses'))->firstWhere('id', $sc->ID);
+        $this->assertSame([], $card['lessons_outside_contract']);
+        $this->assertNotSame('lessons_outside_contract', $this->record($sc, 3600)->json('code'));
+        // An edit that strands nothing new is allowed although 10/3 was already outside.
+        $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", ['end_date' => '2026-09-29'])->assertOk();
+    }
+
     private function course(array $lessons = ['2026-09-29' => 'attended', '2026-09-30' => 'attended'], array $overrides = []): StudentClass
     {
         $student = Student::create(['name' => 's'.uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
