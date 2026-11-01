@@ -250,6 +250,42 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([3000, 'paid'], [(int) Invoice::where('StudentClassID', $lead2->ID)->value('TotalAmount'), (string) Invoice::where('StudentClassID', $lead2->ID)->value('Status')]);
     }
 
+    /** #4597 Codex P1: after a partial backfill, the rest collected through another member pays the same package bill. */
+    public function test_the_rest_collected_through_another_member_pays_the_package_bill(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1); // NT$8,800
+        $this->backfill($token, $lead, ['amount' => 3000])->assertOk();
+
+        $r = $this->withHeaders($this->auth($token))->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sibling->ID, 'payment_date' => '2026-10-02', 'payment_method' => 'transfer', 'amount' => 5800,
+        ])->assertOk();
+        $this->withHeaders($this->auth($token))->putJson('/api/v1/payment-reports/' . $r->json('report_id') . '/confirm')->assertOk();
+
+        $this->assertSame([8800], Invoice::where('Status', '!=', 'void')->pluck('TotalAmount')->map(fn ($v) => (int) $v)->all(), 'one package bill');
+        $this->assertSame(['paid', 8800], [(string) Invoice::sole()->Status, (int) Payment::sum('Amount')]);
+        $this->assertTrue((bool) $package->fresh()->paid);
+    }
+
+    /** #4597 review: a sibling's live bill already carries the package obligation, so a payment on another member never bills it again. */
+    public function test_a_package_with_a_live_member_bill_is_not_billed_its_price_again(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1);
+        $package->update(['paid' => false, 'paid_at' => null]);
+        StudentClass::whereIn('ID', [$lead->ID, $sibling->ID])->update(['Paid' => 0, 'PayDate' => null]);
+        Invoice::create(['StudentID' => $sibling->StudentID, 'StudentClassID' => $sibling->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+
+        $r = $this->withHeaders($this->auth($token))->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $lead->ID, 'payment_date' => '2026-10-01', 'payment_method' => 'transfer', 'amount' => 3000,
+        ])->assertOk();
+        $this->withHeaders($this->auth($token))->putJson('/api/v1/payment-reports/' . $r->json('report_id') . '/confirm');
+
+        $this->assertSame(1, Payment::count(), 'the payment was confirmed');
+        $this->assertSame(0, Invoice::where('StudentClassID', $lead->ID)->where('TotalAmount', 8800)->count(), 'never a second NT$8,800 bill');
+    }
+
     /** #4597 item 2: a package-created monthly member carries Charge=0; the backfill cap uses its sessions x package rate instead. */
     public function test_backfill_of_a_package_created_monthly_member_uses_its_real_obligation(): void
     {

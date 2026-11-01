@@ -424,6 +424,10 @@ class PaymentReportController extends Controller
             if (! $invoice) {
                 $invoice = $this->pickOpenInvoice((int) $report->StudentClassID, $sc);
             }
+            // #4597 Codex P1: a count package owes one obligation; a payment through another member pays its open bill.
+            if (! $invoice && $sc && $package && $this->isSharedPackageObligation($package, $sc)) {
+                $invoice = $this->pickOpenPackageInvoice($package, $sc);
+            }
 
             if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
                 return $this->invoiceAlreadyCoveredResponse($invoice);
@@ -472,7 +476,7 @@ class PaymentReportController extends Controller
             // not whatever was entered; the Payment records only what was received. X unknown → bill the entered amount, never mark paid.
             $billAmount = (int) $report->reported_amount;
             $enteredOnlyPackageBill = false;
-            if (!$invoice && $package && $this->isSharedPackageObligation($package, $sc)) {
+            if (!$invoice && $package && $this->isSharedPackageObligation($package, $sc) && !$this->packageHasLiveBill($package)) {
                 $packagePrice = $this->packagePrice($package);
                 if ($packagePrice !== null && $billAmount > $packagePrice) {
                     return response()->json(['message' => sprintf('方案總價為 NT$%d，收款金額不可超過。沒有登記任何款項。', $packagePrice),
@@ -1505,6 +1509,35 @@ class PaymentReportController extends Controller
         $probe->setAttribute('PackageID', null);
 
         return $this->monthlyBilling->summarizePeriod($probe, $period);
+    }
+
+    /**
+     * The oldest live, still-owing full-price package bill (#4597) of another member, locked. Older per-member bills keep their
+     * own amounts, so only a bill for the whole package price is the package's obligation.
+     */
+    private function pickOpenPackageInvoice(CoursePackage $package, StudentClass $sc): ?Invoice
+    {
+        $price = $this->packagePrice($package);
+        if ($price === null) {
+            return null;
+        }
+        $memberIds = StudentClass::where('PackageID', $package->id)->where('ID', '!=', $sc->getKey())->orderBy('ID')->pluck('ID');
+        foreach ($memberIds as $memberId) {
+            $member = StudentClass::query()->find($memberId);
+            $open = $member ? $this->pickOpenInvoice((int) $memberId, $member) : null;
+            if ($open && (int) $open->TotalAmount === $price && (int) $this->invoiceProjection($open, $member)['outstanding_amount'] > 0) {
+                return $open;
+            }
+        }
+
+        return null;
+    }
+
+    /** RFC §R2: a member already has a live bill, so the package obligation is already billed (no second full-price bill). */
+    private function packageHasLiveBill(CoursePackage $package): bool
+    {
+        return Invoice::whereIn('StudentClassID', StudentClass::where('PackageID', $package->id)->pluck('ID'))
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists();
     }
 
     /** RFC §R4: round(rate × total_sessions) for a per-session count package; null when it cannot be determined. */
