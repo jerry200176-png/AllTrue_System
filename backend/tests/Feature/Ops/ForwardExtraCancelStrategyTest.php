@@ -67,6 +67,17 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         return [$course, $this->lesson($course, $date, 'scheduled', '系統向前生成 #1062')];
     }
 
+    /** Diagnostics: the strategy's own verify errors for a request (the service keeps only checks + passed). */
+    private function why(string $id, string $restore): string
+    {
+        $execute = DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->orderByDesc('attempt_no')->first();
+        $payload = $execute ? json_decode((string) $execute->payload, true) : [];
+        $strategy = new ForwardExtraCancelStrategy();
+        $plan = $strategy->plan($this->params(26, (string) (json_decode((string) DB::table('pop_operation_requests')->where('id', $id)->value('parameters'), true)['expected_digest'] ?? ''), $restore));
+
+        return json_encode(['verify' => $strategy->verify($plan, $payload), 'plan_state' => $plan['state'] ?? null, 'rows' => $plan['manifest'] ?? null]);
+    }
+
     private function st(int $id): string
     {
         return (string) DB::table('ClassSession')->where('id', $id)->value('Status');
@@ -236,7 +247,10 @@ final class ForwardExtraCancelStrategyTest extends TestCase
             $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
             $token = $service->approve($id, 'founder-go-forward-extra-test-' . substr($id, 0, 8), 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
 
-            return [$id, $service->run($id, 'execute', $token, $sha, 'pop-pi-local')['result'], $service->run($id, 'verify', $token, $sha, 'pop-pi-local')['result']];
+            $execute = $service->run($id, 'execute', $token, $sha, 'pop-pi-local')['result'];
+            $verify = $service->run($id, 'verify', $token, $sha, 'pop-pi-local')['result'];
+
+            return [$id, $execute, $verify === 'succeeded' ? $verify : $verify . ' ' . $this->why($id, $restore)];
         };
 
         [$cancelId, $execute, $verify] = $go('');
@@ -262,12 +276,12 @@ final class ForwardExtraCancelStrategyTest extends TestCase
             $sha = str_repeat('c', 40);
             $token = $service->approve($id, 'founder-go-forward-extra-test', 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
 
-            return [$dry, $service->run($id, 'execute', $token, $sha, 'pop-pi-local'), $service->run($id, 'verify', $token, $sha, 'pop-pi-local')];
+            return [$dry, $service->run($id, 'execute', $token, $sha, 'pop-pi-local'), $service->run($id, 'verify', $token, $sha, 'pop-pi-local') + ['id' => $id]];
         };
         $digest = (string) $run('')[0]['plan']['digest'];
         [, $execute, $verify] = $run($digest);
 
-        $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']], json_encode($verify['verification'] ?? $verify));
+        $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']], $this->why($verify['id'], ''));
         $this->assertSame('cancelled', $this->st($extra));
         $adapter = file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-forward-extra-cancel.yml');
         $this->assertStringContainsString('AUDIT="pop.forward_extra_cancel${RESTORE:+.rollback}"', $adapter);
