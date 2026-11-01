@@ -190,7 +190,6 @@
                             :disabled="isBusyInvoice(inv)"
                             @click="voidInvoice(inv, 'exception')"
                           >更正並作廢</button>
-                          <span v-else class="ledger-muted">—</span>
                         </div>
                       </td>
                     </tr>
@@ -1146,7 +1145,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-section{margin-top:20px}
 .ledger-contracts{display:grid;gap:10px}
-.ledger-section h4{margin:0 0 10px;font-size:var(--ds-font-size-lg);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight)}
+.ledger-section h4{margin:0 0 12px;padding-left:10px;border-left:4px solid var(--ds-primary);font-size:var(--ds-font-size-xl);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight)}
 .ledger-section+.ledger-section{padding-top:16px;border-top:1px solid var(--ds-border)}
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
@@ -1194,6 +1193,8 @@ const anomalyLabel = (code) => labelMap({
 .ledger-voided-notes__list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
 .ledger-voided-notes__list p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .ledger-actions{display:flex;gap:6px;flex-wrap:wrap}
+/* #4771: a bill with no action shows no empty row (was a stray —). */
+.ledger-cell-actions:has(.ledger-actions:empty){display:none}
 .ledger-action{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}
 .ledger-action--danger{border-color:var(--ds-danger-wash);color:var(--ds-danger)}
 .ledger-action--warning{border-color:var(--ds-warning-wash);color:var(--ds-danger);background:var(--ds-warning-wash)}
