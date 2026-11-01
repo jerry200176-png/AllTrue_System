@@ -748,6 +748,10 @@ class ContractSessionSchedule
                 foreach (array_slice($sequence, 0, $count) as $s) {
                     if (self::sessionEndedByEndTime((string) $s['SessionDate'], (string) ($s['EndTime'] ?? '18:00:00'), $now)) {
                         $key = self::normalizeDateString($s['SessionDate']) . '|' . substr((string) $s['StartTime'], 0, 5);
+                        // #4767: a sibling's confirmed_dates already debited this group slot (summarize() counts it).
+                        if ($isGroup && array_filter($takenBy, fn ($t) => isset($t[$key])) !== []) {
+                            continue;
+                        }
                         $endedSlots[$isGroup ? $key : $classId . '#' . $key] = true; // a group slot is one lesson for all members
                     }
                 }
