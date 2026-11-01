@@ -31,6 +31,7 @@ class InappPackageLedgerProbeTest extends TestCase
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
         'deleted_lesson_debits' => ['package_id', 'sessions', 'pool_debits', 'course_charged', 'pool_only', 'delete_logged'],
         'ledger_courses_elsewhere' => ['package_id', 'student_class_id', 'ledger_rows', 'ledger_net', 'course_exists', 'course_package_id', 'course_stop'],
+        'packages_without_course' => ['package_id', 'student_id', 'paid', 'created_on', 'student_exists', 'later_packages_in_use', 'live_courses'],
         'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots', 'future_planned'],
         'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
@@ -353,6 +354,22 @@ class InappPackageLedgerProbeTest extends TestCase
             ['package_id' => (int) $package->id, 'student_class_id' => (int) $moves->ID, 'ledger_rows' => 1, 'ledger_net' => -1, 'course_exists' => 1, 'course_package_id' => (int) $newer->id, 'course_stop' => 0],
             ['package_id' => (int) $package->id, 'student_class_id' => (int) $goes->ID, 'ledger_rows' => 1, 'ledger_net' => -1, 'course_exists' => 0, 'course_package_id' => 0, 'course_stop' => 0],
         ], array_map(fn (array $row): array => array_map('intval', $row), $out['ledger_courses_elsewhere']));
+        $this->assertOnlyAllowedKeys($out);
+    }
+
+    public function test_a_package_no_course_uses_shows_whether_the_student_moved_to_a_later_package(): void
+    {
+        [$old, [$gone]] = $this->pool(1, 16);
+        [$used] = $this->pool(1, 8);
+        DB::table('course_packages')->where('id', $used->id)->update(['student_id' => $old->student_id]);
+        DB::table('StudentClass')->where('ID', $gone->ID)->delete();
+        DB::table('StudentClass')->where('PackageID', $used->id)->update(['StudentID' => $old->student_id]);
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
+        $this->assertSame([['package_id' => (int) $old->id, 'student_id' => (int) $old->student_id, 'paid' => 0, 'student_exists' => 1,
+            'later_packages_in_use' => 1, 'live_courses' => 1]],
+            array_map(fn (array $row): array => array_map('intval', array_diff_key($row, ['created_on' => 1])), $out['packages_without_course']));
+        $this->assertSame(now()->toDateString(), $out['packages_without_course'][0]['created_on']);
         $this->assertOnlyAllowedKeys($out);
     }
 

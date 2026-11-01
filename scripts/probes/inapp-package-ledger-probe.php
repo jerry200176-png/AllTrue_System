@@ -103,6 +103,18 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         . ' GROUP BY l.package_id, l.student_class_id ORDER BY l.package_id, l.student_class_id LIMIT 200',
         $targets
     );
+    // #4753: a package no course points at. Did the student get a later package that a course uses, and do they still
+    // have a live course? (Before #3588 a member course could be erased and leave its pool behind.)
+    $result['packages_without_course'] = $rows(
+        'SELECT p.id AS package_id, p.student_id, p.paid, SUBSTRING(p.created_at, 1, 10) AS created_on,'
+        . ' (SELECT COUNT(*) FROM Student s WHERE s.id = p.student_id) AS student_exists,'
+        . ' (SELECT COUNT(*) FROM course_packages q WHERE q.student_id = p.student_id AND q.id > p.id'
+        . ' AND EXISTS (SELECT 1 FROM StudentClass m WHERE m.PackageID = q.id)) AS later_packages_in_use,'
+        . ' (SELECT COUNT(*) FROM StudentClass c WHERE c.StudentID = p.student_id AND COALESCE(c.Stop, 0) = 0) AS live_courses'
+        . " FROM course_packages p WHERE p.id IN ($in) AND NOT EXISTS (SELECT 1 FROM StudentClass m WHERE m.PackageID = p.id)"
+        . ' ORDER BY p.id LIMIT 200',
+        $targets
+    );
     // What the lessons say: rebuildLedgerFromSessions() counts 'attended' slots; the single-to-shared conversion seeds
     // 'attended', 'completed' and 'late'.
     $result['member_lessons'] = $rows(
