@@ -325,6 +325,23 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([0, null, $package->id], [(int) $foreign->fresh()->Paid, $foreign->fresh()->PayDate, (int) $foreign->fresh()->PackageID]);
     }
 
+    /** #4597 item 3: a package-only paid mark (member Paid=0, no money) reaches the ledger card as paid, so the action shows. */
+    public function test_ledger_card_is_paid_when_only_the_package_mark_says_so(): void
+    {
+        $token = $this->token('A', [1]);
+        [, $sibling] = $this->legacyPackage(1);
+        $sibling->update(['Paid' => 0, 'PayDate' => null]);
+        $card = fn (StudentClass $c) => collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$c->ID}")
+            ->assertOk()->json('courses'))->firstWhere('id', $c->ID);
+        $this->assertSame([true, '2026-03-01'], [$card($sibling)['paid'], $card($sibling)['paid_at']]);
+
+        // Codex P1: a stale PackageID to another student's paid package exposes neither its paid mark nor its date.
+        $stale = $this->legacyCourse(1, ['Paid' => 0, 'PayDate' => null]);
+        [, , $foreignPackage] = $this->legacyPackage(1);
+        $stale->update(['PackageID' => $foreignPackage->id]);
+        $this->assertSame([false, null], [$card($stale)['paid'], $card($stale)['paid_at']]);
+    }
+
     /** Codex P2: a monthly backfill is capped by the month confirm() will bill (oldest unbilled), not the payment date's month. */
     public function test_monthly_backfill_cap_uses_the_month_confirmation_bills(): void
     {
