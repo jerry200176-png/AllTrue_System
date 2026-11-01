@@ -454,7 +454,7 @@ class PaymentReportController extends Controller
                         Carbon::createFromFormat('!Y-m', $report->billing_period)->format('Y 年 n 月'), Carbon::createFromFormat('!Y-m', $period)->format('Y 年 n 月')),
                         'code' => 'monthly_period_changed', 'billing_period' => $period, 'recorded_billing_period' => $report->billing_period], 422);
                 }
-                $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
+                $actual = $this->memberPeriodSummary($sc, $period, $legacyFlagBackfill);
                 $monthlyProjection = $invoice ? $this->invoiceProjection($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
                 // Partial receipts remain allowed; explicit cross-month cycles keep their invoice authority.
@@ -468,13 +468,27 @@ class PaymentReportController extends Controller
                 }
             }
 
+            // #4597 (Founder 6A, RFC_SHARED_PACKAGE_COLLECTION §R4 Q5): a count package with no bill owes its package price,
+            // not whatever was entered; the Payment records only what was received. X unknown → bill the entered amount, never mark paid.
+            $billAmount = (int) $report->reported_amount;
+            $enteredOnlyPackageBill = false;
+            if (!$invoice && $package && $this->isSharedPackageObligation($package, $sc)) {
+                $packagePrice = $this->packagePrice($package);
+                if ($packagePrice !== null && $billAmount > $packagePrice) {
+                    return response()->json(['message' => sprintf('方案總價為 NT$%d，收款金額不可超過。沒有登記任何款項。', $packagePrice),
+                        'code' => 'amount_exceeds_package_price', 'expected_amount' => $packagePrice], 422);
+                }
+                $enteredOnlyPackageBill = $packagePrice === null;
+                $billAmount = $packagePrice ?? $billAmount;
+            }
+
             if (!$invoice) {
                 try {
                 $invoice = app(InvoiceIssuer::class)->issue([
                     'StudentID'      => $report->StudentID,
                     'StudentClassID' => $report->StudentClassID,
                     'IssueDate'      => Carbon::today()->toDateString(),
-                    'TotalAmount'    => (int) $report->reported_amount,
+                    'TotalAmount'    => $billAmount,
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'billing_period' => $period, // in-app #432: the month checked above (date mode), else null
                 ], [], true);
@@ -491,7 +505,7 @@ class PaymentReportController extends Controller
                 $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
-                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
+                $billing = $this->memberPeriodSummary($sc, $billingPeriod, $legacyFlagBackfill);
 
                 if (
                     (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
@@ -550,7 +564,7 @@ class PaymentReportController extends Controller
                         : $sc->getAttribute('closed_reason'),
                 ]);
             }
-            if ($package && $status === 'paid') {
+            if ($package && $status === 'paid' && !$enteredOnlyPackageBill) {
                 $paidAt = Carbon::make($report->payment_date)?->toDateString()
                     ?? Carbon::today()->toDateString();
                 $this->markPackagePaid($package, $paidAt);
@@ -827,7 +841,7 @@ class PaymentReportController extends Controller
             if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
                 // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the charge of the
                 // month confirm() will bill (the same collectionPeriodFor: oldest unbilled month, else the payment date's).
-                $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']))['charge'];
+                $limit = (int) $this->memberPeriodSummary($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']), true)['charge'];
                 if ((int) $data['amount'] > $limit) {
                     return response()->json(['message' => sprintf('月結本期應收為 NT$%d，補登金額不可超過。沒有登記任何款項。', $limit),
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit], 422);
@@ -1474,6 +1488,32 @@ class PaymentReportController extends Controller
     private function isSharedPackageObligation(?CoursePackage $package, StudentClass $course): bool
     {
         return $package !== null && strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date';
+    }
+
+    /**
+     * #4597 item 2: summarizePeriod() answers the stored Charge (0 for a package-created member) for any package member.
+     * The legacy backfill prices a monthly member by its own sessions and rate, like a non-package monthly course.
+     *
+     * @return array<string, mixed>
+     */
+    private function memberPeriodSummary(StudentClass $course, string $period, bool $byOwnSessions): array
+    {
+        if (!$byOwnSessions || (int) ($course->PackageID ?? 0) <= 0) {
+            return $this->monthlyBilling->summarizePeriod($course, $period);
+        }
+        $probe = clone $course; // never saved: only hides PackageID from the summary
+        $probe->setAttribute('PackageID', null);
+
+        return $this->monthlyBilling->summarizePeriod($probe, $period);
+    }
+
+    /** RFC §R4: round(rate × total_sessions) for a per-session count package; null when it cannot be determined. */
+    private function packagePrice(CoursePackage $package): ?int
+    {
+        $rate = (float) ($package->rate ?? 0);
+        $total = (int) ($package->total_sessions ?? 0);
+
+        return ($package->rate_unit ?? null) === 'session' && $rate > 0 && $total > 0 ? (int) round($rate * $total) : null;
     }
 
     private function markPackagePaid(CoursePackage $package, string $paidAt): void

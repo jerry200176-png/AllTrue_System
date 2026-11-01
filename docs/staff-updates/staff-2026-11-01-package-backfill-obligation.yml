@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-package-backfill-obligation
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 補登方案收款不再少算
+    summary: 補登只收一部分的方案或月結成員時，帳單照應收開，沒收的部分仍算欠款。
+    items:
+      - category: fixed
+        text: 堂數方案沒有帳單時補登收款，帳單開方案總價，只記實收，其餘仍待收。
+      - category: fixed
+        text: 月結方案成員補登收款，依本月上課堂數和費率算應收，不再卡在應收為零。
+    source_refs:
+      - "changelog:2026-11-01:package-backfill-obligation"
