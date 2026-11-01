@@ -445,10 +445,11 @@ final class ContractRenewal
         $totalHours = 0;
         $charge = 0;
         $plan = ($startDate && $sessions > 0) ? $this->batchStartAfterSource($studentClass, $startDate, $slots) : null;
-        if ($startDate && $sessions > 0) {
+        if ($sessions > 0) {
             if ($rateUnit === 'hour') {
-                // Billed hours = the lessons the batch will actually create (#4344), planned from the real start.
-                $totalHours = $this->plannedBatchHours($studentClass, (string) $plan['start'], $sessions, $slots, $globalDur);
+                // Billed hours = the lessons the batch will actually create (#4344), planned from the real start; until a
+                // start date is chosen (a blocker anyway) the hours stay 0.
+                $totalHours = $plan !== null ? $this->plannedBatchHours($studentClass, (string) $plan['start'], $sessions, $slots, $globalDur) : 0;
                 $charge = (int) round($rate * $totalHours);
             } else {
                 $totalHours = (int) round(($sessions * $globalDur) / 60);
