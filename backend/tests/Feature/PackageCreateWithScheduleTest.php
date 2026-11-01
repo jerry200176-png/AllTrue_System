@@ -358,6 +358,9 @@ class PackageCreateWithScheduleTest extends TestCase
 
     public function test_create_with_days_of_week_generates_class_sessions(): void
     {
+        // The first lesson is the start date (today) at each subject's time; once 14:00 or 16:00 passed, the pool
+        // planned around a started lesson and the per-subject split read 5/3. Pin the clock to a Sunday morning.
+        $this->travelTo(Carbon::parse('2026-11-01 09:00:00'));
         $token = $this->createDirectorToken([1]);
         $student = $this->makeStudent(1);
         $t1 = $this->makeTeacher();
