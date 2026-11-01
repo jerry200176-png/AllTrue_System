@@ -3,10 +3,10 @@
         <div class="lr-modal" style="max-width: 480px;">
           <div class="lr-modal-header">
             <h3>匯出學習評量圖</h3>
-            <button type="button" class="ghost icon" @click="emit('close')">✕</button>
+            <AtIconButton icon="close" label="關閉" @click="emit('close')" />
           </div>
           <div class="lr-form">
-            <p style="color:var(--ds-ink-mute); font-size:13px; margin-bottom:16px;">
+            <p style="color:var(--ds-ink-mute); font-size:var(--ds-font-size-md); margin-bottom:16px;">
               選擇日期區間後，系統會依學生分組，每位學生產出一張評量報告圖片。
             </p>
             <div class="lr-form-grid" style="grid-template-columns:1fr 1fr; gap:12px;">
@@ -61,6 +61,10 @@ import { reactive, computed } from 'vue';
 import { supabase } from '../../supabase';
 import { exportStudentCards } from '../../lib/learningRecordExport';
 import { formatLocalDate, localTodayYmd } from '../../lib/learningRecordDate';
+import { useToast } from '../../composables/useToast';
+import AtIconButton from '../design-system/AtIconButton.vue';
+
+const toast = useToast();
 
 const props = defineProps(['branchId']);
 const emit = defineEmits(['close']);
@@ -115,7 +119,7 @@ const executeExport = async () => {
     });
 
     if (!res.ok) {
-      alert('查詢評量資料失敗');
+      toast.error('查詢評量資料失敗');
       exportForm.status = 'idle';
       return;
     }
@@ -173,7 +177,7 @@ const executeExport = async () => {
     exportForm.status = 'done';
   } catch (err) {
     console.error('Export error:', err);
-    alert('匯出失敗：' + (err.message || '未知錯誤'));
+    toast.error('匯出失敗：' + (err.message || '未知錯誤'));
     exportForm.status = 'idle';
   }
 };
@@ -188,19 +192,19 @@ const executeExport = async () => {
 .export-progress-bar {
   height: 8px;
   background: var(--ds-canvas-soft);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
 }
 
 .export-progress-fill {
   height: 100%;
   background: var(--primary);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   transition: width 0.3s ease;
 }
 
 .export-progress-text {
-  font-size: 13px;
+  font-size: var(--ds-font-size-md);
   color: var(--text-light);
   margin-top: 8px;
 }
@@ -209,17 +213,17 @@ const executeExport = async () => {
   margin-top: 16px;
   padding: 12px 16px;
   background: var(--ds-success-wash);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-lg);
   color: var(--ds-success);
-  font-size: 14px;
+  font-size: var(--ds-font-size-base);
 }
 
 .export-empty {
   margin-top: 16px;
   padding: 12px 16px;
   background: var(--ds-warning-wash);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-lg);
   color: var(--ds-danger);
-  font-size: 14px;
+  font-size: var(--ds-font-size-base);
 }
 </style>
