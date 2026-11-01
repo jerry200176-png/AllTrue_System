@@ -85,7 +85,6 @@
   {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "tutoring_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
   {"site": "api.accounting.ledger", "fixture": "tutoring_flag1", "current": "paid", "target": "free", "note": "ledger course row has no free state (raw StudentClass.Paid)"},
   {"site": "model.scopeEffectivelyUnpaid", "fixture": "tutoring_paid_invoice", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
-  {"site": "api.accounting.ledger", "fixture": "package_paid_member", "current": "unpaid", "target": "paid", "note": "no-invoice ledger course row reads raw StudentClass.Paid and ignores CoursePackage.paid"},
   {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "notpaid", "note": "stored PaidAmount covers the charge with no Payment rows"},
   {"site": "monthly_period_payment.batch", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "unpaid", "note": "B15 falls back to stored PaidAmount when a period has no Payment rows"},
   {"site": "api.student_classes.payment_status", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "unpaid", "note": "B7 shows B15 stored-PaidAmount fallback as paid"},
