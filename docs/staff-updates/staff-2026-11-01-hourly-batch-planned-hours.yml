@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-hourly-batch-planned-hours
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 時薪續約依實際排的課計費
+    summary: 時薪課加購堂數，時數和金額改依實際排出的每堂課長度計算。
+    items:
+      - category: fixed
+        text: 每堂長度不同時，不再用平均長度估算，總時數就是排出來的課加總。
+      - category: improved
+        text: 預覽顯示的時數和金額，跟實際購買的完全一樣。
+    source_refs:
+      - "changelog:2026-11-01:hourly-batch-planned-hours"
