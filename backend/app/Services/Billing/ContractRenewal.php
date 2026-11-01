@@ -712,7 +712,12 @@ final class ContractRenewal
         }
         $minutes = 0;
         foreach ($built as $sess) {
-            $minutes += Carbon::parse($sess['StartTime'])->diffInMinutes(Carbon::parse($sess['EndTime']));
+            $start = Carbon::parse($sess['StartTime']);
+            $end = Carbon::parse($sess['EndTime']);
+            if ($end->lessThanOrEqualTo($start)) {
+                $end->addDay(); // a lesson past midnight (23:00–01:00) is times only
+            }
+            $minutes += (int) $start->diffInMinutes($end);
         }
 
         return (int) round($minutes / 60);

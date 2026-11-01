@@ -268,6 +268,27 @@ class StudentClassPurchaseBatchTest extends TestCase
         $this->assertSame(4000, (int) $newCourse->Charge);
     }
 
+    public function test_hourly_batch_counts_a_lesson_past_midnight_at_its_full_length(): void
+    {
+        // Codex P2 on #4761: 23:00 + 2h is 23:00–01:00 as times only; it is 2 hours, never negative.
+        [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'duration1' => 120, 'time' => '23:00:00', 'time1' => '23:00:00']);
+        $payload = ['sessions' => 2, 'start_date' => '2026-05-25'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $preview = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/renewal-preview", $payload + ['mode' => 'purchase_batch']
+        )->assertOk();
+        $res = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/purchase-batch", $payload + ['mode' => 'new_purchase']
+        )->assertCreated();
+
+        $newCourse = StudentClass::where('ID', (int) $res->json('new_course.id'))->first();
+        $this->assertSame(4, (int) $preview->json('proposed_course.total_hours'));
+        $this->assertSame(4, (int) $newCourse->TotalHours);
+        $this->assertSame(4000, (int) $preview->json('proposed_course.charge'));
+        $this->assertSame(4000, (int) $newCourse->Charge);
+    }
+
     public function test_hourly_batch_with_equal_length_slots_is_unchanged(): void
     {
         [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'duration1' => 120]);
