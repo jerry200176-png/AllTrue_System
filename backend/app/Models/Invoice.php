@@ -38,6 +38,25 @@ class Invoice extends Model
     /** #4018 (Founder 2026-10-29): a renewal discounted to NT$0 is settled; the renewal sets this with the approver in reconciled_by and the discount snapshot as evidence. */
     public const ZERO_REASON_FULL_DISCOUNT = 'full_discount';
 
+    public const ZERO_REASON_FULL_DISCOUNT_LABEL = '全額折扣';
+
+    /**
+     * #3991 / #4657: label of the course's live NT$0 bill marked 免費／贈送 or 全額折扣, else null. A corrected charge
+     * on such a bill would leave Status=paid with a positive total that can be neither paid nor voided, so a charge or
+     * billing correction must refuse until it is voided.
+     */
+    public static function markedZeroBillLabel(int $studentClassId): ?string
+    {
+        $reason = self::query()->scopes('notVoided')->where('StudentClassID', $studentClassId)
+            ->whereIn('zero_amount_reason', [self::ZERO_REASON_FREE_GIFT, self::ZERO_REASON_FULL_DISCOUNT])->value('zero_amount_reason');
+
+        return match ($reason) {
+            self::ZERO_REASON_FREE_GIFT => self::ZERO_REASON_FREE_GIFT_LABEL,
+            self::ZERO_REASON_FULL_DISCOUNT => self::ZERO_REASON_FULL_DISCOUNT_LABEL,
+            default => null,
+        };
+    }
+
     protected static function booted(): void
     {
         // A waived (確認不收) contract is terminal: no new billing line may point at it.
