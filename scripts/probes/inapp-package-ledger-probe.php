@@ -76,6 +76,23 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         . " WHERE l.package_id IN ($in) AND l.class_session_id IS NOT NULL GROUP BY l.package_id, c.Status ORDER BY l.package_id, c.Status",
         $targets
     );
+    // #4740: debits on lessons that no longer exist, per package. Founder rule 1 (2026-10-23): the pool follows the course
+    // charge, so a deleted lesson's pool debit still matched by its course ledger (deduct minus reverse) is consistent;
+    // `pool_only` is the part no course charge backs. `delete_logged`: lessons whose removal the schedule audit recorded (a row with new_data null).
+    $result['deleted_lesson_debits'] = $rows(
+        'SELECT s.package_id, COUNT(*) AS sessions, SUM(GREATEST(-s.pool_net, 0)) AS pool_debits,'
+        . ' SUM(LEAST(GREATEST(-s.pool_net, 0), GREATEST(s.course_net, 0))) AS course_charged,'
+        . ' SUM(GREATEST(-s.pool_net, 0) - LEAST(GREATEST(-s.pool_net, 0), GREATEST(s.course_net, 0))) AS pool_only,'
+        . ' SUM(s.delete_logged) AS delete_logged'
+        . ' FROM (SELECT l.package_id, l.class_session_id, SUM(l.delta) AS pool_net,'
+        . " (SELECT COALESCE(SUM(CASE WHEN d.event_type = 'deduct' THEN 1 WHEN d.event_type = 'reverse' THEN -1 ELSE 0 END), 0)"
+        . ' FROM session_deduction_ledger d WHERE d.class_session_id = l.class_session_id) AS course_net,'
+        . " EXISTS (SELECT 1 FROM schedule_audit_logs a WHERE a.session_id = l.class_session_id AND a.new_data IS NULL) AS delete_logged"
+        . ' FROM package_session_ledger l LEFT JOIN ClassSession c ON c.id = l.class_session_id'
+        . " WHERE l.package_id IN ($in) AND l.class_session_id IS NOT NULL AND c.id IS NULL GROUP BY l.package_id, l.class_session_id) s"
+        . ' GROUP BY s.package_id ORDER BY s.package_id',
+        $targets
+    );
     // What the lessons say: rebuildLedgerFromSessions() counts 'attended' slots; the single-to-shared conversion seeds
     // 'attended', 'completed' and 'late'.
     $result['member_lessons'] = $rows(

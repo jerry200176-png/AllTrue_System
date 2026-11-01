@@ -87,6 +87,31 @@ assert.equal(coverTwo.conflict, true);
 assert.match(coverTwo.conflictTooltip, /本分校/);
 assert.doesNotMatch(coverTwo.conflictTooltip, /其他分校/);
 
+// #4368: a trial joining a server-classified one-on-three slot is not full below 3 students. Each busy row is one
+// student's lesson; `occupant` is the response-local student number.
+const row = (occupant, start, end, classType, oneOnThree = false) => ({
+  start_time: start, end_time: end, campus_id: 3, class_type: classType, remaining_capacity: 0, occupant, one_on_three: oneOnThree,
+});
+const trialSlot = (count) => [
+  ...Array.from({ length: count - 1 }, (_, i) => row(i + 2, '15:00', '17:00', 'one_on_three', true)),
+  row(1, '15:00', '17:00', 'trial', true),
+];
+const decide = (slots, classType, requestedStart, requestedEnd) => pickerSlotConflict({
+  overlappingSlots: slots, coveredClassType: classType, sessionCampusId: 3, requestedStart, requestedEnd,
+}).conflict;
+assert.equal(decide(trialSlot(2), 'trial', '15:00', '17:00'), false);
+assert.equal(decide(trialSlot(3), 'trial', '15:00', '17:00'), true);
+assert.equal(decide(trialSlot(2), 'trial'), true, 'no requested span: no lift');
+// Codex P2s: each row's flag and span are its own.
+assert.equal(decide([row(1, '15:00', '16:00', 'one_on_three', true), row(2, '15:00', '17:00', 'trial')], 'trial', '15:00', '17:00'), true,
+  'a one-on-three 15–16 does not lift a 15–17 trial');
+assert.equal(decide([row(1, '15:00', '17:00', 'trial'), row(2, '15:00', '16:00', 'one_on_three', true), row(3, '16:00', '17:00', 'one_on_three', true)],
+  'one_on_three', '15:00', '16:00'), false, 'only 2 students in 15–16');
+assert.equal(decide([row(1, '14:00', '18:00', 'one_on_two'), row(2, '14:00', '15:00', 'one_on_two'), row(3, '14:00', '15:00', 'trial')],
+  'one_on_three', '17:00', '18:00'), false, 'students outside the request are not counted');
+assert.equal(decide([1, 2, 3].map((n) => row(n, '14:00', '18:00', 'trial', true)), 'trial', '15:00', '16:00'), true,
+  'three trials around a shorter request still fill it');
+
 const otherCampus = pickerSlotConflict({
   overlappingSlots: [{
     start_time: '15:00',

@@ -189,7 +189,15 @@ export function incomingClassConflict({
   return { blocked: false, reason: '', unique, newMax };
 }
 
-export function uniqueOccupantsFromBusySlots(slots = []) {
+export function uniqueOccupantsFromBusySlots(slots = [], requestedStart = '', requestedEnd = '') {
+  // #4368: each busy row is one student's lesson; `occupant` (response-local) names that student. Count distinct
+  // occupants of the rows overlapping the requested span, as the write guard does. Rows without it: derive per row.
+  if (slots.length && slots.every((slot) => slot?.occupant !== undefined)) {
+    const inSpan = requestedStart && requestedEnd
+      ? slots.filter((slot) => timesOverlap(slot.start_time, slot.end_time, requestedStart, requestedEnd))
+      : slots;
+    return new Set(inSpan.map((slot) => slot.occupant)).size;
+  }
   let unique = 0;
   for (const slot of slots) {
     const cap = availabilityCapacityForClassType(slot?.class_type);
@@ -277,19 +285,30 @@ export function pickerSlotConflict({
   coveredClassType = '',
   sessionCampusId = 0,
   branchNameMap = {},
+  requestedStart = '',
+  requestedEnd = '',
 } = {}) {
   if (!overlappingSlots.length) {
     return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0, otherCampusConflict: false };
   }
 
-  const unique = uniqueOccupantsFromBusySlots(overlappingSlots);
+  const unique = uniqueOccupantsFromBusySlots(overlappingSlots, requestedStart, requestedEnd);
   const hasOneOnOne = overlappingSlots.some(
     (slot) => String(slot.class_type || '') === 'one_on_one',
   );
   const covered = String(coveredClassType || '');
   let remaining;
   if (covered) {
-    const coveredCap = Math.min(availabilityCapacityForClassType(covered), TEACHER_SLOT_ABSOLUTE_MAX);
+    // #4368: server-classified (guard rule) one-on-three slot lets a trial take a real seat, only when that slot spans
+    // the whole requested trial (ScheduleGuardService::isOneOnThreeSlot with $span); no span given = no lift.
+    const reqS = hhmm(requestedStart);
+    const reqE = hhmm(requestedEnd);
+    const trialInOneOnThree = covered === 'trial' && Boolean(reqS && reqE) && overlappingSlots.some((slot) => (
+      slot.one_on_three && hhmm(slot.start_time) <= reqS && hhmm(slot.end_time) >= reqE
+    ));
+    const coveredCap = trialInOneOnThree
+      ? TEACHER_SLOT_ABSOLUTE_MAX
+      : Math.min(availabilityCapacityForClassType(covered), TEACHER_SLOT_ABSOLUTE_MAX);
     remaining = hasOneOnOne && covered !== 'trial' ? 0 : Math.max(0, coveredCap - unique);
   } else {
     remaining = Math.max(0, ...overlappingSlots.map((slot) => (

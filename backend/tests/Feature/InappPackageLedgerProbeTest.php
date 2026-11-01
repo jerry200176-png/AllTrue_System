@@ -29,6 +29,7 @@ class InappPackageLedgerProbeTest extends TestCase
         'same_session_debited_twice' => ['package_id', 'class_session_id', 'net', 'reasons', 'session_date', 'start_time', 'status'],
         'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
+        'deleted_lesson_debits' => ['package_id', 'sessions', 'pool_debits', 'course_charged', 'pool_only', 'delete_logged'],
         'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots', 'future_planned'],
         'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
@@ -165,6 +166,29 @@ class InappPackageLedgerProbeTest extends TestCase
         $this->assertTrue($out['all_packages']);
         $this->assertOnlyAllowedKeys($out);
         $this->assertSame([(int) $mislabelled->id], inapp_package_ledger_probe(DB::connection(), 1, (int) $mislabelled->id)['target_package_ids'], 'a named package of a campus student is readable from that campus');
+    }
+
+    /** #4740: a deleted lesson's debit is split into the part its course still charges and the pool-only part. */
+    public function test_debits_on_deleted_lessons_are_split_by_whether_the_course_still_charges_them(): void
+    {
+        [$package, [$course]] = $this->pool(1, 16);
+        $charged = $this->lesson($course, '2026-10-02');
+        $this->debit($package, $course, $charged, 'attendance');
+        $this->charge($course, $charged, ['deduct']);
+        $orphan = $this->lesson($course, '2026-10-09');
+        $this->debit($package, $course, $orphan, 'attendance');
+        $this->charge($course, $orphan, ['deduct', 'reverse']);
+        $evened = $this->lesson($course, '2026-10-16');
+        $this->debit($package, $course, $evened, 'attendance');
+        $this->credit($package, $course, $evened, 'status_adjust');
+        $this->debit($package, $course, $this->lesson($course, '2026-10-23'), 'attendance'); // still exists: not counted
+        DB::table('schedule_audit_logs')->insert(['session_id' => $orphan->id, 'action_type' => 'delete', 'created_at' => now()]);
+        DB::table('ClassSession')->whereIn('id', [$charged->id, $orphan->id, $evened->id])->delete();
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, 0, true);
+        $this->assertSame([['package_id' => (int) $package->id, 'sessions' => 3, 'pool_debits' => 2, 'course_charged' => 1, 'pool_only' => 1, 'delete_logged' => 1]],
+            array_map(fn (array $row): array => array_map('intval', $row), $out['deleted_lesson_debits']));
+        $this->assertOnlyAllowedKeys($out);
     }
 
     public function test_a_lesson_charged_on_its_course_but_not_debited_on_the_pool_is_listed_with_its_session(): void
