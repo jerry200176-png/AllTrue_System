@@ -251,6 +251,7 @@ final class ForwardOverdeductReassignStrategy
             $excess = $x['u']['uncapped_used'] - (int) $x['c']['session_count'];
             $candidates = DB::table('ClassSession as cs')->whereIn('cs.id', explode(',', (string) $x['c']['generated_session_ids']))
                 ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled', 'voided')")
+                ->whereDate('cs.SessionDate', '<=', now()->toDateString()) // usage counts only lessons up to today (Codex P2)
                 ->whereRaw("(SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0) FROM session_deduction_ledger l WHERE l.class_session_id = cs.id) > 0")
                 ->orderByDesc('cs.SessionDate')->orderByDesc('cs.id')->limit($excess)->get(['cs.id', 'cs.SessionDate', 'cs.StartTime']);
             if ($candidates->count() < $excess) {

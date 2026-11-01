@@ -102,7 +102,7 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         return array_column($plan['manifest'], null, 'session_id');
     }
 
-    public function test_codex_review_cases_stay_review_and_nothing_moves(): void
+    public function test_codex_review_cases_stay_review_and_only_counted_extras_move(): void
     {
         $past = now()->subDays(5)->toDateString();
         // P1: a minute-based later contract (one 240-minute makeup on 2 x 120) is never a target.
@@ -152,6 +152,11 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         DB::table('StudentSingIn')->insert(['StudentClassID' => $unboundSource->ID, 'StudentID' => $s7, 'ClassSessionID' => 0, 'Status' => 'attended',
             'SignInDT' => now()->subDays(50)->toDateString() . ' 10:00:00', 'SignOutDT' => now()->subDays(50)->toDateString() . ' 12:00:00', 'SessionDeducted' => 1]);
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        // Codex P2 (4th round): a future generated lesson with a deduction is not counted usage, so yesterday's extra moves, not it.
+        $s8 = $this->student(28);
+        [$withFuture, $yesterday] = $this->overCourse($s8, now()->subDay()->toDateString());
+        $tomorrow = $this->taught($withFuture, now()->addDay()->toDateString(), '系統向前生成 #1062', '14:00:00');
+        $this->later($s8, 5);
 
         $plan = (new ForwardOverdeductReassignStrategy())->plan($this->params(28));
         $rows = $this->rows($plan);
@@ -164,7 +169,9 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         $this->assertContains(['class_id' => $pkgSource->ID, 'class' => 'review', 'reason' => 'package_linked'], $courseRows);
         $this->assertSame(['review', 'target_duration_differs'], [$rows[$toShorter]['class'], $rows[$toShorter]['reason']]);
         $this->assertContains(['class_id' => $unboundSource->ID, 'class' => 'review', 'reason' => 'unbound_usage'], $courseRows);
-        $this->assertSame(0, $plan['totals']['move'], 'nothing in these cases moves');
+        $this->assertSame(['move', 'later_contract'], [$rows[$yesterday]['class'], $rows[$yesterday]['reason']]);
+        $this->assertArrayNotHasKey($tomorrow, $rows);
+        $this->assertSame(1, $plan['totals']['move'], 'only the counted extra moves');
         $this->assertContains(['class_id' => $mixed->ID, 'class' => 'review', 'reason' => 'insufficient_generated_lessons'], $courseRows);
     }
 
