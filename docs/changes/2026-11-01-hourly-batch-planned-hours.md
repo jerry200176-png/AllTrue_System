@@ -1,0 +1,4 @@
+## 2026-11-01 — fix(billing): hourly purchase batch bills the planned lessons' own lengths (#4344)
+<!-- release-notes: staff_update=staff-2026-11-01-hourly-batch-planned-hours -->
+- For `rate_unit=hour` courses, `purchaseBatch()` and `previewPurchaseBatch()` used `sessions x average slot length`. The lessons actually created depend on the weekday the batch starts on, so billed hours could differ from scheduled hours (1h + 2h slots, 3 lessons from the 1h day: 4h scheduled, 4.5h billed). Both now call `ContractRenewal::plannedBatchHours()`, which sums the lengths of the sessions `ContractSessionSchedule::buildSessionsForCount()` plans from the real batch start. `TotalHours` and `Charge` (hours x rate) therefore match the lessons and the preview.
+- `rate_unit=session`, monthly courses and courses whose slots all have the same length are unchanged.
