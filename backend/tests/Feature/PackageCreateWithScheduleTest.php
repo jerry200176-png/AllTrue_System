@@ -379,6 +379,24 @@ class PackageCreateWithScheduleTest extends TestCase
         $this->assertSame(['completed' => 1, 'scheduled' => 7], $statuses, 'one already taught + 7 planned = the 8 bought');
     }
 
+    public function test_a_group_lesson_already_over_at_create_uses_one_bought_lesson_for_all_members(): void
+    {
+        // Codex P2 on #4762: two subjects share the ended 14:00 group slot; it is one of the 8 bought, not two.
+        $this->travelTo(Carbon::parse('2026-11-01 17:00:00'));
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '14:00'];
+
+        $pkgId = $this->postCreate($token, ['student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 8,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1), $spec(2)]])->assertStatus(201)->json('package_id');
+
+        $rows = ClassSession::whereIn('StudentClassID', StudentClass::where('PackageID', $pkgId)->pluck('ID'))->get();
+        $slots = $rows->map(fn ($r) => substr((string) $r->SessionDate, 0, 10) . ' ' . $r->Status)->unique()->countBy(fn ($k) => explode(' ', $k)[1])->all();
+        ksort($slots);
+        $this->assertSame(['completed' => 1, 'scheduled' => 7], $slots, 'one group lesson already taught + 7 planned = the 8 bought');
+    }
+
     public function test_create_with_days_of_week_generates_class_sessions(): void
     {
         // The first lesson is the start date (today) at each subject's time; once 14:00 or 16:00 passed, the pool

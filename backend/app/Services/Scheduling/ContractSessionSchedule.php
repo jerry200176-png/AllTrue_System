@@ -717,6 +717,7 @@ class ContractSessionSchedule
         $today = Carbon::today()->toDateString();
         $takenBy = [];
         $groupRows = []; // key => a sibling's planned group lesson (date, start)
+        $endedSlots = [];
         foreach ($members as $member) {
             $classId = (int) $member->ID;
             $takenBy[$classId] = [];
@@ -745,7 +746,10 @@ class ContractSessionSchedule
             // ponytail: only a member with no lessons yet (package create); a later raise appends after its last lesson.
             if ($taken === []) {
                 foreach (array_slice($sequence, 0, $count) as $s) {
-                    $budget -= self::sessionEndedByEndTime((string) $s['SessionDate'], (string) ($s['EndTime'] ?? '18:00:00'), $now) ? 1 : 0;
+                    if (self::sessionEndedByEndTime((string) $s['SessionDate'], (string) ($s['EndTime'] ?? '18:00:00'), $now)) {
+                        $key = self::normalizeDateString($s['SessionDate']) . '|' . substr((string) $s['StartTime'], 0, 5);
+                        $endedSlots[$isGroup ? $key : $classId . '#' . $key] = true; // a group slot is one lesson for all members
+                    }
                 }
             }
             // A sibling's group lesson on this member's weekly pattern, from its start date on, even one moved past that
@@ -773,6 +777,7 @@ class ContractSessionSchedule
                 }
             }
         }
+        $budget -= count($endedSlots);
         sort($candidates); // "Y-m-d|H:i" keys: date, then time
         $share = [];
         foreach ($candidates as [$key, $classId]) {
