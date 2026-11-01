@@ -901,9 +901,12 @@ class ProfileController extends Controller
             ? array_intersect_key((array) $before->get($campusId), array_flip(['Approved', 'RFID', 'Admin']))
             : ($hasApproved ? ['Approved' => $mayApprove($campusId)] : []);
 
-        if (isset($input['branch_id'])) {
-            $existing = UserCampus::where('UserID', $user->id)->first();
-            $newCampusId = (int) $input['branch_id'];
+        $newCampusId = (int) ($input['branch_id'] ?? 0);
+        // A main campus the teacher already has keeps its own link: moving another row onto it would duplicate it.
+        if (isset($input['branch_id']) && !$before->has($newCampusId)) {
+            // #4433 (Founder 3A): below super_admin only a link at the caller's own campuses may move.
+            $existing = UserCampus::where('UserID', $user->id)
+                ->when(!$superAdmin, fn ($q) => $q->whereIn('CampusID', $callerCampusIds))->first();
             if ($existing) {
                 $updateData = ['CampusID' => $newCampusId];
                 if ((int) $existing->CampusID !== $newCampusId) {
@@ -918,13 +921,15 @@ class ProfileController extends Controller
         if (isset($input['multi_branches']) && is_array($input['multi_branches'])) {
             $mainBranch = $input['branch_id'] ?? UserCampus::where('UserID', $user->id)->value('CampusID');
             $allBranches = array_values(array_unique(array_filter(array_map('intval', array_merge([$mainBranch], $input['multi_branches'])))));
+            // #4433 (Founder 3A): below super_admin, links (and mirror rows) at campuses the caller doesn't manage are untouched.
+            $inScope = fn ($q, string $col) => $superAdmin ? $q : $q->whereIn($col, $callerCampusIds);
             if (Schema::hasTable('teacher_branches')) {
-                DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
+                $inScope(DB::table('teacher_branches')->where('teacher_id', $user->id), 'branch_id')->delete();
             }
-            DB::table('UserCampus')->where('UserID', $user->id)->whereNotIn('CampusID', $allBranches)->delete();
+            $inScope(DB::table('UserCampus')->where('UserID', $user->id)->whereNotIn('CampusID', $allBranches), 'CampusID')->delete();
             foreach ($allBranches as $bid) {
                 if ($bid) {
-                    if (Schema::hasTable('teacher_branches')) {
+                    if (Schema::hasTable('teacher_branches') && ($superAdmin || in_array((int) $bid, $callerCampusIds, true))) {
                         DB::table('teacher_branches')->insertOrIgnore(['teacher_id' => $user->id, 'branch_id' => (int) $bid]);
                     }
                     // A row moved away above comes back with that campus's own link, never as a new pending one.
