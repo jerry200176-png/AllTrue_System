@@ -199,6 +199,11 @@ final class ForwardOverdeductReassignStrategy
         DB::table('StudentClass')->whereIn('ID', array_values(array_filter(array_unique(array_map('intval', $ids)))))->orderBy('ID')->lockForUpdate()->get();
     }
 
+    private function minutes(object $course): int
+    {
+        return (int) $course->SessionDuration >= 1 ? (int) $course->SessionDuration : \App\Models\StudentClass::DEFAULT_SESSION_MINUTES;
+    }
+
     private function settled(object $course): bool
     {
         return $course->settlement_locked_at !== null || in_array((string) $course->closed_reason, ['usage_settled', 'contract_amended', 'waived'], true);
@@ -227,7 +232,7 @@ final class ForwardOverdeductReassignStrategy
             $laterIds = array_merge($laterIds, array_map('intval', array_filter(explode(',', (string) $x['c']['later_course_ids']))));
         }
         $laterIds = array_values(array_unique($laterIds));
-        $courses = DB::table('StudentClass')->whereIn('ID', $laterIds)->get(['ID', 'ScheduleMode', 'closed_reason', 'settlement_locked_at', 'TeacherID', 'PackageID'])->keyBy('ID');
+        $courses = DB::table('StudentClass')->whereIn('ID', $laterIds)->get(['ID', 'ScheduleMode', 'closed_reason', 'settlement_locked_at', 'TeacherID', 'PackageID', 'SessionDuration'])->keyBy('ID');
         $room = [];
         foreach (SessionDeductionService::batchExpectedUsedSessionDiagnostics($laterIds) as $id => $u) {
             // A minute-based target (partial-duration lesson) counts events, not consumed minutes: never a target (Codex P1).
@@ -254,10 +259,20 @@ final class ForwardOverdeductReassignStrategy
                 $rows[] = $none + ['reason' => $candidates->isEmpty() ? 'no_movable_lesson' : 'insufficient_generated_lessons'];
                 continue;
             }
-            $source = DB::table('StudentClass')->where('ID', $classId)->first(['settlement_locked_at', 'closed_reason', 'TeacherID', 'PackageID']);
+            $source = DB::table('StudentClass')->where('ID', $classId)->first(['settlement_locked_at', 'closed_reason', 'TeacherID', 'PackageID', 'SessionDuration']);
             if ((int) $source->PackageID > 0) {
                 // The reassigner moves only session_deduction_ledger, not package_session_ledger (Codex P1): packages stay manual.
                 $rows[] = $none + ['reason' => 'package_linked'];
+                continue;
+            }
+            // Usage also counts live sign-ins and learning records bound to no lesson; moving lessons cannot carry them, so
+            // the excess might not clear (Codex P2): such a course stays manual.
+            $unbound = DB::table('StudentSingIn as si')->leftJoin('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+                ->where('si.StudentClassID', $classId)->whereNull('si.VoidedAt')->whereNull('cs.id')->exists()
+                || DB::table('LearningRecord')->where('StudentClassID', $classId)->whereNull('VoidedAt')
+                    ->where(fn ($q) => $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0))->exists();
+            if ($unbound) {
+                $rows[] = $none + ['reason' => 'unbound_usage'];
                 continue;
             }
             $sourceSettled = $this->settled($source);
@@ -278,6 +293,11 @@ final class ForwardOverdeductReassignStrategy
                 $reason = 'no_target_with_room';
                 foreach ($targets as $tid) {
                     if (($room[$tid] ?? 0) <= 0) continue;
+                    // The moved ledger keeps its minutes: a target with another lesson length would be over-drawn in minutes (Codex P1).
+                    if ($this->minutes($courses->get($tid)) !== $this->minutes($source)) {
+                        $reason = 'target_duration_differs';
+                        continue;
+                    }
                     $reason = 'target_slot_taken';
                     if (isset($taken["$tid|$date|$start"]) || DB::table('ClassSession')->where('StudentClassID', $tid)->whereDate('SessionDate', $date)
                         ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")->exists()) continue;

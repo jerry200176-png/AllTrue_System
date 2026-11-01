@@ -140,6 +140,18 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         $s5 = $this->student(28);
         [, $toPackage] = $this->overCourse($s5, $past);
         $this->later($s5, 5)->forceFill(['PackageID' => $pkg->id])->save();
+        // Codex P1 (3rd round): a later contract with another lesson length would be over-drawn in minutes.
+        $s6 = $this->student(28);
+        [, $toShorter] = $this->overCourse($s6, $past);
+        $this->later($s6, 5)->forceFill(['SessionDuration' => 60])->save();
+        // Codex P2: a live sign-in bound to no lesson counts toward usage but cannot move, so the course stays manual.
+        $s7 = $this->student(28);
+        [$unboundSource] = $this->overCourse($s7, $past);
+        $this->later($s7, 5);
+        DB::statement('SET FOREIGN_KEY_CHECKS=0'); // a legacy row today's schema no longer accepts
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $unboundSource->ID, 'StudentID' => $s7, 'ClassSessionID' => 0, 'Status' => 'attended',
+            'SignInDT' => now()->subDays(50)->toDateString() . ' 10:00:00', 'SignOutDT' => now()->subDays(50)->toDateString() . ' 12:00:00', 'SessionDeducted' => 1]);
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
 
         $plan = (new ForwardOverdeductReassignStrategy())->plan($this->params(28));
         $rows = $this->rows($plan);
@@ -150,6 +162,8 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         $this->assertArrayNotHasKey($lonely, $rows);
         $this->assertSame(['review', 'no_target_with_room'], [$rows[$toPackage]['class'], $rows[$toPackage]['reason']]);
         $this->assertContains(['class_id' => $pkgSource->ID, 'class' => 'review', 'reason' => 'package_linked'], $courseRows);
+        $this->assertSame(['review', 'target_duration_differs'], [$rows[$toShorter]['class'], $rows[$toShorter]['reason']]);
+        $this->assertContains(['class_id' => $unboundSource->ID, 'class' => 'review', 'reason' => 'unbound_usage'], $courseRows);
         $this->assertSame(0, $plan['totals']['move'], 'nothing in these cases moves');
         $this->assertContains(['class_id' => $mixed->ID, 'class' => 'review', 'reason' => 'insufficient_generated_lessons'], $courseRows);
     }
