@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Read-only billing summary for legacy, individual monthly courses.
@@ -99,14 +100,22 @@ class MonthlyBillingService
     /**
      * #4765: the outside dates only when no countable lesson lies inside the contract dates: then billing prices the
      * contract's month from the stored Charge. A makeup taught after the end beside lessons inside stays collectable.
+     * A lesson whose month a catch-up already billed (MonthlyRenewalPeriodService::inspect rule) is settled, so it neither blocks nor counts.
      *
      * @return list<string>
      */
     public function lessonsOnlyOutsideContract(Model $course): array
     {
         $outside = $this->taughtLessonsOutsideContract($course);
+        $billed = $outside === [] ? [] : DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
+            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
+            ->whereIn('inv.billing_period', array_values(array_unique(array_map(fn (string $d) => substr($d, 0, 7), $outside))))
+            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))->pluck('inv.billing_period')->all();
+        $covered = array_values(array_filter($outside, fn (string $d) => in_array(substr($d, 0, 7), $billed, true)));
+        $open = array_values(array_diff($outside, $covered));
+        $rest = $this->countableLessonDates($course)->reject(fn (string $d) => in_array($d, $covered, true));
 
-        return $outside !== [] && $this->countableLessonDates($course)->every(fn (string $d) => in_array($d, $outside, true)) ? $outside : [];
+        return $open !== [] && $rest->every(fn (string $d) => in_array($d, $open, true)) ? $open : [];
     }
 
     /** @return \Illuminate\Support\Collection<int, string> dates of the course's countable lessons (one per lesson) */

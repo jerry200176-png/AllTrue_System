@@ -115,6 +115,22 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", ['end_date' => '2026-09-29'])->assertOk();
     }
 
+    public function test_lessons_whose_month_a_catch_up_billed_do_not_block_collection(): void
+    {
+        // Codex P2: a catch-up contract billed September; those lessons stay here but their money lives on the catch-up bill.
+        $sc = $this->course();
+        $catchUp = StudentClass::create(array_merge($sc->only(['StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1', 'Period', 'TotalHours', 'Rate', 'ClassType']),
+            ['StartDate' => '2026-09-16', 'EndDate' => '2026-09-30', 'Charge' => 1000, 'Paid' => 0, 'Stop' => 1, 'ScheduleMode' => 'date',
+             'SessionCount' => 0, 'RemainingSessions' => 0, 'UsedSessions' => 0, 'SessionDuration' => 120, 'MDate' => now()]));
+        $billing = app(MonthlyBillingService::class);
+        $this->assertSame(['2026-09-29', '2026-09-30'], $billing->lessonsOnlyOutsideContract($sc), 'unbilled: still blocks');
+        Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $catchUp->ID, 'IssueDate' => '2026-10-01',
+            'TotalAmount' => 1000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
+
+        $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+        $this->assertNotSame('lessons_outside_contract', $this->record($sc, 1800)->json('code'));
+    }
+
     private function course(array $lessons = ['2026-09-29' => 'attended', '2026-09-30' => 'attended'], array $overrides = []): StudentClass
     {
         $student = Student::create(['name' => 's'.uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
