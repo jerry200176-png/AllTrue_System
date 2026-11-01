@@ -180,6 +180,7 @@ final class PopOperationService
             && !$this->isExactUnbilledBacklogCatchup($entry)
             && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactForwardExtraCancel($entry)
+            && !$this->isExactForwardOverdeductReassign($entry)
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
@@ -828,6 +829,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactForwardOverdeductReassign($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'campus_scoped_taught_forward_generated_rows_moved_to_later_contract'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactUnbilledBacklogCatchup($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1098,6 +1114,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'forward-extra-cancel-20261101'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\ForwardExtraCancelStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-forward-extra-cancel'
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest', 'restore_request_id'];
+    }
+
+    /** #4554: campus_id + expected_digest pin each run to its dry-run (Td076 pattern); restore_request_id undoes a reassign run (#4736 pattern). */
+    private function isExactForwardOverdeductReassign(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'forward-overdeduct-reassign-20261101'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\ForwardOverdeductReassignStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-forward-overdeduct-reassign'
             && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest', 'restore_request_id'];
     }
 
