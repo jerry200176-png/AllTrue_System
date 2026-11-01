@@ -136,7 +136,9 @@ final class ForwardExtraCancelStrategy
         if (DB::table('ClassSession')->whereIn('id', $ids)->whereRaw("LOWER(Status) <> 'cancelled'")->exists()) $errors[] = 'not_cancelled';
         foreach ($result['snapshot']['courses'] ?? [] as $before) {
             $now = (array) DB::table('StudentClass')->where('ID', $before['ID'])->first(self::COURSE_COLUMNS);
-            if (array_map('strval', $now) !== array_map('strval', $before)) $errors[] = "course_changed_{$before['ID']}"; // no counter or amount may move
+            foreach (self::COURSE_COLUMNS as $col) { // no counter or amount may move; name the column and both values (numbers only)
+                if ((string) ($now[$col] ?? '') !== (string) ($before[$col] ?? '')) $errors[] = "course_changed_{$before['ID']}:{$col}:" . ($before[$col] ?? 'null') . '->' . ($now[$col] ?? 'null');
+            }
         }
         foreach ($this->build((int) ($plan['campus_id'] ?? 0))[0] as $r) {
             if ($r['class'] === 'cancel') $errors[] = "still_cancellable_{$r['session_id']}";
