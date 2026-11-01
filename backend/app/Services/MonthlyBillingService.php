@@ -147,8 +147,9 @@ class MonthlyBillingService
         $storedCharge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
 
         // Package members are billed at the package level, not as individual
-        // monthly courses. Keep their existing source of truth untouched.
-        if ((int) ($course->getAttribute('PackageID') ?? 0) > 0) {
+        // monthly courses. Keep their stored charge, except a monthly member created with Charge=0 (createMultiSubject):
+        // its obligation is the package rate over the billable sessions, priced like any monthly course below (#4597).
+        if ((int) ($course->getAttribute('PackageID') ?? 0) > 0 && ($storedCharge > 0 || (string) $course->getAttribute('ScheduleMode') !== 'date')) {
             return [
                 'charge' => $storedCharge,
                 'period_sessions' => 0,

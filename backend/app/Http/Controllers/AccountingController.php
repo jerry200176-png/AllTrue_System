@@ -459,7 +459,7 @@ class AccountingController extends Controller
             return $guard;
         }
 
-        $classes = StudentClass::with(['student', 'subjectRecord'])
+        $classes = StudentClass::with(['student', 'subjectRecord', 'coursePackage'])
             ->where('StudentID', $student->id)
             ->orderByDesc('StartDate')
             ->orderByDesc('ID')
@@ -808,14 +808,14 @@ class AccountingController extends Controller
                 'charge' => (int) ($class->Charge ?? 0),
                 // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
                 'current_contract_charge' => $class->currentContractCharge(),
-                'paid' => (int) ($class->Paid ?? 0) === 1 || $zeroSettled(false), // #3991 free/gift, #4018 full-discount: current term
+                'paid' => (int) ($class->Paid ?? 0) === 1 || $class->isEffectivelyPaid() || $zeroSettled(false), // #4597 package-only mark; #3991 free/gift, #4018 full-discount: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,
                 'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 // in-app #428: server-derived (same rule as legacy_paid_flag_only); the panel shows no 需核對 for it.
                 // #4339 review: only the course's own Paid=1 trial row (the one `paid` above reads), so it never marks a
-                // Paid=0 member of a paid trial package; whether the ledger derives `paid` from a package is a billing rule.
+                // Paid=0 member of a paid trial package.
                 'trial_fee_recorded_by_date' => (int) ($class->Paid ?? 0) === 1 && $class->isTrialFeeRecordedByDate(),
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
