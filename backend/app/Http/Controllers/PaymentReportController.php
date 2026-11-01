@@ -479,6 +479,7 @@ class PaymentReportController extends Controller
             // not whatever was entered; the Payment records only what was received. X unknown → bill the entered amount, never mark paid.
             $billAmount = (int) $report->reported_amount;
             $enteredOnlyPackageBill = false;
+            $packageBillSnapshot = null;
             if (!$invoice && $this->isSharedPackageObligation($package, $sc) && !$this->packageHasLiveBill($package)) {
                 $packagePrice = $this->packagePrice($package);
                 if ($packagePrice !== null && $billAmount > $packagePrice) {
@@ -487,6 +488,9 @@ class PaymentReportController extends Controller
                 }
                 $enteredOnlyPackageBill = $packagePrice === null;
                 $billAmount = $packagePrice ?? $billAmount;
+                // #4766: the bill remembers it is this package's obligation, so a later rate change cannot hide it from a sibling payment.
+                $packageBillSnapshot = $packagePrice === null ? null
+                    : ['version' => 1, 'source' => 'package_obligation', 'package_id' => (int) $package->id, 'package_price' => $packagePrice];
             }
 
             if (!$invoice) {
@@ -498,6 +502,7 @@ class PaymentReportController extends Controller
                     'TotalAmount'    => $billAmount,
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'billing_period' => $period, // in-app #432: the month checked above (date mode), else null
+                    'billing_snapshot' => $packageBillSnapshot,
                 ], [], true);
                 } catch (BillingPeriodInvoiceExists) {
                     // Defense in depth: the lookup above attaches to any live invoice, so this is a race backstop.
@@ -1535,7 +1540,10 @@ class PaymentReportController extends Controller
         foreach ($memberIds as $memberId) {
             $member = StudentClass::query()->find($memberId);
             $open = $member ? $this->pickOpenInvoice((int) $memberId, $member) : null;
-            if ($open && (int) $open->TotalAmount === $price && (int) $this->invoiceProjection($open, $member)['outstanding_amount'] > 0) {
+            // #4766: a bill stamped as this package's obligation matches even after the rate changed; older bills match by current price.
+            $snapshot = $open ? $open->billing_snapshot : null;
+            $stamped = is_array($snapshot) && ($snapshot['source'] ?? null) === 'package_obligation' && (int) ($snapshot['package_id'] ?? 0) === (int) $package->id;
+            if ($open && ($stamped || (int) $open->TotalAmount === $price) && (int) $this->invoiceProjection($open, $member)['outstanding_amount'] > 0) {
                 return $open;
             }
         }

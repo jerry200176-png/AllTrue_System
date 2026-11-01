@@ -272,6 +272,42 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([false, 0, 0], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid], 'the package owes again');
     }
 
+    /** #4766: the package bill is stamped with its package, so a rate change after issuing does not hide it from a sibling payment. */
+    public function test_a_rate_change_after_the_bill_still_pays_the_same_package_bill_through_a_sibling(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling, $package] = $this->legacyPackage(1); // 550 x 16 = NT$8,800
+        $this->backfill($token, $lead, ['amount' => 3000])->assertOk();
+        $this->assertSame(['package_obligation', (int) $package->id], [Invoice::sole()->billing_snapshot['source'], Invoice::sole()->billing_snapshot['package_id']]);
+
+        $this->withHeaders($this->auth($token))->putJson('/api/v1/course-packages/' . $package->id, ['rate' => 600])->assertOk();
+        $this->assertSame(600.0, (float) $package->fresh()->rate);
+
+        $r = $this->withHeaders($this->auth($token))->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sibling->ID, 'payment_date' => '2026-10-02', 'payment_method' => 'transfer', 'amount' => 5800,
+        ])->assertOk();
+        $this->withHeaders($this->auth($token))->putJson('/api/v1/payment-reports/' . $r->json('report_id') . '/confirm')->assertOk();
+
+        $this->assertSame(1, Invoice::count(), 'no second bill');
+        $this->assertSame([8800, 'paid', 8800], [(int) Invoice::sole()->TotalAmount, (string) Invoice::sole()->Status, (int) Payment::sum('Amount')]);
+    }
+
+    /** #4766: a bill issued before the stamp existed (no snapshot) still matches by the current package price. */
+    public function test_a_bill_without_the_stamp_still_matches_by_package_price(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, $sibling] = $this->legacyPackage(1); // NT$8,800
+        $this->backfill($token, $lead, ['amount' => 3000])->assertOk();
+        Invoice::sole()->update(['billing_snapshot' => null]);
+
+        $r = $this->withHeaders($this->auth($token))->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sibling->ID, 'payment_date' => '2026-10-02', 'payment_method' => 'transfer', 'amount' => 5800,
+        ])->assertOk();
+        $this->withHeaders($this->auth($token))->putJson('/api/v1/payment-reports/' . $r->json('report_id') . '/confirm')->assertOk();
+
+        $this->assertSame([1, 'paid'], [Invoice::count(), (string) Invoice::sole()->Status]);
+    }
+
     /** #4597 security review: a course whose stale PackageID points at another student's package never pays that student's bill. */
     public function test_a_foreign_course_never_pays_the_package_owners_bill(): void
     {
