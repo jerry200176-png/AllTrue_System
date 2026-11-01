@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Hourly auto-intake (bug-auto-intake.yml, Founder GO "6A" 2026-10-07).
- * --candidates prints IDs-only JSON of `new` reports; --ack moves one report new → triaged
+ * --candidates prints IDs-only JSON of `new` reports, plus `reopened`: reports whose latest status change is the
+ * reporter's 「問題仍存在」 (resolved → in_progress), so the workflow reopens their closed issue (#4721); --ack moves one report new → triaged
  * with its GitHub issue link and posts the standard acknowledgement. Idempotent:
  * a report that is no longer `new` is skipped, and the ack is never posted twice.
  */
@@ -61,7 +62,15 @@ class BugAutoIntakeCommand extends Command
                 // Family name only (config/bug_families.php); the text it was derived from never leaves production.
                 'family' => BugFamily::classify($b->page_key, $b->title . ' ' . $b->description),
             ])->values()->all();
-        $this->line(json_encode(['candidates' => $rows], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        $latest = DB::table('bug_report_status_logs')->selectRaw('MAX(id) AS id')->groupBy('bug_report_id');
+        $reopened = DB::table('bug_report_status_logs as l')->joinSub($latest, 'm', 'm.id', '=', 'l.id')
+            ->join('bug_reports as b', 'b.id', '=', 'l.bug_report_id')
+            ->where('b.status', 'in_progress')->where('l.from_status', 'resolved')->where('l.to_status', 'in_progress')
+            ->whereColumn('l.changed_by', 'b.reporter_user_id')
+            ->orderBy('l.id')->limit($limit)->get(['l.bug_report_id', 'l.id', 'l.created_at'])
+            ->map(fn ($r) => ['bug_id' => (int) $r->bug_report_id, 'log_id' => (int) $r->id,
+                'at' => \Illuminate\Support\Carbon::parse($r->created_at)->toIso8601String()])->values()->all();
+        $this->line(json_encode(['candidates' => $rows, 'reopened' => $reopened], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         return self::SUCCESS;
     }
 

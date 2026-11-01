@@ -14,3 +14,4 @@ assert.doesNotMatch(fn, /issue close|gh issue reopen|--state closed/, 'advisory 
 console.log('bug-auto-intake family contract: PASS');
 
 await import('./bug-auto-intake-canonical.test.mjs');
+await import('./bug-auto-intake-reopen.test.mjs');
