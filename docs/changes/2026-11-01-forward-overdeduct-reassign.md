@@ -1,0 +1,4 @@
+## 2026-11-01 — chore(ops): POP operation to move taught forward-generator extras onto the next contract
+<!-- release-notes: silent_ship=silent-2026-11-01-forward-overdeduct-reassign -->
+<!-- silent-reason: reviewed ops data-repair operation; no screen change -->
+- New POP operation `forward-overdeduct-reassign-20261101` (#4554, in-app #452) with adapter `pop-forward-overdeduct-reassign.yml`. For courses that count more used lessons than were bought because taught forward-generator lessons were deducted, it moves each taught extra beyond the bought count onto the same student's later contract of the same subject (through `ClassSessionContractReassigner`); with no later contract the lesson stays as a gift, and doubtful lessons are only listed. Money is untouched; a restore request moves the lessons back. Runbook `RM-FORWARD-OVERDEDUCT-REASSIGN-20261101`.
