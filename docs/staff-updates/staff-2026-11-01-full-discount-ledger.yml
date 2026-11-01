@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-01-full-discount-ledger
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 全額折扣的續約在學生帳務顯示已收清
+    summary: 折扣到 NT$0 的續約，學生帳務不再顯示「需核對」。
+    items:
+      - category: fixed
+        text: 學生帳務的合約卡會寫「全額折扣，已收清」，不會再要你核對或補登收款。
+    source_refs:
+      - "changelog:2026-11-01:full-discount-ledger-settled"
