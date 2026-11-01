@@ -249,9 +249,15 @@ final class ForwardOverdeductReassignStrategy
                 continue;
             }
             $excess = $x['u']['uncapped_used'] - (int) $x['c']['session_count'];
+            if ($x['u']['observed_used'] > $x['u']['ledger_used']) {
+                // Usage comes from lessons with no ledger row: moving ledger-backed extras would not clear it (Codex P2).
+                $rows[] = $none + ['reason' => 'usage_not_from_ledger'];
+                continue;
+            }
             $candidates = DB::table('ClassSession as cs')->whereIn('cs.id', explode(',', (string) $x['c']['generated_session_ids']))
-                ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled', 'voided')")
-                ->whereDate('cs.SessionDate', '<=', now()->toDateString()) // usage counts only lessons up to today (Codex P2)
+                // Taught, up to today: each move then lowers both the ledger and the completed-lesson count by one (Codex P2).
+                ->whereRaw("LOWER(cs.Status) IN ('attended', 'completed', 'late')")
+                ->whereDate('cs.SessionDate', '<=', now()->toDateString())
                 ->whereRaw("(SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0) FROM session_deduction_ledger l WHERE l.class_session_id = cs.id) > 0")
                 ->orderByDesc('cs.SessionDate')->orderByDesc('cs.id')->limit($excess)->get(['cs.id', 'cs.SessionDate', 'cs.StartTime']);
             if ($candidates->count() < $excess) {
@@ -301,7 +307,7 @@ final class ForwardOverdeductReassignStrategy
                     }
                     $reason = 'target_slot_taken';
                     if (isset($taken["$tid|$date|$start"]) || DB::table('ClassSession')->where('StudentClassID', $tid)->whereDate('SessionDate', $date)
-                        ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")->exists()) continue;
+                        ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->where(fn ($q) => $q->whereNull('Status')->orWhereRaw("LOWER(Status) <> 'cancelled'"))->exists()) continue; // the reassigner's own occupancy rule
                     $locked = LearningRecordMutableOwnership::protectedRecordForSession((int) $s->id, false);
                     // Restore moves it back through the same guard, so the locked assessment's teacher must match both contracts (Codex P1).
                     if ($locked !== null && ((int) $locked->TeacherID !== (int) $courses->get($tid)->TeacherID || (int) $locked->TeacherID !== (int) $source->TeacherID)) {

@@ -26,6 +26,7 @@ same student and subject, count mode, not waived, not settled, with room (bought
 - `review / insufficient_generated_lessons`: fewer movable generated lessons than the excess, so nothing on that course moves (session_id 0).
 - `review / package_linked`: the source belongs to a course package. The reassigner does not move `package_session_ledger`, so this is left to a human (session_id 0). Package-linked later contracts are never targets.
 - `review / unbound_usage`: the source has a live sign-in or learning record bound to no lesson. Moving lessons cannot carry it, so the excess might not clear (session_id 0).
+- `review / usage_not_from_ledger`: the course counts more taught lessons than ledger rows. Moving ledger-backed extras would not clear the excess (session_id 0). Move candidates are taught (attended/completed/late) lessons up to today, so each move lowers both counts by one.
 - `review / target_duration_differs`: every later contract with room has another lesson length. The moved ledger keeps its minutes and would over-draw it.
 - `review / course_settled`, `no_target_with_room` (this includes minute-based targets), `target_slot_taken`, `assessment_locked` (an approved assessment whose teacher is not the teacher of both contracts): listed for a director, never written.
 

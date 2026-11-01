@@ -157,6 +157,21 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         [$withFuture, $yesterday] = $this->overCourse($s8, now()->subDay()->toDateString());
         $tomorrow = $this->taught($withFuture, now()->addDay()->toDateString(), '系統向前生成 #1062', '14:00:00');
         $this->later($s8, 5);
+        // Codex P2 (5th round): usage from taught lessons with no ledger row would not clear by moving a ledger-backed extra.
+        $s9 = $this->student(28);
+        $noLedger = $this->course($s9, 2);
+        for ($i = 1; $i <= 3; $i++) {
+            DB::table('ClassSession')->insert(['StudentClassID' => $noLedger->ID, 'SessionDate' => now()->subDays(30 + $i)->toDateString(), 'StartTime' => '10:00:00',
+                'EndTime' => '12:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->taught($noLedger, $past, '系統向前生成 #1062');
+        $this->later($s9, 5);
+        // Codex P2 (5th round): a voided lesson still holds the slot for the reassigner, so that target is skipped.
+        $s10 = $this->student(28);
+        [, $toVoidedSlot] = $this->overCourse($s10, $past);
+        $voidedHolder = $this->later($s10, 5);
+        DB::table('ClassSession')->insert(['StudentClassID' => $voidedHolder->ID, 'SessionDate' => $past, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00',
+            'Status' => 'voided', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
 
         $plan = (new ForwardOverdeductReassignStrategy())->plan($this->params(28));
         $rows = $this->rows($plan);
@@ -170,6 +185,8 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         $this->assertSame(['review', 'target_duration_differs'], [$rows[$toShorter]['class'], $rows[$toShorter]['reason']]);
         $this->assertContains(['class_id' => $unboundSource->ID, 'class' => 'review', 'reason' => 'unbound_usage'], $courseRows);
         $this->assertSame(['move', 'later_contract'], [$rows[$yesterday]['class'], $rows[$yesterday]['reason']]);
+        $this->assertContains(['class_id' => $noLedger->ID, 'class' => 'review', 'reason' => 'usage_not_from_ledger'], $courseRows);
+        $this->assertSame(['review', 'target_slot_taken'], [$rows[$toVoidedSlot]['class'], $rows[$toVoidedSlot]['reason']]);
         $this->assertArrayNotHasKey($tomorrow, $rows);
         $this->assertSame(1, $plan['totals']['move'], 'only the counted extra moves');
         $this->assertContains(['class_id' => $mixed->ID, 'class' => 'review', 'reason' => 'insufficient_generated_lessons'], $courseRows);
