@@ -999,8 +999,8 @@ class EnrollmentService
                     }
                 }
 
-                $allowStudentOverlap = !empty($data['force'])
-                    && in_array((string) ($data['force_reason'] ?? ''), ['independent_parallel', 'create_trial'], true);
+                // #4001: independent_parallel overrides the contract-overlap check only; a same-student same-slot collision still 422s.
+                $allowStudentOverlap = !empty($data['force']) && ($data['force_reason'] ?? '') === 'create_trial';
                 foreach ($rowsForSubject as $row) {
                     $date = $row['date'];
                     $slotStartTime = $row['start_time'];

@@ -14,6 +14,7 @@ const source = readFileSync(pagePath, 'utf8');
 const studentsSource = readFileSync(studentsPagePath, 'utf8');
 const closeCourseActionSource = readFileSync(closeCourseActionPath, 'utf8');
 const manualSessionModalSource = readFileSync(manualSessionModalPath, 'utf8');
+const packagePreviewModalSource = readFileSync(resolve(__dirname, '../course-management/PackageConversionPreviewModal.vue'), 'utf8');
 const activeActionsStart = source.indexOf('<td class="cell-actions">');
 const activeActionsEnd = source.indexOf('<tr v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart) >= 0
   ? source.indexOf('<tr v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart)
@@ -41,7 +42,8 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('@edit-course="editManualSessionCourse"');
     expect(manualSessionModalSource).toContain('先設定月結結束日');
     expect(courseActionsSource).toContain('轉多科方案預檢');
-    expect(source).toContain('繼續轉成多科共用方案');
+    expect(source).toContain('<PackageConversionPreviewModal');
+    expect(packagePreviewModalSource).toContain('繼續轉成多科共用方案');
   });
 
   it('routes every ⋯ item to the handler the old row buttons used', () => {

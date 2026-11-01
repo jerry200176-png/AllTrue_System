@@ -142,20 +142,50 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertSame([(int) $campus->id], array_map('intval', $listed));
     }
 
-    /** A managed teacher cannot be granted a seat in a campus the director does not manage (independent review F2). */
-    public function test_store_refuses_a_branch_the_director_does_not_manage(): void
+    /**
+     * Independent review F2 + #4433 (Founder policy 1): a managed teacher is never granted a seat in a campus the director
+     * does not manage; the add becomes a pending link for that campus's director, and an existing link there is untouched.
+     */
+    public function test_store_requests_a_branch_the_director_does_not_manage_as_pending(): void
     {
         $campus  = Campus::factory()->create();
         $other   = Campus::factory()->create();
+        $third   = Campus::factory()->create();
         $token   = $this->directorToken($campus->id);
         $managed = $this->makeTeacher($campus->id); // teacher the director manages (shares $campus)
+        DB::table('UserCampus')->insert(['UserID' => $managed, 'CampusID' => $third->id, 'Admin' => 1, 'Approved' => true]);
 
-        // branch_id is a campus the director does NOT manage -> refused, nothing written.
-        $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $managed, 'branch_id' => $other->id]])->assertForbidden();
-        $this->assertDatabaseMissing('UserCampus', ['UserID' => $managed, 'CampusID' => $other->id]);
+        $this->withToken($token)->postJson('/api/v1/teacher_branches', [
+            ['teacher_id' => $managed, 'branch_id' => $other->id], ['teacher_id' => $managed, 'branch_id' => $third->id],
+        ])->assertOk();
+        $link = fn (int $cid) => DB::table('UserCampus')->where('UserID', $managed)->where('CampusID', $cid)->first(['Approved', 'Admin']);
+        $this->assertSame([0, 0], [(int) $link($other->id)->Approved, (int) $link($other->id)->Admin], 'pending for the other campus director');
+        $this->assertSame([1, 1], [(int) $link($third->id)->Approved, (int) $link($third->id)->Admin], 'an existing link elsewhere is not rewritten');
+        $this->assertFalse(DB::table('security_audit_events')->where('event_type', 'staff.campus_link.approved')->exists());
 
         // branch_id within the director's campuses still works.
         $this->withToken($token)->postJson('/api/v1/teacher_branches', [['teacher_id' => $managed, 'branch_id' => $campus->id]])->assertOk();
+    }
+
+    /** #4433: creating a teacher, an extra campus the director does not manage starts pending; an unmanaged main campus is refused. */
+    public function test_profile_create_requests_unmanaged_extra_campuses_as_pending(): void
+    {
+        $campus = Campus::factory()->create();
+        $other  = Campus::factory()->create();
+        $token  = $this->directorToken($campus->id);
+        $create = fn (array $over) => $this->withToken($token)->postJson('/api/v1/profiles', $over + [
+            'name' => 'Pending ' . uniqid(), 'password' => 'teacher123', 'role' => 'teacher', 'phone' => '09' . random_int(10000000, 99999999),
+        ]);
+
+        $create(['account' => 'pending-extra-' . uniqid(), 'campus_id' => $other->id])->assertForbidden();
+        $created = $create(['account' => $login = 'pending-extra-' . uniqid(), 'campus_id' => $campus->id, 'multi_branches' => [$campus->id, $other->id]])->assertCreated();
+        $id = (int) DB::table('User')->where('LoginName', $login)->value('id');
+        $this->assertGreaterThan(0, $id, (string) $created->getContent());
+        $approved = DB::table('UserCampus')->where('UserID', $id)->pluck('Approved', 'CampusID')->map(fn ($v) => (int) $v)->all();
+        $this->assertSame([$campus->id => 1, $other->id => 0], $approved);
+        if (Schema::hasTable('teacher_branches')) { // the legacy mirror is written for approved campuses only
+            $this->assertSame([$campus->id], DB::table('teacher_branches')->where('teacher_id', $id)->pluck('branch_id')->map(fn ($v) => (int) $v)->all());
+        }
     }
 
     /** A batch mixing a managed teacher with one the director does not manage is refused as a whole: no row is written. */

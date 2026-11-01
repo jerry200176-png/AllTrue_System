@@ -930,60 +930,17 @@
     </div>
 
     <!-- Read-only single-course → shared-package safety preview -->
-    <div v-if="showPackageConversionPreview" class="modal-overlay" @click.self="!packageConversionPreviewLoading && closePackageConversionPreview()">
-      <div
-        class="modal package-conversion-preview-modal"
-        data-testid="package-conversion-preview"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="package-conversion-preview-title"
-        tabindex="-1"
-        @keydown.esc="closePackageConversionPreview"
-      >
-        <h3 id="package-conversion-preview-title" class="modal-title">轉成多科共用方案</h3>
-        <p class="package-conversion-preview__lead">
-          先檢查這門單科堂數制是否有上課、點名、學習或帳務歷史；這個畫面只讀取資料，不會修改合約。
-        </p>
-        <AtInlineAlert v-if="packageConversionPreviewLoading" tone="info" title="正在進行唯讀預檢">
-          <p>正在確認合約、帳務與扣堂紀錄…</p>
-        </AtInlineAlert>
-        <AtInlineAlert v-else-if="packageConversionPreviewError" tone="warning" title="預檢失敗">
-          <p>{{ packageConversionPreviewError }}</p>
-        </AtInlineAlert>
-        <template v-else-if="packageConversionPreview">
-          <div class="package-conversion-preview__source">
-            <strong>{{ packageConversionPreviewCourse?.subject_name || packageConversionPreviewCourse?.subject || '目前課程' }}</strong>
-            <span v-if="packageConversionPreviewCourse?.student_name">／{{ packageConversionPreviewCourse.student_name }}</span>
-            <span> · {{ packageConversionPreview.student_class?.remaining_sessions ?? 0 }} 堂剩餘</span>
-          </div>
-          <AtInlineAlert v-if="packageConversionPreview.can_convert" tone="success" title="通過安全預檢">
-            <p>目前沒有發現已使用或帳務歷史。真正轉換仍須由受控流程執行，原課程識別與稽核紀錄會保留。</p>
-          </AtInlineAlert>
-          <AtInlineAlert v-else tone="warning" title="不建議直接轉換">
-            <p>為避免堂數、點名或帳務歷史被改寫，請保留原合約並建立新的多科方案。</p>
-            <ul class="package-conversion-preview__reasons">
-              <li v-for="reason in packageConversionPreview.blocking_reasons" :key="reason.code">{{ reason.message }}</li>
-            </ul>
-          </AtInlineAlert>
-          <p class="package-conversion-preview__next-step">{{ packageConversionPreview.next_step }}</p>
-        </template>
-        <div class="actions">
-          <button class="ghost" :disabled="packageConversionPreviewLoading" @click="closePackageConversionPreview">關閉</button>
-          <button
-            v-if="packageConversionPreviewError && !packageConversionPreviewLoading"
-            class="ghost"
-            type="button"
-            @click="retryPackageConversionPreview"
-          >重新檢查</button>
-          <button
-            v-if="packageConversionPreview && !packageConversionPreviewLoading"
-            class="primary"
-            type="button"
-            @click="packageConversionPreview.can_convert ? continuePackageConversionFromPreview() : goToNewPackageFromPreview()"
-          >{{ packageConversionPreview.can_convert ? '繼續轉成多科共用方案' : '前往建立多科方案' }}</button>
-        </div>
-      </div>
-    </div>
+    <PackageConversionPreviewModal
+      :show="showPackageConversionPreview"
+      :loading="packageConversionPreviewLoading"
+      :error="packageConversionPreviewError"
+      :preview="packageConversionPreview"
+      :course="packageConversionPreviewCourse"
+      @close="closePackageConversionPreview"
+      @retry="retryPackageConversionPreview"
+      @convert="continuePackageConversionFromPreview"
+      @new-package="goToNewPackageFromPreview"
+    />
 
     <ContractAdjustmentChoiceModal
       :show="showContractAdjustmentModal"
@@ -1451,6 +1408,7 @@ import { askConfirm } from '../composables/useConfirmDialog';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
+import PackageConversionPreviewModal from '../components/course-management/PackageConversionPreviewModal.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields, findCourseForPurchase, normalizeDuplicateConflicts } from '../lib/enrollmentConflictDecision';
@@ -7244,29 +7202,6 @@ button.danger:disabled {
 .package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
 .package-conversion-summary span { color: var(--ds-ink-mute); }
 
-.package-conversion-preview-modal {
-  width: 100%;
-  max-width: 560px;
-}
-.package-conversion-preview__lead,
-.package-conversion-preview__next-step {
-  color: var(--text-light);
-  font-size: 13px;
-  line-height: 1.55;
-}
-.package-conversion-preview__source {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  margin: 0 0 12px;
-  color: var(--text);
-  font-size: 14px;
-}
-.package-conversion-preview__reasons {
-  margin: 8px 0 0;
-  padding-left: 20px;
-}
-.package-conversion-preview__reasons li + li { margin-top: 4px; }
 
 .editability-action-panel {
   display: grid;

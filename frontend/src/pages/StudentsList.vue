@@ -947,64 +947,23 @@
       </div>
     </div>
 
-    <!-- Cross-campus identity bridge: explicit director confirmation only. -->
-    <div v-if="showIdentityModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="identity-modal-title" @click.self="closeIdentityModal">
-      <div class="modal" style="width: 680px; max-width: calc(100vw - 32px);">
-        <div class="modal-header-row">
-          <h3 id="identity-modal-title">跨分校學生身份關聯</h3>
-          <button type="button" class="ghost small" @click="closeIdentityModal">關閉</button>
-        </div>
-        <p class="hint">只把主任已確認為同一位學生的兩筆分校資料關聯；姓名或手機相同不會自動合併。</p>
-        <div class="identity-search-row">
-          <input v-model="identityQuery" placeholder="搜尋學生姓名" @keyup.enter="searchIdentityStudents" />
-          <button type="button" class="small ghost" @click="searchIdentityStudents" :disabled="identityLoading">搜尋</button>
-        </div>
-        <div v-if="identityError" class="error-text">{{ identityError }}</div>
-        <div v-if="identityLoading" class="empty-text">載入中…</div>
-        <div v-else class="identity-candidate-list">
-          <button
-            v-for="candidate in identityStudents"
-            :key="candidate.student_id"
-            type="button"
-            class="identity-candidate"
-            :class="{ selected: selectedIdentityStudentIds.includes(candidate.student_id) }"
-            @click="toggleIdentityCandidate(candidate.student_id)"
-          >
-            <span><strong>{{ candidate.name }}</strong> · {{ candidate.campus_name || `分校 ${candidate.campus_id}` }}</span>
-            <small>{{ candidate.identity_group_id ? `群組 #${candidate.identity_group_id}` : '尚未關聯' }}</small>
-          </button>
-          <div v-if="!identityStudents.length" class="empty-text">請搜尋可管理的學生資料</div>
-        </div>
-        <div class="identity-selected-summary">已選 {{ selectedIdentityStudentIds.length }} / 2 筆</div>
-        <div class="actions">
-          <button type="button" class="ghost" @click="closeIdentityModal">取消</button>
-          <button type="button" class="primary" :disabled="selectedIdentityStudentIds.length !== 2 || identitySaving" @click="linkIdentityStudents">
-            {{ identitySaving ? '建立中…' : '建立身份關聯' }}
-          </button>
-        </div>
-
-        <div class="identity-group-list" v-if="identityGroups.length">
-          <h4>已建立的身份群組</h4>
-          <div v-for="group in identityGroups" :key="group.id" class="identity-group-card">
-            <div class="identity-group-head">
-              <strong>{{ group.display_name || `身份群組 #${group.id}` }}</strong>
-              <select v-model="group.mode" @change="updateIdentityMode(group)">
-                <option value="off">關閉</option>
-                <option value="readonly">唯讀試點</option>
-                <option value="actions">開放操作</option>
-              </select>
-            </div>
-            <div class="identity-group-members">
-              <span v-for="member in group.members" :key="member.student_id" class="pp-campus-label">
-                {{ member.name }} · {{ member.campus_name || `分校 ${member.campus_id}` }}
-              </span>
-            </div>
-            <button type="button" class="small ghost" @click="loadIdentityAudit(group.id)">查看稽核紀錄</button>
-          </div>
-        </div>
-        <pre v-if="identityAudit.length" class="identity-audit">{{ JSON.stringify(identityAudit, null, 2) }}</pre>
-      </div>
-    </div>
+    <IdentityLinkModal
+      :show="showIdentityModal"
+      v-model:query="identityQuery"
+      :students="identityStudents"
+      :groups="identityGroups"
+      :selected-ids="selectedIdentityStudentIds"
+      :audit="identityAudit"
+      :loading="identityLoading"
+      :saving="identitySaving"
+      :error="identityError"
+      @close="closeIdentityModal"
+      @search="searchIdentityStudents"
+      @toggle="toggleIdentityCandidate"
+      @link="linkIdentityStudents"
+      @update-mode="updateIdentityMode"
+      @load-audit="loadIdentityAudit"
+    />
   </div>
   <div v-if="toastVisible" class="toast-notification">{{ toastMsg }}</div>
   <ConfirmDialogHost />
@@ -1059,6 +1018,7 @@ import { buildEditTeacherOptions, isAssignableTeacher } from '../lib/courseTeach
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import AtNumberStepper from '../components/design-system/AtNumberStepper.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
+import IdentityLinkModal from '../components/students/IdentityLinkModal.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {
   buildForceOverrideFields,
@@ -2525,7 +2485,8 @@ const linkIdentityStudents = async () => {
   }
 };
 
-const updateIdentityMode = async (group) => {
+const updateIdentityMode = async (group, mode) => {
+  group.mode = mode;
   identityError.value = '';
   try {
     const res = await fetch(`/api/v1/student-identities/${group.id}/access`, {
@@ -5248,19 +5209,4 @@ table th { font-size: 12.5px; }
   color: #60a5fa;
   border-color: #1e40af;
 }
-.modal-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.identity-search-row { display: flex; gap: 8px; margin: 14px 0 8px; }
-.identity-search-row input { flex: 1; min-width: 0; }
-.identity-candidate-list { max-height: 190px; overflow: auto; border: 1px solid var(--ds-border); border-radius: 8px; }
-.identity-candidate { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--ds-border); background: var(--ds-surface); color: var(--ds-ink); text-align: left; cursor: pointer; }
-.identity-candidate:last-child { border-bottom: 0; }
-.identity-candidate.selected { background: var(--ds-success-wash); }
-.identity-candidate small { color: var(--ds-ink-mute); white-space: nowrap; }
-.identity-selected-summary { margin-top: 8px; color: var(--ds-ink-mute); font-size: 13px; }
-.identity-group-list { margin-top: 18px; border-top: 1px solid var(--ds-border); padding-top: 14px; }
-.identity-group-card { border: 1px solid var(--ds-border); border-radius: 8px; padding: 10px; margin-top: 8px; }
-.identity-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.identity-group-head select { min-height: 32px; }
-.identity-group-members { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
-.identity-audit { max-height: 180px; overflow: auto; margin-top: 10px; padding: 10px; background: var(--ds-surface-2); border-radius: 6px; font-size: 11px; }
 </style>

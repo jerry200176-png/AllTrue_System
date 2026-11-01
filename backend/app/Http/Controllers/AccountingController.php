@@ -821,6 +821,8 @@ class AccountingController extends Controller
                 'paid' => $markedPaid || $zeroSettled(false), // #4597 package-only mark; #3991 free/gift, #4018 full-discount: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,
+                // #4656: a current-term 全額折扣 renewal bill (#4018) settles the term; the panel shows 不用繳費, not 需核對.
+                'full_discount_settled' => !$freeGiftSettled && $zeroSettled(false),
                 'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $paidAt ? substr((string) $paidAt, 0, 10) : null,
                 // in-app #428: server-derived (same rule as legacy_paid_flag_only); the panel shows no 需核對 for it.
