@@ -95,6 +95,24 @@ class ProfileUpdateTargetTest extends TestCase
             DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->all());
     }
 
+    public function test_an_unchanged_save_with_an_unmanaged_main_campus_changes_no_link(): void
+    {
+        $mine = CampusFactory::new()->create();
+        $elsewhere = CampusFactory::new()->create();
+        $director = $this->user('A', [$mine->id]);
+        $teacher = $this->user('T', [$elsewhere->id, $mine->id]); // main campus first, outside the director's scope
+
+        // Codex P2 on #4760: TeachersList.vue resends branch_id=<main> and multi_branches=[<others>] on an unchanged save.
+        foreach ([1, 2] as $save) {
+            $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", [
+                'branch_id' => $elsewhere->id, 'multi_branches' => [$mine->id],
+            ])->assertOk();
+        }
+
+        $this->assertEqualsCanonicalizing([$elsewhere->id, $mine->id],
+            DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->all());
+    }
+
     public function test_director_with_no_campus_scope_cannot_edit_links(): void
     {
         $campus = CampusFactory::new()->create();

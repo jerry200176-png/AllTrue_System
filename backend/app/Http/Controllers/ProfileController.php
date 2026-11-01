@@ -901,11 +901,12 @@ class ProfileController extends Controller
             ? array_intersect_key((array) $before->get($campusId), array_flip(['Approved', 'RFID', 'Admin']))
             : ($hasApproved ? ['Approved' => $mayApprove($campusId)] : []);
 
-        if (isset($input['branch_id'])) {
+        $newCampusId = (int) ($input['branch_id'] ?? 0);
+        // A main campus the teacher already has keeps its own link: moving another row onto it would duplicate it.
+        if (isset($input['branch_id']) && !$before->has($newCampusId)) {
             // #4433 (Founder 3A): below super_admin only a link at the caller's own campuses may move.
             $existing = UserCampus::where('UserID', $user->id)
                 ->when(!$superAdmin, fn ($q) => $q->whereIn('CampusID', $callerCampusIds))->first();
-            $newCampusId = (int) $input['branch_id'];
             if ($existing) {
                 $updateData = ['CampusID' => $newCampusId];
                 if ((int) $existing->CampusID !== $newCampusId) {
