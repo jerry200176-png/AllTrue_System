@@ -2546,6 +2546,11 @@ class StudentClassController extends Controller
                 'code' => 'billing_correction_session_rate_only',
             ], 422);
         }
+        // #4430: Rate 0 × count = 0 passes the charge match, and would rewrite the open bill to an unmarked NT$0 (#3991).
+        if ($newCharge === 0) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_zero_forbidden', 422);
+            return response()->json(BillingCorrection::zeroChargeRefusal(), 422);
+        }
         if ($newCharge !== $expectedCharge) {
             $this->auditEditBlocked($studentClass, 'billing_correction_charge_mismatch', 422);
             return response()->json([
