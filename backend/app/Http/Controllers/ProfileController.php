@@ -453,23 +453,22 @@ class ProfileController extends Controller
                 return response()->json(['message' => '主任帳號請由超級管理員建立'], 403);
             }
             $callerCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-            // Every target campus (primary + each multi_branches) must be one the caller manages; an unmanaged
-            // campus would otherwise get an Approved UserCampus row. Joining an unmanaged campus is the campus
-            // director's decision (pending-approval workflow is a separate change); refuse it here.
+            // The main campus must be one the caller manages (the caller then manages the new teacher). #4433 (Founder
+            // policy 1): an extra campus the caller doesn't manage is created pending, for that campus's director.
             $mainCampus = $data['campus_id'] ?? $data['branch_id'] ?? null;
-            $targetCampuses = [];
-            if ($mainCampus !== null) {
-                $targetCampuses[] = (int) $mainCampus;
+            if ($mainCampus !== null && (int) $mainCampus !== 0 && !in_array((int) $mainCampus, $callerCampusIds, true)) {
+                return response()->json(['message' => '無權限在此分校建立帳號'], 403);
             }
-            foreach ((array) ($data['multi_branches'] ?? []) as $extra) {
-                $targetCampuses[] = (int) $extra;
-            }
-            foreach (array_unique($targetCampuses) as $target) {
-                if ($target !== 0 && !in_array($target, $callerCampusIds, true)) {
-                    return response()->json(['message' => '無權限在此分校建立帳號'], 403);
+            if (!Schema::hasColumn('UserCampus', 'Approved')) {
+                foreach ((array) ($data['multi_branches'] ?? []) as $extra) {
+                    if ((int) $extra !== 0 && !in_array((int) $extra, $callerCampusIds, true)) {
+                        return response()->json(['message' => '無權限在此分校建立帳號'], 403); // no column to hold a pending link
+                    }
                 }
             }
         }
+        $approvedHere = fn (int $campusId): bool => (string) $request->attributes->get('auth_role') === 'super_admin'
+            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
         $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
         if ($loginName === '') {
             return response()->json(['message' => '帳號不可空白'], 422);
@@ -539,10 +538,10 @@ class ProfileController extends Controller
             $allBranches = array_unique(array_merge(array_filter([$mainBranch]), $data['multi_branches']));
             foreach ($allBranches as $bid) {
                 if ($bid) {
-                    if (Schema::hasTable('teacher_branches')) {
+                    if ($approvedHere((int) $bid) && Schema::hasTable('teacher_branches')) { // no legacy mirror for a pending request
                         DB::table('teacher_branches')->insertOrIgnore(['teacher_id' => $user->id, 'branch_id' => (int) $bid]);
                     }
-                    UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], ['Approved' => true]);
+                    UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], ['Approved' => $approvedHere((int) $bid)]);
                 }
             }
         }

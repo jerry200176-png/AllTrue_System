@@ -1,0 +1,3 @@
+## 2026-11-01 — feat(auth): adding a teacher to another campus requests it, for that campus's director (#4433)
+<!-- release-notes: staff_update=staff-2026-11-01-cross-campus-teacher-request -->
+- Founder policy 1 (2026-10-22): a campus link waits until that campus's director approves it. `POST /teacher_branches` and `POST /profiles` (extra `multi_branches`) used to answer 403 for a campus the caller doesn't manage. Now they create a pending `UserCampus` row (`Approved = 0`), which that director approves or rejects in 老師管理 › 待審核 (#4457). An existing link at that campus is never rewritten, and a pending link grants no management (#4463). The main campus of a new teacher must still be the caller's own, and without the `Approved` column the add stays refused.

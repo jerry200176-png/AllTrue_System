@@ -36,13 +36,20 @@ class ProfileStoreScopeTest extends TestCase
         $other = CampusFactory::new()->create();
         $token = $this->token('A', [$campus->id]);
 
-        // Primary campus is the caller's, but a multi_branches entry is a foreign campus -> refused, nothing created.
+        // #4433 (Founder policy 1): a multi_branches entry at a foreign campus only requests it (pending, for that campus's
+        // director); the caller never grants an approved link there.
         $this->api($token)->postJson('/api/v1/profiles', [
             'name' => 'x', 'account' => 'mb-foreign@example.com', 'password' => 'Password123', 'role' => 'teacher',
             'campus_id' => $campus->id, 'multi_branches' => [$other->id],
+        ])->assertCreated();
+        $foreignUid = (int) \App\Models\User::where('LoginName', 'mb-foreign@example.com')->value('id');
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $foreignUid, 'CampusID' => $other->id, 'Approved' => 0]);
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $foreignUid, 'CampusID' => $other->id, 'Approved' => 1]);
+        // A primary campus the caller doesn't manage is still refused, and creates nothing.
+        $this->api($token)->postJson('/api/v1/profiles', [
+            'name' => 'y', 'account' => 'main-foreign@example.com', 'password' => 'Password123', 'role' => 'teacher', 'campus_id' => $other->id,
         ])->assertForbidden();
-        $this->assertDatabaseMissing('User', ['LoginName' => 'mb-foreign@example.com']);
-        $this->assertDatabaseMissing('UserCampus', ['CampusID' => $other->id]);
+        $this->assertDatabaseMissing('User', ['LoginName' => 'main-foreign@example.com']);
 
         // multi_branches entirely within the caller's campuses still works.
         $second = CampusFactory::new()->create();

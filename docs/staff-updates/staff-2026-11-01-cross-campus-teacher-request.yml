@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-cross-campus-teacher-request
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 把老師加到別的分校，改成送出申請
+    summary: 幫老師加上你沒管理的分校時，不會再被擋下，而是送給那間分校的主任核准。
+    items:
+      - category: improved
+        text: 建立老師或編輯老師的分校時，選了別的分校，會變成「待審核」，由那間分校的主任在老師管理的待審核裡核准或拒絕。
+      - category: improved
+        text: 老師在別的分校原本就有的設定不會被改動。
+    source_refs:
+      - "changelog:2026-11-01:cross-campus-teacher-request"
