@@ -1404,60 +1404,7 @@
     </div>
 
     <!-- ===== Export Modal ===== -->
-    <div v-if="showExportModal" class="modal-overlay lr-modal-overlay">
-      <div class="lr-modal" style="max-width: 480px;">
-        <div class="lr-modal-header">
-          <h3>匯出學習評量圖</h3>
-          <button type="button" class="ghost icon" @click="showExportModal = false">✕</button>
-        </div>
-        <div class="lr-form">
-          <p style="color:var(--ds-ink-mute); font-size:13px; margin-bottom:16px;">
-            選擇日期區間後，系統會依學生分組，每位學生產出一張評量報告圖片。
-          </p>
-          <div class="lr-form-grid" style="grid-template-columns:1fr 1fr; gap:12px;">
-            <div class="form-group">
-              <label>開始日期</label>
-              <input v-model="exportForm.startDate" type="date" />
-            </div>
-            <div class="form-group">
-              <label>結束日期</label>
-              <input v-model="exportForm.endDate" type="date" />
-            </div>
-          </div>
-
-          <div v-if="exportForm.status === 'loading'" class="export-progress">
-            <div class="export-progress-bar">
-              <div class="export-progress-fill" :style="{ width: exportProgressPct + '%' }"></div>
-            </div>
-            <p class="export-progress-text">
-              正在匯出 {{ exportForm.progressCurrent }} ({{ exportForm.progressCompleted }}/{{ exportForm.progressTotal }})…
-            </p>
-          </div>
-
-          <div v-if="exportForm.status === 'done'" class="export-done">
-            <p v-if="exportForm.errorNames.length === 0">全部匯出完成！共 {{ exportForm.progressCompleted }} 位學生。</p>
-            <p v-else>匯出完成，但 {{ exportForm.errorNames.join('、') }} 匯出失敗。</p>
-          </div>
-
-          <div v-if="exportForm.status === 'empty'" class="export-empty">
-            <p>此日期區間內沒有評量資料。</p>
-          </div>
-
-          <div class="lr-form-actions" style="margin-top:16px;">
-            <button type="button" class="ghost" @click="showExportModal = false">{{ exportForm.status === 'done' ? '關閉' : '取消' }}</button>
-            <button
-              v-if="exportForm.status !== 'loading'"
-              type="button"
-              class="primary"
-              :disabled="!exportForm.startDate || !exportForm.endDate"
-              @click="executeExport"
-            >
-              {{ exportForm.status === 'done' ? '重新匯出' : '開始匯出' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <LearningRecordExportModal v-if="showExportModal" :branch-id="branchId" @close="showExportModal = false" />
 
     <!-- ===== Draft List Panel ===== -->
     <div v-if="showDraftPanel" class="modal-overlay lr-modal-overlay" @click.self="closeDraftPanel">
@@ -1572,6 +1519,7 @@ import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } 
 import { safeHttpHref } from '../lib/safeHttpHref.js';
 import { isDirectorRole as roleIsDirector } from '../lib/roleCapabilities.js';
 import { supabase } from '../supabase';
+import LearningRecordExportModal from '../components/learning-records/LearningRecordExportModal.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtButton from '../components/design-system/AtButton.vue';
@@ -1590,7 +1538,7 @@ import {
   materializedSessionsOnly,
   sessionDatesFromViewModels,
 } from '../lib/classSessionsApi';
-import { exportStudentCards, generateStudentCardPng, downloadBlob } from '../lib/learningRecordExport';
+import { generateStudentCardPng, downloadBlob } from '../lib/learningRecordExport';
 import { createPerfTracker } from '../lib/usePerformanceMetrics';
 import perfFlags, { loadRemoteFlags } from '../lib/perfFlags';
 import {
@@ -4891,122 +4839,7 @@ const ensurePastRecords = async () => {
 
 // ── Export ──
 const showExportModal = ref(false);
-const exportForm = reactive({
-  startDate: '',
-  endDate: '',
-  status: 'idle', // idle | loading | done | empty
-  progressCompleted: 0,
-  progressTotal: 0,
-  progressCurrent: '',
-  errorNames: [],
-});
-
-const exportProgressPct = computed(() => {
-  if (exportForm.progressTotal <= 0) return 0;
-  return Math.round((exportForm.progressCompleted / exportForm.progressTotal) * 100);
-});
-
-const openExportModal = () => {
-  const today = localTodayYmd();
-  const d = new Date();
-  d.setDate(1);
-  const monthStart = formatLocalDate(d);
-  exportForm.startDate = monthStart;
-  exportForm.endDate = today;
-  exportForm.status = 'idle';
-  exportForm.progressCompleted = 0;
-  exportForm.progressTotal = 0;
-  exportForm.progressCurrent = '';
-  exportForm.errorNames = [];
-  showExportModal.value = true;
-};
-
-const executeExport = async () => {
-  if (!exportForm.startDate || !exportForm.endDate) return;
-  exportForm.status = 'loading';
-  exportForm.progressCompleted = 0;
-  exportForm.progressTotal = 0;
-  exportForm.progressCurrent = '';
-  exportForm.errorNames = [];
-
-  try {
-    const token = await getToken();
-    if (!token) { exportForm.status = 'idle'; return; }
-
-    const params = new URLSearchParams();
-    if (props.branchId) params.set('branch_id', props.branchId);
-    params.set('start_date', exportForm.startDate);
-    params.set('end_date', exportForm.endDate);
-    params.set('per_page', '200');
-    params.set('status', 'approved');
-
-    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-
-    if (!res.ok) {
-      alert('查詢評量資料失敗');
-      exportForm.status = 'idle';
-      return;
-    }
-
-    const data = await res.json();
-    const allRecords = data.data || [];
-
-    if (allRecords.length === 0) {
-      exportForm.status = 'empty';
-      return;
-    }
-
-    // Group by student
-    const groups = new Map();
-    for (const rec of allRecords) {
-      const sid = Number(rec.student_id || 0) || null;
-      const sname = String(rec.student_name || '').trim() || '未命名學生';
-      const key = sid ? `s-${sid}` : `n-${sname}`;
-      if (!groups.has(key)) {
-        groups.set(key, { key, student_name: sname, student_id: sid, records: [] });
-      }
-      groups.get(key).records.push(rec);
-    }
-
-    const grouped = Array.from(groups.values())
-      .map((g) => {
-        g.records.sort((a, b) => {
-          const ad = String(a.SessionDate || '');
-          const bd = String(b.SessionDate || '');
-          return ad.localeCompare(bd) || String(a.StartTime || '').localeCompare(String(b.StartTime || ''));
-        });
-        return g;
-      })
-      .sort((a, b) => new Intl.Collator('zh-Hant').compare(a.student_name, b.student_name));
-
-    exportForm.progressTotal = grouped.length;
-
-    const dateRange = `${exportForm.startDate} ~ ${exportForm.endDate}`;
-
-    const branchNames = { 1: '興隆校', 2: '新店校', 3: '大安校', 4: '木柵校' };
-    const branchName = branchNames[Number(props.branchId)] || '台北全真一對一補習班';
-
-    const { errors } = await exportStudentCards({
-      groupedRecords: grouped,
-      dateRange,
-      branchName,
-      onProgress: ({ completed, total, current, error }) => {
-        exportForm.progressCompleted = completed;
-        exportForm.progressTotal = total;
-        exportForm.progressCurrent = current;
-        if (error) exportForm.errorNames.push(current);
-      },
-    });
-
-    exportForm.status = 'done';
-  } catch (err) {
-    console.error('Export error:', err);
-    alert('匯出失敗：' + (err.message || '未知錯誤'));
-    exportForm.status = 'idle';
-  }
-};
+const openExportModal = () => { showExportModal.value = true; };
 
 // ── Init ──
 onMounted(async () => {
@@ -7227,11 +7060,11 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
 }
 
 /* ── Modal ── */
-.lr-modal-overlay {
+:deep(.lr-modal-overlay) {
   z-index: 13000;
 }
 
-.lr-modal {
+:deep(.lr-modal) {
   width: 720px;
   max-width: 95vw;
   max-height: 90vh;
@@ -7335,7 +7168,7 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
   min-height: 44px;
 }
 
-.lr-modal-header {
+:deep(.lr-modal-header) {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -7348,7 +7181,7 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
   flex-wrap: wrap;
 }
 
-.lr-modal-header h3 {
+:deep(.lr-modal-header h3) {
   margin: 0;
   font-size: 18px;
 }
@@ -7436,7 +7269,7 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
 }
 
 /* ── Form ── */
-.lr-form {
+:deep(.lr-form) {
   padding: 24px 28px;
 }
 
@@ -7521,7 +7354,7 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
   color: var(--ds-ink);
 }
 
-.lr-form-grid {
+:deep(.lr-form-grid) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px 16px;
@@ -7591,7 +7424,7 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
 }
 
 /* ── Form Actions ── */
-.lr-form-actions {
+:deep(.lr-form-actions) {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -7634,49 +7467,6 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
   opacity: 0.5;
   border-color: var(--ds-success);
   background: var(--ds-success-wash);
-}
-
-/* ── Export Modal ── */
-.export-progress {
-  margin-top: 16px;
-}
-
-.export-progress-bar {
-  height: 8px;
-  background: var(--ds-canvas-soft);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.export-progress-fill {
-  height: 100%;
-  background: var(--primary);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.export-progress-text {
-  font-size: 13px;
-  color: var(--text-light);
-  margin-top: 8px;
-}
-
-.export-done {
-  margin-top: 16px;
-  padding: 12px 16px;
-  background: var(--ds-success-wash);
-  border-radius: 8px;
-  color: var(--ds-success);
-  font-size: 14px;
-}
-
-.export-empty {
-  margin-top: 16px;
-  padding: 12px 16px;
-  background: var(--ds-warning-wash);
-  border-radius: 8px;
-  color: var(--ds-danger);
-  font-size: 14px;
 }
 
 /* ── Responsive: Tablet ── */
@@ -7738,10 +7528,10 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
     padding: 8px 8px 12px;
     gap: 10px;
   }
-  .lr-form-grid {
+  :deep(.lr-form-grid) {
     grid-template-columns: 1fr;
   }
-  .lr-modal {
+  :deep(.lr-modal) {
     width: 100%;
     max-width: 100vw;
     max-height: 100vh;
@@ -7757,9 +7547,9 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
   .ts-week {
     grid-template-columns: repeat(4, 1fr);
   }
-  .form-group input,
-  .form-group select,
-  .form-group textarea {
+  :deep(.form-group input),
+  :deep(.form-group select),
+  :deep(.form-group textarea) {
     font-size: 16px;
   }
 }
@@ -7884,7 +7674,7 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
     box-sizing: border-box;
   }
 
-  .lr-modal {
+  :deep(.lr-modal) {
     width: 100%;
     max-width: 100vw;
     max-height: 92vh;
@@ -7900,12 +7690,12 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
     overflow: hidden;
   }
 
-  .lr-modal-header {
+  :deep(.lr-modal-header) {
     padding: 16px 20px;
     border-radius: 20px 20px 0 0;
   }
 
-  .lr-modal-header h3 {
+  :deep(.lr-modal-header h3) {
     font-size: 17px;
   }
 
@@ -7938,20 +7728,20 @@ tr.lr-row-unread { background: var(--ds-warning-wash); }
     font-size: 15px;
   }
 
-  .lr-form-grid {
+  :deep(.lr-form-grid) {
     grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .form-group input,
-  .form-group select,
-  .form-group textarea {
+  :deep(.form-group input),
+  :deep(.form-group select),
+  :deep(.form-group textarea) {
     font-size: 16px; /* prevents iOS zoom */
     min-height: 46px;
     padding: 10px 12px;
   }
 
-  .form-group textarea {
+  :deep(.form-group textarea) {
     min-height: 90px;
     resize: vertical;
     field-sizing: content; /* Chrome 123+ / iOS 17.4+ auto-height */
