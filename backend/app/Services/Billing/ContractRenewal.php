@@ -719,6 +719,8 @@ final class ContractRenewal
             }
             $minutes += (int) $start->diffInMinutes($end);
         }
+        // A plan cut at the scheduler's 2-year horizon still bills every bought lesson, at the plan's average length.
+        $minutes = $minutes * $sessions / count($built);
 
         return (int) round($minutes / 60);
     }

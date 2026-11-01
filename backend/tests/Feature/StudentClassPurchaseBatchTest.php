@@ -289,6 +289,26 @@ class StudentClassPurchaseBatchTest extends TestCase
         $this->assertSame(4000, (int) $newCourse->Charge);
     }
 
+    public function test_hourly_batch_past_the_two_year_horizon_bills_every_bought_lesson(): void
+    {
+        // Codex P2 on #4761: 120 weekly 2h lessons outrun the scheduler's 2-year horizon; all 120 are still billed (240h).
+        [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'week1' => null, 'time1' => null]);
+        $payload = ['sessions' => 120, 'start_date' => '2026-05-25'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $preview = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/renewal-preview", $payload + ['mode' => 'purchase_batch']
+        )->assertOk();
+        $res = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/purchase-batch", $payload + ['mode' => 'new_purchase']
+        )->assertCreated();
+
+        $newCourse = StudentClass::where('ID', (int) $res->json('new_course.id'))->first();
+        $this->assertSame(240, (int) $preview->json('proposed_course.total_hours'));
+        $this->assertSame(240, (int) $newCourse->TotalHours);
+        $this->assertSame(240000, (int) $newCourse->Charge);
+    }
+
     public function test_hourly_batch_with_equal_length_slots_is_unchanged(): void
     {
         [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'duration1' => 120]);
