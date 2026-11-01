@@ -811,7 +811,7 @@ class AccountingController extends Controller
                 'paid' => (int) ($class->Paid ?? 0) === 1 || $zeroSettled(false), // #3991 free/gift, #4018 full-discount: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,
-                // #4656: a current-term 全額折扣 renewal bill (#4018) settles the term; the panel shows 已收清, not 需核對.
+                // #4656: a current-term 全額折扣 renewal bill (#4018) settles the term; the panel shows 不用繳費, not 需核對.
                 'full_discount_settled' => !$freeGiftSettled && $zeroSettled(false),
                 'waived' => ContractMoneyState::isWaived($class),
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,

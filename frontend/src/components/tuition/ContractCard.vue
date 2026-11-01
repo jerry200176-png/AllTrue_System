@@ -233,7 +233,7 @@ const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
-  if (p?.fullDiscount) return '全額折扣，已收清'; // #4656
+  if (p?.fullDiscount) return '全額折扣，不用繳費'; // #4656
   if (!p?.date) return '還沒繳費';
   return p.amount == null ? `繳費日 ${dateOnly(p.date)}` : `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
 });

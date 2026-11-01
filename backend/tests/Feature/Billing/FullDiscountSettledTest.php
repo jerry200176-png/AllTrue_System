@@ -65,7 +65,7 @@ class FullDiscountSettledTest extends TestCase
         $ledger = $this->withToken($this->token)->getJson('/api/v1/accounting/ledger?student_id=' . $new->StudentID)->assertOk();
         $this->assertTrue(collect($ledger->json('courses'))->firstWhere('id', $new->ID)['paid'], 'no 待登記');
         $this->assertFalse(collect($ledger->json('courses'))->firstWhere('id', $new->ID)['free_gift_settled']);
-        $this->assertTrue(collect($ledger->json('courses'))->firstWhere('id', $new->ID)['full_discount_settled'], '#4656: 已收清, not 需核對');
+        $this->assertTrue(collect($ledger->json('courses'))->firstWhere('id', $new->ID)['full_discount_settled'], '#4656: 不用繳費, not 需核對');
         $this->assertSame(0, (int) $ledger->json('summary.outstanding_total'));
     }
 
