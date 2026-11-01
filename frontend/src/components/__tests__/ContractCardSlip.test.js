@@ -77,4 +77,11 @@ describe('ContractCard 繳費單 (in-app #425)', () => {
     authedFetch.mockResolvedValue(respond({ schedule_mode: 'count', sessions: [], unscheduled_count: 0, class_type: 'tutoring' }));
     expect(slip(await card({}))).toBeNull();
   });
+
+  it('#4765: lessons outside the contract dates show 需核對 and offer neither 登記這筆 nor 繳費單', async () => {
+    const w = await card({ course: { id: 9, subject: '數學', paid: false, start_date: '2026-10-10', end_date: '2026-10-31', lessons_outside_contract: ['2026-09-29', '2026-09-30'] } });
+    expect(w.get('[data-testid="contract-outside"]').text()).toBe('需核對：9/29、9/30 的課不在合約日期（10/10–10/31）內，請先改合約日期');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(slip(w)).toBeNull();
+  });
 });

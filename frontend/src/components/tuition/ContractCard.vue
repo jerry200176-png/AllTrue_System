@@ -38,7 +38,9 @@
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回這筆</AtButton>
       </template>
       <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
-      <AtButton v-else-if="!followerPointer && !legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <AtButton v-else-if="!followerPointer && !outsideDates.length && !legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <!-- #4765: taught lessons fall outside the contract dates; billing cannot price them, so no 登記這筆 / 繳費單 until the dates are fixed. -->
+      <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">需核對：{{ outsideDates.map(md).join('、') }} 的課不在合約日期（{{ [md(course.start_date), md(course.end_date)].join('–') }}）內，請先改合約日期</span>
       <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
       <template v-if="showSlip">
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
@@ -334,7 +336,9 @@ const slipRow = computed(() => ({
     : (props.outstanding > 0 || (!props.course.paid && !props.amounts)) ? 'unpaid' : 'paid',
 }));
 const slipState = computed(() => slipAvailability(slipRow.value, props.canViewDocs));
-const showSlip = computed(() => props.canViewDocs && !props.sharedFollower && !noObligation.value && !waived.value
+const outsideDates = computed(() => (Array.isArray(props.course.lessons_outside_contract) ? props.course.lessons_outside_contract : []));
+const md = (d) => { const [, m, day] = String(d || '').slice(0, 10).split('-'); return m ? `${Number(m)}/${Number(day)}` : ''; };
+const showSlip = computed(() => props.canViewDocs && !outsideDates.value.length && !props.sharedFollower && !noObligation.value && !waived.value
   && (slipState.value.ok || slipState.value.reason === AMOUNT_PENDING_REASON));
 
 // PRD v2 D9/D20: step 2 (確認入帳 / 退回) happens right here, no tab switch.

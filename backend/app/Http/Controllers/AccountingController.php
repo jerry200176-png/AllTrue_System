@@ -763,7 +763,8 @@ class AccountingController extends Controller
             ->filter(fn (StudentClass $c) => BillingPayableResolver::isAmountPendingConfirmation($c, $stoppedVerdicts[(int) $c->ID] ?? []))
             ->map(fn (StudentClass $c) => (int) $c->ID)->values()->all();
 
-        $collectionPeriods = $this->collectionPeriods($classes, $invoices, $invoiceRows);
+        $outsideContract = [];
+        $collectionPeriods = $this->collectionPeriods($classes, $invoices, $invoiceRows, $outsideContract);
 
         return response()->json([
             'student' => [
@@ -792,7 +793,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && !$invoices->contains(fn (Invoice $o) => (int) $o->StudentClassID === (int) $class->ID && (string) $o->Status !== 'void' && (int) $o->TotalAmount > 0 && in_array((string) $o->Status, ['unpaid', 'partial'], true)) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
@@ -841,6 +842,9 @@ class AccountingController extends Controller
                 'amount_pending_confirmation' => in_array((int) $class->ID, $amountPendingIds, true),
                 // in-app #432: the month and amount 登記收款 collects when no bill of this monthly contract still owes.
                 'collection_period' => $collectionPeriods[(int) $class->ID] ?? null,
+                // #4765: dates of taught lessons outside the contract dates (no bill to collect against); the card says 需核對, offers no 登記這筆.
+                'lessons_outside_contract' => $outsideContract[(int) $class->ID] ?? [],
+                'end_date' => $class->EndDate ? substr((string) $class->EndDate, 0, 10) : null,
                 ];
             })->values()->all(),
             'invoices' => $invoiceRows->all(),
@@ -855,7 +859,7 @@ class AccountingController extends Controller
      *
      * @return array<int, array{billing_period: string, amount: int}>
      */
-    private function collectionPeriods(\Illuminate\Support\Collection $classes, \Illuminate\Support\Collection $invoices, \Illuminate\Support\Collection $invoiceRows): array
+    private function collectionPeriods(\Illuminate\Support\Collection $classes, \Illuminate\Support\Collection $invoices, \Illuminate\Support\Collection $invoiceRows, array &$outsideContract = []): array
     {
         $owing = $invoiceRows->filter(fn (array $row) => (int) $row['outstanding_amount'] > 0)->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
         $candidates = $classes->filter(fn (StudentClass $c) => (string) $c->ScheduleMode === 'date' && !$c->isPartOfPackage()
@@ -867,6 +871,10 @@ class AccountingController extends Controller
         $billing->preloadSessions($candidates->pluck('ID')->all());
         $out = [];
         foreach ($candidates as $c) {
+            if ($dates = $billing->lessonsOnlyOutsideContract($c)) {
+                $outsideContract[(int) $c->ID] = $dates;
+                continue; // never offer the stored Charge as the amount of an empty month
+            }
             $own = $invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID === (int) $c->ID && (string) $i->Status !== 'void')->values();
             $period = $billing->collectionPeriodFor($c, null, $own);
             $out[(int) $c->ID] = ['billing_period' => $period, 'amount' => (int) $billing->summarizePeriod($c, $period)['charge']];
