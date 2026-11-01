@@ -192,6 +192,11 @@ export function incomingClassConflict({
 export function uniqueOccupantsFromBusySlots(slots = []) {
   let unique = 0;
   for (const slot of slots) {
+    // #4368: the server counts distinct students; a trial's fixed cap of 1 can't derive it.
+    if (slot?.student_count !== undefined) {
+      unique = Math.max(unique, Number(slot.student_count));
+      continue;
+    }
     const cap = availabilityCapacityForClassType(slot?.class_type);
     const remaining = slot?.remaining_capacity === undefined ? 0 : Number(slot.remaining_capacity);
     unique = Math.max(unique, Math.max(0, cap - remaining));
@@ -289,7 +294,11 @@ export function pickerSlotConflict({
   const covered = String(coveredClassType || '');
   let remaining;
   if (covered) {
-    const coveredCap = Math.min(availabilityCapacityForClassType(covered), TEACHER_SLOT_ABSOLUTE_MAX);
+    // #4368: server-classified (guard rule) one-on-three slot lets a trial take a real seat.
+    const trialInOneOnThree = covered === 'trial' && overlappingSlots.some((slot) => slot.one_on_three);
+    const coveredCap = trialInOneOnThree
+      ? TEACHER_SLOT_ABSOLUTE_MAX
+      : Math.min(availabilityCapacityForClassType(covered), TEACHER_SLOT_ABSOLUTE_MAX);
     remaining = hasOneOnOne && covered !== 'trial' ? 0 : Math.max(0, coveredCap - unique);
   } else {
     remaining = Math.max(0, ...overlappingSlots.map((slot) => (

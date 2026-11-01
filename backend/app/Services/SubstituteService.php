@@ -143,7 +143,7 @@ class SubstituteService
      *
      * @param  int[]  $excludeScheduleIds
      * @param  int|null  $excludeStudentId
-     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,configured_capacity:int,occupied_capacity:int,remaining_capacity:int,course_ids:int[],class_session_ids:int[],schedule_ids:int[],source_types:string[]}>
+     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,configured_capacity:int,occupied_capacity:int,remaining_capacity:int,one_on_three:bool,course_ids:int[],class_session_ids:int[],schedule_ids:int[],source_types:string[]}>
      */
     public function collectTeacherBusySlotsWithCapacity(int $teacherId, string $date, array $excludeScheduleIds = [], ?int $excludeStudentId = null): array
     {
@@ -270,6 +270,9 @@ class SubstituteService
         // Unique students across overlapping rows, then remaining vs THIS row's
         // class type (#1889). Do not use another class type's remaining=0 to
         // mark a mixed 1-on-3 slot full. Do not mergeBusySlots (keep metadata).
+        // #4368: classify trials with the write guard's own one-on-three rule (G-007), not capacity 1.
+        $guard = app(ScheduleGuardService::class);
+        $rawSlots = $guard->withTrialTargets($rawSlots);
         $result = [];
         foreach ($rawSlots as $slot) {
             $occupants = [];
@@ -282,8 +285,6 @@ class SubstituteService
                 }
             }
             $studentCount = count($occupants);
-            $capacity          = ClassTypeCapacity::for($slot['class_type']);
-            $remainingCapacity = max(0, $capacity - $studentCount);
             $overlappingSources = array_values(array_filter(
                 $rawSlots,
                 fn (array $other): bool => $this->overlaps(
@@ -293,6 +294,9 @@ class SubstituteService
                     $other['end_time']
                 )
             ));
+            $oneOnThree = $guard->isOneOnThreeSlot($overlappingSources, $slot);
+            $capacity          = $slot['class_type'] === 'trial' && $oneOnThree ? 3 : ClassTypeCapacity::for($slot['class_type']);
+            $remainingCapacity = max(0, $capacity - $studentCount);
             $result[] = [
                 'start_time'         => $slot['start_time'],
                 'end_time'           => $slot['end_time'],
@@ -302,6 +306,7 @@ class SubstituteService
                 'configured_capacity'=> $capacity,
                 'occupied_capacity'  => $studentCount,
                 'remaining_capacity' => $remainingCapacity,
+                'one_on_three'       => $oneOnThree,
                 'course_ids'         => $this->uniquePositiveIds($overlappingSources, 'course_id'),
                 'class_session_ids'  => $this->uniquePositiveIds($overlappingSources, 'class_session_id'),
                 'schedule_ids'       => $this->uniquePositiveIds($overlappingSources, 'schedule_id'),

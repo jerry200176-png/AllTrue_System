@@ -87,6 +87,15 @@ assert.equal(coverTwo.conflict, true);
 assert.match(coverTwo.conflictTooltip, /本分校/);
 assert.doesNotMatch(coverTwo.conflictTooltip, /其他分校/);
 
+// #4368: a trial joining a server-classified one-on-three slot is not full below 3 students.
+const trialSlot = (count) => [
+  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 3 - count, student_count: count, one_on_three: true },
+  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 3 - count, student_count: count, one_on_three: true },
+];
+const coverTrial = (count) => pickerSlotConflict({ overlappingSlots: trialSlot(count), coveredClassType: 'trial', sessionCampusId: 3 });
+assert.equal(coverTrial(2).conflict, false);
+assert.equal(coverTrial(3).conflict, true);
+
 const otherCampus = pickerSlotConflict({
   overlappingSlots: [{
     start_time: '15:00',

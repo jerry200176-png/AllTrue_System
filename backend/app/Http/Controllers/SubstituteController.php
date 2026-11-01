@@ -103,6 +103,8 @@ class SubstituteController extends Controller
             'campus_id'          => (int) $s['campus_id'],
             'class_type'         => (string) ($s['class_type']),
             'remaining_capacity' => (int) ($s['remaining_capacity']),
+            'student_count'      => (int) $s['student_count'],
+            'one_on_three'       => (bool) $s['one_on_three'],
         ], $busy);
 
         // #265: preserve enough decision context to reconstruct a future
