@@ -92,9 +92,18 @@ const trialSlot = (count) => [
   { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 3 - count, student_count: count, one_on_three: true },
   { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 3 - count, student_count: count, one_on_three: true },
 ];
-const coverTrial = (count) => pickerSlotConflict({ overlappingSlots: trialSlot(count), coveredClassType: 'trial', sessionCampusId: 3 });
+const coverTrial = (count, requestedEnd = '17:00') => pickerSlotConflict({
+  overlappingSlots: trialSlot(count), coveredClassType: 'trial', sessionCampusId: 3, requestedStart: '15:00', requestedEnd,
+});
 assert.equal(coverTrial(2).conflict, false);
 assert.equal(coverTrial(3).conflict, true);
+// Codex P2: each flag describes that busy row's own span. A one-on-three 15:00–16:00 doesn't lift a 15:00–17:00 trial.
+const shortOneOnThree = [
+  { start_time: '15:00', end_time: '16:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 2, student_count: 1, one_on_three: true },
+  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 0, student_count: 1, one_on_three: false },
+];
+assert.equal(pickerSlotConflict({ overlappingSlots: shortOneOnThree, coveredClassType: 'trial', sessionCampusId: 3, requestedStart: '15:00', requestedEnd: '17:00' }).conflict, true);
+assert.equal(pickerSlotConflict({ overlappingSlots: trialSlot(1), coveredClassType: 'trial', sessionCampusId: 3 }).conflict, true, 'no requested span: no lift');
 
 const otherCampus = pickerSlotConflict({
   overlappingSlots: [{

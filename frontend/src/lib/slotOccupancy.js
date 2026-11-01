@@ -282,6 +282,8 @@ export function pickerSlotConflict({
   coveredClassType = '',
   sessionCampusId = 0,
   branchNameMap = {},
+  requestedStart = '',
+  requestedEnd = '',
 } = {}) {
   if (!overlappingSlots.length) {
     return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0, otherCampusConflict: false };
@@ -294,8 +296,13 @@ export function pickerSlotConflict({
   const covered = String(coveredClassType || '');
   let remaining;
   if (covered) {
-    // #4368: server-classified (guard rule) one-on-three slot lets a trial take a real seat.
-    const trialInOneOnThree = covered === 'trial' && overlappingSlots.some((slot) => slot.one_on_three);
+    // #4368: server-classified (guard rule) one-on-three slot lets a trial take a real seat, only when that slot spans
+    // the whole requested trial (ScheduleGuardService::isOneOnThreeSlot with $span); no span given = no lift.
+    const reqS = hhmm(requestedStart);
+    const reqE = hhmm(requestedEnd);
+    const trialInOneOnThree = covered === 'trial' && Boolean(reqS && reqE) && overlappingSlots.some((slot) => (
+      slot.one_on_three && hhmm(slot.start_time) <= reqS && hhmm(slot.end_time) >= reqE
+    ));
     const coveredCap = trialInOneOnThree
       ? TEACHER_SLOT_ABSOLUTE_MAX
       : Math.min(availabilityCapacityForClassType(covered), TEACHER_SLOT_ABSOLUTE_MAX);
