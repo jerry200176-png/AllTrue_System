@@ -208,6 +208,14 @@ class ClassSession extends Model
     }
 
     /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentSignIn, $this> */
+    /** 待補點名 (#4770): an ended lesson with no live sign-in, still scheduled or absent. The attendance list and the nav badge share it. */
+    public function scopeEndedUnmarked($query, string $now)
+    {
+        return $query->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
+            ->whereIn('Status', ['scheduled', 'absent'])
+            ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now]);
+    }
+
     public function signIns()
     {
         return $this->hasMany(StudentSignIn::class, 'ClassSessionID', 'id');

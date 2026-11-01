@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClassSession;
 use App\Models\Notification;
 use App\Models\NotificationRead;
 use App\Models\Invoice;
+use App\Models\Student;
+use App\Models\StudentClass;
 use App\Services\NotificationSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -333,7 +336,8 @@ class NotificationController extends Controller
         if ($pendingCount > 0) {
             $byType['pending_teachers'] = ['total' => $pendingCount, 'urgent' => 0];
         }
-        $pendingAttendanceCount = $this->countPendingAttendance($campusIds);
+        $pendingAttendanceCount = $this->countPendingAttendance($campusIds)
+            + ($request->attributes->get('auth_role') === 'teacher' ? 0 : $this->countEndedUnmarked($campusIds));
         if ($pendingAttendanceCount > 0) {
             $byType['attendance'] = ['total' => $pendingAttendanceCount, 'urgent' => $pendingAttendanceCount];
         }
@@ -486,6 +490,22 @@ class NotificationController extends Controller
         }
 
         return (int) $query->count('ClassSession.id');
+    }
+
+    /**
+     * #4770: the 待補點名 list's default window (AttendanceController::endedSessions, the last 7 days) before today, so
+     * a lesson left unmarked on an earlier day keeps the 出缺勤 badge on. Today's lessons are countPendingAttendance's.
+     * ponytail: campus-wide, so directors only; a teacher's own list needs endedSessions' substitute scoping.
+     */
+    private function countEndedUnmarked(array $campusIds): int
+    {
+        $students = Student::query()->select('id')->when($campusIds !== [], fn ($q) => $q->whereIn('CampusID', $campusIds));
+
+        return ClassSession::query()
+            ->whereIn('StudentClassID', StudentClass::query()->select('ID')->where('Stop', 0)->whereIn('StudentID', $students))
+            ->whereBetween('SessionDate', [now()->subDays(7)->toDateString(), now()->subDay()->toDateString()])
+            ->endedUnmarked(now()->format('Y-m-d H:i:s'))
+            ->count();
     }
 
     private function findScopedNotification(int $notificationId, array $campusIds): ?Notification
