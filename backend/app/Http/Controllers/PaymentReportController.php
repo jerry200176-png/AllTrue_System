@@ -1521,7 +1521,11 @@ class PaymentReportController extends Controller
         if ($price === null) {
             return null;
         }
-        $memberIds = StudentClass::where('PackageID', $package->id)->where('ID', '!=', $sc->getKey())->orderBy('ID')->pluck('ID');
+        if ((int) $sc->getAttribute('StudentID') !== (int) $package->student_id) {
+            return null; // a stale PackageID on another student's course never pays the owner's bill
+        }
+        $memberIds = StudentClass::where('PackageID', $package->id)->where('StudentID', $package->student_id)
+            ->where('ID', '!=', $sc->getKey())->orderBy('ID')->pluck('ID');
         foreach ($memberIds as $memberId) {
             $member = StudentClass::query()->find($memberId);
             $open = $member ? $this->pickOpenInvoice((int) $memberId, $member) : null;
@@ -1536,7 +1540,7 @@ class PaymentReportController extends Controller
     /** RFC §R2: a member already has a live bill, so the package obligation is already billed (no second full-price bill). */
     private function packageHasLiveBill(CoursePackage $package): bool
     {
-        return Invoice::whereIn('StudentClassID', StudentClass::where('PackageID', $package->id)->pluck('ID'))
+        return Invoice::whereIn('StudentClassID', StudentClass::where('PackageID', $package->id)->where('StudentID', $package->student_id)->pluck('ID'))
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists();
     }
 

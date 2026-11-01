@@ -267,6 +267,25 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertTrue((bool) $package->fresh()->paid);
     }
 
+    /** #4597 security review: a course whose stale PackageID points at another student's package never pays that student's bill. */
+    public function test_a_foreign_course_never_pays_the_package_owners_bill(): void
+    {
+        $token = $this->token('A', [1]);
+        [$lead, , $package] = $this->legacyPackage(1);
+        $this->backfill($token, $lead, ['amount' => 3000])->assertOk();
+        $foreign = $this->legacyCourse(1, ['Paid' => 0, 'PayDate' => null, 'PackageID' => $package->id]);
+
+        $r = $this->withHeaders($this->auth($token))->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $foreign->ID, 'payment_date' => '2026-10-02', 'payment_method' => 'transfer', 'amount' => 1000,
+        ]);
+        if ($r->status() === 200 && $r->json('report_id')) {
+            $this->withHeaders($this->auth($token))->putJson('/api/v1/payment-reports/' . $r->json('report_id') . '/confirm');
+        }
+
+        $ownerBill = Invoice::where('StudentClassID', $lead->ID)->sole();
+        $this->assertSame(3000, (int) Payment::where('InvoiceID', $ownerBill->id)->sum('Amount'), 'the owner bill keeps only its own payment');
+    }
+
     /** #4597 review: a sibling's live bill already carries the package obligation, so a payment on another member never bills it again. */
     public function test_a_package_with_a_live_member_bill_is_not_billed_its_price_again(): void
     {
