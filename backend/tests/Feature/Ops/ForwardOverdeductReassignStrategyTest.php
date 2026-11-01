@@ -130,13 +130,28 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         }
         $lonely = $this->taught($mixed, $past, '系統向前生成 #1062');
         $this->later($s3, 5);
+        // Codex P1 (2nd round): the reassigner does not move package_session_ledger, so a package-linked source or target never moves.
+        $s4 = $this->student(28);
+        $pkg = \App\Models\CoursePackage::create(['student_id' => $s4, 'campus_id' => 28, 'name' => 'p', 'total_sessions' => 6, 'remaining_sessions' => 6,
+            'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
+        [$pkgSource] = $this->overCourse($s4, $past);
+        $pkgSource->forceFill(['PackageID' => $pkg->id])->save();
+        $this->later($s4, 5);
+        $s5 = $this->student(28);
+        [, $toPackage] = $this->overCourse($s5, $past);
+        $this->later($s5, 5)->forceFill(['PackageID' => $pkg->id])->save();
 
-        $rows = $this->rows((new ForwardOverdeductReassignStrategy())->plan($this->params(28)));
+        $plan = (new ForwardOverdeductReassignStrategy())->plan($this->params(28));
+        $rows = $this->rows($plan);
+        $courseRows = array_map(fn ($r) => ['class_id' => $r['class_id'], 'class' => $r['class'], 'reason' => $r['reason']],
+            array_values(array_filter($plan['manifest'], fn ($r) => $r['session_id'] === 0)));
         $this->assertSame(['review', 'no_target_with_room'], [$rows[$toMinuteTarget]['class'], $rows[$toMinuteTarget]['reason']]);
         $this->assertSame(['review', 'assessment_locked'], [$rows[$assessed]['class'], $rows[$assessed]['reason']]);
         $this->assertArrayNotHasKey($lonely, $rows);
-        $this->assertContains(['class_id' => $mixed->ID, 'class' => 'review', 'reason' => 'insufficient_generated_lessons'],
-            array_map(fn ($r) => ['class_id' => $r['class_id'], 'class' => $r['class'], 'reason' => $r['reason']], array_values($rows)));
+        $this->assertSame(['review', 'no_target_with_room'], [$rows[$toPackage]['class'], $rows[$toPackage]['reason']]);
+        $this->assertContains(['class_id' => $pkgSource->ID, 'class' => 'review', 'reason' => 'package_linked'], $courseRows);
+        $this->assertSame(0, $plan['totals']['move'], 'nothing in these cases moves');
+        $this->assertContains(['class_id' => $mixed->ID, 'class' => 'review', 'reason' => 'insufficient_generated_lessons'], $courseRows);
     }
 
     public function test_a_taught_extra_moves_to_a_later_contract_with_room_and_counters_are_fixed(): void

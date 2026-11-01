@@ -227,7 +227,7 @@ final class ForwardOverdeductReassignStrategy
             $laterIds = array_merge($laterIds, array_map('intval', array_filter(explode(',', (string) $x['c']['later_course_ids']))));
         }
         $laterIds = array_values(array_unique($laterIds));
-        $courses = DB::table('StudentClass')->whereIn('ID', $laterIds)->get(['ID', 'ScheduleMode', 'closed_reason', 'settlement_locked_at', 'TeacherID'])->keyBy('ID');
+        $courses = DB::table('StudentClass')->whereIn('ID', $laterIds)->get(['ID', 'ScheduleMode', 'closed_reason', 'settlement_locked_at', 'TeacherID', 'PackageID'])->keyBy('ID');
         $room = [];
         foreach (SessionDeductionService::batchExpectedUsedSessionDiagnostics($laterIds) as $id => $u) {
             // A minute-based target (partial-duration lesson) counts events, not consumed minutes: never a target (Codex P1).
@@ -254,10 +254,15 @@ final class ForwardOverdeductReassignStrategy
                 $rows[] = $none + ['reason' => $candidates->isEmpty() ? 'no_movable_lesson' : 'insufficient_generated_lessons'];
                 continue;
             }
-            $source = DB::table('StudentClass')->where('ID', $classId)->first(['settlement_locked_at', 'closed_reason', 'TeacherID']);
+            $source = DB::table('StudentClass')->where('ID', $classId)->first(['settlement_locked_at', 'closed_reason', 'TeacherID', 'PackageID']);
+            if ((int) $source->PackageID > 0) {
+                // The reassigner moves only session_deduction_ledger, not package_session_ledger (Codex P1): packages stay manual.
+                $rows[] = $none + ['reason' => 'package_linked'];
+                continue;
+            }
             $sourceSettled = $this->settled($source);
             $targets = array_values(array_filter(array_map('intval', array_filter(explode(',', (string) $x['c']['later_course_ids']))),
-                fn (int $id) => ($c = $courses->get($id)) && strtolower((string) $c->ScheduleMode) === 'count' && (string) $c->closed_reason !== 'waived' && !$this->settled($c)));
+                fn (int $id) => ($c = $courses->get($id)) && strtolower((string) $c->ScheduleMode) === 'count' && (string) $c->closed_reason !== 'waived' && !$this->settled($c) && (int) $c->PackageID <= 0));
             foreach ($candidates as $s) {
                 $date = substr((string) $s->SessionDate, 0, 10);
                 $start = substr((string) $s->StartTime, 0, 5);

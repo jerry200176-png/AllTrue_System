@@ -23,7 +23,9 @@ same student and subject, count mode, not waived, not settled, with room (bought
 - `keep / gift_no_later_contract`: the student has no later contract. Never written.
 - `review / partial_minutes`: the course has partial-duration lessons (session_id 0). Never written.
 - `review / no_movable_lesson`: the course is over but no generated lesson qualifies (session_id 0). Never written.
-- `review / course_settled`, `no_target_with_room`, `target_slot_taken`, `assessment_locked`: listed for a director, never written.
+- `review / insufficient_generated_lessons`: fewer movable generated lessons than the excess, so nothing on that course moves (session_id 0).
+- `review / package_linked`: the source belongs to a course package. The reassigner does not move `package_session_ledger`, so this is left to a human (session_id 0). Package-linked later contracts are never targets.
+- `review / course_settled`, `no_target_with_room` (this includes minute-based targets), `target_slot_taken`, `assessment_locked` (an approved assessment whose teacher is not the teacher of both contracts): listed for a director, never written.
 
 ## Execute
 
