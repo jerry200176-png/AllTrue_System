@@ -113,6 +113,36 @@ class ProfileUpdateTargetTest extends TestCase
             DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->all());
     }
 
+    /** #4768: choosing an already-linked campus as main makes it the first row, without duplicates. */
+    public function test_choosing_an_already_linked_campus_makes_it_main_without_duplicates(): void
+    {
+        $a = CampusFactory::new()->create();
+        $b = CampusFactory::new()->create();
+        $director = $this->user('A', [$a->id, $b->id]);
+        $teacher = $this->user('T', [$a->id, $b->id]);
+        DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $b->id)->update(['Approved' => 0]);
+
+        $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", ['branch_id' => $b->id])
+            ->assertOk()->assertJsonPath('branch_id', $b->id);
+
+        $rows = DB::table('UserCampus')->where('UserID', $teacher->id)->get();
+        $this->assertSame([$b->id, $a->id], $rows->pluck('CampusID')->map(fn ($v) => (int) $v)->all());
+        $this->assertSame([0, 1], $rows->pluck('Approved')->map(fn ($v) => (int) $v)->all());
+    }
+
+    public function test_director_cannot_switch_main_campus_onto_an_unmanaged_linked_campus(): void
+    {
+        $mine = CampusFactory::new()->create();
+        $elsewhere = CampusFactory::new()->create();
+        $director = $this->user('A', [$mine->id]);
+        $teacher = $this->user('T', [$mine->id, $elsewhere->id]);
+
+        $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", ['branch_id' => $elsewhere->id])->assertOk();
+
+        $this->assertSame([$mine->id, $elsewhere->id],
+            DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->map(fn ($v) => (int) $v)->all());
+    }
+
     public function test_director_with_no_campus_scope_cannot_edit_links(): void
     {
         $campus = CampusFactory::new()->create();
