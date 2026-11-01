@@ -1,0 +1,3 @@
+## 2026-11-01 — ops: shared pools pre-planned before #4730 cleaned (#4734)
+<!-- release-notes: staff_update=staff-2026-11-01-shared-pool-cleanup -->
+- POP request `210d09c1-e5a7-4ece-86c8-e236d9e5abe5` (operation `shared-pool-trim-overplan-20261101`, Founder-approved digest `13f8fd11…`, run 41263275445) deleted 1,814 future `scheduled` lessons in 52 shared count pools (campuses 2, 3, 4, 17): execute and verify succeeded, audit verified, rollback snapshot stored. Re-checks: trim dry-run 41267525911 now lists 0 pools / 0 rows; `inapp-package-ledger-probe` runs 41267565080, 41267589817, 41267616060, 41267641647 report 0 over-planned packages.
