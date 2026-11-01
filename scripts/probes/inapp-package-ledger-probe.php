@@ -93,6 +93,16 @@ function inapp_package_ledger_probe(ConnectionInterface $db, int $campusId, int 
         . ' GROUP BY s.package_id ORDER BY s.package_id',
         $targets
     );
+    // #4753: a course the ledger names that no longer points at this package. course_exists 0 = the course row is gone;
+    // otherwise course_package_id says where it points now (null = no package).
+    $result['ledger_courses_elsewhere'] = $rows(
+        'SELECT l.package_id, l.student_class_id, COUNT(*) AS ledger_rows, SUM(l.delta) AS ledger_net,'
+        . ' MAX(CASE WHEN sc.ID IS NULL THEN 0 ELSE 1 END) AS course_exists, MAX(sc.PackageID) AS course_package_id, MAX(sc.Stop) AS course_stop'
+        . ' FROM package_session_ledger l LEFT JOIN StudentClass sc ON sc.ID = l.student_class_id'
+        . " WHERE l.package_id IN ($in) AND (sc.ID IS NULL OR sc.PackageID IS NULL OR sc.PackageID <> l.package_id)"
+        . ' GROUP BY l.package_id, l.student_class_id ORDER BY l.package_id, l.student_class_id LIMIT 200',
+        $targets
+    );
     // What the lessons say: rebuildLedgerFromSessions() counts 'attended' slots; the single-to-shared conversion seeds
     // 'attended', 'completed' and 'late'.
     $result['member_lessons'] = $rows(
