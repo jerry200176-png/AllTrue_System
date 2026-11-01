@@ -425,7 +425,7 @@ class PaymentReportController extends Controller
                 $invoice = $this->pickOpenInvoice((int) $report->StudentClassID, $sc);
             }
             // #4597 Codex P1: a count package owes one obligation; a payment through another member pays its open bill.
-            if (! $invoice && $sc && $package && $this->isSharedPackageObligation($package, $sc)) {
+            if (! $invoice && $sc && $this->isSharedPackageObligation($package, $sc)) {
                 $invoice = $this->pickOpenPackageInvoice($package, $sc);
             }
 
@@ -476,7 +476,7 @@ class PaymentReportController extends Controller
             // not whatever was entered; the Payment records only what was received. X unknown → bill the entered amount, never mark paid.
             $billAmount = (int) $report->reported_amount;
             $enteredOnlyPackageBill = false;
-            if (!$invoice && $package && $this->isSharedPackageObligation($package, $sc) && !$this->packageHasLiveBill($package)) {
+            if (!$invoice && $this->isSharedPackageObligation($package, $sc) && !$this->packageHasLiveBill($package)) {
                 $packagePrice = $this->packagePrice($package);
                 if ($packagePrice !== null && $billAmount > $packagePrice) {
                     return response()->json(['message' => sprintf('方案總價為 NT$%d，收款金額不可超過。沒有登記任何款項。', $packagePrice),
@@ -1834,7 +1834,7 @@ class PaymentReportController extends Controller
             }
             // #4597: money taken back from a count package's bill reopens the package (its mark and every owner member's).
             $package = $invoice && !$alreadyReversed && (string) $invoice->Status !== 'paid' ? $this->lockPackageForCourse($sc) : null;
-            if ($package && $this->isSharedPackageObligation($package, $sc) && (int) $package->student_id === (int) $sc->StudentID) {
+            if ($this->isSharedPackageObligation($package, $sc) && (int) $package->student_id === (int) $sc->StudentID) {
                 $this->dropLegacyPaidMarks($sc, $package);
             }
 
