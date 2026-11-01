@@ -79,7 +79,6 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
             'courses' => count($courses),
             'by_campus' => $byCampus,
             'list_capped' => count($courses) >= 200,
-            'pending_extras' => count($pending),
         ],
         'courses' => $courses,
         'pending_extras' => $pending,

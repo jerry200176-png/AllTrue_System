@@ -89,7 +89,7 @@ class ForwardOverdeductProbeTest extends TestCase
         ], $out['courses'][0]);
         $this->assertSame([(int) $over->ID, (int) $suffixed->ID], array_map(fn (array $c): int => (int) $c['class_id'], $out['courses']));
         $this->assertEquals($suffixedExtra->id, $out['courses'][1]['generated_session_ids']);
-        $this->assertSame(['candidates' => 6, 'courses' => 2, 'by_campus' => [17 => 2], 'list_capped' => false, 'pending_extras' => 0], $out['summary']);
+        $this->assertSame(['candidates' => 6, 'courses' => 2, 'by_campus' => [17 => 2], 'list_capped' => false], $out['summary']);
         $this->assertSame([9 => 1, 17 => 2], forward_overdeduct_probe(DB::connection(), 0)['summary']['by_campus'], '0 scans every campus');
         foreach ($out['courses'] as $row) {
             $this->assertSame(self::COURSE_KEYS, array_keys($row));
@@ -123,7 +123,6 @@ class ForwardOverdeductProbeTest extends TestCase
 
         $this->assertEquals([['class_id' => $full->ID, 'campus_id' => 15, 'session_count' => 2, 'ledger_used' => 2,
             'scheduled_generated_session_ids' => (string) $extra->id, 'later_course_ids' => (string) $renewal->ID]], $out['pending_extras']);
-        $this->assertSame(1, $out['summary']['pending_extras']);
         $this->assertSame([], $out['courses'], 'nothing is over-deducted yet');
     }
 
