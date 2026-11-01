@@ -189,11 +189,15 @@ export function incomingClassConflict({
   return { blocked: false, reason: '', unique, newMax };
 }
 
-export function uniqueOccupantsFromBusySlots(slots = []) {
+export function uniqueOccupantsFromBusySlots(slots = [], requestedStart = '', requestedEnd = '') {
+  const reqS = hhmm(requestedStart);
+  const reqE = hhmm(requestedEnd);
   let unique = 0;
   for (const slot of slots) {
-    // #4368: the server counts distinct students; a trial's fixed cap of 1 can't derive it.
-    if (slot?.student_count !== undefined) {
+    // #4368: the server counts distinct students over the row's own span, so the count is only exact for the request
+    // when the row lies inside it; a longer row may count students outside the request (Codex P2).
+    const inside = Boolean(reqS && reqE) && hhmm(slot?.start_time) >= reqS && hhmm(slot?.end_time) <= reqE;
+    if (inside && slot?.student_count !== undefined) {
       unique = Math.max(unique, Number(slot.student_count));
       continue;
     }
@@ -289,7 +293,7 @@ export function pickerSlotConflict({
     return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0, otherCampusConflict: false };
   }
 
-  const unique = uniqueOccupantsFromBusySlots(overlappingSlots);
+  const unique = uniqueOccupantsFromBusySlots(overlappingSlots, requestedStart, requestedEnd);
   const hasOneOnOne = overlappingSlots.some(
     (slot) => String(slot.class_type || '') === 'one_on_one',
   );

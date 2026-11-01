@@ -104,6 +104,14 @@ const shortOneOnThree = [
 ];
 assert.equal(pickerSlotConflict({ overlappingSlots: shortOneOnThree, coveredClassType: 'trial', sessionCampusId: 3, requestedStart: '15:00', requestedEnd: '17:00' }).conflict, true);
 assert.equal(pickerSlotConflict({ overlappingSlots: trialSlot(1), coveredClassType: 'trial', sessionCampusId: 3 }).conflict, true, 'no requested span: no lift');
+// Codex P2: a row's student_count spans that row, so a longer row can't count students outside the request.
+const staggered = [
+  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 0, student_count: 3, one_on_three: false },
+  { start_time: '15:00', end_time: '16:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 1, student_count: 2, one_on_three: true },
+];
+assert.equal(pickerSlotConflict({ overlappingSlots: staggered, coveredClassType: 'one_on_three', sessionCampusId: 3, requestedStart: '15:00', requestedEnd: '16:00' }).conflict, false, '2 of 3 seats used in 15–16');
+const longRow = [{ start_time: '14:00', end_time: '18:00', campus_id: 3, class_type: 'one_on_two', remaining_capacity: 0, student_count: 3, one_on_three: false }];
+assert.equal(pickerSlotConflict({ overlappingSlots: longRow, coveredClassType: 'one_on_three', sessionCampusId: 3, requestedStart: '17:00', requestedEnd: '18:00' }).conflict, false, 'long row falls back to its derived count');
 
 const otherCampus = pickerSlotConflict({
   overlappingSlots: [{
