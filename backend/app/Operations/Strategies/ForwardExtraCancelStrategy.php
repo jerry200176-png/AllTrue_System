@@ -22,30 +22,45 @@ use RuntimeException;
  * settlement-lock cache. Only ClassSession.Status changes; the generator creates no Schedule row, and no counter is
  * recomputed: verify checks the course counters did not move. Execute is bound to the reviewed dry run by `expected_digest`
  * (Td076 pattern) and re-checks every row under lock. Rollback sets Status back to `scheduled` for exactly the cancelled ids.
+ * Restore (the reachable rollback, #4736 pattern) = a new Founder-approved request of this operation with `restore_request_id` =
+ * the cancel request: its plan reads that request's stored snapshot and lists each lesson still cancelled.
  */
 final class ForwardExtraCancelStrategy
 {
     private const REF = 'cancel-forward-extra-sessions-20261101';
+    private const OPERATION = 'forward-extra-cancel-20261101';
     private const COURSE_COLUMNS = ['ID', 'SessionCount', 'UsedSessions', 'RemainingSessions', 'Charge', 'Paid'];
 
     public function plan(array $parameters): array
     {
         $campus = $parameters['campus_id'] ?? null;
         $want = (string) ($parameters['expected_digest'] ?? '');
+        $source = (string) ($parameters['restore_request_id'] ?? '');
         $errors = [];
         if (($parameters['decision_reference'] ?? null) !== self::REF) $errors[] = 'case_parameters_mismatch';
         if (!is_numeric($campus) || (int) $campus < 0 || (string) (int) $campus !== (string) $campus) $errors[] = 'campus_id_invalid';
         if ($want !== '' && !preg_match('/^[0-9a-f]{64}$/', $want)) $errors[] = 'digest_format';
+        if ($source !== '' && !Str::isUuid($source)) $errors[] = 'restore_request_id_format';
         if ($errors !== []) {
             return ['ok' => false, 'errors' => $errors, 'state' => 'invalid'];
         }
-        [$rows, $totals] = $this->build((int) $campus);
+        if ($source !== '') {
+            $snapshot = $this->sourceSnapshot($source, (int) $campus);
+            if ($snapshot === null) {
+                return ['ok' => false, 'errors' => ['restore_source_not_found'], 'state' => 'invalid'];
+            }
+            $rows = $this->restoreRows($snapshot);
+            $totals = ['rows' => count($rows), 'restore' => count(array_filter($rows, fn ($r) => $r['class'] === 'restore'))];
+        } else {
+            [$rows, $totals] = $this->build((int) $campus);
+        }
         $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
-        $todo = array_filter($rows, fn ($r) => $r['class'] === 'cancel');
+        $todo = array_filter($rows, fn ($r) => in_array($r['class'], ['cancel', 'restore'], true));
         $state = $want === '' ? 'unpinned' : ($todo === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
 
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
-            'state' => $state, 'campus_id' => (int) $campus, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
+            'state' => $state, 'mode' => $source === '' ? 'cancel' : 'restore', 'restore_request_id' => $source,
+            'campus_id' => (int) $campus, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
     }
 
     public function execute(array $plan, array $context): array
@@ -57,6 +72,24 @@ final class ForwardExtraCancelStrategy
         }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'pinned') {
             throw new RuntimeException('forward_extra_cancel_plan_not_pinned');
+        }
+
+        if (($plan['mode'] ?? 'cancel') === 'restore') {
+            return DB::transaction(function () use ($plan, $context): array {
+                $snapshot = $this->sourceSnapshot((string) $plan['restore_request_id'], (int) $plan['campus_id']) ?? [];
+                ClassSession::query()->whereIn('id', array_column($snapshot, 'id'))->orderBy('id')->lockForUpdate()->get();
+                if (hash('sha256', json_encode($this->restoreRows($snapshot), JSON_THROW_ON_ERROR)) !== $plan['digest']) {
+                    throw new RuntimeException('forward_extra_cancel_digest_drift');
+                }
+                $ids = array_column(array_filter($this->restoreRows($snapshot), fn ($r) => $r['class'] === 'restore'), 'session_id');
+                $result = $this->rollback(['rows' => array_values(array_filter($snapshot, fn ($r) => in_array((int) $r['id'], $ids, true)))],
+                    $context + ['source_request_id' => (string) $plan['restore_request_id']]);
+                if (($result['ok'] ?? false) !== true) {
+                    throw new RuntimeException('forward_extra_cancel_restore_incomplete'); // all or nothing: a skipped row rolls back
+                }
+
+                return ['ok' => true, 'restored' => $result['restored'], 'snapshot' => ['restored_ids' => $ids]];
+            }, 3);
         }
 
         return DB::transaction(function () use ($plan, $context): array {
@@ -90,6 +123,13 @@ final class ForwardExtraCancelStrategy
 
     public function verify(array $plan, array $result): array
     {
+        if (($plan['mode'] ?? 'cancel') === 'restore') {
+            $ids = $result['snapshot']['restored_ids'] ?? [];
+            $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
+            if (DB::table('ClassSession')->whereIn('id', $ids)->whereRaw("LOWER(Status) = 'cancelled'")->exists()) $errors[] = 'not_restored';
+
+            return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['restored']];
+        }
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
         if (($result['snapshot']['incomplete'] ?? false) === true) $errors[] = 'snapshot_incomplete_manual_resolution';
         $ids = array_column($result['snapshot']['rows'] ?? [], 'id');
@@ -138,6 +178,31 @@ final class ForwardExtraCancelStrategy
         }, 3);
     }
 
+    /** The stored snapshot of a succeeded cancel request of this operation for the same campus, or null. @return list<array<string,mixed>>|null */
+    private function sourceSnapshot(string $requestId, int $campus): ?array
+    {
+        $request = DB::table('pop_operation_requests')->where('id', $requestId)->first();
+        $parameters = $request ? json_decode((string) $request->parameters, true) : null;
+        if (!$request || (string) $request->operation_id !== self::OPERATION || !is_array($parameters)
+            || ($parameters['restore_request_id'] ?? '') !== '' || (int) ($parameters['campus_id'] ?? -1) !== $campus) {
+            return null;
+        }
+        $execute = DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')
+            ->where('result', 'succeeded')->orderByDesc('attempt_no')->first();
+        $snapshot = $execute ? json_decode((string) $execute->snapshot, true) : null;
+
+        return is_array($snapshot['rows'] ?? null) && $snapshot['rows'] !== [] ? $snapshot['rows'] : null;
+    }
+
+    /** ids-only rows: `restore` while the lesson is still cancelled, else `skip` (it moved on since). @return list<array<string,mixed>> */
+    private function restoreRows(array $snapshot): array
+    {
+        $now = DB::table('ClassSession')->whereIn('id', array_column($snapshot, 'id'))->pluck('Status', 'id');
+
+        return array_map(fn (array $r): array => ['session_id' => (int) $r['id'], 'class_id' => (int) $r['StudentClassID'],
+            'class' => strtolower((string) ($now[$r['id']] ?? '')) === 'cancelled' ? 'restore' : 'skip'], array_values($snapshot));
+    }
+
     private function audit(array $metadata, string $suffix = ''): void
     {
         $correlationId = (string) Str::uuid();
@@ -174,9 +239,13 @@ final class ForwardExtraCancelStrategy
                 $start = substr((string) $s->StartTime, 0, 5);
                 $activity = DB::table('StudentSingIn')->where('ClassSessionID', $sid)->whereNull('VoidedAt')->exists()
                     || DB::table('LearningRecord')->where('ClassSessionID', $sid)->whereNull('VoidedAt')->exists()
-                    || DB::table('session_deduction_ledger')->where('class_session_id', $sid)->exists();
+                    || DB::table('session_deduction_ledger')->where('class_session_id', $sid)->exists()
+                    // A legacy record with no ClassSessionID counts toward usage by course + date (+ start), so it protects the lesson too.
+                    || DB::table('LearningRecord')->where('StudentClassID', $classId)->whereNull('VoidedAt')
+                        ->where(fn ($q) => $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0))->whereDate('SessionDate', $date)
+                        ->where(fn ($q) => $q->whereNull('StartTime')->orWhereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start]))->exists();
                 $duplicate = $later !== [] && DB::table('ClassSession')->whereIn('StudentClassID', $later)->whereDate('SessionDate', $date)
-                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->whereRaw("LOWER(Status) <> 'cancelled'")->exists();
+                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")->exists();
                 [$class, $reason] = match (true) {
                     $activity => ['review', 'activity'],
                     $settled => ['review', 'course_settled'],

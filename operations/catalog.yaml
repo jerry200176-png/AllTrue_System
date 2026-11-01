@@ -723,6 +723,6 @@ operations:
     estimated_duration: 5m
     invariant_packs: [session-pack@1.0.0]
     strategy_class: App\Operations\Strategies\ForwardExtraCancelStrategy
-    parameter_keys: [campus_id, decision_reference, expected_digest]
+    parameter_keys: [campus_id, decision_reference, expected_digest, restore_request_id]
     tags: [repair, session, forward-generator, issue-4758]
-    notes: GitHub #4758 (in-app #452). Cancels the scheduled lessons the forward generator added to courses whose bought lessons are all used, when nothing points at them and they are today or later or duplicated on a later course of the same student and subject. Other such lessons are only listed for a director. Only ClassSession.Status changes; execute is pinned to the dry-run digest and rollback sets exactly those ids back to scheduled. Pi-local POP only.
+    notes: GitHub #4758 (in-app #452). Cancels the scheduled lessons the forward generator added to courses whose bought lessons are all used, when nothing points at them and they are after today or duplicated on a later course of the same student and subject. Other such lessons are only listed for a director. Only ClassSession.Status changes; execute is pinned to the dry-run digest and rollback sets exactly those ids back to scheduled. Pi-local POP only.

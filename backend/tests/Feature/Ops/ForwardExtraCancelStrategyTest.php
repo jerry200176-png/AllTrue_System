@@ -31,9 +31,9 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $this->teacherId = (int) User::create(['LoginName' => 'fx-teacher@t.com', 'Name' => 'T', 'PSW' => 's', 'type' => 'T', 'phone' => 911000000])->id;
     }
 
-    private function params(int $campus = 0, string $digest = ''): array
+    private function params(int $campus = 0, string $digest = '', string $restore = ''): array
     {
-        return ['campus_id' => $campus, 'decision_reference' => self::REF, 'expected_digest' => $digest];
+        return ['campus_id' => $campus, 'decision_reference' => self::REF, 'expected_digest' => $digest, 'restore_request_id' => $restore];
     }
 
     private function student(int $campus): int
@@ -116,6 +116,16 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $this->lesson($this->course($student, 8), $past, 'cancelled'); // a cancelled twin is not a duplicate
         // Today's lesson may already have ended unmarked: like a past one, it needs a duplicate.
         [, $today] = $this->fullCourse($this->student(17), now('Asia/Taipei')->toDateString());
+        // Codex P2: a voided twin covers nothing (the generator's live-slot rule excludes it).
+        [, $voidedDup] = $this->fullCourse($student = $this->student(17), $past);
+        $this->lesson($this->course($student, 8), $past, 'voided');
+        // Codex P2: a legacy learning record with no ClassSessionID, same course + date + start, is activity.
+        [$lrCourse, $unbound] = $this->fullCourse($student = $this->student(17), $past);
+        $this->lesson($this->course($student, 8), $past, 'scheduled');
+        DB::statement('SET FOREIGN_KEY_CHECKS=0'); // a pre-FK legacy row: today's schema no longer accepts it
+        DB::table('LearningRecord')->insert(['StudentClassID' => $lrCourse->ID, 'ClassSessionID' => 0, 'TeacherID' => $this->teacherId, 'Content' => '',
+            'Subject' => 's', 'SessionDate' => $past, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'pending']);
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
         $s = new ForwardExtraCancelStrategy();
 
         $plan = $this->pinned($s);
@@ -124,6 +134,8 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $this->assertSame(['review', 'past_no_duplicate'], [$rows[$alone]['class'], $rows[$alone]['reason']]);
         $this->assertSame('review', $rows[$cancelledDup]['class']);
         $this->assertSame(['review', 'past_no_duplicate'], [$rows[$today]['class'], $rows[$today]['reason']]);
+        $this->assertSame(['review', 'past_no_duplicate'], [$rows[$voidedDup]['class'], $rows[$voidedDup]['reason']]);
+        $this->assertSame(['review', 'activity'], [$rows[$unbound]['class'], $rows[$unbound]['reason']]);
         $s->execute($plan, []);
 
         $this->assertSame(['cancelled', 'scheduled', 'scheduled'], [$this->st($dup), $this->st($alone), $this->st($cancelledDup)]);
@@ -203,6 +215,32 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $s->execute($s->plan($this->params()), []);
     }
 
+    public function test_a_cancel_run_is_undone_by_an_approved_restore_request(): void
+    {
+        // Codex P2: the reachable rollback is a new approved request of this operation naming the cancel request (#4736 pattern);
+        // the Pi runs it like any approved execute, so it needs no recovery-phase allowlist.
+        [, $extra] = $this->fullCourse($this->student(26), now()->addDays(3)->toDateString());
+        $service = new PopOperationService(new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
+        $sha = str_repeat('c', 40);
+        $go = function (string $restore) use ($service, $sha): array {
+            $draft = fn (string $digest): string => (string) $service->createDraft('forward-extra-cancel-20261101', $this->params(26, $digest, $restore),
+                'fx-test-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
+            $digest = (string) $service->runDryRun($draft(''), 'user:1', 1, 'super_admin', [])['plan']['digest'];
+            $id = $draft($digest);
+            $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
+            $token = $service->approve($id, 'founder-go-forward-extra-test-' . substr($id, 0, 8), 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
+
+            return [$id, $service->run($id, 'execute', $token, $sha, 'pop-pi-local')['result'], $service->run($id, 'verify', $token, $sha, 'pop-pi-local')['result']];
+        };
+
+        [$cancelId, $execute, $verify] = $go('');
+        $this->assertSame(['succeeded', 'succeeded', 'cancelled'], [$execute, $verify, $this->st($extra)]);
+        [, $execute, $verify] = $go($cancelId);
+        $this->assertSame(['succeeded', 'succeeded', 'scheduled'], [$execute, $verify, $this->st($extra)]);
+        $plan = (new ForwardExtraCancelStrategy())->plan($this->params(26, '', $cancelId));
+        $this->assertSame(['skip'], array_column($plan['manifest'], 'class'), 'nothing left to restore');
+    }
+
     public function test_the_catalog_entry_runs_through_pop_and_requires_the_exact_founder_shape(): void
     {
         [, $extra] = $this->fullCourse($this->student(26), now()->addDays(3)->toDateString());
@@ -226,9 +264,9 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']], json_encode($verify['verification'] ?? $verify));
         $this->assertSame('cancelled', $this->st($extra));
         $adapter = file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-forward-extra-cancel.yml');
-        $this->assertStringContainsString('AUDIT=pop.forward_extra_cancel', $adapter);
+        $this->assertStringContainsString('AUDIT="pop.forward_extra_cancel${RESTORE:+.rollback}"', $adapter);
         $entry = $catalog->operation('forward-extra-cancel-20261101');
-        $this->assertSame(['campus_id', 'decision_reference', 'expected_digest'], $entry['parameter_keys']);
+        $this->assertSame(['campus_id', 'decision_reference', 'expected_digest', 'restore_request_id'], $entry['parameter_keys']);
         $roles = new ReflectionMethod($service, 'approvalRoles');
         $this->assertSame(['super_admin'], $roles->invoke($service, $entry));
         $entry['blast_radius'] = 'global';

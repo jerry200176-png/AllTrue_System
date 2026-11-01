@@ -35,6 +35,13 @@ Verify: the ids are cancelled, the course counters equal the snapshot, and no ro
 
 ## Rollback
 
+**How to undo a cancel run:** dispatch the same workflow with `restore_request_id` = that run's POP request id:
+1. Dry-run with confirm `DRY_RUN_FORWARD_EXTRA_RESTORE`.
+2. The Founder approves with `APPROVE_FORWARD_EXTRA_RESTORE` and the reviewed digest.
+
+The restore plan reads the cancel request's stored snapshot and lists each lesson still `cancelled` (`restore`) or moved on since (`skip`). The Pi runs it like any approved execute (#4736 pattern). It is all or nothing: one skipped row rolls the whole restore back.
+
+
 `rollback` sets `Status` back to `scheduled` for exactly the snapshot ids. A row already moved on, or whose student slot is taken since, is skipped
 and reported (`skipped_ids`). A rerun after execute is `state=after`.
 

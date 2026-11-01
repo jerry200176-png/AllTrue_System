@@ -1092,13 +1092,13 @@ final class PopOperationService
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest', 'restore_request_id'];
     }
 
-    /** #4758: campus_id + expected_digest pin each run to its dry-run (Td076 pattern). */
+    /** #4758: campus_id + expected_digest pin each run to its dry-run (Td076 pattern); restore_request_id undoes a cancel run (#4736 pattern). */
     private function isExactForwardExtraCancel(array $entry): bool
     {
         return ($entry['id'] ?? null) === 'forward-extra-cancel-20261101'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\ForwardExtraCancelStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-forward-extra-cancel'
-            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest', 'restore_request_id'];
     }
 
     /** Same single-super_admin Founder-exact shape; campus_ids + expected_digest pin each run to its dry-run. */
