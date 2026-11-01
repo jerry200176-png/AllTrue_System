@@ -60,9 +60,20 @@ class BugAutoIntakeCommandTest extends TestCase
         $log($movedOn, $reporter->id, 'resolved', 'in_progress', 'x');
         $log($movedOn, $admin->id, 'in_progress', 'in_progress', 'still looking');
 
+        $stale = $this->bug($reporter, 'in_progress', now()->subDays(40)->toDateTimeString());
+        $old = $log($stale, $reporter->id, 'resolved', 'in_progress', 'x');
+        DB::table('bug_report_status_logs')->where('id', $old)->update(['created_at' => now()->subDays(BugAutoIntakeCommand::REOPEN_WINDOW_DAYS + 1)]);
+        // 60 more reopens: past the 50-row new-report page, all are still listed (Codex on #4739).
+        foreach (range(1, 60) as $i) {
+            $log($this->bug($reporter, 'in_progress', now()->subDay()->toDateTimeString()), $reporter->id, 'resolved', 'in_progress', 'x');
+        }
+
         $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--candidates' => true]));
         $out = Artisan::output();
         $rows = json_decode(trim($out), true)['reopened'];
+        $this->assertCount(61, $rows, 'every reopen in the window, not one 50-row page');
+        $this->assertNotContains($stale->id, array_column($rows, 'bug_id'), 'a reopen older than the window is not re-read hourly');
+        $rows = array_slice($rows, 0, 1);
 
         $this->assertSame([$reopened->id], array_column($rows, 'bug_id'), 'only a reporter reopen that is still the latest change');
         $this->assertSame($logId, $rows[0]['log_id']);

@@ -21,6 +21,10 @@ class BugAutoIntakeCommand extends Command
 {
     public const ACK_TEXT = '收到，我們正在查，查到原因會再回覆你。';
 
+    public const REOPEN_WINDOW_DAYS = 14;
+
+    public const REOPEN_CAP = 200;
+
     protected $signature = 'bugs:auto-intake
                             {--candidates : Print new reports as JSON (IDs, campus, severity, created_at, family only)}
                             {--limit=50 : Max reports per --candidates (unacknowledged only, so the backlog drains)}
@@ -67,7 +71,11 @@ class BugAutoIntakeCommand extends Command
             ->join('bug_reports as b', 'b.id', '=', 'l.bug_report_id')
             ->where('b.status', 'in_progress')->where('l.from_status', 'resolved')->where('l.to_status', 'in_progress')
             ->whereColumn('l.changed_by', 'b.reporter_user_id')
-            ->orderBy('l.id')->limit($limit)->get(['l.bug_report_id', 'l.id', 'l.created_at'])
+            // A reopen stays listed until the report changes again, so a fixed page would starve later ones (Codex on
+            // #4739): read every reopen of the last 14 days (the hourly run sees each one ~336 times), capped at 200;
+            // the workflow warns at the cap.
+            ->where('l.created_at', '>=', now()->subDays(self::REOPEN_WINDOW_DAYS))
+            ->orderBy('l.id')->limit(self::REOPEN_CAP)->get(['l.bug_report_id', 'l.id', 'l.created_at'])
             ->map(fn ($r) => ['bug_id' => (int) $r->bug_report_id, 'log_id' => (int) $r->id,
                 'at' => \Illuminate\Support\Carbon::parse($r->created_at)->toIso8601String()])->values()->all();
         $this->line(json_encode(['candidates' => $rows, 'reopened' => $reopened], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));

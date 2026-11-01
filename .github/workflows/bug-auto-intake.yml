@@ -80,6 +80,7 @@ jobs:
           echo "reopened=$reopened" >> "$GITHUB_OUTPUT"
           echo "reopened_count=$(printf '%s' "$reopened" | jq 'length')" >> "$GITHUB_OUTPUT"
           echo "reopened: $(printf '%s' "$reopened" | jq -c '[.[].bug_id]')"
+          [ "$(printf '%s' "$reopened" | jq 'length')" -lt 200 ] || echo "::warning::200 reopened reports (BugAutoIntakeCommand::REOPEN_CAP); later ones wait for the next run"
 
   issues:
     needs: candidates
