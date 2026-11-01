@@ -313,11 +313,7 @@ class AttendanceController extends Controller
         $sessionsBuilder = ClassSession::with(['studentClass.student'])
             ->whereIn('StudentClassID', $classIds)
             ->whereBetween('SessionDate', [$startDate, $endDate])
-            ->whereDoesntHave('signIns', function ($q) {
-                $q->whereNull('VoidedAt');
-            })
-            ->whereIn('Status', ['scheduled', 'absent'])
-            ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now]);
+            ->endedUnmarked($now);
 
         // Bug fix (2026-04-21)：堂次級精確過濾——代課後原老師不應在補點名看到被代課堂
         // classIds 是保守超集合（課程級）；此處補做堂次級（session × date × time）確認

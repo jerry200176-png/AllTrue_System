@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-attendance-badge-makeup
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 待補點名會亮紅色數字
+    summary: 前幾天下課還沒點名的課，左邊「出缺勤」也會顯示紅色數字提醒你。
+    items:
+      - category: fixed
+        text: 以前紅色數字只算今天的課；現在最近七天已下課、還沒點名的課也會算進去。
+      - category: improved
+        text: 紅色數字和出缺勤頁「待補點名」的堂數一致，點名後數字就會減少。
+    source_refs:
+      - "changelog:2026-11-01:attendance-badge-makeup"

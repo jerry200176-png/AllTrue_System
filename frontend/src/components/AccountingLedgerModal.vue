@@ -190,7 +190,6 @@
                             :disabled="isBusyInvoice(inv)"
                             @click="voidInvoice(inv, 'exception')"
                           >更正並作廢</button>
-                          <span v-else class="ledger-muted">—</span>
                         </div>
                       </td>
                     </tr>
@@ -1123,7 +1122,7 @@ const anomalyLabel = (code) => labelMap({
 
 <style scoped>
 .ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.28);display:flex;justify-content:flex-end}
-.ledger-modal{width:min(560px,100vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
+.ledger-modal{width:min(720px,100vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
 .ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
 .ledger-header h3{margin:0;font-size:22px}
 .ledger-modal:focus{outline:none}
@@ -1144,9 +1143,10 @@ const anomalyLabel = (code) => labelMap({
 .ledger-owed__later{font-size:12px;color:var(--ds-ink-mute)}
 .ledger-owed__over{margin-top:8px !important;padding:8px 10px;border-radius:8px;background:var(--ds-warning-wash);color:var(--ds-ink);font-size:13px}
 
-.ledger-section{margin-top:18px}
+.ledger-section{margin-top:20px}
 .ledger-contracts{display:grid;gap:10px}
-.ledger-section h4{margin:0 0 8px;font-size:14px}
+.ledger-section h4{margin:0 0 12px;font-size:var(--ds-font-size-xl);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight);letter-spacing:.02em}
+.ledger-section+.ledger-section{padding-top:16px;border-top:1px solid var(--ds-border)}
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
 .ledger-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -1193,6 +1193,8 @@ const anomalyLabel = (code) => labelMap({
 .ledger-voided-notes__list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
 .ledger-voided-notes__list p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .ledger-actions{display:flex;gap:6px;flex-wrap:wrap}
+/* #4771: a bill with no action shows no empty row (was a stray —). */
+.ledger-cell-actions:has(.ledger-actions:empty){display:none}
 .ledger-action{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}
 .ledger-action--danger{border-color:var(--ds-danger-wash);color:var(--ds-danger)}
 .ledger-action--warning{border-color:var(--ds-warning-wash);color:var(--ds-danger);background:var(--ds-warning-wash)}

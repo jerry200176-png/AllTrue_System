@@ -1,0 +1,3 @@
+## 2026-11-01 — fix(auth): a director's teacher edit keeps the teacher's links at other campuses (#4433)
+<!-- release-notes: staff_update=staff-2026-11-01-director-edit-keeps-other-campus-links -->
+- Founder decision 3A (2026-11-01): below super_admin, `PUT /profiles/{id}` (`multi_branches`, `branch_id`) and `DELETE /teacher_branches` only add or remove `UserCampus` rows (approved or pending) and `teacher_branches` mirror rows at the caller's own campuses. Links at campuses the caller doesn't manage stay as they were, and a main-campus change moves only a link at the caller's campuses. A new unmanaged campus is still created pending, with no mirror row. Approval is unchanged (the approver's campuses only), and super_admin is unrestricted.

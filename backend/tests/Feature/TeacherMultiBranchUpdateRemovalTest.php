@@ -40,6 +40,8 @@ class TeacherMultiBranchUpdateRemovalTest extends TestCase
             'phone'     => '0900000010',
         ]);
         UserCampus::create(['UserID' => $director->id, 'CampusID' => $campus1->id, 'Admin' => 1, 'Approved' => 1]);
+        // #4433 (Founder 3A): a director removes only links at campuses they manage.
+        UserCampus::create(['UserID' => $director->id, 'CampusID' => $campus3->id, 'Admin' => 1, 'Approved' => 1]);
 
         $teacher = User::create([
             'LoginName' => 'teacher-mb-remove',
@@ -96,6 +98,8 @@ class TeacherMultiBranchUpdateRemovalTest extends TestCase
             'phone'     => '0900000012',
         ]);
         UserCampus::create(['UserID' => $director->id, 'CampusID' => $campus1->id, 'Admin' => 1, 'Approved' => 1]);
+        // #4433 (Founder 3A): a director removes only links at campuses they manage.
+        UserCampus::create(['UserID' => $director->id, 'CampusID' => $campus2->id, 'Admin' => 1, 'Approved' => 1]);
 
         $teacher = User::create([
             'LoginName' => 'teacher-mb-empty',

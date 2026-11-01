@@ -265,6 +265,23 @@ class TeacherBranchControllerTest extends TestCase
 
         $res = $this->withToken($token)->deleteJson("/api/v1/teacher_branches?teacher_id={$teacherId}&branch_id={$campus->id}");
         $res->assertOk();
-        $this->assertDatabaseMissing('UserCampus', ['UserID' => $teacherId, 'CampusID' => $campus2->id]);
+        // #4433 (Founder 3A): only the director's own campus link goes; the other campus's link stays.
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $teacherId, 'CampusID' => $campus->id]);
+        $this->assertDatabaseHas('UserCampus', ['UserID' => $teacherId, 'CampusID' => $campus2->id, 'Approved' => 1]);
+    }
+
+    public function test_super_admin_destroy_removes_every_link(): void
+    {
+        $campus  = Campus::factory()->create();
+        $campus2 = Campus::factory()->create();
+        $teacherId = $this->makeTeacher($campus->id);
+        DB::table('UserCampus')->insert(['UserID' => $teacherId, 'CampusID' => $campus2->id, 'Admin' => 0, 'Approved' => 0]);
+        $admin = User::create(['LoginName' => 's-' . uniqid() . '@example.com', 'Name' => 's', 'type' => 'S',
+            'PSW' => password_hash('Password123', PASSWORD_DEFAULT), 'phone' => '09' . random_int(10000000, 99999999)]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $admin->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+
+        $this->withToken($raw)->deleteJson("/api/v1/teacher_branches?teacher_id={$teacherId}")->assertOk();
+        $this->assertSame(0, DB::table('UserCampus')->where('UserID', $teacherId)->count());
     }
 }

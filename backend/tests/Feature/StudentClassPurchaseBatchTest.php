@@ -243,6 +243,124 @@ class StudentClassPurchaseBatchTest extends TestCase
         ])->assertStatus(422)->assertJsonPath('code', 'trial_use_convert');
     }
 
+    public function test_hourly_batch_bills_planned_lesson_lengths_in_preview_and_purchase(): void
+    {
+        // #4344: Mon 1h + Thu 2h, 3 lessons from Monday = 1+2+1 = 4h (the old average billed 4.5h).
+        [$token, $source] = $this->hourlySource(['SessionDuration' => 60, 'duration1' => 120]);
+        $payload = ['sessions' => 3, 'start_date' => '2026-05-25'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $preview = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/renewal-preview", $payload + ['mode' => 'purchase_batch']
+        )->assertOk();
+        $res = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/purchase-batch", $payload + ['mode' => 'new_purchase']
+        )->assertCreated();
+
+        $newCourse = StudentClass::where('ID', (int) $res->json('new_course.id'))->first();
+        $lessonHours = ClassSession::where('StudentClassID', $newCourse->ID)->get()
+            ->sum(fn ($s) => (strtotime((string) $s->EndTime) - strtotime((string) $s->StartTime)) / 3600);
+
+        $this->assertEquals(4, $lessonHours);
+        $this->assertSame(4, (int) $preview->json('proposed_course.total_hours'));
+        $this->assertSame(4, (int) $newCourse->TotalHours);
+        $this->assertSame(4000, (int) $preview->json('proposed_course.charge'));
+        $this->assertSame(4000, (int) $newCourse->Charge);
+    }
+
+    public function test_hourly_batch_counts_a_lesson_past_midnight_at_its_full_length(): void
+    {
+        // Codex P2 on #4761: 23:00 + 2h is 23:00–01:00 as times only; it is 2 hours, never negative.
+        [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'duration1' => 120, 'time' => '23:00:00', 'time1' => '23:00:00']);
+        $payload = ['sessions' => 2, 'start_date' => '2026-05-25'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $preview = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/renewal-preview", $payload + ['mode' => 'purchase_batch']
+        )->assertOk();
+        $res = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/purchase-batch", $payload + ['mode' => 'new_purchase']
+        )->assertCreated();
+
+        $newCourse = StudentClass::where('ID', (int) $res->json('new_course.id'))->first();
+        $this->assertSame(4, (int) $preview->json('proposed_course.total_hours'));
+        $this->assertSame(4, (int) $newCourse->TotalHours);
+        $this->assertSame(4000, (int) $preview->json('proposed_course.charge'));
+        $this->assertSame(4000, (int) $newCourse->Charge);
+    }
+
+    public function test_hourly_batch_past_the_two_year_horizon_bills_every_bought_lesson(): void
+    {
+        // Codex P2 on #4761: 120 weekly 2h lessons outrun the scheduler's 2-year horizon; all 120 are still billed (240h).
+        [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'week1' => null, 'time1' => null]);
+        $payload = ['sessions' => 120, 'start_date' => '2026-05-25'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $preview = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/renewal-preview", $payload + ['mode' => 'purchase_batch']
+        )->assertOk();
+        $res = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/purchase-batch", $payload + ['mode' => 'new_purchase']
+        )->assertCreated();
+
+        $newCourse = StudentClass::where('ID', (int) $res->json('new_course.id'))->first();
+        $this->assertSame(240, (int) $preview->json('proposed_course.total_hours'));
+        $this->assertSame(240, (int) $newCourse->TotalHours);
+        $this->assertSame(240000, (int) $newCourse->Charge);
+    }
+
+    public function test_hourly_batch_with_equal_length_slots_is_unchanged(): void
+    {
+        [$token, $source] = $this->hourlySource(['SessionDuration' => 120, 'duration1' => 120]);
+        $payload = ['sessions' => 3, 'start_date' => '2026-05-25'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $preview = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/renewal-preview", $payload + ['mode' => 'purchase_batch']
+        )->assertOk();
+        $res = $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$source->ID}/purchase-batch", $payload + ['mode' => 'new_purchase']
+        )->assertCreated();
+
+        $newCourse = StudentClass::where('ID', (int) $res->json('new_course.id'))->first();
+        $this->assertSame(6, (int) $preview->json('proposed_course.total_hours'));
+        $this->assertSame(6, (int) $newCourse->TotalHours);
+        $this->assertSame(6000, (int) $preview->json('proposed_course.charge'));
+        $this->assertSame(6000, (int) $newCourse->Charge);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array{0: string, 1: StudentClass}
+     */
+    private function hourlySource(array $overrides): array
+    {
+        $token = $this->createDirectorToken([1], 'director-hourly@example.com');
+        $student = Student::create([
+            'name' => '時薪學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $source = $this->createStudentClass($student->id, $overrides + [
+            'SessionCount' => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions' => 7,
+            'Paid' => 1,
+            'Rate' => 1000,
+            'rate_unit' => 'hour',
+            'StartDate' => '2026-04-01',
+            'week' => 1,
+            'time' => '18:00:00',
+            'week1' => 4,
+            'time1' => '18:00:00',
+        ]);
+
+        return [$token, $source];
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName): string
     {
         $user = User::create([

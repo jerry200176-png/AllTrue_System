@@ -142,7 +142,10 @@ class TeacherBranchController extends Controller
             if (!$this->managesTeacher($request, $teacherId)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
-            UserCampus::where('UserID', $teacherId)->delete();
+            // #4433 (Founder 3A): below super_admin, only the caller's own campus links go.
+            UserCampus::where('UserID', $teacherId)
+                ->when($request->attributes->get('auth_role') !== 'super_admin', fn ($q) => $q->whereIn('CampusID', $this->callerCampusIds($request)))
+                ->delete();
         }
 
         return response()->json(['success' => true]);

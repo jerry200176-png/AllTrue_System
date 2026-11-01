@@ -501,6 +501,26 @@ class NotificationApiTest extends TestCase
         ]);
     }
 
+    public function test_attendance_badge_counts_an_earlier_day_lesson_still_waiting_for_attendance(): void
+    {
+        // #4770 (in-app #456): 待補點名 listed a lesson from 3 days ago, yet the 出缺勤 badge stayed empty.
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '學生A', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $class = $this->createStudentClass($student->id, 1, 1, 4);
+        $lesson = fn (int $daysAgo, string $status) => ClassSession::create([
+            'StudentClassID' => $class->ID, 'SessionDate' => now()->subDays($daysAgo)->toDateString(),
+            'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => $status, 'Note' => '',
+        ]);
+        $lesson(3, 'scheduled');  // waiting for attendance: counts
+        $lesson(2, 'attended');   // marked: no
+        $lesson(9, 'scheduled');  // outside the list's 7-day window: no
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/notifications/unread-count?branch_id=1')
+            ->assertOk()
+            ->assertJsonPath('by_type.attendance.total', 1);
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName = 'director@example.com'): string
     {
         $user = User::create([
