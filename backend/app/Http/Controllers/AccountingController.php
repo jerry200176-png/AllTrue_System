@@ -459,7 +459,7 @@ class AccountingController extends Controller
             return $guard;
         }
 
-        $classes = StudentClass::with(['student', 'subjectRecord'])
+        $classes = StudentClass::with(['student', 'subjectRecord', 'coursePackage'])
             ->where('StudentID', $student->id)
             ->orderByDesc('StartDate')
             ->orderByDesc('ID')
@@ -797,6 +797,16 @@ class AccountingController extends Controller
                 $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && !$invoices->contains(fn (Invoice $o) => (int) $o->StudentClassID === (int) $class->ID && (string) $o->Status !== 'void' && (int) $o->TotalAmount > 0 && in_array((string) $o->Status, ['unpaid', 'partial'], true)) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
                 $freeGiftSettled = $zeroSettled(true);
+                // #4597: the package's paid mark counts like the course's own (isEffectivelyPaid), and then so do the package's
+                // trial exemption and paid_at (isTrialFeeRecordedByDate reads the package for a Paid=0 member), the same rules
+                // legacyFlagRefusal() applies, so a dated paid trial package never shows 需核對 actions the server refuses.
+                // Only a package this student owns in this campus (a stale PackageID can point at another one; the resolution
+                // endpoints refuse it as legacy_flag_package_mismatch).
+                $pkg = $class->coursePackage;
+                $ownPkg = $pkg && (int) $pkg->id === (int) $class->PackageID && (int) $pkg->student_id === (int) $class->StudentID
+                    && $class->student && (int) $pkg->campus_id === (int) $class->student->CampusID ? $pkg : null;
+                $markedPaid = (int) ($class->Paid ?? 0) === 1 || (bool) ($ownPkg->paid ?? false);
+                $paidAt = $class->PayDate ?: ((int) ($class->Paid ?? 0) !== 1 && $ownPkg?->paid ? $ownPkg->paid_at : null);
 
                 return [
                 'id' => (int) $class->ID,
@@ -808,17 +818,15 @@ class AccountingController extends Controller
                 'charge' => (int) ($class->Charge ?? 0),
                 // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
                 'current_contract_charge' => $class->currentContractCharge(),
-                'paid' => (int) ($class->Paid ?? 0) === 1 || $zeroSettled(false), // #3991 free/gift, #4018 full-discount: current term
+                'paid' => $markedPaid || $zeroSettled(false), // #4597 package-only mark; #3991 free/gift, #4018 full-discount: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,
                 // #4656: a current-term 全額折扣 renewal bill (#4018) settles the term; the panel shows 不用繳費, not 需核對.
                 'full_discount_settled' => !$freeGiftSettled && $zeroSettled(false),
                 'waived' => ContractMoneyState::isWaived($class),
-                'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
+                'paid_at' => $paidAt ? substr((string) $paidAt, 0, 10) : null,
                 // in-app #428: server-derived (same rule as legacy_paid_flag_only); the panel shows no 需核對 for it.
-                // #4339 review: only the course's own Paid=1 trial row (the one `paid` above reads), so it never marks a
-                // Paid=0 member of a paid trial package; whether the ledger derives `paid` from a package is a billing rule.
-                'trial_fee_recorded_by_date' => (int) ($class->Paid ?? 0) === 1 && $class->isTrialFeeRecordedByDate(),
+                'trial_fee_recorded_by_date' => $markedPaid && $class->isTrialFeeRecordedByDate(),
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
                 'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
                 'stop' => (int) ($class->Stop ?? 0) === 1,

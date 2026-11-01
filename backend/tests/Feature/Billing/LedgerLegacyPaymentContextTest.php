@@ -105,10 +105,10 @@ class LedgerLegacyPaymentContextTest extends TestCase
         $this->assertTrue($flag($datedTrial));
         $this->assertFalse($flag($undatedTrial), 'a trial marked paid without a date stays 需核對');
         $this->assertFalse($flag($regular), '#4174 unchanged for a regular course');
-        // #4339 review: the ledger serializes `paid` from the course's own Paid, so a Paid=0 member of a paid trial package is
-        // not flagged: its card keeps the unpaid state it had before #428 rather than a recorded payment beside 還沒開帳單.
+        // #4597: a Paid=0 member of a paid, dated trial package is paid by the package mark, and so exempted with the package's
+        // date, the same rule legacyFlagRefusal() applies (legacy_flag_trial_fee): no 需核對 actions the server would refuse.
         $member = $courses->firstWhere('id', $datedMember->ID);
-        $this->assertSame([false, false, null], [$member['paid'], $member['trial_fee_recorded_by_date'], $member['paid_at']]);
+        $this->assertSame([true, true, '2026-10-10'], [$member['paid'], $member['trial_fee_recorded_by_date'], $member['paid_at']]);
         $this->assertFalse($flag($undatedMember), 'a trial package marked paid without paid_at stays unexempted');
     }
 
