@@ -230,6 +230,20 @@ class FreeGiftZeroBillTest extends TestCase
      * #4150 (Codex P2 on #4204): a monthly (date-mode) free/gift course rates its NT$0 period `paid`; the course list
      * must still say `free` (the resolver verdict), with the monthly summary kept as-is for the period rows.
      */
+    public function test_a_full_discount_bill_must_be_voided_before_a_charge_or_billing_correction(): void
+    {
+        $token = $this->directorToken();
+        foreach (['date' => 'charge-correction', 'count' => 'billing-correction'] as $mode => $endpoint) {
+            $course = $this->monthlyCourse($this->student(), ['ScheduleMode' => $mode] + ($mode === 'count' ? ['SessionCount' => 4, 'RemainingSessions' => 4] : []));
+            $bill = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01', 'Note' => '',
+                'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid', 'zero_amount_reason' => Invoice::ZERO_REASON_FULL_DISCOUNT]);
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/{$endpoint}", ['new_session_count' => 4, 'new_charge' => 3000, 'reason' => 't'])
+                ->assertStatus(409)->assertJsonPath('code', str_replace('-', '_', $endpoint) . '_free_gift_locked')
+                ->assertJsonPath('message', '此課程有「全額折扣」帳單，請先在帳務作廢該帳單再更正費用。');
+            $this->assertSame([0, 'paid'], [(int) $bill->fresh()->TotalAmount, (string) $bill->fresh()->Status], "{$endpoint}: the settled NT\$0 bill is untouched");
+        }
+    }
+
     public function test_a_monthly_free_gift_course_lists_as_free_not_the_period_status(): void
     {
         $token = $this->directorToken();
