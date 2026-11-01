@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-02-teacher-main-campus-switch
+    published_at: "2026-11-02"
+    audiences:
+      - director
+    importance: digest
+    title: 老師主要分校可改成已連結分校
+    summary: 老師已連結多個分校時，改選其中一個當主要分校現在會生效。
+    items:
+      - category: fixed
+        text: 老師資料裡把主要分校改成已連結的另一個分校，儲存後主要分校會正確更換。
+      - category: fixed
+        text: 兩個分校的連結與核准狀態都保留，不會多出重複資料。
+    source_refs:
+      - "changelog:2026-11-02:teacher-main-campus-switch"
