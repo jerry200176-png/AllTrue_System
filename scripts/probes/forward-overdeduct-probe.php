@@ -37,7 +37,8 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
     foreach (array_chunk(array_map(fn (array $c): int => (int) $c['class_id'], $candidates), 500) as $ids) {
         $usage += \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($ids);
     }
-    $courses = $pending = [];
+    $courses = [];
+    $pending = [];
     foreach ($candidates as $c) {
         $u = $usage[(int) $c['class_id']] ?? null;
         $perSession = (int) $c['session_minutes'] >= 1 ? (int) $c['session_minutes'] : \App\Models\StudentClass::DEFAULT_SESSION_MINUTES;
