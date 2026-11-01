@@ -356,6 +356,29 @@ class PackageCreateWithScheduleTest extends TestCase
 
     // ─── FR-001 / FR-003：含時段，自動補排 ───
 
+    public function test_a_lesson_already_over_at_create_uses_one_of_the_bought_lessons(): void
+    {
+        // #4757: Sunday 17:00, start date today. Wed 14:00's first lesson (the start date) already ended and is backfilled as
+        // completed; the pool used to plan 8 more on top of it (9 for 8 bought).
+        $this->travelTo(Carbon::parse('2026-11-01 17:00:00'));
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+
+        $res = $this->postCreate($token, [
+            'student_id' => $student->id, 'branch_id' => 1, 'name' => '排課方案', 'total_sessions' => 8, 'rate' => 500, 'class_type' => 'one_on_one',
+            'subjects' => [
+                ['subject_id' => 1, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00'],
+                ['subject_id' => 2, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [3], 'start_time' => '14:00'],
+            ],
+        ])->assertStatus(201);
+
+        $members = StudentClass::where('PackageID', $res->json('package_id'))->pluck('ID');
+        $statuses = ClassSession::whereIn('StudentClassID', $members)->pluck('Status')->countBy()->all();
+        ksort($statuses);
+        $this->assertSame(['completed' => 1, 'scheduled' => 7], $statuses, 'one already taught + 7 planned = the 8 bought');
+    }
+
     public function test_create_with_days_of_week_generates_class_sessions(): void
     {
         // The first lesson is the start date (today) at each subject's time; once 14:00 or 16:00 passed, the pool

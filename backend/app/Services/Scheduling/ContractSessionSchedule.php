@@ -740,6 +740,14 @@ class ContractSessionSchedule
             $startFrom = self::normalizeDateString($member->StartDate ?? null) ?: Carbon::today()->toDateString();
             // Longer than $count so a member whose contract dates are taken still offers the next weekly dates.
             $sequence = self::buildSessionsForCount($classId, $startFrom, $count + count($taken), $slots, max(30, (int) ($member->SessionDuration ?? 120)));
+            // #4757: extendSessionsIfNeeded() backfills a new member's contract dates that already ended as completed
+            // lessons, whatever the pool says. They use bought lessons too, so they come out of the budget first.
+            // ponytail: only a member with no lessons yet (package create); a later raise appends after its last lesson.
+            if ($taken === []) {
+                foreach (array_slice($sequence, 0, $count) as $s) {
+                    $budget -= self::sessionEndedByEndTime((string) $s['SessionDate'], (string) ($s['EndTime'] ?? '18:00:00'), $now) ? 1 : 0;
+                }
+            }
             // A sibling's group lesson on this member's weekly pattern, from its start date on, even one moved past that
             // sequence, is a candidate too (it costs nothing below, #4733), with this member's own lesson length.
             // Off-pattern rows (a sibling's own make-up) are not joined.
