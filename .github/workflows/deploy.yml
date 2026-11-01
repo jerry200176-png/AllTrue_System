@@ -1968,9 +1968,10 @@ jobs:
           set -euo pipefail
           title="Production deploy incident (deploy.yml)"
           # Failed before the executor step (stale target, GO/R3 recheck, SSH setup): nothing reached the Pi.
-          # Only positive proof (the Deploy step concluded skipped) suppresses the incident; unknown reports it.
+          # Only positive proof (the Deploy step concluded skipped, or the job never got a runner: a train superseded
+          # at Founder approval, #4775) suppresses the incident; unknown reports it.
           skipped="$(gh api "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
-            --jq '[.jobs[] | select(.name == "Deploy to Production") | .steps[]? | select(.name == "Deploy" and .conclusion == "skipped")] | length')" \
+            --jq '[.jobs[] | select(.name == "Deploy to Production") | select((.steps == [] and has("runner_name") and .runner_name == null) or any(.steps[]?; .name == "Deploy" and .conclusion == "skipped"))] | length')" \
             || skipped="unknown"
           if [ "$skipped" = "1" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then
             echo "Deploy step never ran; production untouched, no incident."

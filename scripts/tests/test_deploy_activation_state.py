@@ -2584,6 +2584,32 @@ class R3AutoActivationTest(unittest.TestCase):
                               "steps": [{"name": "Deploy", "conclusion": "success"}]}]}
         self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
 
+    def test_a_train_superseded_at_founder_approval_does_not_freeze(self):
+        # #4775: a newer train cancels the waiting one; its deploy job never got a runner and ran no step.
+        def api(path, *extra):
+            if "/workflows/ci.yml/runs" in path:
+                return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+            if "/workflows/deploy.yml/runs" in path:
+                return {"workflow_runs": [{"id": 20}, {"id": 10}]}
+            if "/runs/20/" in path:
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "cancelled", "completed_at": "2026-10-28T02:00:00Z",
+                                  "steps": [], "runner_name": None}]}
+            return {"jobs": [{"name": "Deploy to Production", "conclusion": "success", "completed_at": "2026-10-28T01:00:00Z",
+                              "steps": [{"name": "Deploy", "conclusion": "success"}], "runner_name": "r1"}]}
+        self.assertIsNone(deploy_freeze_reason(repo="o/r", api=api))
+
+    def test_a_cancelled_deploy_that_had_a_runner_still_freezes(self):
+        # Only the empty-steps + no-runner shape is proof; a job that started may have reached the Pi.
+        for job in ({"steps": [], "runner_name": "r2"}, {"steps": [{"name": "Set up job", "conclusion": "success"}], "runner_name": None},
+                    {"steps": []}):
+            def api(path, *extra, job=job):
+                if "/workflows/ci.yml/runs" in path:
+                    return {"workflow_runs": [{"id": 8, "name": "CI — PHPUnit Tests", "conclusion": "success", "event": "push"}]}
+                if "/workflows/deploy.yml/runs" in path:
+                    return {"workflow_runs": [{"id": 20}]}
+                return {"jobs": [{"name": "Deploy to Production", "conclusion": "cancelled", "completed_at": "2026-10-28T02:00:00Z", **job}]}
+            self.assertIn("run 20", deploy_freeze_reason(repo="o/r", api=api), job)
+
     def test_freeze_reads_only_runs_updated_after_the_newest_deploy_but_catches_a_later_rerun(self):
         # #4560 review N5/N6: skip runs that cannot hold a newer deploy; an old run re-run later is still read.
         read = []
