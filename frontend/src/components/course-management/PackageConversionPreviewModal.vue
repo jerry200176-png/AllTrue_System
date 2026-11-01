@@ -70,7 +70,7 @@ const emit = defineEmits(['close', 'retry', 'convert', 'new-package']);
 
 <style scoped>
 .modal-title {
-  font-size: 1.15rem;
+  font-size: var(--ds-font-size-xl);
   font-weight: 700;
   color: var(--text);
   margin-bottom: 8px;
@@ -85,7 +85,7 @@ const emit = defineEmits(['close', 'retry', 'convert', 'new-package']);
 .package-conversion-preview__lead,
 .package-conversion-preview__next-step {
   color: var(--text-light);
-  font-size: 13px;
+  font-size: var(--ds-font-size-md);
   line-height: 1.55;
 }
 .package-conversion-preview__source {
@@ -94,7 +94,7 @@ const emit = defineEmits(['close', 'retry', 'convert', 'new-package']);
   gap: 3px;
   margin: 0 0 12px;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--ds-font-size-base);
 }
 .package-conversion-preview__reasons {
   margin: 8px 0 0;
