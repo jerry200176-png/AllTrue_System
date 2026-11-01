@@ -1710,6 +1710,23 @@ class StudentClassController extends Controller
                 'code' => 'monthly_paid_period_extension_requires_renewal', 'suggested_actions' => ['renew_monthly']], 422);
         }
 
+        // #4765: usage already recorded fixes the period it belongs to; a date edit may not leave a taught lesson outside the contract.
+        $dateOf = fn ($v) => $v ? ContractSessionSchedule::normalizeDateString($v) : null;
+        $newStart = array_key_exists('StartDate', $mapped) ? $dateOf($mapped['StartDate']) : null;
+        $newEnd = array_key_exists('EndDate', $mapped) ? $dateOf($mapped['EndDate']) : null;
+        if (($newStart !== null && $newStart !== $dateOf($studentClass->StartDate)) || ($newEnd !== null && $newEnd !== $dateOf($studentClass->EndDate))) {
+            $stranded = app(\App\Services\MonthlyBillingService::class)->taughtLessonsOutsideContract(
+                $studentClass, $newStart ?? $dateOf($studentClass->StartDate), $newEnd ?? $dateOf($studentClass->EndDate));
+            if ($stranded !== [] && (string) ($mapped['ScheduleMode'] ?? $oldScheduleMode) === 'date') {
+                $this->auditEditBlocked($studentClass, 'contract_dates_strand_lessons', 422);
+                return response()->json([
+                    'message' => sprintf('這份合約已上過 %s 的課，合約日期必須包含這些日期。要開新一期請用「續報」。沒有修改任何資料。',
+                        implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $stranded))),
+                    'code' => 'contract_dates_strand_lessons', 'lesson_dates' => $stranded,
+                ], 422);
+            }
+        }
+
         if (array_key_exists('rate_unit', $mapped)) {
             $rateUnit = strtolower(trim((string) $mapped['rate_unit']));
             if (!in_array($rateUnit, ['session', 'hour'], true)) {

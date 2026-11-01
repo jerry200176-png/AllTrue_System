@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-01-lessons-outside-contract
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 月結合約日期不能漏掉已上的課
+    summary: 已上過的課若不在合約日期內，系統會擋下並請你先改日期。
+    items:
+      - category: fixed
+        text: 改合約日期時，若會漏掉已上過的課，系統會擋下，不會改到資料。
+      - category: fixed
+        text: 登記收款遇到這種合約會提醒先改日期，不再用整月金額收錯月份。
+      - category: fixed
+        text: 學生帳務的合約卡會寫「需核對」並列出日期，暫不提供登記這筆和繳費單。
+    source_refs:
+      - "changelog:2026-11-01:4765-lessons-outside-contract"

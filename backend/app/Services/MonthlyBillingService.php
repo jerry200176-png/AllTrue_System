@@ -77,6 +77,31 @@ class MonthlyBillingService
     }
 
     /**
+     * #4765: dates of countable lessons (attended/completed/late) that lie outside a monthly contract's StartDate..EndDate,
+     * sorted. Usage already recorded fixes the period it belongs to, so billing (which bounds a month by the contract) cannot
+     * see these. Only date-mode, non-package contracts with both dates; $start/$end let a caller test proposed dates.
+     *
+     * @return list<string>
+     */
+    public function taughtLessonsOutsideContract(Model $course, ?string $start = null, ?string $end = null): array
+    {
+        $start ??= $course->getAttribute('StartDate');
+        $end ??= $course->getAttribute('EndDate');
+        if ((string) $course->getAttribute('ScheduleMode') !== 'date' || (int) ($course->getAttribute('PackageID') ?? 0) > 0 || !$start || !$end) {
+            return [];
+        }
+        $start = Carbon::parse($start)->toDateString();
+        $end = Carbon::parse($end)->toDateString();
+        $id = (int) $course->getKey();
+        $preloaded = $this->preloadedSessions[$id] ?? null;
+        $dates = $preloaded !== null
+            ? $preloaded->filter(fn (ClassSession $s) => in_array(strtolower(rtrim((string) $s->Status)), self::BILLABLE_STATUSES, true))->pluck('SessionDate')
+            : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate');
+
+        return $dates->map(fn ($d) => substr((string) $d, 0, 10))->filter(fn (string $d) => $d < $start || $d > $end)->unique()->sort()->values()->all();
+    }
+
+    /**
      * The oldest calendar month inside a monthly contract whose countable lessons (attended/completed/late) no non-void
      * bill of the contract covers, or null. A bill covers its item service range (serviceRangeForCourse), else its
      * billing_period month. Null (today's rule) whenever coverage is unclear, so no lesson can be billed twice: a bill
