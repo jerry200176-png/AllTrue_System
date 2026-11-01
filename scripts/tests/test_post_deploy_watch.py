@@ -363,6 +363,8 @@ class WorkflowWiringTest(unittest.TestCase):
         # #4560 review F1/F9: no incident when the executor step never ran; summarizer from the default branch.
         self.assertIn('if [ "$skipped" = "1" ] && ! [[ "$RC" =~ ^[0-9]+$ ]]; then', self.incident)
         self.assertIn('.conclusion == "skipped"', self.incident)  # positive proof only; unknown still reports
+        # #4775: a train superseded at Founder approval never got a runner; the same proof the freeze gate uses.
+        self.assertIn('.steps == [] and has("runner_name") and .runner_name == null', self.incident)
         self.assertNotIn("ref: ${{ needs.resolve-target.outputs.target_sha }}", self.incident)
         self.assertNotIn("secrets.", self.incident)  # no SSH key or production secret in this job
         self.assertIn("rc: ${{ steps.deploy.outputs.rc }}", self.deploy)
@@ -386,7 +388,7 @@ class WorkflowWiringTest(unittest.TestCase):
         # #4560 review N1: a renamed step would silently make every failed deploy look "never ran".
         import scripts.governance.autonomy_gate as gate
         self.assertIn(f"      - name: {gate.DEPLOY_STEP_NAME}\n        id: deploy\n", self.deploy)
-        self.assertIn(f'select(.name == "{gate.DEPLOY_STEP_NAME}" and .conclusion == "skipped")', self.incident)
+        self.assertIn(f'any(.steps[]?; .name == "{gate.DEPLOY_STEP_NAME}" and .conclusion == "skipped")', self.incident)
 
     def test_an_unattended_deploy_rechecks_the_freeze_after_taking_the_executor_slot(self):
         # #4560 review: classified during an earlier deploy's watch, which may fail before this run deploys.

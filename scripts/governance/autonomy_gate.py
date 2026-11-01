@@ -1357,6 +1357,14 @@ _FREEZE_LOOKBACK_PAGES = 3  # x100 deploy.yml runs; job reads only for runs upda
 DEPLOY_STEP_NAME = "Deploy"  # the executor step; a job that failed before it never touched production
 
 
+def never_started(job: dict) -> bool:
+    """Positive proof a job ran nothing: the API reports an empty step list and no runner (#4775).
+
+    A release train superseded while waiting at Founder approval ends this way; missing fields are not proof.
+    """
+    return job.get("steps") == [] and "runner_name" in job and job["runner_name"] is None
+
+
 def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None:
     """Stop the line: None only when main CI is green and the last production deploy succeeded.
 
@@ -1394,6 +1402,8 @@ def deploy_freeze_reason(*, repo: str, api: Callable[..., object]) -> str | None
                 # Skip only on positive proof the executor step was skipped; missing or unknown step data counts.
                 if any(step.get("name") == DEPLOY_STEP_NAME and step.get("conclusion") == "skipped"
                        for step in job.get("steps") or []):
+                    continue
+                if never_started(job):
                     continue
                 if not job.get("completed_at"):
                     return f"deploy job in run {run.get('id')} has no completion time; state unknown"
