@@ -85,6 +85,9 @@ class OverlappingCourseGuardTest extends TestCase
         $forced['force_reason'] = 'independent_parallel';
         $forced['force_note'] = '測試：同科不同班型平行';
         $forced['existing_contract_ids'] = [(int) $res1->json('student_class_id')];
+        // #4001: the force overrides the contract overlap only; the lessons must not share a slot with the first course.
+        $forced['start_time'] = '19:00';
+        $forced['session_plan'] = array_map(fn ($r) => ['start_time' => '19:00'] + $r, $forced['session_plan']);
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/class-sessions/batch', $forced)
             ->assertCreated();
@@ -98,6 +101,27 @@ class OverlappingCourseGuardTest extends TestCase
             ->postJson('/api/v1/class-sessions/batch', $forcedNoReason)
             ->assertStatus(422)
             ->assertJson(['code' => 'force_reason_required']);
+    }
+
+    /** #4001: independent_parallel overrides the contract overlap, but never the student's own slot (422, no second ClassSession). */
+    public function test_independent_parallel_force_still_refuses_a_same_student_same_slot(): void
+    {
+        $token = $this->createUserToken('A', [1], 'dir-ip4001@example.com');
+        $teacherId = $this->createTeacher(1, 'teach-ip4001@example.com');
+        $student = $this->createStudent(1, '平行同時段測試生');
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $dates = [Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY)->toDateString()];
+        $res1 = $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $dates, 'one_on_one'));
+        $res1->assertCreated();
+        $before = DB::table('ClassSession')->count();
+
+        $forced = $this->batchPayload($student->id, $teacherId, $dates, 'one_on_two') + [
+            'force' => true, 'force_reason' => 'independent_parallel', 'force_note' => '測試', 'existing_contract_ids' => [(int) $res1->json('student_class_id')],
+        ];
+        $this->withHeaders($h)->postJson('/api/v1/class-sessions/batch', $forced)->assertStatus(422);
+
+        $this->assertSame($before, DB::table('ClassSession')->count());
+        $this->assertSame(1, DB::table('ClassSession')->where('SessionDate', $dates[0])->whereNotIn('Status', ['cancelled', 'voided'])->count());
     }
 
     /** @return array{0:array,1:int,2:int,3:int} [headers, studentId, teacherId, firstStudentClassId] */
