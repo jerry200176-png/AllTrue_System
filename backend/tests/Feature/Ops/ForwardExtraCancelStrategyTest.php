@@ -208,8 +208,9 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         [, $extra] = $this->fullCourse($this->student(26), now()->addDays(3)->toDateString());
         $catalog = new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml');
         $service = new PopOperationService($catalog);
+        // Campus 26 only: rows other tests in the suite leave behind are not this test's.
         $run = function (string $digest) use ($service): array {
-            $id = (string) $service->createDraft('forward-extra-cancel-20261101', $this->params(0, $digest), 'fx-test-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
+            $id = (string) $service->createDraft('forward-extra-cancel-20261101', $this->params(26, $digest), 'fx-test-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
             $dry = $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
             if ($digest === '') {
                 return [$dry];
@@ -222,7 +223,7 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $digest = (string) $run('')[0]['plan']['digest'];
         [, $execute, $verify] = $run($digest);
 
-        $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']]);
+        $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']], json_encode($verify['verification'] ?? $verify));
         $this->assertSame('cancelled', $this->st($extra));
         $adapter = file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-forward-extra-cancel.yml');
         $this->assertStringContainsString('AUDIT=pop.forward_extra_cancel', $adapter);
