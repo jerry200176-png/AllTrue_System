@@ -341,6 +341,9 @@ class LegacyPaidFlagResolveTest extends TestCase
         ])->assertStatus(201);
         $member = StudentClass::where('PackageID', $created->json('package_id'))->where('SubjectID', 1)->sole();
         $this->assertSame([0, 1], [(int) $member->Charge, (int) $member->Paid]);
+        // Reminders, reports and repricing keep the package-level rule; only the backfill cap prices the member.
+        $this->assertSame(['charge' => 0, 'source' => 'stored_charge_package_member'],
+            array_intersect_key(app(\App\Services\MonthlyBillingService::class)->summarizePeriod($member, '2026-05'), ['charge' => 1, 'source' => 1]));
         $payload = ['payment_date' => '2026-05-31', 'idempotency_key' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'synthetic-pkg-monthly')];
         $this->backfill($token, $member, $payload + ['amount' => 1300])->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 1200);
         $this->backfill($token, $member, $payload + ['amount' => 1200])->assertOk()->assertJsonPath('status', 'confirmed');

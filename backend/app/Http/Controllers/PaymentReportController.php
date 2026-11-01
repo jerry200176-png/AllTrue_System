@@ -827,7 +827,7 @@ class PaymentReportController extends Controller
             if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
                 // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the charge of the
                 // month confirm() will bill (the same collectionPeriodFor: oldest unbilled month, else the payment date's).
-                $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']))['charge'];
+                $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']), true)['charge'];
                 if ((int) $data['amount'] > $limit) {
                     return response()->json(['message' => sprintf('月結本期應收為 NT$%d，補登金額不可超過。沒有登記任何款項。', $limit),
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit], 422);
