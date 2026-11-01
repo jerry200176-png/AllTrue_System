@@ -452,6 +452,9 @@ class PaymentReportController extends Controller
             if ($sc && $sc->ScheduleMode === 'date') {
                 $period = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period : $this->monthlyBilling->collectionPeriodFor($sc, $report->payment_date);
+                if (!$invoice && ($outside = $this->lessonsOutsideContractRefusal($sc))) {
+                    return $outside;
+                }
                 // #4574: the month moved since 登記收款 (attendance or bills changed); never bill this payment to another month.
                 if ($report->billing_period !== null && $report->billing_period !== $period) {
                     return response()->json(['message' => sprintf('登記時收的是 %s，現在要先收 %s（出席或帳單有變動）。這筆沒有入帳，請退回後重新登記。',
@@ -744,6 +747,9 @@ class PaymentReportController extends Controller
             }
 
             if ($sc->getAttribute('ScheduleMode') === 'date') {
+                if (!$invoice && ($outside = $this->lessonsOutsideContractRefusal($lockedCourse))) {
+                    return $outside;
+                }
                 $billingPeriod = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->collectionPeriodFor($lockedCourse, $data['payment_date']);
@@ -1622,6 +1628,24 @@ class PaymentReportController extends Controller
         $open = (string) ($this->pickOpenInvoice((int) $sc->ID, $sc)->billing_period ?? '');
 
         return preg_match('/^\d{4}-\d{2}$/', $open) ? $open : $this->monthlyBilling->collectionPeriodFor($sc);
+    }
+
+    /** #4765: lessons already taught outside the contract dates are invisible to billing; never price such a month from the stored Charge. */
+    private function lessonsOutsideContractRefusal(\Illuminate\Database\Eloquent\Model $course): ?JsonResponse
+    {
+        $dates = $this->monthlyBilling->lessonsOnlyOutsideContract($course);
+        if ($dates === []) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => sprintf('這份合約已上過 %s 的課，但不在合約日期（%s–%s）內，系統算不出這期該收多少。請先把合約日期改成包含這些課，再登記收款。沒有登記任何款項。',
+                implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $dates)),
+                Carbon::parse($course->getAttribute('StartDate'))->format('n/j'), Carbon::parse($course->getAttribute('EndDate'))->format('n/j')),
+            'code' => 'lessons_outside_contract', 'lesson_dates' => $dates,
+            'contract_start' => Carbon::parse($course->getAttribute('StartDate'))->toDateString(),
+            'contract_end' => Carbon::parse($course->getAttribute('EndDate'))->toDateString(),
+        ], 422);
     }
 
     private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc): ?Invoice
