@@ -444,15 +444,12 @@ final class ContractRenewal
         $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
         $totalHours = 0;
         $charge = 0;
+        $plan = ($startDate && $sessions > 0) ? $this->batchStartAfterSource($studentClass, $startDate, $slots) : null;
         if ($sessions > 0) {
             if ($rateUnit === 'hour') {
-                $durSum = 0;
-                $slotCount = max(1, count($slots));
-                foreach ($slots as $slot) {
-                    $durSum += !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $globalDur;
-                }
-                $avgDur = $durSum / $slotCount;
-                $totalHours = (int) round(($sessions * $avgDur) / 60);
+                // Billed hours = the lessons the batch will actually create (#4344), planned from the real start; until a
+                // start date is chosen (a blocker anyway) the hours stay 0.
+                $totalHours = $plan !== null ? $this->plannedBatchHours($studentClass, (string) $plan['start'], $sessions, $slots, $globalDur) : 0;
                 $charge = (int) round($rate * $totalHours);
             } else {
                 $totalHours = (int) round(($sessions * $globalDur) / 60);
@@ -462,8 +459,7 @@ final class ContractRenewal
 
         // Same start purchaseBatch() writes as the new course's StartDate.
         $planStart = $startDate;
-        if ($startDate && $sessions > 0) {
-            $plan = $this->batchStartAfterSource($studentClass, $startDate, $slots);
+        if ($plan !== null) {
             $planStart = $plan['start'];
             $schedule['source_live_until'] = $plan['source_live_until'];
         }
@@ -703,6 +699,33 @@ final class ContractRenewal
     }
 
     /**
+     * Hours of the lessons a purchase batch will create, from the same plan purchaseBatch() materializes.
+     * Preview and purchase both bill rate_unit=hour from this, so they cannot drift apart.
+     *
+     * @param list<array<string, mixed>> $slots
+     */
+    private function plannedBatchHours(StudentClass $course, string $planStart, int $sessions, array $slots, int $globalDur): int
+    {
+        $built = ContractSessionSchedule::buildSessionsForCount((int) $course->ID, $planStart, $sessions, $slots, $globalDur);
+        if ($built === []) {
+            return (int) round(($sessions * $globalDur) / 60); // no slots: purchase falls back to one global-length slot
+        }
+        $minutes = 0;
+        foreach ($built as $sess) {
+            $start = Carbon::parse($sess['StartTime']);
+            $end = Carbon::parse($sess['EndTime']);
+            if ($end->lessThanOrEqualTo($start)) {
+                $end->addDay(); // a lesson past midnight (23:00–01:00) is times only
+            }
+            $minutes += (int) $start->diffInMinutes($end);
+        }
+        // A plan cut at the scheduler's 2-year horizon still bills every bought lesson, at the plan's average length.
+        $minutes = $minutes * $sessions / count($built);
+
+        return (int) round($minutes / 60);
+    }
+
+    /**
      * purchase_batch money transaction: lock the source, create the separate unpaid batch course and its sessions.
      * Returns the HTTP status and JSON body for the controller to send.
      *
@@ -752,14 +775,9 @@ final class ContractRenewal
             $totalHours = 0;
             $charge = 0;
             if ($rateUnit === 'hour') {
-                $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass);
-                $durSum = 0;
-                $slotCount = max(1, count($slots));
-                foreach ($slots as $slot) {
-                    $durSum += !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $globalDur;
-                }
-                $avgDur = $durSum / $slotCount;
-                $totalHours = (int) round(($sessions * $avgDur) / 60);
+                $totalHours = $this->plannedBatchHours(
+                    $studentClass, $planStart, $sessions, ContractSessionSchedule::resolveScheduleSlotsForRebuild($studentClass), $globalDur
+                );
                 $charge = (int) round($rate * $totalHours);
             } else {
                 $totalHours = (int) ($studentClass->SessionDuration ? round(($sessions * $globalDur) / 60) : ($studentClass->TotalHours ?? 0));
