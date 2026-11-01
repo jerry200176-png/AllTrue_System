@@ -2682,15 +2682,15 @@ class StudentClassController extends Controller
      * This endpoint deliberately changes no session, ledger, or entitlement
      * fields; it only synchronizes the course charge and its unpaid invoices.
      */
-    /** #3991: a live 免費／贈送 bill must be voided first, or a corrected charge would sit on a bill that refuses payment. */
+    /** #3991 / #4657: a live 免費／贈送 or 全額折扣 bill must be voided first, or a corrected charge would sit on a bill that refuses payment. */
     private function freeGiftMarkedRefusal(StudentClass $studentClass, string $code): ?\Illuminate\Http\JsonResponse
     {
-        if (!Invoice::query()->scopes('notVoided')->where('StudentClassID', $studentClass->getKey())->where('zero_amount_reason', Invoice::ZERO_REASON_FREE_GIFT)->exists()) {
+        if (($label = Invoice::markedZeroBillLabel((int) $studentClass->getKey())) === null) {
             return null;
         }
         $this->auditEditBlocked($studentClass, $code, 409);
 
-        return response()->json(['message' => '此課程有「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」帳單，請先在帳務作廢該帳單再更正費用。', 'code' => $code], 409);
+        return response()->json(['message' => '此課程有「' . $label . '」帳單，請先在帳務作廢該帳單再更正費用。', 'code' => $code], 409);
     }
 
     public function chargeCorrection(Request $request, StudentClass $studentClass)
@@ -2784,6 +2784,12 @@ class StudentClassController extends Controller
                 ->lockForUpdate()
                 ->get();
             foreach ($openInvoices as $invoice) {
+                if ($invoice->isMarkedFreeGift() || $invoice->isFullDiscount()) { // #4657: re-read under the lock
+                    abort(response()->json([
+                        'message' => '此課程有「' . Invoice::markedZeroBillLabel($classId) . '」帳單，請先在帳務作廢該帳單再更正費用。',
+                        'code' => 'charge_correction_free_gift_locked',
+                    ], 409));
+                }
                 if ((int) ($invoice->PaidAmount ?? 0) !== 0
                     || Payment::query()
                         ->where('InvoiceID', $invoice->id)
