@@ -1537,6 +1537,17 @@ class PaymentReportController extends Controller
         return null;
     }
 
+    /** #4597 Codex P2: a payment through one package member may pay a sibling's package bill; its reversal may undo it there. */
+    private function ownerPackageSiblingBill(Invoice $invoice, StudentClass $sc): bool
+    {
+        $packageId = (int) ($sc->getAttribute('PackageID') ?? 0);
+
+        return $packageId > 0
+            && CoursePackage::query()->whereKey($packageId)->where('student_id', $sc->getAttribute('StudentID'))->exists()
+            && StudentClass::query()->whereKey($invoice->StudentClassID)->where('PackageID', $packageId)
+                ->where('StudentID', $sc->getAttribute('StudentID'))->exists();
+    }
+
     /** RFC §R2: a member already has a live bill, so the package obligation is already billed (no second full-price bill). */
     private function packageHasLiveBill(CoursePackage $package): bool
     {
@@ -1787,7 +1798,7 @@ class PaymentReportController extends Controller
             if ($invoiceId !== null) {
                 $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
                 if (!$invoice
-                    || (int) $invoice->StudentClassID !== (int) $sc->ID
+                    || ((int) $invoice->StudentClassID !== (int) $sc->ID && !$this->ownerPackageSiblingBill($invoice, $sc))
                     || (int) $invoice->StudentID !== $reportStudentId) {
                     return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
                 }
@@ -1820,6 +1831,11 @@ class PaymentReportController extends Controller
                     'PaidAmount' => $newPaid,
                     'Status'     => $invoiceStatus,
                 ]);
+            }
+            // #4597: money taken back from a count package's bill reopens the package (its mark and every owner member's).
+            $package = $invoice && !$alreadyReversed && (string) $invoice->Status !== 'paid' ? $this->lockPackageForCourse($sc) : null;
+            if ($package && $this->isSharedPackageObligation($package, $sc) && (int) $package->student_id === (int) $sc->StudentID) {
+                $this->dropLegacyPaidMarks($sc, $package);
             }
 
             $scPaid = 0;

@@ -265,6 +265,11 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([8800], Invoice::where('Status', '!=', 'void')->pluck('TotalAmount')->map(fn ($v) => (int) $v)->all(), 'one package bill');
         $this->assertSame(['paid', 8800], [(string) Invoice::sole()->Status, (int) Payment::sum('Amount')]);
         $this->assertTrue((bool) $package->fresh()->paid);
+
+        // Codex P2: the sibling's payment can still be voided, back to the NT$3,000 already received.
+        $this->withHeaders($this->auth($token))->putJson('/api/v1/payment-reports/' . $r->json('report_id') . '/void', ['void_reason' => '登記錯了'])->assertOk();
+        $this->assertSame(['partial', 3000], [(string) Invoice::sole()->Status, (int) Payment::sum('Amount')]);
+        $this->assertSame([false, 0, 0], [(bool) $package->fresh()->paid, (int) $lead->fresh()->Paid, (int) $sibling->fresh()->Paid], 'the package owes again');
     }
 
     /** #4597 security review: a course whose stale PackageID points at another student's package never pays that student's bill. */
