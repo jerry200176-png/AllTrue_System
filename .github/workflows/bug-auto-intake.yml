@@ -235,7 +235,10 @@ jobs:
             seen="$(jq --arg m "$mark" --arg owner "${GITHUB_REPOSITORY_OWNER}" '[.comments[]? | select(.author.login == $owner or .author.login == "app/github-actions" or .author.login == "github-actions") | select((.body // "") | contains($m))] | length' <<<"$raw")"
             if [ "${hit%% *}" = CLOSED ] && [ "$seen" = 0 ]; then
               if [ "$DRY_RUN" = "true" ]; then echo "would reopen $url for in-app #$id"; continue; fi
-              gh issue reopen "$url" --comment "${mark}Reopened by bug-auto-intake: the reporter of in-app #${id} pressed 「問題仍存在」 at ${at} (resolved → in_progress)."
+              # Reopen first: `gh issue reopen --comment` posts the comment before the reopen, so a failed reopen would
+              # leave the marker and never be retried.
+              gh issue reopen "$url"
+              gh issue comment "$url" --body "${mark}Reopened by bug-auto-intake: the reporter of in-app #${id} pressed 「問題仍存在」 at ${at} (resolved → in_progress)."
               echo "reopened in-app #$id -> $url"
             fi
           done < <(jq -c '.[]' <<<"${REOPENED:-[]}")
