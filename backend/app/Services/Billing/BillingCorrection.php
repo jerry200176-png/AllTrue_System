@@ -109,7 +109,8 @@ final class BillingCorrection
         return ['payments' => $payments, 'reports' => $reports];
     }
 
-    private function zeroChargeRefusal(): array
+    /** #3991 / #4430: the one refusal for an unmarked NT$0 correction, on both the count and the date-mode path. */
+    public static function zeroChargeRefusal(): array
     {
         return [
             'message' => '費用不能更正成 0 元，沒有變更任何資料。這張帳單若不該收，請到學生帳務作廢；有設定費用的課程不能改成「免費／贈送」。',
