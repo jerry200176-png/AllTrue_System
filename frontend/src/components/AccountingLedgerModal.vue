@@ -1123,7 +1123,7 @@ const anomalyLabel = (code) => labelMap({
 
 <style scoped>
 .ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.28);display:flex;justify-content:flex-end}
-.ledger-modal{width:min(560px,100vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
+.ledger-modal{width:min(720px,100vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
 .ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
 .ledger-header h3{margin:0;font-size:22px}
 .ledger-modal:focus{outline:none}
@@ -1144,9 +1144,10 @@ const anomalyLabel = (code) => labelMap({
 .ledger-owed__later{font-size:12px;color:var(--ds-ink-mute)}
 .ledger-owed__over{margin-top:8px !important;padding:8px 10px;border-radius:8px;background:var(--ds-warning-wash);color:var(--ds-ink);font-size:13px}
 
-.ledger-section{margin-top:18px}
+.ledger-section{margin-top:20px}
 .ledger-contracts{display:grid;gap:10px}
-.ledger-section h4{margin:0 0 8px;font-size:14px}
+.ledger-section h4{margin:0 0 10px;font-size:var(--ds-font-size-lg);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight)}
+.ledger-section+.ledger-section{padding-top:16px;border-top:1px solid var(--ds-border)}
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
 .ledger-table{width:100%;border-collapse:collapse;font-size:13px}
