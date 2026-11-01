@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-ledger-drawer-readability
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務側欄更好讀
+    summary: 側欄變寬，各區塊標題放大加粗，一眼分得出帳單和收款。
+    items:
+      - category: improved
+        text: 電腦上的學生帳務側欄加寬，手機仍是滿版。
+      - category: improved
+        text: 帳單、收款紀錄等標題放大加粗、區塊之間加分隔線，帳單裡多出來的「—」拿掉了。
+    source_refs:
+      - "changelog:2026-11-01:ledger-drawer-readability"
