@@ -325,38 +325,21 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->assertSame([0, null, $package->id], [(int) $foreign->fresh()->Paid, $foreign->fresh()->PayDate, (int) $foreign->fresh()->PackageID]);
     }
 
-    /** #4597 item 2: package-created monthly members carry Charge=0; the no-bill cap must use the package rate, not 0. */
-    public function test_monthly_package_member_backfill_cap_uses_the_package_rate(): void
-    {
-        $token = $this->token('A', [1]);
-        $student = Student::create(['name' => 'S' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
-        $teacher = User::create(['LoginName' => 't_' . uniqid() . '@test.com', 'Name' => 'T', 'PSW' => 'secret', 'type' => 'T', 'phone' => 911000000]);
-        DB::table('Subject')->insertOrIgnore([['id' => 1, 'Subject_Name' => 'Math', 'School_id' => 1, 'Grade_no' => 1], ['id' => 2, 'Subject_Name' => 'English', 'School_id' => 1, 'Grade_no' => 1]]);
-        $created = $this->withHeaders($this->auth($token))->postJson('/api/v1/course-packages/create-multi-subject', [
-            'student_id' => $student->id, 'branch_id' => 1, 'name' => 'M', 'payment_type' => 'monthly', 'rate' => 600, 'settlement_day' => 5,
-            'class_type' => 'one_on_one', 'paid_at' => '2026-05-01', 'end_date' => '2026-05-31',
-            'subjects' => [['subject_id' => 1, 'teacher_id' => $teacher->id, 'duration_hours' => 2, 'start_date' => '2026-05-01',
-                'confirmed_dates' => ['2026-05-05', '2026-05-12'], 'days_of_week' => [2], 'start_time' => '16:00'],
-                ['subject_id' => 2, 'teacher_id' => $teacher->id, 'duration_hours' => 2, 'start_date' => '2026-05-01', 'days_of_week' => [4], 'start_time' => '14:00']],
-        ])->assertStatus(201);
-        $member = StudentClass::where('PackageID', $created->json('package_id'))->where('SubjectID', 1)->sole();
-        $this->assertSame([0, 1], [(int) $member->Charge, (int) $member->Paid]);
-        // Reminders, reports and repricing keep the package-level rule; only the backfill cap prices the member.
-        $this->assertSame(['charge' => 0, 'source' => 'stored_charge_package_member'],
-            array_intersect_key(app(\App\Services\MonthlyBillingService::class)->summarizePeriod($member, '2026-05'), ['charge' => 1, 'source' => 1]));
-        $payload = ['payment_date' => '2026-05-31', 'idempotency_key' => (string) \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'synthetic-pkg-monthly')];
-        $this->backfill($token, $member, $payload + ['amount' => 1300])->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 1200);
-        $this->backfill($token, $member, $payload + ['amount' => 1200])->assertOk()->assertJsonPath('status', 'confirmed');
-    }
-
     /** #4597 item 3: a package-only paid mark (member Paid=0, no money) reaches the ledger card as paid, so the action shows. */
     public function test_ledger_card_is_paid_when_only_the_package_mark_says_so(): void
     {
         $token = $this->token('A', [1]);
         [, $sibling] = $this->legacyPackage(1);
         $sibling->update(['Paid' => 0, 'PayDate' => null]);
-        $card = collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$sibling->ID}")->assertOk()->json('courses'))->firstWhere('id', $sibling->ID);
-        $this->assertTrue($card['paid']);
+        $card = fn (StudentClass $c) => collect($this->withHeaders($this->auth($token))->getJson("/api/v1/accounting/ledger?student_class_id={$c->ID}")
+            ->assertOk()->json('courses'))->firstWhere('id', $c->ID);
+        $this->assertSame([true, '2026-03-01'], [$card($sibling)['paid'], $card($sibling)['paid_at']]);
+
+        // Codex P1: a stale PackageID to another student's paid package exposes neither its paid mark nor its date.
+        $stale = $this->legacyCourse(1, ['Paid' => 0, 'PayDate' => null]);
+        [, , $foreignPackage] = $this->legacyPackage(1);
+        $stale->update(['PackageID' => $foreignPackage->id]);
+        $this->assertSame([false, null], [$card($stale)['paid'], $card($stale)['paid_at']]);
     }
 
     /** Codex P2: a monthly backfill is capped by the month confirm() will bill (oldest unbilled), not the payment date's month. */

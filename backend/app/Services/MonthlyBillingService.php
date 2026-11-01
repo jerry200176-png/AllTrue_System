@@ -134,7 +134,7 @@ class MonthlyBillingService
      *   source:string
      * }
      */
-    public function summarizePeriod(Model $course, string $billingPeriod, bool $priceMonthlyPackageMember = false): array
+    public function summarizePeriod(Model $course, string $billingPeriod): array
     {
         try {
             $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
@@ -147,10 +147,8 @@ class MonthlyBillingService
         $storedCharge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
 
         // Package members are billed at the package level, not as individual
-        // monthly courses. Keep their existing source of truth untouched. #4597: only the legacy-flag backfill cap asks for
-        // a monthly member created with Charge=0 (createMultiSubject) priced like any monthly course below.
-        if ((int) ($course->getAttribute('PackageID') ?? 0) > 0
-            && !($priceMonthlyPackageMember && $storedCharge === 0 && (string) $course->getAttribute('ScheduleMode') === 'date')) {
+        // monthly courses. Keep their existing source of truth untouched.
+        if ((int) ($course->getAttribute('PackageID') ?? 0) > 0) {
             return [
                 'charge' => $storedCharge,
                 'period_sessions' => 0,

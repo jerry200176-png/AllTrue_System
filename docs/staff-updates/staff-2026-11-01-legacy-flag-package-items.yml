@@ -9,7 +9,5 @@ updates:
     items:
       - category: fixed
         text: 共用方案已標記為已收、但課本身沒有繳費日與收款時，學生帳務卡片現在會顯示「需核對」，可選「已收過，補登收款」或「其實沒收，改成未繳」。
-      - category: fixed
-        text: 多科月結方案的課補登收款時，上限改依方案單價與該月已上堂次計算，不再誤報應收為 0。
     source_refs:
       - "changelog:2026-11-01:legacy-flag-package-items"

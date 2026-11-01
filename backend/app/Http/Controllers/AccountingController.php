@@ -800,8 +800,13 @@ class AccountingController extends Controller
                 // #4597: the package's paid mark counts like the course's own (isEffectivelyPaid), and then so do the package's
                 // trial exemption and paid_at (isTrialFeeRecordedByDate reads the package for a Paid=0 member), the same rules
                 // legacyFlagRefusal() applies, so a dated paid trial package never shows 需核對 actions the server refuses.
-                $markedPaid = $class->isEffectivelyPaid();
-                $paidAt = $class->PayDate ?: ($markedPaid ? $class->coursePackage?->paid_at : null);
+                // Only a package this student owns in this campus (a stale PackageID can point at another one; the resolution
+                // endpoints refuse it as legacy_flag_package_mismatch).
+                $pkg = $class->coursePackage;
+                $ownPkg = $pkg && (int) $pkg->id === (int) $class->PackageID && (int) $pkg->student_id === (int) $class->StudentID
+                    && $class->student && (int) $pkg->campus_id === (int) $class->student->CampusID ? $pkg : null;
+                $markedPaid = (int) ($class->Paid ?? 0) === 1 || (bool) ($ownPkg->paid ?? false);
+                $paidAt = $class->PayDate ?: ((int) ($class->Paid ?? 0) !== 1 && $ownPkg?->paid ? $ownPkg->paid_at : null);
 
                 return [
                 'id' => (int) $class->ID,
