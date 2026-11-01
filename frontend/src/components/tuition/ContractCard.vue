@@ -144,7 +144,8 @@ const props = defineProps({
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
-  // when only legacy metadata (PayDate / Paid flag) says paid and no payment record exists, or { waived: true } (#4150).
+  // when only legacy metadata (PayDate / Paid flag) says paid and no payment record exists, or { waived: true } (#4150),
+  // or { fullDiscount: true } when a 全額折扣 renewal bill settles the term (#4656).
   lastPayment: { type: Object, default: null },
   // Ready next-period draft from the existing monthly-drafts endpoint (offers 開帳單 in place).
   billDraft: { type: Object, default: null },
@@ -232,6 +233,7 @@ const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
 const payLineText = computed(() => {
   const p = props.lastPayment;
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
+  if (p?.fullDiscount) return '全額折扣，不用繳費'; // #4656
   if (!p?.date) return '還沒繳費';
   return p.amount == null ? `繳費日 ${dateOnly(p.date)}` : `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
 });
