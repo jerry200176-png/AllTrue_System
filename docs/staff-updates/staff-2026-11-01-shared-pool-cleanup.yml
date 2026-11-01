@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-01-shared-pool-cleanup
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: important
+    title: 共用堂數方案多排的課已清掉
+    summary: 以前共用方案每一科都排滿總堂數，行事曆上多出很多課；現在每個方案只留剛好用完剩下堂數的課。
+    items:
+      - category: fixed
+        text: 每個方案留下最近的課，數量剛好等於剩下的堂數；比較後面多排的未來課已刪除。
+      - category: improved
+        text: 已點名、請假、排了代課或有紀錄的課都沒有動。
+      - category: improved
+        text: 堂數已經用完的方案，未來的課都清掉了；續課後會自動排回來。學生續課前來上課，可以手動加課。
+    source_refs:
+      - "changelog:2026-11-01:shared-pool-cleanup"
