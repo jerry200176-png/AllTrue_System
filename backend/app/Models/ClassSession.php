@@ -207,7 +207,6 @@ class ClassSession extends Model
         return $this->belongsTo(\App\Models\Subject::class, 'SubjectID', 'id');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentSignIn, $this> */
     /** 待補點名 (#4770): an ended lesson with no live sign-in, still scheduled or absent. The attendance list and the nav badge share it. */
     public function scopeEndedUnmarked($query, string $now)
     {
@@ -216,6 +215,7 @@ class ClassSession extends Model
             ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now]);
     }
 
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentSignIn, $this> */
     public function signIns()
     {
         return $this->hasMany(StudentSignIn::class, 'ClassSessionID', 'id');
