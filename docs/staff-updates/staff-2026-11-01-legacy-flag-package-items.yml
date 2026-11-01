@@ -4,10 +4,10 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 方案標記已收的課也能補登收款或改成未繳
+    title: 方案標已收的課可補登或改未繳
     summary: 只有方案被標成已收、查無收款紀錄的課，學生帳務會顯示需核對與兩個處理按鈕。
     items:
       - category: fixed
-        text: 共用方案已標記為已收、但課本身沒有繳費日與收款時，學生帳務卡片現在會顯示「需核對」，可選「已收過，補登收款」或「其實沒收，改成未繳」。
+        text: 方案已標已收、課卻沒有收款紀錄時，帳務卡片顯示「需核對」，可補登收款或改成未繳。
     source_refs:
       - "changelog:2026-11-01:legacy-flag-package-items"
