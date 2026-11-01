@@ -118,10 +118,10 @@ final class BillingCorrection
         ];
     }
 
-    private function freeGiftRefusal(): array
+    private function freeGiftRefusal(string $label): array
     {
         return [
-            'message' => '此課程有「' . Invoice::ZERO_REASON_FREE_GIFT_LABEL . '」帳單，請先在帳務作廢該帳單再更正費用。',
+            'message' => '此課程有「' . $label . '」帳單，請先在帳務作廢該帳單再更正費用。',
             'code' => 'billing_correction_free_gift_locked',
         ];
     }
@@ -232,8 +232,8 @@ final class BillingCorrection
                 ], 409));
             }
 
-            if ($openInvoices->contains(fn (Invoice $invoice) => $invoice->isMarkedFreeGift())) {
-                abort(response()->json($this->freeGiftRefusal(), 409));
+            if ($openInvoices->contains(fn (Invoice $invoice) => $invoice->isMarkedFreeGift() || $invoice->isFullDiscount())) {
+                abort(response()->json($this->freeGiftRefusal((string) Invoice::markedZeroBillLabel($classId)), 409));
             }
 
             $locked->SessionCount = $newCount;
@@ -309,9 +309,9 @@ final class BillingCorrection
      */
     public function correctCountMode(StudentClass $studentClass, array $payload, bool $preview, ?int $actorId, \Closure $audit): array
     {
-        if (Invoice::query()->scopes('notVoided')->where('StudentClassID', $studentClass->getKey())->where('zero_amount_reason', Invoice::ZERO_REASON_FREE_GIFT)->exists()) {
+        if (($label = Invoice::markedZeroBillLabel((int) $studentClass->getKey())) !== null) {
             $audit('billing_correction_free_gift_locked', 409);
-            return $this->reply($this->freeGiftRefusal(), 409);
+            return $this->reply($this->freeGiftRefusal($label), 409);
         }
 
         if (!empty($payload['new_end_date'])) {
