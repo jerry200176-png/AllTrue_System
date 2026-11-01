@@ -183,6 +183,9 @@ class TeacherBranchControllerTest extends TestCase
         $this->assertGreaterThan(0, $id, (string) $created->getContent());
         $approved = DB::table('UserCampus')->where('UserID', $id)->pluck('Approved', 'CampusID')->map(fn ($v) => (int) $v)->all();
         $this->assertSame([$campus->id => 1, $other->id => 0], $approved);
+        if (Schema::hasTable('teacher_branches')) { // the legacy mirror is written for approved campuses only
+            $this->assertSame([$campus->id], DB::table('teacher_branches')->where('teacher_id', $id)->pluck('branch_id')->map(fn ($v) => (int) $v)->all());
+        }
     }
 
     /** A batch mixing a managed teacher with one the director does not manage is refused as a whole: no row is written. */

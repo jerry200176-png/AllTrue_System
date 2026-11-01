@@ -538,7 +538,7 @@ class ProfileController extends Controller
             $allBranches = array_unique(array_merge(array_filter([$mainBranch]), $data['multi_branches']));
             foreach ($allBranches as $bid) {
                 if ($bid) {
-                    if (Schema::hasTable('teacher_branches')) {
+                    if ($approvedHere((int) $bid) && Schema::hasTable('teacher_branches')) { // no legacy mirror for a pending request
                         DB::table('teacher_branches')->insertOrIgnore(['teacher_id' => $user->id, 'branch_id' => (int) $bid]);
                     }
                     UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], ['Approved' => $approvedHere((int) $bid)]);
