@@ -3,7 +3,7 @@ updates:
     published_at: "2026-11-01"
     audiences:
       - director
-    importance: important
+    importance: major
     title: 共用堂數方案多排的課已清掉
     summary: 以前共用方案每一科都排滿總堂數，行事曆上多出很多課；現在每個方案只留剛好用完剩下堂數的課。
     items:
