@@ -87,31 +87,30 @@ assert.equal(coverTwo.conflict, true);
 assert.match(coverTwo.conflictTooltip, /本分校/);
 assert.doesNotMatch(coverTwo.conflictTooltip, /其他分校/);
 
-// #4368: a trial joining a server-classified one-on-three slot is not full below 3 students.
-const trialSlot = (count) => [
-  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 3 - count, student_count: count, one_on_three: true },
-  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 3 - count, student_count: count, one_on_three: true },
-];
-const coverTrial = (count, requestedEnd = '17:00') => pickerSlotConflict({
-  overlappingSlots: trialSlot(count), coveredClassType: 'trial', sessionCampusId: 3, requestedStart: '15:00', requestedEnd,
+// #4368: a trial joining a server-classified one-on-three slot is not full below 3 students. Each busy row is one
+// student's lesson; `occupant` is the response-local student number.
+const row = (occupant, start, end, classType, oneOnThree = false) => ({
+  start_time: start, end_time: end, campus_id: 3, class_type: classType, remaining_capacity: 0, occupant, one_on_three: oneOnThree,
 });
-assert.equal(coverTrial(2).conflict, false);
-assert.equal(coverTrial(3).conflict, true);
-// Codex P2: each flag describes that busy row's own span. A one-on-three 15:00–16:00 doesn't lift a 15:00–17:00 trial.
-const shortOneOnThree = [
-  { start_time: '15:00', end_time: '16:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 2, student_count: 1, one_on_three: true },
-  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 0, student_count: 1, one_on_three: false },
+const trialSlot = (count) => [
+  ...Array.from({ length: count - 1 }, (_, i) => row(i + 2, '15:00', '17:00', 'one_on_three', true)),
+  row(1, '15:00', '17:00', 'trial', true),
 ];
-assert.equal(pickerSlotConflict({ overlappingSlots: shortOneOnThree, coveredClassType: 'trial', sessionCampusId: 3, requestedStart: '15:00', requestedEnd: '17:00' }).conflict, true);
-assert.equal(pickerSlotConflict({ overlappingSlots: trialSlot(1), coveredClassType: 'trial', sessionCampusId: 3 }).conflict, true, 'no requested span: no lift');
-// Codex P2: a row's student_count spans that row, so a longer row can't count students outside the request.
-const staggered = [
-  { start_time: '15:00', end_time: '17:00', campus_id: 3, class_type: 'trial', remaining_capacity: 0, student_count: 3, one_on_three: false },
-  { start_time: '15:00', end_time: '16:00', campus_id: 3, class_type: 'one_on_three', remaining_capacity: 1, student_count: 2, one_on_three: true },
-];
-assert.equal(pickerSlotConflict({ overlappingSlots: staggered, coveredClassType: 'one_on_three', sessionCampusId: 3, requestedStart: '15:00', requestedEnd: '16:00' }).conflict, false, '2 of 3 seats used in 15–16');
-const longRow = [{ start_time: '14:00', end_time: '18:00', campus_id: 3, class_type: 'one_on_two', remaining_capacity: 0, student_count: 3, one_on_three: false }];
-assert.equal(pickerSlotConflict({ overlappingSlots: longRow, coveredClassType: 'one_on_three', sessionCampusId: 3, requestedStart: '17:00', requestedEnd: '18:00' }).conflict, false, 'long row falls back to its derived count');
+const decide = (slots, classType, requestedStart, requestedEnd) => pickerSlotConflict({
+  overlappingSlots: slots, coveredClassType: classType, sessionCampusId: 3, requestedStart, requestedEnd,
+}).conflict;
+assert.equal(decide(trialSlot(2), 'trial', '15:00', '17:00'), false);
+assert.equal(decide(trialSlot(3), 'trial', '15:00', '17:00'), true);
+assert.equal(decide(trialSlot(2), 'trial'), true, 'no requested span: no lift');
+// Codex P2s: each row's flag and span are its own.
+assert.equal(decide([row(1, '15:00', '16:00', 'one_on_three', true), row(2, '15:00', '17:00', 'trial')], 'trial', '15:00', '17:00'), true,
+  'a one-on-three 15–16 does not lift a 15–17 trial');
+assert.equal(decide([row(1, '15:00', '17:00', 'trial'), row(2, '15:00', '16:00', 'one_on_three', true), row(3, '16:00', '17:00', 'one_on_three', true)],
+  'one_on_three', '15:00', '16:00'), false, 'only 2 students in 15–16');
+assert.equal(decide([row(1, '14:00', '18:00', 'one_on_two'), row(2, '14:00', '15:00', 'one_on_two'), row(3, '14:00', '15:00', 'trial')],
+  'one_on_three', '17:00', '18:00'), false, 'students outside the request are not counted');
+assert.equal(decide([1, 2, 3].map((n) => row(n, '14:00', '18:00', 'trial', true)), 'trial', '15:00', '16:00'), true,
+  'three trials around a shorter request still fill it');
 
 const otherCampus = pickerSlotConflict({
   overlappingSlots: [{

@@ -143,7 +143,7 @@ class SubstituteService
      *
      * @param  int[]  $excludeScheduleIds
      * @param  int|null  $excludeStudentId
-     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,configured_capacity:int,occupied_capacity:int,remaining_capacity:int,one_on_three:bool,course_ids:int[],class_session_ids:int[],schedule_ids:int[],source_types:string[]}>
+     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,configured_capacity:int,occupied_capacity:int,remaining_capacity:int,one_on_three:bool,occupant_key:string,course_ids:int[],class_session_ids:int[],schedule_ids:int[],source_types:string[]}>
      */
     public function collectTeacherBusySlotsWithCapacity(int $teacherId, string $date, array $excludeScheduleIds = [], ?int $excludeStudentId = null): array
     {
@@ -307,6 +307,8 @@ class SubstituteService
                 'occupied_capacity'  => $studentCount,
                 'remaining_capacity' => $remainingCapacity,
                 'one_on_three'       => $oneOnThree,
+                // This row's own occupant, keyed like $occupants above (#4368: the picker counts them per requested span).
+                'occupant_key'       => (int) $slot['student_id'] > 0 ? 'student:' . (int) $slot['student_id'] : 'row:' . $slot['occupancy_key'],
                 'course_ids'         => $this->uniquePositiveIds($overlappingSources, 'course_id'),
                 'class_session_ids'  => $this->uniquePositiveIds($overlappingSources, 'class_session_id'),
                 'schedule_ids'       => $this->uniquePositiveIds($overlappingSources, 'schedule_id'),

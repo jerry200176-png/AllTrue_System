@@ -436,7 +436,9 @@ class AvailabilityCapacityTest extends TestCase
 
         $trialSlot = $slots->firstWhere('class_type', 'trial');
         $this->assertTrue($trialSlot['one_on_three']);
-        $this->assertSame(2, $trialSlot['student_count']);
+        // Response-local occupant numbers, never student ids (PRD §9).
+        $this->assertSame([1, 2], $slots->pluck('occupant')->unique()->sort()->values()->all());
+        $this->assertArrayNotHasKey('student_count', $trialSlot);
         $this->assertSame(1, $trialSlot['remaining_capacity']);
     }
 

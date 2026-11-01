@@ -190,17 +190,16 @@ export function incomingClassConflict({
 }
 
 export function uniqueOccupantsFromBusySlots(slots = [], requestedStart = '', requestedEnd = '') {
-  const reqS = hhmm(requestedStart);
-  const reqE = hhmm(requestedEnd);
+  // #4368: each busy row is one student's lesson; `occupant` (response-local) names that student. Count distinct
+  // occupants of the rows overlapping the requested span, as the write guard does. Rows without it: derive per row.
+  if (slots.length && slots.every((slot) => slot?.occupant !== undefined)) {
+    const inSpan = requestedStart && requestedEnd
+      ? slots.filter((slot) => timesOverlap(slot.start_time, slot.end_time, requestedStart, requestedEnd))
+      : slots;
+    return new Set(inSpan.map((slot) => slot.occupant)).size;
+  }
   let unique = 0;
   for (const slot of slots) {
-    // #4368: the server counts distinct students over the row's own span, so the count is only exact for the request
-    // when the row lies inside it; a longer row may count students outside the request (Codex P2).
-    const inside = Boolean(reqS && reqE) && hhmm(slot?.start_time) >= reqS && hhmm(slot?.end_time) <= reqE;
-    if (inside && slot?.student_count !== undefined) {
-      unique = Math.max(unique, Number(slot.student_count));
-      continue;
-    }
     const cap = availabilityCapacityForClassType(slot?.class_type);
     const remaining = slot?.remaining_capacity === undefined ? 0 : Number(slot.remaining_capacity);
     unique = Math.max(unique, Math.max(0, cap - remaining));
