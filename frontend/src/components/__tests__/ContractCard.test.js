@@ -764,6 +764,17 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     w2.unmount(); vi.unstubAllGlobals();
   });
 
+  it('#4656: a current-term 全額折扣 renewal (server full_discount_settled) shows 不用繳費, not the legacy note', async () => {
+    const w = await mountWith({
+      courses: [{ id: 2, subject: '數學', paid: true, paid_at: null, charge: 6000, free_gift_settled: false, full_discount_settled: true }],
+      invoices: [inv({ total_amount: 0, outstanding_amount: 0, status: 'paid', zero_amount_reason: 'full_discount' })],
+    });
+    expect(card(w).find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
+    expect(card(w).find('[data-testid="contract-last-payment"]').text()).toBe('全額折扣，不用繳費');
+    expect(card(w).text()).not.toContain(LEGACY);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
   it('review P2-1: a waived contract keeping legacy Paid/PayDate shows no note and no payment line', async () => {
     const w = await mountWith({ courses: [{ id: 2, subject: '數學', paid: true, paid_at: '2026-08-01', charge: 5000, waived: true }] });
     expect(card(w).find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);

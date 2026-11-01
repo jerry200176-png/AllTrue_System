@@ -712,6 +712,7 @@ const payLineFor = (course) => {
   // #4339 review: show that recorded date and the trial fee, never 還沒繳費 beside 已收清.
   // A package-created trial member carries Charge=0 (the fee lives on the package): show the date only, never NT$ 0.
   if (course.trial_fee_recorded_by_date === true && course.paid_at) return { date: course.paid_at, amount: Number(course.charge) > 0 ? Number(course.charge) : null };
+  if (course.full_discount_settled === true) return { fullDiscount: true }; // #4656: settled by its NT$0 renewal bill
   return (course.paid_at || course.paid) && course.free_gift_settled !== true ? { legacyUnverified: true } : null;
 };
 const amountsFor = (id) => {
