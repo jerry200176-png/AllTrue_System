@@ -65,6 +65,7 @@ pop-package-ledger-net-repair-4455.yml
 pop-past-scheduled-cancel.yml
 pop-td076-occurrence-repairs.yml
 pop-telegram-webhook-secret.yml
+pop-shared-pool-trim.yml
 pop-unbilled-backlog-catchup.yml
 pop-unpaid-hidden-closures.yml
 production-case-dump.yml

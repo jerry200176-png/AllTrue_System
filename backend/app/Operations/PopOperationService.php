@@ -178,6 +178,7 @@ final class PopOperationService
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && !$this->isExactMuzhaChenBillingCatchup($entry)
             && !$this->isExactUnbilledBacklogCatchup($entry)
+            && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
@@ -796,6 +797,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactSharedPoolTrim($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'campus_scoped_unreferenced_future_scheduled_rows_deleted_or_restored'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactUnbilledBacklogCatchup($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1049,6 +1065,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'muzha-chen-billing-catchup-20261005'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaChenBillingCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-chen-billing-catchup';
+    }
+
+    /** #4734: campus_ids + expected_digest pin each run to its dry-run (Td076 pattern). */
+    private function isExactSharedPoolTrim(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'shared-pool-trim-overplan-20261101'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\SharedPoolTrimStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-shared-pool-trim'
+            && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest', 'restore_request_id'];
     }
 
     /** Same single-super_admin Founder-exact shape; campus_ids + expected_digest pin each run to its dry-run. */

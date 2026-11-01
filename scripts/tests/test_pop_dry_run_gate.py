@@ -20,6 +20,7 @@ SPLIT = {
     "pop-muzha-chen-billing-catchup.yml": "repair",
     "pop-package-ledger-net-repair-4455.yml": "repair",
     "pop-past-scheduled-cancel.yml": "repair",
+    "pop-shared-pool-trim.yml": "trim",
     "pop-unbilled-backlog-catchup.yml": "catchup",
     "pop-unpaid-hidden-closures.yml": "repair",
 }
