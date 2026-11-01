@@ -38,6 +38,7 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
         $usage += \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($ids);
     }
     $courses = [];
+    $pending = [];
     foreach ($candidates as $c) {
         $u = $usage[(int) $c['class_id']] ?? null;
         $perSession = (int) $c['session_minutes'] >= 1 ? (int) $c['session_minutes'] : \App\Models\StudentClass::DEFAULT_SESSION_MINUTES;
@@ -45,6 +46,16 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
         $over = $u !== null && ($u['has_partial']
             ? $u['ledger_net_minutes'] > $purchasedMinutes
             : $u['uncapped_used'] > (int) $c['session_count']);
+        // #4758: every bought lesson is used, yet a generated lesson is still scheduled. Marking it would over-deduct.
+        $full = $u !== null && ($u['has_partial'] ? $u['ledger_net_minutes'] >= $purchasedMinutes : $u['uncapped_used'] >= (int) $c['session_count']);
+        $ids = explode(',', (string) $c['generated_session_ids']);
+        $statuses = explode(',', (string) $c['generated_statuses']);
+        $waiting = count($ids) === count($statuses)
+            ? array_keys(array_filter(array_combine($ids, $statuses), fn (string $status): bool => $status === 'scheduled')) : [];
+        if (!$over && $full && $waiting !== [] && count($pending) < 200) {
+            $pending[] = ['class_id' => $c['class_id'], 'campus_id' => $c['campus_id'], 'session_count' => $c['session_count'],
+                'ledger_used' => $u['uncapped_used'], 'scheduled_generated_session_ids' => implode(',', $waiting), 'later_course_ids' => $c['later_course_ids']];
+        }
         if (!$over || count($courses) >= 200) {
             continue;
         }
@@ -70,6 +81,7 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
             'list_capped' => count($courses) >= 200,
         ],
         'courses' => $courses,
+        'pending_extras' => $pending,
     ];
 }
 

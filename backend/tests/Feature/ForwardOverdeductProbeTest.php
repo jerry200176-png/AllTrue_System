@@ -101,6 +101,31 @@ class ForwardOverdeductProbeTest extends TestCase
         }
     }
 
+    public function test_a_generated_lesson_still_scheduled_on_a_fully_used_course_is_a_pending_extra(): void
+    {
+        // In-app #452 shape: 2 bought, the second passed unmarked, the generator added a third, then the second was marked.
+        $student = $this->student(15);
+        $full = $this->course($student, 2);
+        $this->deduct($full, $this->lesson($full, '2026-10-18'));
+        $this->deduct($full, $this->lesson($full, '2026-10-25'));
+        $extra = $this->lesson($full, '2026-11-01', '系統向前生成 #1062', 'scheduled');
+        $renewal = $this->course($student, 8);
+        // Not yet full: the generated lesson is the one still owed.
+        $owed = $this->course($this->student(15), 2);
+        $this->deduct($owed, $this->lesson($owed, '2026-10-25'));
+        $this->lesson($owed, '2026-11-01', '系統向前生成 #1062', 'scheduled');
+        // Full, but the generated lesson was already cancelled.
+        $done = $this->course($this->student(15), 1);
+        $this->deduct($done, $this->lesson($done, '2026-10-25'));
+        $this->lesson($done, '2026-11-01', '系統向前生成 #1062', 'cancelled');
+
+        $out = forward_overdeduct_probe(DB::connection(), 15);
+
+        $this->assertEquals([['class_id' => $full->ID, 'campus_id' => 15, 'session_count' => 2, 'ledger_used' => 2,
+            'scheduled_generated_session_ids' => (string) $extra->id, 'later_course_ids' => (string) $renewal->ID]], $out['pending_extras']);
+        $this->assertSame([], $out['courses'], 'nothing is over-deducted yet');
+    }
+
     public function test_the_production_entry_point_runs_in_a_read_only_transaction_and_writes_nothing(): void
     {
         $source = (string) file_get_contents(self::PROBE);
