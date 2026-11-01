@@ -1145,7 +1145,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-section{margin-top:20px}
 .ledger-contracts{display:grid;gap:10px}
-.ledger-section h4{margin:0 0 12px;padding-left:10px;border-left:4px solid var(--ds-primary);font-size:var(--ds-font-size-xl);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight)}
+.ledger-section h4{margin:0 0 12px;font-size:var(--ds-font-size-xl);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight);letter-spacing:.02em}
 .ledger-section+.ledger-section{padding-top:16px;border-top:1px solid var(--ds-border)}
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
