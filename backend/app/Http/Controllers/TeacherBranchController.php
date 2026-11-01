@@ -61,7 +61,9 @@ class TeacherBranchController extends Controller
             if (!$this->managesTeacher($request, $userId)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
-            if (!$superAdmin && !in_array($branchId, $callerCampusIds, true)) {
+            // #4433 (Founder policy 1): another campus gets a pending link for its own director; without the column there
+            // is no pending state, so it stays refused.
+            if (!$superAdmin && !$hasApproved && !in_array($branchId, $callerCampusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
         }
@@ -77,6 +79,13 @@ class TeacherBranchController extends Controller
                     ->where('UserID', $userId)
                     ->where('CampusID', $campusId)
                     ->first();
+                if (!$superAdmin && !in_array($campusId, $callerCampusIds, true)) {
+                    // Not the caller's campus: request it (pending), never change an existing link there.
+                    if (!$existing) {
+                        DB::table('UserCampus')->insert(['UserID' => $userId, 'CampusID' => $campusId, 'Admin' => 0, 'Approved' => false]);
+                    }
+                    continue;
+                }
                 if ($existing) {
                     $update = ['Admin' => 0];
                     if ($hasApproved) {
