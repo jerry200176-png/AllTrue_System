@@ -30,6 +30,7 @@ class InappPackageLedgerProbeTest extends TestCase
         'same_slot_debited_twice' => ['package_id', 'session_date', 'start_time', 'net', 'sessions', 'session_ids'],
         'net_debit_by_session_status' => ['package_id', 'status', 'sessions', 'net'],
         'deleted_lesson_debits' => ['package_id', 'sessions', 'pool_debits', 'course_charged', 'pool_only', 'delete_logged'],
+        'ledger_courses_elsewhere' => ['package_id', 'student_class_id', 'ledger_rows', 'ledger_net', 'course_exists', 'course_package_id', 'course_stop'],
         'member_lessons' => ['package_id', 'member_courses', 'attended_slots', 'taught_slots', 'absent_slots', 'scheduled_slots', 'future_planned'],
         'charged_slots_not_debited' => ['package_id', 'scope', 'session_date', 'start_time', 'charged_session_ids', 'statuses', 'package_net', 'charged_before_package'],
         'members' => ['package_id', 'student_class_id', 'student_id', 'subject_id', 'stop', 'schedule_mode'],
@@ -337,6 +338,24 @@ class InappPackageLedgerProbeTest extends TestCase
     }
 
     /** @return array{0: CoursePackage, 1: list<StudentClass>} */
+    public function test_ledger_courses_that_left_the_package_are_listed_as_moved_or_gone(): void
+    {
+        [$package, [$stays, $moves, $goes]] = $this->pool(1, 16, 3);
+        foreach ([$stays, $moves, $goes] as $course) {
+            $this->debit($package, $course, $this->lesson($course, '2026-10-02'), 'attendance');
+        }
+        [$newer] = $this->pool(1, 8);
+        DB::table('StudentClass')->where('ID', $moves->ID)->update(['PackageID' => $newer->id]);
+        DB::table('StudentClass')->where('ID', $goes->ID)->delete();
+
+        $out = inapp_package_ledger_probe(DB::connection(), 1, (int) $package->id, false);
+        $this->assertSame([
+            ['package_id' => (int) $package->id, 'student_class_id' => (int) $moves->ID, 'ledger_rows' => 1, 'ledger_net' => -1, 'course_exists' => 1, 'course_package_id' => (int) $newer->id, 'course_stop' => 0],
+            ['package_id' => (int) $package->id, 'student_class_id' => (int) $goes->ID, 'ledger_rows' => 1, 'ledger_net' => -1, 'course_exists' => 0, 'course_package_id' => 0, 'course_stop' => 0],
+        ], array_map(fn (array $row): array => array_map('intval', $row), $out['ledger_courses_elsewhere']));
+        $this->assertOnlyAllowedKeys($out);
+    }
+
     private function pool(int $campusId, int $total, int $members = 1, ?int $studentCampusId = null, string $classType = 'one_on_one'): array
     {
         $student = Student::create([
