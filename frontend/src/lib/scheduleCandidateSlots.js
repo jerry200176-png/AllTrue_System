@@ -70,6 +70,8 @@ export function buildScheduleCandidates({
       coveredClassType: classType,
       sessionCampusId: branchId,
       branchNameMap,
+      requestedStart: startTime,
+      requestedEnd: endTime,
     });
     candidates.push({
       date,

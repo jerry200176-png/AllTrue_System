@@ -1260,7 +1260,7 @@ class ScheduleGuardService
      * @param  array<int, array<string, mixed>>  $entries
      * @param  array<string, mixed>|null  $span
      */
-    private function isOneOnThreeSlot(array $entries, ?array $span = null): bool
+    public function isOneOnThreeSlot(array $entries, ?array $span = null): bool
     {
         $covers = fn (array $e): bool => $span === null || (isset($e['start_time'], $e['end_time'], $span['start_time'], $span['end_time'])
             && $this->minutesOfDay((string) $e['start_time']) <= $this->minutesOfDay((string) $span['start_time'])
@@ -1289,7 +1289,7 @@ class ScheduleGuardService
      * @param  array<int, array<string, mixed>>  $entries
      * @return array<int, array<string, mixed>>
      */
-    private function withTrialTargets(array $entries): array
+    public function withTrialTargets(array $entries): array
     {
         $courseIdOf = static fn (array $entry): int => (int) ($entry['course_id']
             ?? (in_array($entry['source'] ?? '', ['student_class', 'class_session'], true) ? ($entry['source_id'] ?? 0) : 0));

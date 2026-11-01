@@ -420,6 +420,28 @@ class AvailabilityCapacityTest extends TestCase
         $this->assertSame([], array_values(array_filter($sql, fn ($q) => str_contains($q, 'from studentclass where') && str_contains($q, 'stop'))), 'no separate Stop lookup');
     }
 
+    /** #4368: a trial targeting one_on_three shares the slot (guard rule), so the picker must not show it full. */
+    public function test_trial_targeting_one_on_three_keeps_remaining_capacity(): void
+    {
+        $teacher = $this->createTeacher('teacher-avail-4368@example.com');
+        $regular = $this->createStudentClass($this->createStudent('一對三學生')->id, $teacher->id, 'one_on_three');
+        $trial = $this->createStudentClass($this->createStudent('試聽學生')->id, $teacher->id, 'trial');
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $trial->ID)->update(['trial_target_class_type' => 'one_on_three']);
+        foreach ([$regular, $trial] as $sc) {
+            ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-05-15', 'StartTime' => '14:00:00', 'EndTime' => '16:00:00', 'Status' => 'scheduled']);
+        }
+
+        $slots = collect($this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date=2026-05-15")->assertOk()->json('busy_slots'));
+
+        $trialSlot = $slots->firstWhere('class_type', 'trial');
+        $this->assertTrue($trialSlot['one_on_three']);
+        // Response-local occupant numbers, never student ids (PRD §9).
+        $this->assertSame([1, 2], $slots->pluck('occupant')->unique()->sort()->values()->all());
+        $this->assertArrayNotHasKey('student_count', $trialSlot);
+        $this->assertSame(1, $trialSlot['remaining_capacity']);
+    }
+
     private function createTeacher(string $loginName): User
     {
         $teacher = User::create([

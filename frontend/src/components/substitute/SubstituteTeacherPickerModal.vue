@@ -468,6 +468,8 @@ const enriched = computed(() => {
         coveredClassType: ctx.class_type || '',
         sessionCampusId: sessionCampus,
         branchNameMap: props.branchNameMap || {},
+        requestedStart: checkStart,
+        requestedEnd: checkEnd,
       });
 
       let teachesSubject = null;

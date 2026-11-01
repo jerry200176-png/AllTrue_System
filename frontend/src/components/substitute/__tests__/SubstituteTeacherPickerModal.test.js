@@ -171,7 +171,7 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
             end_time: '15:00',
             campus_id: 9,
             class_type: 'one_on_three',
-            student_count: 1,
+            occupant: 1,
             remaining_capacity: 2,
           }],
         })),

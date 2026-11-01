@@ -97,13 +97,20 @@ class SubstituteController extends Controller
 
         // PRD 第 9 節 Info Disclosure：不含學生姓名 / 課程 ID 等 PII。
         // 新增 class_type（enum，無 PII）與 remaining_capacity（整數）供前端容量判斷。
-        $response = array_map(static fn ($s) => [
-            'start_time'         => $s['start_time'],
-            'end_time'           => $s['end_time'],
-            'campus_id'          => (int) $s['campus_id'],
-            'class_type'         => (string) ($s['class_type']),
-            'remaining_capacity' => (int) ($s['remaining_capacity']),
-        ], $busy);
+        // #4368: `occupant` is a response-local number (same number = same student), not a student id, so the picker can count
+        // distinct students in the requested span the way the write guard does.
+        $ordinals = [];
+        $response = array_map(static function ($s) use (&$ordinals) {
+            return [
+                'start_time'         => $s['start_time'],
+                'end_time'           => $s['end_time'],
+                'campus_id'          => (int) $s['campus_id'],
+                'class_type'         => (string) ($s['class_type']),
+                'remaining_capacity' => (int) ($s['remaining_capacity']),
+                'one_on_three'       => (bool) $s['one_on_three'],
+                'occupant'           => $ordinals[$s['occupant_key']] ??= count($ordinals) + 1,
+            ];
+        }, $busy);
 
         // #265: preserve enough decision context to reconstruct a future
         // capacity mismatch. The diagnostic IDs stay in the existing log only;
