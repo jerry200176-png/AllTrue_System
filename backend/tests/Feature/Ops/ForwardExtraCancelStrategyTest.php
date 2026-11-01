@@ -114,6 +114,8 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         [, $alone] = $this->fullCourse($this->student(17), $past);
         [$cancelledDupCourse, $cancelledDup] = $this->fullCourse($student = $this->student(17), $past);
         $this->lesson($this->course($student, 8), $past, 'cancelled'); // a cancelled twin is not a duplicate
+        // Today's lesson may already have ended unmarked: like a past one, it needs a duplicate.
+        [, $today] = $this->fullCourse($this->student(17), now('Asia/Taipei')->toDateString());
         $s = new ForwardExtraCancelStrategy();
 
         $plan = $this->pinned($s);
@@ -121,6 +123,7 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $this->assertSame(['cancel', 'past_duplicate_later_course'], [$rows[$dup]['class'], $rows[$dup]['reason']]);
         $this->assertSame(['review', 'past_no_duplicate'], [$rows[$alone]['class'], $rows[$alone]['reason']]);
         $this->assertSame('review', $rows[$cancelledDup]['class']);
+        $this->assertSame(['review', 'past_no_duplicate'], [$rows[$today]['class'], $rows[$today]['reason']]);
         $s->execute($plan, []);
 
         $this->assertSame(['cancelled', 'scheduled', 'scheduled'], [$this->st($dup), $this->st($alone), $this->st($cancelledDup)]);

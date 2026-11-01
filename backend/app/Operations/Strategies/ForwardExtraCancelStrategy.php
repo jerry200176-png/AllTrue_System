@@ -15,7 +15,7 @@ use RuntimeException;
  * all used already, so marking it would deduct one more than was bought. The courses come from the shared scan the
  * forward-overdeduct probe uses (ForwardSessionExtras: ledger-used >= bought, not over yet, a generated lesson still scheduled).
  * Each such lesson is `cancel` when nothing points at it (no live sign-in, learning record or ledger row, course not settled)
- * and it is today or later (Asia/Taipei) or a later course of the same student and subject holds a live lesson at the same
+ * and it is after today (Asia/Taipei) or a later course of the same student and subject holds a live lesson at the same
  * date and start (a duplicate). Every other lesson is `review`: listed, never written (a past unmarked lesson may have been taught).
  *
  * Cancel goes through the ClassSession model (creating/updating guards, ClassSessionObserver audit), after resetting the
@@ -180,7 +180,7 @@ final class ForwardExtraCancelStrategy
                 [$class, $reason] = match (true) {
                     $activity => ['review', 'activity'],
                     $settled => ['review', 'course_settled'],
-                    $date >= $today => ['cancel', 'future'],
+                    $date > $today => ['cancel', 'future'], // today's may have ended unmarked: duplicate or review
                     $duplicate => ['cancel', 'past_duplicate_later_course'],
                     default => ['review', 'past_no_duplicate'],
                 };
