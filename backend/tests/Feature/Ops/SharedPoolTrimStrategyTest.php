@@ -194,6 +194,9 @@ final class SharedPoolTrimStrategyTest extends TestCase
         $this->assertCount(7, $this->planned($this->poolA), 'three come back; the slot the student booked since stays theirs');
         $this->assertFalse(ClassSession::whereKey($taken['id'])->exists());
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'pop.shared_pool_trim.restore')->count());
+        // The adapter waits for the audit event this mode writes (Codex P2): trim -> pop.shared_pool_trim, restore -> .restore.
+        $adapter = file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-shared-pool-trim.yml');
+        $this->assertStringContainsString('AUDIT="pop.shared_pool_trim${RESTORE:+.restore}"', $adapter);
         $again = (new SharedPoolTrimStrategy())->plan(['expected_digest' => $restoreDigest] + $restore);
         $this->assertSame('after', $again['state'], 'a second restore puts nothing back twice');
     }

@@ -136,7 +136,7 @@ jobs:
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
-          OPERATION=shared-pool-trim-overplan-20261101; REF=trim-shared-pool-overplan-20261101; AUDIT=pop.shared_pool_trim
+          OPERATION=shared-pool-trim-overplan-20261101; REF=trim-shared-pool-overplan-20261101; AUDIT="pop.shared_pool_trim${RESTORE:+.restore}"
           CAMPUS_KEY="${CAMPUS//,/-}${RESTORE:+-r${RESTORE:0:8}}"
           APPROVAL_REF="founder-go-pool-trim-c$CAMPUS_KEY-${DIGEST:0:12}"
           WORK_DIR="$(mktemp -d /tmp/pop-pooltrim.XXXXXX)"

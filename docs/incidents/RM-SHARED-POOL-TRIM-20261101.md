@@ -1,6 +1,6 @@
 # Repair Manifest — 共用堂數方案清掉多預排的未來課（2026-11-01）
 
-Status: POP operation `shared-pool-trim-overplan-20261101` (catalog v16). Nothing runs until the Founder approves a specific dry-run digest.
+Status: POP operation `shared-pool-trim-overplan-20261101` (catalog v15). Nothing runs until the Founder approves a specific dry-run digest.
 Risk: R3/T3. Founder GO **A** (2026-11-01, GitHub #4734).
 
 ## Purpose
