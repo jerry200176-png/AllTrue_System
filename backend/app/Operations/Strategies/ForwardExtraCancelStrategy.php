@@ -243,7 +243,10 @@ final class ForwardExtraCancelStrategy
                     // A legacy record with no ClassSessionID counts toward usage by course + date (+ start), so it protects the lesson too.
                     || DB::table('LearningRecord')->where('StudentClassID', $classId)->whereNull('VoidedAt')
                         ->where(fn ($q) => $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0))->whereDate('SessionDate', $date)
-                        ->where(fn ($q) => $q->whereNull('StartTime')->orWhereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start]))->exists();
+                        ->where(fn ($q) => $q->whereNull('StartTime')->orWhereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start]))->exists()
+                    // Likewise a live sign-in not bound to an existing lesson, same course and day (usage counts it too).
+                    || DB::table('StudentSingIn as si')->leftJoin('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+                        ->where('si.StudentClassID', $classId)->whereNull('si.VoidedAt')->whereNull('cs.id')->whereDate('si.SignInDT', $date)->exists();
                 $duplicate = $later !== [] && DB::table('ClassSession')->whereIn('StudentClassID', $later)->whereDate('SessionDate', $date)
                     ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")->exists();
                 [$class, $reason] = match (true) {

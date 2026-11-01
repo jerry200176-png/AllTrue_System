@@ -125,6 +125,11 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         DB::statement('SET FOREIGN_KEY_CHECKS=0'); // a pre-FK legacy row: today's schema no longer accepts it
         DB::table('LearningRecord')->insert(['StudentClassID' => $lrCourse->ID, 'ClassSessionID' => 0, 'TeacherID' => $this->teacherId, 'Content' => '',
             'Subject' => 's', 'SessionDate' => $past, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'pending']);
+        // Codex P2: so does a live sign-in on that course and day bound to no existing lesson.
+        [$siCourse, $unboundSignIn] = $this->fullCourse($student = $this->student(17), $past);
+        $this->lesson($this->course($student, 8), $past, 'scheduled');
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $siCourse->ID, 'StudentID' => $siCourse->StudentID, 'ClassSessionID' => null,
+            'Status' => 'attended', 'SignInDT' => $past . ' 10:00:00', 'SignOutDT' => $past . ' 12:00:00', 'SessionDeducted' => 1]);
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
         $s = new ForwardExtraCancelStrategy();
 
@@ -136,6 +141,7 @@ final class ForwardExtraCancelStrategyTest extends TestCase
         $this->assertSame(['review', 'past_no_duplicate'], [$rows[$today]['class'], $rows[$today]['reason']]);
         $this->assertSame(['review', 'past_no_duplicate'], [$rows[$voidedDup]['class'], $rows[$voidedDup]['reason']]);
         $this->assertSame(['review', 'activity'], [$rows[$unbound]['class'], $rows[$unbound]['reason']]);
+        $this->assertSame(['review', 'activity'], [$rows[$unboundSignIn]['class'], $rows[$unboundSignIn]['reason']]);
         $s->execute($plan, []);
 
         $this->assertSame(['cancelled', 'scheduled', 'scheduled'], [$this->st($dup), $this->st($alone), $this->st($cancelledDup)]);
