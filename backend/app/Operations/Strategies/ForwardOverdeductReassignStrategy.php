@@ -230,7 +230,8 @@ final class ForwardOverdeductReassignStrategy
         $courses = DB::table('StudentClass')->whereIn('ID', $laterIds)->get(['ID', 'ScheduleMode', 'closed_reason', 'settlement_locked_at', 'TeacherID'])->keyBy('ID');
         $room = [];
         foreach (SessionDeductionService::batchExpectedUsedSessionDiagnostics($laterIds) as $id => $u) {
-            $room[$id] = $u['session_count'] - $u['uncapped_used'];
+            // A minute-based target (partial-duration lesson) counts events, not consumed minutes: never a target (Codex P1).
+            $room[$id] = $u['has_partial'] ? 0 : $u['session_count'] - $u['uncapped_used'];
         }
         $taken = [];
         $rows = [];
@@ -247,11 +248,14 @@ final class ForwardOverdeductReassignStrategy
                 ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled', 'voided')")
                 ->whereRaw("(SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0) FROM session_deduction_ledger l WHERE l.class_session_id = cs.id) > 0")
                 ->orderByDesc('cs.SessionDate')->orderByDesc('cs.id')->limit($excess)->get(['cs.id', 'cs.SessionDate', 'cs.StartTime']);
-            if ($candidates->isEmpty()) {
-                $rows[] = $none + ['reason' => 'no_movable_lesson'];
+            if ($candidates->count() < $excess) {
+                // Fewer movable generated lessons than the excess: a partial move would leave the course over and invisible
+                // to the rescan, so nothing on this course moves (Codex P2).
+                $rows[] = $none + ['reason' => $candidates->isEmpty() ? 'no_movable_lesson' : 'insufficient_generated_lessons'];
                 continue;
             }
-            $sourceSettled = $this->settled(DB::table('StudentClass')->where('ID', $classId)->first(['settlement_locked_at', 'closed_reason']));
+            $source = DB::table('StudentClass')->where('ID', $classId)->first(['settlement_locked_at', 'closed_reason', 'TeacherID']);
+            $sourceSettled = $this->settled($source);
             $targets = array_values(array_filter(array_map('intval', array_filter(explode(',', (string) $x['c']['later_course_ids']))),
                 fn (int $id) => ($c = $courses->get($id)) && strtolower((string) $c->ScheduleMode) === 'count' && (string) $c->closed_reason !== 'waived' && !$this->settled($c)));
             foreach ($candidates as $s) {
@@ -273,7 +277,8 @@ final class ForwardOverdeductReassignStrategy
                     if (isset($taken["$tid|$date|$start"]) || DB::table('ClassSession')->where('StudentClassID', $tid)->whereDate('SessionDate', $date)
                         ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start])->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")->exists()) continue;
                     $locked = LearningRecordMutableOwnership::protectedRecordForSession((int) $s->id, false);
-                    if ($locked !== null && (int) $locked->TeacherID !== (int) $courses->get($tid)->TeacherID) {
+                    // Restore moves it back through the same guard, so the locked assessment's teacher must match both contracts (Codex P1).
+                    if ($locked !== null && ((int) $locked->TeacherID !== (int) $courses->get($tid)->TeacherID || (int) $locked->TeacherID !== (int) $source->TeacherID)) {
                         $reason = 'assessment_locked';
                         continue;
                     }

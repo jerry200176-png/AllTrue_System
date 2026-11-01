@@ -102,6 +102,43 @@ final class ForwardOverdeductReassignStrategyTest extends TestCase
         return array_column($plan['manifest'], null, 'session_id');
     }
 
+    public function test_codex_review_cases_stay_review_and_nothing_moves(): void
+    {
+        $past = now()->subDays(5)->toDateString();
+        // P1: a minute-based later contract (one 240-minute makeup on 2 x 120) is never a target.
+        $s1 = $this->student(28);
+        [, $toMinuteTarget] = $this->overCourse($s1, $past);
+        $minuteTarget = $this->later($s1, 2);
+        $makeup = (int) DB::table('ClassSession')->insertGetId(['StudentClassID' => $minuteTarget->ID, 'SessionDate' => now()->subDays(40)->toDateString(),
+            'StartTime' => '10:00:00', 'EndTime' => '14:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $minuteTarget->ID, 'event_type' => 'deduct', 'source' => 'attendance',
+            'class_session_id' => $makeup, 'minutes' => 240, 'created_at' => now(), 'updated_at' => now()]);
+        // P1: an approved assessment by a substitute could move to the substitute's contract but never move back.
+        $s2 = $this->student(28);
+        [, $assessed] = $this->overCourse($s2, $past);
+        $substitute = (int) User::create(['LoginName' => 'fo-sub@t.com', 'Name' => 'S', 'PSW' => 's', 'type' => 'T', 'phone' => 911000002])->id;
+        $subContract = $this->later($s2, 5);
+        $subContract->forceFill(['TeacherID' => $substitute])->save();
+        DB::table('LearningRecord')->insert(['StudentClassID' => $this->onCourse($assessed), 'ClassSessionID' => $assessed, 'TeacherID' => $substitute,
+            'Content' => 'reviewed fractions and word problems', 'Subject' => 's', 'SessionDate' => $past, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00',
+            'Status' => 'approved']);
+        // P2: excess 2 but only one generated lesson: a partial move would leave the course over, so nothing moves.
+        $s3 = $this->student(28);
+        $mixed = $this->course($s3, 2);
+        for ($i = 1; $i <= 3; $i++) {
+            $this->taught($mixed, now()->subDays(30 + $i)->toDateString());
+        }
+        $lonely = $this->taught($mixed, $past, '系統向前生成 #1062');
+        $this->later($s3, 5);
+
+        $rows = $this->rows((new ForwardOverdeductReassignStrategy())->plan($this->params(28)));
+        $this->assertSame(['review', 'no_target_with_room'], [$rows[$toMinuteTarget]['class'], $rows[$toMinuteTarget]['reason']]);
+        $this->assertSame(['review', 'assessment_locked'], [$rows[$assessed]['class'], $rows[$assessed]['reason']]);
+        $this->assertArrayNotHasKey($lonely, $rows);
+        $this->assertContains(['class_id' => $mixed->ID, 'class' => 'review', 'reason' => 'insufficient_generated_lessons'],
+            array_map(fn ($r) => ['class_id' => $r['class_id'], 'class' => $r['class'], 'reason' => $r['reason']], array_values($rows)));
+    }
+
     public function test_a_taught_extra_moves_to_a_later_contract_with_room_and_counters_are_fixed(): void
     {
         $student = $this->student(27);
