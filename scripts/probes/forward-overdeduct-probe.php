@@ -18,41 +18,13 @@ use Illuminate\Database\ConnectionInterface;
 /** @return array<string, mixed> */
 function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
 {
-    // Candidates: count courses holding a generated lesson (the note may carry appended audit suffixes).
-    $candidates = array_map(fn ($row) => (array) $row, $db->select(
-        'SELECT sc.ID AS class_id, s.CampusID AS campus_id, sc.SessionCount AS session_count, sc.UsedSessions AS used_sessions,'
-        . ' sc.SessionDuration AS session_minutes, g.ids AS generated_session_ids, g.statuses AS generated_statuses,'
-        . ' (SELECT GROUP_CONCAT(n.ID ORDER BY n.ID SEPARATOR \',\') FROM StudentClass n'
-        . '   WHERE n.StudentID = sc.StudentID AND n.SubjectID = sc.SubjectID AND n.ID > sc.ID) AS later_course_ids'
-        . ' FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID'
-        . ' JOIN (SELECT StudentClassID, GROUP_CONCAT(id ORDER BY SessionDate, id SEPARATOR \',\') AS ids,'
-        . '   GROUP_CONCAT(LOWER(Status) ORDER BY SessionDate, id SEPARATOR \',\') AS statuses'
-        . '   FROM ClassSession WHERE Note LIKE ? GROUP BY StudentClassID) g ON g.StudentClassID = sc.ID'
-        . " WHERE LOWER(sc.ScheduleMode) = 'count' AND sc.SessionCount > 0 AND (? = 0 OR s.CampusID = ?)"
-        . ' ORDER BY s.CampusID, sc.ID',
-        ['系統向前生成 #1062%', $campusId, $campusId]
-    ));
-    // Usage exactly as the app counts it: ledger events, or ledger minutes once a partial-duration lesson exists.
-    $usage = [];
-    foreach (array_chunk(array_map(fn (array $c): int => (int) $c['class_id'], $candidates), 500) as $ids) {
-        $usage += \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($ids);
-    }
+    // The scan (candidates, usage as the app counts it, over/full flags) is shared with the #4758 cancel operation.
+    $scan = \App\Services\ForwardSessionExtras::scan($db, $campusId);
     $courses = [];
     $pending = [];
-    foreach ($candidates as $c) {
-        $u = $usage[(int) $c['class_id']] ?? null;
-        $perSession = (int) $c['session_minutes'] >= 1 ? (int) $c['session_minutes'] : \App\Models\StudentClass::DEFAULT_SESSION_MINUTES;
-        $purchasedMinutes = (int) $c['session_count'] * $perSession;
-        $over = $u !== null && ($u['has_partial']
-            ? $u['ledger_net_minutes'] > $purchasedMinutes
-            : $u['uncapped_used'] > (int) $c['session_count']);
-        // #4758: every bought lesson is used, yet a generated lesson is still scheduled. Marking it would over-deduct.
-        $full = $u !== null && ($u['has_partial'] ? $u['ledger_net_minutes'] >= $purchasedMinutes : $u['uncapped_used'] >= (int) $c['session_count']);
-        $ids = explode(',', (string) $c['generated_session_ids']);
-        $statuses = explode(',', (string) $c['generated_statuses']);
-        $waiting = count($ids) === count($statuses)
-            ? array_keys(array_filter(array_combine($ids, $statuses), fn (string $status): bool => $status === 'scheduled')) : [];
-        if (!$over && $full && $waiting !== [] && count($pending) < 200) {
+    foreach ($scan as $x) {
+        ['c' => $c, 'u' => $u, 'purchased_minutes' => $purchasedMinutes, 'over' => $over, 'waiting' => $waiting] = $x;
+        if (!$over && $x['full'] && $waiting !== [] && count($pending) < 200) {
             $pending[] = ['class_id' => $c['class_id'], 'campus_id' => $c['campus_id'], 'session_count' => $c['session_count'],
                 'ledger_used' => $u['uncapped_used'], 'scheduled_generated_session_ids' => implode(',', $waiting), 'later_course_ids' => $c['later_course_ids']];
         }
@@ -75,7 +47,7 @@ function forward_overdeduct_probe(ConnectionInterface $db, int $campusId): array
         'read_only' => true,
         'campus_id' => $campusId,
         'summary' => [
-            'candidates' => count($candidates),
+            'candidates' => count($scan),
             'courses' => count($courses),
             'by_campus' => $byCampus,
             'list_capped' => count($courses) >= 200,

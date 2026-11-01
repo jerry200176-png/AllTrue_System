@@ -697,3 +697,32 @@ operations:
     parameter_keys: [campus_ids, decision_reference, expected_digest, restore_request_id]
     tags: [repair, session, shared-pool, issue-4734]
     notes: Founder GO 2026-11-01 (A, #4734). Deletes the planned lessons shared count pools pre-planned before #4730 past what each pool has left (SharedPackagePlanningService::sharedPoolExcess). Only future `scheduled` rows nothing points at; no billing, ledger or counter is written. Execute is pinned to the dry-run digest; the snapshot keeps every row whole for rollback. Pi-local POP only.
+
+  forward-extra-cancel-20261101:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-forward-extra-cancel
+    founder_approval_required: true
+    runbook: docs/incidents/RM-FORWARD-EXTRA-CANCEL-20261101.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_unmarked_forward_generated_scheduled_rows_cancelled
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\ForwardExtraCancelStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest]
+    tags: [repair, session, forward-generator, issue-4758]
+    notes: GitHub #4758 (in-app #452). Cancels the scheduled lessons the forward generator added to courses whose bought lessons are all used, when nothing points at them and they are today or later or duplicated on a later course of the same student and subject. Other such lessons are only listed for a director. Only ClassSession.Status changes; execute is pinned to the dry-run digest and rollback sets exactly those ids back to scheduled. Pi-local POP only.

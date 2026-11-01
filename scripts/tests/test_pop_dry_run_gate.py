@@ -15,6 +15,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 # workflow -> id of its SSH job
 SPLIT = {
     "pop-contract-charge-correction-3868.yml": "repair",
+    "pop-forward-extra-cancel.yml": "cancel",
     "pop-founder-scoped-repair.yml": "repair",
     "pop-invoice1997-stale-values.yml": "repair",
     "pop-muzha-chen-billing-catchup.yml": "repair",
