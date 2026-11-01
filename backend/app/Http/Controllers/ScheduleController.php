@@ -122,6 +122,15 @@ class ScheduleController extends Controller
         return response()->json($query->orderBy('schedule_date', 'asc')->paginate(min((int) ($perPage ?? 200), 1000)));
     }
 
+    /** @var (callable():mixed)|null test seam: runs between update()'s pre-check and its student lock */
+    public static $beforeStudentLockForTests = null;
+
+    /** #3738: the per-student write lock shared with the forced renewal, so slot checks and bookings serialize. */
+    private static function lockStudentForWrite(int $studentId): void
+    {
+        DB::table('Student')->where('id', $studentId)->lockForUpdate()->value('id');
+    }
+
     public function store(Request $request)
     {
         // Defensive unwrap: older frontend sends JSON array [{...}] instead of object.
@@ -182,12 +191,13 @@ class ScheduleController extends Controller
         $effectiveRoomId = null;
 
         $courseId = (int) ($data['student_course_id'] ?? 0);
+        $ownerStudentId = (int) $data['student_id'];
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass as sc')
                 ->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $courseId)
                 ->select([
-                    'sc.ID', 'sc.TeacherID', 'sc.ClassType', 'sc.room_id', 'st.CampusID',
+                    'sc.ID', 'sc.StudentID', 'sc.TeacherID', 'sc.ClassType', 'sc.room_id', 'st.CampusID',
                     'sc.ScheduleMode', 'sc.StartDate', 'sc.EndDate',
                 ])
                 ->first();
@@ -198,6 +208,11 @@ class ScheduleController extends Controller
             if ((int) $courseMeta->CampusID !== $branchId) {
                 return response()->json(['message' => '課程不屬於該分校，無法調課'], 422);
             }
+            // #4001: the payload student must be the course owner; the write lock below is taken on that student.
+            if ((int) $courseMeta->StudentID !== (int) $data['student_id']) {
+                return response()->json(['message' => '學生與課程不符，無法建立調課紀錄', 'code' => 'student_course_mismatch'], 422);
+            }
+            $ownerStudentId = (int) $courseMeta->StudentID;
 
             if ($effectiveTeacherId <= 0) {
                 $effectiveTeacherId = (int) ($courseMeta->TeacherID ?? 0);
@@ -538,8 +553,8 @@ class ScheduleController extends Controller
         }
 
         // #3738: take the forced renewal's per-student lock so its slot check and this booking serialize.
-        $schedule = DB::transaction(function () use ($data) {
-            DB::table('Student')->where('id', (int) $data['student_id'])->lockForUpdate()->value('id');
+        $schedule = DB::transaction(function () use ($data, $ownerStudentId) {
+            self::lockStudentForWrite($ownerStudentId);
             return Schedule::create($data);
         });
 
@@ -1152,7 +1167,7 @@ class ScheduleController extends Controller
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass')
                 ->where('ID', $courseId)
-                ->select(['TeacherID', 'ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
+                ->select(['StudentID', 'TeacherID', 'ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate', 'trial_target_class_type'])
                 ->first();
             if ($courseMeta) {
                 if (empty($merged['class_type'])) {
@@ -1190,49 +1205,72 @@ class ScheduleController extends Controller
             return $this->applyLeaveScheduleUpdate($schedule, $data, $courseId, $merged, $request);
         }
 
-        if (($merged['status'] ?? 'scheduled') === 'scheduled') {
-            $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
+        $conflict = fn () => $this->scheduleUpdateConflict($schedule, $merged, $effectiveTeacherId, $effectiveClassType, $courseMeta ?? null, $effectiveRoomId, $branchId, $courseId);
+        if ($early = $conflict()) {
+            return $early;
+        }
+
+        // #4001: serialize with renewal/store writes on the course owner, then recheck before save or materialize.
+        $ownerId = (int) ($courseMeta->StudentID ?? $merged['student_id'] ?? 0);
+        $hook = self::$beforeStudentLockForTests;
+        $hook && $hook();
+
+        return DB::transaction(function () use ($schedule, $data, $conflict, $ownerId) {
+            self::lockStudentForWrite($ownerId);
+            if ($late = $conflict()) {
+                return $late;
+            }
+            $schedule->fill(array_filter($data, fn ($v) => $v !== null));
+            $schedule->save();
+            $this->ensureClassSessionForScheduleData($schedule->toArray());
+
+            return response()->json($schedule);
+        });
+    }
+
+    /** Teacher/room conflict of an updated schedule row as a 409, or null; shared by the pre-check and the post-lock recheck. */
+    private function scheduleUpdateConflict(Schedule $schedule, array $merged, int $effectiveTeacherId, string $effectiveClassType, ?object $courseMeta, ?int $effectiveRoomId, int $branchId, int $courseId): ?\Illuminate\Http\JsonResponse
+    {
+        if (($merged['status'] ?? 'scheduled') !== 'scheduled') {
+            return null;
+        }
+        $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
+            'teacher_id' => $effectiveTeacherId,
+            'class_type' => $effectiveClassType,
+            'trial_target_class_type' => $courseMeta->trial_target_class_type ?? null,
+            'room_id' => $effectiveRoomId,
+            'branch_id' => $branchId,
+            'schedule_date' => $merged['schedule_date'] ?? null,
+            'start_time' => $merged['start_time'] ?? null,
+            'end_time' => $merged['end_time'] ?? null,
+            'exclude_student_id' => (int) ($merged['student_id'] ?? 0),
+            'exclude_schedule_id' => (int) $schedule->id,
+        ]);
+        if (!empty($guardConflicts)) {
+            Log::warning('Schedule update conflict', [
+                'schedule_id' => (int) $schedule->id,
+                'student_id' => (int) ($merged['student_id'] ?? 0),
                 'teacher_id' => $effectiveTeacherId,
-                'class_type' => $effectiveClassType,
-                'trial_target_class_type' => $courseMeta->trial_target_class_type ?? null,
-                'room_id' => $effectiveRoomId,
+                'student_course_id' => $courseId > 0 ? $courseId : null,
                 'branch_id' => $branchId,
                 'schedule_date' => $merged['schedule_date'] ?? null,
                 'start_time' => $merged['start_time'] ?? null,
                 'end_time' => $merged['end_time'] ?? null,
-                'exclude_student_id' => (int) ($merged['student_id'] ?? 0),
-                'exclude_schedule_id' => (int) $schedule->id,
+                'class_type' => $effectiveClassType,
+                'conflict_count' => count($guardConflicts),
+                'conflict_types' => array_values(array_unique(array_filter(array_map(
+                    static fn ($conflict) => $conflict['type'] ?? null,
+                    $guardConflicts
+                )))),
             ]);
-            if (!empty($guardConflicts)) {
-                Log::warning('Schedule update conflict', [
-                    'schedule_id' => (int) $schedule->id,
-                    'student_id' => (int) ($merged['student_id'] ?? 0),
-                    'teacher_id' => $effectiveTeacherId,
-                    'student_course_id' => $courseId > 0 ? $courseId : null,
-                    'branch_id' => $branchId,
-                    'schedule_date' => $merged['schedule_date'] ?? null,
-                    'start_time' => $merged['start_time'] ?? null,
-                    'end_time' => $merged['end_time'] ?? null,
-                    'class_type' => $effectiveClassType,
-                    'conflict_count' => count($guardConflicts),
-                    'conflict_types' => array_values(array_unique(array_filter(array_map(
-                        static fn ($conflict) => $conflict['type'] ?? null,
-                        $guardConflicts
-                    )))),
-                ]);
-                return response()->json([
-                    'message' => $guardConflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
-                    'conflicts' => $guardConflicts,
-                    'suggested_actions' => $guardConflicts[0]['suggested_actions'] ?? [],
-                ], 409);
-            }
+            return response()->json([
+                'message' => $guardConflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
+                'conflicts' => $guardConflicts,
+                'suggested_actions' => $guardConflicts[0]['suggested_actions'] ?? [],
+            ], 409);
         }
 
-        $schedule->fill(array_filter($data, fn ($v) => $v !== null));
-        $schedule->save();
-        $this->ensureClassSessionForScheduleData($schedule->toArray());
-
-        return response()->json($schedule);
+        return null;
     }
 
     /**
