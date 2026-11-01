@@ -56,6 +56,86 @@ class ProfileUpdateTargetTest extends TestCase
         $this->assertSame('主任新名', (string) $target->fresh()->Name);
     }
 
+    /** #4433 (Founder 3A): a director's save never touches links at campuses they don't manage. */
+    public function test_director_edit_keeps_links_at_unmanaged_campuses(): void
+    {
+        $mine = CampusFactory::new()->create();
+        $mine2 = CampusFactory::new()->create();
+        $approvedElsewhere = CampusFactory::new()->create();
+        $pendingElsewhere = CampusFactory::new()->create();
+        $director = $this->user('A', [$mine->id, $mine2->id]);
+        $teacher = $this->user('T', [$mine->id, $mine2->id, $approvedElsewhere->id]);
+        UserCampus::create(['UserID' => $teacher->id, 'CampusID' => $pendingElsewhere->id, 'Admin' => 0, 'Approved' => 0]);
+        foreach ([$mine, $mine2, $approvedElsewhere] as $c) {
+            DB::table('teacher_branches')->insert(['teacher_id' => $teacher->id, 'branch_id' => $c->id]);
+        }
+
+        // The form omits both other campuses and one of the director's own.
+        $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", [
+            'branch_id' => $mine->id, 'multi_branches' => [$mine->id],
+        ])->assertOk();
+
+        $links = DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('Approved', 'CampusID')->map(fn ($v) => (int) $v)->all();
+        $this->assertEqualsCanonicalizing([$mine->id => 1, $approvedElsewhere->id => 1, $pendingElsewhere->id => 0], $links);
+        $this->assertEqualsCanonicalizing([$mine->id, $approvedElsewhere->id],
+            DB::table('teacher_branches')->where('teacher_id', $teacher->id)->pluck('branch_id')->all());
+    }
+
+    public function test_director_changing_main_campus_does_not_move_an_unmanaged_link(): void
+    {
+        $mine = CampusFactory::new()->create();
+        $mine2 = CampusFactory::new()->create();
+        $elsewhere = CampusFactory::new()->create();
+        $director = $this->user('A', [$mine->id, $mine2->id]);
+        $teacher = $this->user('T', [$elsewhere->id, $mine->id]); // the other-campus link is the first row
+
+        $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", ['branch_id' => $mine2->id])->assertOk();
+
+        $this->assertEqualsCanonicalizing([$elsewhere->id, $mine2->id],
+            DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->all());
+    }
+
+    public function test_an_unchanged_save_with_an_unmanaged_main_campus_changes_no_link(): void
+    {
+        $mine = CampusFactory::new()->create();
+        $elsewhere = CampusFactory::new()->create();
+        $director = $this->user('A', [$mine->id]);
+        $teacher = $this->user('T', [$elsewhere->id, $mine->id]); // main campus first, outside the director's scope
+
+        // Codex P2 on #4760: TeachersList.vue resends branch_id=<main> and multi_branches=[<others>] on an unchanged save.
+        foreach ([1, 2] as $save) {
+            $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", [
+                'branch_id' => $elsewhere->id, 'multi_branches' => [$mine->id],
+            ])->assertOk();
+        }
+
+        $this->assertEqualsCanonicalizing([$elsewhere->id, $mine->id],
+            DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->all());
+    }
+
+    public function test_director_with_no_campus_scope_cannot_edit_links(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $director = $this->user('A', []);
+        $teacher = $this->user('T', [$campus->id]);
+
+        $this->api($this->token($director))->putJson("/api/v1/profiles/{$teacher->id}", ['multi_branches' => []])->assertForbidden();
+        $this->assertSame(1, DB::table('UserCampus')->where('UserID', $teacher->id)->count());
+    }
+
+    public function test_super_admin_edit_still_replaces_every_link(): void
+    {
+        $a = CampusFactory::new()->create();
+        $b = CampusFactory::new()->create();
+        $teacher = $this->user('T', [$a->id, $b->id]);
+
+        $this->api($this->token($this->user('S', [])))->putJson("/api/v1/profiles/{$teacher->id}", [
+            'branch_id' => $a->id, 'multi_branches' => [$a->id],
+        ])->assertOk();
+
+        $this->assertSame([$a->id], DB::table('UserCampus')->where('UserID', $teacher->id)->pluck('CampusID')->map(fn ($v) => (int) $v)->all());
+    }
+
     /** @param list<int> $campusIds */
     private function user(string $type, array $campusIds): User
     {

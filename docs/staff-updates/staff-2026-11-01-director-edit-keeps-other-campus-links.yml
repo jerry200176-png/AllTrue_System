@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-01-director-edit-keeps-other-campus-links
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 編輯老師不動別校設定
+    summary: 主任編輯老師時，只會改動自己分校的設定，其他分校的不會被移除。
+    items:
+      - category: fixed
+        text: 儲存老師資料時，老師在你沒管理的分校的設定（含待審核）會保持原樣。
+      - category: fixed
+        text: 你自己分校的設定，取消勾選仍然會移除。
+    source_refs:
+      - "changelog:2026-11-01:director-edit-keeps-other-campus-links"

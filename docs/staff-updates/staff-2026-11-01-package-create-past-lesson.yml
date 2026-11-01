@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-01-package-create-past-lesson
+    published_at: "2026-11-01"
+    audiences:
+      - director
+    importance: digest
+    title: 當天已上完的課算進方案堂數
+    summary: 開課日當天才建立共用方案時，已上完的那堂會算在買的堂數裡。
+    items:
+      - category: fixed
+        text: 第一堂下課後才建立方案，那堂會記成已上課，後面只預排剩下的堂數，不會多排一堂。
+    source_refs:
+      - "changelog:2026-11-01:package-create-past-lesson"
