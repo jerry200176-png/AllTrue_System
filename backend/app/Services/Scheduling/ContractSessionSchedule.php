@@ -716,7 +716,7 @@ class ContractSessionSchedule
         $slotPlanned = []; // group slots already in future_planned_sessions cost nothing to join (#4455)
         $today = Carbon::today()->toDateString();
         $takenBy = [];
-        $groupRows = []; // key => a sibling's planned group lesson row (date, start, end)
+        $groupRows = []; // key => a sibling's planned group lesson (date, start)
         foreach ($members as $member) {
             $classId = (int) $member->ID;
             $takenBy[$classId] = [];
@@ -726,7 +726,7 @@ class ContractSessionSchedule
                 $takenBy[$classId][$key] = true;
                 if ($isGroup && $date >= $today && in_array((string) $row->Status, ['scheduled', 'rescheduled', 'leave_requested'], true)) {
                     $slotPlanned[$key] = true;
-                    $groupRows[$key] ??= [$date, (string) $row->StartTime, (string) $row->EndTime];
+                    $groupRows[$key] ??= [$date, (string) $row->StartTime];
                 }
             }
         }
@@ -740,16 +740,21 @@ class ContractSessionSchedule
             $startFrom = self::normalizeDateString($member->StartDate ?? null) ?: Carbon::today()->toDateString();
             // Longer than $count so a member whose contract dates are taken still offers the next weekly dates.
             $sequence = self::buildSessionsForCount($classId, $startFrom, $count + count($taken), $slots, max(30, (int) ($member->SessionDuration ?? 120)));
-            // A sibling's group lesson on this member's weekly pattern, even one moved past that sequence, is a candidate
-            // too (it costs nothing below, #4733). Off-pattern rows (a sibling's own make-up) are not joined.
+            // A sibling's group lesson on this member's weekly pattern, from its start date on, even one moved past that
+            // sequence, is a candidate too (it costs nothing below, #4733), with this member's own lesson length.
+            // Off-pattern rows (a sibling's own make-up) are not joined.
+            $minutes = max(30, (int) ($member->SessionDuration ?? 120));
             $pattern = [];
             foreach ($slots as $slot) {
-                $pattern[$slot['weekday'] . '|' . substr($slot['time'], 0, 5)] = true;
+                $pattern[$slot['weekday'] . '|' . substr($slot['time'], 0, 5)] = (int) ($slot['duration_minutes'] ?? 0) >= 30 ? (int) $slot['duration_minutes'] : $minutes;
             }
-            foreach ($groupRows as $key => [$date, $start, $end]) {
-                if (isset($pattern[Carbon::parse($date)->dayOfWeekIso . '|' . substr($start, 0, 5)])) {
-                    $sequence[] = ['StudentClassID' => $classId, 'SessionDate' => $date, 'StartTime' => $start, 'EndTime' => $end,
-                        'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()];
+            foreach ($groupRows as [$date, $start]) {
+                $length = $date >= $startFrom ? ($pattern[Carbon::parse($date)->dayOfWeekIso . '|' . substr($start, 0, 5)] ?? null) : null;
+                if ($length !== null) {
+                    $at = Carbon::parse($date . ' ' . $start);
+                    $sequence[] = ['StudentClassID' => $classId, 'SessionDate' => $date, 'StartTime' => $at->format('H:i:s'),
+                        'EndTime' => $at->copy()->addMinutes($length)->format('H:i:s'), 'Status' => 'scheduled', 'Note' => '',
+                        'created_at' => now(), 'updated_at' => now()];
                 }
             }
             foreach ($sequence as $s) {

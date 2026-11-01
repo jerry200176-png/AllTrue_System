@@ -271,10 +271,11 @@ class PackageCreateWithScheduleTest extends TestCase
         $student = $this->makeStudent(1);
         $this->seedSubjects();
         $start = now()->addDay()->toDateString();
-        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start];
+        // B's lessons are one hour, A's two: a lesson B joins keeps B's own length (Codex P2 on #4737).
+        $spec = fn (int $subject, int $hours) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => $hours, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start];
         $pkgId = $this->postCreate($token, [
             'student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 4,
-            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1), $spec(2)],
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1, 2), $spec(2, 1)],
         ])->assertStatus(201)->json('package_id');
         [$a, $b] = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get()->all();
         // A: weekly slots 1, 2, 3 and 4 + $weeks (its 4th lesson moved later); B: only slot 1. 4 distinct lessons planned.
@@ -294,6 +295,7 @@ class PackageCreateWithScheduleTest extends TestCase
             ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all();
         $this->assertSame($dates($a), $dates($b));
         $this->assertCount(5, $dates($b));
+        $this->assertSame(['17:00:00'], ClassSession::where('StudentClassID', $b->ID)->pluck('EndTime')->map(fn ($t) => substr((string) $t, 0, 8))->unique()->values()->all());
     }
 
     public function test_group_pool_never_joins_a_siblings_make_up_off_the_weekly_pattern(): void
@@ -317,6 +319,27 @@ class PackageCreateWithScheduleTest extends TestCase
             ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 6])->assertOk();
 
         $this->assertFalse(ClassSession::where('StudentClassID', $b->ID)->whereDate('SessionDate', $makeUp)->exists(), 'B never joins A\'s make-up');
+    }
+
+    public function test_group_pool_never_joins_a_siblings_lesson_before_the_members_own_start(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $monday = now()->next(\Carbon\Carbon::MONDAY);
+        $spec = fn (int $subject, string $start) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '16:00', 'start_date' => $start];
+        // A starts next Monday; B 16 weeks later (Codex P2 on #4737).
+        $bStart = $monday->copy()->addWeeks(16)->toDateString();
+        $pkgId = $this->postCreate($token, [
+            'student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 4,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [$spec(1, $monday->toDateString()), $spec(2, $bStart)],
+        ])->assertStatus(201)->json('package_id');
+        [, $b] = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get()->all();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", ['total_sessions' => 5])->assertOk();
+
+        $this->assertFalse(ClassSession::where('StudentClassID', $b->ID)->whereDate('SessionDate', '<', $bStart)->exists(), 'B has nothing before its start');
     }
 
     public function test_auto_fill_never_plans_past_a_fully_planned_pool(): void
