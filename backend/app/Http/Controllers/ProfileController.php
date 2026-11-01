@@ -903,7 +903,18 @@ class ProfileController extends Controller
 
         $newCampusId = (int) ($input['branch_id'] ?? 0);
         // A main campus the teacher already has keeps its own link: moving another row onto it would duplicate it.
-        if (isset($input['branch_id']) && !$before->has($newCampusId)) {
+        $firstId = (int) ($before->first()->CampusID ?? 0);
+        $mayTouch = fn (int $campusId): bool => $superAdmin || in_array($campusId, $callerCampusIds, true);
+        if (isset($input['branch_id']) && $before->has($newCampusId) && $firstId !== $newCampusId && $mayTouch($firstId) && $mayTouch($newCampusId)) {
+            // Making an already-linked campus the main one swaps it with the first row (each link keeps its own attributes).
+            DB::transaction(function () use ($user, $firstId, $newCampusId, $before) {
+                $row = fn (int $cid) => DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $cid);
+                $attrs = fn (int $cid) => array_intersect_key((array) $before->get($cid), array_flip(['Approved', 'RFID', 'Admin']));
+                $row($firstId)->update(['CampusID' => -1]);
+                $row($newCampusId)->update(['CampusID' => $firstId] + $attrs($firstId));
+                $row(-1)->update(['CampusID' => $newCampusId] + $attrs($newCampusId));
+            });
+        } elseif (isset($input['branch_id']) && !$before->has($newCampusId)) {
             // #4433 (Founder 3A): below super_admin only a link at the caller's own campuses may move.
             $existing = UserCampus::where('UserID', $user->id)
                 ->when(!$superAdmin, fn ($q) => $q->whereIn('CampusID', $callerCampusIds))->first();
