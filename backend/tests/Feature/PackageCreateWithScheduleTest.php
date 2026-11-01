@@ -416,6 +416,31 @@ class PackageCreateWithScheduleTest extends TestCase
         $this->assertSame(1, $rows->where('SessionDate', '<', '2026-11-02')->unique(fn ($r) => substr((string) $r->SessionDate, 0, 10) . $r->StartTime)->count(), 'the ended slot exists once');
     }
 
+    public function test_a_credited_back_sibling_slot_is_still_reserved_for_the_empty_member(): void
+    {
+        // Codex P2 on #4778: a cancelled, credited-back lesson holds the slot but consumes no quota, so it is not "debited".
+        $this->travelTo(Carbon::parse('2026-11-01 17:00:00'));
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $this->seedSubjects();
+        $spec = fn (int $subject) => ['subject_id' => $subject, 'teacher_id' => $this->makeTeacher()->id, 'duration_hours' => 2, 'days_of_week' => [1], 'start_time' => '14:00'];
+        $pkgId = $this->postCreate($token, ['student_id' => $student->id, 'branch_id' => 1, 'name' => '團體共用', 'total_sessions' => 8,
+            'rate' => 500, 'class_type' => 'one_on_two', 'subjects' => [['confirmed_dates' => ['2026-11-01']] + $spec(1), $spec(2)]])
+            ->assertStatus(201)->json('package_id');
+        [$a, $b] = StudentClass::where('PackageID', $pkgId)->orderBy('ID')->get()->all();
+
+        // The confirmed lesson is cancelled and credited back; B has no lessons yet.
+        $ended = ClassSession::where('StudentClassID', $a->ID)->whereDate('SessionDate', '2026-11-01')->firstOrFail();
+        $ended->update(['Status' => 'cancelled']);
+        \App\Services\PackageDeductionService::reverseForSession((int) $pkgId, (int) $a->ID, (int) $ended->id, 'test');
+        ClassSession::where('StudentClassID', $b->ID)->delete();
+        $this->assertSame(0, \App\Services\PackageDeductionService::slotNet((int) $pkgId, ['2026-11-01', '14:00']));
+
+        app(\App\Services\Scheduling\ContractSessionSchedule::class)->fillSharedPool(\App\Models\CoursePackage::findOrFail($pkgId), [$a->fresh(), $b->fresh()], 8);
+
+        $this->assertTrue(ClassSession::where('StudentClassID', $b->ID)->whereDate('SessionDate', '2026-11-01')->exists(), 'the empty member still gets the ended slot');
+    }
+
     public function test_create_with_days_of_week_generates_class_sessions(): void
     {
         // The first lesson is the start date (today) at each subject's time; once 14:00 or 16:00 passed, the pool

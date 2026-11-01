@@ -361,7 +361,7 @@ class PackageDeductionService
      *
      * @param array{0: string, 1: string} $slot
      */
-    private static function slotNet(int $packageId, array $slot, ?int $exceptSessionId = null): int
+    public static function slotNet(int $packageId, array $slot, ?int $exceptSessionId = null): int
     {
         $ledger = self::currentLedger($packageId)->whereNotNull('class_session_id');
         $ids = $ledger->pluck('class_session_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
