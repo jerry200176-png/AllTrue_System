@@ -2289,6 +2289,7 @@ jobs:
               $r = app(\\App\\Services\\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$cid], $model)[$cid] ?? [];
               $m = app(\\App\\Services\\MonthlyPeriodPaymentService::class)->batch($model)[$cid] ?? [];
               return ['status' => $code($r['status'] ?? null), 'source' => $code($r['source'] ?? null), 'monthly_review' => (bool) ($m['review_required'] ?? false),
+                'review_reasons' => array_values(array_filter(array_map($code, $m['review_reasons'] ?? []))),
                 'periods' => array_map(fn ($p) => ['period' => (string) ($p['billing_period'] ?? ''), 'source' => $code($p['source'] ?? null), 'status' => $code($p['payment_status'] ?? $p['status'] ?? null),
                   'charge' => isset($p['charge']) ? (int) $p['charge'] : null, 'paid' => isset($p['paid_amount']) ? (int) $p['paid_amount'] : null, 'amount_discrepancy' => (bool) ($p['amount_discrepancy'] ?? false)], $m['periods'] ?? []),
                 'months' => array_map(fn ($x) => ['month' => (string) ($x['calendar_month'] ?? ''), 'uncovered' => (int) ($x['uncovered_sessions'] ?? 0), 'outside_contract' => (int) ($x['outside_contract_sessions'] ?? 0)], $m['session_review'] ?? [])];
