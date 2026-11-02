@@ -263,7 +263,7 @@ export const REVIEW_REASON_LABELS = {
   period_mismatch: '同月份有兩張期間不同的帳單',
   contract_not_covered_to_end: '合約後段沒有帳單涵蓋',
   month_double_counted: '同月份重複計算',
-  amount_discrepancy: '帳單金額和收款不一致',
+  amount_discrepancy: '帳單金額和堂數算出的金額不同',
   outside_contract_sessions: '有課排在合約日期外',
   unbilled_month: '有上課月份還沒開帳單',
 };
