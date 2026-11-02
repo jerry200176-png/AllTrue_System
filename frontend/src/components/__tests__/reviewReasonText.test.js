@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reviewReasonText } from '../../lib/courseMoneyState.js';
+import { reviewReasonText, reviewReasonsText } from '../../lib/courseMoneyState.js';
 
 describe('reviewReasonText', () => {
   const c = (r) => ({ monthly_payment: { review_reasons: r } });
@@ -11,5 +11,12 @@ describe('reviewReasonText', () => {
   it('is empty without reasons', () => {
     expect(reviewReasonText(c([]))).toBe('');
     expect(reviewReasonText(null)).toBe('');
+  });
+});
+
+describe('reviewReasonsText', () => {
+  it('maps a code array, drops unknown, tolerates non-arrays', () => {
+    expect(reviewReasonsText(['unbilled_month', 'nope'])).toBe('有上課月份還沒開帳單');
+    expect(reviewReasonsText(undefined)).toBe('');
   });
 });

@@ -128,6 +128,18 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertTrue($row['payment_review_required']);
         $this->assertFalse($row['pending_reconciliation']);
         $this->assertSame('月結帳單與上課堂數不符，請核對', $row['reconciliation_label']);
+        $this->assertIsArray($row['review_reasons']); // #4797 display-only reason codes ride along
+    }
+
+    public function test_4797_monthly_review_row_carries_resolver_reason_codes(): void
+    {
+        $c = $this->reviewMonthlyCourse();
+        $this->invoice($c, 4400, 'paid', 4400)->forceFill(['billing_period' => '2026-09'])->save();
+
+        $verdict = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $c->ID])[(int) $c->ID];
+        $row = $this->row($c);
+        $this->assertSame($verdict['review_reasons'], $row['review_reasons']);
+        $this->assertNotEmpty($row['review_reasons']);
     }
 
     public function test_4104_waiver_rejection_uses_the_same_ended_pending_label(): void

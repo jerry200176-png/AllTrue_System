@@ -267,10 +267,8 @@ export const REVIEW_REASON_LABELS = {
   outside_contract_sessions: '有課排在合約日期外',
   unbilled_month: '有上課月份還沒開帳單',
 };
-export const reviewReasonText = (course) => {
-  const codes = course?.monthly_payment?.review_reasons;
-  return Array.isArray(codes) ? codes.map((code) => REVIEW_REASON_LABELS[code]).filter(Boolean).join('、') : '';
-};
+export const reviewReasonsText = (codes) => (Array.isArray(codes) ? codes.map((code) => REVIEW_REASON_LABELS[code]).filter(Boolean).join('、') : '');
+export const reviewReasonText = (course) => reviewReasonsText(course?.monthly_payment?.review_reasons);
 export const PAUSED_PENDING_LABEL = '暫停中，未收';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.
