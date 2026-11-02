@@ -2283,13 +2283,24 @@ jobs:
             ksort($fleet);
             $out['count_total'] = count($fleet);
             $out['fleet_4790'] = [];
+            // Why confirm() did not flip settled_pending -> settled: the resolver verdict and the B15 monthly review inputs (codes/counts only).
+            $verdict = static function (int $cid) use ($code) {{
+              $model = \\App\\Models\\StudentClass::query()->whereKey($cid)->get();
+              $r = app(\\App\\Services\\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$cid], $model)[$cid] ?? [];
+              $m = app(\\App\\Services\\MonthlyPeriodPaymentService::class)->batch($model)[$cid] ?? [];
+              return ['status' => $code($r['status'] ?? null), 'source' => $code($r['source'] ?? null), 'monthly_review' => (bool) ($m['review_required'] ?? false),
+                'periods' => array_map(fn ($p) => ['period' => (string) ($p['billing_period'] ?? ''), 'source' => $code($p['source'] ?? null), 'status' => $code($p['payment_status'] ?? $p['status'] ?? null),
+                  'charge' => isset($p['charge']) ? (int) $p['charge'] : null, 'paid' => isset($p['paid_amount']) ? (int) $p['paid_amount'] : null, 'amount_discrepancy' => (bool) ($p['amount_discrepancy'] ?? false)], $m['periods'] ?? []),
+                'months' => array_map(fn ($x) => ['month' => (string) ($x['calendar_month'] ?? ''), 'uncovered' => (int) ($x['uncovered_sessions'] ?? 0), 'outside_contract' => (int) ($x['outside_contract_sessions'] ?? 0)], $m['session_review'] ?? [])];
+            }};
             foreach (array_slice($fleet, 0, 300, true) as $cid => $rows) {{
               $c = $db::table('StudentClass')->where('ID', $cid)->first(['ID', 'StudentID', 'ScheduleMode', 'Paid', 'Stop', 'StartDate', 'EndDate']);
               $rep = $db::table('payment_reports')->where('StudentClassID', $cid)->where('status', 'confirmed')->orderByDesc('confirmed_at')->orderByDesc('id')->first(['id', 'confirmed_at', 'InvoiceID']);
               $out['fleet_4790'][] = ['course_id' => $cid, 'campus_id' => (int) $db::table('Student')->where('id', $c->StudentID)->value('CampusID'),
                 'mode' => (string) $c->ScheduleMode, 'paid' => (int) $c->Paid, 'stop' => (int) $c->Stop, 'start' => $d($c->StartDate), 'end' => $d($c->EndDate),
                 'invoices' => $rows->map(fn ($i) => ['id' => (int) $i->id, 'total' => (int) $i->TotalAmount, 'paid' => (int) $i->PaidAmount, 'status' => $code($i->Status)])->values()->all(),
-                'latest_confirmed_report' => $rep ? ['id' => (int) $rep->id, 'confirmed_at' => $ts($rep->confirmed_at), 'invoice_id' => $rep->InvoiceID === null ? null : (int) $rep->InvoiceID] : null];
+                'latest_confirmed_report' => $rep ? ['id' => (int) $rep->id, 'confirmed_at' => $ts($rep->confirmed_at), 'invoice_id' => $rep->InvoiceID === null ? null : (int) $rep->InvoiceID] : null,
+                'resolver' => $verdict($cid)];
             }}
             $hist = [];
             $auditKeep = ['reason_code', 'old_paid', 'new_paid', 'old_closed_reason', 'new_closed_reason', 'old_stop', 'new_stop'];
