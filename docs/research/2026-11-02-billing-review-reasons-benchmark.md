@@ -13,7 +13,7 @@
 
 ## 計畫（每項一個 PR，可單獨回滾）
 1. ✅ 本 PR：`MonthlyPeriodPaymentService` 回傳 `review_reasons` 原因碼，課程頁「待核對」顯示原因。純顯示，不改金額判斷。
-2. 帳務中心 review 清單也顯示同一組原因（AccountingController `review` 狀態列）。
+2. ✅ 帳務中心 review 清單也顯示同一組原因（AccountingController `review` 狀態列）。（#4797）
 3. 「已核對」動作：主任確認原因後關閉 review，留稽核紀錄（需 Founder 決定規則：誰能核、核完是否改 closed_reason）。
 4. 檢討 `item_period_outside_contract`：月中開課、整月帳單是常態，是否應視為正常（改金額判斷 = R3，需 Founder 決定）。
 

@@ -189,6 +189,7 @@ class BillingPayableResolver
             'status' => $status, 'payable_total' => $total, 'applied' => $applied,
             'outstanding' => max(0, $total - $applied), 'overpaid' => $overpaid,
             'periods' => $periods, 'source' => $source, 'current_invoice_id' => $invoiceId,
+            'review_reasons' => array_values($monthly['review_reasons'] ?? []),
         ];
         $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
         $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);

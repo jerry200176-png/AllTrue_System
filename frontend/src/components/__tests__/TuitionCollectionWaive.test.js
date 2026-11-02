@@ -31,6 +31,7 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}`);
     expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}`);
     expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
+    expect(source).toContain('需核對：{{ reviewReasonsText(row.review_reasons) }}'); // #4797
   });
 
   it('hides 確認不收 on paused rows (no closed_reason) because the waive endpoint rejects them', () => {
