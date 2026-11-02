@@ -12,18 +12,8 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * GitHub #4554 / #4753, Founder decision B (2026-11-02): fix only the clear errors. Hard-coded scope, ids only.
- *
- * Part 1: a lesson counted twice. A (cancel session, its course, twin session, twin course) row is `cancel` only when both lessons exist on
- * those courses, belong to one student, share date and start, are attended/completed/late with a positive ledger net, the old course is
- * over-used (uncapped_used > session_count) and not settled. Cancel = what ClassSessionController does for attended -> cancelled: void the
- * live sign-ins and learning records (CourseLeaveCascadeService), reverse the deduction (SessionDeductionService::reverseForSession, which
- * also writes the package ledger of a package course), Status = cancelled through the model, recompute the course counters.
- * Part 2: a duplicate package record. A (duplicate, twin) row is `close` only when no course points at the duplicate, the twin (which has a
- * course) matches it on student, totals and ledger sum, and the duplicate is not stopped. Close = stop + a closed_reason code, like the
- * package update endpoint; ledger and twin untouched.
- * Every other row is `review` with a reason code and is never written. Execute is bound to the dry run by `expected_digest`, re-checks
- * under lock and is all or nothing (including the over-used check after the writes). Restore = a new request with `restore_request_id`.
+ * GitHub #4554 / #4753, Founder decision B (2026-11-02): cancel lessons counted twice and retire duplicate package records.
+ * Hard-coded ids; guards, writes and restore are described in docs/incidents/RM-DUPLICATE-ATTENDED-CANCEL-20261102.md.
  */
 final class DuplicateAttendedCancelStrategy
 {
@@ -64,7 +54,6 @@ final class DuplicateAttendedCancelStrategy
         $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
         $todo = array_filter($rows, fn ($r) => in_array($r['class'], ['cancel', 'close', 'restore'], true));
         $state = $want === '' ? 'unpinned' : ($todo === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
-
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
             'state' => $state, 'mode' => $source === '' ? 'cancel' : 'restore', 'restore_request_id' => $source,
             'campus_id' => (int) $campus, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
@@ -78,7 +67,6 @@ final class DuplicateAttendedCancelStrategy
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'pinned') {
             throw new RuntimeException('duplicate_attended_plan_not_pinned');
         }
-
         return DB::transaction(function () use ($plan, $context): array {
             ClassSession::resetSettlementLockCache(); // the model's settled-course guard must see the live courses
             $sessionIds = array_merge(...array_map(fn ($c) => [$c[0], $c[2]], self::CANCELS));
@@ -347,7 +335,7 @@ final class DuplicateAttendedCancelStrategy
                 $this->net($tid, $tcid) <= 0 => 'twin_no_deduction',
                 !isset($over[$cid]) || $over[$cid]['uncapped_used'] <= $over[$cid]['session_count'] => 'course_not_over',
                 $c->settlement_locked_at !== null || in_array($c->closed_reason, ['usage_settled', 'contract_amended', 'waived'], true) => 'course_settled',
-                DB::table('schedules')->where('student_course_id', $cid)->whereDate('schedule_date', $date)->where('status', 'scheduled')->exists() => 'schedule_row_present',
+                str_contains((string) $s->Note, 'projected-monthly-materialized') => 'projected_monthly_session', // the app's cancel also edits its schedule row
                 default => null,
             };
             $rows[] = ['type' => 'session', 'class_id' => $cid, 'campus_id' => $campus, 'session_id' => $sid, 'session_date' => $date, 'start_time' => $start,

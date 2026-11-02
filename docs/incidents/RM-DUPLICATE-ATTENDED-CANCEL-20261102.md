@@ -10,7 +10,7 @@ Parameters: `campus_id` (0 = all; filters rows by the student's campus / package
 Part 1 (case-dump run 41381757085): sessions 41783 / 41799 / 42975 on courses 2879 / 3571 / 3226 each duplicate an attended, deducted lesson on a later contract
 (sessions 43450 / 43852 / 43985 on courses 4264 / 4312 / 4329). Row `kind=cancel` only when the lesson exists on that course, the twin exists on the twin course, both courses
 belong to one student, date and start match, both are attended/completed/late with ledger net above 0, the old course is over-used (`uncapped_used > session_count`,
-`SessionDeductionService::batchExpectedUsedSessionDiagnostics`), the course is not settled and no `scheduled` schedule row sits on that course and day. Else `kind=review` with a reason code, never written.
+`SessionDeductionService::batchExpectedUsedSessionDiagnostics`), the course is not settled and the lesson is not a projected monthly lesson (note `projected-monthly-materialized`; the app's own cancel also edits that schedule row). Else `kind=review` with a reason code, never written.
 
 Part 2: packages 189 and 200 duplicate 190 and 201. Row `kind=close` only when no course points at the duplicate, the twin has a course and matches on student, total / remaining / used sessions and ledger sum, and the duplicate is not stopped.
 

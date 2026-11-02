@@ -165,6 +165,12 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
         $this->assertSame('review:twin_unlinked', $this->reasonOf($s, 'package', 200));
     }
 
+    public function test_a_projected_monthly_lesson_is_left_for_review(): void
+    {
+        DB::table('ClassSession')->where('id', 41783)->update(['Note' => 'projected-monthly-materialized']);
+        $this->assertSame('review:projected_monthly_session', $this->reasonOf(new DuplicateAttendedCancelStrategy(), 'session', 41783));
+    }
+
     public function test_apply_refuses_after_drift_and_writes_nothing(): void
     {
         $s = new DuplicateAttendedCancelStrategy();
