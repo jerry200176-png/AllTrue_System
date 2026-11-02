@@ -755,3 +755,32 @@ operations:
     parameter_keys: [campus_id, decision_reference, expected_digest, restore_request_id]
     tags: [repair, session, forward-generator, issue-4554]
     notes: GitHub #4554 (in-app #452), Founder decision 2A. For each count course the app counts as over-deducted because forward-generated lessons were taught, moves the taught extras beyond the bought count onto the same student's later contract of the same subject that has room, through ClassSessionContractReassigner (lesson, sign-in, ledger and learning record follow; counters recomputed; money untouched). With no later contract the lesson stays as a gift; doubtful lessons are only listed. Execute is pinned to the dry-run digest and is all or nothing; rollback and restore_request_id move exactly those ids back. Pi-local POP only.
+
+  duplicate-attended-cancel-20261102:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-duplicate-attended-cancel
+    founder_approval_required: true
+    runbook: docs/incidents/RM-DUPLICATE-ATTENDED-CANCEL-20261102.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_duplicate_attended_lessons_cancelled_and_duplicate_packages_closed
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\DuplicateAttendedCancelStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest, restore_request_id]
+    tags: [repair, session, package, issue-4554, issue-4753]
+    notes: GitHub #4554 #4753, Founder decision B 2026-11-02 (fix only the clear errors). Hard-coded scope - three over-used courses each hold an attended, deducted lesson that the same student also has attended and deducted on a later contract at the same date and start; the old-course copy is cancelled through the app's reverse/void path and counters recomputed. Two duplicate package records (same student, identical totals and ledger, no course linked) are retired with stop and closed_reason. Any row failing a guard is only listed. Execute is pinned to the dry-run digest and is all or nothing; restore_request_id puts everything back from the snapshot. Pi-local POP only.
