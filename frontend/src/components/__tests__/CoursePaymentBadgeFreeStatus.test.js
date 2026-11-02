@@ -101,6 +101,7 @@ describe('#4150 closedPaymentState (closed-course money verdict)', () => {
     // #4790: settled_pending follows the server verdict.
     ['settled_pending, paid', { closed_reason: 'settled_pending', payment_status: 'paid' }, 'settled'],
     ['settled_pending, review', { closed_reason: 'settled_pending', payment_status: 'review_required' }, 'review'],
+    ['settled_pending, legacy flag only', { closed_reason: 'settled_pending', payment_status: 'paid', legacy_paid_flag_only: true }, 'review'],
     ['settled_pending, unpaid', { closed_reason: 'settled_pending', payment_status: 'unpaid' }, 'pending'],
     ['settled', { closed_reason: 'settled', payment_status: 'paid' }, null],
     ['open course', { payment_status: 'unpaid' }, null],

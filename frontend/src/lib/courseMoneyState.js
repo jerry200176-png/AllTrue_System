@@ -143,6 +143,8 @@ export const closedReason = (course) => {
 export const closedPaymentState = (course) => {
   const reason = closedReason(course);
   if (reason === 'settled_pending') {
+    // A legacy Paid flag with no payment record is 需核對, never a settlement claim.
+    if (isLegacyPaidFlagOnly(course)) return 'review';
     if (isCourseSettled(course) === true) return 'settled';
     return String(course?.payment_status).toLowerCase() === 'review_required' ? 'review' : 'pending';
   }
