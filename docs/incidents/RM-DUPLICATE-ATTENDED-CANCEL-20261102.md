@@ -23,12 +23,12 @@ Checked inside the transaction (a miss rolls everything back) and again at verif
 
 ## Rollback
 
-Dispatch the same workflow with `restore_request_id` = the run's POP request id: dry-run `DRY_RUN_DUPLICATE_ATTENDED_CANCEL_RESTORE`, then the Founder approves `APPROVE_DUPLICATE_ATTENDED_CANCEL_RESTORE`.
-The snapshot holds, per lesson: Status, Note, voided sign-in / learning-record ids, ledger and package-ledger rows added, course and package counters; per package: stop, closed_reason.
-Restore deletes exactly the added ledger rows, un-voids exactly those ids, puts Status/Note and counters back; all or nothing (a lesson no longer cancelled aborts the restore).
+Dispatch the same workflow with `restore_request_id` = the run's POP request id: dry-run `DRY_RUN_DUPLICATE_ATTENDED_RESTORE`, then the Founder approves `APPROVE_DUPLICATE_ATTENDED_RESTORE`.
+The snapshot holds, per lesson: Status, Note, voided sign-in / learning-record ids, ledger and package-ledger rows added, the course's package id; per package: stop, closed_reason.
+Restore deletes exactly the added ledger rows, un-voids exactly those ids, puts Status/Note back and recomputes course/package counters from the ledger as it is now; all or nothing (a lesson no longer cancelled, or whose reversal rows are gone because that run was already restored, refuses the restore).
 
 ## Flow
 
-1. Dry-run `pop-duplicate-attended-cancel.yml` (campus 0): expect `cancel=3 close=2 review=0`.
-2. The Founder approves that digest (`founder-exact-duplicate-attended-cancel`, super_admin, bound to the deployed SHA).
+1. Dry-run `pop-duplicate-attended-cancel.yml` (campus 0, confirm `DRY_RUN_DUPLICATE_ATTENDED_CANCEL`): expect `cancel=3 close=2 review=0`.
+2. Approve run with that digest (confirm `APPROVE_DUPLICATE_ATTENDED_CANCEL`); the Founder approves it (`founder-exact-duplicate-attended-cancel`, super_admin, bound to the deployed SHA).
 3. Pi-local execute and verify; re-run the dry-run: all rows `review`, state `after`.

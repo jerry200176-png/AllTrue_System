@@ -150,7 +150,7 @@ final class DuplicateAttendedCancelStrategy
             $restored = 0;
             foreach ($snapshot['rows'] as $r) {
                 $s = ClassSession::query()->whereKey($r['id'])->lockForUpdate()->first();
-                if (!$s || strtolower((string) $s->Status) !== 'cancelled') {
+                if (!$s || strtolower((string) $s->Status) !== 'cancelled' || !$this->reversalsPresent($r)) {
                     throw new RuntimeException('duplicate_attended_restore_incomplete');
                 }
                 DB::table('session_deduction_ledger')->whereIn('id', $r['ledger_ids'])->where('class_session_id', $r['id'])->where('event_type', 'reverse')->delete();
@@ -274,7 +274,7 @@ final class DuplicateAttendedCancelStrategy
         $out = [];
         foreach ($snapshot['rows'] as $r) {
             $now = strtolower((string) DB::table('ClassSession')->where('id', $r['id'])->value('Status'));
-            $out[] = ['type' => 'session', 'id' => (int) $r['id'], 'class_id' => (int) $r['StudentClassID'], 'class' => $now === 'cancelled' ? 'restore' : 'skip'];
+            $out[] = ['type' => 'session', 'id' => (int) $r['id'], 'class_id' => (int) $r['StudentClassID'], 'class' => $now === 'cancelled' && $this->reversalsPresent($r) ? 'restore' : 'skip'];
         }
         foreach ($snapshot['packages'] as $p) {
             $now = DB::table('course_packages')->where('id', $p['id'])->first(['stop', 'closed_reason']);
@@ -283,6 +283,13 @@ final class DuplicateAttendedCancelStrategy
         }
 
         return $out;
+    }
+
+    /** This run's own reversal rows still exist: false once that run was restored (a later cancel writes new ids). */
+    private function reversalsPresent(array $r): bool
+    {
+        return DB::table('session_deduction_ledger')->whereIn('id', $r['ledger_ids'])->where('class_session_id', $r['id'])->where('event_type', 'reverse')->count() === count($r['ledger_ids'])
+            && DB::table('package_session_ledger')->whereIn('id', $r['package_ledger_ids'])->where('class_session_id', $r['id'])->count() === count($r['package_ledger_ids']);
     }
 
     private function audit(array $metadata, string $suffix = ''): void

@@ -265,6 +265,13 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
         [, $execute, $verify] = $go($cancelId);
         $this->assertSame(['succeeded', 'succeeded', 'attended', 0], [$execute, $verify, DB::table('ClassSession')->where('id', 41783)->value('Status'), (int) DB::table('course_packages')->where('id', 189)->value('stop')]);
 
+        [, $execute] = $go('');                     // cancel again (new reversal ids), then try to restore the first run once more
+        $stale = (new DuplicateAttendedCancelStrategy())->plan($this->params(9, '', $cancelId));
+        $this->assertSame([false, ['restore_incomplete_source_changed']], [$stale['ok'], $stale['errors']]);
+        $runbook = (string) file_get_contents(dirname(__DIR__, 4) . '/docs/incidents/RM-DUPLICATE-ATTENDED-CANCEL-20261102.md');
+        foreach (['DRY_RUN_DUPLICATE_ATTENDED_RESTORE', 'APPROVE_DUPLICATE_ATTENDED_RESTORE', 'DRY_RUN_DUPLICATE_ATTENDED_CANCEL', 'APPROVE_DUPLICATE_ATTENDED_CANCEL'] as $phrase) {
+            $this->assertStringContainsString('`' . $phrase . '`', $runbook);
+        }
         $adapter = file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-duplicate-attended-cancel.yml');
         $this->assertStringContainsString('AUDIT="pop.duplicate_attended_cancel${RESTORE:+.rollback}"', $adapter);
         $entry = $catalog->operation('duplicate-attended-cancel-20261102');
