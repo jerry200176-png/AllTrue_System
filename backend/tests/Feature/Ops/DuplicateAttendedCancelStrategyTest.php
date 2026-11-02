@@ -8,6 +8,8 @@ use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\DuplicateAttendedCancelStrategy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\PackageDeductionService;
+use App\Services\SessionDeductionService;
 use Illuminate\Support\Facades\DB;
 use ReflectionMethod;
 use RuntimeException;
@@ -209,6 +211,7 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
             DB::table('package_session_ledger')->orderBy('id')->get()->all(), DB::table('StudentSingIn')->orderBy('id')->get(['id', 'VoidedAt', 'VoidReason', 'SessionDeducted'])->all(),
             DB::table('course_packages')->orderBy('id')->get(['id', 'stop', 'closed_reason', 'used_sessions', 'remaining_sessions'])->all(),
             DB::table('StudentClass')->orderBy('ID')->get(['ID', 'UsedSessions', 'RemainingSessions', 'RemainingMinutes', 'PurchasedMinutes', 'Stop'])->all()];
+        foreach (DB::table('StudentClass')->pluck('ID') as $id) SessionDeductionService::recomputeCounters((int) $id); // start from ledger-true counters
         $before = $dump();
         $s = new DuplicateAttendedCancelStrategy();
         $result = $s->execute($this->pinned($s), []);
@@ -219,6 +222,22 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
         $this->assertSame([5, true], [$back['restored'], $back['ok']]);
         $this->assertEquals($before, $dump());
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'pop.duplicate_attended_cancel.rollback')->count());
+    }
+
+    public function test_restore_recomputes_counters_from_the_ledger_as_it_is_now(): void
+    {
+        $s = new DuplicateAttendedCancelStrategy();
+        $result = $s->execute($this->pinned($s), []);
+        SessionDeductionService::reverseForSession(2879, 1041783, 'status_adjust'); // staff reverse the course's other lesson after the repair
+        DB::table('ClassSession')->where('id', 1041783)->update(['Status' => 'cancelled']);
+        $s->rollback($result['snapshot'], []);
+        $counters = fn (): array => [DB::table('StudentClass')->where('ID', 2879)->first(['UsedSessions', 'RemainingSessions']),
+            DB::table('course_packages')->where('id', 700)->first(['used_sessions', 'remaining_sessions'])];
+        $after = $counters();
+        SessionDeductionService::recomputeCounters(2879);
+        PackageDeductionService::recomputeCounters(700);
+        $this->assertEquals($counters(), $after);
+        $this->assertSame(1, (int) $after[1]->used_sessions); // the later reversal survives; the snapshot said 2
     }
 
     public function test_the_catalog_entry_runs_through_pop_and_a_restore_request_undoes_it(): void
@@ -239,6 +258,10 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
 
         [$cancelId, $execute, $verify] = $go('');
         $this->assertSame(['succeeded', 'succeeded', 'cancelled', 1], [$execute, $verify, DB::table('ClassSession')->where('id', 41783)->value('Status'), (int) DB::table('course_packages')->where('id', 189)->value('stop')]);
+        DB::table('ClassSession')->where('id', 41799)->update(['Status' => 'attended']); // one source row moved on: no partial restore
+        $refused = (new DuplicateAttendedCancelStrategy())->plan($this->params(9, '', $cancelId));
+        $this->assertSame([false, ['restore_incomplete_source_changed']], [$refused['ok'], $refused['errors']]);
+        DB::table('ClassSession')->where('id', 41799)->update(['Status' => 'cancelled']);
         [, $execute, $verify] = $go($cancelId);
         $this->assertSame(['succeeded', 'succeeded', 'attended', 0], [$execute, $verify, DB::table('ClassSession')->where('id', 41783)->value('Status'), (int) DB::table('course_packages')->where('id', 189)->value('stop')]);
 

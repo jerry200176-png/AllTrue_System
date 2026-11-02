@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\SecurityAuditEvent;
 use App\Services\CourseLeaveCascadeService;
+use App\Services\PackageDeductionService;
 use App\Services\SessionDeductionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,8 +26,6 @@ final class DuplicateAttendedCancelStrategy
     private const CANCELS = [[41783, 2879, 43450, 4264], [41799, 3571, 43852, 4312], [42975, 3226, 43985, 4329]];
     /** [duplicate package, twin package] */
     private const CLOSES = [[189, 190], [200, 201]];
-    private const COURSE_COLUMNS = ['ID', 'SessionCount', 'UsedSessions', 'RemainingSessions', 'RemainingMinutes', 'PurchasedMinutes', 'Stop', 'Charge', 'Paid'];
-    private const COUNTERS = ['UsedSessions', 'RemainingSessions', 'RemainingMinutes', 'PurchasedMinutes', 'Stop'];
 
     public function plan(array $parameters): array
     {
@@ -47,6 +46,9 @@ final class DuplicateAttendedCancelStrategy
                 return ['ok' => false, 'errors' => ['restore_source_not_found'], 'state' => 'invalid'];
             }
             $rows = $this->restoreRows($snapshot);
+            if (count(array_unique(array_column($rows, 'class'))) > 1) { // some rows to restore, some moved on: never a partial undo
+                return ['ok' => false, 'errors' => ['restore_incomplete_source_changed'], 'state' => 'invalid'];
+            }
             $totals = ['rows' => count($rows), 'restore' => count(array_filter($rows, fn ($r) => $r['class'] === 'restore'))];
         } else {
             [$rows, $totals] = $this->build((int) $campus);
@@ -159,10 +161,8 @@ final class DuplicateAttendedCancelStrategy
                 $s->Note = $r['Note'];
                 $s->setAllowStudentOverlap(); // the twin holds the same slot: that overlap is the original state
                 $s->save();
-                DB::table('StudentClass')->where('ID', $r['StudentClassID'])->update(array_intersect_key($r['course'], array_flip(self::COUNTERS)));
-                if ($r['package'] !== null) {
-                    DB::table('course_packages')->where('id', $r['package']['id'])->update(['used_sessions' => $r['package']['used_sessions'], 'remaining_sessions' => $r['package']['remaining_sessions']]);
-                }
+                SessionDeductionService::recomputeCounters((int) $r['StudentClassID']); // counters follow the ledger as it is now, never the snapshot
+                if (($r['package_id'] ?? null) !== null) PackageDeductionService::recomputeCounters((int) $r['package_id']);
                 $restored++;
             }
             foreach ($snapshot['packages'] ?? [] as $p) {
@@ -188,31 +188,23 @@ final class DuplicateAttendedCancelStrategy
         if (hash('sha256', json_encode($this->restoreRows($snapshot), JSON_THROW_ON_ERROR)) !== $plan['digest']) {
             throw new RuntimeException('duplicate_attended_digest_drift');
         }
-        $todo = [];
-        foreach ($this->restoreRows($snapshot) as $r) {
-            if ($r['class'] === 'restore') $todo[$r['type'] . $r['id']] = true;
-        }
-        $part = ['rows' => array_values(array_filter($snapshot['rows'], fn ($r) => isset($todo['session' . $r['id']]))),
-            'packages' => array_values(array_filter($snapshot['packages'], fn ($p) => isset($todo['package' . $p['id']])))];
-        $this->rollback($part, []);
+        $this->rollback($snapshot, []); // the digest pins every row as `restore`; rollback throws on any row that moved on
 
-        return ['ok' => true, 'restored' => count($part['rows']) + count($part['packages']),
-            'snapshot' => ['restored' => $part['rows'], 'restored_packages' => $part['packages']]];
+        return ['ok' => true, 'restored' => count($snapshot['rows']) + count($snapshot['packages']),
+            'snapshot' => ['restored' => $snapshot['rows'], 'restored_packages' => $snapshot['packages']]];
     }
 
     /** Cancel one lesson the way the attended -> cancelled status change does; returns its restore record (ids only). */
     private function cancelOne(int $sessionId, int $courseId): array
     {
         $s = ClassSession::query()->whereKey($sessionId)->lockForUpdate()->firstOrFail();
-        $course = (array) DB::table('StudentClass')->where('ID', $courseId)->first(array_merge(self::COURSE_COLUMNS, ['PackageID']));
-        $pkgId = (int) $course['PackageID'];
-        $pkg = $pkgId > 0 ? (array) DB::table('course_packages')->where('id', $pkgId)->first(['id', 'used_sessions', 'remaining_sessions']) : null;
+        $pkgId = (int) DB::table('StudentClass')->where('ID', $courseId)->value('PackageID');
         $ledgerBefore = DB::table('session_deduction_ledger')->where('class_session_id', $sessionId)->pluck('id')->all();
         $pkgLedgerBefore = DB::table('package_session_ledger')->where('class_session_id', $sessionId)->pluck('id')->all();
         $signins = DB::table('StudentSingIn')->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->pluck('id')->all();
         $learning = DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->pluck('id')->all();
         $row = ['id' => $sessionId, 'StudentClassID' => $courseId, 'Status' => (string) $s->Status, 'Note' => $s->Note, 'signin_ids' => $signins,
-            'learning_ids' => $learning, 'course' => array_diff_key($course, ['PackageID' => 1]), 'package' => $pkg];
+            'learning_ids' => $learning, 'package_id' => $pkgId > 0 ? $pkgId : null];
 
         CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance($sessionId, CourseLeaveCascadeService::VOID_REASON_CANCELLED);
         SessionDeductionService::reverseForSession($courseId, $sessionId, 'status_adjust', null, 'duplicate_attended_cancel'); // + package ledger
