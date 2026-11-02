@@ -2250,7 +2250,8 @@ jobs:
             $pkgRow = fn ($p) => [
               'id' => (int) $p->id, 'student_id' => (int) $p->student_id, 'campus_id' => (int) $p->campus_id, 'class_type' => (string) $p->class_type,
               'total_sessions' => (int) $p->total_sessions, 'remaining_sessions' => (int) $p->remaining_sessions, 'used_sessions' => (int) $p->used_sessions,
-              'paid' => (int) $p->paid, 'stop' => (int) $p->stop, 'enabled' => (int) $p->enabled, 'closed_reason' => $p->closed_reason,
+              'paid' => (int) $p->paid, 'stop' => (int) $p->stop, 'enabled' => (int) $p->enabled,
+              'closed_reason' => $p->closed_reason === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', (string) $p->closed_reason) ? (string) $p->closed_reason : 'other'), // codes only, never free text
               'created_at' => (string) $p->created_at,
               'ledger_net' => (int) $db::table('package_session_ledger')->where('package_id', $p->id)->sum('delta'),
               'class_rows' => (int) $db::table('StudentClass')->where('PackageID', $p->id)->count(),
