@@ -513,9 +513,10 @@
                         <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
+                        <span v-if="effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'pending'" class="tag sl-tag-history sl-tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
+                        <span v-else-if="closedPaymentState(hc) === 'review'" class="tag sl-tag-history sl-tag-history--pending">{{ ENDED_REVIEW_LABEL }}</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">{{ WAIVED_LABEL }}</span>
-                        <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
+                        <span v-else-if="effectiveClosedReason(hc) === 'settled' || (effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'settled')" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
                         <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
                       </div>
                       <div class="sl-history-card__details">
@@ -978,7 +979,7 @@ import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, WAIVED_LABEL, coursePaymentBadge,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, WAIVED_LABEL, coursePaymentBadge, closedPaymentState,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';

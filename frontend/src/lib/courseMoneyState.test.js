@@ -241,6 +241,15 @@ assert.equal(M.isActiveCourse({ _noncanonical: true, status: 'active' }), true);
 assert.equal(M.isActiveCourse({ _noncanonical: true, status: 'inactive' }), false);
 assert.deepEqual(['settled_pending', 'completed', 'converted_trial', null].map((r) => M.isCourseManagementHistory({ history_reason: r })),
   [false, true, true, false], 'CourseManagement keeps 待對帳結案 in its working list');
+// #4790: settled_pending follows the server payment verdict.
+{
+  const sp = (extra) => ({ closed_reason: 'settled_pending', ...extra });
+  assert.equal(M.closedPaymentState(sp({ payment_status: 'paid' })), 'settled');
+  assert.equal(M.closedPaymentState(sp({ payment_status: 'review_required' })), 'review');
+  assert.equal(M.closedPaymentState(sp({ payment_status: 'unpaid' })), 'pending');
+  assert.equal(M.closedPaymentState(sp({})), 'pending');
+  assert.equal(M.closedPaymentState(sp({ payment_status: 'paid', _noncanonical: true })), 'pending');
+}
 
 console.log('courseMoneyState passed');
 
