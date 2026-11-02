@@ -1,0 +1,4 @@
+## 2026-11-02 — fix(ops): POP operation to cancel three double-counted lessons and retire two duplicate packages
+<!-- release-notes: silent_ship=silent-2026-11-02-duplicate-attended-cancel -->
+<!-- silent-reason: reviewed ops data-repair operation; no screen change -->
+- New POP operation `duplicate-attended-cancel-20261102` (#4554, #4753; Founder decision B: fix only the clear errors) with adapter `pop-duplicate-attended-cancel.yml`. Three old-course lessons that the same student also has attended and deducted on a later contract are cancelled through the app's reverse/void path; two duplicate package records are retired with stop and a closed-reason code. Rows failing any guard are only listed. All or nothing; a restore request puts everything back. Runbook `RM-DUPLICATE-ATTENDED-CANCEL-20261102`.
