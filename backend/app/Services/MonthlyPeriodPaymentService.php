@@ -55,7 +55,9 @@ final class MonthlyPeriodPaymentService
             if ($invoice->items->count() !== $items->count() || $items->count() > 1) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
-            if ($start > $end || ($items->isNotEmpty() && ($start < substr((string) $course->getAttribute('StartDate'), 0, 10)
+            $contractStart = substr((string) $course->getAttribute('StartDate'), 0, 10);
+            // #4799 (Founder A): a mid-month start billed for that whole first month is normal; an item that starts in an earlier month is not.
+            if ($start > $end || ($items->isNotEmpty() && (($start < $contractStart && substr($start, 0, 7) !== substr($contractStart, 0, 7))
                 || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) { $ambiguous = true; $reasons[] = 'item_period_outside_contract'; }
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
