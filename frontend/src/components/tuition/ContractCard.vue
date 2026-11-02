@@ -27,18 +27,20 @@
       <!-- F-3: a shared package is one obligation. A follower shows no 未繳 / 還沒開帳單 of its own, only where to pay. -->
       <span v-else-if="followerPointer" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
-      <template v-else-if="!course.paid">
+      <template v-else-if="!course.paid && !fullyCollected">
         <span class="contract__muted">還沒開帳單</span>
         <AtButton v-if="billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       </template>
       <span v-else-if="!legacyUnverified">已收</span>
+      <!-- The current period is collected, but a ready renewal draft (next period) can still be billed here. -->
+      <AtButton v-if="fullyCollected && billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       <template v-if="pendingReport">
         <span class="contract__chip pay-partial">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</span>
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回這筆</AtButton>
       </template>
       <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
-      <AtButton v-else-if="!followerPointer && !outsideDates.length && !legacyResolvable && !noObligation && !waived && (outstanding > 0 || !course.paid)" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <AtButton v-else-if="!followerPointer && !outsideDates.length && !legacyResolvable && !noObligation && !waived && (outstanding > 0 || (!course.paid && !fullyCollected))" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <!-- #4765: taught lessons fall outside the contract dates; billing cannot price them, so no 登記這筆 / 繳費單 until the dates are fixed. -->
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">需核對：{{ outsideDates.map(md).join('、') }} 的課不在合約日期（{{ [md(course.start_date), md(course.end_date)].join('–') }}）內，請先改合約日期</span>
       <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
@@ -95,7 +97,7 @@
             <span class="contract__time">{{ s.start_time || '' }}</span>
             <span v-if="s.numberText" class="contract__num" data-testid="contract-session-no">{{ s.numberText }}</span>
             <span :class="['contract__chip', `tone-${statusTone(s.status)}`]">{{ STATUS_ZH[s.status] || '' }}</span>
-            <span :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
+            <span v-if="!(s.payment === 'no_invoice' && !billable(s))" :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
           </li>
         </ol>
       </section>
@@ -177,6 +179,8 @@ const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'le
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
 const HELD = ['attended', 'completed', 'late', 'absent'];
 const UPCOMING = ['scheduled', 'rescheduled', 'expected'];
+// A leave / cancelled lesson is not billable, so it never reads 還沒開帳單.
+const billable = (s) => HELD.includes(s.status) || UPCOMING.includes(s.status);
 
 const state = ref('loading');
 const data = ref(null);
@@ -190,6 +194,11 @@ const sessions = computed(() => data.value?.sessions || []);
 const unscheduled = computed(() => Number(data.value?.unscheduled_count || 0));
 const heldCount = computed(() => sessions.value.filter((s) => HELD.includes(s.status)).length);
 const upcomingCount = computed(() => sessions.value.filter((s) => UPCOMING.includes(s.status)).length + unscheduled.value);
+
+// in-app #457: a monthly contract whose bills are all paid (due > 0, nothing owed) and has no billable lesson left
+// without a bill is collected, whatever the legacy Paid flag says; the server refuses 登記這筆 there (nothing owed).
+const fullyCollected = computed(() => isMonthly.value && state.value === 'ready' && Number(props.amounts?.due) > 0
+  && props.outstanding <= 0 && !sessions.value.some((s) => billable(s) && s.payment === 'no_invoice'));
 
 const dateOnly = (d) => (d ? String(d).slice(0, 10).replaceAll('-', '/') : '');
 const title = computed(() => {

@@ -346,6 +346,52 @@ describe('ContractCard money states (#3731 review)', () => {
   });
 });
 
+describe('ContractCard fully paid monthly contract (in-app #457)', () => {
+  const monthly = (sessions) => respond({ ...COVERAGE, schedule_mode: 'date', unscheduled_count: 0, sessions });
+  const amounts = { due: 1800, received: 1800, owed: 0 };
+
+  it('shows 已收, no 登記這筆, and no 還沒開帳單 on a leave lesson', async () => {
+    authedFetch.mockResolvedValueOnce(monthly([
+      { class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' },
+      { class_session_id: 2, date: '2026-10-16', status: 'leave', payment: 'no_invoice' },
+    ]));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-money"]').text()).toContain('已收');
+    expect(w.find('[data-testid="contract-money"]').text()).not.toContain('還沒開帳單');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(w.findAll('[data-testid="contract-session"]')[1].text()).not.toContain('還沒開帳單');
+  });
+
+  it('still offers 開帳單 for a ready next-period draft once the current period is collected', async () => {
+    authedFetch.mockResolvedValueOnce(monthly([{ class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' }]));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts, billDraft: { amount: 3600 } } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-money"]').text()).toContain('已收');
+    expect(w.find('[data-testid="contract-issue"]').text()).toContain('開帳單');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+  });
+
+  it('keeps 還沒開帳單 + 登記這筆 when a billable lesson has no bill', async () => {
+    authedFetch.mockResolvedValueOnce(monthly([
+      { class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' },
+      { class_session_id: 2, date: '2026-10-17', status: 'attended', payment: 'no_invoice' },
+    ]));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(true);
+  });
+
+  it('count contract with the same numbers is unchanged', async () => {
+    authedFetch.mockResolvedValueOnce(respond(COVERAGE));
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0, amounts } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(true);
+  });
+});
+
 describe('AccountingLedgerModal invoice pick (#3731 review)', () => {
   it('skips paid-status invoices and breaks ties oldest id first', async () => {
     const { default: AccountingLedgerModal } = await import('../AccountingLedgerModal.vue');
