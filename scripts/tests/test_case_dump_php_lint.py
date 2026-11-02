@@ -41,7 +41,7 @@ PROBE_PY = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)
 # Cases keyed by a StudentClass ID from the masked CASE_INPUT_STUDENT_CLASS_ID secret (no dispatch ID input accepted).
 SECRET_ID_CASES = {"inapp_414_amount_source"}
 # Cases that refuse any student or course target.
-NO_TARGET_CASES = {"migration_4283_preconditions", "review_4554_4753"}
+NO_TARGET_CASES = {"migration_4283_preconditions", "review_4554_4753", "inapp_458_receipt_courses"}
 
 
 def render_secret_case(case, student_id="", student_class_id="", secret_class_id="1"):
@@ -96,6 +96,12 @@ class Review45544753Case(unittest.TestCase):
             r = render_secret_case(self.CASE, **kw)
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("takes no target", r.stderr)
+
+
+class Inapp458ReceiptCoursesCase(Review45544753Case):
+    """in-app #458: courses behind three receipts, hard-coded report IDs, no target, no free text."""
+
+    CASE = "inapp_458_receipt_courses"
 
 
 class ConfirmedReportVoidBlockedCase(unittest.TestCase):
