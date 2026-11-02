@@ -98,7 +98,10 @@ describe('#4150 closedPaymentState (closed-course money verdict)', () => {
     ['amended, unpaid', { closed_reason: 'contract_amended', payment_status: 'unpaid' }, 'pending'],
     ['amended, noncanonical fallback row', { closed_reason: 'contract_amended', payment_status: 'paid', _noncanonical: true }, 'unknown'],
     ['amended, no status', { closed_reason: 'contract_amended' }, 'unknown'],
-    ['settled_pending', { closed_reason: 'settled_pending', payment_status: 'paid' }, 'pending'],
+    // #4790: settled_pending follows the server verdict.
+    ['settled_pending, paid', { closed_reason: 'settled_pending', payment_status: 'paid' }, 'settled'],
+    ['settled_pending, review', { closed_reason: 'settled_pending', payment_status: 'review_required' }, 'review'],
+    ['settled_pending, unpaid', { closed_reason: 'settled_pending', payment_status: 'unpaid' }, 'pending'],
     ['settled', { closed_reason: 'settled', payment_status: 'paid' }, null],
     ['open course', { payment_status: 'unpaid' }, null],
   ])('%s', (_name, row, state) => {

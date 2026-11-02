@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 已收過錢的結案課程不再顯示「未收」
-    summary: 款項已收的結案課程顯示「已結算」；款項已到但帳單月份要再核對的，顯示「已結束，待核對」。
+    summary: 已收清的結案課程顯示「已結算」；帳單月份或金額還要核對的，顯示「已結束，待核對」。
     items:
       - category: fixed
         text: 只有真的沒收到錢的結案課程，才會顯示「已結束，未收」。
