@@ -235,6 +235,7 @@ class AccountingController extends Controller
                 'has_exception' => $overpaidTotal > 0,
                 'pending_reconciliation' => $pendingReconciliation,
                 'payment_review_required' => $paymentReview,
+                'review_reasons' => $paymentReview ? ($status['review_reasons'] ?? []) : [],
                 'reconciliation_label' => $state === 'pending_review'
                     ? '課已結束，尚未收款 · 月結帳單與上課堂數不符，請核對'
                     : ($pendingReconciliation
