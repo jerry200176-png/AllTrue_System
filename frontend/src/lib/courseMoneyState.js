@@ -135,13 +135,17 @@ export const closedReason = (course) => {
 };
 
 /**
- * Money verdict of a closed course: 'pending' (closed, not paid: settled_pending, or an amended contract the server
- * says is not settled), 'unknown' (an amended contract without a server verdict, e.g. a `_noncanonical` fallback row:
+ * Money verdict of a closed course. settled_pending follows the server verdict: 'settled' (paid/free), 'review'
+ * (payment_status review_required: money received, billing month needs checking), else 'pending' (unpaid, partial,
+ * missing, `_noncanonical`). Other results: 'pending' (an amended contract the server says is not settled), 'unknown' (an amended contract without a server verdict, e.g. a `_noncanonical` fallback row:
  * never 已結算), 'settled' (an amended contract that is paid/free), null for every other row.
  */
 export const closedPaymentState = (course) => {
   const reason = closedReason(course);
-  if (reason === 'settled_pending') return 'pending';
+  if (reason === 'settled_pending') {
+    if (isCourseSettled(course) === true) return 'settled';
+    return String(course?.payment_status).toLowerCase() === 'review_required' ? 'review' : 'pending';
+  }
   if (reason !== 'contract_amended') return null;
   const settled = isCourseSettled(course);
   if (settled === null) return 'unknown';
@@ -249,6 +253,7 @@ export const canResolveLegacyPaidFlag = (course, {
   && course.class_type !== 'tutoring' && !course.free_gift_settled && !waived
   && !pendingReport && !sharedFollower);
 export const ENDED_PENDING_LABEL = '已結束，未收';
+export const ENDED_REVIEW_LABEL = '已結束，待核對';
 export const PAUSED_PENDING_LABEL = '暫停中，未收';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.
