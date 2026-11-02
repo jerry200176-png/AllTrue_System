@@ -2309,7 +2309,7 @@ jobs:
                     $m = is_array($m) ? $m : [];
                     $vals = [];
                     foreach ($auditKeep as $k) {{ if (array_key_exists($k, $m) && is_scalar($m[$k])) {{ $vals[$k] = is_string($m[$k]) ? $code($m[$k]) : $m[$k]; }} }}
-                    return ['id' => (int) $e->id, 'event_type' => $code(str_replace('.', '_', (string) $e->event_type)), 'occurred_at' => $ts($e->occurred_at), 'outcome' => $code($e->outcome),
+                    return ['id' => (int) $e->id, 'event_type' => preg_match('/^[a-z0-9_.]{{1,80}}$/', (string) $e->event_type) ? (string) $e->event_type : 'other', 'occurred_at' => $ts($e->occurred_at), 'outcome' => $code($e->outcome),
                       'fields' => array_values(array_filter(array_keys($m), fn ($k) => preg_match('/^[a-z_]{{1,32}}$/', (string) $k))), 'values' => $vals];
                   }})->values()->all(),
               ];
