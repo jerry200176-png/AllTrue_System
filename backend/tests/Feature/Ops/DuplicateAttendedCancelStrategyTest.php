@@ -240,6 +240,20 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
         $this->assertSame(1, (int) $after[1]->used_sessions); // the later reversal survives; the snapshot said 2
     }
 
+    public function test_restore_refuses_a_course_converted_to_a_package_after_the_repair(): void
+    {
+        $s = new DuplicateAttendedCancelStrategy();
+        $result = $s->execute($this->pinned($s), []);
+        DB::table('StudentClass')->where('ID', 3571)->update(['PackageID' => 700]); // convertToPackage() after the cancel (#4785)
+        try {
+            $s->rollback($result['snapshot'], []);
+            $this->fail('restore must refuse a course whose package link changed');
+        } catch (RuntimeException $e) {
+            $this->assertSame('duplicate_attended_restore_incomplete', $e->getMessage());
+        }
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', 41799)->value('Status'));
+    }
+
     public function test_restore_refuses_a_lesson_reassigned_to_another_contract(): void
     {
         $s = new DuplicateAttendedCancelStrategy();

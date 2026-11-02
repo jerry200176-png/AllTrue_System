@@ -284,10 +284,11 @@ final class DuplicateAttendedCancelStrategy
         return $out;
     }
 
-    /** The lesson is still on this run's contract and its own reversal rows still exist (false once restored, or after a reassign). */
+    /** The lesson is still on this run's contract, that contract's package link is unchanged, and its own reversal rows still exist. */
     private function reversalsPresent(array $r): bool
     {
         return DB::table('ClassSession')->where('id', $r['id'])->where('StudentClassID', $r['StudentClassID'])->exists()
+            && (int) DB::table('StudentClass')->where('ID', $r['StudentClassID'])->value('PackageID') === (int) ($r['package_id'] ?? 0) // #4785: no package conversion since
             && DB::table('session_deduction_ledger')->whereIn('id', $r['ledger_ids'])->where('class_session_id', $r['id'])->where('student_class_id', $r['StudentClassID'])
                 ->where('event_type', 'reverse')->count() === count($r['ledger_ids'])
             && DB::table('package_session_ledger')->whereIn('id', $r['package_ledger_ids'])->where('class_session_id', $r['id'])->count() === count($r['package_ledger_ids']);
