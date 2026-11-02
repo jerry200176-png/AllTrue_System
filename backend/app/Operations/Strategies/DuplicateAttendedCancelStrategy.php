@@ -106,7 +106,6 @@ final class DuplicateAttendedCancelStrategy
             }
             $this->audit(['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
                 'row_count' => count($cancel) + count($close), 'review_count' => count($rows) - count($cancel) - count($close), 'outcome' => 'success']);
-
             return ['ok' => true, 'cancelled' => count($cancel), 'closed' => count($close), 'snapshot' => $snap];
         }, 3);
     }
@@ -115,6 +114,7 @@ final class DuplicateAttendedCancelStrategy
     {
         if (($plan['mode'] ?? 'cancel') === 'restore') {
             $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
+            if (($result['snapshot']['incomplete'] ?? false) === true) $errors[] = 'nothing_restored_manual_resolution'; // every row drifted before execute
             foreach ($result['snapshot']['restored'] ?? [] as $r) {
                 $now = (array) DB::table('ClassSession')->where('id', $r['id'])->first(['Status', 'Note']);
                 if ((string) ($now['Status'] ?? '') !== (string) $r['Status'] || (string) ($now['Note'] ?? '') !== (string) $r['Note']) $errors[] = "not_restored_{$r['id']}";
@@ -125,7 +125,6 @@ final class DuplicateAttendedCancelStrategy
                 $now = DB::table('course_packages')->where('id', $p['id'])->first(['stop', 'closed_reason']);
                 if ((int) $now->stop !== (int) $p['stop'] || $now->closed_reason !== $p['closed_reason']) $errors[] = "package_not_restored_{$p['id']}";
             }
-
             return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['restored']];
         }
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
@@ -285,10 +284,12 @@ final class DuplicateAttendedCancelStrategy
         return $out;
     }
 
-    /** This run's own reversal rows still exist: false once that run was restored (a later cancel writes new ids). */
+    /** The lesson is still on this run's contract and its own reversal rows still exist (false once restored, or after a reassign). */
     private function reversalsPresent(array $r): bool
     {
-        return DB::table('session_deduction_ledger')->whereIn('id', $r['ledger_ids'])->where('class_session_id', $r['id'])->where('event_type', 'reverse')->count() === count($r['ledger_ids'])
+        return DB::table('ClassSession')->where('id', $r['id'])->where('StudentClassID', $r['StudentClassID'])->exists()
+            && DB::table('session_deduction_ledger')->whereIn('id', $r['ledger_ids'])->where('class_session_id', $r['id'])->where('student_class_id', $r['StudentClassID'])
+                ->where('event_type', 'reverse')->count() === count($r['ledger_ids'])
             && DB::table('package_session_ledger')->whereIn('id', $r['package_ledger_ids'])->where('class_session_id', $r['id'])->count() === count($r['package_ledger_ids']);
     }
 

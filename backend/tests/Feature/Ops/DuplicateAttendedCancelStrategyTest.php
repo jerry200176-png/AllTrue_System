@@ -240,6 +240,23 @@ final class DuplicateAttendedCancelStrategyTest extends TestCase
         $this->assertSame(1, (int) $after[1]->used_sessions); // the later reversal survives; the snapshot said 2
     }
 
+    public function test_restore_refuses_a_lesson_reassigned_to_another_contract(): void
+    {
+        $s = new DuplicateAttendedCancelStrategy();
+        $result = $s->execute($this->pinned($s), []);
+        DB::table('ClassSession')->where('id', 41799)->update(['StudentClassID' => 4312]); // what ClassSessionContractReassigner does to a cancelled lesson
+        DB::table('session_deduction_ledger')->where('class_session_id', 41799)->update(['student_class_id' => 4312]);
+        try {
+            $s->rollback($result['snapshot'], []);
+            $this->fail('restore must refuse a reassigned lesson');
+        } catch (RuntimeException $e) {
+            $this->assertSame('duplicate_attended_restore_incomplete', $e->getMessage());
+        }
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', 41783)->value('Status')); // all or nothing
+        $nothing = $s->verify(['mode' => 'restore'], ['ok' => true, 'already_applied' => true, 'snapshot' => ['rows' => [], 'packages' => [], 'incomplete' => true]]);
+        $this->assertSame([false, ['nothing_restored_manual_resolution']], [$nothing['ok'], $nothing['errors']]);
+    }
+
     public function test_the_catalog_entry_runs_through_pop_and_a_restore_request_undoes_it(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml');
