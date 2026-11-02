@@ -59,6 +59,18 @@ describe('In-App #353: existing course history stays distinct from current balan
     });
   });
 
+  it('carries the monthly review reason from the API to the history tag title', async () => {
+    const course = { ...ordinary, payment_type: 'monthly', closed_reason: 'settled_pending', history_reason: 'settled_pending',
+      payment_status: 'review_required', monthly_payment: { review_reasons: ['item_period_outside_contract'] } };
+    await withCourses([course], async (wrapper) => {
+      wrapper.findAllComponents({ name: 'AtButton' }).find(b => b.text().includes('顯示已結業')).vm.$emit('click');
+      await flushPromises();
+      await wrapper.find('.sl-history-toggle').trigger('click');
+      const tag = wrapper.findAll('.sl-history-card span').find(s => s.text() === '已結束，待核對');
+      expect(tag?.attributes('title')).toBe('帳單期間超出合約日期');
+    });
+  });
+
   it('does not treat an active unpaid zero as completed, or allocate a shared pool to a member', async () => {
     await withCourses([
       ordinary,

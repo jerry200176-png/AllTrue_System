@@ -256,6 +256,21 @@ export const canResolveLegacyPaidFlag = (course, {
   && !pendingReport && !sharedFollower);
 export const ENDED_PENDING_LABEL = '已結束，未收';
 export const ENDED_REVIEW_LABEL = '已結束，待核對';
+export const REVIEW_REASON_LABELS = {
+  billing_period_invalid: '帳單沒有填所屬月份',
+  shared_or_multi_line_bill: '帳單含多個項目或其他課程',
+  item_period_outside_contract: '帳單期間超出合約日期',
+  period_mismatch: '同月份有兩張期間不同的帳單',
+  contract_not_covered_to_end: '合約後段沒有帳單涵蓋',
+  month_double_counted: '同月份重複計算',
+  amount_discrepancy: '帳單金額和堂數算出的金額不同',
+  outside_contract_sessions: '有課排在合約日期外',
+  unbilled_month: '有上課月份還沒開帳單',
+};
+export const reviewReasonText = (course) => {
+  const codes = course?.monthly_payment?.review_reasons;
+  return Array.isArray(codes) ? codes.map((code) => REVIEW_REASON_LABELS[code]).filter(Boolean).join('、') : '';
+};
 export const PAUSED_PENDING_LABEL = '暫停中，未收';
 export const INVOICE_STATUS_LABELS = { paid: '已收', unpaid: '未繳', partial: '繳了一部分', void: '已作廢' };
 // #3991 (Founder 2026-10-13): a NT$0 bill exists only when marked free/gift. Mirrors Invoice::ZERO_REASON_FREE_GIFT.

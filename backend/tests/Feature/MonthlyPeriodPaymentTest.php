@@ -210,4 +210,22 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertSame(1500, (int) $invoice->fresh()->TotalAmount);
     }
 
+
+    public function test_review_reasons_explain_flag(): void
+    {
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $course = $this->course();
+        $this->assertContains('unbilled_month', $svc->batch(collect([$course]))[$course->ID]['review_reasons']);
+
+        $clean = $this->course();
+        $this->invoice($clean, '2026-08', 1000);
+        $this->invoice($clean, '2026-09', 1000);
+        $this->assertSame([], $svc->batch(collect([$clean]))[$clean->ID]['review_reasons']);
+
+        $mid = $this->course();
+        $mid->update(['StartDate' => '2026-09-04', 'EndDate' => '2026-09-30']);
+        $inv = $this->invoice($mid, '2026-09', 1000);
+        $inv->items()->create(['StudentClassID' => $mid->ID, 'Description' => 'm', 'Amount' => 1000, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']);
+        $this->assertContains('item_period_outside_contract', $svc->batch(collect([$mid->fresh()]))[$mid->ID]['review_reasons']);
+    }
 }

@@ -41,25 +41,27 @@ final class MonthlyPeriodPaymentService
     {
         $periods = [];
         $ambiguous = false;
+        $reasons = [];
         foreach ($invoices as $invoice) {
             $period = (string) $invoice->billing_period;
             // IssueDate is the invoice creation date, not proof of service period.
             if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
                 $ambiguous = true;
+                $reasons[] = 'billing_period_invalid';
                 continue;
             }
             $month = Carbon::createFromFormat('!Y-m', $period);
             $items = $invoice->items->filter(fn ($item) => (int) $item->StudentClassID === (int) $course->getAttribute('ID'));
-            if ($invoice->items->count() !== $items->count() || $items->count() > 1) $ambiguous = true;
+            if ($invoice->items->count() !== $items->count() || $items->count() > 1) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
             if ($start > $end || ($items->isNotEmpty() && ($start < substr((string) $course->getAttribute('StartDate'), 0, 10)
-                || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) $ambiguous = true;
+                || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) { $ambiguous = true; $reasons[] = 'item_period_outside_contract'; }
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
-            if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) $ambiguous = true;
+            if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
@@ -83,7 +85,7 @@ final class MonthlyPeriodPaymentService
                 if ($period['period_start'] > $cursor->toDateString()) break;
                 $cursor = Carbon::parse($period['period_end'])->addDay();
             }
-            if ($cursor->toDateString() <= $end) $ambiguous = true;
+            if ($cursor->toDateString() <= $end) { $ambiguous = true; $reasons[] = 'contract_not_covered_to_end'; }
         }
         $singlePeriod = $start && $end && substr($start, 0, 7) === substr($end, 0, 7);
         if ($invoices->isEmpty() && $singlePeriod && count($uncoveredMonths) <= 1
@@ -96,7 +98,7 @@ final class MonthlyPeriodPaymentService
         }
         if ($periods === [] && $uncoveredMonths === []) $uncoveredMonths[$start ? substr($start, 0, 7) : 'unknown'] = true;
         foreach (array_keys($uncoveredMonths) as $period) {
-            if (isset($periods[$period])) { $ambiguous = true; continue; }
+            if (isset($periods[$period])) { $ambiguous = true; $reasons[] = 'month_double_counted'; continue; }
             $periods[$period] = ['billing_period' => $period, 'period_start' => null, 'period_end' => null,
                 'charge' => null, 'paid_amount' => null, 'invoice_ids' => [], 'source' => 'unattributed'];
         }
@@ -125,10 +127,14 @@ final class MonthlyPeriodPaymentService
                 return $estimate;
             })->values()->all();
         $review = collect($rows)->contains('amount_discrepancy', true) || collect($sessionReview)->contains(fn ($row) => $row['outside_contract_sessions'] > 0) || $ambiguous || collect($rows)->contains('payment_status', 'unknown');
+        if (collect($rows)->contains('amount_discrepancy', true)) $reasons[] = 'amount_discrepancy';
+        if (collect($sessionReview)->contains(fn ($row) => $row['outside_contract_sessions'] > 0)) $reasons[] = 'outside_contract_sessions';
+        if (collect($rows)->contains('payment_status', 'unknown')) $reasons[] = 'unbilled_month';
         $selected = collect($rows)->first(fn ($row) => in_array($row['payment_status'], ['unpaid', 'partial'], true))
             ?? collect($rows)->firstWhere('payment_status', 'unknown') ?? end($rows);
         return ['periods' => $rows, 'billing_period' => $selected['billing_period'],
             'payment_status' => $review ? 'review_required' : $selected['payment_status'], 'review_required' => $review,
+            'review_reasons' => array_values(array_unique($reasons)),
             'contract_start' => $start ?: null, 'contract_end' => $end ?: null,
             'registered_paid_amount' => $invoices->isEmpty() ? null : (int) $invoices->sum(fn ($invoice) => $invoice->payments->isEmpty()
                 ? max(0, (int) $invoice->PaidAmount) : $this->amounts->resolve($invoice, $course)['net_applied']),
