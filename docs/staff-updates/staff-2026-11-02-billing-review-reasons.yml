@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-02-billing-review-reasons
+    published_at: "2026-11-02"
+    audiences:
+      - director
+    importance: digest
+    title: 「待核對」會說原因
+    summary: 結案課程標「已結束，待核對」時，現在會寫出要核對什麼，例如帳單期間超出合約日期。
+    items:
+      - category: improved
+        text: 課程頁的待核對提示會列出原因，不用再猜要查什麼。
+    source_refs:
+      - "changelog:2026-11-02:billing-review-reasons"
