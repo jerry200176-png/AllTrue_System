@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-02-inapp-457-paid-monthly-card
+    published_at: "2026-11-02"
+    audiences:
+      - director
+    importance: digest
+    title: 已收清的月結合約不再要你登記
+    summary: 月結合約的帳單都收齊時，合約卡顯示「已收」，不會再出現「還沒開帳單」和「登記這筆」。
+    items:
+      - category: fixed
+        text: 請假或取消的課不再標「還沒開帳單」；下一期的帳單草稿仍可在卡上按「開帳單」。
+    source_refs:
+      - "changelog:2026-11-02:inapp-457-paid-monthly-card"
