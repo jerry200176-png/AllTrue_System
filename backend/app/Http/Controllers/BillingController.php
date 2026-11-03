@@ -214,7 +214,7 @@ class BillingController extends Controller
             'Amount' => 'required|integer|min:1',
             'PaidAt' => 'nullable|date',
             // `void` marks a reversal in the Payment-row projection; reversals go through the audited void flows only.
-            'Method' => 'nullable|string|max:32|not_in:void',
+            'Method' => 'nullable|string|max:32|not_in:void,refund',
             'Note' => 'nullable|string|max:255',
         ]);
 

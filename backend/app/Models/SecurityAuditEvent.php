@@ -24,6 +24,8 @@ final class SecurityAuditEvent
         'old_session_count', 'old_charge', 'old_type', 'outcome', 'provider_status',
         'reason_code', 'row_count', 'source', 'student_count',
         'verification_method',
+        // Refund (#4843): money amounts only, never names.
+        'amount', 'refundable', 'paid',
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
         'acting_as', 'capability_campus_count', 'outstanding_amount',
         // Admin password change: how many of the target's sessions were ended (a count, never token values).
