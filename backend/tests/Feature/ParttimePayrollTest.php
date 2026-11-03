@@ -202,7 +202,7 @@ class ParttimePayrollTest extends TestCase
             ->assertJsonStructure(['anomaly_count', 'anomalies']);
     }
 
-    public function test_ended_lesson_without_attendance_is_listed_as_unmarked_anomaly(): void
+    public function test_ended_lesson_without_attendance_is_listed_as_unmarked_notice_and_does_not_block_lock(): void
     {
         $dir = $this->createDirector('dir-payroll-unmarked@test.com', [1]);
         $tid = $this->createPartTimeTeacher(1, 'pt-unmarked@test.com', '兼職未點');
@@ -224,15 +224,41 @@ class ParttimePayrollTest extends TestCase
         $headers = $this->authHeaders($dir['token']);
         $res = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
         $res->assertOk();
-        $hits = array_values(array_filter($res->json('summary.anomalies'), fn ($a) => $a['code'] === 'unmarked_attendance'));
+        $hits = $res->json('summary.unmarked_lessons');
+        $this->assertSame(1, $res->json('summary.unmarked_count'));
         $this->assertSame([$unmarked->id], array_column($hits, 'class_session_id'));
+        $this->assertSame('unmarked_attendance', $hits[0]['code']);
         $this->assertSame('已結束但沒有點名，不會算進薪資', $hits[0]['message']);
+        $this->assertNotContains('unmarked_attendance', array_column($res->json('summary.anomalies'), 'code'));
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/finance/parttime-payroll/lock', ['month' => '2026-04', 'branch_id' => 1])
+            ->assertOk();
 
         // Future lesson (not ended yet) is not flagged.
         $mk($sc, '2099-04-10', 'scheduled');
         $future = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2099-04&branch_id=1');
         $future->assertOk();
-        $this->assertNotContains('unmarked_attendance', array_column($future->json('summary.anomalies'), 'code'));
+        $this->assertSame(0, $future->json('summary.unmarked_count'));
+    }
+
+    public function test_campus_scope_without_students_lists_no_unmarked_lessons_or_anomalies(): void
+    {
+        $dir = $this->createDirector('dir-payroll-scope@test.com', [2]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-scope@test.com', '兼職他校');
+        $stu = $this->createStudent(1, '他校學生');
+        $sc = $this->makeStudentClass($stu, $tid, 7, 'one_on_one');
+        ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-10',
+            'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'completed', 'Note' => '',
+        ]);
+        $this->makeAttendance($sc, $tid, '2026-04-11', '10:00', '12:00', 'present');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=2');
+        $res->assertOk();
+        $this->assertSame(0, $res->json('summary.unmarked_count'));
+        $this->assertSame(0, $res->json('summary.anomaly_count'));
     }
 
     public function test_locked_payroll_reads_immutable_snapshot_until_reopen(): void

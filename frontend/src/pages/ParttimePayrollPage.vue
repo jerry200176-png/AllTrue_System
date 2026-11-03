@@ -135,6 +135,18 @@
         </div>
       </div>
 
+      <div v-if="!loading && !error && Number(summary.unmarked_count || 0) > 0" class="payroll-unmarked-notice" data-testid="payroll-unmarked-notice">
+        <div class="payroll-anomaly-title">
+          <span class="material-symbols-outlined">info</span>
+          <strong>有 {{ summary.unmarked_count }} 堂已結束但沒有點名，不會算進薪資。請補點名。</strong>
+        </div>
+        <div v-for="(item, index) in (summary.unmarked_lessons || [])" :key="`${item.class_session_id}-${index}`" class="payroll-anomaly-row">
+          <span>{{ item.session_date || '日期未定' }}</span>
+          <span>{{ item.message }}</span>
+          <span v-if="item.class_session_id">堂次 #{{ item.class_session_id }}</span>
+        </div>
+      </div>
+
       <!-- Empty state -->
       <AtEmpty
         v-if="!loading && !error && teachers.length === 0"
@@ -921,6 +933,18 @@ onMounted(loadData);
   background: var(--ds-warning-wash);
   color: var(--ds-warning);
   font-size: 0.82rem;
+}
+.payroll-unmarked-notice {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--ds-line, #d6d3d1);
+  border-radius: 9px;
+  background: var(--ds-surface-2, #f5f5f4);
+  color: var(--ds-ink);
+  font-size: 0.82rem;
+}
+.payroll-unmarked-notice .payroll-anomaly-row {
+  border-top-color: var(--ds-line, #d6d3d1);
 }
 .payroll-anomaly-title {
   display: flex;

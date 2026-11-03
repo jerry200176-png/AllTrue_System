@@ -4,10 +4,10 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 兼職薪資會提醒漏點名的課
-    summary: 已上完卻沒點名的兼職課，會在薪資頁列為異常提醒。
+    title: 兼職薪資提醒漏點名的課
+    summary: 已上完沒點名的兼職課，薪資頁會提醒補點名。
     items:
       - category: improved
-        text: 兼職薪資頁會列出已結束但沒有點名的堂次，補點名後才能鎖帳，不會再默默少算薪資。
+        text: 兼職薪資頁會提醒已結束但沒有點名的堂次，請補點名；這只是提醒，不會擋住鎖帳。
     source_refs:
       - "changelog:2026-11-03:payroll-unmarked-lessons"

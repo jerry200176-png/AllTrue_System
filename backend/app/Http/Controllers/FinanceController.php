@@ -1206,6 +1206,7 @@ class FinanceController extends Controller
 
         $lockedRun = $this->lockedPayrollRun($lockRow);
         $anomalies = $lockedRun ? ($lockedRun->anomalies ?? []) : $this->parttimePayrollAnomalies($campusIds, $month . '-01', date('Y-m-t', strtotime($month . '-01')));
+        $unmarkedLessons = $lockedRun ? [] : $this->parttimeUnmarkedLessons($campusIds, $month . '-01', date('Y-m-t', strtotime($month . '-01')));
         $rows = $lockedRun
             ? $this->buildParttimePayrollRowsFromSnapshot($lockedRun)
             : $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
@@ -1246,6 +1247,8 @@ class FinanceController extends Controller
                 'payroll_basis'   => 'attendance',
                 'anomaly_count'   => count($anomalies),
                 'anomalies'       => array_values($anomalies),
+                'unmarked_count'  => count($unmarkedLessons),
+                'unmarked_lessons' => $unmarkedLessons,
             ],
             'teachers' => $rows,
         ]);
@@ -1677,7 +1680,9 @@ class FinanceController extends Controller
                 'si.id as student_sign_in_id', 'si.Status as attendance_status', 'si.TeacherID', 'sc.StudentID', 'sc.ClassType', 'sc.TeacherID as ContractTeacherID',
             ]);
 
-        if (!empty($studentIds)) {
+        if (!empty($campusIds) && empty($studentIds)) {
+            $query->whereRaw('1=0'); // campus scope with no students must fail closed
+        } elseif (!empty($studentIds)) {
             $query->whereIn('sc.StudentID', $studentIds);
         }
 
@@ -1740,7 +1745,21 @@ class FinanceController extends Controller
             }
         }
 
-        // 已結束卻沒有任何有效點名的堂次不會進薪資，列為警示讓主任補點名。
+        return $anomalies;
+    }
+
+    /**
+     * 已結束卻沒有任何有效點名的堂次不會進薪資。僅提醒，不計入 anomalies，也不擋鎖帳。
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function parttimeUnmarkedLessons(array $campusIds, string $startDate, string $endDate): array
+    {
+                $partTimeIdSet = array_flip($this->partTimeTeacherUserIds());
+        $studentIds = !empty($campusIds)
+            ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all()
+            : [];
+        $lessons = [];
         $unmarked = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->where('cs.Status', '!=', 'cancelled')
@@ -1750,7 +1769,9 @@ class FinanceController extends Controller
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('StudentSingIn as si')
                 ->whereColumn('si.ClassSessionID', 'cs.id')->whereNull('si.VoidedAt'))
             ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.TeacherID as ContractTeacherID']);
-        if (!empty($studentIds)) {
+        if (!empty($campusIds) && empty($studentIds)) {
+            $unmarked->whereRaw('1=0'); // campus scope with no students must fail closed
+        } elseif (!empty($studentIds)) {
             $unmarked->whereIn('sc.StudentID', $studentIds);
         }
 
@@ -1768,7 +1789,7 @@ class FinanceController extends Controller
                 'studentClass' => (object) ['TeacherID' => $row->ContractTeacherID ?? 0],
             ]);
             if ($teacherId > 0 && isset($partTimeIdSet[$teacherId])) {
-                $anomalies[] = [
+                $lessons[] = [
                     'code' => 'unmarked_attendance',
                     'message' => '已結束但沒有點名，不會算進薪資',
                     'class_session_id' => (int) $row->id,
@@ -1778,7 +1799,7 @@ class FinanceController extends Controller
             }
         }
 
-        return $anomalies;
+        return $lessons;
     }
 
     private function buildParttimePayrollRowsFromSnapshot(PayrollRun $run): array
