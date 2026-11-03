@@ -62,7 +62,8 @@
               <div v-for="x in visibleExceptions" :key="x.key" class="ledger-receipt">
                 <strong>{{ x.title }}</strong>
                 <span>{{ x.message }}</span>
-                <small>{{ x.detail }}</small>
+                <small v-if="x.detail">{{ x.detail }}</small>
+                <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
                 <button
                   v-if="x.can_void"
                   class="ledger-action ledger-action--danger"
@@ -70,7 +71,6 @@
                   :disabled="busyReportId === x.report_id"
                   @click="voidReport(x.report_id)"
                 >{{ x.action_label || '撤銷收款' }}</button>
-                <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
                 <template v-if="!x.can_void && !x.report_id">
                   <span class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
                   <button class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給系統管理員</button>
@@ -352,6 +352,7 @@ import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  ledgerReceiptHelp,
   formatLedgerDriftLine,
   buildLedgerIssueReport,
 } from '../lib/studentClassDisplay.js';
@@ -613,9 +614,19 @@ const ledgerBothEmpty = computed(() => {
 
 const ledgerExceptions = computed(() => {
   const rows = [];
+  const byReceipt = new Map(); // in-app #474: one card per receipt, however many checks it fails
   (payload.value?.anomalies || []).forEach((a, idx) => {
-    rows.push({
+    const same = a.report_id ? byReceipt.get(a.report_id) : null;
+    if (same) {
+      same.codes.push(a.code);
+      same.can_void = same.can_void || a.action?.type === 'void_report';
+      same.has_invoice = same.has_invoice || !!a.invoice_id;
+      return;
+    }
+    const row = {
       key: `a-${idx}-${a.code}-${a.report_id || 'na'}-${a.payment_id || 'na'}`,
+      codes: [a.code],
+      has_invoice: !!a.invoice_id,
       title: anomalyLabel(a.code),
       message: a.message,
       detail: formatLedgerAnomalyDetail(a),
@@ -624,7 +635,13 @@ const ledgerExceptions = computed(() => {
       drift_line: formatLedgerDriftLine((payload.value?.invoices || []).find((i) => Number(i.id) === Number(a.invoice_id))),
       anomaly: a,
       severity: a.severity === 'critical' ? 0 : 1,
-    });
+    };
+    rows.push(row);
+    if (a.report_id) byReceipt.set(a.report_id, row);
+  });
+  rows.forEach((row) => {
+    const help = ledgerReceiptHelp(row.codes, { hasInvoice: row.has_invoice });
+    if (help) Object.assign(row, help, { detail: '', action_label: '撤銷收據' });
   });
   (payload.value?.invoices || []).forEach((inv) => {
     (inv.payments || []).forEach((p) => {
