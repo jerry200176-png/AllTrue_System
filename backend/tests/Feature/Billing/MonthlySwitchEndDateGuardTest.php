@@ -68,11 +68,12 @@ class MonthlySwitchEndDateGuardTest extends TestCase
     {
         $sc = $this->countCourse();
         $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", [
-            'payment_type' => 'monthly', 'start_date' => '2026-11-04', 'end_date' => '2026-11-25', 'force_partial_rebuild' => 1,
+            'payment_type' => 'monthly', 'first_class_date' => '2026-11-04', 'end_date' => '2026-11-25', 'force_partial_rebuild' => 1,
             'duration_hours' => 2, 'days_of_week' => [3], 'start_time' => '18:00',
             'day_time_slots' => [['day' => 3, 'start_time' => '18:00', 'duration_minutes' => 120]],
         ])->assertOk();
         $this->assertSame('date', $sc->fresh()->ScheduleMode);
+        $this->assertSame('2026-11-04', substr((string) $sc->fresh()->StartDate, 0, 10)); // the contract really moved past 11/3
         $dates = ClassSession::where('StudentClassID', $sc->ID)->where('Status', 'scheduled')->orderBy('SessionDate')
             ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all();
         $this->assertSame(['2026-11-04', '2026-11-11', '2026-11-18', '2026-11-25'], $dates);
