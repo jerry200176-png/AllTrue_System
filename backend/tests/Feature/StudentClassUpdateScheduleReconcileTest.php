@@ -217,6 +217,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     public function test_update_teacher_rejects_when_slot_held_by_substitute_schedule_row(): void
     {
         [$token, $student, $course] = $this->seedCourseWithHistory();
+        // #4835: an owner counts only when bound to a campus, as real teachers are.
+        \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => 100, 'CampusID' => 1]);
 
         $contractStudent = Student::create([
             'name' => '合約老師學生',
@@ -388,6 +390,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     public function test_update_teacher_and_time_ignores_stale_normal_but_keeps_substitute(): void
     {
         [$token, $student, $course] = $this->seedCourseWithHistory();
+        // #4835: an owner counts only when bound to a campus, as real teachers are.
+        \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => 100, 'CampusID' => 1]);
         $course->update([
             'ClassType' => 'one_on_two',
             'by1' => 2,
