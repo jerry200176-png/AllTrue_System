@@ -937,14 +937,14 @@ onMounted(loadData);
 .payroll-unmarked-notice {
   margin: 12px 0 0;
   padding: 12px;
-  border: 1px solid var(--ds-line, #d6d3d1);
-  border-radius: 9px;
-  background: var(--ds-surface-2, #f5f5f4);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-2);
   color: var(--ds-ink);
-  font-size: 0.82rem;
+  font-size: var(--ds-font-size-sm);
 }
 .payroll-unmarked-notice .payroll-anomaly-row {
-  border-top-color: var(--ds-line, #d6d3d1);
+  border-top-color: var(--ds-border);
 }
 .payroll-anomaly-title {
   display: flex;
