@@ -1673,6 +1673,8 @@ class FinanceController extends Controller
         $query = DB::table('ClassSession as cs')
             ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->leftJoin('Subject as su', 'su.id', '=', 'sc.SubjectID')
             ->whereNull('si.VoidedAt')
             ->whereIn('si.Status', AttendanceStatus::payableCodes())
             ->where('cs.Status', '!=', 'cancelled')
@@ -1680,6 +1682,7 @@ class FinanceController extends Controller
             ->select([
                 'cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status as session_status',
                 'si.id as student_sign_in_id', 'si.Status as attendance_status', 'si.TeacherID', 'sc.StudentID', 'sc.ClassType', 'sc.TeacherID as ContractTeacherID',
+                'st.name as student_name', 'su.Subject_Name as subject_name',
             ]);
 
         if (!empty($campusIds) && empty($studentIds)) {
@@ -1691,6 +1694,7 @@ class FinanceController extends Controller
         $rows = $query->get();
         $anomalies = [];
         $seen = [];
+        $rowOf = [];
 
         foreach ($rows as $row) {
             if (($row->ClassType ?? null) === 'trial') {
@@ -1710,6 +1714,7 @@ class FinanceController extends Controller
 
             $key = (int) $row->class_session_id;
             $seen[$key][] = (int) $row->student_sign_in_id;
+            $rowOf[$key] = $row;
             $add = function (string $code, string $message) use (&$anomalies, $row, $key): void {
                 $anomalies[] = [
                     'code' => $code,
@@ -1717,7 +1722,7 @@ class FinanceController extends Controller
                     'class_session_id' => $key,
                     'student_sign_in_id' => (int) $row->student_sign_in_id,
                     'session_date' => $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null,
-                ];
+                ] + self::payrollLessonLabel($row);
             };
 
             if (!$row->StartTime || !$row->EndTime) {
@@ -1742,8 +1747,8 @@ class FinanceController extends Controller
                     'message' => '同一堂存在多筆有效點名',
                     'class_session_id' => (int) $sessionId,
                     'student_sign_in_id' => null,
-                    'session_date' => null,
-                ];
+                    'session_date' => $rowOf[$sessionId]->SessionDate ? substr((string) $rowOf[$sessionId]->SessionDate, 0, 10) : null,
+                ] + self::payrollLessonLabel($rowOf[$sessionId]);
             }
         }
 
@@ -1755,6 +1760,20 @@ class FinanceController extends Controller
      *
      * @return array<int, array<string, mixed>>
      */
+    /** in-app #482: who / what / when for a payroll notice row, so staff never read a bare 堂次 id. */
+    private static function payrollLessonLabel(object $row): array
+    {
+        $hm = static fn ($t) => $t ? substr((string) $t, 0, 5) : null;
+
+        return [
+            'student_class_id' => (int) ($row->StudentClassID ?? 0) ?: null,
+            'start_time' => $hm($row->StartTime ?? null),
+            'end_time' => $hm($row->EndTime ?? null),
+            'student_name' => ($row->student_name ?? null) !== null ? (string) $row->student_name : null,
+            'subject_name' => ($row->subject_name ?? null) !== null ? (string) $row->subject_name : null,
+        ];
+    }
+
     private function parttimeUnmarkedLessons(array $campusIds, string $startDate, string $endDate): array
     {
                 $partTimeIdSet = array_flip($this->partTimeTeacherUserIds());
@@ -1764,6 +1783,8 @@ class FinanceController extends Controller
         $lessons = [];
         $unmarked = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->leftJoin('Subject as su', 'su.id', '=', 'sc.SubjectID')
             // Only lessons with no recorded outcome: leave / excused / voided keep no attendance on purpose.
             ->whereIn(DB::raw('LOWER(TRIM(cs.Status))'), ['scheduled', 'completed', 'attended'])
             ->whereBetween('cs.SessionDate', [$startDate, $endDate])
@@ -1771,7 +1792,8 @@ class FinanceController extends Controller
             ->where(fn ($q) => $q->where('sc.ClassType', '!=', 'trial')->orWhereNull('sc.ClassType'))
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('StudentSingIn as si')
                 ->whereColumn('si.ClassSessionID', 'cs.id')->whereNull('si.VoidedAt'))
-            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.TeacherID as ContractTeacherID']);
+            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.TeacherID as ContractTeacherID',
+                'st.name as student_name', 'su.Subject_Name as subject_name']);
         if (!empty($campusIds) && empty($studentIds)) {
             $unmarked->whereRaw('1=0'); // campus scope with no students must fail closed
         } elseif (!empty($studentIds)) {
@@ -1798,7 +1820,7 @@ class FinanceController extends Controller
                     'class_session_id' => (int) $row->id,
                     'student_sign_in_id' => null,
                     'session_date' => $date,
-                ];
+                ] + self::payrollLessonLabel($row);
             }
         }
 
