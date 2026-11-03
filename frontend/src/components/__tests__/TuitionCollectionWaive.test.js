@@ -31,7 +31,7 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}`);
     expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}`);
     expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
-    expect(source).toContain('需核對：{{ reviewReasonsText(row.review_reasons) }}'); // #4797
+    expect(source).toContain('需核對：{{ r.label }}。怎麼處理：{{ r.text }}'); // #4797, in-app #469
   });
 
   it('hides 確認不收 on paused rows (no closed_reason) because the waive endpoint rejects them', () => {
@@ -55,5 +55,12 @@ describe('tuition 已核對 (#4798)', () => {
     expect(source).toMatch(/<ConfirmDialogHost \/>/);
     expect(source).toContain("import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';");
     expect(source).toMatch(/payment-review\/check[\s\S]{0,400}json\.message[\s\S]{0,300}loadAlerts\(\), loadSettledCourses\(\)/);
+  });
+});
+
+describe('tuition 需核對 next steps (in-app #469)', () => {
+  it('offers 開帳單 and 到課程改合約 only for the reasons they fix', () => {
+    expect(source).toContain(`reviewNeeds(row, 'drafts')" class="tc-btn" :data-testid="\`tc-review-drafts-\${row.student_class_id}\`" @click="activeAccountingTab = 'monthly-drafts'"`);
+    expect(source).toContain(`reviewNeeds(row, 'course')" class="tc-btn" :data-testid="\`tc-review-course-\${row.student_class_id}\`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"`);
   });
 });

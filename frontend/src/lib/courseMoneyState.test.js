@@ -273,3 +273,11 @@ console.log('courseMoneyState passed');
   assert.equal(M.sharedPackageBillingLead(m(1).course, [m(1)]), null);
   assert.equal(M.sharedPackageBillingLead({ id: 9 }, [m(1), m(2)]), null);
 }
+
+// in-app #469: every 需核對 reason has a next step, and the two buttons map to the reasons they fix.
+{
+  for (const code of Object.keys(M.REVIEW_REASON_LABELS)) assert.ok(M.REVIEW_REASON_FIX[code]?.text, `no next step for ${code}`);
+  const fixes = M.reviewReasonFixes(['unbilled_month', 'amount_discrepancy', 'outside_contract_sessions', 'unknown_code']);
+  assert.deepEqual(fixes.map((f) => [f.code, f.action]), [['unbilled_month', 'drafts'], ['amount_discrepancy', undefined], ['outside_contract_sessions', 'course']]);
+  assert.deepEqual(M.reviewReasonFixes(null), []);
+}

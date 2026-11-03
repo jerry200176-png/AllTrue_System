@@ -267,6 +267,22 @@ export const REVIEW_REASON_LABELS = {
   outside_contract_sessions: '有課排在合約日期外',
   unbilled_month: '有上課月份還沒開帳單',
 };
+// in-app #469: every reason says what to do next (Stripe Radar style: the reason plus its resolution).
+// `action` names the row button that gets there: drafts = 開帳單, course = 到課程改合約; the rest use 繳費明細／已核對.
+export const REVIEW_REASON_FIX = {
+  billing_period_invalid: { text: '打開「繳費明細」，把這張帳單作廢後重開，選好所屬月份。' },
+  shared_or_multi_line_bill: { text: '打開「繳費明細」，確認每一項是哪門課、哪個月；都對、也收齊了，就按「已核對」。' },
+  item_period_outside_contract: { text: '帳單期間超出合約；合約日期不對就按「到課程改合約」，帳單不對就在「繳費明細」作廢重開。', action: 'course' },
+  period_mismatch: { text: '打開「繳費明細」，同一個月有兩張帳單，作廢多開的那張。' },
+  contract_not_covered_to_end: { text: '按「開帳單」，補開合約後段的帳單。', action: 'drafts' },
+  month_double_counted: { text: '打開「繳費明細」，作廢重複的那張帳單。' },
+  amount_discrepancy: { text: '「繳費明細」會列出帳單金額和照堂數算的金額。金額沒錯、也收齊了，就按「已核對」；金額要改，就在「繳費明細」作廢這張帳單再重開。' },
+  outside_contract_sessions: { text: '按「到課程改合約」，在這門課的「⋯」選「合約／堂次調整」把日期改對，或把這幾堂課移到合約日期內。', action: 'course' },
+  unbilled_month: { text: '按「開帳單」，替這個月開帳單。', action: 'drafts' },
+};
+export const reviewReasonFixes = (codes) => (Array.isArray(codes) ? codes : [])
+  .filter((code) => REVIEW_REASON_LABELS[code])
+  .map((code) => ({ code, label: REVIEW_REASON_LABELS[code], ...REVIEW_REASON_FIX[code] }));
 export const reviewReasonsText = (codes) => (Array.isArray(codes) ? codes.map((code) => REVIEW_REASON_LABELS[code]).filter(Boolean).join('、') : '');
 export const reviewReasonText = (course) => reviewReasonsText(course?.monthly_payment?.review_reasons);
 export const PAUSED_PENDING_LABEL = '暫停中，未收';
