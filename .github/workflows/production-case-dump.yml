@@ -2369,7 +2369,7 @@ jobs:
                 'payments' => \\App\\Models\\Payment::query()->whereIn('InvoiceID', $invs->pluck('id')->all())->orderBy('id')->get()->map(fn ($x) => $nums($x->getAttributes()) + ['method' => $code($x->Method ?? null)])->values()->all(),
                 'payment_reports' => \\App\\Models\\PaymentReport::query()->where('StudentClassID', $id)->orderBy('id')->get()->map(fn ($x) => $nums($x->getAttributes()) + ['status' => $code($x->status)])->values()->all(),
                 // in-app #478: a plan member is priced by its plan; numbers and flags of that plan only.
-                'package' => (int) ($m->PackageID ?? 0) > 0 ? (fn ($p) => $p ? $nums($p) + ['paid' => (int) ($p->paid ?? 0), 'class_type' => $code($p->class_type ?? null), 'rate_unit' => $code($p->rate_unit ?? null),
+                'package' => (int) ($m->PackageID ?? 0) > 0 ? (fn ($p) => $p ? $nums($p) + ['paid' => (int) ($p->paid ?? 0), 'total_sessions' => (int) ($p->total_sessions ?? 0), 'used_sessions' => (int) ($p->used_sessions ?? 0), 'remaining_sessions' => (int) ($p->remaining_sessions ?? 0), 'class_type' => $code($p->class_type ?? null), 'rate_unit' => $code($p->rate_unit ?? null),
                   'member_ids' => $db::table('StudentClass')->where('PackageID', (int) $m->PackageID)->orderBy('ID')->pluck('ID')->map(fn ($v) => (int) $v)->all()] : null)(
                   $db::table('course_packages')->where('id', (int) $m->PackageID)->first()) : null,
                 'pricing_amendments' => \\App\\Models\\StudentClassPricingAmendment::query()->where('student_class_id', $id)->orderBy('id')->get()->map(fn ($x) => $nums($x->getAttributes()))->values()->all(),
@@ -2386,11 +2386,12 @@ jobs:
               // in-app #476/#479: every live bill stored with total 0 that has money applied and no free/discount mark (all campuses).
               $out['zero_total_paid_bills'] = $db::table('Invoice as i')->where('i.TotalAmount', 0)->where('i.Status', '!=', 'void')
                 ->where(fn ($q) => $q->whereNull('i.zero_amount_reason')->orWhereNotIn('i.zero_amount_reason', [\\App\\Models\\Invoice::ZERO_REASON_FREE_GIFT, \\App\\Models\\Invoice::ZERO_REASON_FULL_DISCOUNT]))
-                ->whereRaw('(SELECT COALESCE(SUM(p.Amount), 0) FROM Payment p WHERE p.InvoiceID = i.id) > 0')
+                ->whereRaw(\\App\\Models\\Invoice::netPaidSql('i').' > 0')
                 ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'i.StudentClassID')->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->orderBy('i.id')->limit(200)
-                ->get(['i.id', 'i.StudentClassID', 'i.PaidAmount', 'i.created_at', 'sc.Charge', 'sc.PackageID', 'st.CampusID'])
-                ->map(fn ($r) => $nums($r) + ['net_paid' => (int) $db::table('Payment')->where('InvoiceID', (int) $r->id)->sum('Amount'),
+                ->selectRaw(\\App\\Models\\Invoice::netPaidSql('i').' as net_paid')
+                ->addSelect(['i.id', 'i.StudentClassID', 'i.PaidAmount', 'i.created_at', 'sc.Charge', 'sc.PackageID', 'st.CampusID'])->get()
+                ->map(fn ($r) => $nums($r) + ['net_paid' => (int) $r->net_paid,
                   'item_amounts' => $db::table('InvoiceItem')->where('InvoiceID', (int) $r->id)->pluck('Amount')->map(fn ($v) => (int) $v)->all()])->values()->all();
             }}
           }} elseif ($case === 'inapp_468_teacher_calendar') {{
