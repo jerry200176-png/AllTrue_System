@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-03-sort-by-remaining-lessons
+    published_at: "2026-11-03"
+    audiences:
+      - director
+    importance: digest
+    title: 學生清單可以照剩餘堂數排序
+    summary: 帳務中心「學生」清單可以選「剩餘堂數（少到多）」，先看到快上完的學生。
+    items:
+      - category: improved
+        text: 每位學生那一列會寫最少還剩幾堂課和是哪一科，不用展開就看得到。
+      - category: improved
+        text: 右上角「排序」選「剩餘堂數（少到多）」，快上完、要續課的學生會排在最前面。
+    source_refs:
+      - "changelog:2026-11-03:sort-by-remaining-lessons"
