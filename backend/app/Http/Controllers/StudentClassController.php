@@ -2134,20 +2134,14 @@ class StudentClassController extends Controller
             $oldBase = $oldRateUnitSnapshot === 'hour'
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
-            $hasSessionChargeAdjustments = DB::table('ClassSession')
-                ->where('StudentClassID', (int) $studentClass->getKey())
-                ->whereNotNull('session_charge')
-                ->exists();
-            $preservedDelta = $hasSessionChargeAdjustments ? ($oldChargeSnapshot - $oldBase) : 0;
-
             $rateUnit = $studentClass->rate_unit ?? 'session';
             if ($rateUnit === 'hour') {
                 $newBase = (int) round((float) $studentClass->Rate * (int) $studentClass->TotalHours);
             } else {
                 $newBase = (int) round((float) $studentClass->Rate * (int) $studentClass->SessionCount);
             }
-            if ($newBase > 0) {
-                $newCharge = max(0, $newBase + $preservedDelta);
+            $newCharge = StudentClass::chargeAfterChange((int) $studentClass->getKey(), $oldChargeSnapshot, $oldBase, $newBase);
+            if ($newCharge !== null) {
                 $studentClass->update(['Charge' => $newCharge]);
                 $studentClass->refresh();
             }

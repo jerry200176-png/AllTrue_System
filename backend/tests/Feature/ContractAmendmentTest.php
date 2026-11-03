@@ -19,7 +19,7 @@ class ContractAmendmentTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_preview_and_execute_reduces_count_without_target_or_financial_mutation(): void
+    public function test_preview_and_execute_reduces_count_and_amount_without_touching_bills(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-04 10:00:00', 'Asia/Taipei'));
         [$token] = $this->director();
@@ -49,7 +49,9 @@ class ContractAmendmentTest extends TestCase
             ->assertJsonPath('new_remaining_sessions', 0)
             ->assertJsonPath('affected_future_scheduled_count', 1)
             ->assertJsonPath('affected_future_schedules_count', 1)
-            ->assertJsonPath('financial_mutation', 'none');
+            ->assertJsonPath('original_charge', 8800)
+            ->assertJsonPath('new_charge', 3300)
+            ->assertJsonPath('financial_mutation', 'charge');
 
         $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$course->ID}/contract-amendment",
@@ -57,14 +59,16 @@ class ContractAmendmentTest extends TestCase
         )->assertOk()
             ->assertJsonPath('after.SessionCount', 3)
             ->assertJsonPath('after.RemainingSessions', 0)
-            ->assertJsonPath('financial_mutation', 'none');
+            ->assertJsonPath('financial_mutation', 'charge');
 
         $course->refresh();
         $this->assertSame(3, (int) $course->SessionCount);
         $this->assertSame(0, (int) $course->RemainingSessions);
         $this->assertSame(1, (int) $course->Stop);
         $this->assertSame('contract_amended', $course->closed_reason);
-        $this->assertSame(8800, (int) $course->Charge);
+        // in-app #472 (Founder 2026-11-04): the amount follows the count (3 × 1100); the issued bill is untouched.
+        $this->assertSame(3300, (int) $course->Charge);
+        $this->assertSame(8800, (int) Invoice::find($invoice->id)->TotalAmount);
         $this->assertSame('unpaid', Invoice::find($invoice->id)->Status);
         $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
         $this->assertSame('cancelled', Schedule::find($futureSchedule->id)->status);
@@ -210,6 +214,7 @@ class ContractAmendmentTest extends TestCase
             $url = "/api/v1/student-classes/{$course->ID}/contract-amendment";
             $this->withToken($token)->postJson($url, ['new_session_count' => 1, 'reason' => '調整'])->assertOk();
             $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
+            $this->assertSame(1100, (int) $course->fresh()->Charge); // #472: 1 × 1100
 
             $this->withToken($token)->postJson("$url/revert/preview")->assertOk()
                 ->assertJsonPath('restored_session_count', 8)
@@ -223,6 +228,7 @@ class ContractAmendmentTest extends TestCase
             $course->refresh();
             $this->assertSame(0, (int) $course->Stop);
             $this->assertNull($course->closed_reason);
+            $this->assertSame(8800, (int) $course->Charge); // #472: the amount comes back with the count
             $this->assertSame('2026-12-31', substr((string) $course->EndDate, 0, 10));
             $this->assertSame('contract_amendment_reverted', json_decode($course->settlement_snapshot, true)['kind']);
             $restored = ClassSession::find($future->id);
@@ -232,6 +238,22 @@ class ContractAmendmentTest extends TestCase
             $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.contract_amendment_reverted')->count());
 
             $this->withToken($token)->postJson("$url/revert", ['reason' => '再撤銷'])->assertStatus(409);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** #472: an hourly contract's amount follows TotalHours, which this flow does not change. */
+    public function test_hourly_contract_amount_is_left_alone(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $course = $this->course($this->student()->id, ['rate_unit' => 'hour', 'Rate' => 550, 'Charge' => 8800]);
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/contract-amendment/preview", ['new_session_count' => 4])
+                ->assertOk()->assertJsonPath('financial_mutation', 'none')->assertJsonPath('new_charge', 8800);
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/contract-amendment", ['new_session_count' => 4, 'reason' => '調整'])->assertOk();
+            $this->assertSame(8800, (int) $course->fresh()->Charge);
         } finally {
             Carbon::setTestNow();
         }

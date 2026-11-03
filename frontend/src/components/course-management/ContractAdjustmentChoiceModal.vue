@@ -34,7 +34,7 @@
           <span class="choice-card__icon" aria-hidden="true">⊖</span>
           <span class="choice-card__copy">
             <strong>提前結束／調整合約總堂數</strong>
-            <small>例如原本 8 堂、已完成 3 堂，調整為 3 堂；不需要目標課程，未來預排會取消。</small>
+            <small>例如原本 8 堂、已完成 3 堂，調整為 3 堂；不需要目標課程，未來預排會取消，合約金額跟著改成新堂數 × 單價。</small>
           </span>
           <span class="choice-card__arrow" aria-hidden="true">›</span>
         </button>
