@@ -682,6 +682,8 @@
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
+    <!-- #4798: askConfirm() needs a host on this page; App.vue mounts pages without a shared one. -->
+    <ConfirmDialogHost />
     </div>
   </div>
 </template>
@@ -704,6 +706,7 @@ import AtSelectAll from '../components/design-system/AtSelectAll.vue';
 import { useSelection } from '../composables/useSelection';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import { askConfirm } from '../composables/useConfirmDialog';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';

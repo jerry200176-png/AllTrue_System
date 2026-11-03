@@ -81,7 +81,17 @@ class PaymentReviewCheckTest extends TestCase
 
         $this->check($this->token(), $course)->assertOk()->assertJson(['status' => 'paid', 'review_checked' => true]);
         $this->assertSame('settled', $course->fresh()->closed_reason);
-        $this->assertTrue(\Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'payment_review_checked')->exists());
+        $audit = \Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'payment_review_checked')->first();
+        $this->assertNotNull($audit);
+        $meta = json_decode((string) $audit->metadata, true);
+        $this->assertSame('amount_discrepancy', $meta['reason_code'] ?? null);
+        $this->assertSame(64, strlen((string) ($meta['reason_hash'] ?? '')));
+        // Course management reads the same checked verdict, not the raw period summary.
+        $list = $this->withToken($this->token())->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $course->StudentID)->assertOk()->json();
+        $row = collect($list['data'] ?? $list)->firstWhere('ID', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertFalse($row['monthly_payment']['review_required']);
+        $this->assertSame('paid', $row['payment_status']);
         $this->assertSame('paid', $this->courseState($course)['status']);
 
         // Swapping one lesson for another keeps the count but changes the picture, so review returns.
@@ -94,6 +104,17 @@ class PaymentReviewCheckTest extends TestCase
         $after = $this->courseState($course);
         $this->assertSame('review_required', $after['status']);
         $this->assertFalse($after['review_checked']);
+    }
+
+    public function test_zero_value_bills_cannot_be_checked(): void
+    {
+        $course = $this->course();
+        $course->update(['closed_reason' => 'settled_pending']);
+        $this->invoice($course, '2026-08', 0, 0);
+        $this->assertSame('review_required', $this->courseState($course)['status']);
+        $this->check($this->token(), $course)->assertStatus(409)->assertJson(['code' => 'payment_review_check_not_settleable']);
+        $this->assertNull($course->fresh()->review_checked_signature);
+        $this->assertSame('settled_pending', $course->fresh()->closed_reason);
     }
 
     public function test_owed_course_is_refused(): void

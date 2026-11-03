@@ -51,6 +51,9 @@ describe('tuition 已核對 (#4798)', () => {
     expect(source).toContain('`tc-review-check-${row.student_class_id}`');
     expect(source).toContain('/api/v1/student-classes/${row.student_class_id}/payment-review/check');
     expect(source).toContain('確認這門課的帳都對了？標記後就不再列在待核對。');
+    // askConfirm() only resolves through a mounted host (Codex P1 on #4828).
+    expect(source).toMatch(/<ConfirmDialogHost \/>/);
+    expect(source).toContain("import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';");
     expect(source).toMatch(/payment-review\/check[\s\S]{0,400}json\.message[\s\S]{0,300}loadAlerts\(\), loadSettledCourses\(\)/);
   });
 });
