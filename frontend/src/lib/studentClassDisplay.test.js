@@ -278,6 +278,8 @@ console.log('studentClassDisplay.test.js: all assertions passed');
   const rpt = buildLedgerIssueReport({ code: 'paid_amount_mismatch', invoice_id: 2032, student_class_id: 7 }, inv, 55);
   assert.equal(rpt.relatedReference, '學生ID 55 / 帳單ID 2032 / 課程ID 7');
   assert.ok(rpt.description.includes('paid_amount_mismatch') && rpt.description.includes('7500'));
+  // in-app #476: words first, code kept for triage
+  assert.ok(buildLedgerIssueReport({ code: 'overpayment_pending_review', invoice_id: 1 }, inv, 55).description.startsWith('學生帳務出現「多收，沒有記進帳單（overpayment_pending_review）」'));
 }
 
 // in-app #474: receipt mismatches explain and give the safe step first; other codes keep their own copy.

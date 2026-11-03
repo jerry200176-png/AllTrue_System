@@ -440,12 +440,21 @@ export function formatLedgerDriftLine(inv) {
 }
 
 /** Pre-filled in-app report for the 回報給系統管理員 action: IDs only, never names. */
+// in-app #476: the report a director sends says the problem in words; the code stays in brackets for triage.
+const LEDGER_CODE_WORDS = {
+  overpayment_pending_review: '多收，沒有記進帳單',
+  paid_amount_mismatch: '帳單已收金額和收款紀錄對不上',
+  receipt_without_invoice: '收據對不到帳單',
+  receipt_payment_outside_ledger: '收據的收款不在這位學生的帳上',
+  confirmed_receipt_without_payment: '收據確認了但沒有收款紀錄',
+};
+
 export function buildLedgerIssueReport(a, inv, studentId) {
   const ids = [`學生ID ${studentId || '-'}`, `帳單ID ${a?.invoice_id || inv?.id || '-'}`, `課程ID ${a?.student_class_id || inv?.student_class_id || '-'}`];
   const recorded = inv ? Number(inv.calculated_applied_amount || 0) + Number(inv.overpaid_amount || 0) : null;
   const nums = inv ? `應收 ${inv.total_amount}、帳單記錄已收 ${inv.paid_amount}、收款紀錄合計 ${recorded}` : '';
   return {
-    description: `學生帳務出現「${a?.code || 'ledger'}」，沒有可撤銷的收款，請核對。${nums}`,
+    description: `學生帳務出現「${LEDGER_CODE_WORDS[a?.code] ? `${LEDGER_CODE_WORDS[a.code]}（${a.code}）` : (a?.code || 'ledger')}」，沒有可撤銷的收款，請核對。${nums}`,
     relatedReference: ids.join(' / '),
   };
 }
