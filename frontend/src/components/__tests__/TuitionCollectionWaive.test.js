@@ -59,8 +59,8 @@ describe('tuition 已核對 (#4798)', () => {
 });
 
 describe('tuition 需核對 next steps (in-app #469)', () => {
-  it('offers 開帳單 and 到課程改合約 only for the reasons they fix', () => {
-    expect(source).toContain(`reviewNeeds(row, 'drafts')" class="tc-btn" :data-testid="\`tc-review-drafts-\${row.student_class_id}\`" @click="activeAccountingTab = 'monthly-drafts'"`);
+  it('offers 到課程處理 only for the reasons fixed in course management, and no bill button for old months', () => {
     expect(source).toContain(`reviewNeeds(row, 'course')" class="tc-btn" :data-testid="\`tc-review-course-\${row.student_class_id}\`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"`);
+    expect(source).not.toContain('tc-review-drafts-');
   });
 });

@@ -405,8 +405,7 @@
                 <td>
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
-                    <button v-if="row.payment_review_required && canVoid && reviewNeeds(row, 'drafts')" class="tc-btn" :data-testid="`tc-review-drafts-${row.student_class_id}`" @click="activeAccountingTab = 'monthly-drafts'"><span class="material-symbols-outlined">receipt_long</span>開帳單</button>
-                    <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程改合約</button>
+                    <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
                     <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
                   </div>
                 </td>

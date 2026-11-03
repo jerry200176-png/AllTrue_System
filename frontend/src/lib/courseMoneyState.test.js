@@ -278,6 +278,8 @@ console.log('courseMoneyState passed');
 {
   for (const code of Object.keys(M.REVIEW_REASON_LABELS)) assert.ok(M.REVIEW_REASON_FIX[code]?.text, `no next step for ${code}`);
   const fixes = M.reviewReasonFixes(['unbilled_month', 'amount_discrepancy', 'outside_contract_sessions', 'unknown_code']);
-  assert.deepEqual(fixes.map((f) => [f.code, f.action]), [['unbilled_month', 'drafts'], ['amount_discrepancy', undefined], ['outside_contract_sessions', 'course']]);
+  assert.deepEqual(fixes.map((f) => [f.code, f.action]), [['unbilled_month', undefined], ['amount_discrepancy', undefined], ['outside_contract_sessions', 'course']]);
+  // Codex #4836: never tell a director to void a bill for an uncovered lesson.
+  assert.ok(!M.REVIEW_REASON_FIX.month_double_counted.text.startsWith('打開「繳費明細」，作廢'));
   assert.deepEqual(M.reviewReasonFixes(null), []);
 }
