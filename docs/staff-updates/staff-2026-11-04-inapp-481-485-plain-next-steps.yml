@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-04-inapp-481-485-plain-next-steps
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 薪資、刪課、續課的提示講得更清楚
+    summary: 系統會直接說是哪一堂課、為什麼不能刪、下一步怎麼做。
+    items:
+      - category: fixed
+        text: 兼職薪資「沒有點名」清單改成顯示上課時間、學生和科目，不再只顯示堂次編號。
+      - category: fixed
+        text: 課程不能刪除時，會說出是哪一種紀錄擋住（例如繳費提醒、點名、扣堂）。
+      - category: improved
+        text: 「月結帳單與上課堂數不符」會直接寫出怎麼處理；續課加買堂數時會說清楚，原本還沒上完的課照常上，不會被結案。
+    source_refs:
+      - "changelog:2026-11-04:inapp-481-485-plain-next-steps"
