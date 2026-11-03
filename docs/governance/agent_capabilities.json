@@ -19,12 +19,12 @@
       "name": "gh PR/issue (repo,workflow)",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-10-04",
-      "review_after": "2026-11-03",
+      "last_verified_at": "2026-11-03",
+      "review_after": "2026-12-03",
       "verification_method": "gh issue create + gh pr create/ready/checks",
       "environment": "github",
       "verifier": "claude-agent",
-      "evidence": "Configured method run 2026-10-04: gh issue create #3491; gh pr create #3490; gh pr ready --undo/ready #3490; gh pr checks #3490 (9 pass, 12 skipping)"
+      "evidence": "2026-11-02/03: gh issue create #4803; gh pr create #4811; gh pr edit labels and gh pr checks on #4811/#4802"
     },
     {
       "id": "push_feature_branch",
@@ -43,24 +43,24 @@
       "name": "Merge PR via gh",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-10-03",
-      "review_after": "2026-11-02",
+      "last_verified_at": "2026-11-03",
+      "review_after": "2026-12-03",
       "verification_method": "gh pr merge after required CI green",
       "environment": "github",
       "verifier": "claude-agent",
-      "evidence": "PR #3486 squash-merged via gh after required CI green → e483c1dc4 (2026-10-03)"
+      "evidence": "PR #4802 squash-merged 2026-11-03 by land-queue.yml after the agent applied the `queue` label via gh (required CI green, review/final-head clean) → main includes 4af434182; also #4801, #4796 on 2026-11-02"
     },
     {
       "id": "alltrue_deploy_pi",
       "name": "AllTrue Deploy to Pi",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-10-03",
-      "review_after": "2026-11-02",
+      "last_verified_at": "2026-11-03",
+      "review_after": "2026-12-03",
       "verification_method": "Actions Deploy to Pi success + production health/version.json",
       "environment": "prod-pi",
       "verifier": "claude-agent",
-      "evidence": "Deploy to Pi run 37138976778 success; production version.json hash=e483c1dc and deployment.json backend_sha e483c1dc4 (checked in that run); GET /health 200 (2026-10-03)"
+      "evidence": "Deploy run 41443820047 success (2026-11-02); production deployment.json backend_sha=frontend_sha=b17186e39, deployed_at 2026-11-02T12:23:47Z; GET /api/health 200 (checked 2026-11-02)"
     },
     {
       "id": "prod_read_version_json",
@@ -91,12 +91,12 @@
       "name": "In-app bug POST comment/status",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-10-03",
-      "review_after": "2026-11-02",
+      "last_verified_at": "2026-11-03",
+      "review_after": "2026-12-03",
       "verification_method": "Approved Phase-C workflow dispatch: status+public comment write for verified in-app fixes",
       "environment": "prod",
       "verifier": "claude-agent",
-      "evidence": "Phase-C allowlist PR #3482 (merged 2026-10-03T11:02Z) wrote back in-app #374/#375; production write-back confirmed by closing comments https://github.com/jerry200176-png/AllTrue_System/issues/3464#issuecomment-5974732057 (in-app #374, rev aab8dbcb8) and https://github.com/jerry200176-png/AllTrue_System/issues/3467#issuecomment-5974731774 (in-app #375, rev 2c6839e31), 2026-10-03T23:48Z; run logs purged by pii-log-purge"
+      "evidence": "2026-11-02/03: in-app #457 moved to resolved with a public reply via POP inapp-report-resolve-after-deploy (request 1813125f, read back as resolved); in-app #462/#463 public replies + close-as-logged via bug-phase-a-triage run 41603140987 (success)"
     },
     {
       "id": "phpunit_isolated",
