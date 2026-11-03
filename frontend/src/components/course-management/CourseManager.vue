@@ -21,6 +21,8 @@ export default {
     // { primary, groups } from courseActions(): the same model the course row uses (調課／代課／轉課 live in ⋯).
     actionModel: { type: Object, default: null },
     canMoveLesson: { type: Function, default: () => false },
+    // in-app #486: 預覽分期更正 is a headquarters (POP-only) tool; a director can open it but never finish it.
+    canPreviewCorrection: { type: Boolean, default: false },
     tab: { type: String, default: 'overview' },
     studentName: { type: String, default: '' },
     subjectLabel: { type: String, default: '' },
@@ -405,7 +407,7 @@ export default {
           </section>
           <section class="cmw__card">
             <h3>合約</h3>
-            <button v-if="isMonthlyMode && monthlySummary" type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
+            <button v-if="isMonthlyMode && monthlySummary && canPreviewCorrection" type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
             <div class="cmw__row">
               <button type="button" class="small primary" @click="act('purchase')">{{ purchaseLabel }}</button>
               <button type="button" class="small ghost" @click="act('contract-adjust')">合約／堂次調整</button>
