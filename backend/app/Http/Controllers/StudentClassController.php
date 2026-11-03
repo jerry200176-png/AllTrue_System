@@ -2560,7 +2560,7 @@ class StudentClassController extends Controller
                 return response()->json(['message' => '這門課目前不在待核對。', 'code' => 'payment_review_not_pending'], 422);
             }
             $periods = collect($status['periods'] ?? []);
-            if ($periods->isEmpty() || $status['source'] !== 'invoice'
+            if ($periods->isEmpty() || $status['source'] !== 'invoice' || (int) ($status['uncovered_sessions'] ?? 0) > 0
                 || $periods->contains(fn ($p) => ($p['status'] ?? null) === 'review_required')) {
                 return response()->json(['message' => '還有上過課的月份沒有帳單，請先開帳單再核對。', 'code' => 'payment_review_check_unbilled'], 409);
             }
@@ -2585,7 +2585,7 @@ class StudentClassController extends Controller
                 // Only scalar allow-listed keys survive SecurityAuditEvent::metadata(): reasons as one code string, the signature as reason_hash.
                 'reason_code' => implode(',', $status['review_reasons']), 'reason_hash' => $status['review_signature'],
                 'row_count' => $periods->pluck('invoice_ids')->flatten()->count(), 'outcome' => 'success',
-            ]);
+            ], required: true); // no audit row, no check: the transaction rolls back
 
             return response()->json(['message' => '已標記為已核對。', 'status' => $after['status'], 'review_checked' => $after['review_checked']]);
         });

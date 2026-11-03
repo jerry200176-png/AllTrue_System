@@ -286,10 +286,13 @@ class BillingPayableResolver
             $reasons = $out['review_reasons'];
             sort($reasons);
             $terms = array_map(fn ($key) => (string) $course->getAttribute($key), ['Charge', 'Rate', 'StartDate', 'EndDate', 'ScheduleMode']);
+            // overpaid is the uncapped part of the receipts, so reversing an excess payment also changes the picture.
             $out['review_signature'] = hash('sha256', json_encode([$reasons, array_map(fn ($p) => [$p['billing_period'], $p['invoice_ids'],
-                $p['total'], $p['applied'], $p['status']], $periods), $monthly['session_review'] ?? [], $terms]));
+                $p['total'], $p['applied'], $p['overpaid'] ?? null, $p['status']], $periods), $monthly['session_review'] ?? [], $terms]));
+            // A lesson outside every bill's range in an already-billed month is unbilled too (B15 adds no unattributed row then).
+            $out['uncovered_sessions'] = (int) collect($monthly['session_review'] ?? [])->sum('uncovered_sessions');
             if ((string) $course->getAttribute('review_checked_signature') === $out['review_signature']
-                && $total - $applied === 0 && $unattributed === [] && !$zeroValueOnly) {
+                && $total - $applied === 0 && $unattributed === [] && $out['uncovered_sessions'] === 0 && !$zeroValueOnly) {
                 $out['status'] = 'paid';
                 $out['review_checked'] = true;
             }

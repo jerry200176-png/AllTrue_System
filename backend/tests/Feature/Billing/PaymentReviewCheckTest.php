@@ -117,6 +117,45 @@ class PaymentReviewCheckTest extends TestCase
         $this->assertSame('settled_pending', $course->fresh()->closed_reason);
     }
 
+    public function test_unbilled_lesson_inside_a_billed_month_is_refused(): void
+    {
+        // A paid August bill that covers only 1-15; the 22nd is taught and on no bill.
+        $course = $this->course();
+        $invoice = $this->invoice($course, '2026-08', 1500, 1500);
+        $invoice->items()->create(['StudentClassID' => $course->ID, 'Description' => 'a', 'Amount' => 1500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-15']);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-08-22', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $this->assertSame('review_required', $this->courseState($course->fresh())['status']);
+        $this->check($this->token(), $course)->assertStatus(409)->assertJson(['code' => 'payment_review_check_unbilled']);
+        $this->assertNull($course->fresh()->review_checked_signature);
+    }
+
+    public function test_reversing_an_excess_payment_reopens_a_checked_review(): void
+    {
+        $course = $this->course();
+        $invoice = $this->invoice($course, '2026-08', 1500, 1500);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 300, 'PaidAt' => '2026-08-21', 'Method' => 'cash']);
+        $this->check($this->token(), $course)->assertOk();
+        $this->assertSame('paid', $this->courseState($course)['status']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -300, 'PaidAt' => '2026-08-22', 'Method' => 'cash']);
+        $this->assertSame('review_required', $this->courseState($course)['status']);
+    }
+
+    public function test_check_rolls_back_when_the_audit_row_cannot_be_written(): void
+    {
+        $course = $this->discrepantPaid();
+        $token = $this->token();
+        $fail = true;
+        // Same synthetic fault as the password-change fail-closed test: the audit insert runs, then throws inside append().
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fail) {
+            if ($fail && str_starts_with($query->sql, 'insert into `security_audit_events`')) {
+                $fail = false;
+                throw new \RuntimeException('synthetic audit failure');
+            }
+        });
+        $this->check($token, $course)->assertStatus(500);
+        $this->assertNull($course->fresh()->review_checked_signature);
+    }
+
     public function test_owed_course_is_refused(): void
     {
         $course = $this->course();
