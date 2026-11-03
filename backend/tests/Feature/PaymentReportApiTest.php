@@ -1040,6 +1040,18 @@ class PaymentReportApiTest extends TestCase
         $this->recordDirect($token, $sc->ID, 3000, $invoice->id)->assertOk();
     }
 
+    public function test_inapp_461_unbilled_count_course_refuses_an_entry_above_its_contract_charge(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 20000]);
+
+        $this->recordDirect($token, $sc->ID, 22000, null)->assertStatus(422)
+            ->assertJsonPath('code', 'amount_exceeds_outstanding')->assertJsonPath('expected_amount', 20000);
+        $this->assertSame(0, Invoice::where('StudentClassID', $sc->ID)->count());
+        $this->recordDirect($token, $sc->ID, 20000, null)->assertOk();
+    }
+
     public function test_f7_s6_batch_confirm_second_report_for_the_same_balance_is_rejected(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
