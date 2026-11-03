@@ -281,5 +281,7 @@ console.log('courseMoneyState passed');
   assert.deepEqual(fixes.map((f) => [f.code, f.action]), [['unbilled_month', undefined], ['amount_discrepancy', undefined], ['outside_contract_sessions', 'course']]);
   // Codex #4836: never tell a director to void a bill for an uncovered lesson.
   assert.ok(!M.REVIEW_REASON_FIX.month_double_counted.text.startsWith('打開「繳費明細」，作廢'));
+  // Codex #4836: void cannot reissue an old month, so no hint may tell a director to void and reissue.
+  for (const [code, fix] of Object.entries(M.REVIEW_REASON_FIX)) assert.ok(!/作廢(這張帳單)?[再後]?重開/.test(fix.text), `${code} suggests void-and-reissue`);
   assert.deepEqual(M.reviewReasonFixes(null), []);
 }
