@@ -41,6 +41,7 @@ final class MonthlyPeriodPaymentService
     {
         $periods = [];
         $ambiguous = false;
+        $attributionAmbiguous = false;
         $reasons = [];
         foreach ($invoices as $invoice) {
             $period = (string) $invoice->billing_period;
@@ -56,7 +57,11 @@ final class MonthlyPeriodPaymentService
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             // #4803 (Founder 2026-11-03): a bill covering several courses or lines is normal once fully paid; only an owing one is reviewed.
             $fullyPaid = $amount['total_amount'] > 0 && $paid >= $amount['total_amount'];
-            if (($invoice->items->count() !== $items->count() || $items->count() > 1) && !$fullyPaid) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
+            if ($invoice->items->count() !== $items->count() || $items->count() > 1) {
+                // A paid one is settled, but which month each line belongs to is still unclear to month reports.
+                $attributionAmbiguous = true;
+                if (!$fullyPaid) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
+            }
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
             $contractStart = substr((string) $course->getAttribute('StartDate'), 0, 10);
@@ -139,6 +144,7 @@ final class MonthlyPeriodPaymentService
         return ['periods' => $rows, 'billing_period' => $selected['billing_period'],
             'payment_status' => $review ? 'review_required' : $selected['payment_status'], 'review_required' => $review,
             'review_reasons' => array_values(array_unique($reasons)),
+            'attribution_ambiguous' => $review || $attributionAmbiguous,
             'contract_start' => $start ?: null, 'contract_end' => $end ?: null,
             'registered_paid_amount' => $invoices->isEmpty() ? null : (int) $invoices->sum(fn ($invoice) => $invoice->payments->isEmpty()
                 ? max(0, (int) $invoice->PaidAmount) : $this->amounts->resolve($invoice, $course)['net_applied']),
