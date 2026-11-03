@@ -1730,29 +1730,11 @@ class StudentClassController extends Controller
             }
         }
 
-        // In-app #464: switching to monthly (or editing its dates) may not leave scheduled lessons outside the contract's own dates.
-        $newMode = (string) ($mapped['ScheduleMode'] ?? $oldScheduleMode);
-        $effStart = $newStart ?? $dateOf($studentClass->StartDate);
-        $effEnd = $newEnd ?? $dateOf($studentClass->EndDate);
-        $datesChanged = ($newStart !== null && $newStart !== $dateOf($studentClass->StartDate)) || ($newEnd !== null && $newEnd !== $dateOf($studentClass->EndDate));
-        if ($newMode === 'date' && $effStart && $effEnd && ($oldScheduleMode !== 'date' || $datesChanged)) {
-            $outside = ClassSession::query()->where('StudentClassID', $studentClass->ID)->whereRaw("LOWER(RTRIM(Status)) = 'scheduled'")
-                ->where(fn ($q) => $q->whereDate('SessionDate', '<', $effStart)->orWhereDate('SessionDate', '>', $effEnd))
-                ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->unique()->sort()->values()->all();
-            if ($outside !== []) {
-                $fmt = fn (string $d) => Carbon::parse($d)->format('n/j');
-                $after = array_values(array_filter($outside, fn (string $d) => $d > $effEnd));
-                $this->auditEditBlocked($studentClass, 'contract_dates_exclude_scheduled_lessons', 422);
-                return response()->json([
-                    'message' => $after !== []
-                        ? sprintf('月結合約的結束日 %s 之後還有 %s 的課。請把結束日改到最後一堂（%s）或之後，或先取消這些堂次。沒有修改任何資料。',
-                            $fmt($effEnd), implode('、', array_map($fmt, $after)), $fmt(end($after)))
-                        : sprintf('月結合約的開始日 %s 之前還有 %s 的課。請把開始日改到第一堂（%s）或之前，或先取消這些堂次。沒有修改任何資料。',
-                            $fmt($effStart), implode('、', array_map($fmt, $outside)), $fmt($outside[0])),
-                    'code' => 'contract_dates_exclude_scheduled_lessons', 'lesson_dates' => $outside,
-                ], 422);
-            }
-        }
+        // In-app #464: checked on the saved end state (after any session rebuild) inside the update transaction.
+        $guardContractDates = (string) ($mapped['ScheduleMode'] ?? $oldScheduleMode) === 'date'
+            && ($oldScheduleMode !== 'date'
+                || ($newStart !== null && $newStart !== $dateOf($studentClass->StartDate))
+                || ($newEnd !== null && $newEnd !== $dateOf($studentClass->EndDate)));
 
         if (array_key_exists('rate_unit', $mapped)) {
             $rateUnit = strtolower(trim((string) $mapped['rate_unit']));
@@ -1999,7 +1981,9 @@ class StudentClassController extends Controller
             $previousScheduleSlots,
             $previousRecurringSlots,
             $scheduleFieldsPresent,
-            $teacherEffectiveDate
+            $teacherEffectiveDate,
+            $guardContractDates,
+            $dateOf
         ) {
         // TD-076 B2: flag on, pin taught past occurrences (D2 evidence) BEFORE TeacherID moves; replaces the legacy #207 pin below.
         $occurrencePinned = false;
@@ -2239,6 +2223,27 @@ class StudentClassController extends Controller
         $monthlySessionSync = $this->contractSchedule->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
         if (($monthlySessionSync['created_sessions'] ?? 0) > 0) {
             $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
+        }
+
+        if ($guardContractDates) {
+            $studentClass->refresh();
+            $effStart = $dateOf($studentClass->StartDate);
+            $effEnd = $dateOf($studentClass->EndDate);
+            $outside = $effStart && $effEnd ? ClassSession::query()->where('StudentClassID', $studentClass->ID)->whereRaw("LOWER(RTRIM(Status)) = 'scheduled'")
+                ->where(fn ($q) => $q->whereDate('SessionDate', '<', $effStart)->orWhereDate('SessionDate', '>', $effEnd))
+                ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->unique()->sort()->values()->all() : [];
+            if ($outside !== []) {
+                $fmt = fn (string $d) => Carbon::parse($d)->format('n/j');
+                $after = array_values(array_filter($outside, fn (string $d) => $d > $effEnd));
+                abort(response()->json([
+                    'message' => $after !== []
+                        ? sprintf('月結合約的結束日 %s 之後還有 %s 的課。請把結束日改到最後一堂（%s）或之後，或先取消這些堂次。沒有修改任何資料。',
+                            $fmt($effEnd), implode('、', array_map($fmt, $after)), $fmt(end($after)))
+                        : sprintf('月結合約的開始日 %s 之前還有 %s 的課。請把開始日改到第一堂（%s）或之前，或先取消這些堂次。沒有修改任何資料。',
+                            $fmt($effStart), implode('、', array_map($fmt, $outside)), $fmt($outside[0])),
+                    'code' => 'contract_dates_exclude_scheduled_lessons', 'lesson_dates' => $outside,
+                ], 422));
+            }
         }
 
         return [$sessionSync, $billingModeConversion, null];

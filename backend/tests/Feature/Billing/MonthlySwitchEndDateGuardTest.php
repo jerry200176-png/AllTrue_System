@@ -38,12 +38,14 @@ class MonthlySwitchEndDateGuardTest extends TestCase
     public function test_switch_with_end_date_before_scheduled_lessons_is_refused_and_writes_nothing(): void
     {
         $sc = $this->countCourse();
+        $rows = fn () => ClassSession::where('StudentClassID', $sc->ID)->orderBy('ID')->get(['ID', 'SessionDate', 'Status'])->toArray();
+        $before = $rows();
         $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", ['payment_type' => 'monthly', 'start_date' => '2026-11-03', 'end_date' => '2026-11-03'])
             ->assertStatus(422)->assertJsonPath('code', 'contract_dates_exclude_scheduled_lessons')
             ->assertJsonPath('lesson_dates', ['2026-11-10', '2026-11-17', '2026-11-24'])
             ->assertJsonPath('message', '月結合約的結束日 11/3 之後還有 11/10、11/17、11/24 的課。請把結束日改到最後一堂（11/24）或之後，或先取消這些堂次。沒有修改任何資料。');
         $this->assertSame('count', $sc->fresh()->ScheduleMode);
-        $this->assertSame(4, ClassSession::where('StudentClassID', $sc->ID)->count());
+        $this->assertSame($before, $rows());
     }
 
     public function test_switch_with_covering_end_date_is_saved(): void
@@ -61,6 +63,18 @@ class MonthlySwitchEndDateGuardTest extends TestCase
         $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", ['end_date' => '2026-11-10'])
             ->assertStatus(422)->assertJsonPath('code', 'contract_dates_exclude_scheduled_lessons');
         $this->assertSame('2026-11-24', substr((string) $sc->fresh()->EndDate, 0, 10));
+    }
+
+    public function test_edit_whose_schedule_rebuild_leaves_nothing_outside_is_saved(): void
+    {
+        $sc = $this->countCourse();
+        $sc->update(['ScheduleMode' => 'date', 'EndDate' => '2026-11-24']);
+        $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", [
+            'start_date' => '2026-11-03', 'end_date' => '2026-11-10', 'duration_hours' => 2, 'days_of_week' => [2], 'start_time' => '18:00',
+            'day_time_slots' => [['day' => 2, 'start_time' => '18:00', 'duration_minutes' => 120]],
+        ])->assertOk();
+        $this->assertSame('2026-11-10', substr((string) $sc->fresh()->EndDate, 0, 10));
+        $this->assertSame(0, ClassSession::where('StudentClassID', $sc->ID)->where('SessionDate', '>', '2026-11-10')->count());
     }
 
     private function countCourse(): StudentClass
