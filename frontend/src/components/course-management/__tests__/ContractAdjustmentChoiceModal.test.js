@@ -89,6 +89,16 @@ describe('ContractAmendmentModal', () => {
     expect(Number(wrapper.find('#amendment-new-count').element.value)).toBe(3);
   });
 
+  it('in-app #472: the revert preview shows the amount coming back instead of saying nothing changes', async () => {
+    const preview = { current_session_count: 3, restored_session_count: 8, current_remaining_sessions: 0, restored_remaining_sessions: 5,
+      restorable_sessions_count: 1, restorable_schedules_count: 0, unscheduled_remaining_sessions: 0,
+      current_charge: 3300, restored_charge: 8800, financial_mutation: 'charge' };
+    const wrapper = mount(ContractAmendmentRevertModal, { props: { show: true, course, preview } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="revert-charge"]').text()).toContain('合約金額 NT$3,300 → NT$8,800');
+    expect(wrapper.text()).not.toContain('帳務資料不會變更');
+  });
+
   it('in-app #472: shows the old and new contract amount when the count change moves it', async () => {
     const preview = {
       original_session_count: 80, new_session_count: 76, original_remaining_sessions: 69, new_remaining_sessions: 65,

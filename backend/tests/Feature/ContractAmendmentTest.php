@@ -220,6 +220,9 @@ class ContractAmendmentTest extends TestCase
 
             $this->withToken($token)->postJson("$url/revert/preview")->assertOk()
                 ->assertJsonPath('restored_session_count', 8)
+                ->assertJsonPath('current_charge', 1100)
+                ->assertJsonPath('restored_charge', 8800)
+                ->assertJsonPath('financial_mutation', 'charge')
                 ->assertJsonPath('restorable_sessions_count', 1)
                 ->assertJsonPath('unscheduled_remaining_sessions', 6);
             $this->withToken($token)->postJson("$url/revert", [])->assertStatus(422);

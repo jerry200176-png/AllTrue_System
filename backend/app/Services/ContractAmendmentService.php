@@ -264,6 +264,8 @@ final class ContractAmendmentService
             'restored_session_count' => (int) $before['session_count'],
             'current_remaining_sessions' => (int) $course->getAttribute('RemainingSessions'),
             'restored_remaining_sessions' => (int) $before['remaining_sessions'],
+            'current_charge' => (int) $course->getAttribute('Charge'),
+            'restored_charge' => array_key_exists('charge', $snap['after']) ? (int) $before['charge'] : (int) $course->getAttribute('Charge'),
             'restorable_sessions_count' => $sessions->count(),
             'restorable_schedules_count' => $schedules->count(),
             'unscheduled_remaining_sessions' => max(0, (int) $before['remaining_sessions'] - $futureCovered),
