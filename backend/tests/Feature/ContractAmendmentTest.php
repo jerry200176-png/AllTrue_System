@@ -73,6 +73,8 @@ class ContractAmendmentTest extends TestCase
         $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
         $this->assertSame('cancelled', Schedule::find($futureSchedule->id)->status);
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.contract_amendment')->count());
+        $meta = json_decode((string) DB::table('security_audit_events')->where('event_type', 'student_class.contract_amendment')->value('metadata'), true);
+        $this->assertSame([8800, 3300], [$meta['old_charge'] ?? null, $meta['new_charge'] ?? null]);
 
         // in-app #251: unpaid amended contracts must remain actionable in tuition alerts
         $alert = $this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1');
@@ -238,6 +240,21 @@ class ContractAmendmentTest extends TestCase
             $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.contract_amendment_reverted')->count());
 
             $this->withToken($token)->postJson("$url/revert", ['reason' => '再撤銷'])->assertStatus(409);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** #472: a free contract (Charge 0) is never priced by a count change. */
+    public function test_free_contract_amount_stays_zero(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $course = $this->course($this->student()->id, ['Charge' => 0]);
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/contract-amendment", ['new_session_count' => 4, 'reason' => '調整'])
+                ->assertOk()->assertJsonPath('financial_mutation', 'none');
+            $this->assertSame(0, (int) $course->fresh()->Charge);
         } finally {
             Carbon::setTestNow();
         }

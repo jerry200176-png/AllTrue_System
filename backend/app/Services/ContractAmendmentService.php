@@ -141,6 +141,8 @@ final class ContractAmendmentService
                     'new_session_count' => $newCount,
                     'old_remaining_sessions' => $before['remaining_sessions'],
                     'new_remaining_sessions' => $newRemaining,
+                    'old_charge' => $before['charge'],
+                    'new_charge' => (int) $locked->getAttribute('Charge'),
                     'reason_code' => self::CLOSED_REASON,
                     'reason_hash' => hash('sha256', $reason),
                     'outcome' => 'success',
@@ -214,11 +216,16 @@ final class ContractAmendmentService
         ];
     }
 
-    /** Per-lesson contracts only; an hourly contract's amount follows TotalHours, which this flow does not change. */
+    /**
+     * Per-lesson contracts only; an hourly contract's amount follows TotalHours, which this flow does not change.
+     * A free / gift contract (Charge 0, or a marked 0-元 bill) is never priced here (same lock as chargeCorrection).
+     * Paid contracts do follow (Founder 2026-11-04): issued bills and payments stay, any excess reads as 多收.
+     */
     private function chargeForCount(StudentClass $course, int $newCount): ?int
     {
         $unit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
-        if ($unit !== 'session' && $unit !== '') {
+        if (($unit !== 'session' && $unit !== '') || (int) ($course->Charge ?? 0) <= 0
+            || \App\Models\Invoice::markedZeroBillLabel((int) $course->getKey()) !== null) {
             return null;
         }
         $rate = (float) ($course->Rate ?? 0);
@@ -344,6 +351,8 @@ final class ContractAmendmentService
                 [
                     'old_session_count' => $snap['after']['session_count'],
                     'new_session_count' => $before['session_count'],
+                    'old_charge' => (int) ($snap['after']['charge'] ?? $locked->getAttribute('Charge')),
+                    'new_charge' => (int) $locked->getAttribute('Charge'),
                     'reason_code' => 'contract_amendment_reverted',
                     'reason_hash' => hash('sha256', $reason),
                     'outcome' => 'success',
