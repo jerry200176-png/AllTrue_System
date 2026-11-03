@@ -220,6 +220,9 @@ class ParttimePayrollTest extends TestCase
         $this->makeAttendanceForSession($sc, $tid, $marked, '2026-04-11', '10:00', 'present');
         $mk($sc, '2026-04-12', 'cancelled');
         $mk($ftSc, '2026-04-13', 'completed');
+        foreach (['leave', 'leave_adjusted', 'excused', 'voided'] as $i => $outcome) { // a recorded non-attendance outcome is not "unmarked"
+            $mk($sc, sprintf('2026-04-%02d', 14 + $i), $outcome);
+        }
 
         $headers = $this->authHeaders($dir['token']);
         $res = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');

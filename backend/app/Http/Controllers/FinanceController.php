@@ -1762,7 +1762,8 @@ class FinanceController extends Controller
         $lessons = [];
         $unmarked = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->where('cs.Status', '!=', 'cancelled')
+            // Only lessons with no recorded outcome: leave / excused / voided keep no attendance on purpose.
+            ->whereIn(DB::raw('LOWER(TRIM(cs.Status))'), ['scheduled', 'completed', 'attended'])
             ->whereBetween('cs.SessionDate', [$startDate, $endDate])
             ->where('cs.SessionDate', '<=', date('Y-m-d'))
             ->where(fn ($q) => $q->where('sc.ClassType', '!=', 'trial')->orWhereNull('sc.ClassType'))
