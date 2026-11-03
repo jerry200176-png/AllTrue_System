@@ -226,6 +226,12 @@ class MonthlyPeriodPaymentTest extends TestCase
         $mid->update(['StartDate' => '2026-09-04', 'EndDate' => '2026-09-30']);
         $inv = $this->invoice($mid, '2026-09', 1000);
         $inv->items()->create(['StudentClassID' => $mid->ID, 'Description' => 'm', 'Amount' => 1000, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']);
-        $this->assertContains('item_period_outside_contract', $svc->batch(collect([$mid->fresh()]))[$mid->ID]['review_reasons']);
+        $this->assertNotContains('item_period_outside_contract', $svc->batch(collect([$mid->fresh()]))[$mid->ID]['review_reasons']); // #4799: whole first month is normal
+
+        $early = $this->course();
+        $early->update(['StartDate' => '2026-09-04', 'EndDate' => '2026-09-30']);
+        $inv = $this->invoice($early, '2026-09', 1000);
+        $inv->items()->create(['StudentClassID' => $early->ID, 'Description' => 'm', 'Amount' => 1000, 'PeriodStart' => '2026-08-25', 'PeriodEnd' => '2026-09-30']);
+        $this->assertContains('item_period_outside_contract', $svc->batch(collect([$early->fresh()]))[$early->ID]['review_reasons']); // earlier month still flagged
     }
 }
