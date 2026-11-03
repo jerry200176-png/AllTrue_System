@@ -577,6 +577,8 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/agreed-fee-correction/apply', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'apply']);
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::post('student-classes/{studentClass}/payment-review/check', [StudentClassController::class, 'paymentReviewCheck']);
+        Route::get('student-classes/{studentClass}/refund/preview', [\App\Http\Controllers\BillingRefundController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/refund', [\App\Http\Controllers\BillingRefundController::class, 'refund']);
         Route::post('student-classes/{studentClass}/contract-amendment/preview', [ContractAmendmentController::class, 'preview']);
         Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);
         Route::post('student-classes/{studentClass}/contract-amendment/revert/preview', [ContractAmendmentController::class, 'revertPreview']);

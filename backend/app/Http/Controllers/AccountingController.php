@@ -240,7 +240,7 @@ class AccountingController extends Controller
                     ? '課已結束，尚未收款 · 月結帳單與上課堂數不符，請核對'
                     : ($pendingReconciliation
                         ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
-                        : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null))),
+                        : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : ($closedReason === 'refunded' ? '歷史 · 已退費' : null)))),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
@@ -281,7 +281,7 @@ class AccountingController extends Controller
         // Settled by Payment rows although the invoice/closure state says otherwise: keep it in history.
         // #4832: so does a course a director marked 已核對 (the resolver verdict, not the stale invoice/Paid flags).
         if ($status['status'] === 'paid' && (!empty($status['review_checked'])
-            || in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true))) {
+            || in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended', 'refunded'], true))) {
             return 'history';
         }
 
