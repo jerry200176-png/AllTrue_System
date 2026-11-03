@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-03-raise-unbilled-lessons
+    published_at: "2026-11-03"
+    audiences:
+      - director
+    importance: digest
+    title: 多上的課可以補進還沒開帳單的合約
+    summary: 合約還沒開帳單也還沒收款時，已經多上的課可以用「未付款，更正堂數」補進合約。
+    items:
+      - category: improved
+        text: 到課程的「合約／堂次調整」，選「未付款，更正堂數」，把堂數改成實際上過的堂數；金額會是單堂價格乘以堂數。
+      - category: improved
+        text: 只能補到已經上過的堂數；之後要上的課，一樣請用「續課」。已經開了帳單的合約不能這樣補。
+    source_refs:
+      - "changelog:2026-11-03:raise-unbilled-lessons"
