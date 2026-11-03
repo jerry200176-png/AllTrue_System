@@ -192,6 +192,16 @@ test.describe('Tuition Collection clarity browser verification', () => {
     }
   });
 
+  test('In-App480: 已結清課程 sits only on the student list, never above 收款紀錄 / 代收代付', async ({ page }) => {
+    await installMock(page);
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveText('已結清課程');
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
+    await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
+    await page.getByRole('tab', { name: '學生' }).click();
+    await expect(page.locator('[data-testid="tc-reminder-settled"]')).toBeVisible();
+  });
+
   test('captures the accounting tabs without page overflow', async ({ page }) => {
     await installMock(page);
     for (const tab of ['payments', 'settled']) {

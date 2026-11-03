@@ -45,7 +45,8 @@
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
 
-    <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+    <!-- in-app #480: 已結清 is a tuition list; on 收款紀錄 / 代收代付 it read like a status of that page. -->
+    <nav v-if="!['payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="!['students', 'payments', 'fees', ...STUDENT_PANEL_VIEWS].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
         v-for="v in REMINDER_VIEWS"
@@ -750,7 +751,7 @@ const ACCOUNTING_TABS = [
   { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
 ];
 const REMINDER_VIEWS = [
-  { key: 'settled', label: '已結清' },
+  { key: 'settled', label: '已結清課程' },
 ];
 // F-4: these two used to be reminder-bar pages; they are chips on the student list now.
 const STUDENT_PANEL_VIEWS = ['monthly-drafts', 'monthly-review'];

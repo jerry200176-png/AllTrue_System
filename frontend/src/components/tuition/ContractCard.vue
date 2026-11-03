@@ -11,7 +11,7 @@
     <div class="contract__excel" data-testid="contract-excel">
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
-        <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
+        <p v-else-if="payLineText" class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
         <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
@@ -97,7 +97,7 @@
             <span class="contract__time">{{ s.start_time || '' }}</span>
             <span v-if="s.numberText" class="contract__num" data-testid="contract-session-no">{{ s.numberText }}</span>
             <span :class="['contract__chip', `tone-${statusTone(s.status)}`]">{{ STATUS_ZH[s.status] || '' }}</span>
-            <span v-if="!(s.payment === 'no_invoice' && !billable(s))" :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
+            <span v-if="!noObligation && !(s.payment === 'no_invoice' && !billable(s))" :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
           </li>
         </ol>
       </section>
@@ -219,6 +219,7 @@ const isMonthly = computed(() => (data.value?.schedule_mode || props.course.sche
 // Server `current_contract_charge` only (AccountingController::currentContractCharge). It is null for a monthly contract
 // or a package member, whose stored Charge is no contract price: in-app #432 showed a monthly Charge as 合約金額.
 const contractCharge = computed(() => {
+  if (noObligation.value) return null; // in-app #475: a tutoring course has no price to show
   const raw = props.course?.current_contract_charge;
   if (raw == null || raw === '') return null;
   const n = Number(raw);
@@ -243,6 +244,7 @@ const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
 }));
 const payLineText = computed(() => {
   const p = props.lastPayment;
+  if (noObligation.value) return ''; // in-app #475: the money row says 輔導課不用繳費; never 還沒繳費 on top
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
   if (p?.fullDiscount) return '全額折扣，不用繳費'; // #4656
   if (!p?.date) return '還沒繳費';
@@ -282,7 +284,7 @@ const months = computed(() => {
   }
   for (const g of groups) {
     const counted = g.sessions.filter((s) => s.numberText);
-    g.summary = isMonthly.value && counted.length ? `${counted.length} 堂・${monthPayState(counted)}` : '';
+    g.summary = isMonthly.value && counted.length ? `${counted.length} 堂${noObligation.value ? '' : `・${monthPayState(counted)}`}` : '';
   }
   return groups;
 });
