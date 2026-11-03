@@ -1730,6 +1730,12 @@ class StudentClassController extends Controller
             }
         }
 
+        // In-app #464: checked on the saved end state (after any session rebuild) inside the update transaction.
+        $guardContractDates = (string) ($mapped['ScheduleMode'] ?? $oldScheduleMode) === 'date'
+            && ($oldScheduleMode !== 'date'
+                || ($newStart !== null && $newStart !== $dateOf($studentClass->StartDate))
+                || ($newEnd !== null && $newEnd !== $dateOf($studentClass->EndDate)));
+
         if (array_key_exists('rate_unit', $mapped)) {
             $rateUnit = strtolower(trim((string) $mapped['rate_unit']));
             if (!in_array($rateUnit, ['session', 'hour'], true)) {
@@ -1957,6 +1963,7 @@ class StudentClassController extends Controller
             }
         }
 
+        try {
         [$sessionSync, $billingModeConversion, $earlyResponse] = DB::transaction(function () use (
             $studentClass,
             $mapped,
@@ -1975,7 +1982,9 @@ class StudentClassController extends Controller
             $previousScheduleSlots,
             $previousRecurringSlots,
             $scheduleFieldsPresent,
-            $teacherEffectiveDate
+            $teacherEffectiveDate,
+            $guardContractDates,
+            $dateOf
         ) {
         // TD-076 B2: flag on, pin taught past occurrences (D2 evidence) BEFORE TeacherID moves; replaces the legacy #207 pin below.
         $occurrencePinned = false;
@@ -1991,6 +2000,26 @@ class StudentClassController extends Controller
 
         $studentClass->update($mapped);
         $studentClass->refresh();
+        $assertContractDates = function () use ($studentClass, $guardContractDates, $dateOf): void {
+            if ($guardContractDates) {
+                $studentClass->refresh();
+                $effStart = $dateOf($studentClass->StartDate);
+                $effEnd = $dateOf($studentClass->EndDate);
+                $outside = $effStart && $effEnd ? ClassSession::query()->where('StudentClassID', $studentClass->ID)->whereRaw("LOWER(RTRIM(Status)) = 'scheduled'")
+                    ->where(fn ($q) => $q->whereDate('SessionDate', '<', $effStart)->orWhereDate('SessionDate', '>', $effEnd))
+                    ->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->unique()->sort()->values()->all() : [];
+                if ($outside !== []) {
+                    $fmt = fn (string $d) => Carbon::parse($d)->format('n/j');
+                    $after = array_values(array_filter($outside, fn (string $d) => $d > $effEnd));
+                    throw new \App\Exceptions\ContractDatesExcludeLessonsException($outside, $after !== []
+                            ? sprintf('月結合約的結束日 %s 之後還有 %s 的課。請把結束日改到最後一堂（%s）或之後，或先取消這些堂次。沒有修改任何資料。',
+                                $fmt($effEnd), implode('、', array_map($fmt, $after)), $fmt(end($after)))
+                            : sprintf('月結合約的開始日 %s 之前還有 %s 的課。請把開始日改到第一堂（%s）或之前，或先取消這些堂次。沒有修改任何資料。',
+                                $fmt($effStart), implode('、', array_map($fmt, $outside)), $fmt($outside[0])),
+                    );
+                }
+            }
+        };
 
         $billingModeConversion = null;
         if (array_key_exists('ScheduleMode', $mapped)) {
@@ -2144,6 +2173,7 @@ class StudentClassController extends Controller
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
             if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
+                $assertContractDates(); // returns without syncing
                 return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt' => false,
@@ -2160,6 +2190,7 @@ class StudentClassController extends Controller
                     $durationMinutes,
                     $previousScheduleSlots
                 );
+                $assertContractDates(); // after the sync: it may remap lessons into the new dates
                 return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
@@ -2217,8 +2248,13 @@ class StudentClassController extends Controller
             $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
         }
 
+        $assertContractDates();
         return [$sessionSync, $billingModeConversion, null];
         });
+        } catch (\App\Exceptions\ContractDatesExcludeLessonsException $e) {
+            $this->auditEditBlocked($studentClass, 'contract_dates_exclude_scheduled_lessons', 422);
+            return response()->json(['message' => $e->getMessage(), 'code' => 'contract_dates_exclude_scheduled_lessons', 'lesson_dates' => $e->lessonDates], 422);
+        }
 
         if ($earlyResponse !== null) {
             return $earlyResponse;
