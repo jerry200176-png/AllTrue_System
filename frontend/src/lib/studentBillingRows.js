@@ -69,7 +69,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0, renewing: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0, renewing: 0, min_remaining: null, remaining_hint: '',
       });
     }
     return byStudent.get(id);
@@ -96,6 +96,12 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         subject: r.subject || '',
         remaining: r.schedule_mode === 'date' || r.remaining_sessions == null ? null : Math.max(0, Number(r.remaining_sessions)),
       });
+      // in-app #467: the student's fewest lessons left, so the list can sort by it like the old 剩餘堂數 column (#309).
+      const left = row.contracts[row.contracts.length - 1].remaining;
+      if (left !== null && (row.min_remaining === null || left < row.min_remaining)) {
+        row.min_remaining = left;
+        row.remaining_hint = `${r.subject ? `${r.subject} ` : ''}剩 ${left} 堂`;
+      }
     }
     // in-app #407 / #4123: 已收 follows the server's authoritative paid status only. A payment date alone
     // (legacy PayDate, an earlier term's payment) is not proof the contract is paid, nor is the raw `paid` flag

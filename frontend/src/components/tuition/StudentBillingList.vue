@@ -89,6 +89,7 @@
             <span class="sbl__status">
               <AtBadge v-for="b in badges(r)" :key="b.label" :tone="b.tone" :label="b.label" />
               <span v-if="r.open_contracts > 1" class="sbl__muted">{{ r.open_contracts }} 份合約</span>
+              <span v-if="r.remaining_hint" class="sbl__muted" :data-testid="`sbl-left-${r.student_id}`">{{ r.remaining_hint }}</span>
             </span>
             <span class="sbl__last">{{ r.last_paid_at ? formatDate(r.last_paid_at) : '—' }}</span>
           </button>
@@ -187,6 +188,8 @@ const pendingReviewCount = computed(() => rows.value.reduce((s, r) => s + r.pend
 const SORTS = {
   amount: { label: '未繳金額', cmp: null },
   overdue: { label: '逾期天數', cmp: (a, b) => b.overdue_days - a.overdue_days || b.owed_now - a.owed_now },
+  // in-app #467: fewest lessons left first (who needs to renew soon); students with no count contract go last.
+  remaining: { label: '剩餘堂數（少到多）', cmp: (a, b) => (a.min_remaining ?? Infinity) - (b.min_remaining ?? Infinity) || b.owed_now - a.owed_now },
   name: { label: '姓名', cmp: (a, b) => a.student_name.localeCompare(b.student_name, 'zh-Hant') },
 };
 const sortKey = ref('amount');
