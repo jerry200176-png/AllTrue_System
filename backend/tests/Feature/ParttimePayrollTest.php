@@ -232,6 +232,8 @@ class ParttimePayrollTest extends TestCase
         $this->assertSame([$unmarked->id], array_column($hits, 'class_session_id'));
         $this->assertSame('unmarked_attendance', $hits[0]['code']);
         $this->assertSame('已結束但沒有點名，不會算進薪資', $hits[0]['message']);
+        // in-app #482: the row names the lesson
+        $this->assertSame(['10:00', '12:00', '未點學生', (int) $sc->ID], [$hits[0]['start_time'], $hits[0]['end_time'], $hits[0]['student_name'], $hits[0]['student_class_id']]);
         $this->assertNotContains('unmarked_attendance', array_column($res->json('summary.anomalies'), 'code'));
 
         $this->withHeaders($headers)
