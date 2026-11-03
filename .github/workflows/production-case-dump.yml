@@ -2331,7 +2331,7 @@ jobs:
               }}
               return $o;
             }};
-            $report = $db::table('bug_reports')->where('id', 466)->where('campus_id', 9)->first(['title', 'description']);
+            $report = $db::table('bug_reports')->where('id', 466)->where('CampusID', 9)->first(['title', 'description']);
             $text = $report ? ((string) $report->title . ' ' . (string) $report->description) : '';
             $sids = $db::table('Student')->where('CampusID', 9)->get(['id', 'name'])
               ->filter(fn ($s) => mb_strlen(trim((string) $s->name)) >= 2 && $text !== '' && mb_strpos($text, trim((string) $s->name)) !== false)
