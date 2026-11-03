@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-03-contract-remaining-lessons
+    published_at: "2026-11-03"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心看得到剩餘堂數了
+    summary: 在帳務中心「學生」清單展開合約，就能看到每份堂數制合約還剩幾堂。
+    items:
+      - category: improved
+        text: 展開學生的合約，就能看到每份合約還剩幾堂；要看每一堂，按「上課明細」。
+    source_refs:
+      - "changelog:2026-11-03:contract-remaining-lessons"

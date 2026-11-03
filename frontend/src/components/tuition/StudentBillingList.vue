@@ -117,7 +117,9 @@
             <ul v-if="isOpen(r.student_id)" :id="`sbl-contracts-${r.student_id}`" class="sbl__contracts" :data-testid="`sbl-contracts-${r.student_id}`">
               <li v-for="(c, i) in r.contracts" :key="`${c.id}-${i}`" class="sbl__contract">
                 <strong>{{ c.ref }}</strong>
+                <span v-if="c.subject">{{ c.subject }}</span>
                 <span>{{ c.period }}</span>
+                <span v-if="c.remaining !== null" :data-testid="`sbl-remaining-${c.id}`">剩 {{ c.remaining }} 堂</span>
                 <span>未繳 {{ money(c.owed) }}</span>
                 <span>已繳 {{ money(c.paid) }}</span>
                 <span v-if="c.pending_review > 0">需核對金額 {{ money(c.pending_review) }}</span>
