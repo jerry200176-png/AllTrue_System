@@ -45,6 +45,21 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         parent::tearDown();
     }
 
+    /** in-app #478 (course 1695 shape): an unpaid monthly plan member with stored Charge 0 owes its own lessons x rate. */
+    public function test_monthly_plan_member_collects_its_own_lessons(): void
+    {
+        $sc = $this->course('2026-05-24', '2026-05-31', ['2026-05-24' => 'attended', '2026-05-31' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'Stop' => 1]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg]);
+
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$sc->ID}")->assertOk()
+            ->assertJsonPath('billing_period', '2026-05')->assertJsonPath('charge', 2000);
+        $this->record($sc, 1000)->assertStatus(422)->assertJsonPath('expected_amount', 2000);
+        $this->confirm($this->record($sc, 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-05', 2000]], $this->bills($sc));
+    }
+
     public function test_cross_month_contract_collects_august_then_september(): void
     {
         $sc = $this->course('2026-08-31', '2026-09-30', [

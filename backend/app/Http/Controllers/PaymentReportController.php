@@ -461,7 +461,7 @@ class PaymentReportController extends Controller
                         Carbon::createFromFormat('!Y-m', $report->billing_period)->format('Y 年 n 月'), Carbon::createFromFormat('!Y-m', $period)->format('Y 年 n 月')),
                         'code' => 'monthly_period_changed', 'billing_period' => $period, 'recorded_billing_period' => $report->billing_period], 422);
                 }
-                $actual = $this->memberPeriodSummary($sc, $period, $legacyFlagBackfill);
+                $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
                 $monthlyProjection = $invoice ? $this->invoiceProjection($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
                 // Partial receipts remain allowed; explicit cross-month cycles keep their invoice authority.
@@ -517,7 +517,7 @@ class PaymentReportController extends Controller
                 $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
-                $billing = $this->memberPeriodSummary($sc, $billingPeriod, $legacyFlagBackfill);
+                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
 
                 if (
                     (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
@@ -856,7 +856,7 @@ class PaymentReportController extends Controller
             if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
                 // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the charge of the
                 // month confirm() will bill (the same collectionPeriodFor: oldest unbilled month, else the payment date's).
-                $limit = (int) $this->memberPeriodSummary($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']), true)['charge'];
+                $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']))['charge'];
                 if ((int) $data['amount'] > $limit) {
                     return response()->json(['message' => sprintf('月結本期應收為 NT$%d，補登金額不可超過。沒有登記任何款項。', $limit),
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit], 422);
@@ -1507,23 +1507,6 @@ class PaymentReportController extends Controller
     private function isSharedPackageObligation(?CoursePackage $package, StudentClass $course): bool
     {
         return $package !== null && strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date';
-    }
-
-    /**
-     * #4597 item 2: summarizePeriod() answers the stored Charge (0 for a package-created member) for any package member.
-     * The legacy backfill prices a monthly member by its own sessions and rate, like a non-package monthly course.
-     *
-     * @return array<string, mixed>
-     */
-    private function memberPeriodSummary(StudentClass $course, string $period, bool $byOwnSessions): array
-    {
-        if (!$byOwnSessions || (int) ($course->PackageID ?? 0) <= 0) {
-            return $this->monthlyBilling->summarizePeriod($course, $period);
-        }
-        $probe = clone $course; // never saved: only hides PackageID from the summary
-        $probe->setAttribute('PackageID', null);
-
-        return $this->monthlyBilling->summarizePeriod($probe, $period);
     }
 
     /**

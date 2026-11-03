@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-monthly-plan-member-own-lessons
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 月結合約群組的課，照上課堂數收費
+    summary: 月結的課放在合約群組裡，應收會照這門課當月上的堂數乘以單價計算。
+    items:
+      - category: fixed
+        text: 以前這種課的應收顯示 0、登記收款會被擋；現在可以照實際上課堂數登記收款。
+      - category: improved
+        text: 堂數制的合約群組不變，仍然整組一起收費。
+    source_refs:
+      - "changelog:2026-11-04:monthly-plan-member-own-lessons"
