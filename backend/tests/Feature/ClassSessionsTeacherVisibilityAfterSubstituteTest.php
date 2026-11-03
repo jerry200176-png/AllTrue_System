@@ -47,6 +47,9 @@ class ClassSessionsTeacherVisibilityAfterSubstituteTest extends TestCase
             // Attendance and the learning record ask the same owner question through these resolvers.
             $this->assertNull(\App\Services\SubstituteScheduleService::resolveSubstituteUserId($session->StudentClassID, '2026-05-01', '14:00'));
             $this->assertSame($t1Id, \App\Services\SubstituteScheduleService::teacherForOccurrence($session->StudentClassID, '2026-05-01', $t1Id, '14:00'));
+            // #4835: the schedule guard's batched resolver gives the slot to the same teacher.
+            $this->assertSame([$t1Id], array_values(\App\Services\SubstituteScheduleService::teachersForOccurrences([['course_id' => $session->StudentClassID,
+                'date' => '2026-05-01', 'start_time' => '14:00', 'contract_teacher_id' => $t1Id]])));
         }
     }
 

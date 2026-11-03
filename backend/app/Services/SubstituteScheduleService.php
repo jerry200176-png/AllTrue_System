@@ -78,9 +78,11 @@ class SubstituteScheduleService
         $legacyIds = array_values(array_filter($ids, fn ($id) => !($v2[$id] ?? false)));
         $latest = [];
         if ($legacyIds !== []) {
-            $rows = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
+            $query = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
                 ->whereIn('student_course_id', $legacyIds)->whereIn('schedule_date', array_unique(array_column($items, 'date')))
-                ->where('status', 'scheduled')->whereNotNull('original_schedule_id')->orderByDesc('id')
+                ->where('status', 'scheduled')->whereNotNull('original_schedule_id');
+            self::ownedByTeacher($query); // #4835: same owner rule as occurrence() and the derived table
+            $rows = $query->orderByDesc('id')
                 ->when($lock, fn ($q) => $q->lockForUpdate())->get(['student_course_id', 'schedule_date', 'start_time', 'teacher_id']);
             foreach ($rows as $row) {
                 $teacher = (int) $row->teacher_id;
