@@ -84,6 +84,12 @@ class PaymentReviewCheckTest extends TestCase
         $this->assertTrue(\Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'payment_review_checked')->exists());
         $this->assertSame('paid', $this->courseState($course)['status']);
 
+        // Swapping one lesson for another keeps the count but changes the picture, so review returns.
+        ClassSession::where('StudentClassID', $course->ID)->update(['SessionDate' => '2026-08-22']);
+        $this->assertSame('review_required', $this->courseState($course)['status']);
+        ClassSession::where('StudentClassID', $course->ID)->update(['SessionDate' => '2026-08-15']);
+        $this->assertSame('paid', $this->courseState($course)['status']);
+
         $this->invoice($course, '2026-08', 1000, 1000);
         $after = $this->courseState($course);
         $this->assertSame('review_required', $after['status']);

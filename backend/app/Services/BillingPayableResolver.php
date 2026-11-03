@@ -281,11 +281,13 @@ class BillingPayableResolver
         $applied = (int) collect($periods)->sum('applied');
         $out = $result($status, $total, $applied, (int) collect($periods)->sum('overpaid'), $periods, 'invoice', $currentInvoiceId ?: null);
         if ($status === 'review_required') {
-            // #4798: a director's 已核對 pins this exact picture; any new bill, payment, reason or lesson changes it and review returns.
+            // #4798: a director's 已核對 pins this exact picture; any change to the bills, payments, reasons, each lesson
+            // (id, date, rate, estimate) or the course terms changes it, and review returns.
             $reasons = $out['review_reasons'];
             sort($reasons);
+            $terms = array_map(fn ($key) => (string) $course->getAttribute($key), ['Charge', 'Rate', 'StartDate', 'EndDate', 'ScheduleMode']);
             $out['review_signature'] = hash('sha256', json_encode([$reasons, array_map(fn ($p) => [$p['billing_period'], $p['invoice_ids'],
-                $p['total'], $p['applied'], $p['status']], $periods), count($monthly['session_review'] ?? [])]));
+                $p['total'], $p['applied'], $p['status']], $periods), $monthly['session_review'] ?? [], $terms]));
             if ((string) $course->getAttribute('review_checked_signature') === $out['review_signature']
                 && $total - $applied === 0 && $unattributed === [] && !$zeroValueOnly) {
                 $out['status'] = 'paid';
