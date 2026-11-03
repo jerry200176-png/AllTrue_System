@@ -15,6 +15,7 @@ use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\SubjectUnitsTimelineService;
 use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
@@ -1735,6 +1736,44 @@ class FinanceController extends Controller
                     'class_session_id' => (int) $sessionId,
                     'student_sign_in_id' => null,
                     'session_date' => null,
+                ];
+            }
+        }
+
+        // 已結束卻沒有任何有效點名的堂次不會進薪資，列為警示讓主任補點名。
+        $unmarked = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('cs.Status', '!=', 'cancelled')
+            ->whereBetween('cs.SessionDate', [$startDate, $endDate])
+            ->where('cs.SessionDate', '<=', date('Y-m-d'))
+            ->where(fn ($q) => $q->where('sc.ClassType', '!=', 'trial')->orWhereNull('sc.ClassType'))
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('StudentSingIn as si')
+                ->whereColumn('si.ClassSessionID', 'cs.id')->whereNull('si.VoidedAt'))
+            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.TeacherID as ContractTeacherID']);
+        if (!empty($studentIds)) {
+            $unmarked->whereIn('sc.StudentID', $studentIds);
+        }
+
+        // ponytail: per-row payee lookup, same cost model as the sign-in loop above; batch if month volume grows.
+        foreach ($unmarked->get() as $row) {
+            $date = substr((string) $row->SessionDate, 0, 10);
+            if ($row->EndTime && !ContractSessionSchedule::sessionEndedByEndTime($date, (string) $row->EndTime)) {
+                continue;
+            }
+            $teacherId = $this->resolveParttimePayrollTeacherId((object) [
+                'StudentClassID' => (int) $row->StudentClassID,
+                'SessionDate' => $row->SessionDate,
+                'StartTime' => $row->StartTime,
+                'TeacherID' => 0,
+                'studentClass' => (object) ['TeacherID' => $row->ContractTeacherID ?? 0],
+            ]);
+            if ($teacherId > 0 && isset($partTimeIdSet[$teacherId])) {
+                $anomalies[] = [
+                    'code' => 'unmarked_attendance',
+                    'message' => '已結束但沒有點名，不會算進薪資',
+                    'class_session_id' => (int) $row->id,
+                    'student_sign_in_id' => null,
+                    'session_date' => $date,
                 ];
             }
         }
