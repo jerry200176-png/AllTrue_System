@@ -17,6 +17,8 @@ class SubstituteOccupancy4326Test extends TestCase
     {
         config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $v2]);
         $campus = Campus::factory()->create();
+        // In-app #468: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([78171, 78172] as $teacher) DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => $campus->id]);
         $student = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-B']);
         $course = $this->course($student, 78171);
         if ($materialized) {

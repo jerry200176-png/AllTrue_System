@@ -267,11 +267,13 @@ class SubstituteScheduleService
         }
         $contract = (int) $course->TeacherID;
         $start = self::normalizeTime($startTime);
-        $at = function () use ($courseId, $d, $start, $lock) {
+        $at = function () use ($courseId, $d, $start, $lock, $contract) {
             $q = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_sched_course_date_time_status)') : 'schedules')
                 ->where('student_course_id', $courseId)
                 ->when($lock, fn ($q) => $q->where('schedule_date', $d), fn ($q) => $q->whereDate('schedule_date', $d))
                 ->when($lock, fn ($q) => $q->lockForUpdate());
+
+            self::ownedByTeacher($q, $contract);
 
             return $start !== null ? $q->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$start]) : $q;
         };
@@ -394,6 +396,7 @@ class SubstituteScheduleService
             ->when($lock, fn ($q) => $q->where('schedule_date', $d), fn ($q) => $q->whereDate('schedule_date', $d))
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id');
+        self::ownedByTeacher($query);
 
         $normalizedStart = self::normalizeTime($startTime);
         if ($normalizedStart !== null) {
@@ -403,6 +406,13 @@ class SubstituteScheduleService
         $tid = (int) ($query->orderByDesc('id')->when($lock, fn ($q) => $q->lockForUpdate())->value('teacher_id') ?? 0);
 
         return $tid > 0 ? $tid : null;
+    }
+
+    /** In-app #468: the same owner rule as substituteScheduleDerivedSql(), for the single-occurrence resolvers. */
+    private static function ownedByTeacher($query, int $contract = 0): void
+    {
+        $query->where(fn ($t) => $t->whereNull('teacher_id')->orWhere('teacher_id', $contract)
+            ->orWhereExists(fn ($e) => $e->selectRaw('1')->from('UserCampus')->whereColumn('UserCampus.UserID', 'schedules.teacher_id')));
     }
 
     private static function normalizeTime(?string $value): ?string

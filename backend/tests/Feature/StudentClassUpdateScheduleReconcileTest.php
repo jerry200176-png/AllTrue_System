@@ -310,6 +310,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         ]);
         [$token, $student, $course] = $this->seedCourseWithHistory();
 
+        // In-app #468: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([100] as $teacher) \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => 1]);
         $extraStudent = Student::create([
             'name' => '補課自帶老師',
             'CampusID' => 1,

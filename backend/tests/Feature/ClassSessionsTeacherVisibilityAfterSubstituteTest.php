@@ -35,7 +35,7 @@ class ClassSessionsTeacherVisibilityAfterSubstituteTest extends TestCase
     /** In-app #468: production held "substitute" rows whose teacher_id was a course id; they hid the lesson from its own teacher. */
     public function test_a_row_owned_by_a_non_teacher_id_does_not_hide_the_lesson_from_its_contract_teacher(): void
     {
-        [$t1Token, , , $t2Id, $session] = $this->seedSubstitutedSession();
+        [$t1Token, , $t1Id, $t2Id, $session] = $this->seedSubstitutedSession();
         Schedule::where('teacher_id', $t2Id)->update(['teacher_id' => 999999]);
 
         foreach ([false, true] as $occurrenceV2) {
@@ -44,6 +44,9 @@ class ClassSessionsTeacherVisibilityAfterSubstituteTest extends TestCase
                 ->getJson('/api/v1/class-sessions?start=2026-05-01&end=2026-05-01&per_page=100')->assertOk()->json('data'))
                 ->pluck('id')->map(fn ($i) => (int) $i)->all();
             $this->assertContains((int) $session->id, $ids, 'occurrence v2 ' . ($occurrenceV2 ? 'on' : 'off'));
+            // Attendance and the learning record ask the same owner question through these resolvers.
+            $this->assertNull(\App\Services\SubstituteScheduleService::resolveSubstituteUserId($session->StudentClassID, '2026-05-01', '14:00'));
+            $this->assertSame($t1Id, \App\Services\SubstituteScheduleService::teacherForOccurrence($session->StudentClassID, '2026-05-01', $t1Id, '14:00'));
         }
     }
 
