@@ -184,6 +184,18 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(w.find('[data-testid="sbl-contracts-1"]').exists()).toBe(false);
   });
 
+  it('shows the subject and remaining lessons of each count contract, not of a monthly one (in-app #465)', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [
+      { id: 31, student_id: 3, student_name: '丙', subject: '數學', schedule_mode: 'count', remaining_sessions: 4, payment_status: 'unpaid', payable_outstanding: 1000 },
+      { id: 32, student_id: 3, student_name: '丙', subject: '英文', schedule_mode: 'date', remaining_sessions: 0, payment_status: 'unpaid', payable_outstanding: 1000 },
+    ], today: '2026-10-07' } });
+    await w.find('[data-testid="sbl-expand-3"]').trigger('click');
+    const list = w.find('[data-testid="sbl-contracts-3"]').text();
+    expect(list).toContain('數學');
+    expect(w.find('[data-testid="sbl-remaining-31"]').text()).toBe('剩 4 堂');
+    expect(w.find('[data-testid="sbl-remaining-32"]').exists()).toBe(false);
+  });
+
   it('says 已收 only with a payment on record and flags owing contracts with no bill (in-app #407)', () => {
     const w = mount(StudentBillingList, { props: { alertRows: [
       { id: 51, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
