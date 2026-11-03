@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-course-teacher-and-midnight-guard
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 改課程老師、加一堂多了兩個檢查
+    summary: 課程老師只能設成分校的老師；加一堂不能上到過了半夜。
+    items:
+      - category: fixed
+        text: 修改課程老師時，不是您分校的老師會被擋下，課表不會再出現「未指派」。
+      - category: fixed
+        text: 加一堂如果會上到過了半夜，會請您改早一點的開始時間，行事曆才看得到這堂課。
+    source_refs:
+      - "changelog:2026-11-04:course-teacher-and-midnight-guard"

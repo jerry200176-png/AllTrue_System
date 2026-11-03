@@ -1854,6 +1854,13 @@ class StudentClassController extends Controller
             ? (int) $mapped['room_id']
             : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null);
         $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        // in-app #489 (#441 again): a course id once landed in TeacherID and was pinned onto past lessons as their teacher.
+        // Same rule as the schedule writers: a teacher of a campus the caller manages (super_admin: any campus binding).
+        $callerCampusIds = $request->attributes->get('auth_role') === 'super_admin' ? [] : (array) $request->attributes->get('auth_campus_ids', []);
+        if ($newTeacherId !== $oldTeacherSnapshot && ($refusal = app(\App\Services\SubstituteService::class)
+            ->assignableTeacherRefusal($newTeacherId, $oldTeacherSnapshot, array_map('intval', $callerCampusIds)))) {
+            return response()->json(['message' => '所選老師不是您管理分校的老師，不能設成這門課的老師。沒有變更任何資料。', 'code' => $refusal['code']], 422);
+        }
 
         // in-app #426: a trial's target class type decides its slot rule, so changing it re-checks capacity.
         $oldTrialTarget = $studentClass->getAttribute('trial_target_class_type');
@@ -3812,6 +3819,12 @@ class StudentClassController extends Controller
             $durationMinutes = max(30, $durationMinutes);
         } else {
             $endTime = Carbon::createFromFormat('H:i:s', $startTime)->addMinutes(max(30, $durationMinutes))->format('H:i:s');
+        }
+        // in-app #489: 22:00 + 120 min wrapped to 00:00, a lesson the calendar cannot draw. A lesson ends the same day.
+        [$h, $m] = array_map('intval', explode(':', $startTime));
+        if ($h * 60 + $m + max(30, $durationMinutes) >= 24 * 60) {
+            return response()->json(['message' => "這堂課從 " . substr($startTime, 0, 5) . " 開始上 " . max(30, $durationMinutes) . " 分鐘，會上到過了半夜。請改早一點的開始時間。沒有新增任何課。",
+                'code' => 'session_crosses_midnight'], 422);
         }
 
         $now = Carbon::now();

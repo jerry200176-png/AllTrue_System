@@ -511,6 +511,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '19:00:00', '20:00:00');
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:30:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
         $newTeacher = \App\Models\User::create(['LoginName' => 't160_' . uniqid() . '@x.com', 'Name' => 'T2', 'PSW' => 'x', 'type' => 'T', 'phone' => 912000160]);
+        \App\Models\UserCampus::create(['CampusID' => 1, 'UserID' => $newTeacher->id, 'Admin' => 0, 'Approved' => 1]); // #489: a campus teacher
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->putJson("/api/v1/student-classes/{$course->ID}", [
