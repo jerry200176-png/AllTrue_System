@@ -219,6 +219,14 @@ final class BillingCorrection
                 ($this->afterConfirmationTokenForTests)($classId);
             }
 
+            // in-app #466: a raise is only for a contract with no bill and only up to the lessons used, rechecked under the locks.
+            if ($newCount > $oldCount && ($openInvoices->isNotEmpty() || $newCount > $currentObservedUsed)) {
+                abort(response()->json([
+                    'message' => '課程、帳單或出席狀態已變更，請重新預覽並再次確認。',
+                    'code' => 'billing_correction_confirmation_stale',
+                ], 409));
+            }
+
             // Pre-stamp current-read under course lock (locking read). Unindexed Invoice.StudentClassID
             // means gap locks may not block INSERT; refuse ≥2 before stamping a stale singleton.
             $openInvoices = Invoice::query()
@@ -422,11 +430,28 @@ final class BillingCorrection
             ], 422);
         }
 
-        if ($newCount >= $oldCount) {
-            $audit('billing_correction_reduction_only', 422);
+        if ($newCount === $oldCount) {
+            $audit('billing_correction_unchanged', 422);
             return $this->reply([
-                'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用「續課」。',
-                'code' => 'billing_correction_reduction_only',
+                'message' => '新的堂數和原本一樣，不需要更正。',
+                'code' => 'billing_correction_unchanged',
+            ], 422);
+        }
+        // Founder 2026-11-03 (in-app #466): raising the count only covers lessons already taught on a contract with no bill
+        // yet; lessons still to come go through 續課 (Founder Q8=A, #4014).
+        if ($newCount > $oldCount && $openInvoiceCount > 0) {
+            $audit('billing_correction_increase_billed', 409);
+            return $this->reply([
+                'message' => '這門課已經開了帳單，不能用更正把堂數改多；要加之後的課請用「續課」。',
+                'code' => 'billing_correction_increase_billed',
+            ], 409);
+        }
+        if ($newCount > $oldCount && $newCount > $observedUsed) {
+            $audit('billing_correction_increase_above_usage', 422);
+            return $this->reply([
+                'message' => "只能把堂數補到已經上過的 {$observedUsed} 堂；之後要上的課請用「續課」。",
+                'code' => 'billing_correction_increase_above_usage',
+                'observed_used_sessions' => $observedUsed,
             ], 422);
         }
 
