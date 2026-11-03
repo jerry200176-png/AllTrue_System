@@ -37,6 +37,6 @@ describe('add lessons via 續課 (#4014)', () => {
 
   it('locked lesson-count copy names 續課 for adding lessons', () => {
     expect(editabilityReasonSummary({ message: '已有扣堂紀錄。', next_step: 'billing_correction' })).toContain('續課');
-    expect(read('../../CourseEditForm.vue')).toMatch(/已有扣堂紀錄[^<]*要加堂請用「續課」/);
+    expect(read('../../CourseEditForm.vue')).toMatch(/已有扣堂紀錄[^<]*要加之後的課請用「續課」/);
   });
 });

@@ -219,14 +219,6 @@ final class BillingCorrection
                 ($this->afterConfirmationTokenForTests)($classId);
             }
 
-            // in-app #466: a raise is only for a contract with no bill and only up to the lessons used, rechecked under the locks.
-            if ($newCount > $oldCount && ($openInvoices->isNotEmpty() || $newCount > $currentObservedUsed)) {
-                abort(response()->json([
-                    'message' => '課程、帳單或出席狀態已變更，請重新預覽並再次確認。',
-                    'code' => 'billing_correction_confirmation_stale',
-                ], 409));
-            }
-
             // Pre-stamp current-read under course lock (locking read). Unindexed Invoice.StudentClassID
             // means gap locks may not block INSERT; refuse ≥2 before stamping a stale singleton.
             $openInvoices = Invoice::query()
@@ -242,6 +234,14 @@ final class BillingCorrection
 
             if ($openInvoices->contains(fn (Invoice $invoice) => $invoice->isMarkedFreeGift() || $invoice->isFullDiscount())) {
                 abort(response()->json($this->freeGiftRefusal((string) Invoice::markedZeroBillLabel($classId)), 409));
+            }
+            // in-app #466: a raise is only for a contract with no bill and only up to the lessons used, checked on the same
+            // locked invoice read the writes below use.
+            if ($newCount > $oldCount && ($openInvoices->isNotEmpty() || $newCount > $currentObservedUsed)) {
+                abort(response()->json([
+                    'message' => '課程、帳單或出席狀態已變更，請重新預覽並再次確認。',
+                    'code' => 'billing_correction_confirmation_stale',
+                ], 409));
             }
 
             $locked->SessionCount = $newCount;
