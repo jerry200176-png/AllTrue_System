@@ -81,7 +81,7 @@ const packageNote = computed(() => {
   }
   if (!props.isPackageMode) {
     // in-app #485: say plainly that unfinished lessons stay (pinned by PurchaseBatchClosesSourceTest).
-    return '加買堂數：原本還沒上完的課照常上，不會被結案。新買的堂數另開一筆未繳批次，接在最後一堂之後排課。原課程要等已繳費、堂數全部用完，才會自動結清。';
+    return '加買堂數：原本還沒上完的課照常上，不會被結案。新買的堂數會建立一筆新的未繳課程批次，接在最後一堂之後排課。原課程要等已繳費、堂數全部用完，才會自動結清。';
   }
   if (isSetMode.value) {
     return '此課程屬於多科共用方案。設定總堂數會把整個方案的共用總堂數改為你輸入的數字（所有方案科目共用同一個堂數池）；不可低於已使用堂數。';
