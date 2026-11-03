@@ -35,7 +35,8 @@ describe('ContractCard', () => {
     const rows = w.findAll('[data-testid="contract-session"]').map((r) => r.text());
     expect(rows[0]).toContain('已收');
     expect(rows[2]).toContain('未繳');
-    expect(w.find('[data-testid="contract-summary"]').text()).toBe('共 3 堂・已上 1・還沒上 3');
+    // in-app #472: 共 = 已上 + 還沒上 (incl. unscheduled); the leave is listed apart, not counted.
+    expect(w.find('[data-testid="contract-summary"]').text()).toBe('共 4 堂・已上 1・還沒上 3・請假／取消 1 次（不算堂數）');
     expect(w.find('[data-testid="contract-unscheduled"]').text()).toBe('還有 2 堂還沒排日期');
     // Founder 2026-10-15 (Q9=A, in-app #396 / #3982): the card shows the course reference in the
     // same 「課程 000123」 format as the tables; invoice/receipt codes stay off the card.

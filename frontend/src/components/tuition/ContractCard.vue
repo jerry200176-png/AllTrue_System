@@ -86,7 +86,8 @@
     </p>
     <template v-else>
       <p class="contract__summary" data-testid="contract-summary">
-        共 {{ sessions.length }} 堂・已上 {{ heldCount }}・還沒上 {{ upcomingCount }}
+        <!-- in-app #472: 共 = 已上 + 還沒上; leave / cancelled lessons are listed but never counted as lessons. -->
+        共 {{ heldCount + upcomingCount }} 堂・已上 {{ heldCount }}・還沒上 {{ upcomingCount }}<template v-if="notCountedCount">・請假／取消 {{ notCountedCount }} 次（不算堂數）</template>
       </p>
       <section v-for="m in months" :key="m.key" class="contract__month">
         <h6>{{ m.label }}<span v-if="m.summary" data-testid="contract-month-summary">　{{ m.summary }}</span></h6>
@@ -194,6 +195,7 @@ const sessions = computed(() => data.value?.sessions || []);
 const unscheduled = computed(() => Number(data.value?.unscheduled_count || 0));
 const heldCount = computed(() => sessions.value.filter((s) => HELD.includes(s.status)).length);
 const upcomingCount = computed(() => sessions.value.filter((s) => UPCOMING.includes(s.status)).length + unscheduled.value);
+const notCountedCount = computed(() => sessions.value.filter((s) => !billable(s)).length);
 
 // in-app #457: a monthly contract whose bills are all paid (due > 0, nothing owed) and has no billable lesson left
 // without a bill is collected, whatever the legacy Paid flag says; the server refuses 登記這筆 there (nothing owed).

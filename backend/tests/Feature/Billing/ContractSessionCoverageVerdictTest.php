@@ -34,6 +34,18 @@ class ContractSessionCoverageVerdictTest extends TestCase
         $this->assertSame(['partial', 'partial'], array_column($res->json('sessions'), 'payment'));
     }
 
+    /** #4842 review: a leave row uses no lesson, so 10 bought with 2 held and 1 leave leaves 8 to schedule (card reads 共 10 堂). */
+    public function test_leave_row_does_not_shrink_unscheduled(): void
+    {
+        $course = $this->course([], ['SessionCount' => 10], ['2026-08-03', '2026-08-10']);
+        \App\Models\ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-08-17', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'leave']);
+
+        $res = $this->getJson("/api/v1/accounting/contracts/{$course->ID}/sessions", ['Authorization' => 'Bearer ' . $this->token()])->assertOk();
+
+        $this->assertCount(3, $res->json('sessions'));
+        $res->assertJsonPath('unscheduled_count', 8);
+    }
+
     public function test_lesson_without_any_invoice_reads_no_invoice(): void
     {
         $course = $this->course([], [], ['2026-08-03']);

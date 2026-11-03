@@ -43,8 +43,10 @@ class ContractSessionCoverageController extends Controller
             'end_date' => $studentClass->EndDate ? substr((string) $studentClass->EndDate, 0, 10) : null,
             'memo' => (string) ($studentClass->Memo ?? ''),
             'sessions' => $sessions,
-            // Count mode: bought lessons that have no date yet (PRD v2 D17).
-            'unscheduled_count' => max(0, $purchased - count($sessions)),
+            // Count mode: bought lessons that have no date yet (PRD v2 D17). A leave / cancelled row uses no lesson, so it
+            // never shrinks this (#4842 review; same counted set as ContractCard.vue HELD + UPCOMING).
+            'unscheduled_count' => max(0, $purchased - count(array_filter($sessions, fn ($s) => in_array((string) ($s['status'] ?? ''),
+                ['attended', 'completed', 'late', 'absent', 'scheduled', 'rescheduled', 'expected'], true)))),
         ]);
     }
 }
