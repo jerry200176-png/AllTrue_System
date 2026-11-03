@@ -62,6 +62,7 @@ class ScheduleGuardCurrentReadTest extends TestCase
             DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->delete();
             DB::table('Student')->whereIn('id', $this->ownedStudentIds)->delete();
             DB::table('rooms')->whereIn('id', $this->ownedRoomIds)->delete();
+            DB::table('UserCampus')->whereIn('CampusID', $this->ownedCampusIds)->delete();
             DB::table('Campus')->whereIn('id', $this->ownedCampusIds)->delete();
             DB::table('Subject')->whereIn('id', $this->seededSubjectIds)->delete();
             $this->assertSame(0, DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->count());
@@ -95,6 +96,8 @@ class ScheduleGuardCurrentReadTest extends TestCase
         $campus = Campus::factory()->create();
         $this->ownedCampusIds[] = $campus->id;
         $targetTeacher = 78171;
+        // In-app #468: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([$targetTeacher, $targetTeacher + 1] as $teacher) DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => $campus->id]);
         $date = '2026-12-29';
         $sharedReads = []; DB::listen(function ($e) use (&$sharedReads) {
             if (str_starts_with($e->sql, 'select') && str_contains($e->sql, 'lock in share mode')) $sharedReads[] = $e;
@@ -336,6 +339,8 @@ class ScheduleGuardCurrentReadTest extends TestCase
         $original = $this->originalConnection;
         $campus = Campus::factory()->create();
         $this->ownedCampusIds[] = $campus->id;
+        // In-app #468: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([78600, 78601] as $teacher) DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => $campus->id]);
         $course = $this->currentReadFixture($campus->id, 78600);
         $other = $this->currentReadFixture($campus->id, 78601);
         DB::table('ClassSession')->insert(['StudentClassID' => $other->ID, 'SessionDate' => '2026-12-29',
