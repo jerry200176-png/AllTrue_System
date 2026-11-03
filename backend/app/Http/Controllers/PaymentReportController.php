@@ -1469,7 +1469,11 @@ class PaymentReportController extends Controller
         } catch (\Throwable) {
             return $this->duplicateCoursePaymentResponse('unknown');
         }
-        if (!$row || !(($row['status'] ?? '') === 'partial' || (($row['status'] ?? '') === 'unpaid' && ($row['source'] ?? '') === 'invoice'))) {
+        // In-app #461: a count course with no bill yet owes its contract Charge; a larger entry would be billed as typed.
+        $unbilledCount = ($row['status'] ?? '') === 'unbilled' && StudentClass::query()->whereKey($studentClassId)
+            ->where(fn ($q) => $q->whereNull('ScheduleMode')->orWhere('ScheduleMode', '!=', 'date'))
+            ->where(fn ($q) => $q->whereNull('PackageID')->orWhere('PackageID', 0))->exists();
+        if (!$row || !(($row['status'] ?? '') === 'partial' || (($row['status'] ?? '') === 'unpaid' && ($row['source'] ?? '') === 'invoice') || $unbilledCount)) {
             return null;
         }
         $outstanding = (int) $row['outstanding'];
