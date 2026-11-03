@@ -251,5 +251,14 @@ class MonthlyPeriodPaymentTest extends TestCase
             $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
             $this->assertSame($flagged, in_array('shared_or_multi_line_bill', $summary['review_reasons'], true), "paid {$paid}");
         }
+        // A legacy PaidAmount with no Payment rows is not payment evidence for the resolver, so it stays reviewed.
+        $legacy = $this->course();
+        $this->invoice($legacy, '2026-09', 1000);
+        $bill = Invoice::create(['StudentID' => $legacy->StudentID, 'StudentClassID' => $legacy->ID, 'IssueDate' => '2026-08-01',
+            'billing_period' => '2026-08', 'TotalAmount' => 1500, 'PaidAmount' => 1500, 'Status' => 'paid']);
+        $bill->items()->create(['StudentClassID' => $legacy->ID, 'Description' => 'a', 'Amount' => 1000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+        $bill->items()->create(['StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+        $this->assertContains('shared_or_multi_line_bill', $svc->batch(collect([$legacy->fresh()]))[$legacy->ID]['review_reasons']);
+        $this->assertSame('review_required', app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$legacy->ID])[$legacy->ID]['status']);
     }
 }

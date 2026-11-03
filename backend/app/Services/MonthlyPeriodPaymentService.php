@@ -56,7 +56,8 @@ final class MonthlyPeriodPaymentService
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             // #4803 (Founder 2026-11-03): a bill covering several courses or lines is normal once fully paid; only an owing one is reviewed.
-            $fullyPaid = $amount['total_amount'] > 0 && $paid >= $amount['total_amount'];
+            // Payment rows only, like BillingPayableResolver: a legacy PaidAmount alone cannot settle the course, so it keeps the review.
+            $fullyPaid = $amount['total_amount'] > 0 && $invoice->payments->isNotEmpty() && $amount['net_applied'] >= $amount['total_amount'];
             if ($invoice->items->count() !== $items->count() || $items->count() > 1) {
                 // A paid one is settled, but which month each line belongs to is still unclear to month reports.
                 $attributionAmbiguous = true;
