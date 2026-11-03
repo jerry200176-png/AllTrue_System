@@ -219,7 +219,7 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
-// #4843: 退費 only for an open lesson-count contract with money in; the server re-checks everything.
+// 退費 (issue 4843) only for an open lesson-count contract with money in; the server re-checks everything.
 const refundOpen = ref(false);
 const canRefund = computed(() => !isMonthly.value && Number(props.amounts?.received) > 0 && !props.course.closed_reason && !props.course.stop);
 // Server `current_contract_charge` only (AccountingController::currentContractCharge). It is null for a monthly contract

@@ -1827,6 +1827,11 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
             }
 
+            if ((string) $sc->getAttribute('closed_reason') === 'refunded') {
+                // #4843: the refund already took money back; reversing the full receipt would take it twice.
+                return response()->json(['message' => '這門課已退費，收款不能再撤銷。', 'code' => 'void_course_refunded'], 422);
+            }
+
             $invoiceId = $report->getAttribute('InvoiceID');
             $invoice = null;
             $alreadyReversed = false;

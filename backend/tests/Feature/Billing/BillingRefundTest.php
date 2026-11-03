@@ -5,6 +5,8 @@ namespace Tests\Feature\Billing;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
+use App\Models\PaymentReport;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -30,7 +32,7 @@ class BillingRefundTest extends TestCase
         return $token;
     }
 
-    /** 8 lessons x 500 = 4000 paid, 3 held: refundable 2500. */
+    /** 8 lessons x 500 = 4000 paid, 2 deducted (the absence is not): refundable 3000. */
     private function course(string $mode = 'count'): StudentClass
     {
         $student = Student::create(['name' => 'Fixture', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
@@ -48,7 +50,7 @@ class BillingRefundTest extends TestCase
         return $course;
     }
 
-    private function body(int $amount = 2500): array
+    private function body(int $amount = 3000): array
     {
         return ['amount' => $amount, 'method' => 'cash', 'date' => now()->toDateString(), 'reason' => 'moved away'];
     }
@@ -67,7 +69,7 @@ class BillingRefundTest extends TestCase
     {
         $c = $this->course();
         $this->withToken($this->token())->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertOk()
-            ->assertExactJson(['paid' => 4000, 'used_lessons' => 3, 'rate' => 500, 'refundable' => 2500]);
+            ->assertExactJson(['paid' => 4000, 'used_lessons' => 2, 'rate' => 500, 'refundable' => 3000]);
     }
 
     public function test_refund_balances_the_books_and_ends_the_contract(): void
@@ -98,7 +100,7 @@ class BillingRefundTest extends TestCase
     public function test_over_refund_is_refused(): void
     {
         $c = $this->course();
-        $this->send($this->token(), $c, $this->body(2501))->assertStatus(422);
+        $this->send($this->token(), $c, $this->body(3001))->assertStatus(422);
         $this->assertSame(0, Payment::where('Amount', '<', 0)->count());
         $this->assertSame(0, (int) $c->fresh()->Stop);
     }
@@ -140,5 +142,49 @@ class BillingRefundTest extends TestCase
         $this->assertSame(0, Payment::where('Amount', '<', 0)->count());
         $this->assertSame(4000, (int) Invoice::query()->value('TotalAmount'));
         $this->assertSame(0, (int) $c->fresh()->Stop);
+    }
+
+    public function test_absence_without_deduction_is_not_used(): void
+    {
+        $c = $this->course();
+        // fixture: attended + late + absent(not deducted) => 2 used, refundable 3000
+        $this->withToken($this->token())->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertOk()
+            ->assertJson(['used_lessons' => 2, 'refundable' => 3000]);
+    }
+
+    public function test_hourly_priced_contract_is_refused(): void
+    {
+        $c = $this->course();
+        $c->update(['rate_unit' => 'hour']);
+        $this->send($this->token(), $c, $this->body(100))->assertStatus(422);
+    }
+
+    public function test_contract_with_money_still_owed_is_refused(): void
+    {
+        $c = $this->course();
+        Invoice::query()->update(['TotalAmount' => 5000]);
+        $this->send($this->token(), $c, $this->body(100))->assertStatus(422);
+        $this->assertSame(0, Payment::where('Amount', '<', 0)->count());
+    }
+
+    public function test_invoice_shared_with_another_contract_is_refused(): void
+    {
+        $c = $this->course();
+        $other = $this->course();
+        InvoiceItem::create(['InvoiceID' => Invoice::query()->where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $other->ID, 'Description' => 'x', 'Amount' => 100]);
+        $this->send($this->token(), $c, $this->body(100))->assertStatus(422);
+    }
+
+    public function test_receipt_void_after_refund_is_refused_and_history_reason_is_set(): void
+    {
+        $c = $this->course();
+        $token = $this->token();
+        $this->send($token, $c, $this->body(1000))->assertOk();
+        $report = PaymentReport::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'InvoiceID' => Invoice::query()->value('id'),
+            'reported_by_name' => 'x', 'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay(), 'reported_amount' => 4000, 'status' => 'confirmed', 'payment_date' => '2026-10-01']);
+        $this->withToken($token)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])->assertStatus(422)->assertJson(['code' => 'void_course_refunded']);
+        $list = $this->withToken($token)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $c->StudentID)->assertOk()->json();
+        $row = collect($list['data'] ?? $list)->firstWhere('ID', $c->ID);
+        $this->assertSame('refunded', $row['history_reason'] ?? null);
     }
 }

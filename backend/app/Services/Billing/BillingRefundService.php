@@ -4,11 +4,13 @@ namespace App\Services\Billing;
 
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\Schedule;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -23,7 +25,6 @@ use Illuminate\Validation\ValidationException;
 final class BillingRefundService
 {
     public const CLOSED_REASON = 'refunded';
-    private const HELD = ['attended', 'completed', 'late', 'absent'];
     private const CANCEL_NOTE = '[退費取消]';
 
     public function __construct(private InvoiceAmountReconciliationService $amounts)
@@ -36,11 +37,22 @@ final class BillingRefundService
         $this->assertRefundable($course);
         $paid = 0;
         foreach ($this->invoices($course, false) as $invoice) {
-            $paid += (int) $this->amounts->resolve($invoice, $course)['net_applied'];
+            $row = $this->amounts->resolve($invoice, $course);
+            if ($row['outstanding_amount'] > 0) {
+                throw ValidationException::withMessages(['course' => '這門課還有未繳金額，請先在帳務處理完再退費。']);
+            }
+            if (InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', '!=', $course->getKey())->exists()) {
+                throw ValidationException::withMessages(['course' => '這張帳單還包含別的課程，不能在這裡退費，請走帳務流程。']);
+            }
+            $paid += (int) $row['net_applied'];
         }
-        $used = ClassSession::query()->where('StudentClassID', $course->getKey())->whereIn('Status', self::HELD)->count();
+        // Same lesson count the app deducts (attendance + ledger evidence); an absence without deduction is not used.
+        $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $course->getKey()])[(int) $course->getKey()] ?? [];
+        if (!empty($diag['has_partial'])) {
+            throw ValidationException::withMessages(['course' => '這門課有部分時數的扣堂，不能在這裡算退費，請走帳務流程。']);
+        }
+        $used = (int) ($diag['expected_used'] ?? 0);
         $rate = max(0, (int) ($course->Rate ?? 0));
-
         return ['paid' => $paid, 'used_lessons' => $used, 'rate' => $rate, 'refundable' => max(0, $paid - $used * $rate)];
     }
 
@@ -97,6 +109,9 @@ final class BillingRefundService
     {
         if ((string) ($course->ScheduleMode ?? 'count') !== 'count') {
             throw ValidationException::withMessages(['course' => '月結課程暫不支援退費，請走帳務流程處理。']);
+        }
+        if ((string) $course->rate_unit === 'hour') {
+            throw ValidationException::withMessages(['course' => '依時數計價的課程暫不支援退費，請走帳務流程處理。']);
         }
         if ($course->isPartOfPackage()) {
             throw ValidationException::withMessages(['course' => '共用課程包請走方案調整流程，不能單獨退費。']);

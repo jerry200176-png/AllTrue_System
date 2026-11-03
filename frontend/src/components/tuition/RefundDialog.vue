@@ -3,7 +3,7 @@
     <p v-if="loadError" class="refund__error" data-testid="refund-load-error">{{ loadError }}</p>
     <template v-else-if="preview">
       <p data-testid="refund-paid">已繳 {{ money(preview.paid) }}</p>
-      <p data-testid="refund-used">已上 {{ preview.used_lessons }} 堂 × 單價 {{ money(preview.rate) }}</p>
+      <p data-testid="refund-used">已上 {{ preview.used_lessons }} 堂，每堂 {{ money(preview.rate) }}</p>
       <p data-testid="refund-suggested"><strong>建議退 {{ money(preview.refundable) }}</strong></p>
       <label class="refund__label" for="refund-amount">退費金額（最多 {{ money(preview.refundable) }}）</label>
       <input id="refund-amount" v-model.number="amount" type="number" min="1" :max="preview.refundable" data-testid="refund-amount" />
@@ -97,7 +97,7 @@ async function submit() {
 </script>
 
 <style scoped>
-.refund__label{display:block;margin-top:.6rem;font-size:.85rem}
+.refund__label{display:block;margin-top:.6rem;font-size:var(--ds-font-size-sm)}
 .refund__error{color:var(--ds-danger)}
-.refund__note{font-size:.85rem;opacity:.75}
+.refund__note{font-size:var(--ds-font-size-sm);opacity:.75}
 </style>

@@ -17,7 +17,7 @@ final class StudentClassActivity
     private const SETTLED = ['paid', 'free'];
 
     /** Closures that always file a course under history. */
-    private const HISTORY_CLOSURES = ['settled', 'settled_pending', 'waived', 'completed'];
+    private const HISTORY_CLOSURES = ['settled', 'settled_pending', 'waived', 'completed', 'refunded'];
 
     /**
      * Count-mode self-heal: purchased − actually used. Null when the stored counters stand (monthly,
