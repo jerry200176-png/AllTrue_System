@@ -2172,8 +2172,8 @@ class StudentClassController extends Controller
 
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
-            $assertContractDates();
             if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
+                $assertContractDates(); // returns without syncing
                 return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt' => false,
@@ -2190,7 +2190,7 @@ class StudentClassController extends Controller
                     $durationMinutes,
                     $previousScheduleSlots
                 );
-                $assertContractDates();
+                $assertContractDates(); // after the sync: it may remap lessons into the new dates
                 return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
