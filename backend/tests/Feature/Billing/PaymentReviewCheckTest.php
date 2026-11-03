@@ -106,6 +106,19 @@ class PaymentReviewCheckTest extends TestCase
         $this->assertFalse($after['review_checked']);
     }
 
+    /** #4832: a stopped course whose invoice flag is stale (Payment rows cover it) stays in 已結清 after 已核對. */
+    public function test_checked_course_with_a_stale_invoice_status_stays_in_settled_history(): void
+    {
+        $course = $this->course();
+        $course->update(['Stop' => 1, 'Paid' => 0, 'closed_reason' => 'settled_pending']);
+        $this->invoice($course, '2026-08', 1500, 1500)->update(['Status' => 'partial']);
+        $token = $this->token();
+        $this->check($token, $course)->assertOk();
+        $this->assertSame('settled', $course->fresh()->closed_reason);
+        $rows = $this->withToken($token)->getJson('/api/v1/accounting/settled-courses?branch_id=1')->assertOk()->json('data');
+        $this->assertContains($course->ID, collect($rows)->pluck('student_class_id')->map(fn ($id) => (int) $id)->all());
+    }
+
     public function test_zero_value_bills_cannot_be_checked(): void
     {
         $course = $this->course();
