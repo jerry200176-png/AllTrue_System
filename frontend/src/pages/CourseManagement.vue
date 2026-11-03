@@ -809,6 +809,7 @@
       :overview-needs="courseManagerOverviewNeeds(courseManagerCourse)"
       :action-model="courseManagerActionModel(courseManagerCourse)"
       :can-move-lesson="(u) => isLessonMovable(courseManagerCourse, u)"
+      :can-preview-correction="userRole === 'super_admin'"
       :session-units="primarySessionUnits(courseManagerCourse)"
       :cancelled-units="movedOrCancelledUnits(courseManagerCourse)"
       :pending-makeups="pendingMakeupsByCourse[courseManagerCourse.id] ?? []"
