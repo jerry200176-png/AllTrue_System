@@ -234,4 +234,23 @@ class MonthlyPeriodPaymentTest extends TestCase
         $inv->items()->create(['StudentClassID' => $early->ID, 'Description' => 'm', 'Amount' => 1000, 'PeriodStart' => '2026-08-25', 'PeriodEnd' => '2026-09-30']);
         $this->assertContains('item_period_outside_contract', $svc->batch(collect([$early->fresh()]))[$early->ID]['review_reasons']); // earlier month still flagged
     }
+
+    public function test_fully_paid_shared_bill_is_not_a_review_but_an_owing_one_is(): void
+    {
+        // #4803 (Founder 2026-11-03): one bill for two courses, fully paid, is normal; the same bill still owing is reviewed.
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $other = $this->course();
+        foreach ([1500 => false, 1000 => true] as $paid => $flagged) {
+            $course = $this->course();
+            $this->invoice($course, '2026-09', 1000);
+            $shared = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01',
+                'billing_period' => '2026-08', 'TotalAmount' => 1500, 'PaidAmount' => $paid, 'Status' => $paid === 1500 ? 'paid' : 'partial']);
+            Payment::create(['InvoiceID' => $shared->id, 'Amount' => $paid, 'PaidAt' => '2026-08-20', 'Method' => 'cash']);
+            $shared->items()->create(['StudentClassID' => $course->ID, 'Description' => 'a', 'Amount' => 1000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+            $shared->items()->create(['StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+            $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
+            $this->assertSame($flagged, in_array('shared_or_multi_line_bill', $summary['review_reasons'], true), "paid {$paid}");
+            if (!$flagged) $this->assertSame([], $summary['review_reasons']);
+        }
+    }
 }

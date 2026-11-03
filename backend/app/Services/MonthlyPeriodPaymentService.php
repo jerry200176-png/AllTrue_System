@@ -52,15 +52,17 @@ final class MonthlyPeriodPaymentService
             }
             $month = Carbon::createFromFormat('!Y-m', $period);
             $items = $invoice->items->filter(fn ($item) => (int) $item->StudentClassID === (int) $course->getAttribute('ID'));
-            if ($invoice->items->count() !== $items->count() || $items->count() > 1) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
+            $amount = $this->amounts->resolve($invoice, $course);
+            $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
+            // #4803 (Founder 2026-11-03): a bill covering several courses or lines is normal once fully paid; only an owing one is reviewed.
+            $fullyPaid = $amount['total_amount'] > 0 && $paid >= $amount['total_amount'];
+            if (($invoice->items->count() !== $items->count() || $items->count() > 1) && !$fullyPaid) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
             $contractStart = substr((string) $course->getAttribute('StartDate'), 0, 10);
             // #4799 (Founder A): a mid-month start billed for that whole first month is normal; an item that starts in an earlier month is not.
             if ($start > $end || ($items->isNotEmpty() && (($start < $contractStart && substr($start, 0, 7) !== substr($contractStart, 0, 7))
                 || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) { $ambiguous = true; $reasons[] = 'item_period_outside_contract'; }
-            $amount = $this->amounts->resolve($invoice, $course);
-            $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
