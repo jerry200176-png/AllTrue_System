@@ -49,6 +49,7 @@ on:
           - inapp_460_payroll_1031
           - inapp_461_464_billing
           - inapp_466_count_contract
+          - inapp_468_teacher_calendar
           - inapp_460_payroll_teacher
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
@@ -146,7 +147,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -156,7 +157,7 @@ jobs:
           id_cases = {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
-          if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
+          if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
               raise SystemExit('migration precondition probe takes no target')
           if case == 'xinzhuang_fee_cases':
               if target_student_id or target_student_class_id not in {'4064', '3753', '3693'}:
@@ -2364,6 +2365,116 @@ jobs:
                   }})->values()->all(),
               ];
             }})->values()->all();
+          }} elseif ($case === 'inapp_468_teacher_calendar') {{
+              // Read-only (in-app #468): the campus-9 student named in report 468 is matched on the server, so the text never leaves it.
+              // For each of that student's courses, what the three calendar sources return to a director (branch 9) and to the course's
+              // own teacher (no branch, teacher_id = self, as SmartCalendar teacher mode and the teacher home week list send):
+              // class-sessions projection (saved + predicted, week by week, same reflection path as teacher_scope_probe, no
+              // materialization), /schedules and /student-classes; plus the ClassSession and schedules rows themselves.
+              // Output: numeric IDs, dates, times, status/type codes and booleans only (no names, report text or notes).
+              if ($targetStudentId || $targetStudentClassId) {{ throw new \\RuntimeException('no_target_allowed'); }}
+              $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', strtolower(trim((string) $v))) ? strtolower(trim((string) $v)) : 'other');
+              $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+              $ymd = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+              $int = static fn ($v) => $v === null || $v === '' || !is_numeric($v) ? null : (int) $v;
+              $report = $db::table('bug_reports')->where('id', 468)->where('CampusID', 9)->first(['title', 'description']);
+              $text = $report ? ((string) $report->title . ' ' . (string) $report->description) : '';
+              $sids = $db::table('Student')->where('CampusID', 9)->get(['id', 'name'])
+                ->filter(fn ($s) => mb_strlen(trim((string) $s->name)) >= 2 && $text !== '' && mb_strpos($text, trim((string) $s->name)) !== false)
+                ->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
+              $out['matched_student_ids'] = $sids;
+              $courses = $db::table('StudentClass')->whereIn('StudentID', $sids)->orderBy('ID')
+                ->get(['ID', 'StudentID', 'TeacherID', 'Stop', 'StartDate', 'EndDate', 'ScheduleMode', 'room_id', 'SessionCount', 'closed_reason']);
+              $classIds = $courses->pluck('ID')->map(fn ($v) => (int) $v)->all();
+              $out['courses'] = $courses->map(fn ($c) => ['id' => (int) $c->ID, 'student_id' => (int) $c->StudentID, 'teacher_id' => $int($c->TeacherID),
+                'stop' => $int($c->Stop), 'start' => $ymd($c->StartDate), 'end' => $ymd($c->EndDate), 'mode' => $code($c->ScheduleMode),
+                'room_id' => $int($c->room_id), 'session_count' => $int($c->SessionCount), 'closed_reason' => $code($c->closed_reason)])->values()->all();
+              $from = '2026-09-28'; $to = '2026-11-29';
+              $out['window'] = [$from, $to];
+              $out['class_sessions'] = $db::table('ClassSession')->whereIn('StudentClassID', $classIds)->whereBetween('SessionDate', [$from, $to])
+                ->orderBy('SessionDate')->orderBy('StartTime')->get()
+                ->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => (int) $r->StudentClassID, 'date' => $ymd($r->SessionDate), 'start' => $hm($r->StartTime),
+                  'end' => $hm($r->EndTime ?? null), 'status' => $code($r->Status), 'teacher_id' => $int($r->TeacherID ?? null),
+                  'created' => isset($r->created_at) ? substr((string) $r->created_at, 0, 19) : null, 'updated' => isset($r->updated_at) ? substr((string) $r->updated_at, 0, 19) : null])->values()->all();
+              $schedRow = fn ($r) => ['id' => (int) $r->id, 'class_id' => $int($r->student_course_id), 'date' => $ymd($r->schedule_date), 'dow' => $int($r->day_of_week ?? null),
+                'start' => $hm($r->start_time), 'teacher_id' => $int($r->teacher_id), 'branch_id' => $int($r->branch_id ?? null), 'status' => $code($r->status),
+                'type' => $code($r->type), 'has_original' => ($r->original_schedule_id ?? null) !== null];
+              $out['schedules'] = $db::table('schedules')->whereIn('student_course_id', $classIds)
+                ->where(fn ($q) => $q->whereNull('schedule_date')->orWhereBetween('schedule_date', [$from, $to]))
+                ->orderBy('schedule_date')->orderBy('id')->get()->map($schedRow)->values()->all();
+              $invoke = function ($controller, string $method, array $args = []) {{
+                $reflection = new \\ReflectionMethod($controller, $method);
+                $reflection->setAccessible(true);
+                return $reflection->invokeArgs($controller, $args);
+              }};
+              $req = function (string $path, array $params, string $role, int $teacherId, array $campusIds) {{
+                $request = \\Illuminate\\Http\\Request::create($path, 'GET', $params);
+                $request->attributes->set('auth_role', $role);
+                $request->attributes->set('auth_teacher_id', $teacherId > 0 ? $teacherId : null);
+                $request->attributes->set('auth_campus_ids', $campusIds);
+                app()->instance('request', $request);
+                return $request;
+              }};
+              $sessions = app(\\App\\Http\\Controllers\\ClassSessionController::class);
+              $projection = function (string $role, int $teacherId, array $campusIds, string $start, string $end) use ($invoke, $sessions, $req, $classIds, $code, $hm, $ymd, $int) {{
+                $params = ['start' => $start, 'end' => $end] + ($role === 'teacher' ? ['teacher_id' => $teacherId] : ['branch_id' => 9]);
+                $request = $req('/api/v1/class-sessions/projection', $params, $role, $teacherId, $campusIds);
+                $items = $invoke($sessions, 'withoutContractCappedFutureReservations', [$invoke($sessions, 'fetchAllClassSessionIndexRows', [$invoke($sessions, 'buildClassSessionIndexQuery', [$request])])]);
+                $byClass = $invoke($sessions, 'buildByClassMapFromItems', [$items]);
+                $projected = $invoke($sessions, 'buildProjectedByClassForIndex', [$byClass, $start, $end, [], true]);
+                $rows = [];
+                foreach ($items as $r) {{
+                  if (!in_array((int) $r->student_class_id, $classIds, true)) continue;
+                  $rows[] = 'm:' . (int) $r->student_class_id . ':' . $ymd($r->session_date) . ':' . $hm($r->start_time) . ':' . $code($r->status) . ':s' . (int) $r->id;
+                }}
+                $keys = [];
+                foreach ($projected as $cid => $list) {{
+                  if (!in_array((int) $cid, $classIds, true)) continue;
+                  foreach ($list as $p) {{
+                    $p = (array) $p;
+                    foreach (array_keys($p) as $k) {{ if (preg_match('/^[a-z_]{{1,40}}$/', (string) $k)) $keys[$k] = true; }}
+                    $rows[] = 'p:' . (int) $cid . ':' . $ymd($p['session_date'] ?? $p['date'] ?? null) . ':' . $hm($p['start_time'] ?? null) . ':' . $code($p['status'] ?? null);
+                  }}
+                }}
+                sort($rows);
+                return ['rows' => $rows, 'projected_keys' => array_keys($keys), 'items_total' => count($items)];
+              }};
+              $schedulesApi = function (string $role, int $teacherId, array $campusIds) use ($req, $classIds, $schedRow, $from, $to) {{
+                $params = ['per_page' => 2000, 'start' => $from, 'end' => $to] + ($role === 'teacher' ? ['teacher_id' => $teacherId] : ['branch_id' => 9]);
+                $res = app(\\App\\Http\\Controllers\\ScheduleController::class)->index($req('/api/v1/schedules', $params, $role, $teacherId, $campusIds));
+                $body = json_decode($res->getContent());
+                $list = is_array($body) ? $body : ($body->data ?? []);
+                return ['status' => $res->getStatusCode(), 'total' => is_array($body) ? count($body) : ($body->total ?? null),
+                  'rows' => collect($list)->filter(fn ($r) => in_array((int) ($r->student_course_id ?? 0), $classIds, true))->map($schedRow)->values()->all()];
+              }};
+              $coursesApi = function (string $role, int $teacherId, array $campusIds) use ($req, $classIds, $from, $to) {{
+                $params = ['start' => $from, 'end' => $to, 'per_page' => 1000] + ($role === 'teacher' ? ['teacher_id' => $teacherId] : ['branch_id' => 9]);
+                $res = app(\\App\\Http\\Controllers\\StudentClassController::class)->index($req('/api/v1/student-classes', $params, $role, $teacherId, $campusIds));
+                $body = json_decode($res->getContent());
+                $list = is_array($body) ? $body : ($body->data ?? []);
+                return ['status' => $res->getStatusCode(), 'total' => is_array($body) ? count($body) : ($body->total ?? null), 'last_page' => is_array($body) ? null : ($body->last_page ?? null),
+                  'present' => collect($list)->map(fn ($r) => (int) ($r->ID ?? $r->id ?? 0))->filter(fn ($id) => in_array($id, $classIds, true))->values()->all()];
+              }};
+              $out['views'] = [];
+              foreach ($courses->pluck('TeacherID')->filter()->map(fn ($v) => (int) $v)->unique()->values() as $tid) {{
+                $campusIds = $db::table('UserCampus')->where('UserID', $tid)->where(fn ($q) => $q->where('Approved', true)->orWhereNull('Approved'))
+                  ->pluck('CampusID')->map(fn ($v) => (int) $v)->values()->all();
+                $directorCampus = [9];
+                $weeks = [];
+                for ($monday = \\Carbon\\Carbon::parse($from); $monday->toDateString() <= $to; $monday->addWeek()) {{
+                  $s = $monday->toDateString(); $e = $monday->copy()->addDays(6)->toDateString();
+                  try {{ $dir = $projection('director', 0, $directorCampus, $s, $e); $tea = $projection('teacher', $tid, $campusIds, $s, $e); }}
+                  catch (\\Throwable $x) {{ $weeks[] = ['week' => $s, 'error' => class_basename($x)]; continue; }}
+                  $slot = fn ($row) => implode(':', array_slice(explode(':', $row), 1, 3));
+                  $weeks[] = ['week' => $s, 'director' => $dir['rows'], 'teacher' => $tea['rows'],
+                    'missing_for_teacher' => array_values(array_diff(array_unique(array_map($slot, $dir['rows'])), array_unique(array_map($slot, $tea['rows'])))),
+                    'projected_keys' => array_values(array_unique(array_merge($dir['projected_keys'], $tea['projected_keys'])))];
+                }}
+                $safe = function (callable $f) {{ try {{ return $f(); }} catch (\\Throwable $x) {{ return ['error' => class_basename($x)]; }} }};
+                $out['views'][] = ['teacher_id' => $tid, 'teacher_campus_ids' => $campusIds, 'weeks' => $weeks,
+                  'schedules_director' => $safe(fn () => $schedulesApi('director', 0, $directorCampus)), 'schedules_teacher' => $safe(fn () => $schedulesApi('teacher', $tid, $campusIds)),
+                  'courses_director' => $safe(fn () => $coursesApi('director', 0, $directorCampus)), 'courses_teacher' => $safe(fn () => $coursesApi('teacher', $tid, $campusIds))];
+              }}
           }} elseif ($case === 'inapp_460_payroll_teacher') {{
             // Read-only (in-app #460, round 2): every campus-9 lesson on 2026-10-31 with its payroll payee (the same order as
             // FinanceController::resolveParttimePayrollTeacherId), all campus-9 teacher rate rules, and the October payroll lock/run lines.
