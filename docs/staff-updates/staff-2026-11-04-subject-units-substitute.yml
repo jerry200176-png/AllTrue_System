@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-04-subject-units-substitute
+    published_at: "2026-11-04"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 代課的課，科目數算給代課老師
+    summary: 課交給代課老師上之後，科目數統計會算在代課老師身上。
+    items:
+      - category: fixed
+        text: 以前代課的課還算在原本老師的科目數；現在改算給實際上課的代課老師。
+      - category: improved
+        text: 科目數和兼職薪資用同一個方法判斷「這堂課是誰上的」，兩邊不會對不起來。
+    source_refs:
+      - "changelog:2026-11-04:subject-units-substitute"

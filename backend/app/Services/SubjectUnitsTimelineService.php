@@ -33,6 +33,14 @@ final class SubjectUnitsTimelineService
         $blockedRegularSessions = [];
         $subjectIds = [];
 
+        // in-app #488: courses with a lesson in range scheduled to someone other than the contract teacher. Only their
+        // lessons are re-resolved (one lookup each); every other lesson keeps its recorded / contract teacher.
+        $substituted = DB::table('schedules as sch')->join('StudentClass as sc', 'sc.ID', '=', 'sch.student_course_id')
+            ->whereBetween('sch.schedule_date', [$start->toDateString(), $end->toDateString()])
+            ->whereNotNull('sch.teacher_id')->whereColumn('sch.teacher_id', '<>', 'sc.TeacherID')
+            ->distinct()->pluck('sch.student_course_id')->map(fn ($id) => (int) $id)->flip()->all();
+        $mine = fn ($q, string $recorded) => $q->where(fn ($w) => $w->where($recorded, $teacherId)->orWhereIn('sc.ID', array_keys($substituted)));
+
         $learningRecords = DB::table('LearningRecord as lr')
             ->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -42,9 +50,8 @@ final class SubjectUnitsTimelineService
             ->whereBetween('lr.SessionDate', [$start->toDateString(), $end->toDateString()])
             ->whereNotIn('sc.ClassType', ['trial', 'tutoring'])
             ->when($campusIds !== [], fn ($q) => $q->whereIn('s.CampusID', $campusIds))
-            ->when($teacherId !== null, fn ($q) => $q->where('lr.TeacherID', $teacherId))
             ->select([
-                'lr.id as record_id', 'lr.ClassSessionID as class_session_id',
+                'lr.id as record_id', 'lr.ClassSessionID as class_session_id', 'sc.ID as course_id', 'sc.TeacherID as contract_teacher_id',
                 'lr.TeacherID as teacher_id', 'lr.SessionDate as event_date',
                 'lr.StartTime as start_time', 'lr.EndTime as end_time',
                 'sc.ClassType as class_type', 'sc.SessionDuration as session_duration',
@@ -58,7 +65,8 @@ final class SubjectUnitsTimelineService
             $learningRecords->addSelect('lr.ExcludeFromSubjectCount as excluded_from_subject_count');
         }
 
-        foreach ($learningRecords->get() as $row) {
+        // Every record marks its session covered before the viewer filter, so attendance never re-counts it for someone else.
+        foreach ($this->taughtBy($learningRecords->get(), null, $substituted) as $row) {
             $sessionId = (int) ($row->class_session_id ?? 0);
             if ($sessionId > 0) {
                 $coveredRegularSessions[$sessionId] = true;
@@ -67,6 +75,9 @@ final class SubjectUnitsTimelineService
                     continue;
                 }
             } elseif ((bool) ($row->excluded_from_subject_count ?? false)) {
+                continue;
+            }
+            if ($teacherId !== null && (int) $row->teacher_id !== $teacherId) {
                 continue;
             }
 
@@ -92,6 +103,7 @@ final class SubjectUnitsTimelineService
                 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
                 'sc.SubjectID as course_subject_id', 'cs.SubjectID as session_subject_id',
                 's.CampusID as campus_id', 's.name as student_name', 'si.Status as attendance_status',
+                'cs.StudentClassID as course_id', 'sc.TeacherID as contract_teacher_id',
             ]);
 
         $weeklyStatuses = array_values(array_unique(array_merge(
@@ -101,10 +113,10 @@ final class SubjectUnitsTimelineService
         $regularAttendance = (clone $attendanceBase)
             ->whereIn('si.Status', $weeklyStatuses)
             ->whereNotIn('sc.ClassType', ['trial', 'tutoring'])
-            ->when($teacherId !== null, fn ($q) => $q->where('sc.TeacherID', $teacherId))
+            ->when($teacherId !== null, fn ($q) => $mine($q, 'sc.TeacherID'))
             ->whereNotIn('cs.id', array_keys($coveredRegularSessions + $blockedRegularSessions));
 
-        foreach ($regularAttendance->get()->unique('class_session_id') as $row) {
+        foreach ($this->taughtBy($regularAttendance->get()->unique('class_session_id'), $teacherId, $substituted) as $row) {
             $subjectId = (int) ($row->session_subject_id ?: $row->course_subject_id ?: 0);
             $subjectIds[$subjectId] = true;
             $this->addEntry($entries, $row, 'regular', $this->regularWeight($row->class_type), $subjectId);
@@ -114,9 +126,9 @@ final class SubjectUnitsTimelineService
         $specialAttendance = (clone $attendanceBase)
             ->whereIn('si.Status', $weeklyStatuses)
             ->whereIn('sc.ClassType', ['trial', 'tutoring'])
-            ->when($teacherId !== null, fn ($q) => $q->where('sc.TeacherID', $teacherId));
+            ->when($teacherId !== null, fn ($q) => $mine($q, 'sc.TeacherID'));
 
-        foreach ($specialAttendance->get()->unique('class_session_id') as $row) {
+        foreach ($this->taughtBy($specialAttendance->get()->unique('class_session_id'), $teacherId, $substituted) as $row) {
             $sessionId = (int) $row->class_session_id;
             $attendedSpecialSessions[$sessionId] = true;
             $subjectId = (int) ($row->session_subject_id ?: $row->course_subject_id ?: 0);
@@ -135,7 +147,7 @@ final class SubjectUnitsTimelineService
                 AttendanceStatus::payableSessionStatuses(), ['trial', 'tutoring_attend']
             ))))
             ->when($campusIds !== [], fn ($q) => $q->whereIn('s.CampusID', $campusIds))
-            ->when($teacherId !== null, fn ($q) => $q->where('sc.TeacherID', $teacherId))
+            ->when($teacherId !== null, fn ($q) => $mine($q, 'sc.TeacherID'))
             ->whereNotIn('cs.id', array_keys($attendedSpecialSessions))
             ->select([
                 'cs.id as class_session_id', 'cs.SessionDate as event_date',
@@ -145,10 +157,10 @@ final class SubjectUnitsTimelineService
                 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
                 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
                 'sc.SubjectID as course_subject_id', 'cs.SubjectID as session_subject_id',
-                's.CampusID as campus_id', 's.name as student_name',
+                's.CampusID as campus_id', 's.name as student_name', 'cs.StudentClassID as course_id', 'sc.TeacherID as contract_teacher_id',
             ])->get()->unique('class_session_id');
 
-        foreach ($legacySpecial as $row) {
+        foreach ($this->taughtBy($legacySpecial, $teacherId, $substituted) as $row) {
             $subjectId = (int) ($row->session_subject_id ?: $row->course_subject_id ?: 0);
             $subjectIds[$subjectId] = true;
             $this->addEntry($entries, $row, 'tutoring_trial', 0.5, $subjectId);
@@ -228,6 +240,30 @@ final class SubjectUnitsTimelineService
             'totals' => $publicTotals,
             'teacher_contributions' => $teacherContributions,
         ];
+    }
+
+    /**
+     * in-app #488: a lesson counts for whoever actually taught it (substitute included), the same occurrence rule as
+     * payroll (teacherForOccurrence), not the contract teacher. A record that already names another teacher keeps it.
+     * A teacher's own view keeps only the lessons they taught.
+     *
+     * @param  array<int, int>  $substituted  course id => index
+     */
+    private function taughtBy(iterable $rows, ?int $teacherId, array $substituted): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $contract = (int) $row->contract_teacher_id;
+            if (isset($substituted[(int) $row->course_id]) && (int) $row->teacher_id === $contract) {
+                $row->teacher_id = SubstituteScheduleService::teacherForOccurrence((int) $row->course_id, (string) $row->event_date,
+                    $contract, $row->start_time !== null ? (string) $row->start_time : null);
+            }
+            if ($teacherId === null || (int) $row->teacher_id === $teacherId) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
     }
 
     private function addEntry(array &$entries, object $row, string $category, float $weight, int $subjectId): void
