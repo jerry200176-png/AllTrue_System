@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-04-refund-flow
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 堂數制合約可以直接退費
+    summary: 帳務中心的堂數制合約卡片多了「退費」按鈕，系統會算好建議退多少。
+    items:
+      - category: added
+        text: 按「退費」會看到已繳多少、已上幾堂、建議退多少，金額可以調低，不能超過建議金額。
+      - category: added
+        text: 填好日期、現金或匯款、原因後確認，這門課就結束，還沒上的課會取消。
+      - category: improved
+        text: 退費會記在帳上，這門課不會被當成欠款，已結清清單會標「已退費」。
+    source_refs:
+      - "changelog:2026-11-04:refund-flow"
