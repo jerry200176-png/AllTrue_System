@@ -18,6 +18,7 @@ import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  ledgerReceiptHelp,
   formatLedgerDriftLine,
   buildLedgerIssueReport,
   humanizeDocumentRef,
@@ -277,4 +278,14 @@ console.log('studentClassDisplay.test.js: all assertions passed');
   const rpt = buildLedgerIssueReport({ code: 'paid_amount_mismatch', invoice_id: 2032, student_class_id: 7 }, inv, 55);
   assert.equal(rpt.relatedReference, '學生ID 55 / 帳單ID 2032 / 課程ID 7');
   assert.ok(rpt.description.includes('paid_amount_mismatch') && rpt.description.includes('7500'));
+}
+
+// in-app #474: receipt mismatches explain and give the safe step first; other codes keep their own copy.
+assert.equal(ledgerReceiptHelp(['paid_amount_mismatch']), null);
+assert.equal(ledgerReceiptHelp(['receipt_without_invoice']).title, '這張收據對不到這位學生的帳單');
+assert.equal(ledgerReceiptHelp(['receipt_without_invoice', 'confirmed_receipt_without_payment']).title, '收據確認了，但沒有收款紀錄');
+for (const codes of [['receipt_without_invoice'], ['receipt_payment_outside_ledger'], ['confirmed_receipt_without_payment']]) {
+  const h = ledgerReceiptHelp(codes);
+  assert.ok(h.hint.startsWith('怎麼處理：'), codes.join());
+  assert.ok(/才按「撤銷收據」/.test(h.hint), 'void is only the last step for a receipt issued in error');
 }

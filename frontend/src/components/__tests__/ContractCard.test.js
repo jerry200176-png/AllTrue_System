@@ -571,6 +571,25 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     w.unmount(); vi.unstubAllGlobals();
   });
 
+  it('in-app #474: one receipt failing two checks is one card that says what happened and what to do', async () => {
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, receipts: [], invoices: [], courses: [{ id: 2, subject: '數學', paid: true }],
+      anomalies: [
+        { code: 'receipt_without_invoice', severity: 'warning', message: '已確認收據尚未對到本學生帳單。', invoice_id: 77, report_id: 9, payment_id: 5, action: { type: 'void_report', label: '撤銷收據', report_id: 9 } },
+        { code: 'receipt_payment_outside_ledger', severity: 'warning', message: '收據對應的收款不在本學生帳單紀錄內。', invoice_id: 77, report_id: 9, payment_id: 5, action: { type: 'view_receipt', label: '查看收據', report_id: 9 } },
+      ],
+    });
+    const text = w.text();
+    expect(text).toContain('這張收據對不到這位學生的帳單');
+    expect(text).not.toContain('收據收款不在本學生帳本');
+    expect(text).not.toContain('相關收據可撤銷');
+    expect(w.findAll('[data-testid="ledger-exception-hint"]')).toHaveLength(1);
+    expect(w.find('[data-testid="ledger-exception-hint"]').text()).toMatch(/^怎麼處理：先不要撤銷。/);
+    expect(text).toContain('撤銷收據');
+    expect(text).not.toContain('撤銷收款');
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
   it('shows 已收 / 待核對入帳 receipts by default and folds rejected, voided and 0 元 under 其他紀錄', async () => {
     const r = (id, status, amount) => ({ report_id: id, student_class_id: 2, status, amount, payment_date: '2026-10-01', payment_method: 'cash', receipt_no: `RCPT-${id}` });
     const { w } = await mountLedger({
