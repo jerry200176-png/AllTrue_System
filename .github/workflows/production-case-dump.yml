@@ -196,6 +196,8 @@ jobs:
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
             'prod_head' => trim((string)@shell_exec('git rev-parse HEAD'))];
+            $billingStudentNumbers = $case === 'billing_student_numbers';
+            if ($billingStudentNumbers) {{ $case = 'inapp_466_count_contract'; }} // same probe body, scoped to one student ID
           if ($case === 'schedule_241') {{
             $campusId = 9;
             $targetDate = '2026-08-29';
@@ -2318,12 +2320,13 @@ jobs:
                 'items' => \\App\\Models\\InvoiceItem::query()->whereIn('InvoiceID', $invs->pluck('id')->all())->get()->map(fn ($x) => $nums($x->getAttributes()))->values()->all(),
                 'sessions_by_month' => $sess->groupBy(fn ($s) => substr((string) $s->SessionDate, 0, 7))->map(fn ($g) => $g->countBy(fn ($s) => $code($s->Status)))->all()];
             }})->values()->all();
-          }} elseif ($case === 'inapp_466_count_contract' || $case === 'billing_student_numbers') {{
-            // Read-only (in-app #466; billing_student_numbers = the same for one campus-9 student ID, any in-app billing report):
-            // each of that student's courses with contract numbers, lessons, bills (stored + resolved amounts), payments,
-            // receipts and amendments. Output: numeric IDs, dates, amounts, codes and counts only (no names, notes or free text).
-            if ($case === 'inapp_466_count_contract' && ($targetStudentId || $targetStudentClassId)) {{ throw new \\RuntimeException('no_target_allowed'); }}
-            if ($case === 'billing_student_numbers' && ($targetStudentClassId || !$targetStudentId)) {{ throw new \\RuntimeException('student_id_only'); }}
+          }} elseif ($case === 'inapp_466_count_contract') {{
+            // Read-only (in-app #466): the campus-9 student named in report 466 is matched here on the server, so the text
+            // never leaves it; each of that student's courses with contract numbers, lessons, bills, payments and amendments.
+            // billing_student_numbers runs this same body for one campus-9 student ID (any in-app billing report) and adds the
+            // ledger's resolved bill amounts. Output: numeric IDs, dates, amounts, codes and counts only (no names, notes or free text).
+            if (!$billingStudentNumbers && ($targetStudentId || $targetStudentClassId)) {{ throw new \\RuntimeException('no_target_allowed'); }}
+            if ($billingStudentNumbers && ($targetStudentClassId || !$targetStudentId)) {{ throw new \\RuntimeException('student_id_only'); }}
             $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', (string) $v) ? (string) $v : 'other');
             $d = static fn ($v) => $v === null ? null : substr((string) $v, 0, 19);
             $nums = static function ($row) use ($d) {{
@@ -2334,9 +2337,9 @@ jobs:
               }}
               return $o;
             }};
-            $report = $case === 'inapp_466_count_contract' ? $db::table('bug_reports')->where('id', 466)->where('CampusID', 9)->first(['title', 'description']) : null;
+            $report = !$billingStudentNumbers ? $db::table('bug_reports')->where('id', 466)->where('CampusID', 9)->first(['title', 'description']) : null;
             $text = $report ? ((string) $report->title . ' ' . (string) $report->description) : '';
-            $sids = $case === 'billing_student_numbers'
+            $sids = $billingStudentNumbers
               ? $db::table('Student')->where('id', $targetStudentId)->where('CampusID', 9)->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
               : $db::table('Student')->where('CampusID', 9)->get(['id', 'name'])
               ->filter(fn ($s) => mb_strlen(trim((string) $s->name)) >= 2 && $text !== '' && mb_strpos($text, trim((string) $s->name)) !== false)
