@@ -92,6 +92,9 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         id: Number(r.id), ref: formatCourseRef(r.id), period: formatCoursePeriod(r.course_start_date, r.course_end_date),
         owed: OWING.has(r.payment_status) && !isPendingConfirmation(r) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
         pending_review: pendingReviewAmount(r),
+        // in-app #465: the per-course table that showed 剩餘堂數 was removed (#4715); each contract line carries it again.
+        subject: r.subject || '',
+        remaining: r.schedule_mode === 'date' || r.remaining_sessions == null ? null : Math.max(0, Number(r.remaining_sessions)),
       });
     }
     // in-app #407 / #4123: 已收 follows the server's authoritative paid status only. A payment date alone
