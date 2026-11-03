@@ -105,8 +105,13 @@ final class ContractMoneyState
     /** 422 refusal for a waived contract, or null when the contract is not waived. */
     public static function waivedRefusal(?StudentClass $course, string $message, ?string $code = null): ?JsonResponse
     {
-        if (!self::isWaived($course)) {
+        if ($course === null || !$course->isTerminalMoneyClosure()) {
             return null;
+        }
+        // 退費 is terminal like 確認不收: same refusal, its own wording.
+        if (!self::isWaived($course)) {
+            $message = StudentClass::REFUNDED_MESSAGE;
+            $code = $code === null ? null : 'course_refunded';
         }
 
         return response()->json($code === null ? ['message' => $message] : ['message' => $message, 'code' => $code], 422);
