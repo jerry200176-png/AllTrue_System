@@ -16,7 +16,7 @@ final class MonthlyPeriodPaymentService
 
     public function batch(Collection $courses): array
     {
-        $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date' && !(int) $course->getAttribute('PackageID'));
+        $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date');
         if ($courses->isEmpty()) return [];
         $ids = $courses->pluck('ID')->all();
         $invoices = (new Invoice)->scopeNotVoided(Invoice::query())->whereIn('StudentClassID', $ids)

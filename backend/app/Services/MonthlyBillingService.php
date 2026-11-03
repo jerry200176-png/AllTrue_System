@@ -143,7 +143,7 @@ class MonthlyBillingService
         $id = (int) $course->getKey();
         $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
         $end = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : null;
-        if ((string) $course->getAttribute('ScheduleMode') !== 'date' || (int) ($course->getAttribute('PackageID') ?? 0) > 0 || !$start || !$end) {
+        if ((string) $course->getAttribute('ScheduleMode') !== 'date' || !$start || !$end) {
             return null;
         }
         $invoices ??= Invoice::query()->where('StudentClassID', $id)

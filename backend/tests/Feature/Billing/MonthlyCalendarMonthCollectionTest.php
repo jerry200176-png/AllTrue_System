@@ -76,6 +76,41 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame([['2026-05', 2000]], $this->bills($b));
     }
 
+    /** Codex P1 #2 on #4867: a multi-course bill headed by a monthly plan member keeps its stored total on confirm. */
+    public function test_multi_course_bill_through_a_monthly_plan_member_keeps_its_total(): void
+    {
+        $a = $this->course('2026-10-01', '2026-10-31', ['2026-10-05' => 'attended', '2026-10-12' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $b = $this->course('2026-10-01', '2026-10-31', ['2026-10-06' => 'attended', '2026-10-13' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $a->update(['PackageID' => $pkg]);
+        $bill = Invoice::create(['StudentID' => $a->StudentID, 'StudentClassID' => $a->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 4000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        $bill->items()->create(['StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 2000]);
+        $bill->items()->create(['StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
+
+        $this->record($a->fresh(), 2000)->assertStatus(422)->assertJsonPath('expected_amount', 4000);
+        $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
+        $bill->refresh();
+        $this->assertSame([4000, 4000, 'paid'], [(int) $bill->TotalAmount, (int) $bill->PaidAmount, (string) $bill->Status]);
+    }
+
+    /** Codex P2 on #4867: a monthly plan member (Charge 0) with lessons in two months stays collectible month by month. */
+    public function test_monthly_plan_member_cross_month_collects_august_then_september(): void
+    {
+        $sc = $this->course('2026-08-31', '2026-09-30', ['2026-08-31' => 'attended', '2026-09-07' => 'attended', '2026-09-23' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg]);
+
+        $this->confirm($this->record($sc->fresh(), 1000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-08', 1000]], $this->bills($sc));
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+        $this->confirm($this->record($sc->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-08', 1000], ['2026-09', 2000]], $this->bills($sc));
+        $this->record($sc->fresh(), 1000)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+    }
+
     public function test_cross_month_contract_collects_august_then_september(): void
     {
         $sc = $this->course('2026-08-31', '2026-09-30', [
@@ -126,7 +161,6 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $billing = app(MonthlyBillingService::class);
         $lessons = ['2026-08-31' => 'attended', '2026-09-29' => 'attended'];
         $this->assertNull($billing->unbilledPeriodFor($this->course('2026-08-31', '2026-09-30', $lessons, ['ScheduleMode' => 'count'])));
-        $this->assertNull($billing->unbilledPeriodFor($this->course('2026-08-31', '2026-09-30', $lessons, ['PackageID' => 7])));
 
         // A renewal-style bill labelled 2026-08 covering 8/28–9/27 leaves 9/29 uncovered: September is partly billed,
         // so pricing the whole calendar month would bill 9/1–9/27 twice. Keep today's rule.
