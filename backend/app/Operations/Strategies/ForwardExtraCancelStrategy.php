@@ -231,7 +231,7 @@ final class ForwardExtraCancelStrategy
             $classId = (int) $x['c']['class_id'];
             $later = array_values(array_filter(array_map('intval', explode(',', (string) $x['c']['later_course_ids']))));
             $settled = DB::table('StudentClass')->where('ID', $classId)
-                ->where(fn ($q) => $q->whereNotNull('settlement_locked_at')->orWhereIn('closed_reason', ['usage_settled', 'contract_amended', 'waived']))->exists();
+                ->where(fn ($q) => $q->whereNotNull('settlement_locked_at')->orWhereIn('closed_reason', ['usage_settled', 'contract_amended', 'waived', 'refunded']))->exists();
             foreach ($x['waiting'] as $sid) {
                 $s = DB::table('ClassSession')->where('id', $sid)->first();
                 if (!$s || strtolower((string) $s->Status) !== 'scheduled') {

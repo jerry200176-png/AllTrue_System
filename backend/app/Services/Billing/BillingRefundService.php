@@ -44,6 +44,9 @@ final class BillingRefundService
             if (InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', '!=', $course->getKey())->exists()) {
                 throw ValidationException::withMessages(['course' => '這張帳單還包含別的課程，不能在這裡退費，請走帳務流程。']);
             }
+            if ($row['overpaid_amount'] > 0) {
+                throw ValidationException::withMessages(['course' => '這門課有多收的錢，請先在帳務處理多收，再退費。']);
+            }
             $paid += (int) $row['net_applied'];
         }
         // Same lesson count the app deducts (attendance + ledger evidence); an absence without deduction is not used.
@@ -84,8 +87,11 @@ final class BillingRefundService
                 $left -= $take;
             }
             $today = Carbon::today()->toDateString();
+            // A lesson already signed in (not voided) is consumed: keep its status and deduction.
             ClassSession::query()->where('StudentClassID', $locked->getKey())->where('Status', 'scheduled')
-                ->whereDate('SessionDate', '>=', $today)->lockForUpdate()->get()->each(function (ClassSession $s): void {
+                ->whereDate('SessionDate', '>=', $today)
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('StudentSingIn')->whereColumn('StudentSingIn.ClassSessionID', 'ClassSession.id')->whereNull('StudentSingIn.VoidedAt'))
+                ->lockForUpdate()->get()->each(function (ClassSession $s): void {
                     $s->Status = 'cancelled';
                     $s->Note = trim(trim((string) ($s->Note ?? '')) . ' ' . self::CANCEL_NOTE);
                     $s->save();

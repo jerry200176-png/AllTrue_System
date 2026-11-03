@@ -206,7 +206,7 @@ final class ForwardOverdeductReassignStrategy
 
     private function settled(object $course): bool
     {
-        return $course->settlement_locked_at !== null || in_array((string) $course->closed_reason, ['usage_settled', 'contract_amended', 'waived'], true);
+        return $course->settlement_locked_at !== null || in_array((string) $course->closed_reason, ['usage_settled', 'contract_amended', 'waived', 'refunded'], true);
     }
 
     private function audit(array $metadata, string $suffix = ''): void

@@ -266,4 +266,34 @@ class BillingRefundTest extends TestCase
         Payment::create(['InvoiceID' => Invoice::query()->value('id'), 'Amount' => 500, 'PaidAt' => '2026-10-20', 'Method' => 'cash']);
         $this->assertSame('review_required', $this->state($c)['status']);
     }
+
+    public function test_attendance_is_locked_after_a_refund(): void
+    {
+        $c = $this->course();
+        $this->send($this->token(), $c, $this->body(1000))->assertOk();
+        $held = ClassSession::where('StudentClassID', $c->ID)->where('Status', 'attended')->first();
+        $this->expectException(\Illuminate\Validation\ValidationException::class); // same guard the waived / amended locks use
+        $held->update(['Status' => 'cancelled']);
+    }
+
+    public function test_overpaid_contract_is_refused_in_preview_and_refund(): void
+    {
+        $c = $this->course();
+        Payment::query()->update(['Amount' => 4500]);
+        $token = $this->token();
+        $msg = '這門課有多收的錢，請先在帳務處理多收，再退費。';
+        $this->withToken($token)->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertStatus(422)->assertJsonPath('errors.course.0', $msg);
+        $this->send($token, $c, $this->body(100))->assertStatus(422)->assertJsonPath('errors.course.0', $msg);
+    }
+
+    public function test_signed_in_scheduled_lesson_is_not_cancelled(): void
+    {
+        $c = $this->course();
+        $s = ClassSession::where('StudentClassID', $c->ID)->where('Status', 'scheduled')->first();
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $c->ID, 'ClassSessionID' => $s->id, 'StudentID' => $c->StudentID, 'TeacherID' => 1, 'Status' => 'present', 'SignInDT' => now()]);
+        $this->send($this->token(), $c, $this->body(1000))->assertOk();
+        $this->assertSame('scheduled', $s->fresh()->Status);
+        $list = $this->withToken($this->token())->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $c->StudentID)->assertOk()->json();
+        $this->assertNotSame('review_required', collect($list['data'] ?? $list)->firstWhere('ID', $c->ID)['usage_balance_status'] ?? null);
+    }
 }
