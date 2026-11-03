@@ -282,6 +282,7 @@ console.log('courseMoneyState passed');
   // Codex #4836: never tell a director to void a bill for an uncovered lesson.
   assert.ok(!M.REVIEW_REASON_FIX.month_double_counted.text.startsWith('打開「繳費明細」，作廢'));
   // Codex #4836: void cannot reissue an old month, so no hint may tell a director to void and reissue.
-  for (const [code, fix] of Object.entries(M.REVIEW_REASON_FIX)) assert.ok(!/作廢(這張帳單)?[再後]?重開/.test(fix.text), `${code} suggests void-and-reissue`);
+  // A review reason never proves a bill is extra, so a hint may mention voiding only to say not to (Codex #4836).
+  for (const [code, fix] of Object.entries(M.REVIEW_REASON_FIX)) assert.ok(!fix.text.includes('作廢') || /不要[先直接自己]*作廢/.test(fix.text), `${code} tells the director to void`);
   assert.deepEqual(M.reviewReasonFixes(null), []);
 }
