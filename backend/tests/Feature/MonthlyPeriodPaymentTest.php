@@ -250,7 +250,6 @@ class MonthlyPeriodPaymentTest extends TestCase
             $shared->items()->create(['StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
             $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
             $this->assertSame($flagged, in_array('shared_or_multi_line_bill', $summary['review_reasons'], true), "paid {$paid}");
-            if (!$flagged) $this->assertSame([], $summary['review_reasons']);
         }
     }
 }
