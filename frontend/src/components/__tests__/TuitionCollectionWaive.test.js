@@ -44,3 +44,13 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source.match(/&& hasBatchAmount\(r\)\)/g)).toHaveLength(3); // preview rows, submit rows, open-preview rows
   });
 });
+
+describe('tuition 已核對 (#4798)', () => {
+  it('shows only on review rows with nothing owed, and posts to the check endpoint then reloads', () => {
+    expect(source).toContain('v-if="row.payment_review_required && row.outstanding_amount === 0"');
+    expect(source).toContain('`tc-review-check-${row.student_class_id}`');
+    expect(source).toContain('/api/v1/student-classes/${row.student_class_id}/payment-review/check');
+    expect(source).toContain('確認這門課的帳都對了？標記後就不再列在待核對。');
+    expect(source).toMatch(/payment-review\/check[\s\S]{0,400}json\.message[\s\S]{0,300}loadAlerts\(\), loadSettledCourses\(\)/);
+  });
+});

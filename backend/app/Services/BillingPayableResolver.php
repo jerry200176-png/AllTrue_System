@@ -190,6 +190,7 @@ class BillingPayableResolver
             'outstanding' => max(0, $total - $applied), 'overpaid' => $overpaid,
             'periods' => $periods, 'source' => $source, 'current_invoice_id' => $invoiceId,
             'review_reasons' => array_values($monthly['review_reasons'] ?? []),
+            'review_signature' => null, 'review_checked' => false,
         ];
         $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
         $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
@@ -275,15 +276,24 @@ class BillingPayableResolver
         // A non-free course whose non-void invoices are all zero-value is not settled: review.
         $zeroValueOnly = !$hasBillableInvoice && !$invoices->contains(fn ($invoice) => $invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: a full-discount NT$0 term is settled, not review // free courses already returned above
 
-        return $result(
-            ($unattributed !== [] || $monthlyReview || $zeroValueOnly) ? 'review_required' : ($worst['status'] ?? 'paid'),
-            (int) collect($periods)->sum('total'),
-            (int) collect($periods)->sum('applied'),
-            (int) collect($periods)->sum('overpaid'),
-            $periods,
-            'invoice',
-            $currentInvoiceId ?: null,
-        );
+        $status = ($unattributed !== [] || $monthlyReview || $zeroValueOnly) ? 'review_required' : ($worst['status'] ?? 'paid');
+        $total = (int) collect($periods)->sum('total');
+        $applied = (int) collect($periods)->sum('applied');
+        $out = $result($status, $total, $applied, (int) collect($periods)->sum('overpaid'), $periods, 'invoice', $currentInvoiceId ?: null);
+        if ($status === 'review_required') {
+            // #4798: a director's 已核對 pins this exact picture; any new bill, payment, reason or lesson changes it and review returns.
+            $reasons = $out['review_reasons'];
+            sort($reasons);
+            $out['review_signature'] = hash('sha256', json_encode([$reasons, array_map(fn ($p) => [$p['billing_period'], $p['invoice_ids'],
+                $p['total'], $p['applied'], $p['status']], $periods), count($monthly['session_review'] ?? [])]));
+            if ((string) $course->getAttribute('review_checked_signature') === $out['review_signature']
+                && $total - $applied === 0 && $unattributed === [] && !$zeroValueOnly) {
+                $out['status'] = 'paid';
+                $out['review_checked'] = true;
+            }
+        }
+
+        return $out;
     }
 
     /**

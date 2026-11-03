@@ -25,6 +25,7 @@ use App\Services\Billing\BillingCorrection;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\Billing\ContractRenewal;
 use App\Services\BillingModeConversionArchiveService;
+use App\Services\BillingPayableResolver;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
@@ -2537,6 +2538,47 @@ class StudentClassController extends Controller
         );
 
         return response()->json($result['body'], $result['status']);
+    }
+
+    /** #4798: a director marks a 待核對 course 已核對 when nothing is owed and every lesson month has a bill. */
+    public function paymentReviewCheck(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+        $actorId = $request->attributes->get('auth_user')?->id;
+
+        return DB::transaction(function () use ($studentClass, $actorId) {
+            $course = StudentClass::lockForUpdate()->findOrFail($studentClass->ID);
+            $id = (int) $course->ID;
+            $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$course])[$id];
+            if (($status['status'] ?? null) !== 'review_required') {
+                return response()->json(['message' => '這門課目前不在待核對。', 'code' => 'payment_review_not_pending'], 422);
+            }
+            $periods = collect($status['periods'] ?? []);
+            if ($periods->isEmpty() || $status['source'] !== 'invoice'
+                || $periods->contains(fn ($p) => ($p['status'] ?? null) === 'review_required')) {
+                return response()->json(['message' => '還有上過課的月份沒有帳單，請先開帳單再核對。', 'code' => 'payment_review_check_unbilled'], 409);
+            }
+            if ((int) $status['outstanding'] > 0) {
+                return response()->json(['message' => '這門課還有欠款，收完款才能標記已核對。', 'code' => 'payment_review_check_owed'], 409);
+            }
+            $course->review_checked_signature = $status['review_signature'];
+            if ($course->getAttribute('closed_reason') === 'settled_pending') {
+                $course->closed_reason = 'settled'; // mirrors payment confirm
+            }
+            $course->save();
+            SecurityAuditEvent::append('payment_review_checked', 'success', [
+                'campus_id' => $studentClass->student?->CampusID, 'actor_type' => 'user', 'actor_id' => $actorId,
+                'subject_type' => 'student_class', 'subject_id' => $id,
+            ], [
+                'review_reasons' => $status['review_reasons'], 'invoice_ids' => $periods->pluck('invoice_ids')->flatten()->values()->all(),
+                'signature' => $status['review_signature'], 'outcome' => 'success',
+            ]);
+            $after = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$course->fresh()])[$id];
+
+            return response()->json(['message' => '已標記為已核對。', 'status' => $after['status'], 'review_checked' => $after['review_checked']]);
+        });
     }
 
     /**
