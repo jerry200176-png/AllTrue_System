@@ -207,6 +207,8 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
   color: var(--slip-ink);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+  /* in-app #466: the PNG export can render the font wider than the page; a wrapped amount spilled out of the box. */
+  white-space: nowrap;
 }
 .slip-sub { font-size: 12px; color: var(--slip-ink-2); margin-top: 2px; }
 .slip-hero-due { text-align: right; }
