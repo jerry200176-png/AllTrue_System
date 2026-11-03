@@ -80,6 +80,7 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $trial_target_class_type Trial courses only: regular class type the trial is for (in-app #426).
  * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
+ * @property string|null $review_checked_signature
  * @property int|string|null $monthly_session_count Optional projection/aggregate attribute; no schema change.
  * @property \Illuminate\Support\Carbon|null $created_at Optional legacy attribute only; absent from the current schema and normal rows.
  */

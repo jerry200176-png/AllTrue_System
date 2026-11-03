@@ -403,6 +403,7 @@
                 <td>
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
+                    <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
                   </div>
                 </td>
               </tr>
@@ -681,6 +682,8 @@
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
+    <!-- #4798: askConfirm() needs a host on this page; App.vue mounts pages without a shared one. -->
+    <ConfirmDialogHost />
     </div>
   </div>
 </template>
@@ -702,6 +705,8 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtSelectAll from '../components/design-system/AtSelectAll.vue';
 import { useSelection } from '../composables/useSelection';
 import AtDialog from '../components/design-system/AtDialog.vue';
+import { askConfirm } from '../composables/useConfirmDialog';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -1560,6 +1565,22 @@ async function openWaiveDialog(row) {
     else showToast('無法取得不收金額', 'error');
   } catch (e) {
     showToast('無法取得不收金額', 'error');
+  }
+}
+
+async function checkReviewed(row) {
+  if (!await askConfirm({ title: '已核對？', message: '確認這門課的帳都對了？標記後就不再列在待核對。', confirmLabel: '已核對' })) return;
+  try {
+    const resp = await authedFetch(`/api/v1/student-classes/${row.student_class_id}/payment-review/check`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    }, getToken());
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.message || `操作失敗（${resp.status}）`);
+    showToast(json.message || '已標記為已核對。', 'success');
+    await Promise.all([loadAlerts(), loadSettledCourses()]);
+  } catch (e) {
+    showToast(e.message || '操作失敗', 'error');
   }
 }
 

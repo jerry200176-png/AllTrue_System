@@ -25,6 +25,7 @@ use App\Services\Billing\BillingCorrection;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\Billing\ContractRenewal;
 use App\Services\BillingModeConversionArchiveService;
+use App\Services\BillingPayableResolver;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
@@ -634,6 +635,10 @@ class StudentClassController extends Controller
             $class->setAttribute('last_paid_at', $invoicePaidAt ?? $directPaidAt);
             if (!$isTutoringCourse && isset($monthlyPayments[(int) $class->ID])) {
                 $monthlyPayment = $monthlyPayments[(int) $class->ID];
+                // #4798: a director's 已核對 (resolver verdict) settles the period summary too, so course management agrees.
+                if (!empty($courseStatuses[(int) $class->ID]['review_checked'])) {
+                    $monthlyPayment = ['review_required' => false, 'review_checked' => true, 'payment_status' => 'paid'] + $monthlyPayment;
+                }
                 $class->setAttribute('monthly_payment', $monthlyPayment);
                 // A report is an administrative claim, not a payment for all periods.
                 // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
@@ -2537,6 +2542,53 @@ class StudentClassController extends Controller
         );
 
         return response()->json($result['body'], $result['status']);
+    }
+
+    /** #4798: a director marks a 待核對 course 已核對 when nothing is owed and every lesson month has a bill. */
+    public function paymentReviewCheck(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+        $actorId = $request->attributes->get('auth_user')?->id;
+
+        return DB::transaction(function () use ($studentClass, $actorId) {
+            $course = StudentClass::lockForUpdate()->findOrFail($studentClass->ID);
+            $id = (int) $course->ID;
+            $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$course])[$id];
+            if (($status['status'] ?? null) !== 'review_required') {
+                return response()->json(['message' => '這門課目前不在待核對。', 'code' => 'payment_review_not_pending'], 422);
+            }
+            $periods = collect($status['periods'] ?? []);
+            if ($periods->isEmpty() || $status['source'] !== 'invoice' || (int) ($status['uncovered_sessions'] ?? 0) > 0
+                || $periods->contains(fn ($p) => ($p['status'] ?? null) === 'review_required')) {
+                return response()->json(['message' => '還有上過課的月份沒有帳單，請先開帳單再核對。', 'code' => 'payment_review_check_unbilled'], 409);
+            }
+            if ((int) $status['outstanding'] > 0) {
+                return response()->json(['message' => '這門課還有欠款，收完款才能標記已核對。', 'code' => 'payment_review_check_owed'], 409);
+            }
+            $course->review_checked_signature = $status['review_signature'];
+            if ($course->getAttribute('closed_reason') === 'settled_pending') {
+                $course->closed_reason = 'settled'; // mirrors payment confirm
+            }
+            $course->save();
+            $after = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$course->fresh()])[$id];
+            if (empty($after['review_checked'])) {
+                // e.g. zero-value bills only: the resolver never settles those, so roll back instead of reporting success.
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => '這門課的帳單狀態無法用「已核對」結清，請打開繳費明細處理。', 'code' => 'payment_review_check_not_settleable'], 409));
+            }
+            SecurityAuditEvent::append('payment_review_checked', 'success', [
+                'campus_id' => $studentClass->student?->CampusID, 'actor_type' => 'user', 'actor_id' => $actorId,
+                'subject_type' => 'student_class', 'subject_id' => $id,
+            ], [
+                // Only scalar allow-listed keys survive SecurityAuditEvent::metadata(): reasons as one code string, the signature as reason_hash.
+                'reason_code' => implode(',', $status['review_reasons']), 'reason_hash' => $status['review_signature'],
+                'row_count' => $periods->pluck('invoice_ids')->flatten()->count(), 'outcome' => 'success',
+            ], required: true); // no audit row, no check: the transaction rolls back
+
+            return response()->json(['message' => '已標記為已核對。', 'status' => $after['status'], 'review_checked' => $after['review_checked']]);
+        });
     }
 
     /**
