@@ -2623,6 +2623,27 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringContainsString('歷史', $histRow['first_session_note']);
     }
 
+    /** #4847 review: a confirmed report without InvoiceID whose Payment is on this student's bill is not a mismatch. */
+    public function test_ledger_receipt_linked_only_by_payment_is_on_the_bill(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid', 'billing_period' => '2026-04']);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
+        $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name, 'payment_date' => '2026-04-05', 'payment_method' => 'cash', 'reported_amount' => 8800,
+            'status' => 'confirmed', 'confirmed_at' => Carbon::parse('2026-04-05 12:00:00'), 'confirmed_by' => 1, 'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'ledger-link-' . uniqid()), 'token_expires_at' => Carbon::now()->addDay()]);
+        $report->update(['InvoiceID' => null]);
+        $payment->update(['payment_report_id' => $report->id]);
+
+        $codes = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk()->json('anomalies'))->pluck('code')->all();
+        $this->assertNotContains('receipt_without_invoice', $codes);
+    }
+
     public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void
     {
         $token = $this->createDirectorToken([1]);

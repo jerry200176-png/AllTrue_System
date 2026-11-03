@@ -1,0 +1,3 @@
+## 2026-11-04 — fix(billing): 繳費明細「要先處理」的收據問題寫清楚怎麼處理（in-app #474）
+<!-- release-notes: staff_update=staff-2026-11-04-ledger-receipt-next-steps -->
+- `AccountingLedgerModal.vue`: anomalies that share a receipt (`report_id`) render as one card instead of one card per check (`receipt_without_invoice`, `receipt_payment_outside_ledger`, `confirmed_receipt_without_payment`). `ledgerReceiptHelp()` in `studentClassDisplay.js` replaces the capability list 相關收據可撤銷 · 已對應帳單 with a plain sentence on what happened and an 怎麼處理 line that puts the safe step first. Void (撤銷收據, the API's own label) is described only as the step for a receipt issued in error. Same pattern as in-app #469. No API or data change.

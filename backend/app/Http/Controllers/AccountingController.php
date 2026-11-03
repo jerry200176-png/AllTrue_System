@@ -707,7 +707,10 @@ class AccountingController extends Controller
         $paymentIds = $invoices->flatMap(fn ($invoice) => $invoice->payments)->pluck('id')->map(fn ($id) => (int) $id)->all();
         $reportRows = $reports->map(function (PaymentReport $report) use ($invoiceIds, $paymentIds, &$anomalies) {
             $row = $this->ledgerReportRow($report);
-            if ($report->status === 'confirmed' && !in_array((int) $report->InvoiceID, $invoiceIds, true)) {
+            // A report without InvoiceID whose Payment sits on this student's bill is on the bill (#4847 review; the same
+            // COALESCE(pr.InvoiceID, p.InvoiceID) AlertController uses), not a receipt_without_invoice.
+            $linkedByPayment = !$report->InvoiceID && $report->payment_id && in_array((int) $report->payment_id, $paymentIds, true);
+            if ($report->status === 'confirmed' && !$linkedByPayment && !in_array((int) $report->InvoiceID, $invoiceIds, true)) {
                 $anomalies[] = [
                     'code' => 'receipt_without_invoice',
                     'severity' => 'warning',

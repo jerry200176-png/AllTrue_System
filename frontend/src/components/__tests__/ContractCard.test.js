@@ -35,7 +35,8 @@ describe('ContractCard', () => {
     const rows = w.findAll('[data-testid="contract-session"]').map((r) => r.text());
     expect(rows[0]).toContain('已收');
     expect(rows[2]).toContain('未繳');
-    expect(w.find('[data-testid="contract-summary"]').text()).toBe('共 3 堂・已上 1・還沒上 3');
+    // in-app #472: 共 = 已上 + 還沒上 (incl. unscheduled); the leave is listed apart, not counted.
+    expect(w.find('[data-testid="contract-summary"]').text()).toBe('共 4 堂・已上 1・還沒上 3・請假／取消 1 次（不算堂數）');
     expect(w.find('[data-testid="contract-unscheduled"]').text()).toBe('還有 2 堂還沒排日期');
     // Founder 2026-10-15 (Q9=A, in-app #396 / #3982): the card shows the course reference in the
     // same 「課程 000123」 format as the tables; invoice/receipt codes stay off the card.
@@ -331,10 +332,14 @@ describe('AccountingLedgerModal 登記收款', () => {
 describe('ContractCard money states (#3731 review)', () => {
   it('tutoring shows no payment action', async () => {
     authedFetch.mockResolvedValueOnce(respond({ ...COVERAGE, class_type: 'tutoring' }));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0 } });
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, current_contract_charge: 0 }, outstanding: 0 } });
     await flushPromises();
     expect(w.text()).toContain('輔導課不用繳費');
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    // in-app #475: no 還沒繳費, no NT$ 0 price, no per-lesson 還沒開帳單 on a course nobody pays for
+    expect(w.text()).not.toContain('還沒繳費');
+    expect(w.text()).not.toContain('還沒開帳單');
+    expect(w.find('[data-testid="contract-charge"]').exists()).toBe(false);
   });
 
   it('unbilled debt is not shown as NT$ 0', async () => {
@@ -563,6 +568,25 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     expect(text).toContain('撤銷這筆');
     expect(w.find('[data-testid="ledger-exception-hint"]').text()).toContain('撤銷這筆收款');
     expect(text).not.toMatch(/請聯絡總部|RCPT-|收據-/);
+    w.unmount(); vi.unstubAllGlobals();
+  });
+
+  it('in-app #474: one receipt failing two checks is one card that says what happened and what to do', async () => {
+    const { w } = await mountLedger({
+      student: { id: 1, name: '王小明' }, summary: {}, scope: {}, receipts: [], invoices: [], courses: [{ id: 2, subject: '數學', paid: true }],
+      anomalies: [
+        { code: 'receipt_without_invoice', severity: 'warning', message: '已確認收據尚未對到本學生帳單。', invoice_id: 77, report_id: 9, payment_id: 5, action: { type: 'void_report', label: '撤銷收據', report_id: 9 } },
+        { code: 'receipt_payment_outside_ledger', severity: 'warning', message: '收據對應的收款不在本學生帳單紀錄內。', invoice_id: 77, report_id: 9, payment_id: 5, action: { type: 'view_receipt', label: '查看收據', report_id: 9 } },
+      ],
+    });
+    const text = w.text();
+    expect(text).toContain('這張收據對不到這位學生的帳單');
+    expect(text).not.toContain('收據收款不在本學生帳本');
+    expect(text).not.toContain('相關收據可撤銷');
+    expect(w.findAll('[data-testid="ledger-exception-hint"]')).toHaveLength(1);
+    expect(w.find('[data-testid="ledger-exception-hint"]').text()).toMatch(/^怎麼處理：先不要撤銷。/);
+    expect(text).toContain('撤銷收據');
+    expect(text).not.toContain('撤銷收款');
     w.unmount(); vi.unstubAllGlobals();
   });
 
@@ -947,6 +971,8 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     const w = mount(ContractCard, { props: { course: { id: 9, paid: true }, lastPayment: { legacyUnverified: true } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
-    expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
+    // in-app #475: a tutoring course never reads 還沒繳費
+    expect(w.find('[data-testid="contract-last-payment"]').exists()).toBe(false);
+    expect(w.text()).toContain('輔導課不用繳費');
   });
 });

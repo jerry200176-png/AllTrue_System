@@ -9,7 +9,8 @@
         <div class="preview-line"><strong>{{ preview.current_session_count }} 堂</strong><span>→</span><strong>{{ preview.restored_session_count }} 堂</strong></div>
         <p>剩餘堂數 {{ preview.current_remaining_sessions }} → {{ preview.restored_remaining_sessions }}；將恢復 {{ preview.restorable_sessions_count }} 筆被取消的堂次、{{ preview.restorable_schedules_count }} 筆排程。</p>
         <p v-if="preview.unscheduled_remaining_sessions > 0" class="revert-warning">撤銷後有 {{ preview.unscheduled_remaining_sessions }} 堂尚未排課，系統不會自動排課，請自行安排。</p>
-        <p class="form-hint">帳務資料不會變更。</p>
+        <p v-if="preview.financial_mutation === 'charge'" class="form-hint" data-testid="revert-charge">合約金額 NT${{ Number(preview.current_charge || 0).toLocaleString() }} → <strong>NT${{ Number(preview.restored_charge || 0).toLocaleString() }}</strong>；已開的帳單、收款和收據不會改。</p>
+        <p v-else class="form-hint">合約金額不變；已開的帳單、收款和收據也不會改。</p>
       </div>
       <p v-if="errorMessage" class="revert-error" role="alert">{{ errorMessage }}</p>
 

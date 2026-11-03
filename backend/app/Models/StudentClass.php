@@ -402,6 +402,21 @@ class StudentClass extends Model
      * @param int[] $courseIds
      * @return array<int, true> course id => true
      */
+    /**
+     * Contract Charge after its Rate or quantity changes: Rate × quantity, keeping the manual delta
+     * (old Charge − old base) only when the course has per-lesson session_charge adjustments (#798).
+     * Shared by course edit and 調整合約總堂數 so the two writers agree (in-app #472). Null = leave Charge as is.
+     */
+    public static function chargeAfterChange(int $classId, int $oldCharge, int $oldBase, int $newBase): ?int
+    {
+        if ($newBase <= 0) {
+            return null;
+        }
+        $hasAdjustments = DB::table('ClassSession')->where('StudentClassID', $classId)->whereNotNull('session_charge')->exists();
+
+        return max(0, $newBase + ($hasAdjustments ? $oldCharge - $oldBase : 0));
+    }
+
     public static function unstartedPauseIds(array $courseIds): array
     {
         $courseIds = array_values(array_unique(array_filter(array_map('intval', $courseIds), fn (int $id) => $id > 0)));

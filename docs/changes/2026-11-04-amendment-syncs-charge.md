@@ -1,0 +1,3 @@
+## 2026-11-04 — fix(billing): 調整合約總堂數時合約金額一起改（in-app #472）
+<!-- release-notes: staff_update=staff-2026-11-04-amendment-syncs-charge -->
+- Founder 2026-11-04: when 提前結束／調整合約總堂數 changes a per-lesson contract's count, its `Charge` becomes new count × `Rate`. A manual per-lesson (`session_charge`) delta is kept, the same rule course edit uses; both now call `StudentClass::chargeAfterChange()`. The preview returns `original_charge`/`new_charge`, and 撤銷調整 restores the old amount. Issued bills, payments and receipts are not changed. Hourly contracts keep their amount, since this flow does not change hours.
