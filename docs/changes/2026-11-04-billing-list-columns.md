@@ -1,0 +1,4 @@
+## 2026-11-04 — fix(billing): 帳務中心學生清單欄位對齊（in-app #471）
+<!-- release-notes: staff_update=staff-2026-11-04-billing-list-columns -->
+- `StudentBillingList.vue`: the header and every row share one column template. The checkbox and action columns are reserved whenever any visible row uses them, following the Shopify Polaris IndexTable and Stripe invoice-list pattern. Before, each row chose its own grid from `has-check`/`has-action`, so the columns moved from row to row. The header labels keep their 12px size on the cells, so `em` column widths match the rows. The expand toggle is left-aligned under the name with a chevron, and 全選 no longer wraps. Mobile keeps the stacked card. No data or behaviour change.
+- The browser check `In-App471` in `e2e/tuition-collection-clarity.spec.js` asserts equal row starts and that the 到今天未繳 column lines up with its header at 1280 and 1440px. It fails on the old layout.

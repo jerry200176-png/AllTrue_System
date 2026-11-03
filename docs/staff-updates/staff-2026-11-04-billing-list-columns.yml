@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-billing-list-columns
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心學生清單排得更整齊
+    summary: 每一列的金額、逾期、狀態、最近繳費都對齊上面的標題，一眼就能往下比。
+    items:
+      - category: improved
+        text: 有勾選框、沒勾選框的學生，那一列都從同一個位置開始，欄位上下對齊。
+      - category: improved
+        text: 「展開 N 份合約」改放在學生名字下方，「全選」不會再斷成兩行。
+    source_refs:
+      - "changelog:2026-11-04:billing-list-columns"

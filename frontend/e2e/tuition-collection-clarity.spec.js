@@ -168,6 +168,30 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.getByText('林宥辰', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
+  test('In-App471: student list columns line up with the header on every row', async ({ page }) => {
+    await installMock(page);
+    for (const width of [1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+      await expect(page.locator('[data-testid^="sbl-row-"]').first()).toBeVisible();
+      const geo = await page.evaluate(() => {
+        const box = (el) => el.getBoundingClientRect();
+        const rows = [...document.querySelectorAll('.sbl__row')];
+        return {
+          head: Math.round(box(document.querySelector('.sbl__col-now')).right),
+          rowLefts: rows.map((r) => Math.round(box(r).left)),
+          nowRights: rows.map((r) => Math.round(box(r.querySelector('.sbl__now')).right)),
+          lastLefts: rows.map((r) => Math.round(box(r.querySelector('.sbl__last')).left)),
+        };
+      });
+      expect(geo.rowLefts.length).toBeGreaterThan(1);
+      expect(new Set(geo.rowLefts).size).toBe(1);
+      expect(new Set(geo.lastLefts).size).toBe(1);
+      for (const right of geo.nowRights) expect(Math.abs(right - geo.head)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: path.join(outDir, `inapp471-columns-${width}.png`), fullPage: true });
+    }
+  });
+
   test('captures the accounting tabs without page overflow', async ({ page }) => {
     await installMock(page);
     for (const tab of ['payments', 'settled']) {
