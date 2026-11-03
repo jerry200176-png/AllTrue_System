@@ -31,7 +31,7 @@ final class BillingRefundService
     {
     }
 
-    /** @return array{paid:int,used_lessons:int,rate:int,refundable:int} server-side truth; the UI shows exactly this. */
+    /** @return array{paid:int,used_lessons:int,rate:int|float,refundable:int} server-side truth; the UI shows exactly this. */
     public function preview(StudentClass $course): array
     {
         $this->assertRefundable($course);
@@ -52,8 +52,9 @@ final class BillingRefundService
             throw ValidationException::withMessages(['course' => '這門課有部分時數的扣堂，不能在這裡算退費，請走帳務流程。']);
         }
         $used = (int) ($diag['expected_used'] ?? 0);
-        $rate = max(0, (int) ($course->Rate ?? 0));
-        return ['paid' => $paid, 'used_lessons' => $used, 'rate' => $rate, 'refundable' => max(0, $paid - $used * $rate)];
+        $rate = max(0.0, (float) ($course->Rate ?? 0)); // keep fractions; round only the consumed value
+        return ['paid' => $paid, 'used_lessons' => $used, 'rate' => $rate == floor($rate) ? (int) $rate : $rate,
+            'refundable' => max(0, $paid - (int) round($used * $rate))];
     }
 
     public function refund(StudentClass $course, int $amount, string $method, string $date, string $reason, ?int $actorId): array
@@ -71,8 +72,11 @@ final class BillingRefundService
                 if ($take <= 0) {
                     continue;
                 }
-                $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -$take, 'PaidAt' => $date, 'Method' => $method,
-                    'Note' => mb_substr('退費：' . $reason, 0, 255)]);
+                // Method 'refund' tells readers this money-out row is not a receipt void; the way paid back is kept in the note.
+                $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -$take, 'PaidAt' => $date, 'Method' => 'refund',
+                    'Note' => mb_substr('退費：' . ($method === 'cash' ? '現金' : '匯款') . '，' . $reason, 0, 255)]);
+                // Credit line: the lines still add up to the new TotalAmount, and the slip shows the refund.
+                InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $locked->getKey(), 'Description' => '退費', 'Amount' => -$take]);
                 $invoice->TotalAmount = max(0, (int) $invoice->TotalAmount - $take);
                 $invoice->PaidAmount = max(0, (int) $invoice->PaidAmount - $take);
                 $invoice->save();
@@ -88,6 +92,11 @@ final class BillingRefundService
                 });
             Schedule::query()->where('student_course_id', $locked->getKey())->where('status', 'scheduled')
                 ->whereDate('schedule_date', '>=', $today)->update(['status' => 'cancelled', 'updated_at' => now()]);
+            $old = ['session_count' => (int) ($locked->SessionCount ?? 0), 'charge' => (int) ($locked->Charge ?? 0)];
+            // Entitlement follows what was used (like the #4846 amendment): nothing left, and the amount follows the count.
+            $locked->SessionCount = $p['used_lessons'];
+            $locked->UsedSessions = $p['used_lessons'];
+            $locked->Charge = (int) round($p['used_lessons'] * (float) ($locked->Rate ?? 0));
             $locked->Stop = 1;
             $locked->EndDate = $today;
             $locked->RemainingSessions = 0;
@@ -98,6 +107,8 @@ final class BillingRefundService
                 'subject_type' => 'student_class', 'subject_id' => (int) $locked->getKey(),
             ], [
                 'amount' => $amount, 'refundable' => $p['refundable'], 'paid' => $p['paid'], 'row_count' => count($ids),
+                'old_session_count' => $old['session_count'], 'new_session_count' => $p['used_lessons'],
+                'old_charge' => $old['charge'], 'new_charge' => (int) $locked->Charge,
                 'method' => $method, 'reason_code' => self::CLOSED_REASON, 'reason_hash' => hash('sha256', $reason), 'outcome' => 'success',
             ], required: true); // no audit row, no refund: the transaction rolls back
 

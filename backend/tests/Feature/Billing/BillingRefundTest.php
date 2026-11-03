@@ -33,19 +33,20 @@ class BillingRefundTest extends TestCase
     }
 
     /** 8 lessons x 500 = 4000 paid, 2 deducted (the absence is not): refundable 3000. */
-    private function course(string $mode = 'count'): StudentClass
+    private function course(string $mode = 'count', float $rate = 500, int $charge = 4000): StudentClass
     {
         $student = Student::create(['name' => 'Fixture', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
         $course = StudentClass::create(['StudentID' => $student->id, 'TeacherID' => 1, 'GradeID' => 1, 'SubjectID' => 1, 'by1' => 2, 'Period' => 4,
-            'StartDate' => '2026-10-01', 'EndDate' => '2026-12-31', 'TotalHours' => 16, 'Charge' => 4000, 'Rate' => 500, 'SessionCount' => 8,
+            'StartDate' => '2026-10-01', 'EndDate' => '2026-12-31', 'TotalHours' => 16, 'Charge' => $charge, 'Rate' => $rate, 'SessionCount' => 8,
             'RemainingSessions' => 5, 'Paid' => 1, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => $mode]);
         foreach (['2026-10-05' => 'attended', '2026-10-12' => 'late', '2026-10-19' => 'absent', '2026-10-26' => 'cancelled'] as $d => $st) {
             ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $d, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $st]);
         }
         ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => now()->addDays(3)->toDateString(), 'StartTime' => '23:00', 'EndTime' => '23:59', 'Status' => 'scheduled']);
         $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-01',
-            'TotalAmount' => 4000, 'PaidAmount' => 4000, 'Status' => 'paid']);
-        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-10-01', 'Method' => 'cash']);
+            'TotalAmount' => $charge, 'PaidAmount' => $charge, 'Status' => 'paid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => 'tuition', 'Amount' => $charge]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $charge, 'PaidAt' => '2026-10-01', 'Method' => 'cash']);
 
         return $course;
     }
@@ -84,6 +85,14 @@ class BillingRefundTest extends TestCase
         $this->assertSame(2000, $state['applied']);
         $this->assertSame(-2000, (int) Payment::query()->where('Amount', '<', 0)->sum('Amount'));
         $this->assertSame(2000, (int) Invoice::query()->value('TotalAmount'));
+        $this->assertSame('refund', Payment::where('Amount', '<', 0)->value('Method'));
+        $this->assertSame(2000, (int) InvoiceItem::query()->sum('Amount')); // lines add up to the new total
+        $invoiceId = Invoice::query()->value('id');
+        $slip = $this->withToken($this->token())->getJson("/api/v1/invoices/{$invoiceId}/slip-data")->assertOk()->json('items');
+        $this->assertContains(-2000, array_column($slip, 'amount'));
+        $this->assertSame([2, 1000], [(int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge]);
+        $audit0 = json_decode((string) DB::table('security_audit_events')->where('event_type', 'student_class.refund')->value('metadata'), true);
+        $this->assertSame([8, 2, 4000, 1000], [$audit0['old_session_count'], $audit0['new_session_count'], $audit0['old_charge'], $audit0['new_charge']]);
         $c = $c->fresh();
         $this->assertSame([1, 'refunded', 0], [(int) $c->Stop, $c->closed_reason, (int) $c->RemainingSessions]);
         $this->assertSame(now()->toDateString(), substr((string) $c->EndDate, 0, 10));
@@ -186,5 +195,48 @@ class BillingRefundTest extends TestCase
         $list = $this->withToken($token)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $c->StudentID)->assertOk()->json();
         $row = collect($list['data'] ?? $list)->firstWhere('ID', $c->ID);
         $this->assertSame('refunded', $row['history_reason'] ?? null);
+    }
+
+    public function test_full_refund_of_an_unused_contract_is_settled_history(): void
+    {
+        $c = $this->course();
+        ClassSession::where('StudentClassID', $c->ID)->delete();
+        $token = $this->token();
+        $this->send($token, $c, $this->body(4000))->assertOk();
+        $this->assertNotSame('review_required', $this->state($c)['status']);
+        $rows = $this->withToken($token)->getJson('/api/v1/accounting/settled-courses?branch_id=1')->assertOk()->json('data');
+        $this->assertSame('歷史 · 已退費', collect($rows)->firstWhere('student_class_id', $c->ID)['reconciliation_label'] ?? null);
+    }
+
+    public function test_partial_refund_leaves_no_remaining_lessons_or_balance_review(): void
+    {
+        $c = $this->course();
+        $token = $this->token();
+        $this->send($token, $c, $this->body(3000))->assertOk();
+        $list = $this->withToken($token)->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $c->StudentID)->assertOk()->json();
+        $row = collect($list['data'] ?? $list)->firstWhere('ID', $c->ID);
+        $this->assertSame(0, (int) $row['remaining_sessions']);
+        $this->assertNotSame('review_required', $row['usage_balance_status'] ?? null);
+    }
+
+    public function test_ledger_keeps_original_receipts_applied_after_a_refund(): void
+    {
+        $c = $this->course(rate: 500, charge: 4000);
+        $inv = Invoice::query()->first();
+        Payment::query()->update(['Amount' => 2000]);
+        Payment::create(['InvoiceID' => $inv->id, 'Amount' => 2000, 'PaidAt' => '2026-10-02', 'Method' => 'cash']);
+        $token = $this->token();
+        $this->send($token, $c, $this->body(2500))->assertOk();
+        $res = $this->withToken($token)->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$c->ID}")->assertOk();
+        $this->assertSame([], collect($res->json('anomalies'))->where('code', 'overpayment_pending_review')->all());
+        $statuses = collect($res->json('invoices.0.payments'))->pluck('application_status')->all();
+        $this->assertSame(['applied', 'applied', 'refunded'], $statuses);
+    }
+
+    public function test_fractional_rate_rounds_only_at_the_end(): void
+    {
+        $c = $this->course(rate: 500.5, charge: 4004);
+        $this->withToken($this->token())->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertOk()
+            ->assertJson(['rate' => 500.5, 'refundable' => 3003]);
     }
 }
