@@ -60,6 +60,22 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame([['2026-05', 2000]], $this->bills($sc));
     }
 
+    /** Codex P1 on #4867: paying one monthly member leaves its unpaid sibling collectible (no package-wide Paid flag). */
+    public function test_paying_one_monthly_plan_member_keeps_its_sibling_collectible(): void
+    {
+        $a = $this->course('2026-05-24', '2026-05-31', ['2026-05-24' => 'attended', '2026-05-31' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'Stop' => 1]);
+        $b = $this->course('2026-05-24', '2026-05-31', ['2026-05-24' => 'attended', '2026-05-31' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'Stop' => 1, 'StudentID' => $a->StudentID]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        StudentClass::whereIn('ID', [$a->ID, $b->ID])->update(['PackageID' => $pkg]);
+
+        $this->confirm($this->record($a->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame(0, (int) \Illuminate\Support\Facades\DB::table('course_packages')->where('id', $pkg)->value('paid'));
+        $this->assertSame(0, (int) $b->fresh()->Paid);
+        $this->confirm($this->record($b->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-05', 2000]], $this->bills($b));
+    }
+
     public function test_cross_month_contract_collects_august_then_september(): void
     {
         $sc = $this->course('2026-08-31', '2026-09-30', [

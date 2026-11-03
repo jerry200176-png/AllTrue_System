@@ -576,7 +576,8 @@ class PaymentReportController extends Controller
                         : $sc->getAttribute('closed_reason'),
                 ]);
             }
-            if ($package && $status === 'paid' && !$enteredOnlyPackageBill) {
+            // A count package is one shared obligation; a monthly ('date') member settles only itself (#3892 D4, in-app #478).
+            if ($package && $status === 'paid' && !$enteredOnlyPackageBill && $sc->getAttribute('ScheduleMode') !== 'date') {
                 $paidAt = Carbon::make($report->payment_date)?->toDateString()
                     ?? Carbon::today()->toDateString();
                 $this->markPackagePaid($package, $paidAt);
