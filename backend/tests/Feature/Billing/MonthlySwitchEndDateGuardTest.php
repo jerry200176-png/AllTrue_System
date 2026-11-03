@@ -46,6 +46,22 @@ class MonthlySwitchEndDateGuardTest extends TestCase
             ->assertJsonPath('message', '月結合約的結束日 11/3 之後還有 11/10、11/17、11/24 的課。請把結束日改到最後一堂（11/24）或之後，或先取消這些堂次。沒有修改任何資料。');
         $this->assertSame('count', $sc->fresh()->ScheduleMode);
         $this->assertSame($before, $rows());
+        $audit = \Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'student_class.edit_blocked')->where('outcome', 'blocked')->get();
+        $this->assertCount(1, $audit->filter(fn ($r) => (json_decode($r->metadata, true)['reason_code'] ?? null) === 'contract_dates_exclude_scheduled_lessons'));
+    }
+
+    public function test_force_partial_rebuild_cannot_bypass_the_guard(): void
+    {
+        $sc = $this->countCourse();
+        $rows = fn () => ClassSession::where('StudentClassID', $sc->ID)->orderBy('ID')->get(['ID', 'SessionDate', 'Status'])->toArray();
+        $before = $rows();
+        $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", [
+            'payment_type' => 'monthly', 'start_date' => '2026-11-03', 'end_date' => '2026-11-03', 'force_partial_rebuild' => 1,
+            'duration_hours' => 2, 'days_of_week' => [2], 'start_time' => '18:00',
+            'day_time_slots' => [['day' => 2, 'start_time' => '18:00', 'duration_minutes' => 120]],
+        ])->assertStatus(422)->assertJsonPath('code', 'contract_dates_exclude_scheduled_lessons');
+        $this->assertSame('count', $sc->fresh()->ScheduleMode);
+        $this->assertSame($before, $rows());
     }
 
     public function test_switch_with_covering_end_date_is_saved(): void
