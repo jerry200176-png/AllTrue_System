@@ -123,6 +123,11 @@ class InvoiceAmountReconciliationService
             $repriceable = $billing['source'] === 'billable_sessions'
                 && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
                 && $netApplied === 0;
+            // A multi-course bill keeps its stored total: one course's lesson price covers only its own share.
+            if ($repriceable && ($invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get())
+                ->pluck('StudentClassID')->filter()->unique()->count() > 1) {
+                $repriceable = false;
+            }
             if ($amountDiscrepancy && $repriceable) {
                 $totalAmount = $computedTotalAmount;
                 $amountSource = 'billable_sessions';

@@ -524,7 +524,7 @@ class PaymentReportController extends Controller
                     && (int) ($monthlyProjection['net_applied'] ?? 0) === 0
                     && (!$monthlyProjection || $monthlyProjection['computed_total_amount'] !== null)
                     && $billing['source'] === 'billable_sessions'
-                    && !$this->isMultiCourseInvoice($invoice)
+                    && (!$monthlyProjection || $monthlyProjection['repriceable'])
                 ) {
                     $invoice->TotalAmount = (int) $billing['charge'];
                 }
@@ -1607,21 +1607,7 @@ class PaymentReportController extends Controller
         $invoice->setRelation('payments', $invoice->payments()->lockForUpdate()->get());
         $invoice->loadMissing('items');
 
-        $projection = app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc);
-        if ($this->isMultiCourseInvoice($invoice) && $projection['amount_source'] === 'billable_sessions') {
-            $total = (int) $projection['stored_total_amount'];
-            $net = (int) $projection['net_applied'];
-            $projection = ['total_amount' => $total, 'amount_source' => 'invoice_total', 'repriceable' => false, 'applied_amount' => min($total, $net),
-                'overpaid_amount' => max(0, $net - $total), 'outstanding_amount' => max(0, $total - $net)] + $projection;
-        }
-
-        return $projection;
-    }
-
-    /** A multi-course bill keeps its stored total: one course's lesson price covers only its own share (same rule as BillingController::lockedInvoiceProjection). */
-    private function isMultiCourseInvoice(Invoice $invoice): bool
-    {
-        return $invoice->items->pluck('StudentClassID')->filter()->unique()->count() > 1;
+        return app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc);
     }
 
     /**

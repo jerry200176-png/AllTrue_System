@@ -89,10 +89,31 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $bill->items()->create(['StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 2000]);
         $bill->items()->create(['StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
 
+        // Every surface asks for the stored 4000, not the header course's own 2000 (Codex round 3).
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$a->ID}")->assertOk()->assertJsonPath('charge', 4000);
+        $resolved = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$a->ID], [$a->fresh()])[$a->ID];
+        $this->assertSame(4000, (int) ($resolved['payable_outstanding'] ?? -1), json_encode($resolved));
         $this->record($a->fresh(), 2000)->assertStatus(422)->assertJsonPath('expected_amount', 4000);
         $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
         $bill->refresh();
         $this->assertSame([4000, 4000, 'paid'], [(int) $bill->TotalAmount, (int) $bill->PaidAmount, (string) $bill->Status]);
+    }
+
+    /** Codex round 3 on #4867: a single-month plan member with Charge 0 and no bill is not 'paid' in the course list. */
+    public function test_single_month_plan_member_without_bill_is_not_paid_in_the_course_list(): void
+    {
+        $sc = $this->course('2026-10-01', '2026-10-31', ['2026-10-05' => 'attended', '2026-10-12' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg]);
+        $status = fn () => collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$sc->StudentID)->assertOk()->json('data'))
+            ->firstWhere('ID', $sc->ID);
+
+        $this->assertNotSame('paid', $status()['payment_status']);
+        $this->assertFalse(($status()['monthly_payment']['payment_status'] ?? null) === 'paid');
+        $this->record($sc->fresh(), 2000)->assertOk();
+        $this->assertNotSame('paid', $status()['payment_status']);
+        $this->assertFalse(($status()['monthly_payment']['payment_status'] ?? null) === 'paid');
     }
 
     /** Codex P2 on #4867: a monthly plan member (Charge 0) with lessons in two months stays collectible month by month. */

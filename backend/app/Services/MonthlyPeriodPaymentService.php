@@ -116,8 +116,11 @@ final class MonthlyPeriodPaymentService
         if ($invoices->isEmpty() && $singlePeriod && count($uncoveredMonths) <= 1
             && ($uncoveredMonths === [] || isset($uncoveredMonths[substr($start, 0, 7)]))) {
             $period = substr($start, 0, 7);
+            // A monthly package member's stored Charge is 0: its month is priced from its own lessons (#3892 D4, in-app #478).
+            $charge = (int) $course->getAttribute('PackageID') > 0
+                ? (int) $this->billing->summarizePeriod($course, $period)['charge'] : max(0, (int) $course->getAttribute('Charge'));
             $periods[$period] = ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
-                'charge' => max(0, (int) $course->getAttribute('Charge')), 'paid_amount' => (int) $course->getAttribute('Paid') === 1 ? max(0, (int) $course->getAttribute('Charge')) : 0,
+                'charge' => $charge, 'paid_amount' => (int) $course->getAttribute('Paid') === 1 ? $charge : 0,
                 'invoice_ids' => [], 'source' => 'single_period_legacy'];
             $uncoveredMonths = [];
         }
