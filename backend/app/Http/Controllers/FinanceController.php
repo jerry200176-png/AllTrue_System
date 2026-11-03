@@ -1694,6 +1694,7 @@ class FinanceController extends Controller
         $rows = $query->get();
         $anomalies = [];
         $seen = [];
+        $rowOf = [];
 
         foreach ($rows as $row) {
             if (($row->ClassType ?? null) === 'trial') {
@@ -1713,6 +1714,7 @@ class FinanceController extends Controller
 
             $key = (int) $row->class_session_id;
             $seen[$key][] = (int) $row->student_sign_in_id;
+            $rowOf[$key] = $row;
             $add = function (string $code, string $message) use (&$anomalies, $row, $key): void {
                 $anomalies[] = [
                     'code' => $code,
@@ -1745,8 +1747,8 @@ class FinanceController extends Controller
                     'message' => '同一堂存在多筆有效點名',
                     'class_session_id' => (int) $sessionId,
                     'student_sign_in_id' => null,
-                    'session_date' => null,
-                ];
+                    'session_date' => $rowOf[$sessionId]->SessionDate ? substr((string) $rowOf[$sessionId]->SessionDate, 0, 10) : null,
+                ] + self::payrollLessonLabel($rowOf[$sessionId]);
             }
         }
 

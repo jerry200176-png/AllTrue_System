@@ -12,8 +12,6 @@ updates:
       - category: fixed
         text: 課程不能刪除時，會說出是哪一種紀錄擋住（例如繳費提醒、點名、扣堂）。
       - category: improved
-        text: 課程頁的「月結帳單與上課堂數不符」會直接寫出怎麼處理。
-      - category: improved
-        text: 續課加買堂數時會說清楚：原本還沒上完的課照常上，不會被結案。
+        text: 「月結帳單與上課堂數不符」會直接寫出怎麼處理；續課加買堂數時會說清楚，原本還沒上完的課照常上，不會被結案。
     source_refs:
       - "changelog:2026-11-04:inapp-481-485-plain-next-steps"

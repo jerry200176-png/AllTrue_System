@@ -5,8 +5,9 @@ const summary = {
   lock_status: 'draft', anomaly_count: 0, anomalies: [],
   unmarked_count: 2,
   unmarked_lessons: [
-    { code: 'unmarked_attendance', message: '已結束但沒有點名，不會算進薪資', class_session_id: 47206, session_date: '2026-10-31', start_time: '14:00', end_time: '16:00', student_name: '王小明', subject_name: '數學' },
+    { code: 'unmarked_attendance', message: '已結束但沒有點名，不會算進薪資', class_session_id: 11, session_date: '2026-10-31' },
     { code: 'unmarked_attendance', message: '已結束但沒有點名，不會算進薪資', class_session_id: 12, session_date: '2026-10-30' },
+    { code: 'unmarked_attendance', message: '已結束但沒有點名，不會算進薪資', class_session_id: 47206, session_date: '2026-10-29', start_time: '14:00', end_time: '16:00', student_name: '王小明', subject_name: '數學' },
   ],
 };
 
