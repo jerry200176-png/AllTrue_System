@@ -4966,8 +4966,19 @@ class StudentClassController extends Controller
                 return response()->json(['message' => '套裝課程的合約不能單獨刪除，請到套裝處理'], 422);
             }
             // Attendance / entitlement history is never erased with the contract: close it instead.
-            if (StudentClass::hasOperationalHistory([$id])) {
-                return response()->json(['message' => '此合約已有上課、點名、扣堂、轉堂或調價紀錄，不能刪除，請改用結案'], 422);
+            if ($reasons = StudentClass::operationalHistoryReasons([$id])) {
+                // in-app #483: name what blocks it (Stripe/GitHub style), so a director with no lesson used sees why.
+                $words = ['invoice_corrections' => '帳款更正', 'session_deduction_ledger' => '扣堂', 'session_entitlement_transfers' => '轉堂',
+                    'class_session_reassignments' => '堂次改課', 'student_class_pricing_amendments' => '調價', 'dunning_events' => '繳費提醒',
+                    'course_contract_group_members' => '合約群組', 'bug_report_contract_links' => '回報問題', 'contract_sibling_transfers' => '兄弟姊妹轉帳',
+                    'sign_in' => '點名', 'held_session' => '上課或請假'];
+                $list = implode('、', array_map(fn ($r) => $words[$r] ?? '其他', $reasons));
+
+                return response()->json([
+                    'message' => "這門課已有{$list}紀錄，紀錄要保留，所以不能刪除。不再上課請用「結案」：之後不會再排課或收費，紀錄都會留著。",
+                    'code' => 'course_has_history',
+                    'reasons' => $reasons,
+                ], 422);
             }
             // isEffectivelyPaid() also honours a paid CoursePackage (package members can have no invoice);
             // legacy Pay / PayDate are payment state too.
