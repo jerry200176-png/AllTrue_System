@@ -207,7 +207,7 @@ class PaymentReportController extends Controller
         $refusal = null;
         $report = DB::transaction(function () use ($sc, $data, $tokenHash, $payload, &$refusal) {
             $locked = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
-            if (!$locked || ContractMoneyState::isWaived($locked)) {
+            if (!$locked || $locked->isTerminalMoneyClosure()) {
                 return null;
             }
             // Same target confirm() will pick; cap against that bill, not the course total (#3864 hotfix P1-a).
@@ -1825,6 +1825,11 @@ class PaymentReportController extends Controller
             // Legitimate null-InvoiceID legacy path is allowed only when course/report ownership already matches.
             if (!$sc || (int) $sc->StudentID !== $reportStudentId) {
                 return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+            }
+
+            if ((string) $sc->getAttribute('closed_reason') === 'refunded') {
+                // #4843: the refund already took money back; reversing the full receipt would take it twice.
+                return response()->json(['message' => '這門課已退費，收款不能再撤銷。', 'code' => 'void_course_refunded'], 422);
             }
 
             $invoiceId = $report->getAttribute('InvoiceID');

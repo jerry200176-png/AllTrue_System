@@ -335,7 +335,7 @@ final class DuplicateAttendedCancelStrategy
                 $this->net($sid, $cid) <= 0 => 'no_deduction',
                 $this->net($tid, $tcid) <= 0 => 'twin_no_deduction',
                 !isset($over[$cid]) || $over[$cid]['uncapped_used'] <= $over[$cid]['session_count'] => 'course_not_over',
-                $c->settlement_locked_at !== null || in_array($c->closed_reason, ['usage_settled', 'contract_amended', 'waived'], true) => 'course_settled',
+                $c->settlement_locked_at !== null || in_array($c->closed_reason, \App\Models\StudentClass::USAGE_LOCK_CLOSURES, true) => 'course_settled',
                 str_contains((string) $s->Note, 'projected-monthly-materialized') => 'projected_monthly_session', // the app's cancel also edits its schedule row
                 default => null,
             };

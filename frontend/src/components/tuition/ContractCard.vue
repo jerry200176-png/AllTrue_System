@@ -54,6 +54,7 @@
         <AtButton v-if="rowActions.void" variant="secondary" size="sm" shape="rect" data-testid="contract-void" @click="emit('row-action', 'void')">撤銷收款</AtButton>
         <AtButton v-if="rowActions.settle" variant="secondary" size="sm" shape="rect" data-testid="contract-settle" @click="emit('row-action', 'settle')">結案（不續報）</AtButton>
       </template>
+      <AtButton v-if="canRefund" variant="secondary" size="sm" shape="rect" data-testid="contract-refund" @click="refundOpen = true">退費</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -104,6 +105,7 @@
       </section>
       <p v-if="unscheduled > 0" class="contract__muted" data-testid="contract-unscheduled">還有 {{ unscheduled }} 堂還沒排日期</p>
     </template>
+    <RefundDialog v-if="canRefund" :open="refundOpen" :course-id="Number(course.id)" @close="refundOpen = false" @done="refundOpen = false; emit('changed')" />
     <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
       <p class="contract__confirm-text" data-testid="contract-confirm-text">
         確認收到 {{ money(pendingReport?.amount) }}？確認後算「已收」。金額不對請取消，改按「退回」。
@@ -133,6 +135,7 @@ import AtButton from '../design-system/AtButton.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import RefundDialog from './RefundDialog.vue';
 import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
@@ -218,6 +221,9 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
+// 退費 (issue 4843) only for an open lesson-count contract with money in; the server re-checks everything.
+const refundOpen = ref(false);
+const canRefund = computed(() => !isMonthly.value && Number(props.amounts?.received) > 0 && !props.course.closed_reason && !props.course.stop);
 // Server `current_contract_charge` only (AccountingController::currentContractCharge). It is null for a monthly contract
 // or a package member, whose stored Charge is no contract price: in-app #432 showed a monthly Charge as 合約金額.
 const contractCharge = computed(() => {
