@@ -279,7 +279,9 @@ class AccountingController extends Controller
             return BillingPayableResolver::isAmountPendingConfirmation($course, $status) ? 'pending_review' : 'review';
         }
         // Settled by Payment rows although the invoice/closure state says otherwise: keep it in history.
-        if ($status['status'] === 'paid' && in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true)) {
+        // #4832: so does a course a director marked 已核對 (the resolver verdict, not the stale invoice/Paid flags).
+        if ($status['status'] === 'paid' && (!empty($status['review_checked'])
+            || in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true))) {
             return 'history';
         }
 
