@@ -342,13 +342,14 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $director = $this->createUser('director-488@example.com', 'A', [$campus->id]);
         $contract = $this->createUser('teacher-488-contract@example.com', 'T', [$campus->id]);
         $sub = $this->createUser('teacher-488-sub@example.com', 'T', [$campus->id]);
+        $named = $this->createUser('teacher-488-named@example.com', 'T', [$campus->id]);
         $course = $this->course($campus->id, $contract['user_id'], 'one_on_one', 1);
-        foreach (['2026-08-15' => false, '2026-08-22' => true] as $date => $withStaleRecord) {
+        foreach (['2026-08-15' => null, '2026-08-22' => $contract, '2026-08-29' => $named] as $date => $recordTeacher) {
             $session = $this->makeSession($course, $date, '10:00:00', '12:00:00', 'completed');
             StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $course->StudentID, 'TeacherID' => $sub['user_id'],
                 'ClassSessionID' => $session->id, 'Status' => 'present', 'SignInDT' => "{$date} 10:00:00"]);
-            if ($withStaleRecord) { // written under the contract teacher before the hand-off
-                LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => $contract['user_id'],
+            if ($recordTeacher) { // the contract teacher's record is stale; another named teacher is kept
+                LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => $recordTeacher['user_id'],
                     'Content' => '代課', 'Subject' => 'Math', 'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
                     'SessionDate' => $date, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'SessionDeducted' => true]);
             }
@@ -360,8 +361,11 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $url = '/api/v1/finance/subject-units/timeline?start=2026-08-01&end=2026-08-31';
 
         $all = $this->withHeaders($this->authHeaders($director['token']))->getJson($url)->assertOk()->json('entries');
-        $this->assertSame([$sub['user_id']], array_values(array_unique(array_column($all, 'teacher_id'))));
-        $this->assertSame(2, array_sum(array_column($all, 'regular_session_count')));
+        $byTeacher = [];
+        foreach ($all as $entry) {
+            $byTeacher[$entry['teacher_id']] = ($byTeacher[$entry['teacher_id']] ?? 0) + $entry['regular_session_count'];
+        }
+        $this->assertSame([$sub['user_id'] => 2, $named['user_id'] => 1], $byTeacher);
         $this->assertSame([], $this->withHeaders($this->authHeaders($contract['token']))->getJson($url)->assertOk()->json('entries'));
         $this->assertCount(2, $this->withHeaders($this->authHeaders($sub['token']))->getJson($url)->assertOk()->json('entries'));
     }

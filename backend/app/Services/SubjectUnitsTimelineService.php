@@ -50,7 +50,6 @@ final class SubjectUnitsTimelineService
             ->whereBetween('lr.SessionDate', [$start->toDateString(), $end->toDateString()])
             ->whereNotIn('sc.ClassType', ['trial', 'tutoring'])
             ->when($campusIds !== [], fn ($q) => $q->whereIn('s.CampusID', $campusIds))
-            ->when($teacherId !== null, fn ($q) => $mine($q, 'lr.TeacherID'))
             ->select([
                 'lr.id as record_id', 'lr.ClassSessionID as class_session_id', 'sc.ID as course_id', 'sc.TeacherID as contract_teacher_id',
                 'lr.TeacherID as teacher_id', 'lr.SessionDate as event_date',
@@ -66,7 +65,8 @@ final class SubjectUnitsTimelineService
             $learningRecords->addSelect('lr.ExcludeFromSubjectCount as excluded_from_subject_count');
         }
 
-        foreach ($this->taughtBy($learningRecords->get(), $teacherId, $substituted) as $row) {
+        // Every record marks its session covered before the viewer filter, so attendance never re-counts it for someone else.
+        foreach ($this->taughtBy($learningRecords->get(), null, $substituted) as $row) {
             $sessionId = (int) ($row->class_session_id ?? 0);
             if ($sessionId > 0) {
                 $coveredRegularSessions[$sessionId] = true;
@@ -75,6 +75,9 @@ final class SubjectUnitsTimelineService
                     continue;
                 }
             } elseif ((bool) ($row->excluded_from_subject_count ?? false)) {
+                continue;
+            }
+            if ($teacherId !== null && (int) $row->teacher_id !== $teacherId) {
                 continue;
             }
 
