@@ -332,10 +332,14 @@ describe('AccountingLedgerModal 登記收款', () => {
 describe('ContractCard money states (#3731 review)', () => {
   it('tutoring shows no payment action', async () => {
     authedFetch.mockResolvedValueOnce(respond({ ...COVERAGE, class_type: 'tutoring' }));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0 } });
+    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, current_contract_charge: 0 }, outstanding: 0 } });
     await flushPromises();
     expect(w.text()).toContain('輔導課不用繳費');
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    // in-app #475: no 還沒繳費, no NT$ 0 price, no per-lesson 還沒開帳單 on a course nobody pays for
+    expect(w.text()).not.toContain('還沒繳費');
+    expect(w.text()).not.toContain('還沒開帳單');
+    expect(w.find('[data-testid="contract-charge"]').exists()).toBe(false);
   });
 
   it('unbilled debt is not shown as NT$ 0', async () => {
@@ -948,6 +952,8 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     const w = mount(ContractCard, { props: { course: { id: 9, paid: true }, lastPayment: { legacyUnverified: true } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
-    expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
+    // in-app #475: a tutoring course never reads 還沒繳費
+    expect(w.find('[data-testid="contract-last-payment"]').exists()).toBe(false);
+    expect(w.text()).toContain('輔導課不用繳費');
   });
 });
