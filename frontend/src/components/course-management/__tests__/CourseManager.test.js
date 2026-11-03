@@ -357,3 +357,12 @@ describe('CourseManager drawer a11y (C-PR4)', () => {
   })
 })
 
+
+// in-app #486: the POP-only 預覽分期更正 form is offered to super admins only.
+it('hides the headquarters-only correction preview from directors', async () => {
+  const course = { ...baseCourse(), payment_type: 'monthly', ScheduleMode: 'date', monthly_payment: { review_required: false, periods: [] } };
+  const director = mountCm({ tab: 'billing', course, isMonthlyMode: true });
+  expect(director.findAll('button').some(b => b.text() === '預覽分期更正')).toBe(false);
+  const admin = mountCm({ tab: 'billing', course, isMonthlyMode: true, canPreviewCorrection: true });
+  expect(admin.findAll('button').some(b => b.text() === '預覽分期更正')).toBe(true);
+});
