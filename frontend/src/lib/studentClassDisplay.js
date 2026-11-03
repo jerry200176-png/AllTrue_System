@@ -287,7 +287,7 @@ export function formatLedgerReceiptBillLine(r) {
 // modal merges them into one card. A mismatch never proves the money is wrong, so voiding is only for a receipt
 // issued in error (Xero/QuickBooks reconciliation pattern: explain first, safe step first).
 const RECEIPT_MISMATCH_CODES = ['receipt_without_invoice', 'receipt_payment_outside_ledger', 'confirmed_receipt_without_payment'];
-export function ledgerReceiptHelp(codes, { hasInvoice = false } = {}) {
+export function ledgerReceiptHelp(codes) {
   const set = new Set(codes);
   if (!RECEIPT_MISMATCH_CODES.some((c) => set.has(c))) return null;
   if (set.has('confirmed_receipt_without_payment')) {
@@ -297,14 +297,11 @@ export function ledgerReceiptHelp(codes, { hasInvoice = false } = {}) {
       hint: '怎麼處理：錢真的收了，請聯絡總部補記收款；收據開錯、根本沒收這筆錢，才按「撤銷收據」。',
     };
   }
-  return hasInvoice ? {
-    title: '這張收據記在別的帳單上',
-    message: '錢收了，但記在不是這位學生的帳單上（例如兄弟姊妹合開的帳單），所以這裡對不到。',
-    hint: '怎麼處理：先不要撤銷。到那位學生的繳費明細找這筆；記錯學生，請聯絡總部更正。收據開錯、根本沒收這筆錢，才按「撤銷收據」。',
-  } : {
-    title: '這張收據沒有對到帳單',
-    message: '收據確認了，但沒有掛在任何帳單上。',
-    hint: '怎麼處理：先不要撤銷。請聯絡總部把它掛到對的帳單；收據開錯、根本沒收這筆錢，才按「撤銷收據」。',
+  // Which bill the money is on is not known here (#4847 review), so the copy never guesses another student's bill.
+  return {
+    title: '這張收據對不到這位學生的帳單',
+    message: '收據已經確認，但這位學生的帳單上找不到對應的收款，可能記在別的帳單上（例如兄弟姊妹合開的帳單）。',
+    hint: '怎麼處理：先不要撤銷。錢真的收了，請聯絡總部對帳；收據開錯、根本沒收這筆錢，才按「撤銷收據」。',
   };
 }
 

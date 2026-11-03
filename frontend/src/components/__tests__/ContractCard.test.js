@@ -575,7 +575,7 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
       ],
     });
     const text = w.text();
-    expect(text).toContain('這張收據記在別的帳單上');
+    expect(text).toContain('這張收據對不到這位學生的帳單');
     expect(text).not.toContain('收據收款不在本學生帳本');
     expect(text).not.toContain('相關收據可撤銷');
     expect(w.findAll('[data-testid="ledger-exception-hint"]')).toHaveLength(1);

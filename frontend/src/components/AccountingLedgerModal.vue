@@ -620,13 +620,11 @@ const ledgerExceptions = computed(() => {
     if (same) {
       same.codes.push(a.code);
       same.can_void = same.can_void || a.action?.type === 'void_report';
-      same.has_invoice = same.has_invoice || !!a.invoice_id;
       return;
     }
     const row = {
       key: `a-${idx}-${a.code}-${a.report_id || 'na'}-${a.payment_id || 'na'}`,
       codes: [a.code],
-      has_invoice: !!a.invoice_id,
       title: anomalyLabel(a.code),
       message: a.message,
       detail: formatLedgerAnomalyDetail(a),
@@ -640,7 +638,7 @@ const ledgerExceptions = computed(() => {
     if (a.report_id) byReceipt.set(a.report_id, row);
   });
   rows.forEach((row) => {
-    const help = ledgerReceiptHelp(row.codes, { hasInvoice: row.has_invoice });
+    const help = ledgerReceiptHelp(row.codes);
     if (help) Object.assign(row, help, { detail: '', action_label: '撤銷收據' });
   });
   (payload.value?.invoices || []).forEach((inv) => {
