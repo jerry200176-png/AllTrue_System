@@ -1,5 +1,5 @@
 import { mount, flushPromises } from '@vue/test-utils';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import RefundDialog from '../RefundDialog.vue';
 
 const mockFetch = vi.fn();
@@ -50,4 +50,14 @@ it('submits and emits done', async () => {
   const body = JSON.parse(mockFetch.mock.calls[1][1].body);
   expect(body).toMatchObject({ amount: 2500, method: 'cash', reason: '搬家' });
   expect(w.emitted('done')).toHaveLength(1);
+});
+
+afterEach(() => vi.useRealTimers());
+
+it('defaults and caps the date at today in Taipei, not UTC', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-04T17:30:00Z')); // Taipei 2026-11-05 01:30
+  const w = await open();
+  expect(t(w, 'refund-date').element.value).toBe('2026-11-05');
+  expect(t(w, 'refund-date').attributes('max')).toBe('2026-11-05');
 });

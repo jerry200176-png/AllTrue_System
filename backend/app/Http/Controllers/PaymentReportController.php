@@ -207,7 +207,7 @@ class PaymentReportController extends Controller
         $refusal = null;
         $report = DB::transaction(function () use ($sc, $data, $tokenHash, $payload, &$refusal) {
             $locked = StudentClass::query()->whereKey($sc->getKey())->lockForUpdate()->first();
-            if (!$locked || ContractMoneyState::isWaived($locked)) {
+            if (!$locked || $locked->isTerminalMoneyClosure()) {
                 return null;
             }
             // Same target confirm() will pick; cap against that bill, not the course total (#3864 hotfix P1-a).

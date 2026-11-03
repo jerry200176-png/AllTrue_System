@@ -396,7 +396,9 @@ class SessionDeductionService
         // Idempotency is net-based: deduct allowed when net<=0; reverse when net>0
         // so undo+re-attend can create a new deduct after a matching reverse.
         return (bool) DB::transaction(function () use ($studentClassId, $classSessionId, $source, $createdBy, $note, $minutes) {
-            StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first();
+            if (StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first()?->isTerminalMoneyClosure()) {
+                abort(422, '此課程已結案（確認不收或已退費），堂數不能再變動。');
+            }
 
             if ($classSessionId && $classSessionId > 0
                 && self::sessionLedgerNet($studentClassId, $classSessionId) > 0) {
@@ -435,7 +437,9 @@ class SessionDeductionService
         ?int $minutes = null
     ): bool {
         return (bool) DB::transaction(function () use ($studentClassId, $classSessionId, $source, $createdBy, $note, $minutes) {
-            StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first();
+            if (StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first()?->isTerminalMoneyClosure()) {
+                abort(422, '此課程已結案（確認不收或已退費），堂數不能再變動。');
+            }
 
             if ($classSessionId && $classSessionId > 0
                 && self::sessionLedgerNet($studentClassId, $classSessionId) <= 0) {

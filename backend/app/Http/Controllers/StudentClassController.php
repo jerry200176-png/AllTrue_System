@@ -4503,7 +4503,7 @@ class StudentClassController extends Controller
                 return $authTarget;
             }
 
-            if (ContractMoneyState::isWaived($source)
+            if ($source->isTerminalMoneyClosure() || $target->isTerminalMoneyClosure()
                 || ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled')) {
                 return response()->json([
                     'message' => '來源課程已提前結清，堂次與紀錄已鎖定，無法轉移。',
@@ -5163,7 +5163,7 @@ class StudentClassController extends Controller
                 'code' => 'split_contract_paid_locked',
             ], 409));
         }
-        if (ContractMoneyState::isWaived($studentClass)
+        if ($studentClass->isTerminalMoneyClosure()
             || ($studentClass->hasDeductionHistory() && (string) ($studentClass->getAttribute('closed_reason') ?? '') === 'usage_settled')) {
             abort(response()->json([
                 'message' => '此課程已提前結清，堂次與紀錄已鎖定，無法拆分。',
@@ -5468,7 +5468,7 @@ class StudentClassController extends Controller
         if ($c->isPartOfPackage()) {
             $fail('split_contract_package_forbidden', '共用課程包請使用方案調整流程。');
         }
-        if (ContractMoneyState::isWaived($c)
+        if ($c->isTerminalMoneyClosure()
             || ($c->hasDeductionHistory() && (string) ($c->getAttribute('closed_reason') ?? '') === 'usage_settled')) {
             $fail('split_contract_usage_settled', '此課程已提前結清，無法轉課。');
         }

@@ -39,13 +39,15 @@ const props = defineProps({ open: { type: Boolean, default: false }, courseId: {
 const emit = defineEmits(['close', 'done']);
 
 const money = (n) => `NT$${Number(n || 0).toLocaleString()}`;
-const today = new Date().toISOString().slice(0, 10);
+// The server's day is Taipei's, so the default and the max are too (not UTC).
+const taipeiToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+const today = ref(taipeiToday());
 const preview = ref(null);
 const loadError = ref('');
 const submitError = ref('');
 const busy = ref(false);
 const amount = ref(0);
-const date = ref(today);
+const date = ref(today.value);
 const method = ref('cash');
 const reason = ref('');
 
@@ -65,6 +67,7 @@ async function readError(resp) {
 watch(() => props.open, async (isOpen) => {
   if (!isOpen) return;
   preview.value = null;
+  today.value = date.value = taipeiToday();
   loadError.value = submitError.value = reason.value = '';
   try {
     const resp = await authedFetch(`/api/v1/student-classes/${props.courseId}/refund/preview`, { headers: { Accept: 'application/json' } });

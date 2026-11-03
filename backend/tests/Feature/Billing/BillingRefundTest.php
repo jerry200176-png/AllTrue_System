@@ -264,7 +264,7 @@ class BillingRefundTest extends TestCase
         ClassSession::where('StudentClassID', $c->ID)->delete();
         $this->send($this->token(), $c, $this->body(4000))->assertOk();
         $this->assertNotSame('review_required', $this->state($c)['status']);
-        Payment::create(['InvoiceID' => Invoice::query()->value('id'), 'Amount' => 500, 'PaidAt' => '2026-10-20', 'Method' => 'cash']);
+        DB::table('Payment')->insert(['InvoiceID' => Invoice::query()->value('id'), 'Amount' => 500, 'PaidAt' => '2026-10-20', 'Method' => 'cash']); // bypasses the model hook: an unattributed row
         $this->assertSame('review_required', $this->state($c)['status']);
     }
 
@@ -324,5 +324,50 @@ class BillingRefundTest extends TestCase
         $token = $this->token();
         $this->withToken($token)->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertStatus(422);
         $this->send($token, $c, $this->body(100))->assertStatus(422);
+    }
+
+    public function test_unmarked_past_lesson_blocks_the_refund(): void
+    {
+        $c = $this->course();
+        ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => now()->subDays(2)->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+        $token = $this->token();
+        $this->withToken($token)->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertStatus(422);
+        $this->send($token, $c, $this->body(100))->assertStatus(422);
+    }
+
+    public function test_transfer_sessions_out_of_and_into_a_refunded_contract_is_refused(): void
+    {
+        $refunded = $this->course();
+        $other = StudentClass::create(['StudentID' => $refunded->StudentID, 'TeacherID' => 1, 'GradeID' => 1, 'SubjectID' => 1, 'by1' => 2, 'Period' => 4,
+            'StartDate' => '2026-10-01', 'EndDate' => '2026-12-31', 'TotalHours' => 16, 'Charge' => 1000, 'Rate' => 500, 'SessionCount' => 2, 'RemainingSessions' => 2,
+            'Paid' => 0, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count']);
+        $token = $this->token();
+        $this->send($token, $refunded, $this->body(1000))->assertOk();
+        $sid = ClassSession::where('StudentClassID', $refunded->ID)->where('Status', 'attended')->value('id');
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$refunded->ID}/transfer-sessions", ['session_ids' => [$sid], 'target_student_class_id' => $other->ID])->assertStatus(422);
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$other->ID}/transfer-sessions", ['session_ids' => [$sid], 'target_student_class_id' => $refunded->ID])->assertStatus(422);
+        $this->assertSame($refunded->ID, (int) ClassSession::find($sid)->StudentClassID);
+    }
+
+    public function test_no_new_payment_or_schedule_write_on_a_refunded_contract(): void
+    {
+        $c = $this->course();
+        $token = $this->token();
+        $this->send($token, $c, $this->body(1000))->assertOk();
+        $inv = Invoice::query()->first();
+        $this->assertSame(0, Payment::where('Amount', '>', 0)->where('PaidAt', '2026-11-01')->count());
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        Payment::create(['InvoiceID' => $inv->id, 'Amount' => 10, 'PaidAt' => '2026-11-01', 'Method' => 'cash']);
+    }
+
+    public function test_every_student_class_post_refuses_a_refunded_contract(): void
+    {
+        $c = $this->course();
+        $token = $this->token();
+        $this->send($token, $c, $this->body(1000))->assertOk();
+        foreach (['add-session', 'renewal-confirm', 'purchase-batch', 'renew-monthly', 'convert-trial', 'confirm-payment', 'charge-correction', 'billing-correction',
+                  'contract-amendment', 'split-contract', 'sibling-transfer', 'manual-sessions', 'continue-tutoring', 'convert-to-package'] as $path) {
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$c->ID}/{$path}", [])->assertStatus(422)->assertJsonPath('code', 'course_refunded');
+        }
     }
 }

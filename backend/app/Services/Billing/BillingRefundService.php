@@ -49,6 +49,13 @@ final class BillingRefundService
             }
             $paid += (int) $row['net_applied'];
         }
+        $unmarked = ClassSession::query()->where('StudentClassID', $course->getKey())->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '<', Carbon::today()->toDateString())
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('StudentSingIn')->whereColumn('StudentSingIn.ClassSessionID', 'ClassSession.id')->whereNull('StudentSingIn.VoidedAt'))
+            ->exists();
+        if ($unmarked) {
+            throw ValidationException::withMessages(['course' => '這門課還有過去的課沒點名，請先點名再退費。']);
+        }
         // Same lesson count the app deducts (attendance + ledger evidence); an absence without deduction is not used.
         $diag = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $course->getKey()])[(int) $course->getKey()] ?? [];
         if (!empty($diag['has_partial'])) {
