@@ -335,6 +335,37 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
             ->assertForbidden();
     }
 
+    /** in-app #488: a lesson handed to a substitute counts for the substitute, never the contract teacher. */
+    public function test_substituted_lesson_counts_for_the_substitute(): void
+    {
+        $campus = Campus::factory()->create(['name' => '代課分校']);
+        $director = $this->createUser('director-488@example.com', 'A', [$campus->id]);
+        $contract = $this->createUser('teacher-488-contract@example.com', 'T', [$campus->id]);
+        $sub = $this->createUser('teacher-488-sub@example.com', 'T', [$campus->id]);
+        $course = $this->course($campus->id, $contract['user_id'], 'one_on_one', 1);
+        foreach (['2026-08-15' => false, '2026-08-22' => true] as $date => $withStaleRecord) {
+            $session = $this->makeSession($course, $date, '10:00:00', '12:00:00', 'completed');
+            StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $course->StudentID, 'TeacherID' => $sub['user_id'],
+                'ClassSessionID' => $session->id, 'Status' => 'present', 'SignInDT' => "{$date} 10:00:00"]);
+            if ($withStaleRecord) { // written under the contract teacher before the hand-off
+                LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => $contract['user_id'],
+                    'Content' => '代課', 'Subject' => 'Math', 'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                    'SessionDate' => $date, 'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'SessionDeducted' => true]);
+            }
+            $row = ['student_id' => $course->StudentID, 'day_of_week' => 6, 'start_time' => '10:00', 'end_time' => '12:00', 'type' => 'normal',
+                'deduction' => 1, 'branch_id' => $campus->id, 'schedule_date' => $date, 'student_course_id' => $course->ID];
+            $original = \App\Models\Schedule::create($row + ['teacher_id' => $contract['user_id'], 'status' => 'cancelled']);
+            \App\Models\Schedule::create($row + ['teacher_id' => $sub['user_id'], 'status' => 'scheduled', 'original_schedule_id' => $original->id]);
+        }
+        $url = '/api/v1/finance/subject-units/timeline?start=2026-08-01&end=2026-08-31';
+
+        $all = $this->withHeaders($this->authHeaders($director['token']))->getJson($url)->assertOk()->json('entries');
+        $this->assertSame([$sub['user_id']], array_values(array_unique(array_column($all, 'teacher_id'))));
+        $this->assertSame(2, array_sum(array_column($all, 'regular_session_count')));
+        $this->assertSame([], $this->withHeaders($this->authHeaders($contract['token']))->getJson($url)->assertOk()->json('entries'));
+        $this->assertCount(2, $this->withHeaders($this->authHeaders($sub['token']))->getJson($url)->assertOk()->json('entries'));
+    }
+
     private function createUser(string $loginName, string $type, array $campusIds): array
     {
         $user = User::create([
