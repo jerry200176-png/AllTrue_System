@@ -158,13 +158,28 @@ class StudentClass extends Model
      */
     public static function hasOperationalHistory(array $ids): bool
     {
+        return self::operationalHistoryReasons($ids, true) !== [];
+    }
+
+    /**
+     * Which kinds of history keep these contracts from being erased (in-app #483: the refusal names them).
+     * Keys are the table names below plus sign_in / held_session; $first stops at the first hit (cheap yes/no).
+     *
+     * @return list<string>
+     */
+    public static function operationalHistoryReasons(array $ids, bool $first = false): array
+    {
         if ($ids === []) {
-            return false;
+            return [];
         }
+        $found = [];
         // Unbilled agreed-fee rows keep no invoice link — still block hard-delete.
         if (\Illuminate\Support\Facades\Schema::hasTable('invoice_corrections')
             && DB::table('invoice_corrections')->whereIn('student_class_id', $ids)->exists()) {
-            return true;
+            $found[] = 'invoice_corrections';
+            if ($first) {
+                return $found;
+            }
         }
         $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
 
@@ -182,14 +197,26 @@ class StudentClass extends Model
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {
                 if (DB::table($table)->whereIn($column, $ids)->exists()) {
-                    return true;
+                    $found[] = $table;
+                    if ($first) {
+                        return $found;
+                    }
+                    break;
                 }
             }
         }
+        if ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists()) {
+            $found[] = 'sign_in';
+            if ($first) {
+                return $found;
+            }
+        }
+        if (DB::table('ClassSession')->whereIn('StudentClassID', $ids)
+            ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists()) {
+            $found[] = 'held_session';
+        }
 
-        return ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists())
-            || DB::table('ClassSession')->whereIn('StudentClassID', $ids)
-                ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists();
+        return $found;
     }
 
     public static function isWaivedInDb(int $id): bool
