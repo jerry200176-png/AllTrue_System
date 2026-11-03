@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-review-reason-next-steps
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 待核對的課程會告訴你下一步
+    summary: 帳務中心的待核對課程，每個原因旁邊都會寫怎麼處理，也有按鈕直接帶你過去。
+    items:
+      - category: improved
+        text: 每個待核對原因旁邊多一行「怎麼處理」。有課排在合約日期外，按「到課程處理」；有上課的舊月份還沒有帳單，請聯絡總部補開。
+      - category: improved
+        text: 「繳費明細」裡，金額對不上的帳單會同時寫出帳單金額，和照這個月上課堂數算出的金額。金額沒錯、也收齊了，就按「已核對」。
+    source_refs:
+      - "changelog:2026-11-04:review-reason-next-steps"

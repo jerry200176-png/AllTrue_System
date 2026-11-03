@@ -396,13 +396,16 @@
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
                   <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}</span>
                   <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}</span>
-                  <div v-if="row.payment_review_required && reviewReasonsText(row.review_reasons)" class="text-light">需核對：{{ reviewReasonsText(row.review_reasons) }}</div>
+                  <template v-if="row.payment_review_required">
+                    <div v-for="r in reviewReasonFixes(row.review_reasons)" :key="r.code" class="text-light" :data-testid="`tc-review-fix-${row.student_class_id}-${r.code}`">需核對：{{ r.label }}。怎麼處理：{{ r.text }}</div>
+                  </template>
                   <span v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}</span>
                   <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
+                    <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
                     <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
                   </div>
                 </td>
@@ -725,7 +728,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, reviewReasonsText, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
+import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, reviewReasonFixes, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1568,6 +1571,7 @@ async function openWaiveDialog(row) {
   }
 }
 
+const reviewNeeds = (row, action) => reviewReasonFixes(row.review_reasons).some((r) => r.action === action);
 async function checkReviewed(row) {
   if (!await askConfirm({ title: '已核對？', message: '確認這門課的帳都對了？標記後就不再列在待核對。', confirmLabel: '已核對' })) return;
   try {
