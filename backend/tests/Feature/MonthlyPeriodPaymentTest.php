@@ -260,5 +260,16 @@ class MonthlyPeriodPaymentTest extends TestCase
         $bill->items()->create(['StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
         $this->assertContains('shared_or_multi_line_bill', $svc->batch(collect([$legacy->fresh()]))[$legacy->ID]['review_reasons']);
         $this->assertSame('review_required', app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$legacy->ID])[$legacy->ID]['status']);
+        // A paid bill whose own lines skip a month (Aug + Oct, September taught and unbilled) stays reviewed.
+        $gap = $this->course();
+        $gap->update(['EndDate' => '2026-10-31']);
+        ClassSession::create(['StudentClassID' => $gap->ID, 'SessionDate' => '2026-10-07', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $bill = Invoice::create(['StudentID' => $gap->StudentID, 'StudentClassID' => $gap->ID, 'IssueDate' => '2026-08-01',
+            'billing_period' => '2026-08', 'TotalAmount' => 2000, 'PaidAmount' => 2000, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 2000, 'PaidAt' => '2026-08-20', 'Method' => 'cash']);
+        $bill->items()->create(['StudentClassID' => $gap->ID, 'Description' => 'a', 'Amount' => 1000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+        $bill->items()->create(['StudentClassID' => $gap->ID, 'Description' => 'c', 'Amount' => 1000, 'PeriodStart' => '2026-10-01', 'PeriodEnd' => '2026-10-31']);
+        $this->assertContains('shared_or_multi_line_bill', $svc->batch(collect([$gap->fresh()]))[$gap->ID]['review_reasons']);
+        $this->assertSame('review_required', app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$gap->ID])[$gap->ID]['status']);
     }
 }

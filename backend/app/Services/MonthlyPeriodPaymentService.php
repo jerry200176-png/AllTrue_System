@@ -37,6 +37,20 @@ final class MonthlyPeriodPaymentService
         return $result;
     }
 
+    /** One line, or every line has a range and each starts no later than the day after the previous ones end. */
+    private function itemRangesContinuous(Collection $items): bool
+    {
+        if ($items->count() <= 1) return true;
+        $end = null;
+        foreach ($items->sortBy(fn ($item) => (string) $item->PeriodStart) as $item) {
+            if (!$item->PeriodStart || !$item->PeriodEnd) return false;
+            $start = substr((string) $item->PeriodStart, 0, 10);
+            if ($end !== null && $start > Carbon::parse($end)->addDay()->toDateString()) return false;
+            $end = max((string) $end, substr((string) $item->PeriodEnd, 0, 10));
+        }
+        return true;
+    }
+
     private function summarize(StudentClass $course, Collection $invoices, Collection $sessions): array
     {
         $periods = [];
@@ -61,7 +75,8 @@ final class MonthlyPeriodPaymentService
             if ($invoice->items->count() !== $items->count() || $items->count() > 1) {
                 // A paid one is settled, but which month each line belongs to is still unclear to month reports.
                 $attributionAmbiguous = true;
-                if (!$fullyPaid) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
+                // A paid bill still needs its own lines to run without a gap (Aug + Oct lines leave September unbilled).
+                if (!$fullyPaid || !$this->itemRangesContinuous($items)) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
             }
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
