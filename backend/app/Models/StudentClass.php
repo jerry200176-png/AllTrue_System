@@ -136,13 +136,13 @@ class StudentClass extends Model
         // Checked against the committed row so a model loaded before the waiver cannot slip through.
         static::saving(function (StudentClass $course): void {
             if ($course->exists && $course->isDirty(['Paid', 'Pay', 'PayDate', 'Stop', 'closed_reason', 'Charge'])
-                && self::isWaivedInDb((int) $course->getKey())) {
-                abort(422, '此合約已確認不收，不能再變更繳費或結案狀態');
+                && ($closure = self::terminalClosureInDb((int) $course->getKey()))) {
+                abort(422, $closure === 'refunded' ? self::REFUNDED_MESSAGE : '此合約已確認不收，不能再變更繳費或結案狀態');
             }
         });
         static::deleting(function (StudentClass $course): void {
-            if (self::isWaivedInDb((int) $course->getKey())) {
-                abort(422, '此合約已確認不收，不能刪除');
+            if ($closure = self::terminalClosureInDb((int) $course->getKey())) {
+                abort(422, $closure === 'refunded' ? self::REFUNDED_MESSAGE : '此合約已確認不收，不能刪除');
             }
         });
         static::saved(function (StudentClass $course): void {
@@ -192,9 +192,25 @@ class StudentClass extends Model
                 ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists();
     }
 
-    public static function isWaivedInDb(int $id): bool
+    /** Terminal money closures (確認不收, 退費): no writer may reopen, re-bill, re-pay or change usage on them. */
+    public const TERMINAL_MONEY_CLOSURES = ['waived', 'refunded'];
+
+    /** Closures that lock attendance and sessions: the terminal money closures plus the early-settlement ones. */
+    public const USAGE_LOCK_CLOSURES = ['usage_settled', 'contract_amended', ...self::TERMINAL_MONEY_CLOSURES];
+
+    public const REFUNDED_MESSAGE = '這門課已退費，不能再變更。';
+
+    public function isTerminalMoneyClosure(): bool
     {
-        return $id > 0 && DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') === 'waived';
+        return in_array((string) $this->getAttribute('closed_reason'), self::TERMINAL_MONEY_CLOSURES, true);
+    }
+
+    /** The committed (locked) terminal closure of a course, or null. */
+    public static function terminalClosureInDb(int $id): ?string
+    {
+        $reason = $id > 0 ? DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') : null;
+
+        return in_array($reason, self::TERMINAL_MONEY_CLOSURES, true) ? $reason : null;
     }
 
     /** Initialize the immutable snapshot exactly once, immediately after creation. */
@@ -222,7 +238,7 @@ class StudentClass extends Model
     public function isUsageSettlementLocked(): bool
     {
         return $this->getAttribute('settlement_locked_at') !== null
-            || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended', 'waived', 'refunded'], true);
+            || in_array((string) $this->getAttribute('closed_reason'), self::USAGE_LOCK_CLOSURES, true);
     }
 
     /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Subject, $this> */

@@ -92,6 +92,7 @@ class BillingRefundTest extends TestCase
         $this->assertContains(-2000, array_column($slip, 'amount'));
         $this->assertSame([2, 1000], [(int) $c->fresh()->SessionCount, (int) $c->fresh()->Charge]);
         $audit0 = json_decode((string) DB::table('security_audit_events')->where('event_type', 'student_class.refund')->value('metadata'), true);
+        $this->assertSame([2000, 3000, 4000], [$audit0['amount'], $audit0['refundable'], $audit0['paid']]);
         $this->assertSame([8, 2, 4000, 1000], [$audit0['old_session_count'], $audit0['new_session_count'], $audit0['old_charge'], $audit0['new_charge']]);
         $c = $c->fresh();
         $this->assertSame([1, 'refunded', 0], [(int) $c->Stop, $c->closed_reason, (int) $c->RemainingSessions]);
@@ -295,5 +296,33 @@ class BillingRefundTest extends TestCase
         $this->assertSame('scheduled', $s->fresh()->Status);
         $list = $this->withToken($this->token())->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $c->StudentID)->assertOk()->json();
         $this->assertNotSame('review_required', collect($list['data'] ?? $list)->firstWhere('ID', $c->ID)['usage_balance_status'] ?? null);
+    }
+
+    public function test_pause_and_close_are_refused_on_a_refunded_contract(): void
+    {
+        $c = $this->course();
+        $token = $this->token();
+        $this->send($token, $c, $this->body(1000))->assertOk();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$c->ID}/pause", ['action' => 'pause', 'reason' => 'completed'])->assertStatus(422);
+        $this->assertSame('refunded', $c->fresh()->closed_reason);
+    }
+
+    public function test_learning_record_rollback_is_refused_on_a_refunded_contract(): void
+    {
+        $c = $this->course();
+        $token = $this->token();
+        $s = ClassSession::where('StudentClassID', $c->ID)->where('Status', 'attended')->first();
+        $lr = \App\Models\LearningRecord::create(['StudentClassID' => $c->ID, 'StudentID' => $c->StudentID, 'ClassSessionID' => $s->id, 'TeacherID' => 1, 'Content' => 'x', 'Status' => 'approved']);
+        $this->send($token, $c, $this->body(1000))->assertOk();
+        $this->withToken($token)->postJson("/api/v1/learning-records/{$lr->id}/rollback-approval", [])->assertStatus(422)->assertJsonPath('code', 'course_refunded');
+        $this->assertSame('approved', $lr->fresh()->Status);
+    }
+
+    public function test_used_lessons_without_a_rate_are_refused(): void
+    {
+        $c = $this->course(rate: 0, charge: 8000);
+        $token = $this->token();
+        $this->withToken($token)->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertStatus(422);
+        $this->send($token, $c, $this->body(100))->assertStatus(422);
     }
 }

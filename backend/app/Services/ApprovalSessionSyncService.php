@@ -89,8 +89,8 @@ class ApprovalSessionSyncService
     public static function syncOnRollback(LearningRecord $lr, StudentClass $sc, int $rolledBackByUserId): void
     {
         $classSessionId = (int) ($lr->ClassSessionID ?? 0);
-        if ($classSessionId <= 0) {
-            return;
+        if ($classSessionId <= 0 || $sc->isTerminalMoneyClosure()) {
+            return; // a waived or refunded contract's usage is frozen
         }
 
         $approvalSignIn = StudentSignIn::where('ClassSessionID', $classSessionId)

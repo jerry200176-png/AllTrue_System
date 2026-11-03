@@ -134,7 +134,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             || $p['expected_charge'] === $p['expected_invoice_total'] || (int) $c['Paid'] !== 0 || (int) $c['Pay'] !== 0
             || !empty($c['PayDate']) || (int) $c['Stop'] !== 0 || $c['ScheduleMode'] !== 'count'
             || (int) ($c['PackageID'] ?? 0) > 0 || strtolower(trim((string) $c['ClassType'])) === 'tutoring'
-            || strtolower(trim((string) ($c['closed_reason'] ?? ''))) === 'waived'
+            || in_array(strtolower(trim((string) ($c['closed_reason'] ?? ''))), \App\Models\StudentClass::TERMINAL_MONEY_CLOSURES, true)
             || !empty($i['zero_amount_reason']) || (($i['ScheduleModeAtIssue'] ?? null) !== null && $i['ScheduleModeAtIssue'] !== $c['ScheduleMode'])) $this->fail('unsupported_state');
         foreach ($g['reports'] as $r) if (!in_array($r['status'], ['voided', 'rejected'], true)) $this->fail('standing_report');
         if (array_sum(array_column($g['payments'], 'Amount')) !== 0 || ContractMoneyState::blocksUnpaidCorrection($p['course_id'], true)) $this->fail('money_evidence');

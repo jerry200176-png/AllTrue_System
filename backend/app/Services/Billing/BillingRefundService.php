@@ -55,7 +55,10 @@ final class BillingRefundService
             throw ValidationException::withMessages(['course' => '這門課有部分時數的扣堂，不能在這裡算退費，請走帳務流程。']);
         }
         $used = (int) ($diag['expected_used'] ?? 0);
-        $rate = max(0.0, (float) ($course->Rate ?? 0)); // keep fractions; round only the consumed value
+        $rate = max(0.0, (float) ($course->Rate ?? 0));
+        if ($used > 0 && $rate <= 0) {
+            throw ValidationException::withMessages(['course' => '這門課沒有每堂單價，無法算出已上課的金額，請先到課程管理設定單價。']);
+        } // keep fractions; round only the consumed value
         return ['paid' => $paid, 'used_lessons' => $used, 'rate' => $rate == floor($rate) ? (int) $rate : $rate,
             'refundable' => max(0, $paid - (int) round($used * $rate))];
     }
