@@ -407,7 +407,7 @@ class StudentClassBillingCorrectionTest extends TestCase
                 'reason' => '主任確認本期理化實際上四堂',
                 'confirmation_token' => $preview->json('confirmation_token'),
             ]
-        )->assertStatus(422)->assertJsonPath('code', 'billing_correction_reduction_only');
+        )->assertStatus(422)->assertJsonPath('code', 'billing_correction_unchanged');
         $this->assertSame(1, DB::table('security_audit_events')
             ->where('event_type', 'student_class.billing_contract_correction')->count());
 
@@ -452,6 +452,58 @@ class StudentClassBillingCorrectionTest extends TestCase
             'SessionCount' => 8,
             'Charge' => 8800,
         ]);
+    }
+
+    public function test_unbilled_course_can_be_raised_to_cover_lessons_already_taught(): void
+    {
+        // in-app #466 (Founder 2026-11-03): a 4-lesson contract with a 5th lesson taught and no bill becomes 5 lessons.
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['SessionCount' => 4, 'RemainingSessions' => 0, 'Charge' => 4400]);
+        for ($i = 1; $i <= 5; $i++) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => "2026-05-0{$i}", 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        }
+        $url = "/api/v1/student-classes/{$course->ID}/billing-correction";
+        $body = ['new_session_count' => 5, 'new_charge' => 5500, 'reason' => '多上的一堂補進合約'];
+
+        $preview = $this->withToken($token)->postJson($url, $body + ['preview' => true])->assertOk()
+            ->assertJsonPath('requires_confirmation', true)
+            ->assertJsonPath('old_session_count', 4)
+            ->assertJsonPath('new_session_count', 5)
+            ->assertJsonPath('affected_scheduled_sessions', []);
+        $this->withToken($token)->postJson($url, $body + ['confirmation_token' => $preview->json('confirmation_token')])->assertOk()
+            ->assertJsonPath('new_charge', 5500)
+            ->assertJsonPath('remaining_sessions', 0);
+
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 5, 'Charge' => 5500]);
+        $this->assertSame(5, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'attended')->count());
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.billing_contract_correction')->count());
+    }
+
+    public function test_raise_is_refused_above_lessons_taught_or_once_billed(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['SessionCount' => 4, 'RemainingSessions' => 0, 'Charge' => 4400]);
+        for ($i = 1; $i <= 5; $i++) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => "2026-05-0{$i}", 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        }
+        $url = "/api/v1/student-classes/{$course->ID}/billing-correction";
+
+        // Lessons still to come go through 續課 (Founder Q8=A), not this correction.
+        $this->withToken($token)->postJson($url, ['new_session_count' => 6, 'new_charge' => 6600, 'reason' => '加到六堂', 'preview' => true])
+            ->assertStatus(422)->assertJsonPath('code', 'billing_correction_increase_above_usage')->assertJsonPath('observed_used_sessions', 5);
+        // Keeping 4 while 5 were taught is below the usage; 'unchanged' is covered by the replay in the deduction test.
+        $this->withToken($token)->postJson($url, ['new_session_count' => 4, 'new_charge' => 4400, 'reason' => '不變', 'preview' => true])
+            ->assertStatus(422)->assertJsonPath('code', 'billing_correction_below_observed_usage');
+
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-05-06', 'TotalAmount' => 4400, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '英文', 'Amount' => 4400]);
+        $this->withToken($token)->postJson($url, ['new_session_count' => 5, 'new_charge' => 5500, 'reason' => '已開帳單', 'preview' => true])
+            ->assertStatus(409)->assertJsonPath('code', 'billing_correction_increase_billed');
+
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 4, 'Charge' => 4400]);
+        $this->assertDatabaseHas('Invoice', ['id' => $invoice->id, 'TotalAmount' => 4400]);
     }
 
     public function test_correction_rejects_paid_and_pending_report_courses(): void
