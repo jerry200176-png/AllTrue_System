@@ -1,6 +1,6 @@
 // Founder 2026-10-15 Q8=A (in-app #399, #4014): adding lessons to an existing course goes
-// through 續課 (the existing renewal/purchase entry). The 合約／堂次調整 dialog only lowers or
-// ends a contract, so it points directors to 續課 instead of offering an increase.
+// through 續課 (the existing renewal/purchase entry), so the 合約／堂次調整 dialog points directors there.
+// Founder 2026-11-03 (in-app #466): its unpaid correction may also raise an unbilled contract, but only to lessons already taught.
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { readFileSync } from 'node:fs';
@@ -19,7 +19,7 @@ describe('add lessons via 續課 (#4014)', () => {
     });
     const hint = wrapper.find('[data-testid="contract-adjust-renew-hint"]');
     expect(hint.exists()).toBe(true);
-    expect(hint.text()).toContain('要加堂');
+    expect(hint.text()).toContain('要加之後的課');
     expect(hint.text()).toContain('續課');
 
     await wrapper.find('[data-testid="contract-adjust-renew"]').trigger('click');
@@ -37,6 +37,6 @@ describe('add lessons via 續課 (#4014)', () => {
 
   it('locked lesson-count copy names 續課 for adding lessons', () => {
     expect(editabilityReasonSummary({ message: '已有扣堂紀錄。', next_step: 'billing_correction' })).toContain('續課');
-    expect(read('../../CourseEditForm.vue')).toMatch(/已有扣堂紀錄[^<]*要加堂請用「續課」/);
+    expect(read('../../CourseEditForm.vue')).toMatch(/已有扣堂紀錄[^<]*要加之後的課請用「續課」/);
   });
 });
