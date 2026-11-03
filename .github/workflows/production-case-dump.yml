@@ -48,6 +48,7 @@ on:
           - settled_pending_paid_scan
           - inapp_460_payroll_1031
           - inapp_461_464_billing
+          - inapp_460_payroll_teacher
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
         required: false
@@ -144,7 +145,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing'}:
+          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -154,7 +155,7 @@ jobs:
           id_cases = {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
-          if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
+          if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
               raise SystemExit('migration precondition probe takes no target')
           if case == 'xinzhuang_fee_cases':
               if target_student_id or target_student_class_id not in {'4064', '3753', '3693'}:
@@ -2314,6 +2315,46 @@ jobs:
                 'items' => \\App\\Models\\InvoiceItem::query()->whereIn('InvoiceID', $invs->pluck('id')->all())->get()->map(fn ($x) => $nums($x->getAttributes()))->values()->all(),
                 'sessions_by_month' => $sess->groupBy(fn ($s) => substr((string) $s->SessionDate, 0, 7))->map(fn ($g) => $g->countBy(fn ($s) => $code($s->Status)))->all()];
             }})->values()->all();
+          }} elseif ($case === 'inapp_460_payroll_teacher') {{
+            // Read-only (in-app #460, round 2): every campus-9 lesson on 2026-10-31 with its payroll payee (the same order as
+            // FinanceController::resolveParttimePayrollTeacherId), all campus-9 teacher rate rules, and the October payroll lock/run lines.
+            // Output: numeric IDs, times, codes and rate numbers only (no names, notes or free text).
+            if ($targetStudentId || $targetStudentClassId) {{ throw new \\RuntimeException('no_target_allowed'); }}
+            $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', (string) $v) ? (string) $v : 'other');
+            $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+            $classes = $db::table('StudentClass')->whereIn('StudentID', $db::table('Student')->where('CampusID', 9)->pluck('id')->all())
+              ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'GradeID', 'ClassType'])->keyBy('ID');
+            $sessions = $db::table('ClassSession')->whereIn('StudentClassID', $classes->keys()->all())->where('SessionDate', '2026-10-31')
+              ->orderBy('StartTime')->get(['id', 'StudentClassID', 'SubjectID', 'StartTime', 'EndTime', 'Status']);
+            $signIns = $db::table('StudentSingIn')->whereIn('ClassSessionID', $sessions->pluck('id')->all())->get(['id', 'ClassSessionID', 'Status', 'VoidedAt', 'TeacherID'])->groupBy('ClassSessionID');
+            $teacherIds = [];
+            $out['sessions_1031'] = $sessions->map(function ($s) use ($classes, $signIns, $hm, $code, &$teacherIds) {{
+              $c = $classes[$s->StudentClassID];
+              $occ = \\App\\Services\\SubstituteScheduleService::occurrence((int) $s->StudentClassID, '2026-10-31', $s->StartTime);
+              $sub = \\App\\Services\\SubstituteScheduleService::resolveSubstituteUserId((int) $s->StudentClassID, '2026-10-31', $s->StartTime);
+              $ins = ($signIns[$s->id] ?? collect())->map(fn ($i) => ['id' => (int) $i->id, 'status' => $code($i->Status), 'voided' => $i->VoidedAt !== null, 'teacher_id' => (int) $i->TeacherID])->values()->all();
+              array_push($teacherIds, (int) $c->TeacherID, ...array_column($ins, 'teacher_id'));
+              if ($occ !== null) {{ $teacherIds[] = (int) $occ[0]; }}
+              if ($sub !== null) {{ $teacherIds[] = (int) $sub; }}
+              return ['session_id' => (int) $s->id, 'course_id' => (int) $s->StudentClassID, 'student_id' => (int) $c->StudentID, 'start' => $hm($s->StartTime), 'end' => $hm($s->EndTime),
+                'status' => $code($s->Status), 'session_subject_id' => $s->SubjectID === null ? null : (int) $s->SubjectID, 'course_subject_id' => $c->SubjectID === null ? null : (int) $c->SubjectID,
+                'grade_id' => $c->GradeID === null ? null : (int) $c->GradeID, 'class_type' => $code($c->ClassType), 'course_teacher_id' => (int) $c->TeacherID,
+                'occurrence_teacher_id' => $occ === null ? null : (int) $occ[0], 'substitute_teacher_id' => $sub === null ? null : (int) $sub, 'sign_ins' => $ins];
+            }})->values()->all();
+            $teacherIds = array_values(array_unique(array_filter($teacherIds)));
+            $out['teachers'] = \\App\\Models\\User::query()->whereIn('id', $teacherIds)->get(['id', 'employment_type'])
+              ->map(fn ($u) => ['id' => (int) $u->id, 'employment_type' => $code($u->employment_type)])->values()->all();
+            $out['teacher_rules_9'] = $db::table('payroll_teacher_branch_rules')->where('branch_id', 9)->orderBy('id')
+              ->get(['id', 'teacher_user_id', 'base_rates', 'effective_from', 'use_branch_default', 'created_at'])
+              ->map(fn ($r) => ['id' => (int) $r->id, 'teacher_id' => (int) $r->teacher_user_id, 'base_rates' => json_decode((string) $r->base_rates, true),
+                'effective_from' => $r->effective_from === null ? null : substr((string) $r->effective_from, 0, 10), 'use_branch_default' => (bool) $r->use_branch_default, 'created_at' => substr((string) $r->created_at, 0, 19)])->values()->all();
+            $status = $db::table('payroll_month_status')->where('branch_id', 9)->where('month', 'like', '2026-10%')->first(['id', 'month', 'status', 'current_run_id', 'locked_at']);
+            $out['month_status_2026_10'] = $status === null ? null : ['id' => (int) $status->id, 'month' => substr((string) $status->month, 0, 7), 'status' => $code($status->status),
+              'run_id' => $status->current_run_id === null ? null : (int) $status->current_run_id, 'locked_at' => $status->locked_at === null ? null : substr((string) $status->locked_at, 0, 19)];
+            $out['run_lines_1031'] = $status && $status->current_run_id ? $db::table('payroll_run_lines')->where('run_id', $status->current_run_id)->where('session_date', '2026-10-31')
+              ->get(['class_session_id', 'teacher_id', 'hours', 'base_rate', 'effective_rate', 'session_salary', 'attendance_status', 'rule_source'])
+              ->map(fn ($l) => ['session_id' => (int) $l->class_session_id, 'teacher_id' => (int) $l->teacher_id, 'hours' => (float) $l->hours, 'base_rate' => (float) $l->base_rate,
+                'effective_rate' => (float) $l->effective_rate, 'salary' => (float) $l->session_salary, 'attendance' => $code($l->attendance_status), 'rule_source' => $code($l->rule_source)])->values()->all() : [];
           }} elseif ($case === 'inapp_460_payroll_1031') {{
             // Read-only (in-app #460): campus-9 students with two or more lessons starting 12:30-15:30 on 2026-10-31, each lesson's
             // payroll inputs (sign-in, subject ID, grade, class type, payee teacher), and the payroll rate rules of those teachers.
