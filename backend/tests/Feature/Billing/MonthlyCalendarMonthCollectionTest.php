@@ -97,6 +97,11 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
         $bill->refresh();
         $this->assertSame([4000, 4000, 'paid'], [(int) $bill->TotalAmount, (int) $bill->PaidAmount, (string) $bill->Status]);
+        // Codex round 4: no header-only discrepancy, so the paid member settles instead of staying in review.
+        $after = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$a->ID], [$a->fresh()])[$a->ID];
+        $this->assertSame('paid', $after['status'], json_encode($after));
+        $row = collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$a->StudentID)->assertOk()->json('data'))->firstWhere('ID', $a->ID);
+        $this->assertSame('paid', $row['payment_status']);
     }
 
     /** Codex round 3 on #4867: a single-month plan member with Charge 0 and no bill is not 'paid' in the course list. */
