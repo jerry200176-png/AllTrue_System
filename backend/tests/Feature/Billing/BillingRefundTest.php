@@ -239,4 +239,31 @@ class BillingRefundTest extends TestCase
         $this->withToken($this->token())->getJson("/api/v1/student-classes/{$c->ID}/refund/preview")->assertOk()
             ->assertJson(['rate' => 500.5, 'refundable' => 3003]);
     }
+
+    public function test_clients_cannot_write_a_refund_method_payment(): void
+    {
+        $c = $this->course();
+        $inv = Invoice::query()->first();
+        $this->withToken($this->token())->postJson("/api/v1/invoices/{$inv->id}/payments", ['Amount' => 100, 'PaidAt' => '2026-10-02', 'Method' => 'refund'])->assertStatus(422)->assertJsonValidationErrors(['Method']);
+        $this->assertSame(0, Payment::where('Method', 'refund')->count());
+    }
+
+    public function test_positive_refund_method_row_is_not_treated_as_a_refund(): void
+    {
+        $c = $this->course();
+        $inv = Invoice::query()->first();
+        $row = Payment::create(['InvoiceID' => $inv->id, 'Amount' => 500, 'PaidAt' => '2026-10-02', 'Method' => 'refund']);
+        $res = $this->withToken($this->token())->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$c->ID}")->assertOk();
+        $this->assertSame('overpayment_pending_review', collect($res->json('invoices.0.payments'))->firstWhere('id', $row->id)['application_status']);
+    }
+
+    public function test_refunded_course_with_an_extra_payment_stays_in_review(): void
+    {
+        $c = $this->course();
+        ClassSession::where('StudentClassID', $c->ID)->delete();
+        $this->send($this->token(), $c, $this->body(4000))->assertOk();
+        $this->assertNotSame('review_required', $this->state($c)['status']);
+        Payment::create(['InvoiceID' => Invoice::query()->value('id'), 'Amount' => 500, 'PaidAt' => '2026-10-20', 'Method' => 'cash']);
+        $this->assertSame('review_required', $this->state($c)['status']);
+    }
 }

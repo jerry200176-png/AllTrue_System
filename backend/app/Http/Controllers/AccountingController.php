@@ -273,9 +273,6 @@ class AccountingController extends Controller
         if ((string) ($course->getAttribute('closed_reason') ?? '') === 'waived') {
             return null;
         }
-        if ((string) $course->getAttribute('closed_reason') === 'refunded' && (int) ($status['outstanding'] ?? 0) === 0) {
-            return 'history'; // 已退費: bills were cut with the refund, whatever else the verdict says
-        }
         if ($status['status'] === 'review_required') {
             // #4124: issued open bill under review stays findable as pending (matches tuition) and keeps a review hint.
             // Review without an issued open balance stays review-only on both pages.
@@ -561,7 +558,7 @@ class AccountingController extends Controller
             $reversedReceiptIds = [];
             $receiptRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) > 0 && (string) ($p->Method ?? '') !== 'void'
                 && !isset($restatedPaymentIds[(int) $p->id]))->sortBy('id')->values();
-            $reversalRows = $payments->filter(fn ($p) => ((int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void') && (string) ($p->Method ?? '') !== 'refund')->sortBy('id');
+            $reversalRows = $payments->filter(fn ($p) => ((int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void') && !((string) ($p->Method ?? '') === 'refund' && (int) ($p->Amount ?? 0) < 0))->sortBy('id');
             foreach ($reversalRows as $reversal) {
                 $reportId = (int) ($reversal->payment_report_id ?? 0);
                 $amount = abs((int) ($reversal->Amount ?? 0));
@@ -587,7 +584,7 @@ class AccountingController extends Controller
             }
 
             // A refund cut the total by the same money it returned (退費), so the receipts still apply in full.
-            $remainingInvoiceAmount = $totalAmount + (int) $payments->filter(fn ($p) => (string) ($p->Method ?? '') === 'refund')->sum(fn ($p) => abs((int) $p->Amount));
+            $remainingInvoiceAmount = $totalAmount + (int) $payments->filter(fn ($p) => (string) ($p->Method ?? '') === 'refund' && (int) $p->Amount < 0)->sum(fn ($p) => -(int) $p->Amount);
             $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reversedReceiptIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
@@ -598,7 +595,7 @@ class AccountingController extends Controller
                 $appliedToInvoice = 0;
                 $unappliedAmount = 0;
                 $isReversed = isset($reversedReceiptIds[(int) $payment->id]);
-                $applicationStatus = (string) ($payment->Method ?? '') === 'refund' ? 'refunded' : ($isVoid || $isReversed ? 'voided' : 'applied');
+                $applicationStatus = (string) ($payment->Method ?? '') === 'refund' && (int) $payment->Amount < 0 ? 'refunded' : ($isVoid || $isReversed ? 'voided' : 'applied');
 
                 if (!$isVoid && !$isReversed && $amount > 0) {
                     $appliedToInvoice = min($amount, max(0, $remainingInvoiceAmount));
