@@ -131,7 +131,7 @@
         <div v-for="(item, index) in (summary.anomalies || [])" :key="`${item.code}-${item.class_session_id}-${index}`" class="payroll-anomaly-row">
           <span>{{ item.session_date || '日期未定' }}</span>
           <span>{{ item.message }}</span>
-          <span v-if="item.class_session_id">堂次 #{{ item.class_session_id }}</span>
+          <span v-if="lessonLabel(item)">{{ lessonLabel(item) }}</span>
         </div>
       </div>
 
@@ -143,7 +143,7 @@
         <div v-for="(item, index) in (summary.unmarked_lessons || [])" :key="`${item.class_session_id}-${index}`" class="payroll-anomaly-row">
           <span>{{ item.session_date || '日期未定' }}</span>
           <span>{{ item.message }}</span>
-          <span v-if="item.class_session_id">堂次 #{{ item.class_session_id }}</span>
+          <span v-if="lessonLabel(item)">{{ lessonLabel(item) }}</span>
         </div>
       </div>
 
@@ -490,6 +490,11 @@
 </template>
 
 <script setup>
+// in-app #482: a notice row names the lesson (time, student, subject), never a bare 堂次 id.
+const lessonLabel = (item) => [
+  item.start_time && item.end_time ? `${item.start_time}–${item.end_time}` : '',
+  [item.student_name, item.subject_name].filter(Boolean).join('・'),
+].filter(Boolean).join('　');
 import { ref, computed, watch, onMounted } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
