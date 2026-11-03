@@ -183,6 +183,10 @@ class SubstituteScheduleService
     public static function substituteScheduleDerivedSql(string $dateBound = '', bool $withStartHm = true): string
     {
         $hm = $withStartHm ? ', SUBSTRING(ss.start_time, 1, 5) AS start_time_hm' : '';
+        // In-app #468: a row owned by an id with no campus binding (e.g. a course id) is no teacher; it must not take the lesson
+        // off its contract teacher. Same test as the write guard (SubstituteService::teacherBoundToAny, any campus).
+        $dateBound = " AND (sub2.teacher_id IS NULL OR sub2.teacher_id = sc2.TeacherID
+                      OR EXISTS (SELECT 1 FROM `UserCampus` uc2 WHERE uc2.UserID = sub2.teacher_id)){$dateBound}";
         if (!self::anyCampusOn()) {
             return "(
                 SELECT ss.*{$hm}
