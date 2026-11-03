@@ -139,4 +139,57 @@ final class InvoiceHeaderItemRepairStrategyTest extends TestCase
         self::assertTrue($s->rollback($result['snapshot'], ['operation_id' => 't'])['ok']);
         self::assertSame($original, $this->rows());
     }
+
+    public function test_mixed_state_rollback_restores_only_rows_this_run_changed(): void
+    {
+        DB::table('Invoice')->where('id', 9401)->update(['TotalAmount' => 8000]);
+        DB::table('InvoiceItem')->where('id', 9411)->update(['Amount' => 8000, 'StudentClassID' => 9421]);
+        $s = new InvoiceHeaderItemRepairStrategy();
+        $plan = $s->plan(self::PARAMS);
+        self::assertTrue($plan['ok'], implode(',', $plan['errors']));
+        $result = $s->execute($plan, ['operation_id' => 't']);
+        self::assertSame(1, $result['updated']);
+        self::assertSame([9402], array_keys($result['snapshot']['rows']));
+
+        self::assertTrue($s->rollback($result['snapshot'], ['operation_id' => 't'])['ok']);
+        [$inv, $items] = $this->rows();
+        self::assertSame([8000, 4400], array_column($inv, 'TotalAmount'));
+        self::assertSame([8000, 4400], array_column($items, 'Amount'));
+        self::assertSame([9421, null], array_column($items, 'StudentClassID'));
+    }
+
+    public function test_already_applied_run_audits_and_its_rollback_is_a_noop(): void
+    {
+        $s = new InvoiceHeaderItemRepairStrategy();
+        $s->execute($s->plan(self::PARAMS), ['operation_id' => 't']);
+        $after = $this->rows();
+        $again = $s->execute($s->plan(self::PARAMS), ['operation_id' => 't2']);
+        self::assertTrue($again['already_applied']);
+        self::assertSame(['rows' => []], $again['snapshot']);
+        self::assertSame(2, DB::table('security_audit_events')->where('event_type', 'pop.invoice_header_item_repair')->count());
+
+        self::assertSame(0, $s->rollback($again['snapshot'], ['operation_id' => 't2'])['restored']);
+        self::assertSame($after, $this->rows());
+    }
+
+    public function test_failed_execution_receipt_rolls_back_the_repair(): void
+    {
+        $pop = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog(dirname(base_path()) . '/operations/catalog.yaml'));
+        $id = $pop->createDraft('invoice-header-item-repair-20261104', self::PARAMS, (string) \Illuminate\Support\Str::uuid(), 'synthetic-pop', 'super_admin', [])['id'];
+        self::assertTrue($pop->runDryRun($id, 'synthetic-pop', null, 'super_admin', [])['ok']);
+        $sha = str_repeat('a', 40);
+        $approval = $pop->approve($id, 'founder-go-invoice-header-item-repair-20261104', 'reviewer-founder', 'super_admin', $sha, 901);
+        $before = $this->rows();
+        $fault = (object) ['armed' => true];
+        DB::listen(function ($q) use ($fault): void {
+            if ($fault->armed && str_starts_with($q->sql, 'insert ignore into `pop_execution_records`') && in_array('execute', $q->bindings, true)) {
+                $fault->armed = false;
+                throw new \RuntimeException('synthetic_outer_execution_receipt_failure');
+            }
+        });
+        $failed = $pop->run($id, 'execute', $approval['token'], $sha, 'synthetic-pop');
+        self::assertFalse($fault->armed, 'The fault must reach the execution receipt writer');
+        self::assertFalse($failed['ok']);
+        self::assertSame($before, $this->rows());
+    }
 }

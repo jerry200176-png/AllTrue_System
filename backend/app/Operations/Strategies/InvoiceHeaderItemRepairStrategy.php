@@ -42,13 +42,17 @@ final class InvoiceHeaderItemRepairStrategy
             'counts' => array_count_values($states),
             'digest' => hash('sha256', json_encode([$states, $live], JSON_THROW_ON_ERROR)),
             'manifest' => $manifest,
-            'snapshot' => $errors === [] ? $this->snapshot() : []];
+            'snapshot' => []];
     }
 
     public function execute(array $plan, array $context): array
     {
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
-            return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => $this->snapshot()];
+            // Nothing was changed by this run, so there is nothing to roll back; the audit lets the workflow poll succeed.
+            $this->audit('pop.invoice_header_item_repair', ['reason_code' => self::REF,
+                'operation_id' => (string) ($context['operation_id'] ?? ''), 'invoice_count' => 0, 'outcome' => 'already_applied']);
+
+            return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => ['rows' => []]];
         }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'before') {
             throw new RuntimeException('invoice_header_item_plan_not_ready');
@@ -57,12 +61,16 @@ final class InvoiceHeaderItemRepairStrategy
         return DB::transaction(function () use ($context): array {
             $live = $this->inspect(true);
             $todo = [];
+            $snapshot = [];
             $errors = [];
             foreach (InvoiceHeaderItemRepairManifest::cases() as $id => $case) {
                 [$state, $rowErrors] = $this->classify($id, $case, $live[$id]);
                 $errors = [...$errors, ...$rowErrors];
                 if ($state === 'before') {
                     $todo[$id] = $case;
+                    // Live pre-write values read under the lock: rollback restores only what this run changed.
+                    $snapshot[$id] = ['total' => $live[$id]['total'], 'item_amount' => $live[$id]['item_amount'],
+                        'item_student_class_id' => $live[$id]['item_student_class_id']];
                 }
             }
             if ($errors !== []) {
@@ -82,7 +90,7 @@ final class InvoiceHeaderItemRepairStrategy
             $this->audit('pop.invoice_header_item_repair', ['reason_code' => self::REF,
                 'operation_id' => (string) ($context['operation_id'] ?? ''), 'invoice_count' => count($todo), 'outcome' => 'success']);
 
-            return ['ok' => true, 'snapshot' => $this->snapshot(), 'updated' => count($todo)];
+            return ['ok' => true, 'snapshot' => ['rows' => $snapshot], 'updated' => count($todo)];
         }, 3);
     }
 
@@ -102,7 +110,7 @@ final class InvoiceHeaderItemRepairStrategy
     public function rollback(array $snapshot, array $context): array
     {
         $rows = $snapshot['rows'] ?? null;
-        if (!is_array($rows) || array_keys($rows) !== array_keys(InvoiceHeaderItemRepairManifest::cases())) {
+        if (!is_array($rows) || array_diff(array_keys($rows), array_keys(InvoiceHeaderItemRepairManifest::cases())) !== []) {
             throw new RuntimeException('invoice_header_item_rollback_snapshot_invalid');
         }
 
@@ -111,6 +119,9 @@ final class InvoiceHeaderItemRepairStrategy
             $restored = 0;
             $skipped = [];
             foreach (InvoiceHeaderItemRepairManifest::cases() as $id => $case) {
+                if (!isset($rows[$id])) {
+                    continue; // not changed by the execution being rolled back
+                }
                 [$state, $rowErrors] = $this->classify($id, $case, $live[$id]);
                 if ($state !== 'after' || $rowErrors !== []) {
                     $skipped[] = $id; // not in the repaired state (or money moved): leave it alone
@@ -138,15 +149,6 @@ final class InvoiceHeaderItemRepairStrategy
         if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
             throw new RuntimeException('invoice_header_item_audit_not_persisted');
         }
-    }
-
-    /** @return array{rows:array<int,array<string,mixed>>} manifest before values only, for rollback */
-    private function snapshot(): array
-    {
-        return ['rows' => array_map(fn ($c) => [
-            'total' => $c['before']['total'], 'item_amount' => $c['before']['item_amount'],
-            'item_student_class_id' => $c['before']['item_student_class_id'],
-        ], InvoiceHeaderItemRepairManifest::cases())];
     }
 
     /** @return array<int,array<string,mixed>> invoice id => live state; locks invoice, item and course rows when asked */
