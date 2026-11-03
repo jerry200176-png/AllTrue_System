@@ -262,11 +262,29 @@ export const REVIEW_REASON_LABELS = {
   item_period_outside_contract: '帳單期間超出合約日期',
   period_mismatch: '同月份有兩張期間不同的帳單',
   contract_not_covered_to_end: '合約後段沒有帳單涵蓋',
-  month_double_counted: '同月份重複計算',
+  month_double_counted: '同月份有課不在帳單期間裡',
   amount_discrepancy: '帳單金額和堂數算出的金額不同',
   outside_contract_sessions: '有課排在合約日期外',
   unbilled_month: '有上課月份還沒開帳單',
 };
+// in-app #469: every reason says what to do next (Stripe Radar style: the reason plus its resolution).
+// `action: 'course'` adds 到課程處理 (course management on this course); the rest use 繳費明細／已核對 on the row.
+// Old months cannot be billed or reissued from the app yet (要開帳單 only proposes the next period; void does not reissue),
+// so those point to HQ, as 需補開 does, and never suggest voiding a bill that needs a replacement.
+export const REVIEW_REASON_FIX = {
+  billing_period_invalid: { text: '這張帳單沒有所屬月份。舊帳單還不能自己重開，請聯絡總部更正，不要先作廢。' },
+  shared_or_multi_line_bill: { text: '打開「繳費明細」，確認每一項是哪門課、哪個月；都對、也收齊了，就按「已核對」。' },
+  item_period_outside_contract: { text: '打開「繳費明細」看帳單期間：帳單開錯，請聯絡總部更正（不要先作廢）；課其實要上更久，就按「到課程處理」用「續課」接下一期。', action: 'course' },
+  period_mismatch: { text: '同一個月有兩張期間不同的帳單（例如 1–15 號和 16–30 號，這樣是正常的）。打開「繳費明細」對照兩張的期間；真的重複了，請聯絡總部更正，不要自己作廢。' },
+  contract_not_covered_to_end: { text: '合約後段還沒有帳單。到期的月份會出現在「要開帳單」；已經上過課卻沒開的月份，請聯絡總部補開。' },
+  month_double_counted: { text: '這個月有帳單，但有幾堂課不在帳單期間裡（例如帳單寫到 15 號，20 號還有課）。打開「繳費明細」對照帳單期間和上課日期，先確認再處理，不要直接作廢。' },
+  amount_discrepancy: { text: '「繳費明細」會列出帳單金額和照堂數算的金額。金額沒錯、也收齊了，就按「已核對」；金額要改，請聯絡總部更正，不要先作廢（舊月份的帳單還不能自己重開）。' },
+  outside_contract_sessions: { text: '有課排在合約日期外。按「到課程處理」：日期排錯，就把這幾堂改到合約日期內；其實是下一期的課，先「續課」建立下一期，再用「合約／堂次調整」把這幾堂移過去。', action: 'course' },
+  unbilled_month: { text: '這個月有上課卻沒有帳單。舊月份還不能自己補開，請聯絡總部補開這個月的帳單。' },
+};
+export const reviewReasonFixes = (codes) => (Array.isArray(codes) ? codes : [])
+  .filter((code) => REVIEW_REASON_LABELS[code])
+  .map((code) => ({ code, label: REVIEW_REASON_LABELS[code], ...REVIEW_REASON_FIX[code] }));
 export const reviewReasonsText = (codes) => (Array.isArray(codes) ? codes.map((code) => REVIEW_REASON_LABELS[code]).filter(Boolean).join('、') : '');
 export const reviewReasonText = (course) => reviewReasonsText(course?.monthly_payment?.review_reasons);
 export const PAUSED_PENDING_LABEL = '暫停中，未收';
