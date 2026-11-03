@@ -2190,6 +2190,7 @@ class StudentClassController extends Controller
                     $durationMinutes,
                     $previousScheduleSlots
                 );
+                $assertContractDates();
                 return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
