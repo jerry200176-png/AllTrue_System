@@ -104,36 +104,6 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame('paid', $row['payment_status']);
     }
 
-    /** Codex P1 round 5 on #4867: a paid shared bill settles the member it carries an item for, never a sibling without one. */
-    public function test_paid_shared_bill_settles_its_item_member_but_not_an_unbilled_sibling(): void
-    {
-        $lessons = ['2026-10-05' => 'attended', '2026-10-12' => 'attended'];
-        $a = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000]);
-        $b = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
-        $c = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
-        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
-            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
-        StudentClass::whereIn('ID', [$a->ID, $b->ID, $c->ID])->update(['PackageID' => $pkg]);
-        $bill = Invoice::create(['StudentID' => $a->StudentID, 'StudentClassID' => $a->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 4000,
-            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
-        $bill->items()->create(['StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 2000]);
-        $bill->items()->create(['StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
-
-        $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
-
-        $this->record($b->fresh(), 2000)->assertStatus(422);
-        $resolver = app(\App\Services\BillingPayableResolver::class);
-        $this->assertSame('paid', $resolver->courseStatusesByStudentClassIds([$b->ID], [$b->fresh()])[$b->ID]['status']);
-        $row = collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$a->StudentID)->assertOk()->json('data'))->firstWhere('ID', $b->ID);
-        $this->assertSame('paid', $row['payment_status']);
-        $this->assertNull(app(MonthlyBillingService::class)->unbilledPeriodFor($b->fresh()));
-        $this->assertSame(1, (int) $b->fresh()->Paid);
-
-        // The sibling with no item on that bill is still collectible.
-        $this->assertSame(0, (int) $c->fresh()->Paid);
-        $this->confirm($this->record($c->fresh(), 2000)->assertOk()->json('report_id'));
-    }
-
     /** Codex round 3 on #4867: a single-month plan member with Charge 0 and no bill is not 'paid' in the course list. */
     public function test_single_month_plan_member_without_bill_is_not_paid_in_the_course_list(): void
     {
