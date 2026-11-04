@@ -175,7 +175,9 @@ class PaymentReportPendingReturnTest extends TestCase
             file_put_contents($dir.'/deployment.json', json_encode(['backend_sha' => $sha]));
             config(['pop_inapp.standing_policy_enabled' => false]); $this->app->instance(\App\Operations\PopOperationService::class, $pop);
             $fault->phase = 'verify'; $fault->armed = true;
+            \Illuminate\Support\Facades\Exceptions::fake();
             $this->artisan('pop:execute-approved', ['--request' => $r['id']])->assertExitCode(1); $this->assertFalse($fault->armed);
+            \Illuminate\Support\Facades\Exceptions::assertReported(fn (\RuntimeException $e) => str_contains($e->getMessage(), $r['id'])); // #4820
             $this->assertSame('verification_failed', DB::table('pop_operation_requests')->where('id', $r['id'])->value('status'));
             $this->artisan('pop:execute-approved', ['--request' => $r['id'], '--phase' => 'verify'])->assertExitCode(0);
             $this->artisan('pop:execute-approved', ['--request' => $r['id']])->assertExitCode(0);
