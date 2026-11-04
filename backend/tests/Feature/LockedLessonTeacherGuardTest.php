@@ -153,6 +153,7 @@ class LockedLessonTeacherGuardTest extends TestCase
         $rows = [
             ['Content' => 'body', 'Progress' => null], ['Content' => '', 'Progress' => 'p'], ['Content' => '（評量表）', 'Progress' => null],
             ['Content' => '（系統補登/扣除堂數）', 'Progress' => null], ['Content' => '（系統自動核准）', 'Progress' => null], ['Content' => '（系統補登）', 'Progress' => 'p'],
+            ['Content' => "\n", 'Progress' => null], ['Content' => "\t", 'Progress' => "\n"], ['Content' => '   ', 'Progress' => ' '],
         ];
         foreach ($rows as $r) {
             LearningRecord::where('ClassSessionID', $s->id)->update($r);
@@ -160,6 +161,16 @@ class LockedLessonTeacherGuardTest extends TestCase
             $sql = (bool) DB::table('LearningRecord as lr')->where('lr.id', $lr->id)->selectRaw(\App\Support\LearningRecordMutableOwnership::filledByTeacherSql('lr') . ' as f')->value('f');
             $this->assertSame(\App\Support\LearningRecordMutableOwnership::isFilledByTeacher($lr), $sql, json_encode($r));
         }
+        // A director comment on a blank record is not a teacher-written evaluation, in PHP and SQL alike.
+        LearningRecord::where('ClassSessionID', $s->id)->update(['Content' => '', 'Progress' => null]);
+        $lr = LearningRecord::where('ClassSessionID', $s->id)->first();
+        DB::table('learning_record_teacher_comments')->insert([
+            'learning_record_id' => $lr->id, 'student_id' => $lr->StudentID ?? 0, 'student_class_id' => $lr->StudentClassID, 'class_session_id' => $s->id,
+            'teacher_id' => $this->old, 'campus_id' => 1, 'author_user_id' => 1, 'content' => 'note', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $sql = (bool) DB::table('LearningRecord as lr')->where('lr.id', $lr->id)->selectRaw(\App\Support\LearningRecordMutableOwnership::filledByTeacherSql('lr') . ' as f')->value('f');
+        $this->assertFalse($sql);
+        $this->assertFalse(\App\Support\LearningRecordMutableOwnership::isFilledByTeacher($lr->fresh()));
         LearningRecord::where('ClassSessionID', $s->id)->update(['Content' => 'body', 'VoidedAt' => now()]);
         $this->assertSame($this->new, (int) $writer->assignTeacher($s, $this->new, null)->teacher_id);
     }
