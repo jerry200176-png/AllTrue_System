@@ -705,6 +705,9 @@ class PaymentReportController extends Controller
             // #3892: package membership from the locked row, so a concurrent convertToPackage is never missed.
             $package = $this->lockPackageForCourse($lockedCourse);
 
+            if ($shared = $this->sharedBillRefusal($lockedCourse, $data)) {
+                return $shared;
+            }
             if ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0))) {
                 return $this->duplicateCoursePaymentResponse($blockReason);
             }
@@ -843,6 +846,9 @@ class PaymentReportController extends Controller
             if ($replay && (int) $replay->reported_amount === (int) $data['amount'] && $replay->payment_method === $data['payment_method'] && $replay->payment_date?->toDateString() === Carbon::parse($data['payment_date'])->toDateString()) {
                 return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
                     'invoice_id' => $replay->InvoiceID, 'status' => $replay->status, 'replayed' => true]);
+            }
+            if ($shared = $this->sharedBillRefusal($course, ['invoice_id' => $invoiceId] + $data)) {
+                return $shared;
             }
             if ($refusal = $this->legacyFlagRefusal($course, $standingReport)) {
                 return $refusal;
@@ -1653,6 +1659,37 @@ class PaymentReportController extends Controller
 
         return $live->first(fn (Invoice $i) => !$this->packagePaidHold($i) && (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
             ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
+    }
+
+    /**
+     * A monthly course's month that another course's non-void bill already carries an item for (a shared bill is headed by one
+     * course): collecting it again through this course would bill the same lessons twice. Refuses with 422 period_on_shared_bill.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function sharedBillRefusal(StudentClass $course, array $data): ?JsonResponse
+    {
+        if ($course->getAttribute('ScheduleMode') !== 'date') {
+            return null;
+        }
+        $id = (int) $course->getKey();
+        $own = empty($data['invoice_id']) ? null : Invoice::where('id', (int) $data['invoice_id'])->where('StudentClassID', $id)->value('billing_period');
+        $period = preg_match('/^\d{4}-\d{2}$/', (string) $own) ? (string) $own : $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date'] ?? null);
+        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
+        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
+
+        $shared = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
+            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get()
+            ->first(function (Invoice $invoice) use ($id, $period, $from, $to) {
+                [$start, $end] = $this->monthlyBilling->serviceRangeForCourse($invoice, $id);
+
+                return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
+            });
+
+        return $shared === null ? null : response()->json([
+            'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
+            'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
+        ], 422);
     }
 
     /**

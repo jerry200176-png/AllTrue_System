@@ -104,6 +104,35 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame('paid', $row['payment_status']);
     }
 
+    /** Codex round 6 on #4867: a month already on a shared bill is refused through the other member, not collected again. */
+    public function test_shared_bill_month_is_refused_through_the_other_member(): void
+    {
+        $lessons = ['2026-10-05' => 'attended', '2026-10-12' => 'attended'];
+        $a = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000]);
+        $b = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
+        $c = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        StudentClass::whereIn('ID', [$a->ID, $b->ID, $c->ID])->update(['PackageID' => $pkg]);
+        $bill = Invoice::create(['StudentID' => $a->StudentID, 'StudentClassID' => $a->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 4000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        $bill->items()->create(['StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 2000]);
+        $bill->items()->create(['StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
+        $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
+
+        $counts = fn () => [Invoice::count(), \App\Models\Payment::count(), PaymentReport::count()];
+        $before = $counts();
+        $this->record($b->fresh(), 2000)->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill')->assertJsonPath('invoice_id', $bill->id);
+        $b->update(['Paid' => 1]); // the legacy-flag backfill path needs a flag-only course
+        $this->api('postJson', '/api/v1/payment-reports/director-record', ['student_class_id' => $b->ID, 'payment_date' => '2026-10-23',
+            'payment_method' => 'cash', 'amount' => 2000, 'legacy_flag_backfill' => true, 'idempotency_key' => (string) \Illuminate\Support\Str::uuid()])->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill');
+        $this->assertSame($before, $counts());
+
+        // The sibling with no item on that bill is still collectible.
+        $this->confirm($this->record($c->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-10', 2000]], $this->bills($c));
+    }
+
     /** Codex round 3 on #4867: a single-month plan member with Charge 0 and no bill is not 'paid' in the course list. */
     public function test_single_month_plan_member_without_bill_is_not_paid_in_the_course_list(): void
     {
