@@ -1686,10 +1686,15 @@ const focusStudent = (group, e) => {
     expandedStudentGroups.value = next;
   }
 };
-watch(focusedStudentKey, (v, prev) => {
-  if (v && !prev) lockScroll();
-  else if (!v && prev) unlockScroll();
-});
+// One owner flag: the page holds the body lock only while it is focused AND visible (KeepAlive, Codex P2 on #4894).
+let pageVisible = true;
+let ownsScrollLock = false;
+function syncScrollLock() {
+  const want = pageVisible && !!focusedStudentKey.value;
+  if (want && !ownsScrollLock) { lockScroll(); ownsScrollLock = true; }
+  else if (!want && ownsScrollLock) { unlockScroll(); ownsScrollLock = false; }
+}
+watch(focusedStudentKey, syncScrollLock);
 const visibleGroups = computed(() =>
   focusedStudentKey.value
     ? groupedCourses.value.filter((g) => g.key === focusedStudentKey.value)
@@ -5580,18 +5585,21 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,
   openContractRevertModal, openPackageConversionPreview, openPaymentSlip, openTuitionLedger,
 });
-onMounted(() => {
+// Dashboard drill-down context; read on mount and on every return to the kept-alive page.
+function consumeTrustFocus() {
   try {
     const raw = sessionStorage.getItem('alltrue_ops_trust_focus');
-    if (raw) {
-      const focus = JSON.parse(raw);
-      const ageMs = Date.now() - Number(focus?.at || 0);
-      if (ageMs >= 0 && ageMs < 5 * 60 * 1000 && focus?.student_name) {
-        filters.value.name = String(focus.student_name).slice(0, 40);
-      }
-      sessionStorage.removeItem('alltrue_ops_trust_focus');
-    }
-  } catch (_) { /* ignore */ }
+    if (!raw) return false;
+    sessionStorage.removeItem('alltrue_ops_trust_focus');
+    const focus = JSON.parse(raw);
+    const ageMs = Date.now() - Number(focus?.at || 0);
+    if (!(ageMs >= 0 && ageMs < 5 * 60 * 1000 && focus?.student_name)) return false;
+    filters.value = { name: String(focus.student_name).slice(0, 40), class_type: '', teacher_name: '', teacher_id: '', course_status: '' };
+    return true;
+  } catch (_) { return false; }
+}
+onMounted(() => {
+  consumeTrustFocus();
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
 });
@@ -5600,15 +5608,18 @@ let wasHidden = false;
 onDeactivated(() => {
   wasHidden = true;
   document.removeEventListener('click', closeActionMenu);
-  if (focusedStudentKey.value) unlockScroll();
+  pageVisible = false;
+  syncScrollLock();
 });
 onActivated(() => {
   clockTick.value += 1;
   if (!wasHidden) return;
   wasHidden = false;
-  if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen
+  pageVisible = true;
+  syncScrollLock();
   document.addEventListener('click', closeActionMenu);
-  if (focusedStudentKey.value) lockScroll();
+  if (consumeTrustFocus()) { focusedStudentKey.value = null; void loadCourses(1); return; }
+  if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen
 });
 onUnmounted(() => {
   monthlySummary.dispose();
@@ -5620,7 +5631,8 @@ onUnmounted(() => {
   // 若使用者在「聚焦中」直接切換頁面，元件卸載不會觸發 focusedStudentKey watcher，
   // scroll lock 會洩漏並殘留在 body，導致之後的頁面看起來像蓋了一層灰白遮罩、無法點選/捲動。
   // 卸載時若仍處於聚焦狀態，補一次解除以平衡計數。
-  if (focusedStudentKey.value && !wasHidden) unlockScroll();
+  pageVisible = false;
+  syncScrollLock();
 });
 </script>
 

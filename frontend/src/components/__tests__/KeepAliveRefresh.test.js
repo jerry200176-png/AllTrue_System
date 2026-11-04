@@ -94,4 +94,19 @@ describe('cached-page regressions (Codex P2s)', () => {
     tick.value += 1;
     expect([withTick.value, noTick.value]).toEqual(['d2', 'd1']);
   });
+
+  it('CourseManagement: a dashboard drill-down is consumed on return, not only on mount', () => {
+    const src = read('../../pages/CourseManagement.vue');
+    const activated = src.slice(src.lastIndexOf('onActivated(() => {'));
+    expect(activated).toContain('if (consumeTrustFocus()) { focusedStudentKey.value = null; void loadCourses(1); return; }');
+    expect(src).toMatch(/onMounted\(\(\) => \{\s+consumeTrustFocus\(\);/);
+  });
+
+  it('CourseManagement: the body scroll lock is owned once and only while the page is visible', () => {
+    const src = read('../../pages/CourseManagement.vue');
+    expect(src).toContain('const want = pageVisible && !!focusedStudentKey.value;');
+    expect(src).toContain('watch(focusedStudentKey, syncScrollLock);');
+    expect(src).not.toMatch(/if \(focusedStudentKey\.value\) (un)?lockScroll\(\)/);
+  });
 });
+
