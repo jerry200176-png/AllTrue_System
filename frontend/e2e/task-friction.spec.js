@@ -3,18 +3,22 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { LEGACY_FLAG_UNVERIFIED_LABEL } from '../src/lib/courseMoneyState.js';
+import {
+  appOriginOf, classifyAppRequest, installReadOnlyAppGuard, isKnownPostRead,
+} from './fixtures/readOnlyAppGuard.js';
 
 /**
  * UI/UX plan step 0 (tracker #4659): READ-ONLY friction baseline for the 5 main director tasks.
  * Each task starts at the director home, drives the UI until the form/dialog is visible, then closes it.
  * Nothing is ever submitted. Counts: clicks, app_page changes, full document loads.
  * Task level results are soft (missing fixture => reached:false + note); the only hard assertion is that no
- * POST/PUT/PATCH/DELETE left the browser after login. Output: test-results/task-friction.json (no names logged).
+ * non-read request got a response from production after login (readOnlyAppGuard aborts them all, and answers
+ * adoption / transaction-only Sentry telemetry locally). Output: test-results/task-friction.json (no names logged).
  */
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = { account: process.env.SMOKE_DIRECTOR_USER, password: process.env.SMOKE_DIRECTOR_PASS };
-// Read-only POSTs/telemetry the app itself sends; they are answered locally and never reach production.
-const LOCAL_ANSWER = ['/api/v1/adoption/events', '/api/v1/student-classes/session-dates'];
+const APP_ORIGIN = appOriginOf(BASE);
+const GUARD_OPTIONS = { allowTransactionTelemetry: true };
 const SEARCH_CHAR = process.env.SMOKE_FRICTION_SEARCH_CHAR || '陳';
 const SHORT = { timeout: 6_000 };
 
@@ -27,24 +31,17 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
 
+  // Responses to non-read requests that the guard did not answer locally = a write reached production.
   const writes = [];
   let guarding = false;
-  await page.route('**/*', (route) => {
-    const req = route.request();
-    if (!guarding || ['GET', 'HEAD', 'OPTIONS'].includes(req.method())) return route.fallback();
-    const path = new URL(req.url()).pathname;
-    if (LOCAL_ANSWER.includes(path)) return route.fulfill({ status: 204, body: '' });
-    return route.abort('blockedbyclient');
-  });
-  // Every non-read request after login is aborted above; the hard check is that none of them got a response.
-  const blocked = [];
-  page.on('requestfailed', (req) => {
-    if (guarding && !['GET', 'HEAD', 'OPTIONS'].includes(req.method())) blocked.push(`${req.method()} ${new URL(req.url()).pathname}`);
-  });
+  let blocked = [];
   page.on('response', (res) => {
     const req = res.request();
-    if (guarding && !['GET', 'HEAD', 'OPTIONS'].includes(req.method())
-      && !LOCAL_ANSWER.includes(new URL(req.url()).pathname)) writes.push(`${req.method()} ${new URL(req.url()).pathname}`);
+    if (!guarding) return;
+    const action = classifyAppRequest(APP_ORIGIN, req.method(), req.url(), GUARD_OPTIONS);
+    if (action === 'allow' || action === 'ignore') return;
+    if ((action === 'stub-telemetry' || action === 'inspect-telemetry') && res.status() === 204) return;
+    writes.push(`${req.method()} ${new URL(req.url()).pathname}`);
   });
 
   // Login (before the guard: login itself is a POST).
@@ -54,6 +51,8 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   await page.locator('button.login-btn').click({ force: true });
   if (await page.locator('#login-account').count()) await page.locator('button.login-btn').click({ force: true });
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+  // Login is a POST, so the guard goes on after it. It is a context route: every later non-read is aborted.
+  blocked = await installReadOnlyAppGuard(page.context(), APP_ORIGIN, GUARD_OPTIONS);
   guarding = true;
 
   let clicks = 0;
@@ -95,9 +94,16 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await dismissOverlays(page);
   };
   const nav = (label) => click(page.locator('nav.sidebar-nav').getByRole('button', { name: label }).first());
+  /** 課程查找 is only settled when its skeletons are gone and the course requests went quiet. */
+  const coursesSettled = async () => {
+    await page.locator('.course-list-skeleton, .pending-leave-case--skeleton').first()
+      .waitFor({ state: 'hidden', timeout: 20_000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  };
 
   await run('1 登記收款 from 課程查找', async () => {
     await nav('課程查找');
+    await coursesSettled();
     const btn = page.locator('button.payment-next-action', { hasText: '登記收款' }).first();
     if (!(await visible(btn))) return { reached: false, note: 'no course with 登記收款 visible' };
     await click(btn);
@@ -107,6 +113,7 @@ test('director task friction baseline (read-only)', async ({ page }) => {
 
   await run('2 補登收款 for legacy-paid course', async () => {
     await nav('課程查找');
+    await coursesSettled();
     const row = page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }).locator('button.payment-next-action').first();
     if (!(await visible(row))) return { reached: false, note: 'skipped: no fixture' };
     await click(row);
@@ -121,12 +128,17 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await nav('學生管理');
     await click(page.getByRole('button', { name: /課程\/購課/ }).first());
     await click(page.getByRole('button', { name: /新增課程/ }).first());
-    const reached = await page.locator('.modal-overlay, [role="dialog"]').first().isVisible(SHORT).catch(() => false);
+    const form = page.locator('.universal-scheduler-modal').first(); // UniversalClassScheduler, the new-course form
+    const conflict = page.locator('.enrollment-conflict-modal').first(); // EnrollmentConflictDecisionModal
+    await form.or(conflict).waitFor({ state: 'visible', timeout: 6_000 }).catch(() => {});
+    if (await visible(conflict)) return { reached: false, note: 'stopped at enrollment-conflict dialog' };
+    const reached = await visible(form);
     return { reached, note: reached ? '' : 'course form not visible' };
   });
 
   await run('4 續課 for a course', async () => {
     await nav('課程查找');
+    await coursesSettled();
     const direct = page.locator('[data-testid="course-row-actions"]').getByRole('button', { name: /^續課/ }).first();
     if (await visible(direct)) await click(direct);
     else {
@@ -137,7 +149,9 @@ test('director task friction baseline (read-only)', async ({ page }) => {
       if (!(await visible(renew))) return { reached: false, note: 'course manager has no 續課 button' };
       await click(renew);
     }
-    const reached = await page.locator('.modal-title', { hasText: '續課' }).first().isVisible(SHORT).catch(() => false);
+    // PurchaseSessionsModal (續課), RenewMonthlyModal (月結續約), StudentsList sessions dialog (#sessions-modal-title)
+    const dialog = page.locator('.modal-title, #sessions-modal-title').filter({ hasText: /續課|月結續約/ }).first();
+    const reached = await dialog.isVisible(SHORT).catch(() => false);
     return { reached, note: reached ? '' : '續課 dialog not visible' };
   });
 
@@ -153,8 +167,12 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   });
 
   fs.mkdirSync('test-results', { recursive: true });
-  fs.writeFileSync('test-results/task-friction.json', JSON.stringify({ results, blockedWrites: [...new Set(blocked)] }, null, 2));
-  console.log('blocked (never reached production):', [...new Set(blocked)].join(', ') || 'none');
+  fs.writeFileSync('test-results/task-friction.json', JSON.stringify({
+    results,
+    blockedWrites: [...new Set(blocked.map((b) => `${b.method} ${b.path}${isKnownPostRead(APP_ORIGIN, b) ? ' (post read)' : ''}`))],
+    telemetry: blocked.telemetryCounts,
+  }, null, 2));
+  console.log('blocked (never reached production):', [...new Set(blocked.map((b) => `${b.method} ${b.path}`))].join(', ') || 'none');
   console.log('task | clicks | pageSwitches | fullLoads | reached | note');
   for (const r of results) console.log(`${r.task} | ${r.clicks} | ${r.pageSwitches} | ${r.fullLoads} | ${r.reached} | ${r.note}`);
 
