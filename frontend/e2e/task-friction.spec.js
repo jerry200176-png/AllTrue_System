@@ -35,9 +35,12 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   const writes = [];
   let guarding = false;
   let blocked = [];
+  // Only requests sent after the guard is installed count; login-time telemetry can answer later (ui-smoke on #4882).
+  const guardedRequests = new WeakSet();
+  page.on('request', (req) => { if (guarding) guardedRequests.add(req); });
   page.on('response', (res) => {
     const req = res.request();
-    if (!guarding) return;
+    if (!guardedRequests.has(req)) return;
     const action = classifyAppRequest(APP_ORIGIN, req.method(), req.url(), GUARD_OPTIONS);
     if (action === 'allow' || action === 'ignore') return;
     if ((action === 'stub-telemetry' || action === 'inspect-telemetry') && res.status() === 204) return;
