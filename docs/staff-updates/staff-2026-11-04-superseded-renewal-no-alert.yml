@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-superseded-renewal-no-alert
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 已續約的課不再提醒需續課
+    summary: 學生同一科目已有新合約時，舊合約不會再顯示「需續課」。
+    items:
+      - category: fixed
+        text: 舊合約剩 0 堂、但已續約的學生，不會再被標成需續課。
+      - category: fixed
+        text: 收款名單的「剩 N 堂」只看目前使用中的新合約。
+    source_refs:
+      - "changelog:2026-11-04:superseded-renewal-no-alert"

@@ -439,6 +439,11 @@ class AlertController extends Controller
                 }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
+                // in-app #495: a renewal already exists, so low lessons / term end on the old contract needs no action.
+                // Money statuses (unpaid, partial, ...) are untouched.
+                if ($newerInfo !== null && in_array($paymentStatus, ['renew_needed', 'monthly_due_soon'], true)) {
+                    $paymentStatus = 'paid';
+                }
 
                 // #1100 (FD-3): leave-cascade extension of this (A) course's EndDate must
                 // never silently shift a pre-purchased (B) course's StartDate — surface an
@@ -1120,7 +1125,7 @@ class AlertController extends Controller
     /**
      * Batch-detect newer same-subject courses for the given StudentClass IDs.
      * For each ID, finds another active (Stop=0) StudentClass with the same
-     * StudentID + SubjectID but a different ID.
+     * StudentID + SubjectID but a higher ID.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, array{newer_id: int, remaining: int, start_date: string|null}>
@@ -1142,9 +1147,9 @@ class AlertController extends Controller
 
         $candidates = StudentClass::where('Stop', 0)
             ->whereIn('StudentID', $pairs->pluck('sid')->unique())
-            ->whereNotIn('ID', $studentClassIds)
             ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate']);
 
+        // Listed courses are candidates too (in-app #495); "newer" means a higher ID than the course itself.
         $candidateIndex = [];
         foreach ($candidates as $c) {
             $key = $c->StudentID . '-' . $c->SubjectID;
@@ -1156,7 +1161,7 @@ class AlertController extends Controller
         $map = [];
         foreach ($pairs as $p) {
             $key = $p['sid'] . '-' . $p['sub'];
-            if (isset($candidateIndex[$key])) {
+            if (isset($candidateIndex[$key]) && $candidateIndex[$key]->ID > $p['id']) {
                 $newer = $candidateIndex[$key];
                 $map[$p['id']] = [
                     'newer_id'   => (int) $newer->ID,

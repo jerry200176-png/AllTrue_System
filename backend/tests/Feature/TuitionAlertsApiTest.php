@@ -709,7 +709,7 @@ class TuitionAlertsApiTest extends TestCase
             'InvoiceID' => Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $c->ID, 'IssueDate' => '2026-04-01',
                 'TotalAmount' => $amount, 'PaidAmount' => $amount, 'Status' => $status])->id,
             'Amount' => $amount, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
-        $flagOnly = $this->createCountModeClass($student->id, $low);
+        $flagOnly = $this->createCountModeClass($student->id, $low + ['SubjectID' => 6]); // own subject: the package courses below must not count as its renewal (#495)
         $paid = $this->createCountModeClass($student->id, $low + ['SubjectID' => 2]);
         $receipt($paid, 'paid', 5000);
         $voidedBill = $this->createCountModeClass($student->id, $low + ['SubjectID' => 3]);
@@ -1002,10 +1002,6 @@ class TuitionAlertsApiTest extends TestCase
             'Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 88,
             'EndDate' => '2026-08-08',
         ]);
-        // Paid=1 + RemainingSessions>2 so B falls OUTSIDE the tuition-alert base
-        // query filter entirely — newerCourseByStudentClassIds() excludes any
-        // candidate whose ID is already in the alert result set, so B must not
-        // be part of that set to be detected as A's "newer course".
         $courseB = $this->createCountModeClass($student->id, [
             'Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88,
             'StartDate' => '2026-08-05',
@@ -1050,6 +1046,32 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNotNull($row);
         $this->assertTrue($row['has_newer_course']);
         $this->assertFalse($row['newer_course_overlap']);
+    }
+
+    // in-app #495: a newer same-subject contract that is itself listed still supersedes the old one.
+    public function test_listed_newer_course_supersedes_old_one_and_clears_renew_needed(): void
+    {
+        $token = $this->createDirectorToken([1], 'superseded@example.com');
+        $student = Student::create([
+            'name' => 'T495', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $old = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 95]);
+        $new = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 2, 'Charge' => 8000, 'SubjectID' => 95]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $rows = collect($res->json());
+        $oldRow = $rows->firstWhere('id', $old->ID);
+        $newRow = $rows->firstWhere('id', $new->ID);
+        $this->assertNotNull($oldRow);
+        $this->assertNotNull($newRow);
+        $this->assertTrue($oldRow['has_newer_course']);
+        $this->assertSame($new->ID, $oldRow['newer_course_id']);
+        $this->assertNotSame('renew_needed', $oldRow['payment_status']);
+        $this->assertFalse($newRow['has_newer_course']);
     }
 
     public function test_settle_closes_course_and_removes_from_alerts(): void
