@@ -243,7 +243,7 @@ class SubstituteController extends Controller
             && ($origDate !== $sessionDate || $origStart !== $startTime || $origEnd !== $this->hhmm($session->EndTime));
 
         $protectedLr = \App\Support\LearningRecordMutableOwnership::protectedRecordForSession((int) $session->id);
-        if ($protectedLr && (int) $protectedLr->TeacherID !== $oldTeacherId) {
+        if ($protectedLr && ($oldTeacherId <= 0 || (int) $protectedLr->TeacherID !== $oldTeacherId)) {
             return \App\Support\LearningRecordMutableOwnership::lockedResponse(); // #3824; undo back to the author is fine
         }
 
