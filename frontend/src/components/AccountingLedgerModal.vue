@@ -1,6 +1,6 @@
 <template>
   <Transition name="ledger-fade">
-    <div v-if="show" class="ledger-overlay" @click.self="$emit('close')">
+    <div v-if="show" v-show="!sheetOnly" class="ledger-overlay" @click.self="$emit('close')">
       <div
         ref="modalEl"
         class="ledger-modal"
@@ -336,7 +336,7 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" @close="entryOpen = false" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -386,6 +386,9 @@ const props = defineProps({
   show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean, studentWide: Boolean,
   // In-app #398: 'record' opens 登記收款 for the opened course once the ledger has loaded (only if its card offers it).
   initialAction: { type: String, default: null },
+  // Course row 登記收款/補登收款: show only the right-side entry sheet (no ledger behind it). The ledger still loads and runs
+  // every guard; if the form does not open (blocked or load error) the ledger shows with the reason.
+  sheetEntry: Boolean,
   // F-5a1: { [studentClassId]: { waive, void, settle } } from the page's alert rows (the old table's rules).
   rowActions: { type: Object, default: () => ({}) },
 });
@@ -569,7 +572,9 @@ async function loadLedger() {
     payload.value = json;
     autoExpandAttention();
     runInitialAction(loadDrafts());
+    if (!entryOpen.value) ledgerFellBack.value = true;
   } catch (e) {
+    ledgerFellBack.value = true;
     if (requestVersion !== ledgerRequestVersion) return;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
@@ -885,6 +890,12 @@ async function submitIssue() {
 const entryOpen = ref(false);
 const entryRow = ref(null);
 const entryMode = ref('record');
+const ledgerFellBack = ref(false);
+const sheetOnly = computed(() => props.sheetEntry && !ledgerFellBack.value);
+function onEntryClose() {
+  entryOpen.value = false;
+  if (sheetOnly.value) emit('close');
+}
 function openEntry(course, mode = 'record') {
   if (mode === 'legacy-backfill' && hasConfirmedReportFor(course.id)) {
     initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
@@ -941,7 +952,7 @@ watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpe
 let pendingInitialAction = null;
 watch(() => props.show, (open) => { pendingInitialAction = open ? props.initialAction : null; }, { immediate: true });
 const initialActionNote = ref('');
-watch(() => props.show, () => { initialActionNote.value = ''; });
+watch(() => props.show, () => { initialActionNote.value = ''; ledgerFellBack.value = false; });
 watch(() => entryOpen.value && entryMode.value === 'legacy-backfill' && hasConfirmedReportFor(entryRow.value?.id), (blocked) => {
   if (blocked) { entryOpen.value = false; initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP; }
 });
@@ -1014,6 +1025,7 @@ const justRecordedAmount = computed(() => {
 });
 const drawerScope = () => `${props.show}|${props.studentClassId}|${props.studentId}`;
 async function onEntryRecorded(result) {
+  if (sheetOnly.value) { entryOpen.value = false; emit('changed'); emit('close'); return; }
   const reportId = Number(result?.report_id);
   const offer = entryMode.value === 'record' && result?.status === 'pending' && reportId > 0 && canManageInvoices();
   const scope = drawerScope();
