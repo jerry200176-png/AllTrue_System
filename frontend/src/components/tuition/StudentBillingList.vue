@@ -62,7 +62,7 @@
     <slot v-if="inPanel" :name="view" />
     <!-- Alerts failed: the error above says so; the panel chips stay usable because the panels load their own data. -->
     <template v-else-if="alertsFailed" />
-    <AtEmpty v-else-if="!visible.length" icon="search_off" title="找不到符合的學生" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋或篩選。` : '請調整篩選。'" data-testid="sbl-empty" />
+    <AtEmpty v-else-if="!visible.length" icon="search_off" title="找不到符合的學生" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋或篩選。` : '請調整篩選。'" data-testid="sbl-empty" data-guide="tuition-rows" />
     <template v-else>
       <!-- In-app #471: header and rows share one column template (Polaris IndexTable / Stripe list pattern). -->
       <div class="sbl__head" aria-hidden="true">
