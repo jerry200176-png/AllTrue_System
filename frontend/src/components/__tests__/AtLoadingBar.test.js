@@ -77,4 +77,33 @@ describe('loadingBar', () => {
     expect(w.find('[role="progressbar"]').exists()).toBe(false);
     w.unmount();
   });
+
+  it('shows work that started before the bar mounted (Codex P2)', async () => {
+    track(new Promise(() => {}));
+    const w = mount(AtLoadingBar);
+    vi.advanceTimersByTime(SHOW_DELAY_MS + 1);
+    await nextTick();
+    expect(w.find('[role="progressbar"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('drops back and keeps creeping when new work starts while finishing (Codex P2)', async () => {
+    const w = mount(AtLoadingBar);
+    let resolve;
+    track(new Promise((r) => { resolve = r; }));
+    await nextTick();
+    vi.advanceTimersByTime(SHOW_DELAY_MS + 1);
+    await nextTick();
+    resolve();
+    await tick();
+    expect(w.find('[role="progressbar"]').element.style.width).toBe('100%');
+    track(new Promise(() => {}));
+    await nextTick();
+    vi.advanceTimersByTime(5000);
+    await nextTick();
+    const bar = w.find('[role="progressbar"]');
+    expect(bar.exists()).toBe(true);
+    expect(parseFloat(bar.element.style.width)).toBeLessThan(90);
+    w.unmount();
+  });
 });
