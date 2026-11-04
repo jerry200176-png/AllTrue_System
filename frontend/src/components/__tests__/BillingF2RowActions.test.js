@@ -230,3 +230,71 @@ describe('現在確認入帳 in the allocation result', () => {
     w.unmount();
   });
 });
+
+describe('現在確認入帳 inside the side sheet (#4659 step 3)', () => {
+  const sheetProps = { initialAction: 'record', sheetEntry: true };
+  const saved = async (w, receipts) => {
+    await flushPromises();
+    expect(w.findComponent(EntryStub).exists()).toBe(true);
+    receipts.push({ report_id: 8, student_class_id: 11, status: 'pending', amount: 4400, payment_date: '2026-10-02' });
+    w.findComponent(EntryStub).vm.$emit('confirmed', { report_id: 8, status: 'pending' });
+    await flushPromises();
+  };
+
+  it('save keeps the sheet on 已登記…待確認入帳; 現在確認入帳 uses the same confirm request, then the sheet closes and the list refreshes', async () => {
+    const receipts = [];
+    const { w, fetchMock } = mountLedger({ receipts, props: sheetProps });
+    await saved(w, receipts);
+    expect(w.emitted('close')).toBeUndefined();
+    expect(body('ledger-recorded-text').textContent).toContain('已登記 NT$ 4,400，待確認入帳');
+    expect(body('ledger-recorded-later').textContent).toContain('稍後');
+    expect(document.body.querySelector('.at-dialog__panel--sheet')).not.toBeNull();
+    expect(confirmCalls(fetchMock)).toHaveLength(0);
+    body('ledger-recorded-confirm').click();
+    await flushPromises();
+    const calls = confirmCalls(fetchMock);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toContain('/payment-reports/8/confirm');
+    expect(w.emitted('close')).toHaveLength(1);
+    expect(w.emitted('changed').length).toBeGreaterThan(0);
+    w.unmount();
+  });
+
+  it('confirm closes the sheet even when the drawer moved on, and does not wait for a ledger reload', async () => {
+    const receipts = [];
+    const { w, fetchMock } = mountLedger({ receipts, props: sheetProps });
+    await saved(w, receipts);
+    const loads = () => fetchMock.mock.calls.filter(([u]) => String(u).startsWith('/api/v1/accounting/ledger')).length;
+    const before = loads();
+    body('ledger-recorded-confirm').click();
+    await flushPromises();
+    expect(w.emitted('close')).toHaveLength(1);
+    expect(loads()).toBe(before);
+    w.unmount();
+  });
+
+  it('稍後 closes the sheet without any confirm request', async () => {
+    const receipts = [];
+    const { w, fetchMock } = mountLedger({ receipts, props: sheetProps });
+    await saved(w, receipts);
+    body('ledger-recorded-later').click();
+    await flushPromises();
+    expect(confirmCalls(fetchMock)).toHaveLength(0);
+    expect(w.emitted('close')).toHaveLength(1);
+    w.unmount();
+  });
+
+  it('補登收款 has no prompt: the sheet just closes after save', async () => {
+    const receipts = [];
+    const { w } = mountLedger({ receipts, props: sheetProps });
+    await flushPromises();
+    // the sheet is open on the record form; switch it to back-fill mode as the ledger would for a legacy row
+    w.vm.$.setupState.openEntry(course(11), 'legacy-backfill');
+    await flushPromises();
+    w.findComponent(EntryStub).vm.$emit('confirmed', { report_id: 9, status: 'confirmed' });
+    await flushPromises();
+    expect(body('ledger-recorded-text')).toBeNull();
+    expect(w.emitted('close')).toHaveLength(1);
+    w.unmount();
+  });
+});

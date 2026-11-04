@@ -65,7 +65,7 @@ export function recordCourseLists(page) {
  *   courses: () => Array<Record<string, any>>,
  *   actionLabel?: string,
  * }} options `actionLabel` pins the exact action to click when the row's state is known.
- * @returns {Promise<{ ledger: import('@playwright/test').Locator, studentClassId: number, paymentCell: import('@playwright/test').Locator }>}
+ * @returns {Promise<{ ledger: import('@playwright/test').Locator, studentClassId: number, paymentCell: import('@playwright/test').Locator, sheet: import('@playwright/test').Locator | null }>}
  *   the open billing panel, the course it was opened for, and the clicked row's payment cell
  */
 export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading, courses, actionLabel }) {
@@ -97,7 +97,16 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   );
   await action.click();
   const ledger = page.getByRole('dialog').filter({ has: page.locator('#ledger-modal-title') });
-  await expect(ledger, 'student billing panel opens in place').toBeVisible({ timeout: 15_000 });
+  // #4659 step 3: 登記收款 / 補登收款 open the entry form in a right-side sheet over the list (no ledger, no page switch).
+  const sheetAction = clickedLabel === UNPAID_ACTION || clickedLabel === LEGACY_ACTION;
+  const sheetDialog = page.locator('.at-dialog__panel--sheet');
+  if (sheetAction) {
+    await expect(sheetDialog, 'payment form opens in the side sheet').toBeVisible({ timeout: 15_000 });
+    await expect(sheetDialog.locator('.at-dialog__title')).toHaveText(clickedLabel);
+    await expect(ledger, 'the ledger is not opened first').toBeHidden();
+  } else {
+    await expect(ledger, 'student billing panel opens in place').toBeVisible({ timeout: 15_000 });
+  }
   const response = await ledgerResponse;
   expect(response.status(), 'student billing panel ledger request').toBe(200);
 
@@ -109,7 +118,7 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   expect(studentName, `course ${requestedId} has a student name`).not.toBe('');
   expect(studentName, 'ledger opened for a course of the clicked row\'s student').toBe(rowStudent);
   expect(clickedLabel, `action for course ${requestedId} matches its payment state`).toBe(expectedCoursePaymentActionLabel(course ?? {}));
-  await expect(ledger.locator('#ledger-modal-title')).toHaveText(`${studentName}的帳務`);
+  if (!sheetAction) await expect(ledger.locator('#ledger-modal-title')).toHaveText(`${studentName}的帳務`);
   await expect(pageHeading, 'still on 課程查找 (billing opens in place)').toBeVisible();
-  return { ledger, studentClassId: requestedId, paymentCell };
+  return { ledger, studentClassId: requestedId, paymentCell, sheet: sheetAction ? sheetDialog : null };
 }
