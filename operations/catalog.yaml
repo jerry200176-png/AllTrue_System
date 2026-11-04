@@ -727,6 +727,35 @@ operations:
     tags: [repair, session, shared-pool, issue-4734]
     notes: Founder GO 2026-11-01 (A, #4734). Deletes the planned lessons shared count pools pre-planned before #4730 past what each pool has left (SharedPackagePlanningService::sharedPoolExcess). Only future `scheduled` rows nothing points at; no billing, ledger or counter is written. Execute is pinned to the dry-run digest; the snapshot keeps every row whole for rollback. Pi-local POP only.
 
+  duplicate-history-pin-repair-20261104:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-duplicate-history-pin-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-DUPLICATE-HISTORY-PIN-REPAIR-20261104.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_duplicate_history_pin_schedule_rows_deleted
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\DuplicateHistoryPinRepairStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest]
+    tags: [repair, session, history-pin, issue-4901]
+    notes: GitHub #4901 (in-app #499). Deletes the second history pin (anchor and child schedule rows) the legacy contract-teacher-change pin pass added over a past slot that already had a live pin and a sign-in at the real teacher. Other slots where the winning pin disagrees with the sign-in are only listed. Execute is pinned to the dry-run digest; rollback re-inserts exactly the deleted rows. Pi-local POP only.
+
   forward-extra-cancel-20261101:
     lifecycle: active
     domain: session
