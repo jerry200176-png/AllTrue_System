@@ -80,8 +80,8 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
     public function test_restore_original_teacher_is_refused(): void
     {
         $s = $this->mkSession('scheduled');
-        $lr = $this->lr($s, 'pending', true);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
+        $lr = $this->lr($s, 'pending', true);
         $this->approve($lr, $this->bId);
         $this->assertLocked($lr, fn () => $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->aId]), $this->bId);
     }
@@ -89,8 +89,8 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
     public function test_substitute_undo_is_refused(): void
     {
         $s = $this->mkSession('scheduled');
-        $lr = $this->lr($s, 'pending', true);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
+        $lr = $this->lr($s, 'pending', true);
         $this->approve($lr, $this->bId);
         $this->assertLocked($lr, fn () => $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo"), $this->bId);
     }
@@ -206,19 +206,19 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
     public function test_race_after_precheck_still_returns_409_for_substitute_and_undo(): void
     {
         $s = $this->mkSession('scheduled');
-        $lr = $this->lr($s, 'pending', true);
-        $flip = function () use ($lr) {
+        $lr = $this->lr($s, 'pending', false, null, '');
+        $flip = function () use ($lr) { // the author saves a body between the precheck and the transaction
             \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: ' . LearningRecord::class);
-            DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'approved', 'ApprovedAt' => now(), 'ApprovedBy' => 1]);
+            DB::table('LearningRecord')->where('id', $lr->id)->update(['Content' => '老師實際填寫的評量正文', 'Progress' => '第三章']);
         };
         \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, $flip);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertStatus(409);
         $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
 
-        // undo: substitute while still pending, then approve between precheck and transaction
-        DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
+        // undo: substitute while the body is blank, then B saves a body between precheck and transaction
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['Content' => '', 'Progress' => null]);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
-        DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'pending', 'ApprovedAt' => null, 'Content' => '老師實際填寫的評量正文']); // B refilled after the substitute cleared the body
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['Content' => '', 'Progress' => null]);
         \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, $flip);
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo")->assertStatus(409);
     }
@@ -227,10 +227,10 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
     public function test_batch_substitute_race_after_precheck_returns_409(): void
     {
         $s = $this->mkSession('scheduled');
-        $lr = $this->lr($s, 'pending', true);
+        $lr = $this->lr($s, 'pending', false, null, '');
         \Illuminate\Support\Facades\Event::listen('eloquent.retrieved: ' . LearningRecord::class, function () use ($lr) {
             \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: ' . LearningRecord::class);
-            DB::table('LearningRecord')->where('id', $lr->id)->update(['Status' => 'approved', 'ApprovedAt' => now(), 'ApprovedBy' => 1]);
+            DB::table('LearningRecord')->where('id', $lr->id)->update(['Content' => '老師實際填寫的評量正文', 'Progress' => '第三章']);
         });
         $this->api()->postJson('/api/v1/teacher-leaves/batch-substitute', [
             'assignments' => [['class_session_id' => $s->id, 'substitute_teacher_id' => $this->bId]],
@@ -455,26 +455,23 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         }
     }
 
-    public function test_filled_but_unapproved_row_keeps_old_behaviour(): void
+    public function test_filled_but_unapproved_row_is_locked_too(): void
     {
         $s = $this->mkSession('attended');
         $lr = $this->lr($s, 'pending', true);
-        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'x'])->assertOk();
-        $this->assertSame($this->bId, (int) $lr->fresh()->TeacherID);
-        $this->assertSame(0, (int) User::find($this->aId)->TeachingSessionCount);
-        $this->assertSame(0, (int) User::find($this->bId)->TeachingSessionCount, 'pending never counted');
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'x'])->assertStatus(409);
+        $this->assertSame($this->aId, (int) $lr->fresh()->TeacherID);
     }
 
-    public function test_correction_path_for_a_filled_approved_row_is_rollback_then_audited_change(): void
+    public function test_correction_path_for_a_filled_approved_row_is_rollback_then_delete_then_audited_change(): void
     {
         $s = $this->mkSession('attended');
         $lr = $this->lr($s, 'approved', true);
         $this->api()->postJson("/api/v1/learning-records/{$lr->id}/rollback-approval", ['DirectorID' => 1])->assertOk();
         $this->assertSame(0, (int) User::find($this->aId)->TeachingSessionCount);
-        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'after rollback'])->assertOk();
-        $this->assertSame($this->bId, (int) $lr->fresh()->TeacherID);
-        $this->assertSame(0, (int) User::find($this->bId)->TeachingSessionCount, 'rolled-back row is not counted for B');
-        $this->assertDatabaseHas('learning_record_teacher_changes', ['learning_record_id' => $lr->id, 'new_teacher_id' => $this->bId, 'reason' => 'after rollback', 'changed_by' => $this->dirId]);
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId, 'reason' => 'after rollback'])->assertStatus(409); // still filled
+        $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}")->assertOk();
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
     }
 
     // ---- helpers ------------------------------------------------------------------------------------------------

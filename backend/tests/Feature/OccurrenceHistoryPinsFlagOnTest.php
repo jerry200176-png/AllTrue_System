@@ -80,7 +80,7 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
         $this->assertSame($this->cId, (int) $live[0]->teacher_id, 'existing substitute row untouched');
     }
 
-    public function test_evidence_disagreement_pins_the_old_contract_teacher_with_conflict_marker(): void
+    public function test_evidence_disagreement_pins_the_filled_assessment_author_with_conflict_marker(): void
     {
         $this->flag(true);
         $past = $this->taughtSession('2026-04-10', $this->aId, signInManual: true);
@@ -88,11 +88,12 @@ class OccurrenceHistoryPinsFlagOnTest extends TestCase
 
         $this->changeContractTeacher($this->bId)->assertOk();
 
-        $this->assertSame($this->aId, SubstituteScheduleService::effectiveInstructorUserId((int) $this->sc->ID, '2026-04-10', $this->bId, '16:00'));
+        // in-app #499: the author of the teacher-filled assessment keeps the lesson (C), not the sign-in teacher or the old contract teacher
+        $this->assertSame($this->cId, SubstituteScheduleService::effectiveInstructorUserId((int) $this->sc->ID, '2026-04-10', $this->bId, '16:00'));
         $log = ScheduleChangeLog::all();
         $this->assertCount(1, $log);
         $this->assertSame('pin_conflict', $log[0]->reason);
-        $this->assertSame($this->aId, (int) $log[0]->to_teacher_id);
+        $this->assertSame($this->cId, (int) $log[0]->to_teacher_id);
         $this->assertSame($this->bId, (int) $this->sc->fresh()->TeacherID, 'contract change not blocked');
     }
 

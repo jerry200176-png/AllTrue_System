@@ -12,6 +12,7 @@ class Handler extends ExceptionHandler
     protected $dontReport = [
         // Expected domain outcome (slot already taken) — a clean 422, not an error.
         SlotOccupiedException::class,
+        ApprovedAssessmentTeacherLockedException::class,
     ];
 
     protected $dontFlash = [
@@ -44,6 +45,10 @@ class Handler extends ExceptionHandler
                 return response()->json($e->toResponseArray(), 422);
             }
             return null;
+        });
+
+        $this->renderable(function (ApprovedAssessmentTeacherLockedException $e, $request) {
+            return $request->expectsJson() || $request->is('api/*') ? response()->json($e->toResponseArray(), 409) : null;
         });
     }
 }
