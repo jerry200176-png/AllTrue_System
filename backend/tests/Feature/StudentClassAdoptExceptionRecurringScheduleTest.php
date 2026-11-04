@@ -599,6 +599,23 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['self_overlap'], array_values(array_unique($types)), $resp->getContent());
     }
 
+    /** Codex on #4899: a locked row consumes the slot starting at its start, so a longer duration is no second occurrence. */
+    public function test_498_locked_row_with_longer_duration_slot_saves(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $mine = Student::create(['name' => 'own498b', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($mine->id, 159, ['ClassType' => 'one_on_two']);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $mine->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 17:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 2,
+                'days_of_week' => [1], 'start_time' => '17:00', 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 120]],
+            ])->assertOk();
+    }
+
     public function test_498_two_other_students_still_hit_capacity(): void
     {
         [$token, , $course] = $this->seedOneOnTwoWithOneOther(2);
