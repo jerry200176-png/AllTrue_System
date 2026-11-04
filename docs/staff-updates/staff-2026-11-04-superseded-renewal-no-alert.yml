@@ -8,8 +8,8 @@ updates:
     summary: 學生同一科目已有新合約時，舊合約不會再顯示「需續課」。
     items:
       - category: fixed
-        text: 舊合約剩 0 堂、但已續約的學生，不會再被標成需續課。
+        text: 舊合約堂數用完、但已經續約的學生，不會再被標成需續課。
       - category: fixed
-        text: 收款名單的「剩 N 堂」只看目前使用中的新合約。
+        text: 收款名單顯示的剩餘堂數，只看目前使用中的新合約。
     source_refs:
       - "changelog:2026-11-04:superseded-renewal-no-alert"
