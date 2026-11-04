@@ -4343,9 +4343,12 @@ const formatMoney = (value) => {
 
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
-const loadCourses = async (page = 1, { quiet = false } = {}) => {
+let quietRefreshNext = false; // set by the re-activation refetch: no loading flag, rows stay on screen
+const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
+  const quiet = quietRefreshNext;
+  quietRefreshNext = false;
   if (!props.branchId) {
     if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
     courses.value = [];
@@ -5599,7 +5602,7 @@ onDeactivated(() => {
 onActivated(() => {
   if (!wasHidden) return;
   wasHidden = false;
-  if (!coursesLoading.value) void loadCourses(pagination.value.page, { quiet: true }); // stale-while-revalidate, rows stay on screen
+  if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen
   document.addEventListener('click', closeActionMenu);
   if (focusedStudentKey.value) lockScroll();
 });

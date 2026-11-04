@@ -10,7 +10,7 @@ const read = (p) => readFileSync(resolve(dirname(fileURLToPath(import.meta.url))
 describe('kept-alive pages refetch quietly on return (stale-while-revalidate)', () => {
   it.each([
     ['DirectorDashboard', 'loadData({ quiet: true })'],
-    ['CourseManagement', 'loadCourses(pagination.value.page, { quiet: true })'],
+    ['CourseManagement', 'quietRefreshNext = true; void loadCourses(pagination.value.page)'],
     ['StudentsList', 'loadStudents({ quiet: true })'],
     ['SmartCalendar', 'loadCourses({ quiet: true })'],
   ])('%s calls its loader with quiet on re-activation', (page, call) => {
