@@ -387,6 +387,10 @@ class PaymentReportController extends Controller
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }
+            // A month another course's bill already carries is refused at the ledger write too (public report path, Codex P1 on #4867).
+            if ($sc && ($shared = $this->sharedBillRefusal($sc, ['invoice_id' => $report->InvoiceID, 'payment_date' => $report->payment_date]))) {
+                return $shared;
+            }
             // #4132 Codex P1: recheck package membership on confirm (convert already blocks payment_reports).
             $isCorrectionReport = DB::table('invoice_corrections')
                 ->where('payment_report_id', (int) $report->id)

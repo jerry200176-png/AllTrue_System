@@ -127,6 +127,14 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->api('postJson', '/api/v1/payment-reports/director-record', ['student_class_id' => $b->ID, 'payment_date' => '2026-10-23',
             'payment_method' => 'cash', 'amount' => 2000, 'legacy_flag_backfill' => true, 'idempotency_key' => (string) \Illuminate\Support\Str::uuid()])->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill');
         $this->assertSame($before, $counts());
+        // Codex P1: a parent's public report for B is refused at confirmation too, leaving it pending and the ledger unchanged.
+        $b->update(['Paid' => 0]);
+        $public = PaymentReport::create(['StudentID' => $b->StudentID, 'StudentClassID' => $b->ID, 'reported_by_name' => 'p', 'payment_date' => '2026-10-23',
+            'payment_method' => 'transfer', 'reported_amount' => 2000, 'status' => 'pending', 'report_token_hash' => str_repeat('c', 64), 'token_expires_at' => now()->addDay()]);
+        $before = $counts();
+        $this->api('putJson', "/api/v1/payment-reports/{$public->id}/confirm")->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill');
+        $this->assertSame($before, $counts());
+        $this->assertSame('pending', (string) $public->fresh()->status);
 
         // The sibling with no item on that bill is still collectible.
         $this->confirm($this->record($c->fresh(), 2000)->assertOk()->json('report_id'));
