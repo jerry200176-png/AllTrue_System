@@ -4,12 +4,12 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 改固定時段不再誤報名額已滿
-    summary: 修改一對二課程的固定時段時，不會再因為這位學生自己的舊堂次而誤報「已達上限」。
+    title: 改固定時段被擋時會說明是哪一堂
+    summary: 改固定時段被擋時，會說清楚是哪一堂自己的課擋住，不再誤報名額已滿。
     items:
-      - category: fixed
-        text: 改固定時段時，不會再把自己算成佔位學生。
       - category: improved
-        text: 如果自己的某一堂真的和新時段重疊，會提示「與自己的堂次重疊」，不再說名額已滿。
+        text: 改固定時段被擋時，會說清楚是哪一堂自己的課擋住。
+      - category: improved
+        text: 提示會告訴你日期和時間，先改那一堂，再改固定時段即可。
     source_refs:
       - "changelog:2026-11-04:capacity-self-seat"

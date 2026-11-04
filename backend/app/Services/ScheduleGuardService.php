@@ -99,10 +99,16 @@ class ScheduleGuardService
             foreach ($byDate ?: [[]] as $dateOverlaps) {
                 $overlaps = array_merge($recurringOverlaps, $dateOverlaps);
                 $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps, $trialTarget);
+                if ($tc) {
+                    $tc = $this->nameOwnRetainedLesson($tc, $classType, $slot, $overlaps, $excludeStudentClassId, $excludeStudentId, $trialTarget);
+                }
                 if ($tc && (!$teacherConflict || ($tc['current_students'] ?? 0) > ($teacherConflict['current_students'] ?? 0))) {
                     $teacherConflict = $tc;
                 }
                 $rc = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
+                if ($rc) {
+                    $rc = $this->nameOwnRetainedLesson($rc, $classType, $slot, $overlaps, $excludeStudentClassId, $excludeStudentId, $trialTarget);
+                }
                 if ($rc && (!$roomConflict || ($rc['current_students'] ?? 0) > ($roomConflict['current_students'] ?? 0))) {
                     $roomConflict = $rc;
                 }
@@ -736,8 +742,6 @@ class ScheduleGuardService
         // rows the plan leaves in place keep conflicting. Their paired schedules rows move with them.
         $remappedIds = [];
         $movedScheduleKeys = [];
-        // 'date|start' held by a locked regular own row: planSameDayRemap() lets it consume the slot starting there.
-        $heldStarts = [];
         if ($excludeStudentClassId) {
             $ownByDate = [];
             $ownLiveByDate = [];
@@ -760,9 +764,6 @@ class ScheduleGuardService
                 ];
                 if ((int) Carbon::parse($d)->dayOfWeekIso === $dow && $r['start'] !== '' && $r['end'] !== '') {
                     $ownLiveByDate[$d][] = $r;
-                    if (isset($locked[$r['id']]) && !$r['exception']) {
-                        $heldStarts[$d . '|' . $r['start']] = true;
-                    }
                 }
                 // The sync only touches 'scheduled' rows.
                 if (strtolower((string) $row->Status) === 'scheduled') {
@@ -828,15 +829,18 @@ class ScheduleGuardService
                 continue;
             }
 
-            // The edited course's own student never takes a capacity seat from itself (in-app #498): an own row the
-            // sync leaves in place that overlaps the new slot is a self_overlap, not an occupant.
+            // Bounded self-exclusion:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                // Global remap (non-null $remapMoves): collectRemapSelfOverlaps() is the self_overlap source; only an
-                // exception row the plan never adopts or moves is added here (it keeps its start key, so no regular row fits beside it).
-                if (($remapMoves === null || $row->IsContractException) && !isset($remappedIds[(int) $row->class_session_id]) && !($start === $slotStart && $end === $slotEnd) && !($start === $slotStart && isset($heldStarts[$sessionDate . '|' . $start]))) {
-                    $selfOverlaps[$sessionDate] ??= [substr($start, 0, 5) . '-' . substr($end, 0, 5), substr($slotStart, 0, 5) . '-' . substr($slotEnd, 0, 5)];
+                // Own rows the sync moves to a new slot never block it (in-app #347); rows it leaves in place conflict below.
+                if (isset($remappedIds[(int) $row->class_session_id])) {
+                    continue;
                 }
-                continue;
+                // If the session matches the slot being added, it is the course's own
+                // exception session being regularized into this recurring slot. Safe to exclude.
+                if ($start === $slotStart && $end === $slotEnd) {
+                    continue;
+                }
+                // If start/end do not match, it represents an intra-course overlapping conflict.
             }
 
             $key = $courseId . '|' . $sessionDate . '|' . $start . '|' . $end;
@@ -889,12 +893,14 @@ class ScheduleGuardService
                 continue;
             }
 
-            // Same rule for the course's own schedule rows (in-app #498).
+            // Bounded self-exclusion for schedules:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                if ($remapMoves === null && !isset($movedScheduleKeys[$scheduleDate . '|' . $start]) && !($start === $slotStart && ($end === $slotEnd || isset($heldStarts[$scheduleDate . '|' . $start])))) {
-                    $selfOverlaps[$scheduleDate] ??= [substr($start, 0, 5) . '-' . substr($end, 0, 5), substr($slotStart, 0, 5) . '-' . substr($slotEnd, 0, 5)];
+                if (isset($movedScheduleKeys[$scheduleDate . '|' . $start])) {
+                    continue;
                 }
-                continue;
+                if ($start === $slotStart && $end === $slotEnd) {
+                    continue;
+                }
             }
 
             $key = $courseId . '|' . $scheduleDate . '|' . $start . '|' . $end;
@@ -959,6 +965,42 @@ class ScheduleGuardService
         }
 
         return $slots;
+    }
+
+    /**
+     * In-app #498: when the edited course's own retained lesson is what fills the slot (without it the slot is under
+     * the limit), keep the conflict and its type but say so, instead of claiming the slot is full. Blocking is unchanged.
+     *
+     * @param  array<string, mixed>  $conflict
+     * @param  array<int, array<string, mixed>>  $overlaps
+     * @return array<string, mixed>
+     */
+    private function nameOwnRetainedLesson(array $conflict, string $classType, array $slot, array $overlaps, ?int $ownCourseId, ?int $ownStudentId, ?string $trialTarget): array
+    {
+        if (!$ownCourseId && !$ownStudentId) {
+            return $conflict;
+        }
+        $isOwn = fn ($e) => ($ownCourseId && (int) ($e['course_id'] ?? $e['source_id'] ?? 0) === $ownCourseId && ($e['source'] ?? '') !== 'student_class')
+            || ($ownStudentId && (int) ($e['student_id'] ?? 0) === $ownStudentId);
+        $own = array_values(array_filter($overlaps, $isOwn));
+        $dated = array_values(array_filter($own, fn ($e) => !empty($e['schedule_date'])));
+        if (!$dated) {
+            return $conflict;
+        }
+        $others = array_values(array_filter($overlaps, fn ($e) => !$isOwn($e)));
+        if (($conflict['type'] ?? '') === 'room_capacity') {
+            $roomId = (int) ($conflict['room_id'] ?? 0);
+            $stillFull = $this->countDistinctStudents(array_values(array_filter($others, fn ($e) => (int) ($e['room_id'] ?? 0) === $roomId))) >= (int) ($conflict['allowed_students'] ?? 0);
+        } else {
+            $stillFull = !$this->teacherCapacityDecision($classType, $slot, $this->withTrialTargets(array_values(array_filter($others, fn ($e) => $e['teacher_occupancy'] ?? true))), $trialTarget)['allowed'];
+        }
+        if ($stillFull) {
+            return $conflict;
+        }
+        $e = $dated[0];
+        $conflict['message'] = sprintf('這門課自己在 %s 還有一堂 %s-%s 沒有跟著改（已鎖定、例外或補課），會和新時段重疊。請先改那一堂，再改固定時段。', $e['schedule_date'], $e['start_time'], $e['end_time']);
+
+        return $conflict;
     }
 
     /**

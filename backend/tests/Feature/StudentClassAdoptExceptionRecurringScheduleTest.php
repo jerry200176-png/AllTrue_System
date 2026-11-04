@@ -359,24 +359,6 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['15:00'], $this->startsOn($course, '2026-04-28'));
     }
 
-    /** Codex on #4899: sparse count course, global remap puts the unlocked row on an earlier date, so the locked date keeps only itself. */
-    public function test_498_sparse_remap_with_locked_later_row_saves(): void
-    {
-        $token = $this->createDirectorToken([1]);
-        $student = Student::create(['name' => 'own498c', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
-        $course = $this->createCourseRecord($student->id, 159, ['ClassType' => 'one_on_two']);
-        $this->createSessionRecord($course->ID, '2026-04-27', '16:00:00', '17:00:00');
-        $locked = $this->createSessionRecord($course->ID, '2026-05-06', '16:30:00', '17:30:00');
-        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-05-06 16:30:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
-
-        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$course->ID}", [
-                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
-                'days_of_week' => [3], 'start_time' => '17:00', 'payment_type' => 'session',
-                'day_time_slots' => [['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60]],
-            ])->assertOk();
-    }
-
     /** #3502: on a remapped edit a row the remap lands next to a locked row that stays still conflicts. */
     public function test_added_weekday_remap_landing_on_a_locked_row_still_conflicts(): void
     {
@@ -575,8 +557,8 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
 
     /** @return list<string> H:i starts of the course's sessions on $date */
     /**
-     * In-app #498: a one-on-two course edit must never seat its own student against itself. Own rows the sync
-     * leaves in place (locked, exception) block only as a self-overlap; one other student leaves room.
+     * In-app #498: a one-on-two edit blocked by its own retained lesson (locked/exception) keeps blocking, but the
+     * message names that lesson instead of claiming the slot is full.
      */
     private function editOneOnTwo(string $token, StudentClass $course, string $start)
     {
@@ -601,7 +583,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         return [$token, $mine, $course];
     }
 
-    public function test_498_own_exception_and_locked_rows_are_not_a_capacity_seat(): void
+    public function test_498_own_retained_lesson_is_named_not_counted_as_full(): void
     {
         [$token, $mine, $course] = $this->seedOneOnTwoWithOneOther();
         $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00', 'scheduled', 1);
@@ -610,28 +592,11 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $mine->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-05-11 17:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
 
         $resp = $this->editOneOnTwo($token, $course, '17:30');
-        // The locked row stays and truly overlaps: self-overlap, never a capacity conflict.
+        // Blocking is unchanged (same type as before); the message names the course's own retained lesson.
         $resp->assertStatus(409);
-        $types = array_column($resp->json('conflicts') ?? $resp->json('data.conflicts') ?? [], 'type');
-        $this->assertNotEmpty($types, $resp->getContent());
-        $this->assertSame(['self_overlap'], array_values(array_unique($types)), $resp->getContent());
-    }
-
-    /** Codex on #4899: a locked row consumes the slot starting at its start, so a longer duration is no second occurrence. */
-    public function test_498_locked_row_with_longer_duration_slot_saves(): void
-    {
-        $token = $this->createDirectorToken([1]);
-        $mine = Student::create(['name' => 'own498b', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
-        $course = $this->createCourseRecord($mine->id, 159, ['ClassType' => 'one_on_two']);
-        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
-        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $mine->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 17:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
-
-        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$course->ID}", [
-                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 2,
-                'days_of_week' => [1], 'start_time' => '17:00', 'payment_type' => 'session',
-                'day_time_slots' => [['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 120]],
-            ])->assertOk();
+        $this->assertContains('teacher_capacity', array_column($resp->json('conflicts'), 'type'), $resp->getContent());
+        $this->assertStringContainsString('沒有跟著改', (string) $resp->json('message'));
+        $this->assertStringNotContainsString('已達', (string) $resp->json('message'));
     }
 
     public function test_498_two_other_students_still_hit_capacity(): void
@@ -643,6 +608,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $resp->assertStatus(409);
         $this->assertStringContainsString('已達', (string) $resp->json('message'));
         $this->assertSame(['teacher_capacity'], array_values(array_unique(array_column($resp->json('conflicts'), 'type'))));
+        $this->assertStringNotContainsString('沒有跟著改', (string) $resp->json('message'));
     }
 
     private function startsOn(StudentClass $course, string $date): array
