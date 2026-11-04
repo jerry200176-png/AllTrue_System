@@ -973,7 +973,7 @@
 <script setup>
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import { askConfirm } from '../composables/useConfirmDialog';
-import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
@@ -1813,9 +1813,9 @@ const loadBranchStudentTotal = async () => {
   }
 };
 
-const loadStudents = async () => {
+const loadStudents = async ({ quiet = false } = {}) => {
   const requestSequence = ++studentsRequestSequence;
-  studentsLoading.value = true;
+  if (!quiet) studentsLoading.value = true;
   studentsLoadError.value = '';
   try {
     if (!props.branchId) {
@@ -2286,6 +2286,14 @@ watch(showStudentModal, (open) => {
   window[open ? 'addEventListener' : 'removeEventListener']('keydown', onStudentModalKeydown);
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onStudentModalKeydown));
+// Kept alive by App.vue: a hidden page must not react to Escape.
+onDeactivated(() => window.removeEventListener('keydown', onStudentModalKeydown));
+let studentsActivatedOnce = false;
+onActivated(() => {
+  if (showStudentModal.value) window.addEventListener('keydown', onStudentModalKeydown);
+  if (studentsActivatedOnce) void loadStudents({ quiet: true }); // stale-while-revalidate, list stays on screen
+  studentsActivatedOnce = true;
+});
 
 const fetchLineBindings = async (studentId) => {
   if (!studentId) return;
@@ -3609,8 +3617,16 @@ const importStudents = async (event) => {
 };
 
 watch(() => props.branchId, () => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
-watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent], () => {
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent], async () => {
   handledInitialFocusKey.value = null;
+  // A kept-alive list may still carry filters/search from before. An explicit jump to a student missing from
+  // that filtered list resets them to the defaults and reloads first (ordinary page switches keep filters).
+  const targetId = Number(props.initialStudentId);
+  const inList = students.value.some((s) => Number(s?._laravelId ?? s?.id ?? 0) === targetId);
+  if (targetId > 0 && !inList && hasStudentFilters.value) {
+    filters.value = { search: '', grade: '', status: 'active' };
+    await loadStudents();
+  }
   focusInitialStudent();
 }, { immediate: true });
 watch(students, focusInitialStudent, { flush: 'post' });

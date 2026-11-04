@@ -1359,7 +1359,7 @@
 
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
@@ -1686,10 +1686,21 @@ const focusStudent = (group, e) => {
     expandedStudentGroups.value = next;
   }
 };
-watch(focusedStudentKey, (v, prev) => {
-  if (v && !prev) lockScroll();
-  else if (!v && prev) unlockScroll();
-});
+// One owner flag: the page holds the body lock only while it is focused AND visible (KeepAlive, Codex P2 on #4894).
+let pageVisible = true;
+let ownsScrollLock = false;
+function syncScrollLock() {
+  const want = pageVisible && !!focusedStudentKey.value;
+  if (want && !ownsScrollLock) { lockScroll(); ownsScrollLock = true; }
+  else if (!want && ownsScrollLock) { unlockScroll(); ownsScrollLock = false; }
+}
+watch(focusedStudentKey, syncScrollLock);
+// An explicit jump (student, teacher, dashboard drill-down) replaces the kept-alive page's old filters and focus,
+// as a fresh mount did; ordinary page switches keep them (Codex P2s on #4894).
+function applyExplicitNav(patch) {
+  filters.value = { name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '', ...patch };
+  focusedStudentKey.value = null;
+}
 const visibleGroups = computed(() =>
   focusedStudentKey.value
     ? groupedCourses.value.filter((g) => g.key === focusedStudentKey.value)
@@ -1854,7 +1865,9 @@ const backfillSelectedDates = ref([]);
 const backfillCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const backfillCsvInputRef = ref(null);
 const backfillImporting = ref(false);
-const todayYmd = computed(() => toYmd(new Date()));
+// Re-read the clock when the kept-alive page is shown again (bumped in onActivated), or it goes stale overnight.
+const clockTick = ref(0);
+const todayYmd = computed(() => (clockTick.value, toYmd(new Date())));
 const backfillRemainingSessions = computed(() => {
   const purchased = Math.max(0, Number(backfillForm.value.sessions_purchased) || 0);
   return Math.max(0, purchased - backfillSelectedDates.value.length);
@@ -4347,9 +4360,12 @@ const formatMoney = (value) => {
 
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
+let quietRefreshNext = false; // set by the re-activation refetch: no loading flag, rows stay on screen
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
+  const quiet = quietRefreshNext;
+  quietRefreshNext = false;
   if (!props.branchId) {
     if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
     courses.value = [];
@@ -4360,7 +4376,7 @@ const loadCourses = async (page = 1) => {
     courseListOutcome.cleared();
     return;
   }
-  coursesLoading.value = true;
+  if (!quiet) coursesLoading.value = true;
   // Cleared only once this request wins, so a failed/superseded load keeps them (Codex r4289665973).
   const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
   const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
@@ -5478,12 +5494,8 @@ watch(
   () => {
     const id = props.initialTeacherId;
     if (id == null || id === '') return;
-    filters.value.teacher_id = String(id);
     const t = (teachers.value || []).find((x) => String(x.id) === String(id));
-    if (t) {
-      const label = t.username || t.name || t.Name || '';
-      if (label) filters.value.teacher_name = label;
-    }
+    applyExplicitNav({ teacher_id: String(id), teacher_name: (t && (t.username || t.name || t.Name)) || '' });
     loadCourses(1);
     emit('clear-initial-teacher');
   },
@@ -5522,7 +5534,7 @@ watch(
     const name = String(props.initialStudentName || '').trim();
     const sid = props.initialStudentId;
     if (!name && (sid == null || sid === '')) return;
-    if (name) filters.value.name = name.slice(0, 40);
+    applyExplicitNav({ name: name.slice(0, 40) });
     // in-app #374: Students sends trial 「轉為正式課程」 here. Consumed by the coursesLoading watcher
     // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
     if (props.initialCourseIntent === 'convert-trial') {
@@ -5578,20 +5590,41 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,
   openContractRevertModal, openPackageConversionPreview, openPaymentSlip, openTuitionLedger,
 });
-onMounted(() => {
+// Dashboard drill-down context; read on mount and on every return to the kept-alive page.
+function consumeTrustFocus() {
   try {
     const raw = sessionStorage.getItem('alltrue_ops_trust_focus');
-    if (raw) {
-      const focus = JSON.parse(raw);
-      const ageMs = Date.now() - Number(focus?.at || 0);
-      if (ageMs >= 0 && ageMs < 5 * 60 * 1000 && focus?.student_name) {
-        filters.value.name = String(focus.student_name).slice(0, 40);
-      }
-      sessionStorage.removeItem('alltrue_ops_trust_focus');
-    }
-  } catch (_) { /* ignore */ }
+    if (!raw) return false;
+    sessionStorage.removeItem('alltrue_ops_trust_focus');
+    const focus = JSON.parse(raw);
+    const ageMs = Date.now() - Number(focus?.at || 0);
+    if (!(ageMs >= 0 && ageMs < 5 * 60 * 1000 && focus?.student_name)) return false;
+    applyExplicitNav({ name: String(focus.student_name).slice(0, 40) });
+    return true;
+  } catch (_) { return false; }
+}
+onMounted(() => {
+  consumeTrustFocus();
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
+});
+// Kept alive by App.vue: a hidden page must not listen to the document or hold the body scroll lock.
+let wasHidden = false;
+onDeactivated(() => {
+  wasHidden = true;
+  document.removeEventListener('click', closeActionMenu);
+  pageVisible = false;
+  syncScrollLock();
+});
+onActivated(() => {
+  clockTick.value += 1;
+  if (!wasHidden) return;
+  wasHidden = false;
+  pageVisible = true;
+  syncScrollLock();
+  document.addEventListener('click', closeActionMenu);
+  if (consumeTrustFocus()) { void loadCourses(1); return; }
+  if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen
 });
 onUnmounted(() => {
   monthlySummary.dispose();
@@ -5603,7 +5636,8 @@ onUnmounted(() => {
   // 若使用者在「聚焦中」直接切換頁面，元件卸載不會觸發 focusedStudentKey watcher，
   // scroll lock 會洩漏並殘留在 body，導致之後的頁面看起來像蓋了一層灰白遮罩、無法點選/捲動。
   // 卸載時若仍處於聚焦狀態，補一次解除以平衡計數。
-  if (focusedStudentKey.value) unlockScroll();
+  pageVisible = false;
+  syncScrollLock();
 });
 </script>
 

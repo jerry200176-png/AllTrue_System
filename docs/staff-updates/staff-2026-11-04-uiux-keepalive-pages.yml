@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-uiux-keepalive-pages
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 切換頁面不再重新整理
+    summary: 主任儀表板、課程管理、學生、帳務中心、班級行事曆，離開再回來時會停在原本的位置。
+    items:
+      - category: improved
+        text: 篩選、搜尋、分頁和捲動位置都會保留，不用重新找。
+      - category: improved
+        text: 回到帳務中心時，名單會在背景自動更新。
+    source_refs:
+      - "changelog:2026-11-04:uiux-keepalive-pages"
