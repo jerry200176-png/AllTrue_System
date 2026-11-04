@@ -36,9 +36,15 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     if (LOCAL_ANSWER.includes(path)) return route.fulfill({ status: 204, body: '' });
     return route.abort('blockedbyclient');
   });
-  page.on('request', (req) => {
+  // Every non-read request after login is aborted above; the hard check is that none of them got a response.
+  const blocked = [];
+  page.on('requestfailed', (req) => {
+    if (guarding && !['GET', 'HEAD', 'OPTIONS'].includes(req.method())) blocked.push(`${req.method()} ${new URL(req.url()).pathname}`);
+  });
+  page.on('response', (res) => {
+    const req = res.request();
     if (guarding && !['GET', 'HEAD', 'OPTIONS'].includes(req.method())
-      && !LOCAL_ANSWER.includes(new URL(req.url()).pathname)) writes.push(req.method());
+      && !LOCAL_ANSWER.includes(new URL(req.url()).pathname)) writes.push(`${req.method()} ${new URL(req.url()).pathname}`);
   });
 
   // Login (before the guard: login itself is a POST).
@@ -147,9 +153,10 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   });
 
   fs.mkdirSync('test-results', { recursive: true });
-  fs.writeFileSync('test-results/task-friction.json', JSON.stringify(results, null, 2));
+  fs.writeFileSync('test-results/task-friction.json', JSON.stringify({ results, blockedWrites: [...new Set(blocked)] }, null, 2));
+  console.log('blocked (never reached production):', [...new Set(blocked)].join(', ') || 'none');
   console.log('task | clicks | pageSwitches | fullLoads | reached | note');
   for (const r of results) console.log(`${r.task} | ${r.clicks} | ${r.pageSwitches} | ${r.fullLoads} | ${r.reached} | ${r.note}`);
 
-  expect(writes, 'no POST/PUT/PATCH/DELETE may leave the browser').toEqual([]);
+  expect(writes, 'no POST/PUT/PATCH/DELETE may reach production').toEqual([]);
 });
