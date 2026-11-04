@@ -12,6 +12,7 @@ import { commitReschedule } from '../../lib/rescheduleApi';
 import { canMaterializeProjectedSession, canCancelPausedProjectedSession } from '../../lib/sessionPlanningStatus';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 import { askConfirm } from '../useConfirmDialog';
+import { trackedFetch } from '../../lib/loadingBar';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -135,7 +136,7 @@ export function useSessionEditFlow({
       const token = sess?.access_token;
       if (!token) { alert('請重新登入'); return; }
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
-      const res = await fetch('/api/v1/class-sessions/ensure-projected', {
+      const res = await trackedFetch('/api/v1/class-sessions/ensure-projected', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
@@ -316,7 +317,7 @@ export function useSessionEditFlow({
         return null;
       }
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
-      const res = await fetch('/api/v1/class-sessions/ensure-projected', {
+      const res = await trackedFetch('/api/v1/class-sessions/ensure-projected', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -409,12 +410,12 @@ export function useSessionEditFlow({
       if (!token) { alert('請重新登入'); return; }
 
       const res = isUndoLeave
-        ? await fetch('/api/v1/schedules/undo-leave-by-session', {
+        ? await trackedFetch('/api/v1/schedules/undo-leave-by-session', {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ class_session_id: form.session_id }),
           })
-        : await fetch(`/api/v1/class-sessions/${form.session_id}`, {
+        : await trackedFetch(`/api/v1/class-sessions/${form.session_id}`, {
             method: 'PATCH', credentials: 'include',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ status: newStatus, reason: form.reason || '' }),
@@ -459,7 +460,7 @@ export function useSessionEditFlow({
       const token = sess?.access_token;
       if (!token) { alert('請重新登入'); return; }
 
-      const res = await fetch(`/api/v1/class-sessions/${form.session_id}`, {
+      const res = await trackedFetch(`/api/v1/class-sessions/${form.session_id}`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: 'leave_adjusted', reason: form.reason || '' }),
@@ -584,7 +585,7 @@ export function useSessionEditFlow({
       if (form.edit_end_time) body.end_time = form.edit_end_time;
       body.note = form.note ?? '';
 
-      const res = await fetch(`/api/v1/class-sessions/${form.session_id}`, {
+      const res = await trackedFetch(`/api/v1/class-sessions/${form.session_id}`, {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(body),
@@ -624,7 +625,7 @@ export function useSessionEditFlow({
       const token = sess?.access_token;
       if (!token) { alert('請重新登入'); return; }
 
-      const res = await fetch(`/api/v1/class-sessions/${form.session_id}/substitute`, {
+      const res = await trackedFetch(`/api/v1/class-sessions/${form.session_id}/substitute`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({

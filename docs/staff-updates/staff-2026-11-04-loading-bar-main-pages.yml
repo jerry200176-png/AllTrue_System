@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-04-loading-bar-main-pages
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 更多頁面載入時會顯示進度線
+    summary: 學生、課程、行事曆、收費等常用頁面，資料載入比較慢時，畫面上方會出現進度線。
+    items:
+      - category: improved
+        text: 載入中看得到進度線，不用猜是不是當機。
+    source_refs:
+      - "changelog:2026-11-04:loading-bar-main-pages"

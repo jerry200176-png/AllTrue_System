@@ -8,6 +8,7 @@ import {
   formatRescheduleFailure,
 } from '../../lib/scheduleDisplay';
 import { isEffectiveSession } from '../../lib/sessionOccurrenceFilter';
+import { trackedFetch } from '../../lib/loadingBar';
 
 export function useRescheduleAndMakeup({
   supabase,
@@ -199,13 +200,13 @@ export function useRescheduleAndMakeup({
       const token = sess?.access_token;
       if (token) {
         const [cRes, sRes] = await Promise.all([
-          fetch(`/api/v1/student-classes?${new URLSearchParams({ branch_id: String(bid), teacher_id: String(form.teacher_id), per_page: '1000' })}`, {
+          trackedFetch(`/api/v1/student-classes?${new URLSearchParams({ branch_id: String(bid), teacher_id: String(form.teacher_id), per_page: '1000' })}`, {
             credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
           }),
           // Pull by branch (not teacher_id) then filter by teacher course ids.
           // Some leave rows may have null/mismatched teacher_id depending on write path,
           // but student_course_id remains authoritative for occupancy release.
-          fetch(`/api/v1/schedules?${new URLSearchParams({ branch_id: String(bid), per_page: '5000' })}`, {
+          trackedFetch(`/api/v1/schedules?${new URLSearchParams({ branch_id: String(bid), per_page: '5000' })}`, {
             credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -337,7 +338,7 @@ export function useRescheduleAndMakeup({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return;
-      const res = await fetch(
+      const res = await trackedFetch(
         `/api/v1/schedules?student_course_id=${course.id}&type=extra&status=scheduled&per_page=all`,
         { headers: { Authorization: `Bearer ${session.access_token}` } }
       );
@@ -354,7 +355,7 @@ export function useRescheduleAndMakeup({
     if (!await askConfirm({ title: `取消 ${dateLabel} 的補課？`, message: '取消後仍可在堂次記錄中查閱，不會退還原請假堂次。', confirmLabel: '取消這堂補課', danger: true })) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`/api/v1/schedules/${schedule.id}/cancel-makeup`, {
+      const res = await trackedFetch(`/api/v1/schedules/${schedule.id}/cancel-makeup`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });

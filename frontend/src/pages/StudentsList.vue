@@ -1045,6 +1045,7 @@ import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
 import { trialTargetPayload } from '../lib/trialTarget.js';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -2325,7 +2326,7 @@ const fetchGuardians = async (studentId) => {
   try {
     const headers = sessionAuthHeaders();
     if (!headers) return;
-    const res = await fetch(`/api/v1/students/${studentId}/guardians`, { headers });
+    const res = await trackedFetch(`/api/v1/students/${studentId}/guardians`, { headers });
     if (res.status === 404) {
       multiGuardianEnabled.value = false;
       return;
@@ -2359,7 +2360,7 @@ const addGuardian = async () => {
   try {
     const headers = sessionAuthHeaders();
     if (!headers) return;
-    const res = await fetch(`/api/v1/students/${laravelId}/guardians`, {
+    const res = await trackedFetch(`/api/v1/students/${laravelId}/guardians`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -2390,7 +2391,7 @@ const removeGuardian = async (guardianLinkId) => {
   try {
     const headers = sessionAuthHeaders();
     if (!headers) return;
-    const res = await fetch(`/api/v1/students/${laravelId}/guardians/${guardianLinkId}`, {
+    const res = await trackedFetch(`/api/v1/students/${laravelId}/guardians/${guardianLinkId}`, {
       method: 'DELETE',
       headers,
     });
@@ -2425,7 +2426,7 @@ const loadIdentityData = async () => {
   identityError.value = '';
   try {
     const query = identityQuery.value.trim();
-    const res = await fetch(`/api/v1/student-identities${query ? `?q=${encodeURIComponent(query)}` : ''}`, {
+    const res = await trackedFetch(`/api/v1/student-identities${query ? `?q=${encodeURIComponent(query)}` : ''}`, {
       headers: identityAuthHeaders(),
     });
     const data = await res.json().catch(() => ({}));
@@ -2468,7 +2469,7 @@ const linkIdentityStudents = async () => {
   identitySaving.value = true;
   identityError.value = '';
   try {
-    const res = await fetch('/api/v1/student-identities/link', {
+    const res = await trackedFetch('/api/v1/student-identities/link', {
       method: 'POST',
       headers: identityAuthHeaders(),
       body: JSON.stringify({
@@ -2492,7 +2493,7 @@ const updateIdentityMode = async (group, mode) => {
   group.mode = mode;
   identityError.value = '';
   try {
-    const res = await fetch(`/api/v1/student-identities/${group.id}/access`, {
+    const res = await trackedFetch(`/api/v1/student-identities/${group.id}/access`, {
       method: 'PUT',
       headers: identityAuthHeaders(),
       body: JSON.stringify({ mode: group.mode }),
@@ -2508,7 +2509,7 @@ const updateIdentityMode = async (group, mode) => {
 
 const loadIdentityAudit = async (groupId) => {
   try {
-    const res = await fetch(`/api/v1/student-identities/${groupId}/audit`, { headers: identityAuthHeaders() });
+    const res = await trackedFetch(`/api/v1/student-identities/${groupId}/audit`, { headers: identityAuthHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.message || '無法載入稽核紀錄');
     identityAudit.value = data.audit || [];
@@ -2785,7 +2786,7 @@ const loadRoomsForBranch = async () => {
     const token = await getAccessToken();
     const headers = { 'Accept': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
+    const res = await trackedFetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
     if (res.ok) {
       const data = await res.json();
       rooms.value = Array.isArray(data) ? data : [];

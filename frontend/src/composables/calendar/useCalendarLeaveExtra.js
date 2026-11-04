@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { dayLabel, normalizeTimeTo30, computeEndTime } from '../../lib/calendarFormat.js';
 import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../../lib/leaveSuccessorShift.js';
+import { trackedFetch } from '../../lib/loadingBar';
 
 /** #740 Step 7b1：請假 + 加課 modal 流程 */
 export function useCalendarLeaveExtra({
@@ -134,7 +135,7 @@ export function useCalendarLeaveExtra({
         if (!successor.eligible) leavePreviewError.value = successorImpactItems(successor).slice(-successor.blockers.length).join('\n');
         return;
       }
-      const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
+      const res = await trackedFetch('/api/v1/schedules/leave-cascade-preview', {
         method: 'POST', credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ student_course_id: courseId, schedule_date: date }),
@@ -210,7 +211,7 @@ export function useCalendarLeaveExtra({
         await loadCourses();
         return;
       }
-      const res = await fetch('/api/v1/schedules', {
+      const res = await trackedFetch('/api/v1/schedules', {
         method: 'POST',
         credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -234,7 +235,7 @@ export function useCalendarLeaveExtra({
           durationMs: undoWindowSec * 1000,
           undoDescription: '已撤銷請假，請確認重新整理後的課堂狀態',
           onUndo: async () => {
-            const undoRes = await fetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
+            const undoRes = await trackedFetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
               method: 'POST', credentials: 'include',
               headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
             });
@@ -356,7 +357,7 @@ export function useCalendarLeaveExtra({
       const token = await getToken();
       if (!token) throw new Error('請重新登入後再試');
       if (!showExtraModal.value || requestKey !== extraRequestKey.value || requestVersion !== extraSessionCheckVersion) return;
-      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
+      const res = await trackedFetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
         method: 'POST', credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
@@ -442,7 +443,7 @@ export function useCalendarLeaveExtra({
     const token = await getToken();
     if (!token) throw new Error('請重新登入後再試');
     if (!ownsRequest() || !extraSessionReady.value) return;
-    const res = await fetch(`/api/v1/student-classes/${courseId}/add-session`, {
+    const res = await trackedFetch(`/api/v1/student-classes/${courseId}/add-session`, {
       method: 'POST', credentials: 'include',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({

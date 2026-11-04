@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { supabase } from '../../supabase';
+import { trackedFetch } from '../../lib/loadingBar';
 
 export function useMonthlyCorrectionPreview() {
   const show = ref(false);
@@ -38,7 +39,7 @@ export function useMonthlyCorrectionPreview() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return;
       const studentId = Number(course.StudentID ?? course.student_id);
-      const response = await fetch(`/api/v1/student-classes?student_id=${studentId}&per_page=1000`, {
+      const response = await trackedFetch(`/api/v1/student-classes?student_id=${studentId}&per_page=1000`, {
         credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${session.access_token}` },
       });
       if (!response.ok) throw new Error('下一期合約讀取失敗，請重新開啟預覽');
@@ -64,7 +65,7 @@ export function useMonthlyCorrectionPreview() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('請先登入');
-      const response = await fetch(`/api/v1/student-classes/${courseId}/monthly-contract-correction/preview`, {
+      const response = await trackedFetch(`/api/v1/student-classes/${courseId}/monthly-contract-correction/preview`, {
         method: 'POST', credentials: 'include',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify(input),
