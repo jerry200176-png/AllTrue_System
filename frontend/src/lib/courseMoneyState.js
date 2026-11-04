@@ -240,7 +240,9 @@ export const latestStandingPayment = (payments) => {
   return latest ? { date: latest.paidAt.slice(0, 10), amount: latest.left } : null;
 };
 // #4114 (Founder Q3): paid only by the legacy Paid / package flag, no Payment on record. Neutral: never green 已收, never 未繳.
-export const LEGACY_FLAG_UNVERIFIED_LABEL = '需核對（舊資料標已收，查無收款）';
+// UI/UX #4659 (Q6): the row label is a short status word; the full sentence goes behind a 「?」 / title.
+export const LEGACY_FLAG_UNVERIFIED_LABEL = '查無收款';
+export const LEGACY_FLAG_UNVERIFIED_HELP = '需核對（舊資料標已收，查無收款）';
 export const isLegacyPaidFlagOnly = (row) => row?.legacy_paid_flag_only === true;
 // Founder GO 2026-10-21: on the ledger card the director gets the next step, not a dead-end label.
 export const LEGACY_FLAG_ACTION_HELP = '標已收但查無收款。收過了：補登收款。沒收：改成未繳。';
@@ -298,6 +300,7 @@ export const REPORT_STATUS_LABELS = { pending: '待確認入帳', confirmed: '�
 // ── monthly period payment labels (folded from monthlyPaymentDisplay.js) ──
 // Review wording only for review cases; any other unmapped status stays neutral (in-app #395-#404).
 export const REVIEW_REQUIRED_LABEL = '月結帳單與上課堂數不符，請核對';
+export const REVIEW_REQUIRED_SHORT_LABEL = '月結待核對'; // chip text on the payment page; REVIEW_REQUIRED_LABEL goes in its title
 export const UNKNOWN_STATUS_LABEL = '狀態待確認';
 export const periodPaymentLabel = (status) => ({
   paid: '已收', unpaid: '未繳', partial: '繳了一部分', pending_report: REPORT_STATUS_LABELS.pending,
@@ -337,7 +340,7 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
   }
   if (closedReason(course) === 'waived') return { label: WAIVED_LABEL, tone: 'settled', nextAction: 'billing' };
   // #4114 (Founder Q3): paid by the legacy flag alone (no Payment) is 需核對, never 已收.
-  if (isLegacyPaidFlagOnly(course)) return { label: LEGACY_FLAG_UNVERIFIED_LABEL, tone: 'review', nextAction: 'billing' };
+  if (isLegacyPaidFlagOnly(course)) return { label: LEGACY_FLAG_UNVERIFIED_HELP, tone: 'review', nextAction: 'billing' };
   if (isCourseSettled(course) === null) return { label: PAYMENT_STATUS_LOADING_LABEL, tone: 'neutral', nextAction: 'billing' };
   const status = String(course.payment_status).toLowerCase();
   const nextAction = NEXT_ACTIONS[status] || 'billing';

@@ -237,7 +237,7 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(badge(6)).toBe('已收');
     expect(badge(7)).toBe('沒有待收款項');
     expect(badge(8)).toBe('已收');
-    expect(badge(9)).toBe('需核對（舊資料標已收，查無收款）');
+    expect(badge(9)).toBe('查無收款');
   });
 
   it('keeps students with an unbilled contract out of the 沒有未繳 filter (in-app #407)', () => {
@@ -269,7 +269,7 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(badge(11)).toBe('要開帳單');
     expect(badge(12)).toBe('已收');
     expect(badge(13)).toBe('已收');
-    expect(badge(14)).toBe('需核對（舊資料標已收，查無收款）');
+    expect(badge(14)).toBe('查無收款');
   });
 
   // #4114 (Founder Q3): flag-only is neutral 需核對 (amber): never green 已收, never 未繳, never owed.
@@ -286,7 +286,7 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     const w = mount(StudentBillingList, { props: { alertRows, today: '2026-10-07' } });
     for (const id of [15, 16]) {
       const b = w.find(`[data-testid="sbl-row-${id}"]`).findAll('[data-testid="at-badge"]');
-      expect(b.map((x) => x.text())).toEqual(['需核對（舊資料標已收，查無收款）']);
+      expect(b.map((x) => x.text())).toEqual(['查無收款']);
       expect(b[0].classes()).toContain('at-badge--warning');
     }
   });

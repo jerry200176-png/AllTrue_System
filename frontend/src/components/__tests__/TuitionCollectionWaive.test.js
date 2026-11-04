@@ -29,7 +29,7 @@ describe('tuition 確認不收 (waive) action', () => {
 
   it('F7 S3a: shows the backend reconciliation label and the review-required state instead of 正常', () => {
     expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}`);
-    expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}`);
+    expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending" :title="REVIEW_REQUIRED_LABEL">{{ REVIEW_REQUIRED_SHORT_LABEL }}`);
     expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
     expect(source).toContain('需核對：{{ r.label }}。怎麼處理：{{ r.text }}'); // #4797, in-app #469
   });

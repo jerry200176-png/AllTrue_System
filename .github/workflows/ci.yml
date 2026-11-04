@@ -863,6 +863,10 @@ jobs:
       - name: impeccable new findings vs committed baseline
         run: node scripts/design/impeccable-baseline.mjs check
 
+      # UI/UX #4659 Q6: payment-area status labels of 6 characters or fewer. Warns only (always exit 0).
+      - name: status label length (payment area, advisory)
+        run: node scripts/design/status-label-length.mjs
+
       - name: knip report (pinned 6.41.0, report only)
         if: always()
         working-directory: frontend

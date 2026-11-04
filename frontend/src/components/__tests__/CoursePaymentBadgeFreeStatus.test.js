@@ -54,7 +54,7 @@ describe('#4150 coursePaymentBadge: one verdict for every server status', () => 
       .toEqual({ label: '帳務資料需修正', tone: 'anomaly', nextAction: 'none' });
     expect(M.coursePaymentBadge(course({ class_type: 'tutoring', payment_status: 'unpaid' })))
       .toEqual({ label: '無須繳費', tone: 'no_payment', nextAction: 'none' });
-    expect(M.coursePaymentBadge(course({ payment_status: 'paid', legacy_paid_flag_only: true })).label).toBe(M.LEGACY_FLAG_UNVERIFIED_LABEL);
+    expect(M.coursePaymentBadge(course({ payment_status: 'paid', legacy_paid_flag_only: true })).label).toBe(M.LEGACY_FLAG_UNVERIFIED_HELP);
     expect(M.coursePaymentBadge(course({ payment_status: '' }))).toEqual({ label: M.PAYMENT_STATUS_LOADING_LABEL, tone: 'neutral', nextAction: 'billing' });
     expect(M.coursePaymentBadge(course({ payment_status: 'paid', _noncanonical: true })).label).toBe(M.PAYMENT_STATUS_LOADING_LABEL);
   });

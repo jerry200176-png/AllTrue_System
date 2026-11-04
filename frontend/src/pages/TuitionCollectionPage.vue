@@ -397,7 +397,7 @@
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
                   <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}</span>
-                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}</span>
+                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending" :title="REVIEW_REQUIRED_LABEL">{{ REVIEW_REQUIRED_SHORT_LABEL }}</span>
                   <template v-if="row.payment_review_required">
                     <div v-for="r in reviewReasonFixes(row.review_reasons)" :key="r.code" class="text-light" :data-testid="`tc-review-fix-${row.student_class_id}-${r.code}`">需核對：{{ r.label }}。怎麼處理：{{ r.text }}</div>
                   </template>
@@ -485,7 +485,7 @@
                 />
               </div>
               <div class="tc-batch-preview-row__amount">
-                <span class="status-tag" :class="statusClass(row)">{{ statusLabel(row) }}</span>
+                <span class="status-tag" :class="statusClass(row)" :title="legacyPaidOnly(row) ? LEGACY_FLAG_UNVERIFIED_HELP : undefined">{{ statusLabel(row) }}</span>
                 <strong>{{ formatCurrency(row.payable_outstanding ?? row.payable_amount ?? 0) }}</strong>
               </div>
             </div>
@@ -730,7 +730,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, reviewReasonFixes, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
+import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, REVIEW_REQUIRED_SHORT_LABEL, LEGACY_FLAG_UNVERIFIED_HELP, reviewReasonFixes, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },

@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import {
-  FREE_GIFT_LABEL, LEGACY_FLAG_UNVERIFIED_LABEL, LEGACY_CONFIRMED_REPORT_HELP, TUITION_STATUS_CONFIG, WAIVED_LABEL,
+  FREE_GIFT_LABEL, LEGACY_FLAG_UNVERIFIED_HELP, LEGACY_CONFIRMED_REPORT_HELP, TUITION_STATUS_CONFIG, WAIVED_LABEL,
 } from '../src/lib/courseMoneyState.js';
 import { formatCourseRef } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
@@ -501,7 +501,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
         if (rule === 'legacy' && fact.legacyNoStanding) {
           counts.cases_checked += 1;
           const text = await card.innerText(SHORT);
-          if ((await card.locator('[data-testid="contract-legacy-unverified"]').innerText(SHORT).catch(() => '')).trim() !== LEGACY_FLAG_UNVERIFIED_LABEL) violations.push({ course_id: fact.id, problem: 'legacy_without_review_note' });
+          if ((await card.locator('[data-testid="contract-legacy-unverified"]').innerText(SHORT).catch(() => '')).trim() !== LEGACY_FLAG_UNVERIFIED_HELP) violations.push({ course_id: fact.id, problem: 'legacy_without_review_note' });
           if (text.includes('繳費日') || text.includes('已收清')) violations.push({ course_id: fact.id, problem: 'legacy_reads_as_paid' });
           if (fact.confirmedLegacyChoice) {
             counts.confirmed_legacy_cases_checked += 1;

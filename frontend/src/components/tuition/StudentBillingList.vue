@@ -88,7 +88,7 @@
             </span>
             <span class="sbl__overdue" :class="{ due: r.overdue_days > 0 }">{{ r.overdue_days > 0 ? `逾期 ${r.overdue_days} 天` : '—' }}</span>
             <span class="sbl__status">
-              <AtBadge v-for="b in badges(r)" :key="b.label" :tone="b.tone" :label="b.label" />
+              <AtBadge v-for="b in badges(r)" :key="b.label" :tone="b.tone" :label="b.label" :title="b.help" />
               <span v-if="r.open_contracts > 1" class="sbl__muted">{{ r.open_contracts }} 份合約</span>
               <span v-if="r.remaining_hint" class="sbl__muted" :data-testid="`sbl-left-${r.student_id}`">{{ r.remaining_hint }}</span>
             </span>
@@ -144,7 +144,7 @@ import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import AtSkeleton from '../design-system/AtSkeleton.vue';
 import { formatDate } from '../../lib/billingDocumentView.js';
-import { LEGACY_FLAG_UNVERIFIED_LABEL } from '../../lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_HELP, LEGACY_FLAG_UNVERIFIED_LABEL } from '../../lib/courseMoneyState.js';
 import { buildStudentBillingRows, rowPrimaryAction, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
 
 const props = defineProps({
@@ -212,7 +212,7 @@ const badges = (r) => {
   else if (r.owed_later > 0 && !out.length) out.push({ tone: 'neutral', label: '快到期' });
   else if (!out.length && r.unbilled > 0) out.push({ tone: 'neutral', label: '要開帳單' });
   // #4114 (Founder Q3): a contract paid by the legacy flag alone reads 需核對, never 已收 (not owed either).
-  else if (!out.length && r.legacy_flag_only > 0) out.push({ tone: 'warning', label: LEGACY_FLAG_UNVERIFIED_LABEL });
+  else if (!out.length && r.legacy_flag_only > 0) out.push({ tone: 'warning', label: LEGACY_FLAG_UNVERIFIED_LABEL, help: LEGACY_FLAG_UNVERIFIED_HELP });
   // in-app #407: 已收 only when the server says a contract is paid (never a payment date alone).
   else if (!out.length) out.push(r.has_paid ? { tone: 'success', label: '已收' } : { tone: 'neutral', label: '沒有待收款項' });
   return out;

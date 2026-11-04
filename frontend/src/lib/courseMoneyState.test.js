@@ -163,7 +163,8 @@ assert.equal(M.INVOICE_STATUS_LABELS.partial, '繳了一部分');
 assert.equal(M.REPORT_STATUS_LABELS.confirmed, '已收');
 assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voided label');
 // #4114 (Founder Q3): paid by the legacy flag alone is its own neutral wording, only when the server says so.
-assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '需核對（舊資料標已收，查無收款）');
+assert.equal(M.LEGACY_FLAG_UNVERIFIED_HELP, '需核對（舊資料標已收，查無收款）');
+assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '查無收款');
 assert.equal(M.isWaivedContract({ waived: true, paid: false }), true);
 // #4150 round 3: reversal netting mirrors BillingPayableResolver::latestUnreversedReceiptDate.
 assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', report_id: 5 }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', report_id: 5 }]), null);
