@@ -387,6 +387,10 @@ class PaymentReportController extends Controller
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
             }
+            // A month another course's bill already carries is refused at the ledger write too (public report path, Codex P1 on #4867).
+            if ($sc && ($shared = $this->sharedBillRefusal($sc, ['invoice_id' => $report->InvoiceID, 'payment_date' => $report->payment_date]))) {
+                return $shared;
+            }
             // #4132 Codex P1: recheck package membership on confirm (convert already blocks payment_reports).
             $isCorrectionReport = DB::table('invoice_corrections')
                 ->where('payment_report_id', (int) $report->id)
@@ -461,7 +465,7 @@ class PaymentReportController extends Controller
                         Carbon::createFromFormat('!Y-m', $report->billing_period)->format('Y 年 n 月'), Carbon::createFromFormat('!Y-m', $period)->format('Y 年 n 月')),
                         'code' => 'monthly_period_changed', 'billing_period' => $period, 'recorded_billing_period' => $report->billing_period], 422);
                 }
-                $actual = $this->memberPeriodSummary($sc, $period, $legacyFlagBackfill);
+                $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
                 $monthlyProjection = $invoice ? $this->invoiceProjection($invoice, $sc) : null;
                 // A pending forecast must be rechecked before any ledger write.
                 // Partial receipts remain allowed; explicit cross-month cycles keep their invoice authority.
@@ -517,13 +521,14 @@ class PaymentReportController extends Controller
                 $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
-                $billing = $this->memberPeriodSummary($sc, $billingPeriod, $legacyFlagBackfill);
+                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
 
                 if (
                     (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
                     && (int) ($monthlyProjection['net_applied'] ?? 0) === 0
                     && (!$monthlyProjection || $monthlyProjection['computed_total_amount'] !== null)
                     && $billing['source'] === 'billable_sessions'
+                    && (!$monthlyProjection || $monthlyProjection['repriceable'])
                 ) {
                     $invoice->TotalAmount = (int) $billing['charge'];
                 }
@@ -576,7 +581,8 @@ class PaymentReportController extends Controller
                         : $sc->getAttribute('closed_reason'),
                 ]);
             }
-            if ($package && $status === 'paid' && !$enteredOnlyPackageBill) {
+            // A count package is one shared obligation; a monthly ('date') member settles only itself (#3892 D4, in-app #478).
+            if ($package && $status === 'paid' && !$enteredOnlyPackageBill && $sc->getAttribute('ScheduleMode') !== 'date') {
                 $paidAt = Carbon::make($report->payment_date)?->toDateString()
                     ?? Carbon::today()->toDateString();
                 $this->markPackagePaid($package, $paidAt);
@@ -703,6 +709,9 @@ class PaymentReportController extends Controller
             // #3892: package membership from the locked row, so a concurrent convertToPackage is never missed.
             $package = $this->lockPackageForCourse($lockedCourse);
 
+            if ($shared = $this->sharedBillRefusal($lockedCourse, $data)) {
+                return $shared;
+            }
             if ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0))) {
                 return $this->duplicateCoursePaymentResponse($blockReason);
             }
@@ -842,6 +851,9 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '這筆補登已經完成', 'report_id' => $replay->id, 'payment_id' => $replay->payment_id,
                     'invoice_id' => $replay->InvoiceID, 'status' => $replay->status, 'replayed' => true]);
             }
+            if ($shared = $this->sharedBillRefusal($course, ['invoice_id' => $invoiceId] + $data)) {
+                return $shared;
+            }
             if ($refusal = $this->legacyFlagRefusal($course, $standingReport)) {
                 return $refusal;
             }
@@ -856,7 +868,7 @@ class PaymentReportController extends Controller
             if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
                 // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the charge of the
                 // month confirm() will bill (the same collectionPeriodFor: oldest unbilled month, else the payment date's).
-                $limit = (int) $this->memberPeriodSummary($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']), true)['charge'];
+                $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']))['charge'];
                 if ((int) $data['amount'] > $limit) {
                     return response()->json(['message' => sprintf('月結本期應收為 NT$%d，補登金額不可超過。沒有登記任何款項。', $limit),
                         'code' => 'monthly_amount_stale', 'expected_amount' => $limit], 422);
@@ -1510,23 +1522,6 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * #4597 item 2: summarizePeriod() answers the stored Charge (0 for a package-created member) for any package member.
-     * The legacy backfill prices a monthly member by its own sessions and rate, like a non-package monthly course.
-     *
-     * @return array<string, mixed>
-     */
-    private function memberPeriodSummary(StudentClass $course, string $period, bool $byOwnSessions): array
-    {
-        if (!$byOwnSessions || (int) ($course->PackageID ?? 0) <= 0) {
-            return $this->monthlyBilling->summarizePeriod($course, $period);
-        }
-        $probe = clone $course; // never saved: only hides PackageID from the summary
-        $probe->setAttribute('PackageID', null);
-
-        return $this->monthlyBilling->summarizePeriod($probe, $period);
-    }
-
-    /**
      * The oldest live, still-owing full-price package bill (#4597) of another member, locked. Older per-member bills keep their
      * own amounts, so only a bill for the whole package price is the package's obligation.
      */
@@ -1668,6 +1663,37 @@ class PaymentReportController extends Controller
 
         return $live->first(fn (Invoice $i) => !$this->packagePaidHold($i) && (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
             ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
+    }
+
+    /**
+     * A monthly course's month that another course's non-void bill already carries an item for (a shared bill is headed by one
+     * course): collecting it again through this course would bill the same lessons twice. Refuses with 422 period_on_shared_bill.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function sharedBillRefusal(StudentClass $course, array $data): ?JsonResponse
+    {
+        if ($course->getAttribute('ScheduleMode') !== 'date') {
+            return null;
+        }
+        $id = (int) $course->getKey();
+        $own = empty($data['invoice_id']) ? null : Invoice::where('id', (int) $data['invoice_id'])->where('StudentClassID', $id)->value('billing_period');
+        $period = preg_match('/^\d{4}-\d{2}$/', (string) $own) ? (string) $own : $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date'] ?? null);
+        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
+        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
+
+        $shared = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
+            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get()
+            ->first(function (Invoice $invoice) use ($id, $period, $from, $to) {
+                [$start, $end] = $this->monthlyBilling->serviceRangeForCourse($invoice, $id);
+
+                return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
+            });
+
+        return $shared === null ? null : response()->json([
+            'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
+            'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
+        ], 422);
     }
 
     /**

@@ -900,6 +900,10 @@ class AlertController extends Controller
                 'source' => 'stored_charge_count_mode',
             ];
         $charge = (int) $billing['charge'];
+        // A multi-course bill is asked for at its stored total, not this course's own lessons (same as the queue and confirm).
+        if ($payableInvoice && $payableInvoice->items()->distinct()->count('StudentClassID') > 1) {
+            $charge = (int) $payable['payable_amount'];
+        }
 
         $dueDate = null;
         $daysUntilSettlement = null;

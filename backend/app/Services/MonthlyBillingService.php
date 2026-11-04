@@ -143,7 +143,7 @@ class MonthlyBillingService
         $id = (int) $course->getKey();
         $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
         $end = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : null;
-        if ((string) $course->getAttribute('ScheduleMode') !== 'date' || (int) ($course->getAttribute('PackageID') ?? 0) > 0 || !$start || !$end) {
+        if ((string) $course->getAttribute('ScheduleMode') !== 'date' || !$start || !$end) {
             return null;
         }
         $invoices ??= Invoice::query()->where('StudentClassID', $id)
@@ -200,9 +200,10 @@ class MonthlyBillingService
         $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
         $storedCharge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
 
-        // Package members are billed at the package level, not as individual
-        // monthly courses. Keep their existing source of truth untouched.
-        if ((int) ($course->getAttribute('PackageID') ?? 0) > 0) {
+        // A count package is one shared obligation billed at the package level. A monthly ('date') package member is
+        // billed per member by its own lessons and rate (#3892, RFC_SHARED_PACKAGE_COLLECTION Q3/D4; in-app #478).
+        if ((int) ($course->getAttribute('PackageID') ?? 0) > 0
+            && strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date') {
             return [
                 'charge' => $storedCharge,
                 'period_sessions' => 0,

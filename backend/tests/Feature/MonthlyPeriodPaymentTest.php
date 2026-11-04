@@ -90,7 +90,8 @@ class MonthlyPeriodPaymentTest extends TestCase
         $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
         $this->assertSame('paid', $summary['payment_status']);
         $course->setAttribute('PackageID', 1);
-        $this->assertSame([], app(MonthlyPeriodPaymentService::class)->batch(collect([$course])));
+        // A monthly ('date') package member is billed per member (#3892 D4, in-app #478), so it gets the same period attribution.
+        $this->assertSame('paid', app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID]['payment_status']);
     }
 
     public function test_next_period_without_sessions_is_still_not_covered_by_august_payment(): void
