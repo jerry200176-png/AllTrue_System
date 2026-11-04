@@ -79,6 +79,63 @@ describe('CourseSessionCalendar', () => {
   });
 });
 
+describe('CourseSessionCalendar times and drag', () => {
+  const sessions = [
+    { date: '2026-09-24', id: 7, startTime: '19:00:00', status: 'scheduled' },
+    { date: '2026-09-10', id: 1, startTime: '16:00', status: 'attended' },
+    { date: '2026-09-29', id: 8, startTime: '18:00' },
+    { date: '2026-09-29', id: 9, startTime: '10:00' },
+    { date: '2026-09-30', id: 10, startTime: '17:00' },
+  ];
+  const mountWith = (extra = {}) => {
+    const w = mountCalendar({ sessions });
+    return { w, set: (p) => w.setProps(p) , ...extra };
+  };
+
+  it('shows the start time, and first time plus count on a multi-lesson day', () => {
+    const { w } = mountWith();
+    expect(w.find('[data-testid="csc-time-2026-09-24"]').text()).toBe('19:00');
+    expect(w.find('[data-testid="csc-time-2026-09-29"]').text()).toBe('10:00 +1');
+  });
+
+  it('shows a non-normal state word from stateLabel', async () => {
+    const { w } = mountWith();
+    await w.setProps({ stateLabel: (s) => (s.id === 7 ? '請假' : '已上') });
+    expect(w.find('[data-testid="csc-day-2026-09-24"]').text()).toContain('請假');
+    expect(w.find('[data-testid="csc-day-2026-09-10"]').text()).not.toContain('已上');
+  });
+
+  it('drag emits move-session; past dates and locked lessons are not draggable or droppable', async () => {
+    const { w } = mountWith();
+    await w.setProps({ canMoveSession: (s) => s.id !== 10 });
+    const src = w.find('[data-testid="csc-day-2026-09-24"]');
+    expect(src.attributes('draggable')).toBe('true');
+    expect(w.find('[data-testid="csc-day-2026-09-30"]').attributes('draggable')).toBeUndefined(); // locked
+    expect(w.find('[data-testid="csc-day-2026-09-10"]').attributes('draggable')).toBeUndefined(); // past
+    expect(w.find('[data-testid="csc-day-2026-09-29"]').attributes('draggable')).toBeUndefined(); // 2 lessons
+    await src.trigger('dragstart');
+    await w.find('[data-testid="csc-day-2026-09-11"]').trigger('drop'); // past
+    expect(w.emitted('move-session')).toBeFalsy();
+    await w.find('[data-testid="csc-day-2026-09-25"]').trigger('drop');
+    expect(w.emitted('move-session')[0][0]).toEqual({ sessionId: 7, fromDate: '2026-09-24', toDate: '2026-09-25' });
+  });
+
+  it('a cancelled drag is forgotten: a later unrelated drop moves nothing', async () => {
+    const { w } = mountWith();
+    await w.setProps({ canMoveSession: () => true });
+    const src = w.find('[data-testid="csc-day-2026-09-24"]');
+    await src.trigger('dragstart');
+    await src.trigger('dragend');
+    await w.find('[data-testid="csc-day-2026-09-25"]').trigger('drop');
+    expect(w.emitted('move-session')).toBeFalsy();
+  });
+
+  it('has no drag at all unless the parent passes canMoveSession', () => {
+    const { w } = mountWith();
+    expect(w.find('[data-testid="csc-day-2026-09-24"]').attributes('draggable')).toBeUndefined();
+  });
+});
+
 describe('CourseSessionCalendar flag gate + CourseManagement host', () => {
   let original;
   beforeEach(() => { original = perfFlags.COURSE_SESSION_CALENDAR_V1; });

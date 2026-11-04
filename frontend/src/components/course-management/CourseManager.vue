@@ -144,13 +144,17 @@ export default {
       if (!m) return props.getSessionNumber(props.course, date, u.id);
       return (u.id ? m.byId.get(Number(u.id)) : m.byDate.get(date)) ?? null;
     }
+    function onMoveSession({ sessionId, fromDate, toDate }) {
+      const unit = (props.sessionUnits || []).find((x) => Number(x.id) === Number(sessionId) && String(x.date || '').slice(0, 10) === fromDate);
+      if (unit) emit('move-lesson', { mode: 'reschedule', unit, date: toDate });
+    }
     function onSelectDay({ date }) {
       const u = (props.sessionUnits || []).find((x) => String(x.date || '').slice(0, 10) === date);
       if (u) emit('open-session', { unit: u, date, id: u.id });
     }
     return {
       panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
-      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, monthlySummary, reviewFixes, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
+      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, onMoveSession, monthlySummary, reviewFixes, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
 };
@@ -332,7 +336,10 @@ export default {
               :create-enabled="createEnabled"
               :show-quick-add="false"
               @create-day="(p) => $emit('create-day', p)"
+              :state-label="(u) => getSessionStateLabel(course, (u.date || '').slice(0, 10), u.id)"
+              :can-move-session="canMoveLesson"
               @select-day="onSelectDay"
+              @move-session="onMoveSession"
             />
             <p v-else class="cmw__hint">行事曆尚未啟用；請改用列表檢視堂次。</p>
           </template>

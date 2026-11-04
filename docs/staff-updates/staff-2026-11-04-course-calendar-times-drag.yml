@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-04-course-calendar-times-drag
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 課程月曆會顯示上課時間
+    summary: 課程管理的月曆，每一天會直接寫出上課時間，不再只寫「已排」。
+    items:
+      - category: improved
+        text: 月曆格子顯示上課時間；一天有兩堂時顯示第一堂時間加上「+1」。
+      - category: improved
+        text: 請假、取消、例外等狀態會用短短一個字標出來。
+      - category: added
+        text: 電腦上可以把還沒上的課拖到別天，會打開調課畫面並帶入新日期，按確認才會改。
+    source_refs:
+      - "changelog:2026-11-04:course-calendar-times-drag"
