@@ -1,5 +1,23 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
+  <!-- placement="right": the same form in the side sheet (uiux #4659 step 7); fields, hints and emits are unchanged. -->
+  <AtDialog v-if="placement === 'right'" :open="show" size="md" placement="right" :title="dialogTitle" title-id="purchase-sheet-title" @close="!submitting && $emit('close')">
+    <p class="modal-desc">{{ form.student_name }} - {{ subjectLabel }}</p>
+    <p class="modal-note premium-note">{{ packageNote }}</p>
+    <div class="form-group">
+      <label>{{ sessionsLabel }}</label>
+      <input v-model.number="form.sessions" type="number" min="1" step="1" data-testid="purchase-sheet-sessions" />
+      <span v-if="isPackageMode" class="field-hint">目前共用總堂數 {{ currentTotal }} 堂，已使用 {{ usedSessions }} 堂。</span>
+    </div>
+    <div v-if="!isPackageMode" class="form-group">
+      <label>新批次開始日期</label>
+      <input v-model="form.start_date" type="date" />
+    </div>
+    <template #actions>
+      <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
+      <AtSubmitButton shape="rect" :pending="submitting" pending-text="處理中…" @click="$emit('submit')">{{ submitLabel }}</AtSubmitButton>
+    </template>
+  </AtDialog>
+  <div v-else-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
     <div class="modal course-modal premium-renewal-modal" style="max-width: 420px;">
       <div class="premium-modal-header">
         <span class="premium-modal-icon">＋</span>
@@ -50,12 +68,14 @@
 </template>
 
 <script setup>
+import AtDialog from '../design-system/AtDialog.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 
 const props = defineProps({
   show: Boolean,
+  placement: { type: String, default: 'center' },
   form: Object,
   submitting: { type: Boolean, default: false },
   isPackageMode: { type: Boolean, default: false },
@@ -67,6 +87,7 @@ defineEmits(['close', 'submit']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const isSetMode = computed(() => props.isPackageMode && props.form?.package_op === 'set');
 const sessionsLabel = computed(() => (props.isTrialMode ? '正式課程堂數' : (isSetMode.value ? '設定後的總堂數' : '續課堂數')));
+const dialogTitle = computed(() => (props.isTrialMode ? '試聽轉正式課程' : (props.isPackageMode ? '調整共用方案堂數' : '續課')));
 const submitLabel = computed(() => (props.isTrialMode ? '確認轉為正式' : (isSetMode.value ? '確認設定' : '確認續課')));
 function selectOp(op) {
   if (!props.form || props.form.package_op === op) return;

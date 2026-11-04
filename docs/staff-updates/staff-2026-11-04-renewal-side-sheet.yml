@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-renewal-side-sheet
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 續課改在右邊打開
+    summary: 課程管理的「續課」現在從右邊滑出，做完回到原本位置。
+    items:
+      - category: improved
+        text: 一般按堂數的課程，按「續課」不再跳到學生管理，直接在右邊填寫。
+      - category: improved
+        text: 按「確認續課」後右邊自動收起，列表的位置和篩選都不會變。
+    source_refs:
+      - "changelog:2026-11-04:renewal-side-sheet"
