@@ -507,7 +507,7 @@ const pageGuideConfig = {
       target: '[data-guide="tuition-chips"]',
       icon: 'sort',
       title: '剩餘堂數少的先處理',
-      description: '排序選「剩餘堂數（少到多）」，堂數最少的學生排最前面，可以提早寄繳費單。',
+      description: '按「需續課」，堂數最少的學生會排最前面（也可在排序選「剩餘堂數（少到多）」），提早寄繳費單。',
       placement: 'bottom',
     },
     {
