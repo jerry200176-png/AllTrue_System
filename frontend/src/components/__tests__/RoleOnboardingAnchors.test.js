@@ -65,3 +65,27 @@ describe('role onboarding spotlight anchors', () => {
     expect(appSource).toContain('開始工作（返回工作台）');
   });
 });
+
+describe('tuition-collect page guide', () => {
+  it('has steps whose data-guide targets exist in the page or billing list', async () => {
+    const { resolvePageGuideSteps } = await import('../../lib/pageGuideConfig.js');
+    const steps = resolvePageGuideSteps('tuition-collect');
+    expect(steps.length).toBeGreaterThanOrEqual(5);
+    const source = pageSource('TuitionCollectionPage.vue')
+      + readFileSync(resolve(__dirname, '../tuition/StudentBillingList.vue'), 'utf8');
+    for (const step of steps) {
+      const guide = step.target.match(/^\[data-guide="(.+)"\]$/)?.[1];
+      expect(guide, `${step.title} target shape`).toBeTruthy();
+      expect(source, step.title).toContain(`data-guide="${guide}"`);
+      expect(step.title && step.description && step.icon).toBeTruthy();
+    }
+  });
+
+  it('directors can open it from the page (the help button opens role onboarding instead)', () => {
+    const page = pageSource('TuitionCollectionPage.vue');
+    expect(page).toContain(':disabled="loading" @click="startGuide">操作導覽');
+    // Other tabs don't render the student list the steps point at.
+    expect(page).toMatch(/async function startGuide\(\) \{\s+activeAccountingTab\.value = 'students';\s+await nextTick\(\);\s+emit\('start-guide'\);/);
+    expect(appSource).toContain("@start-guide=\"guideTour.startTour('tuition-collect', { role })\"");
+  });
+});
