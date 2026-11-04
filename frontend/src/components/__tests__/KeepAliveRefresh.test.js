@@ -108,5 +108,11 @@ describe('cached-page regressions (Codex P2s)', () => {
     expect(src).toContain('watch(focusedStudentKey, syncScrollLock);');
     expect(src).not.toMatch(/if \(focusedStudentKey\.value\) (un)?lockScroll\(\)/);
   });
+
+  it('CourseManagement: an explicit student jump replaces cached filters and student focus', () => {
+    const src = read('../../pages/CourseManagement.vue');
+    const nav = src.slice(src.indexOf('() => [props.initialStudentId, props.initialCourseId, props.initialStudentName]'));
+    expect(nav).toMatch(/filters\.value = \{ name: name\.slice\(0, 40\), class_type: '', teacher_name: '', teacher_id: '', course_status: '' \};\s+focusedStudentKey\.value = null;/);
+  });
 });
 

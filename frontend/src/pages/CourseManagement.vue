@@ -5529,7 +5529,9 @@ watch(
     const name = String(props.initialStudentName || '').trim();
     const sid = props.initialStudentId;
     if (!name && (sid == null || sid === '')) return;
-    if (name) filters.value.name = name.slice(0, 40);
+    // An explicit jump replaces the kept-alive page's old filters and focus, as a fresh mount did (Codex P2 on #4894).
+    filters.value = { name: name.slice(0, 40), class_type: '', teacher_name: '', teacher_id: '', course_status: '' };
+    focusedStudentKey.value = null;
     // in-app #374: Students sends trial 「轉為正式課程」 here. Consumed by the coursesLoading watcher
     // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
     if (props.initialCourseIntent === 'convert-trial') {
