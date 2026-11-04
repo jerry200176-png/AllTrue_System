@@ -37,6 +37,7 @@ describe('binding pages follow the backend response contract (#3936)', () => {
     const post = calls.find((c) => c.opts.method === 'POST');
     expect(post.url).toContain('/bindings/conflicts/7/resolve');
     expect(JSON.parse(post.opts.body)).toEqual({ action: 'keep', binding_id: 11 });
+    expect([...document.body.querySelectorAll('button')].some((b) => b.textContent.includes('確認保留'))).toBe(false);
     w.unmount();
   });
 

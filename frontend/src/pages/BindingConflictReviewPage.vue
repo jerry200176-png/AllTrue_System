@@ -220,7 +220,7 @@ async function confirmResolve() {
       resolveTarget.value.binding.id,
       isSuperAdmin.value ? 'keep' : 'delete',
     );
-    closeResolveDialog();
+    resolveTarget.value = null; // closeResolveDialog() is a no-op while submitting (Codex P2 on #4891)
     await load(); // a delete may leave the conflict open, so re-read instead of dropping the row
   } catch (e) {
     resolveError.value = e?.payload?.message || e?.message || '解決衝突失敗，請稍後再試';
