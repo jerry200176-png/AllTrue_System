@@ -75,6 +75,15 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await sync();
   };
   const visible = (locator) => locator.first().isVisible().catch(() => false);
+  /** Waits (bounded) until the locator shows; unlike isVisible() it retries, so slow renders do not read as "absent". */
+  const shows = (locator, timeout = 6_000) => expect(locator.first()).toBeVisible({ timeout }).then(() => true, () => false);
+  const isGet = (res, path) => res.request().method() === 'GET' && new URL(res.url()).pathname === path;
+  /** Clicks, then waits for the ledger GET and the contract cards it renders. false = ledger never loaded (never hangs). */
+  const clickAndWaitLedger = async (locator) => {
+    const loaded = page.waitForResponse((res) => isGet(res, '/api/v1/accounting/ledger'), { timeout: 15_000 }).then(() => true, () => false);
+    await click(locator);
+    return (await loaded) && shows(page.locator('[data-testid^="contract-card-"]'), 10_000);
+  };
 
   const results = [];
   const run = async (task, fn) => {
@@ -109,9 +118,9 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await coursesSettled();
     const btn = page.locator('button.payment-next-action', { hasText: '登記收款' }).first();
     if (!(await visible(btn))) return { reached: false, note: 'no course with 登記收款 visible' };
-    await click(btn);
-    const reached = await page.locator('.pe-modal h3', { hasText: '登記收款' }).first().isVisible(SHORT).catch(() => false);
-    return { reached, note: reached ? '' : 'entry form not visible' };
+    const ledgerLoaded = await clickAndWaitLedger(btn);
+    const reached = await shows(page.locator('.pe-modal h3', { hasText: '登記收款' }));
+    return { reached, note: reached ? '' : `entry form not visible${ledgerLoaded ? '' : ' (ledger did not load)'}` };
   });
 
   await run('2 補登收款 for legacy-paid course', async () => {
@@ -119,11 +128,14 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await coursesSettled();
     const row = page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }).locator('button.payment-next-action').first();
     if (!(await visible(row))) return { reached: false, note: 'skipped: no fixture' };
-    await click(row);
+    const ledgerLoaded = await clickAndWaitLedger(row);
+    // A legacy-paid row opens the back-fill form directly (initialAction 'legacy-backfill'): that modal counts as reached.
+    const modal = page.locator('.pe-modal');
+    if (await shows(modal, ledgerLoaded ? 3_000 : 1_000)) return { reached: true, note: 'back-fill form opened directly' };
     const backfill = page.locator('[data-testid="legacy-backfill-open"]').first();
-    if (!(await visible(backfill))) return { reached: false, note: 'ledger has no 補登收款 button' };
+    if (!(await shows(backfill))) return { reached: false, note: ledgerLoaded ? 'ledger has no 補登收款 button' : 'ledger did not load' };
     await click(backfill);
-    const reached = await page.locator('.pe-modal').first().isVisible(SHORT).catch(() => false);
+    const reached = await shows(modal);
     return { reached, note: reached ? '' : 'entry form not visible' };
   });
 
@@ -148,8 +160,10 @@ test('director task friction baseline (read-only)', async ({ page }) => {
       const manage = page.locator('[data-testid="course-manager-open"]').first();
       if (!(await visible(manage))) return { reached: false, note: 'no course row with 續課 / 管理課程' };
       await click(manage);
+      // The course manager opens on the overview tab; 續課 renders only under the billing tab.
+      await click(page.locator('[data-testid="course-manager-tab-billing"]').first());
       const renew = page.locator('[data-testid="course-manager"]').getByRole('button', { name: /^(續課|加購)/ }).first();
-      if (!(await visible(renew))) return { reached: false, note: 'course manager has no 續課 button' };
+      if (!(await shows(renew))) return { reached: false, note: 'course manager has no 續課 button' };
       await click(renew);
     }
     // PurchaseSessionsModal (續課), RenewMonthlyModal (月結續約), StudentsList sessions dialog (#sessions-modal-title)
@@ -160,10 +174,13 @@ test('director task friction baseline (read-only)', async ({ page }) => {
 
   await run('5 find student by name search', async () => {
     await nav('學生管理');
+    // StudentsList debounces the search (300 ms) into GET /api/v1/students?search=...
+    const searched = page.waitForResponse((res) => isGet(res, '/api/v1/students') && new URL(res.url()).searchParams.has('search'), { timeout: 15_000 }).then(() => true, () => false);
     await page.locator('#students-name-filter').fill(SEARCH_CHAR); // typing is not counted as a click
-    await page.waitForTimeout(1_500);
+    if (!(await searched)) return { reached: false, note: 'search request never fired' };
+    await page.locator('.students-list-state--loading, .students-refresh-state').first().waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
     const first = page.locator('tr.student-row').first();
-    if (!(await visible(first))) return { reached: false, note: 'search returned no row (typed 1 char)' };
+    if (!(await shows(first))) return { reached: false, note: 'search returned no row (typed 1 char)' };
     await click(first);
     const reached = await page.locator('[id^="student-course-detail-"]').first().isVisible(SHORT).catch(() => false);
     return { reached, note: reached ? 'typed 1 char, not counted as click' : 'record did not open' };
