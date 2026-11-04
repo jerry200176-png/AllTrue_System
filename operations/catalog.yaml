@@ -206,6 +206,35 @@ operations:
     tags: [repair, billing, in-app-369]
     notes: Exact guards on current values (abort on any drift). Updates InvoiceItem amount, billing snapshot and StudentClass.Charge only; payments, invoice total/paid/status and Paid flag are never written. Pi-local POP only.
 
+  invoice-header-item-repair-20261104:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-invoice-header-item-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-INVOICE-HEADER-ITEM-REPAIR-20261104.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: three_exact_invoice_totals_and_items
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\InvoiceHeaderItemRepairStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, github-4850]
+    notes: Exact guards on current values (abort on any drift; an item on another invoice fails). Writes Invoice.TotalAmount, InvoiceItem.Amount and InvoiceItem.StudentClassID only; PaidAmount, Status, payments and StudentClass are never written. Pi-local POP only.
+
   reviewed-monthly-accounting-correction:
     lifecycle: active
     domain: billing-entitlement
@@ -667,7 +696,7 @@ operations:
     strategy_class: App\Operations\Strategies\ContractChargeCorrectionStrategy
     parameter_keys: [decision_reference]
     tags: [repair, billing, contract, charge, issue-3868]
-    notes: Exact manifest of GitHub #3868 (Founder 2026-10-29: contract 2569 Charge 8000 to 4000, contract 3288 Charge 8800 to 1100, both Rate x sessions). Writes StudentClass.Charge only; any invoice, payment, report, pricing amendment or per-session charge fails the whole plan. The reverse manifest restores 8000/8800 through this same operation. Pi-local POP only.
+    notes: Exact manifests of GitHub #3868 (Founder 2026-10-29: contract 2569 Charge 8000 to 4000, contract 3288 Charge 8800 to 1100, both Rate x sessions), #4138 and in-app #472 (Founder 2026-11-04: contract 2525 Charge 88000 to 83600). Writes StudentClass.Charge only; any invoice, payment, report, pricing amendment or per-session charge fails the whole plan, except that 2525 needs its bills paid at exactly Rate x quantity. The reverse manifest restores 8000/8800 through this same operation. Pi-local POP only.
 
   shared-pool-trim-overplan-20261101:
     lifecycle: active

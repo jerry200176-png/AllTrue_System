@@ -17,6 +17,8 @@ class SubstituteOccupancy4326Test extends TestCase
     {
         config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $v2]);
         $campus = Campus::factory()->create();
+        // In-app #468: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([78171, 78172] as $teacher) DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => $campus->id]);
         $student = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-B']);
         $course = $this->course($student, 78171);
         if ($materialized) {
@@ -72,6 +74,8 @@ class SubstituteOccupancy4326Test extends TestCase
             'duration_hours' => 2, 'class_type' => 'one_on_two', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0];
         $anchor = DB::table('schedules')->insertGetId($row);
         DB::table('schedules')->insert(array_replace($row, ['teacher_id' => 78172, 'original_schedule_id' => $anchor]));
+        // #4835: an owner counts only when bound to a campus, as real teachers are.
+        DB::table('UserCampus')->insert(['UserID' => 78172, 'CampusID' => $campus->id]);
         $payload = ['student_class_id' => $courses[0]->ID, 'old_date' => '2026-12-29', 'old_start_time' => '16:00',
             'new_date' => '2026-12-29', 'start_time' => '17:00', 'end_time' => '19:00', 'ensure_schedule_exception' => true];
         $this->withHeaders(['Authorization' => 'Bearer synthetic-4326', 'Accept' => 'application/json'])
@@ -127,6 +131,8 @@ class SubstituteOccupancy4326Test extends TestCase
         config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => false]);
         $campus = Campus::factory()->create();
         $room = DB::table('rooms')->insertGetId(['name' => 'R-Q', 'campus_id' => $campus->id, 'capacity' => 2]);
+        // #4835: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([78171, 78172] as $teacher) DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => $campus->id]);
         $student = Student::factory()->create(['CampusID' => $campus->id, 'name' => 'S-R']);
         $course = $this->course($student, 78171);
         DB::table('StudentClass')->where('ID', $course->ID)->update(['room_id' => $room]);

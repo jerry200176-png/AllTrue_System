@@ -31,7 +31,7 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}`);
     expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}`);
     expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
-    expect(source).toContain('需核對：{{ reviewReasonsText(row.review_reasons) }}'); // #4797
+    expect(source).toContain('需核對：{{ r.label }}。怎麼處理：{{ r.text }}'); // #4797, in-app #469
   });
 
   it('hides 確認不收 on paused rows (no closed_reason) because the waive endpoint rejects them', () => {
@@ -42,5 +42,25 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain("const hasBatchAmount = (r) => Number(r?.payable_outstanding ?? r?.payable_amount ?? 0) > 0;");
     expect(source).toContain("r.payable_status === 'invoiced' && hasBatchAmount(r)"); // what the student list may pick
     expect(source.match(/&& hasBatchAmount\(r\)\)/g)).toHaveLength(3); // preview rows, submit rows, open-preview rows
+  });
+});
+
+describe('tuition 已核對 (#4798)', () => {
+  it('shows only on review rows with nothing owed, and posts to the check endpoint then reloads', () => {
+    expect(source).toContain('v-if="row.payment_review_required && row.outstanding_amount === 0"');
+    expect(source).toContain('`tc-review-check-${row.student_class_id}`');
+    expect(source).toContain('/api/v1/student-classes/${row.student_class_id}/payment-review/check');
+    expect(source).toContain('確認這門課的帳都對了？標記後就不再列在待核對。');
+    // askConfirm() only resolves through a mounted host (Codex P1 on #4828).
+    expect(source).toMatch(/<ConfirmDialogHost \/>/);
+    expect(source).toContain("import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';");
+    expect(source).toMatch(/payment-review\/check[\s\S]{0,400}json\.message[\s\S]{0,300}loadAlerts\(\), loadSettledCourses\(\)/);
+  });
+});
+
+describe('tuition 需核對 next steps (in-app #469)', () => {
+  it('offers 到課程處理 only for the reasons fixed in course management, and no bill button for old months', () => {
+    expect(source).toContain(`reviewNeeds(row, 'course')" class="tc-btn" :data-testid="\`tc-review-course-\${row.student_class_id}\`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"`);
+    expect(source).not.toContain('tc-review-drafts-');
   });
 });

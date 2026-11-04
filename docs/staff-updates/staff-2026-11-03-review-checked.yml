@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-03-review-checked
+    published_at: "2026-11-03"
+    audiences:
+      - director
+    importance: digest
+    title: 待核對的課，帳都對了可以標「已核對」
+    summary: 待核對的課如果沒有欠款、每個上過課的月份也都有帳單，主任可以直接標成「已核對」。
+    items:
+      - category: improved
+        text: 到「收款」的已結清清單，在待核對的課按「已核對」，這門課就不再列在待核對。
+      - category: improved
+        text: 還有欠款，或有上過課的月份沒開帳單，就不能標；之後這門課的帳單、收款或上課有變動，會自動再回到待核對。
+    source_refs:
+      - "changelog:2026-11-03:review-checked"

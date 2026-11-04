@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-tutoring-card-and-settled-link
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 輔導課卡片不再寫「還沒繳費」
+    summary: 輔導課只顯示「輔導課不用繳費」；「已結清課程」只放在學生頁。
+    items:
+      - category: fixed
+        text: 輔導課的卡片不再出現「還沒繳費」、零元的合約金額和每堂的「還沒開帳單」。
+      - category: improved
+        text: 「已結清課程」按鈕只出現在學生頁，代收代付和收款紀錄頁上面不再有它。
+    source_refs:
+      - "changelog:2026-11-04:tutoring-card-and-settled-link"

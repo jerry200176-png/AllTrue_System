@@ -1,5 +1,5 @@
 <template>
-  <section class="sbl" aria-label="學生帳務清單">
+  <section :class="['sbl', { 'has-checks': anyCheck, 'has-actions': anyAction }]" aria-label="學生帳務清單">
     <AtInlineAlert v-if="error && !inPanel" tone="danger" title="帳務資料載入失敗" data-testid="sbl-error">
       {{ error }}。載入失敗，金額先不顯示。
       <template #action>
@@ -18,7 +18,7 @@
     <p v-if="!inPanel && !alertsFailed && rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有到期未繳。</p>
     <div class="sbl__tools">
       <input v-if="!inPanel" v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="sbl-search" />
-      <div class="sbl__chips" role="group" aria-label="篩選">
+      <div class="sbl__chips" role="group" aria-label="篩選" data-guide="tuition-chips">
         <button
           v-for="(f, key) in STUDENT_FILTERS"
           :key="key"
@@ -62,13 +62,14 @@
     <slot v-if="inPanel" :name="view" />
     <!-- Alerts failed: the error above says so; the panel chips stay usable because the panels load their own data. -->
     <template v-else-if="alertsFailed" />
-    <AtEmpty v-else-if="!visible.length" icon="search_off" title="找不到符合的學生" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋或篩選。` : '請調整篩選。'" data-testid="sbl-empty" />
+    <AtEmpty v-else-if="!visible.length" icon="search_off" title="找不到符合的學生" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋或篩選。` : '請調整篩選。'" data-testid="sbl-empty" data-guide="tuition-rows" />
     <template v-else>
+      <!-- In-app #471: header and rows share one column template (Polaris IndexTable / Stripe list pattern). -->
       <div class="sbl__head" aria-hidden="true">
-        <span>學生</span><span class="sbl__col-now">到今天未繳</span><span>逾期</span><span>狀態</span><span>最近繳費</span>
+        <div class="sbl__cols"><span>學生</span><span class="sbl__col-now">到今天未繳</span><span>逾期</span><span>狀態</span><span>最近繳費</span></div>
       </div>
-      <ul class="sbl__list">
-        <li v-for="r in visible" :key="r.student_id" :class="{ 'has-action': rowPrimaryAction(r), 'has-check': batchCounts && isBatchable(r) }">
+      <ul class="sbl__list" data-guide="tuition-rows">
+        <li v-for="r in visible" :key="r.student_id">
           <input
             v-if="batchCounts && isBatchable(r)"
             type="checkbox"
@@ -89,6 +90,7 @@
             <span class="sbl__status">
               <AtBadge v-for="b in badges(r)" :key="b.label" :tone="b.tone" :label="b.label" />
               <span v-if="r.open_contracts > 1" class="sbl__muted">{{ r.open_contracts }} 份合約</span>
+              <span v-if="r.remaining_hint" class="sbl__muted" :data-testid="`sbl-left-${r.student_id}`">{{ r.remaining_hint }}</span>
             </span>
             <span class="sbl__last">{{ r.last_paid_at ? formatDate(r.last_paid_at) : '—' }}</span>
           </button>
@@ -113,11 +115,13 @@
               :aria-controls="`sbl-contracts-${r.student_id}`"
               :data-testid="`sbl-expand-${r.student_id}`"
               @click="toggle(r.student_id)"
-            >{{ isOpen(r.student_id) ? '收合合約' : `展開 ${r.contracts.length} 份合約` }}</button>
+            ><span aria-hidden="true">{{ isOpen(r.student_id) ? '▾' : '▸' }}</span> {{ isOpen(r.student_id) ? '收合合約' : `展開 ${r.contracts.length} 份合約` }}</button>
             <ul v-if="isOpen(r.student_id)" :id="`sbl-contracts-${r.student_id}`" class="sbl__contracts" :data-testid="`sbl-contracts-${r.student_id}`">
               <li v-for="(c, i) in r.contracts" :key="`${c.id}-${i}`" class="sbl__contract">
                 <strong>{{ c.ref }}</strong>
+                <span v-if="c.subject">{{ c.subject }}</span>
                 <span>{{ c.period }}</span>
+                <span v-if="c.remaining !== null" :data-testid="`sbl-remaining-${c.id}`">剩 {{ c.remaining }} 堂</span>
                 <span>未繳 {{ money(c.owed) }}</span>
                 <span>已繳 {{ money(c.paid) }}</span>
                 <span v-if="c.pending_review > 0">需核對金額 {{ money(c.pending_review) }}</span>
@@ -185,9 +189,13 @@ const pendingReviewCount = computed(() => rows.value.reduce((s, r) => s + r.pend
 const SORTS = {
   amount: { label: '未繳金額', cmp: null },
   overdue: { label: '逾期天數', cmp: (a, b) => b.overdue_days - a.overdue_days || b.owed_now - a.owed_now },
+  // in-app #467: fewest lessons left first (who needs to renew soon); students with no count contract go last.
+  remaining: { label: '剩餘堂數（少到多）', cmp: (a, b) => (a.min_remaining ?? Infinity) - (b.min_remaining ?? Infinity) || b.owed_now - a.owed_now },
   name: { label: '姓名', cmp: (a, b) => a.student_name.localeCompare(b.student_name, 'zh-Hant') },
 };
-const sortKey = ref('amount');
+// in-app #494: 需續課 is for 「誰快沒堂數」, so it lists fewest lessons left first (the sort stays changeable).
+const sortKey = ref(filter.value === 'renew' ? 'remaining' : 'amount');
+watch(filter, (f) => { if (f === 'renew') sortKey.value = 'remaining'; });
 const visible = computed(() => {
   const list = rows.value.filter((r) => STUDENT_FILTERS[filter.value].test(r)
     && (!query.value.trim() || r.student_name.includes(query.value.trim())));
@@ -220,6 +228,8 @@ const selected = ref(new Set());
 const countsOf = (r) => props.batchCounts?.[r.student_id] || { confirm: 0, report: 0 };
 const isBatchable = (r) => countsOf(r).confirm + countsOf(r).report > 0;
 const batchableVisible = computed(() => visible.value.filter(isBatchable));
+const anyCheck = computed(() => Boolean(props.batchCounts) && batchableVisible.value.length > 0);
+const anyAction = computed(() => visible.value.some((r) => rowPrimaryAction(r)));
 const picked = computed(() => batchableVisible.value.filter((r) => selected.value.has(r.student_id)));
 const pickedIds = computed(() => picked.value.map((r) => r.student_id));
 const pickedCount = computed(() => ({
@@ -251,21 +261,22 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__sort{display:flex;white-space:nowrap;align-items:center;gap:6px;font-size:13px;color:var(--ds-ink-mute)}
 .sbl__sort select{min-height:36px;font:inherit;padding:4px 8px}
 .sbl__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.sbl__head,.sbl__row{display:grid;grid-template-columns:minmax(7em,1.2fr) minmax(9em,1.3fr) 6em minmax(10em,1.8fr) 7.5em;gap:4px 12px;align-items:center}
-.sbl__head{padding:0 12px;font-size:12px;color:var(--ds-ink-mute)}
+.sbl{--sbl-check:0px;--sbl-action:0px}
+.sbl.has-checks{--sbl-check:32px}
+.sbl.has-actions{--sbl-action:8.5em}
+.sbl__head,.sbl__list>li{display:grid;grid-template-columns:var(--sbl-check) minmax(0,1fr) var(--sbl-action);row-gap:6px;align-items:center}
+.sbl__cols,.sbl__row{grid-column:2;display:grid;grid-template-columns:minmax(7em,1.2fr) minmax(9em,1.3fr) 6em minmax(10em,1.8fr) 7.5em;gap:4px 12px;align-items:center}
+.sbl__cols{padding:0 13px;color:var(--ds-ink-mute)}
+.sbl__cols>span{font-size:12px} /* on the cells: em column widths must match the rows (#471) */
 .sbl__col-now{text-align:right}
 .sbl__row{width:100%;min-height:52px;text-align:left;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg,8px);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;cursor:pointer;font:inherit;color:inherit}
-.sbl__list>li.has-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center}
-.sbl__list>li.has-action>:not(.sbl__row):not(.sbl__action):not(.sbl__check){grid-column:1/-1}
-.sbl__action{min-height:44px;white-space:nowrap}
+.sbl__list>li>:not(.sbl__check):not(.sbl__row):not(.sbl__action){grid-column:2/-1}
+.sbl__action{grid-column:3;justify-self:end;width:calc(100% - 8px);min-height:44px;white-space:nowrap}
 .sbl__bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.sbl__bulk-all{display:flex;align-items:center;gap:6px;font-size:var(--ds-font-size-sm);min-height:32px}
+.sbl__bulk-all{display:flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:6px;font-size:var(--ds-font-size-sm);min-height:32px}
 .sbl__bulk-count{font-size:var(--ds-font-size-sm);font-weight:700}
 .sbl__bulk-csv{margin-left:auto}
-.sbl__check{width:20px;height:20px;margin:0 8px 0 0;align-self:center}
-.sbl__list>li.has-check{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 0;align-items:center}
-.sbl__list>li.has-check.has-action{grid-template-columns:auto minmax(0,1fr) auto;gap:6px 8px}
-.sbl__list>li.has-check>:not(.sbl__check):not(.sbl__row):not(.sbl__action){grid-column:1/-1}
+.sbl__check{grid-column:1;width:20px;height:20px;margin:0}
 .sbl__link{background:none;border:0;padding:0;font:inherit;color:var(--ds-ink-mute);text-decoration:underline;cursor:pointer;min-height:32px}
 .sbl__row:hover{border-color:var(--ds-ink-mute)}
 .sbl__meta{display:none}
@@ -277,16 +288,15 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 .sbl__status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .sbl__last,.sbl__overdue{font-size:13px;font-variant-numeric:tabular-nums}
 .sbl__muted{font-size:12px;color:var(--ds-ink-mute)}
-.sbl__toggle{background:none;border:0;padding:4px 12px;min-height:32px;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
+.sbl__toggle{justify-self:start;background:none;border:0;padding:4px 13px;min-height:32px;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);cursor:pointer;text-decoration:underline}
 .sbl__notes{list-style:none;margin:0;padding:0 12px;font-size:var(--ds-font-size-sm);color:var(--ds-warning-text,var(--ds-ink-mute))}
 .sbl__contracts{list-style:none;margin:0;padding:0 12px 8px}
 .sbl__contract{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--ds-font-size-md);padding:4px 0;font-variant-numeric:tabular-nums}
 @media (max-width:760px){
-  .sbl__list>li.has-action{grid-template-columns:1fr}
-  .sbl__list>li.has-check.has-action{grid-template-columns:auto minmax(0,1fr)}
-  .sbl__list>li.has-check.has-action>.sbl__action{grid-column:1/-1}
+  .sbl.has-checks{--sbl-check:36px}
+  .sbl.has-actions{--sbl-action:0px}
   .sbl__check{width:24px;height:24px}
-  .sbl__action{width:100%}
+  .sbl__list>li>.sbl__action{grid-column:2/-1;width:100%}
   .sbl__toggle{min-height:44px}
   .sbl__head{display:none}
   .sbl__chips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:2px}

@@ -58,6 +58,57 @@ final class ContractChargeCorrectionStrategyTest extends TestCase
         self::assertSame(['case_parameters_mismatch'], $s->plan(['decision_reference' => 'x'])['errors']);
     }
 
+    /** in-app #472: 2525 was cut 80 -> 76 lessons; its 83600 bill is paid and right, only Charge still says 88000. */
+    private function billed2525(int $total = 83600, int $paid = 83600, string $reportStatus = 'confirmed'): void
+    {
+        $this->course(2525, 2525, rate: 1100, sessions: 76, charge: 88000);
+        DB::table('StudentClass')->where('ID', 2525)->update(['Paid' => 1, 'Stop' => 0, 'closed_reason' => null, 'PayDate' => '2026-09-01']);
+        DB::table('Invoice')->insert(['id' => 2466, 'StudentID' => 2525, 'StudentClassID' => 2525, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => $paid >= $total ? 'paid' : 'partial', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('Payment')->insert(['InvoiceID' => 2466, 'Amount' => $paid, 'PaidAt' => now(), 'Method' => 'transfer', 'created_at' => now()]);
+        DB::table('payment_reports')->insert(['StudentID' => 2525, 'StudentClassID' => 2525, 'InvoiceID' => 2466, 'reported_by_name' => 'p',
+            'payment_date' => '2026-09-01', 'payment_method' => 'transfer', 'reported_amount' => $paid, 'status' => $reportStatus,
+            'report_token_hash' => str_repeat('b', 64), 'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function test_472_corrects_a_paid_contract_whose_bill_already_matches_and_reverses(): void
+    {
+        $this->billed2525();
+        $s = new ContractChargeCorrectionStrategy();
+        $bill = json_encode([DB::table('Invoice')->get(), DB::table('Payment')->get()]);
+        $plan = $s->plan(['decision_reference' => 'repair-contract-charge-472-20261104']);
+        self::assertTrue($plan['ok'], implode(',', $plan['errors']));
+        self::assertSame('before', $plan['state']);
+        $s->execute($plan, ['operation_id' => 'op-472']);
+        self::assertSame(83600, (int) DB::table('StudentClass')->where('ID', 2525)->value('Charge'));
+        self::assertSame($bill, json_encode([DB::table('Invoice')->get(), DB::table('Payment')->get()]));
+        self::assertTrue($s->verify($plan, ['ok' => true, 'snapshot' => $plan['snapshot']])['ok']);
+        self::assertTrue($s->rollback($plan['snapshot'], [])['ok']);
+        self::assertSame(88000, (int) DB::table('StudentClass')->where('ID', 2525)->value('Charge'));
+        // The 3868 contracts are untouched by the 472 manifest.
+        self::assertSame([8000, 8800], array_values($this->charges()));
+    }
+
+    public function test_472_refuses_when_the_bill_is_not_settled_at_rate_times_quantity(): void
+    {
+        foreach ([[88000, 88000, 'confirmed'], [83600, 40000, 'confirmed'], [83600, 83600, 'pending']] as [$total, $paid, $report]) {
+            foreach (['payment_reports', 'Payment', 'Invoice'] as $t) DB::table($t)->delete();
+            DB::table('StudentClass')->where('ID', 2525)->delete();
+            DB::table('Student')->where('id', 2525)->delete();
+            $this->billed2525($total, $paid, $report);
+            $plan = (new ContractChargeCorrectionStrategy())->plan(['decision_reference' => 'repair-contract-charge-472-20261104']);
+            self::assertSame(['course_2525_bills_not_settled_at_rate_times_quantity'], $plan['errors'], "$total/$paid/$report");
+        }
+        // Codex: a 4400 void posting under a bill that kept Status=paid nets 79200, not 83600.
+        foreach (['payment_reports', 'Payment', 'Invoice'] as $t) DB::table($t)->delete();
+        DB::table('StudentClass')->where('ID', 2525)->delete();
+        DB::table('Student')->where('id', 2525)->delete();
+        $this->billed2525();
+        DB::table('Payment')->insert(['InvoiceID' => 2466, 'Amount' => 4400, 'PaidAt' => now(), 'Method' => 'void', 'created_at' => now()]);
+        self::assertSame(['course_2525_bills_not_settled_at_rate_times_quantity'],
+            (new ContractChargeCorrectionStrategy())->plan(['decision_reference' => 'repair-contract-charge-472-20261104'])['errors']);
+    }
+
     public function test_4138_manifest_sets_the_total_from_the_keyed_lesson_price_and_reverses(): void
     {
         // #4138: 455 per lesson keyed as the total of a 20-lesson contract; Rate x 20 = 9100.

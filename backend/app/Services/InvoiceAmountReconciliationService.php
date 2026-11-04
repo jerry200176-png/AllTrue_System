@@ -116,11 +116,15 @@ class InvoiceAmountReconciliationService
             $periodSessions = (int) $billing['period_sessions'];
             $periodStart = $billing['period_start'];
             $periodEnd = $billing['period_end'];
-            $amountDiscrepancy = $billing['source'] === 'billable_sessions'
+            // A multi-course bill keeps its stored total: one course's lesson price covers only its own share, so it is
+            // neither repriced nor a discrepancy (in-app #478).
+            $multiCourse = ($invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get())
+                ->pluck('StudentClassID')->filter()->unique()->count() > 1;
+            $amountDiscrepancy = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && $computedTotalAmount !== $storedTotalAmount
                 && !($invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: an evidenced full discount is NT$0 by decision, not a discrepancy
 
-            $repriceable = $billing['source'] === 'billable_sessions'
+            $repriceable = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
                 && $netApplied === 0;
             if ($amountDiscrepancy && $repriceable) {

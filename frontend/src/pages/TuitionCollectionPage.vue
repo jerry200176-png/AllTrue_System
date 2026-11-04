@@ -7,6 +7,7 @@
       data-guide="tuition-header"
     >
       <template #actions>
+        <AtButton variant="secondary" shape="rect" icon="help" :disabled="loading" @click="startGuide">操作導覽</AtButton>
         <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
         <AtButton
           variant="secondary"
@@ -45,7 +46,8 @@
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
 
-    <nav class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+    <!-- in-app #480: 已結清 is a tuition list; on 收款紀錄 / 代收代付 it read like a status of that page. -->
+    <nav v-if="!['payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="!['students', 'payments', 'fees', ...STUDENT_PANEL_VIEWS].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回學生清單</button>
       <button
         v-for="v in REMINDER_VIEWS"
@@ -396,13 +398,17 @@
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
                   <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}</span>
                   <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending">{{ REVIEW_REQUIRED_LABEL }}</span>
-                  <div v-if="row.payment_review_required && reviewReasonsText(row.review_reasons)" class="text-light">需核對：{{ reviewReasonsText(row.review_reasons) }}</div>
+                  <template v-if="row.payment_review_required">
+                    <div v-for="r in reviewReasonFixes(row.review_reasons)" :key="r.code" class="text-light" :data-testid="`tc-review-fix-${row.student_class_id}-${r.code}`">需核對：{{ r.label }}。怎麼處理：{{ r.text }}</div>
+                  </template>
                   <span v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}</span>
                   <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
+                    <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
+                    <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
                   </div>
                 </td>
               </tr>
@@ -681,6 +687,8 @@
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
+    <!-- #4798: askConfirm() needs a host on this page; App.vue mounts pages without a shared one. -->
+    <ConfirmDialogHost />
     </div>
   </div>
 </template>
@@ -702,6 +710,8 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtSelectAll from '../components/design-system/AtSelectAll.vue';
 import { useSelection } from '../composables/useSelection';
 import AtDialog from '../components/design-system/AtDialog.vue';
+import { askConfirm } from '../composables/useConfirmDialog';
+import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -720,7 +730,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { normalizeNavigationId, resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
-import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, reviewReasonsText, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
+import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_LABEL, TUITION_STATUS_CONFIG, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, reviewReasonFixes, WAIVED_LABEL, ENDED_PENDING_LABEL, PAUSED_PENDING_LABEL } from '../lib/courseMoneyState.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -729,7 +739,7 @@ const props = defineProps({
   initialCourseId: { type: [Number, String], default: null },
 });
 
-const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-context']);
+const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-context', 'start-guide']);
 
 const loading = ref(false);
 const error = ref('');
@@ -742,7 +752,7 @@ const ACCOUNTING_TABS = [
   { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
 ];
 const REMINDER_VIEWS = [
-  { key: 'settled', label: '已結清' },
+  { key: 'settled', label: '已結清課程' },
 ];
 // F-4: these two used to be reminder-bar pages; they are chips on the student list now.
 const STUDENT_PANEL_VIEWS = ['monthly-drafts', 'monthly-review'];
@@ -1165,6 +1175,14 @@ function openReceiptByReport(reportId) {
   receiptOpen.value = true;
 }
 
+// The guide's steps point at the student list; other tabs don't render it, and the tour drops absent targets (Codex P2 on #4889).
+// The button is disabled while the list loads, since the list hides its targets until then.
+async function startGuide() {
+  activeAccountingTab.value = 'students';
+  await nextTick();
+  emit('start-guide');
+}
+
 function refreshActiveTab() {
   if (activeAccountingTab.value === 'monthly-drafts') {
     monthlyDrafts.value?.reload();
@@ -1560,6 +1578,23 @@ async function openWaiveDialog(row) {
     else showToast('無法取得不收金額', 'error');
   } catch (e) {
     showToast('無法取得不收金額', 'error');
+  }
+}
+
+const reviewNeeds = (row, action) => reviewReasonFixes(row.review_reasons).some((r) => r.action === action);
+async function checkReviewed(row) {
+  if (!await askConfirm({ title: '已核對？', message: '確認這門課的帳都對了？標記後就不再列在待核對。', confirmLabel: '已核對' })) return;
+  try {
+    const resp = await authedFetch(`/api/v1/student-classes/${row.student_class_id}/payment-review/check`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    }, getToken());
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.message || `操作失敗（${resp.status}）`);
+    showToast(json.message || '已標記為已核對。', 'success');
+    await Promise.all([loadAlerts(), loadSettledCourses()]);
+  } catch (e) {
+    showToast(e.message || '操作失敗', 'error');
   }
 }
 

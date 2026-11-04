@@ -80,6 +80,7 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $trial_target_class_type Trial courses only: regular class type the trial is for (in-app #426).
  * @property string|null $purchase_request_key sha256 of the purchase-batch request identity (#4349); null for legacy rows.
  * @property \App\Models\Subject|null $subjectRecord
+ * @property string|null $review_checked_signature
  * @property int|string|null $monthly_session_count Optional projection/aggregate attribute; no schema change.
  * @property \Illuminate\Support\Carbon|null $created_at Optional legacy attribute only; absent from the current schema and normal rows.
  */
@@ -135,13 +136,13 @@ class StudentClass extends Model
         // Checked against the committed row so a model loaded before the waiver cannot slip through.
         static::saving(function (StudentClass $course): void {
             if ($course->exists && $course->isDirty(['Paid', 'Pay', 'PayDate', 'Stop', 'closed_reason', 'Charge'])
-                && self::isWaivedInDb((int) $course->getKey())) {
-                abort(422, '此合約已確認不收，不能再變更繳費或結案狀態');
+                && ($closure = self::terminalClosureInDb((int) $course->getKey()))) {
+                abort(422, $closure === 'refunded' ? self::REFUNDED_MESSAGE : '此合約已確認不收，不能再變更繳費或結案狀態');
             }
         });
         static::deleting(function (StudentClass $course): void {
-            if (self::isWaivedInDb((int) $course->getKey())) {
-                abort(422, '此合約已確認不收，不能刪除');
+            if ($closure = self::terminalClosureInDb((int) $course->getKey())) {
+                abort(422, $closure === 'refunded' ? self::REFUNDED_MESSAGE : '此合約已確認不收，不能刪除');
             }
         });
         static::saved(function (StudentClass $course): void {
@@ -157,13 +158,28 @@ class StudentClass extends Model
      */
     public static function hasOperationalHistory(array $ids): bool
     {
+        return self::operationalHistoryReasons($ids, true) !== [];
+    }
+
+    /**
+     * Which kinds of history keep these contracts from being erased (in-app #483: the refusal names them).
+     * Keys are the table names below plus sign_in / held_session; $first stops at the first hit (cheap yes/no).
+     *
+     * @return list<string>
+     */
+    public static function operationalHistoryReasons(array $ids, bool $first = false): array
+    {
         if ($ids === []) {
-            return false;
+            return [];
         }
+        $found = [];
         // Unbilled agreed-fee rows keep no invoice link — still block hard-delete.
         if (\Illuminate\Support\Facades\Schema::hasTable('invoice_corrections')
             && DB::table('invoice_corrections')->whereIn('student_class_id', $ids)->exists()) {
-            return true;
+            $found[] = 'invoice_corrections';
+            if ($first) {
+                return $found;
+            }
         }
         $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $ids)->pluck('ID')->all();
 
@@ -181,19 +197,47 @@ class StudentClass extends Model
         foreach ($refs as $table => $columns) {
             foreach ($columns as $column) {
                 if (DB::table($table)->whereIn($column, $ids)->exists()) {
-                    return true;
+                    $found[] = $table;
+                    if ($first) {
+                        return $found;
+                    }
+                    break;
                 }
             }
         }
+        if ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists()) {
+            $found[] = 'sign_in';
+            if ($first) {
+                return $found;
+            }
+        }
+        if (DB::table('ClassSession')->whereIn('StudentClassID', $ids)
+            ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists()) {
+            $found[] = 'held_session';
+        }
 
-        return ($sessionIds !== [] && DB::table('StudentSingIn')->whereIn('ClassSessionID', $sessionIds)->exists())
-            || DB::table('ClassSession')->whereIn('StudentClassID', $ids)
-                ->whereRaw("LOWER(COALESCE(Status, '')) IN ('attended', 'completed', 'late', 'absent', 'leave')")->exists();
+        return $found;
     }
 
-    public static function isWaivedInDb(int $id): bool
+    /** Terminal money closures (確認不收, 退費): no writer may reopen, re-bill, re-pay or change usage on them. */
+    public const TERMINAL_MONEY_CLOSURES = ['waived', 'refunded'];
+
+    /** Closures that lock attendance and sessions: the terminal money closures plus the early-settlement ones. */
+    public const USAGE_LOCK_CLOSURES = ['usage_settled', 'contract_amended', ...self::TERMINAL_MONEY_CLOSURES];
+
+    public const REFUNDED_MESSAGE = '這門課已退費，不能再變更。';
+
+    public function isTerminalMoneyClosure(): bool
     {
-        return $id > 0 && DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') === 'waived';
+        return in_array((string) $this->getAttribute('closed_reason'), self::TERMINAL_MONEY_CLOSURES, true);
+    }
+
+    /** The committed (locked) terminal closure of a course, or null. */
+    public static function terminalClosureInDb(int $id): ?string
+    {
+        $reason = $id > 0 ? DB::table('StudentClass')->where('ID', $id)->lockForUpdate()->value('closed_reason') : null;
+
+        return in_array($reason, self::TERMINAL_MONEY_CLOSURES, true) ? $reason : null;
     }
 
     /** Initialize the immutable snapshot exactly once, immediately after creation. */
@@ -221,7 +265,7 @@ class StudentClass extends Model
     public function isUsageSettlementLocked(): bool
     {
         return $this->getAttribute('settlement_locked_at') !== null
-            || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended', 'waived'], true);
+            || in_array((string) $this->getAttribute('closed_reason'), self::USAGE_LOCK_CLOSURES, true);
     }
 
     /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Subject, $this> */
@@ -385,6 +429,21 @@ class StudentClass extends Model
      * @param int[] $courseIds
      * @return array<int, true> course id => true
      */
+    /**
+     * Contract Charge after its Rate or quantity changes: Rate × quantity, keeping the manual delta
+     * (old Charge − old base) only when the course has per-lesson session_charge adjustments (#798).
+     * Shared by course edit and 調整合約總堂數 so the two writers agree (in-app #472). Null = leave Charge as is.
+     */
+    public static function chargeAfterChange(int $classId, int $oldCharge, int $oldBase, int $newBase): ?int
+    {
+        if ($newBase <= 0) {
+            return null;
+        }
+        $hasAdjustments = DB::table('ClassSession')->where('StudentClassID', $classId)->whereNotNull('session_charge')->exists();
+
+        return max(0, $newBase + ($hasAdjustments ? $oldCharge - $oldBase : 0));
+    }
+
     public static function unstartedPauseIds(array $courseIds): array
     {
         $courseIds = array_values(array_unique(array_filter(array_map('intval', $courseIds), fn (int $id) => $id > 0)));

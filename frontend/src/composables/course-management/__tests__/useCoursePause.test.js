@@ -56,6 +56,17 @@ describe('useCoursePause', () => {
     expect(p.submitting.value).toBe(false);
   });
 
+  it('sends a super admin reopen reason, trimmed, and clears it on the next request (in-app #484)', async () => {
+    authedFetch.mockResolvedValue(res(true, {}));
+    const p = make();
+    p.request(paused);
+    p.reopenReason.value = '  主任誤按結束課程 ';
+    await p.confirm();
+    expect(JSON.parse(authedFetch.mock.calls[0][1].body)).toEqual({ action: 'resume', reopen_reason: '主任誤按結束課程' });
+    p.request(paused);
+    expect(p.reopenReason.value).toBe('');
+  });
+
   it('resumes without cancel_remaining and falls back to the default message', async () => {
     authedFetch.mockResolvedValue(res(true, {}));
     const p = make();

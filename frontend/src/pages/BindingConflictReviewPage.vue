@@ -78,13 +78,13 @@
                     :disabled="submittingId === c.id"
                     @click="openResolveDialog(c, b)"
                   >
-                    {{ b.keep ? '保留此側' : '保留此側' }}
+                    {{ isSuperAdmin ? '保留此側' : '解除此綁定' }}
                   </AtButton>
                 </span>
               </div>
             </td>
-            <td>{{ c.campus_name || `#${c.campus_id}` }}</td>
-            <td class="bcrp-tabular">{{ formatDate(c.created_at || c.detected_at) }}</td>
+            <td>{{ campusNames(c) }}</td>
+            <td class="bcrp-tabular">{{ formatDate(c.bindings?.[0]?.bound_at) }}</td>
             <td style="text-align:right">
               <AtButton
                 shape="rect"
@@ -94,7 +94,7 @@
                 :disabled="submittingId === c.id"
                 @click="openResolveDialog(c, null)"
               >
-                選擇保留側
+                {{ isSuperAdmin ? '選擇保留側' : '選擇解除側' }}
               </AtButton>
             </td>
           </tr>
@@ -105,20 +105,21 @@
     <!-- 解決衝突確認 -->
     <AtDialog
       :open="Boolean(resolveTarget)"
-      title="保留綁定並解除另一側"
+      :title="isSuperAdmin ? '保留綁定並解除另一側' : '解除此綁定'"
       size="sm"
       panel-class="bcrp-dialog"
       @close="closeResolveDialog"
     >
       <p>
         學生 <strong>{{ resolveTarget?.conflict?.student_name || `#${resolveTarget?.conflict?.student_id}` }}</strong>
-        綁定了 {{ resolveTarget ? bindingSides(resolveTarget.conflict).length : 0 }} 個 LINE 帳號。確認保留
-        <strong>{{ resolveTarget?.binding?.line_user_id_masked || '此帳號' }}</strong>，並解除其他綁定嗎？
+        綁定了 {{ resolveTarget ? bindingSides(resolveTarget.conflict).length : 0 }} 個 LINE 帳號。<template v-if="isSuperAdmin">確認保留
+        <strong>{{ resolveTarget?.binding?.line_user_id_masked || '此帳號' }}</strong>，並解除其他綁定嗎？</template><template v-else>確認解除
+        <strong>{{ resolveTarget?.binding?.line_user_id_masked || '此帳號' }}</strong> 的綁定嗎？</template>
       </p>
       <p v-if="resolveError" class="bcrp-dialog-error">{{ resolveError }}</p>
       <template #actions>
         <AtButton shape="rect" variant="ghost" :disabled="submitting" @click="closeResolveDialog">取消</AtButton>
-        <AtButton shape="rect" variant="danger" :loading="submitting" @click="confirmResolve">確認保留</AtButton>
+        <AtButton shape="rect" variant="danger" :loading="submitting" @click="confirmResolve">{{ isSuperAdmin ? '確認保留' : '確認解除' }}</AtButton>
       </template>
     </AtDialog>
   </div>
@@ -164,6 +165,11 @@ function bindingSides(c) {
   return sides.map((b, i) => ({ ...b, keep: i === 0 }));
 }
 
+function campusNames(c) {
+  const names = (c.bindings || []).map((b) => b.campus_name || `#${b.campus_id}`);
+  return [...new Set(names)].join('、');
+}
+
 function formatDate(s) {
   if (!s) return '—';
   try {
@@ -179,7 +185,7 @@ async function load() {
   loadError.value = '';
   try {
     const data = await fetchBindingConflicts({ campusId: activeCampusId.value });
-    conflicts.value = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+    conflicts.value = Array.isArray(data?.conflicts) ? data.conflicts : [];
   } catch (e) {
     conflicts.value = [];
     loadError.value = (e?.status === 404 || e?.status === 500)
@@ -209,9 +215,13 @@ async function confirmResolve() {
   submittingId.value = resolveTarget.value.conflict.id;
   resolveError.value = '';
   try {
-    await resolveBindingConflict(resolveTarget.value.conflict.id, resolveTarget.value.binding.id);
-    conflicts.value = conflicts.value.filter((c) => c.id !== resolveTarget.value.conflict.id);
-    closeResolveDialog();
+    await resolveBindingConflict(
+      resolveTarget.value.conflict.id,
+      resolveTarget.value.binding.id,
+      isSuperAdmin.value ? 'keep' : 'delete',
+    );
+    resolveTarget.value = null; // closeResolveDialog() is a no-op while submitting (Codex P2 on #4891)
+    await load(); // a delete may leave the conflict open, so re-read instead of dropping the row
   } catch (e) {
     resolveError.value = e?.payload?.message || e?.message || '解決衝突失敗，請稍後再試';
   } finally {

@@ -185,6 +185,7 @@ final class PopOperationService
             && !$this->isExactTd076Repair($entry)
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
+            && !$this->isExactInvoiceHeaderItemRepair($entry)
             && !$this->isExactPackageLedgerNetRepair($entry)
             && !$this->isExactContractChargeCorrection($entry)
             && !$this->isReviewedFinancialCase($entry)
@@ -466,7 +467,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy'], true);
     }
 
     /**
@@ -890,6 +891,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactInvoiceHeaderItemRepair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'three_exact_invoice_totals_and_items'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactContractChargeCorrection($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1177,6 +1193,15 @@ final class PopOperationService
             if (($e[$key] ?? false) !== true) return false;
         return ($e['approver_roles'] ?? null) === ['super_admin'] && ($e['risk'] ?? null) === 'critical'
             && ($e['approval_policy'] ?? null) === 'founder-exact-reviewed-financial' && ($e['execution_authority'] ?? null) === 'pop-pi-local';
+    }
+
+    /** Same single-super_admin Founder-exact shape (GitHub #4850 / #4863, invoice header and item repair). */
+    private function isExactInvoiceHeaderItemRepair(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'invoice-header-item-repair-20261104'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\InvoiceHeaderItemRepairStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice-header-item-repair'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */

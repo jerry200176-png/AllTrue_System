@@ -103,6 +103,29 @@ class ScheduleTeacherAssignableTest extends TestCase
         $this->assertContains($this->otherId, Schedule::pluck('teacher_id')->map(fn ($t) => (int) $t)->all());
     }
 
+    /** in-app #489: the course edit was the writer #441 missed; a non-teacher id never becomes the course teacher. */
+    public function test_course_edit_refuses_a_teacher_id_that_is_not_a_teacher_of_the_student_campus(): void
+    {
+        foreach ([$this->phantom(), $this->foreignId, $this->parentId] as $bad) {
+            $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $bad])
+                ->assertStatus(422)->assertJsonPath('code', 'teacher_not_assignable');
+            $this->assertSame($this->contractId, (int) $this->sc->fresh()->TeacherID);
+        }
+        $this->api()->putJson("/api/v1/student-classes/{$this->sc->ID}", ['teacher_id' => $this->otherId])->assertOk();
+        $this->assertSame($this->otherId, (int) $this->sc->fresh()->TeacherID);
+    }
+
+    /** in-app #489: 22:00 + 120 minutes wrapped to 00:00; such a lesson is refused and nothing is written. */
+    public function test_add_session_refuses_a_lesson_that_runs_past_midnight(): void
+    {
+        $before = ClassSession::count();
+        $this->api()->postJson("/api/v1/student-classes/{$this->sc->ID}/add-session", ['session_date' => '2026-04-11', 'start_time' => '22:00', 'duration_minutes' => 120])
+            ->assertStatus(422)->assertJsonPath('code', 'session_crosses_midnight');
+        $this->api()->postJson("/api/v1/student-classes/{$this->sc->ID}/add-session", ['session_date' => '2026-04-11', 'start_time' => '22:00', 'end_time' => '00:00'])
+            ->assertStatus(422)->assertJsonPath('code', 'session_crosses_midnight');
+        $this->assertSame($before, ClassSession::count());
+    }
+
     public function test_reschedule_without_a_teacher_keeps_the_contract_teacher(): void
     {
         $this->reschedule([])->assertOk();

@@ -22,6 +22,8 @@ final class ContractAmendmentService
         $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
         $used = max((int) ($diagnostic['expected_used'] ?? 0), (int) ($diagnostic['uncapped_used'] ?? 0));
         $newRemaining = max(0, $newCount - $used);
+        // in-app #472 (Founder 2026-11-04): the contract amount follows the new count, by the same rule as course edit.
+        $newCharge = $this->chargeForCount($course, $newCount);
         $future = $this->futureScheduled($classId);
         $futureSchedules = $this->futureSchedules($classId);
         $futureScheduledCount = count($future);
@@ -42,8 +44,12 @@ final class ContractAmendmentService
             'affected_future_schedules' => array_slice($futureSchedules, $newRemaining),
             'closes_contract' => $newRemaining === 0,
             'financial' => $this->financialSummary($classId),
-            'financial_mutation' => 'none',
-            'financial_note' => '本流程不修改 Charge、Invoice、Payment、PaymentReport、退款或收據；請沿用既有帳務流程處理差額。',
+            'original_charge' => (int) ($course->Charge ?? 0),
+            'new_charge' => $newCharge ?? (int) ($course->Charge ?? 0),
+            'financial_mutation' => $newCharge === null ? 'none' : 'charge',
+            'financial_note' => $newCharge === null
+                ? '合約金額不變；已開的帳單、收款和收據也不會改。'
+                : '合約金額會改成新堂數 × 單價；已開的帳單、收款和收據不會改，多收或少收請用原本的帳務流程處理。',
             'executable' => true,
         ];
     }
@@ -89,6 +95,9 @@ final class ContractAmendmentService
                 ]);
             }
             $locked->setAttribute('SessionCount', $newCount);
+            if ($preview['financial_mutation'] === 'charge') {
+                $locked->setAttribute('Charge', (int) $preview['new_charge']);
+            }
             $locked->setAttribute('UsedSessions', (int) $preview['completed_sessions']);
             $locked->setAttribute('RemainingSessions', $newRemaining);
             if ($newRemaining === 0) {
@@ -108,13 +117,13 @@ final class ContractAmendmentService
                     'remaining_sessions' => $newRemaining,
                     'stop' => $newRemaining === 0 ? 1 : 0,
                     'closed_reason' => $newRemaining === 0 ? self::CLOSED_REASON : null,
-                ],
+                ] + ($preview['financial_mutation'] === 'charge' ? ['charge' => (int) $preview['new_charge']] : []),
                 'cancelled_session_ids' => $cancelledIds,
                 'cancelled_schedule_ids' => $scheduleIds,
                 'reason_hash' => hash('sha256', $reason),
                 'actor_user_id' => $actorId ?: null,
                 'at' => now()->toIso8601String(),
-                'financial_mutation' => 'none',
+                'financial_mutation' => $preview['financial_mutation'],
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             $locked->save();
             SecurityAuditEvent::append(
@@ -132,6 +141,8 @@ final class ContractAmendmentService
                     'new_session_count' => $newCount,
                     'old_remaining_sessions' => $before['remaining_sessions'],
                     'new_remaining_sessions' => $newRemaining,
+                    'old_charge' => $before['charge'],
+                    'new_charge' => (int) $locked->getAttribute('Charge'),
                     'reason_code' => self::CLOSED_REASON,
                     'reason_hash' => hash('sha256', $reason),
                     'outcome' => 'success',
@@ -145,8 +156,8 @@ final class ContractAmendmentService
                 'preview' => $preview,
                 'cancelled_session_ids' => $cancelledIds,
                 'cancelled_schedule_ids' => $scheduleIds,
-                'after' => $locked->fresh()->only(['ID', 'SessionCount', 'UsedSessions', 'RemainingSessions', 'Stop', 'closed_reason', 'EndDate']),
-                'financial_mutation' => 'none',
+                'after' => $locked->fresh()->only(['ID', 'SessionCount', 'Charge', 'UsedSessions', 'RemainingSessions', 'Stop', 'closed_reason', 'EndDate']),
+                'financial_mutation' => $preview['financial_mutation'],
             ];
         });
     }
@@ -205,6 +216,26 @@ final class ContractAmendmentService
         ];
     }
 
+    /**
+     * Per-lesson contracts only; an hourly contract's amount follows TotalHours, which this flow does not change.
+     * A free / gift contract (Charge 0, or a marked 0-元 bill) is never priced here (same lock as chargeCorrection).
+     * Paid contracts do follow (Founder 2026-11-04): issued bills and payments stay, any excess reads as 多收.
+     */
+    private function chargeForCount(StudentClass $course, int $newCount): ?int
+    {
+        $unit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
+        if (($unit !== 'session' && $unit !== '') || (int) ($course->Charge ?? 0) <= 0
+            || \App\Models\Invoice::markedZeroBillLabel((int) $course->getKey()) !== null) {
+            return null;
+        }
+        $rate = (float) ($course->Rate ?? 0);
+        $oldCount = (int) ($course->SessionCount ?? 0);
+        $newCharge = StudentClass::chargeAfterChange((int) $course->getKey(), (int) ($course->Charge ?? 0),
+            (int) round($rate * $oldCount), (int) round($rate * $newCount));
+
+        return $newCharge === (int) ($course->Charge ?? 0) ? null : $newCharge;
+    }
+
     private function contractSnapshot(StudentClass $course): array
     {
         return [
@@ -233,11 +264,13 @@ final class ContractAmendmentService
             'restored_session_count' => (int) $before['session_count'],
             'current_remaining_sessions' => (int) $course->getAttribute('RemainingSessions'),
             'restored_remaining_sessions' => (int) $before['remaining_sessions'],
+            'current_charge' => (int) $course->getAttribute('Charge'),
+            'restored_charge' => array_key_exists('charge', $snap['after']) ? (int) $before['charge'] : (int) $course->getAttribute('Charge'),
             'restorable_sessions_count' => $sessions->count(),
             'restorable_schedules_count' => $schedules->count(),
             'unscheduled_remaining_sessions' => max(0, (int) $before['remaining_sessions'] - $futureCovered),
             'reopens_contract' => (int) $before['stop'] === 0,
-            'financial_mutation' => 'none',
+            'financial_mutation' => array_key_exists('charge', $snap['after']) ? 'charge' : 'none',
         ];
     }
 
@@ -267,6 +300,9 @@ final class ContractAmendmentService
             }
 
             $locked->setAttribute('SessionCount', $before['session_count']);
+            if (array_key_exists('charge', $snap['after']) && array_key_exists('charge', $before)) {
+                $locked->setAttribute('Charge', $before['charge']); // #472: undo the amount change with the count
+            }
             $locked->setAttribute('UsedSessions', $before['used_sessions']);
             $locked->setAttribute('RemainingSessions', $before['remaining_sessions']);
             $locked->setAttribute('Stop', $before['stop']);
@@ -286,7 +322,7 @@ final class ContractAmendmentService
                 'reason_hash' => hash('sha256', $reason),
                 'actor_user_id' => $actorId ?: null,
                 'at' => now()->toIso8601String(),
-                'financial_mutation' => 'none',
+                'financial_mutation' => array_key_exists('charge', $snap['after']) ? 'charge' : 'none',
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             $locked->save();
             ClassSession::resetSettlementLockCache();
@@ -317,6 +353,8 @@ final class ContractAmendmentService
                 [
                     'old_session_count' => $snap['after']['session_count'],
                     'new_session_count' => $before['session_count'],
+                    'old_charge' => (int) ($snap['after']['charge'] ?? $locked->getAttribute('Charge')),
+                    'new_charge' => (int) $locked->getAttribute('Charge'),
                     'reason_code' => 'contract_amendment_reverted',
                     'reason_hash' => hash('sha256', $reason),
                     'outcome' => 'success',
@@ -329,8 +367,8 @@ final class ContractAmendmentService
                 'restored_session_ids' => $sessions->pluck('id')->map(fn ($id): int => (int) $id)->all(),
                 'restored_schedule_ids' => $schedules->pluck('id')->map(fn ($id): int => (int) $id)->all(),
                 'unscheduled_remaining_sessions' => $unscheduled,
-                'after' => $locked->fresh()->only(['ID', 'SessionCount', 'UsedSessions', 'RemainingSessions', 'Stop', 'closed_reason', 'EndDate']),
-                'financial_mutation' => 'none',
+                'after' => $locked->fresh()->only(['ID', 'SessionCount', 'Charge', 'UsedSessions', 'RemainingSessions', 'Stop', 'closed_reason', 'EndDate']),
+                'financial_mutation' => array_key_exists('charge', $snap['after']) ? 'charge' : 'none',
             ];
         });
     }
@@ -347,7 +385,8 @@ final class ContractAmendmentService
             || (int) $course->getAttribute('UsedSessions') !== (int) ($after['used_sessions'] ?? -1)
             || (int) $course->getAttribute('RemainingSessions') !== (int) ($after['remaining_sessions'] ?? -1)
             || (int) $course->getAttribute('Stop') !== (int) ($after['stop'] ?? -1)
-            || (string) $course->getAttribute('closed_reason') !== (string) ($after['closed_reason'] ?? '');
+            || (string) $course->getAttribute('closed_reason') !== (string) ($after['closed_reason'] ?? '')
+            || (array_key_exists('charge', $after) && (int) $course->getAttribute('Charge') !== (int) $after['charge']);
         if ($drift) {
             throw new HttpException(409, '合約在調整後已有變動，無法自動撤銷，請聯絡管理員。');
         }

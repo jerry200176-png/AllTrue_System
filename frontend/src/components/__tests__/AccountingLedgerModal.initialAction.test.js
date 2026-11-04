@@ -51,6 +51,21 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     w.unmount();
   });
 
+  it("initialAction='legacy-backfill' opens the back-fill form straight away for a legacy-paid course (in-app #490)", async () => {
+    const w = mountLedger({ courses: [course(11, { paid: true })], invoices: [inv(1, 11)], props: { initialAction: 'legacy-backfill' } });
+    await flushPromises();
+    expect(w.getComponent(EntryStub).props('mode')).toBe('legacy-backfill');
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
+    w.unmount();
+  });
+
+  it("initialAction='legacy-backfill' on an ordinary course just shows the ledger", async () => {
+    const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'legacy-backfill' } });
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    w.unmount();
+  });
+
   it("initialAction='record' opens the entry form for the opened course once, after the ledger loads", async () => {
     const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11)], props: { initialAction: 'record' } });
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false); // not before load

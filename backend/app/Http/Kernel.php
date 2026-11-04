@@ -38,6 +38,7 @@ class Kernel extends HttpKernel
         'require_campus' => \App\Http\Middleware\RequireCampus::class,
         'require_password_change' => \App\Http\Middleware\RequirePasswordChange::class,
         'require_pin'    => \App\Http\Middleware\RequirePin::class,
+        'refuse_terminal' => \App\Http\Middleware\RefuseTerminalClosure::class,
         'throttle'       => \App\Http\Middleware\ThrottleRequestsByIp::class,
     ];
 }

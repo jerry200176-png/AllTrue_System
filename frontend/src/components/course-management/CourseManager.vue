@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { trapTab } from '../../lib/focusTrap.js';
 import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
-import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
+import { monthlyPaymentLabel, periodPaymentLabel, reviewReasonFixes } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
 
@@ -21,6 +21,8 @@ export default {
     // { primary, groups } from courseActions(): the same model the course row uses (調課／代課／轉課 live in ⋯).
     actionModel: { type: Object, default: null },
     canMoveLesson: { type: Function, default: () => false },
+    // in-app #486: 預覽分期更正 is a headquarters (POP-only) tool; a director can open it but never finish it.
+    canPreviewCorrection: { type: Boolean, default: false },
     tab: { type: String, default: 'overview' },
     studentName: { type: String, default: '' },
     subjectLabel: { type: String, default: '' },
@@ -96,6 +98,7 @@ export default {
     const dangerOpen = ref(false);
     const selectedPeriod = ref('');
     const monthlySummary = computed(() => props.course?.monthly_payment);
+    const reviewFixes = computed(() => reviewReasonFixes(monthlySummary.value?.review_reasons));
     const selectedPayment = computed(() => monthlySummary.value?.periods?.find((p) => p.billing_period === (selectedPeriod.value || monthlySummary.value.billing_period)));
     const effectivePaymentLabel = computed(() => selectedPeriod.value && selectedPayment.value
       ? `${selectedPeriod.value} ${periodPaymentLabel(selectedPayment.value.payment_status)}`
@@ -147,7 +150,7 @@ export default {
     }
     return {
       panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
-      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, monthlySummary, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
+      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, monthlySummary, reviewFixes, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
 };
@@ -215,7 +218,12 @@ export default {
               <option v-for="period in monthlySummary.periods" :key="period.billing_period" :value="period.billing_period">{{ period.billing_period }}</option>
             </select>
           </label>
-          <p v-if="monthlySummary.review_required" class="cmw__hint" role="status">月結帳單與上課堂數不符，請核對。先核對堂次與已登錄收款，再預覽分期更正；尚未建立帳單的月份，在帳務中心也不會有繳費單。</p>
+          <!-- in-app #481: say what is wrong and what to do (same REVIEW_REASON_FIX as 帳務中心), not a POP-only preview. -->
+          <div v-if="monthlySummary.review_required" class="cmw__hint" role="status" data-testid="monthly-review-fixes">
+            <p>月結帳單與上課堂數不符。怎麼處理：</p>
+            <ul v-if="reviewFixes.length"><li v-for="fix in reviewFixes" :key="fix.code"><strong>{{ fix.label }}</strong>：{{ fix.text }}</li></ul>
+            <p v-else>按「查看登錄帳單與收款」對照帳單期間和上課日期；對不起來請聯絡總部。</p>
+          </div>
           <div class="cmw__period-table">
             <table>
               <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">帳單付款登錄</th><th scope="col">未收金額</th></tr></thead>
@@ -244,7 +252,6 @@ export default {
           </template>
           <div v-if="monthlySummary.review_required" class="cmw__row">
             <button type="button" class="small ghost" @click="act('invoice')">查看登錄帳單與收款</button>
-            <button type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
           </div>
         </section>
         <div
@@ -400,7 +407,7 @@ export default {
           </section>
           <section class="cmw__card">
             <h3>合約</h3>
-            <button v-if="isMonthlyMode && monthlySummary" type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
+            <button v-if="isMonthlyMode && monthlySummary && canPreviewCorrection" type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
             <div class="cmw__row">
               <button type="button" class="small primary" @click="act('purchase')">{{ purchaseLabel }}</button>
               <button type="button" class="small ghost" @click="act('contract-adjust')">合約／堂次調整</button>

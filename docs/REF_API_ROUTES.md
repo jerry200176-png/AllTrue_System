@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 538 api/* routes · generated 2026-10-29
+> Source: `php artisan route:list --json` · 541 api/* routes · generated 2026-11-04
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -766,7 +766,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
-## /api/v1/student-classes (41)
+## /api/v1/student-classes (44)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -802,8 +802,11 @@
 | POST | `api/v1/student-classes/{studentClass}/monthly-contract-correction/preview` | `MonthlyContractCorrectionController@preview` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/package-conversion-preview` | `CoursePackageController@conversionPreview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/pause` | `StudentClassController@togglePause` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/payment-review/check` | `StudentClassController@paymentReviewCheck` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/purchase-batch` | `StudentClassController@purchaseBatch` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/recover-transfer-sessions` | `StudentClassController@recoverAndTransferSessions` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/refund` | `BillingRefundController@refund` | role+campus |
+| GET | `api/v1/student-classes/{studentClass}/refund/preview` | `BillingRefundController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renew-monthly` | `StudentClassController@renewMonthly` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renewal-confirm` | `StudentClassController@renewalConfirm` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renewal-preview` | `StudentClassController@renewalPreview` | role+campus |

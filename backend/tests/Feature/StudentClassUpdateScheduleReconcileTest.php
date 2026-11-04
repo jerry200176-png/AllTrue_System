@@ -22,6 +22,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // in-app #489: a course's new teacher must be a teacher of the caller's campus; these fixtures switch to 91/92/100/200.
+        \Illuminate\Support\Facades\DB::table('UserCampus')->insert([['UserID' => 91, 'CampusID' => 1], ['UserID' => 92, 'CampusID' => 1], ['UserID' => 100, 'CampusID' => 1], ['UserID' => 200, 'CampusID' => 1]]);
         \Illuminate\Support\Facades\DB::table('Subject')->where('Subject_Name', 'Math')->where('id', '<>', 1)->update(['Subject_Name' => 'Math (legacy)']); \Illuminate\Support\Facades\DB::table('Subject')->updateOrInsert(['id' => 1], ['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => 'Math']); // fixtures use SubjectID 1 + subject=Math (ids are not reset between tests)
         // seedCourseWithHistory() 把「未來」sessions 放在 2026-04-19 起，
         // 若執行日期已經跨過 4/19，那筆 session 會被 sync 視為過去而不更新，
@@ -217,6 +219,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     public function test_update_teacher_rejects_when_slot_held_by_substitute_schedule_row(): void
     {
         [$token, $student, $course] = $this->seedCourseWithHistory();
+        // #4835: an owner counts only when bound to a campus, as real teachers are.
+        \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => 100, 'CampusID' => 1]);
 
         $contractStudent = Student::create([
             'name' => '合約老師學生',
@@ -310,6 +314,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         ]);
         [$token, $student, $course] = $this->seedCourseWithHistory();
 
+        // In-app #468: an owner counts only when bound to a campus, as real teachers are.
+        foreach ([100] as $teacher) \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => $teacher, 'CampusID' => 1]);
         $extraStudent = Student::create([
             'name' => '補課自帶老師',
             'CampusID' => 1,
@@ -386,6 +392,8 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     public function test_update_teacher_and_time_ignores_stale_normal_but_keeps_substitute(): void
     {
         [$token, $student, $course] = $this->seedCourseWithHistory();
+        // #4835: an owner counts only when bound to a campus, as real teachers are.
+        \Illuminate\Support\Facades\DB::table('UserCampus')->insert(['UserID' => 100, 'CampusID' => 1]);
         $course->update([
             'ClassType' => 'one_on_two',
             'by1' => 2,

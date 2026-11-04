@@ -45,6 +45,147 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         parent::tearDown();
     }
 
+    /** in-app #478 (course 1695 shape): an unpaid monthly plan member with stored Charge 0 owes its own lessons x rate. */
+    public function test_monthly_plan_member_collects_its_own_lessons(): void
+    {
+        $sc = $this->course('2026-05-24', '2026-05-31', ['2026-05-24' => 'attended', '2026-05-31' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'Stop' => 1]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg]);
+
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$sc->ID}")->assertOk()
+            ->assertJsonPath('billing_period', '2026-05')->assertJsonPath('charge', 2000);
+        $this->record($sc, 1000)->assertStatus(422)->assertJsonPath('expected_amount', 2000);
+        $this->confirm($this->record($sc, 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-05', 2000]], $this->bills($sc));
+    }
+
+    /** Codex P1 on #4867: paying one monthly member leaves its unpaid sibling collectible (no package-wide Paid flag). */
+    public function test_paying_one_monthly_plan_member_keeps_its_sibling_collectible(): void
+    {
+        $a = $this->course('2026-05-24', '2026-05-31', ['2026-05-24' => 'attended', '2026-05-31' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'Stop' => 1]);
+        $b = $this->course('2026-05-24', '2026-05-31', ['2026-05-24' => 'attended', '2026-05-31' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'Stop' => 1, 'StudentID' => $a->StudentID]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        StudentClass::whereIn('ID', [$a->ID, $b->ID])->update(['PackageID' => $pkg]);
+
+        $this->confirm($this->record($a->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame(0, (int) \Illuminate\Support\Facades\DB::table('course_packages')->where('id', $pkg)->value('paid'));
+        $this->assertSame(0, (int) $b->fresh()->Paid);
+        $this->confirm($this->record($b->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-05', 2000]], $this->bills($b));
+    }
+
+    /** Codex P1 #2 on #4867: a multi-course bill headed by a monthly plan member keeps its stored total on confirm. */
+    public function test_multi_course_bill_through_a_monthly_plan_member_keeps_its_total(): void
+    {
+        $a = $this->course('2026-10-01', '2026-10-31', ['2026-10-05' => 'attended', '2026-10-12' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $b = $this->course('2026-10-01', '2026-10-31', ['2026-10-06' => 'attended', '2026-10-13' => 'attended'], ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $a->update(['PackageID' => $pkg]);
+        $bill = Invoice::create(['StudentID' => $a->StudentID, 'StudentClassID' => $a->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 4000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        $bill->items()->create(['StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 2000]);
+        $bill->items()->create(['StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
+
+        // Every surface asks for the stored 4000, not the header course's own 2000 (Codex round 3).
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$a->ID}")->assertOk()->assertJsonPath('charge', 4000);
+        $resolved = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([$a->ID], [$a->fresh()])[$a->ID];
+        $this->assertSame(4000, (int) ($resolved['payable_outstanding'] ?? -1), json_encode($resolved));
+        $this->record($a->fresh(), 2000)->assertStatus(422)->assertJsonPath('expected_amount', 4000);
+        $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
+        $bill->refresh();
+        $this->assertSame([4000, 4000, 'paid'], [(int) $bill->TotalAmount, (int) $bill->PaidAmount, (string) $bill->Status]);
+        // Codex round 4: no header-only discrepancy, so the paid member settles instead of staying in review.
+        $after = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$a->ID], [$a->fresh()])[$a->ID];
+        $this->assertSame('paid', $after['status'], json_encode($after));
+        $row = collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$a->StudentID)->assertOk()->json('data'))->firstWhere('ID', $a->ID);
+        $this->assertSame('paid', $row['payment_status']);
+    }
+
+    /** Codex round 6 on #4867: a month already on a shared bill is refused through the other member, not collected again. */
+    public function test_shared_bill_month_is_refused_through_the_other_member(): void
+    {
+        $lessons = ['2026-10-05' => 'attended', '2026-10-12' => 'attended'];
+        $a = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000]);
+        $b = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
+        $c = $this->course('2026-10-01', '2026-10-31', $lessons, ['Charge' => 0, 'Rate' => 1000, 'StudentID' => $a->StudentID]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $a->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        StudentClass::whereIn('ID', [$a->ID, $b->ID, $c->ID])->update(['PackageID' => $pkg]);
+        $bill = Invoice::create(['StudentID' => $a->StudentID, 'StudentClassID' => $a->ID, 'IssueDate' => '2026-10-01', 'TotalAmount' => 4000,
+            'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        $bill->items()->create(['StudentClassID' => $a->ID, 'Description' => 'a', 'Amount' => 2000]);
+        $bill->items()->create(['StudentClassID' => $b->ID, 'Description' => 'b', 'Amount' => 2000]);
+        $this->confirm($this->record($a->fresh(), 4000)->assertOk()->json('report_id'));
+
+        $counts = fn () => [Invoice::count(), \App\Models\Payment::count(), PaymentReport::count()];
+        $before = $counts();
+        $this->record($b->fresh(), 2000)->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill')->assertJsonPath('invoice_id', $bill->id);
+        $b->update(['Paid' => 1]); // the legacy-flag backfill path needs a flag-only course
+        $this->api('postJson', '/api/v1/payment-reports/director-record', ['student_class_id' => $b->ID, 'payment_date' => '2026-10-23',
+            'payment_method' => 'cash', 'amount' => 2000, 'legacy_flag_backfill' => true, 'idempotency_key' => (string) \Illuminate\Support\Str::uuid()])->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill');
+        $this->assertSame($before, $counts());
+        // Codex P1: a parent's public report for B is refused at confirmation too, leaving it pending and the ledger unchanged.
+        $b->update(['Paid' => 0]);
+        $public = PaymentReport::create(['StudentID' => $b->StudentID, 'StudentClassID' => $b->ID, 'reported_by_name' => 'p', 'payment_date' => '2026-10-23',
+            'payment_method' => 'transfer', 'reported_amount' => 2000, 'status' => 'pending', 'report_token_hash' => str_repeat('c', 64), 'token_expires_at' => now()->addDay()]);
+        $before = $counts();
+        $this->api('putJson', "/api/v1/payment-reports/{$public->id}/confirm")->assertStatus(422)->assertJsonPath('code', 'period_on_shared_bill');
+        $this->assertSame($before, $counts());
+        $this->assertSame('pending', (string) $public->fresh()->status);
+
+        // The sibling with no item on that bill is still collectible.
+        $this->confirm($this->record($c->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-10', 2000]], $this->bills($c));
+    }
+
+    /** Codex round 3 on #4867: a single-month plan member with Charge 0 and no bill is not 'paid' in the course list. */
+    public function test_single_month_plan_member_without_bill_is_not_paid_in_the_course_list(): void
+    {
+        $sc = $this->course('2026-10-01', '2026-10-31', ['2026-10-05' => 'attended', '2026-10-12' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg]);
+        $status = fn () => collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$sc->StudentID)->assertOk()->json('data'))
+            ->firstWhere('ID', $sc->ID);
+
+        $this->assertNotSame('paid', $status()['payment_status']);
+        $this->assertFalse(($status()['monthly_payment']['payment_status'] ?? null) === 'paid');
+        $this->record($sc->fresh(), 2000)->assertOk();
+        $this->assertNotSame('paid', $status()['payment_status']);
+        $this->assertFalse(($status()['monthly_payment']['payment_status'] ?? null) === 'paid');
+    }
+
+    /** Codex P2 on #4867: a legacy plan member whose package alone is marked paid (Paid 0, no bill) still lists as paid. */
+    public function test_plan_member_paid_through_its_package_flag_lists_as_paid(): void
+    {
+        $sc = $this->course('2026-10-01', '2026-10-31', ['2026-10-05' => 'attended', '2026-10-12' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg, 'Paid' => 0]);
+        $row = collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$sc->StudentID)->assertOk()->json('data'))->firstWhere('ID', $sc->ID);
+        $this->assertSame('paid', $row['monthly_payment']['payment_status'] ?? null);
+        $this->assertSame('paid', $row['payment_status']);
+    }
+
+    /** Codex P2 on #4867: a monthly plan member (Charge 0) with lessons in two months stays collectible month by month. */
+    public function test_monthly_plan_member_cross_month_collects_august_then_september(): void
+    {
+        $sc = $this->course('2026-08-31', '2026-09-30', ['2026-08-31' => 'attended', '2026-09-07' => 'attended', '2026-09-23' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg]);
+
+        $this->confirm($this->record($sc->fresh(), 1000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-08', 1000]], $this->bills($sc));
+        $this->assertSame(0, (int) $sc->fresh()->Paid);
+        $this->confirm($this->record($sc->fresh(), 2000)->assertOk()->json('report_id'));
+        $this->assertSame([['2026-08', 1000], ['2026-09', 2000]], $this->bills($sc));
+        $this->record($sc->fresh(), 1000)->assertStatus(422)->assertJsonPath('code', 'course_already_paid');
+    }
+
     public function test_cross_month_contract_collects_august_then_september(): void
     {
         $sc = $this->course('2026-08-31', '2026-09-30', [
@@ -95,7 +236,6 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $billing = app(MonthlyBillingService::class);
         $lessons = ['2026-08-31' => 'attended', '2026-09-29' => 'attended'];
         $this->assertNull($billing->unbilledPeriodFor($this->course('2026-08-31', '2026-09-30', $lessons, ['ScheduleMode' => 'count'])));
-        $this->assertNull($billing->unbilledPeriodFor($this->course('2026-08-31', '2026-09-30', $lessons, ['PackageID' => 7])));
 
         // A renewal-style bill labelled 2026-08 covering 8/28–9/27 leaves 9/29 uncovered: September is partly billed,
         // so pricing the whole calendar month would bill 9/1–9/27 twice. Keep today's rule.

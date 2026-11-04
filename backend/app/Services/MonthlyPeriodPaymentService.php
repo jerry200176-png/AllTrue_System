@@ -16,7 +16,7 @@ final class MonthlyPeriodPaymentService
 
     public function batch(Collection $courses): array
     {
-        $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date' && !(int) $course->getAttribute('PackageID'));
+        $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date');
         if ($courses->isEmpty()) return [];
         $ids = $courses->pluck('ID')->all();
         $invoices = (new Invoice)->scopeNotVoided(Invoice::query())->whereIn('StudentClassID', $ids)
@@ -37,10 +37,25 @@ final class MonthlyPeriodPaymentService
         return $result;
     }
 
+    /** One line, or every line has a range and each starts no later than the day after the previous ones end. */
+    private function itemRangesContinuous(Collection $items): bool
+    {
+        if ($items->count() <= 1) return true;
+        $end = null;
+        foreach ($items->sortBy(fn ($item) => (string) $item->PeriodStart) as $item) {
+            if (!$item->PeriodStart || !$item->PeriodEnd) return false;
+            $start = substr((string) $item->PeriodStart, 0, 10);
+            if ($end !== null && $start > Carbon::parse($end)->addDay()->toDateString()) return false;
+            $end = max((string) $end, substr((string) $item->PeriodEnd, 0, 10));
+        }
+        return true;
+    }
+
     private function summarize(StudentClass $course, Collection $invoices, Collection $sessions): array
     {
         $periods = [];
         $ambiguous = false;
+        $attributionAmbiguous = false;
         $reasons = [];
         foreach ($invoices as $invoice) {
             $period = (string) $invoice->billing_period;
@@ -52,13 +67,23 @@ final class MonthlyPeriodPaymentService
             }
             $month = Carbon::createFromFormat('!Y-m', $period);
             $items = $invoice->items->filter(fn ($item) => (int) $item->StudentClassID === (int) $course->getAttribute('ID'));
-            if ($invoice->items->count() !== $items->count() || $items->count() > 1) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
-            $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
-            $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
-            if ($start > $end || ($items->isNotEmpty() && ($start < substr((string) $course->getAttribute('StartDate'), 0, 10)
-                || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) { $ambiguous = true; $reasons[] = 'item_period_outside_contract'; }
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
+            // #4803 (Founder 2026-11-03): a bill covering several courses or lines is normal once fully paid; only an owing one is reviewed.
+            // Payment rows only, like BillingPayableResolver: a legacy PaidAmount alone cannot settle the course, so it keeps the review.
+            $fullyPaid = $amount['total_amount'] > 0 && $invoice->payments->isNotEmpty() && $amount['net_applied'] >= $amount['total_amount'];
+            if ($invoice->items->count() !== $items->count() || $items->count() > 1) {
+                // A paid one is settled, but which month each line belongs to is still unclear to month reports.
+                $attributionAmbiguous = true;
+                // A paid bill still needs its own lines to run without a gap (Aug + Oct lines leave September unbilled).
+                if (!$fullyPaid || !$this->itemRangesContinuous($items)) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
+            }
+            $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
+            $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
+            $contractStart = substr((string) $course->getAttribute('StartDate'), 0, 10);
+            // #4799 (Founder A): a mid-month start billed for that whole first month is normal; an item that starts in an earlier month is not.
+            if ($start > $end || ($items->isNotEmpty() && (($start < $contractStart && substr($start, 0, 7) !== substr($contractStart, 0, 7))
+                || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) { $ambiguous = true; $reasons[] = 'item_period_outside_contract'; }
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
@@ -91,8 +116,11 @@ final class MonthlyPeriodPaymentService
         if ($invoices->isEmpty() && $singlePeriod && count($uncoveredMonths) <= 1
             && ($uncoveredMonths === [] || isset($uncoveredMonths[substr($start, 0, 7)]))) {
             $period = substr($start, 0, 7);
+            // A monthly package member's stored Charge is 0: its month is priced from its own lessons (#3892 D4, in-app #478).
+            $charge = (int) $course->getAttribute('PackageID') > 0
+                ? (int) $this->billing->summarizePeriod($course, $period)['charge'] : max(0, (int) $course->getAttribute('Charge'));
             $periods[$period] = ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
-                'charge' => max(0, (int) $course->getAttribute('Charge')), 'paid_amount' => (int) $course->getAttribute('Paid') === 1 ? max(0, (int) $course->getAttribute('Charge')) : 0,
+                'charge' => $charge, 'paid_amount' => $course->isEffectivelyPaid() ? $charge : 0, // a package marked paid counts (Codex P2 on #4867)
                 'invoice_ids' => [], 'source' => 'single_period_legacy'];
             $uncoveredMonths = [];
         }
@@ -135,6 +163,7 @@ final class MonthlyPeriodPaymentService
         return ['periods' => $rows, 'billing_period' => $selected['billing_period'],
             'payment_status' => $review ? 'review_required' : $selected['payment_status'], 'review_required' => $review,
             'review_reasons' => array_values(array_unique($reasons)),
+            'attribution_ambiguous' => $review || $attributionAmbiguous,
             'contract_start' => $start ?: null, 'contract_end' => $end ?: null,
             'registered_paid_amount' => $invoices->isEmpty() ? null : (int) $invoices->sum(fn ($invoice) => $invoice->payments->isEmpty()
                 ? max(0, (int) $invoice->PaidAmount) : $this->amounts->resolve($invoice, $course)['net_applied']),

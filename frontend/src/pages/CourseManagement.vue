@@ -809,6 +809,7 @@
       :overview-needs="courseManagerOverviewNeeds(courseManagerCourse)"
       :action-model="courseManagerActionModel(courseManagerCourse)"
       :can-move-lesson="(u) => isLessonMovable(courseManagerCourse, u)"
+      :can-preview-correction="userRole === 'super_admin'"
       :session-units="primarySessionUnits(courseManagerCourse)"
       :cancelled-units="movedOrCancelledUnits(courseManagerCourse)"
       :pending-makeups="pendingMakeupsByCourse[courseManagerCourse.id] ?? []"
@@ -1315,6 +1316,10 @@
             <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
             <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
           </label>
+          <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
+            如果是誤結案，寫下原因才能恢復（會留紀錄）
+            <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
+          </label>
         </div>
       </template>
       <template #actions>
@@ -1364,6 +1369,7 @@ import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRow
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
+import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
 import { useContractAmendment } from '../composables/course-management/useContractAmendment';
 import { useCoursePause } from '../composables/course-management/useCoursePause';
@@ -1418,7 +1424,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -1539,7 +1545,11 @@ const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'nav
 const openTuitionLedger = (course) => openLedgerForCourse(course);
 const goToTuitionBilling = openTuitionLedger;
 // In-app #398: 「登記收款」 opens the entry form for that course, with the ledger behind it.
-const onPaymentNextAction = (course) => openLedgerForCourse(course, course?.id && paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
+// In-app #490: a director sees 補登收款 on a legacy-paid row and the ledger opens straight into the back-fill form.
+const isDirectorLegacyRow = (course) => isLegacyPaidFlagOnly(course) && isDirectorRole(props.userRole);
+const onPaymentNextAction = (course) => openLedgerForCourse(course, !course?.id ? null
+  : isDirectorLegacyRow(course) ? 'legacy-backfill'
+  : paymentBadge(course).nextAction === 'report_payment' ? 'record' : null);
 
 const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
@@ -2631,7 +2641,7 @@ const packageConversionSubjects = computed(() => {
 const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const {
-  target: pauseConfirmTarget, submitting: pauseConfirmSubmitting, cancelRemaining: pauseCancelRemaining,
+  target: pauseConfirmTarget, submitting: pauseConfirmSubmitting, cancelRemaining: pauseCancelRemaining, reopenReason: pauseReopenReason,
   isResume: pauseConfirmIsResume, impacts: pauseConfirmImpacts,
   request: requestCoursePause, confirm: confirmCoursePause,
 } = useCoursePause({
@@ -4296,6 +4306,7 @@ const paymentNextActionLabel = (course) => {
   const nextAction = paymentBadge(course).nextAction;
   if (nextAction === 'none') return '';
   if (nextAction === 'report_payment') return '登記收款';
+  if (isDirectorLegacyRow(course)) return '補登收款';
   if (nextAction === 'view_report') return `查看「${REPORT_STATUS_LABELS.pending}」`;
   return '在這裡看帳務';
 };
@@ -4307,6 +4318,7 @@ const showsBillingRowNextAction = (course) => shouldShowPaymentAction(course) &&
 const paymentStatusHelpTitle = (course) => {
   if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
+  if (isLegacyPaidFlagOnly(course)) return LEGACY_FLAG_ACTION_HELP;
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
 const reportStatusLabel = (status) => REPORT_STATUS_LABELS[status] || status || '—';

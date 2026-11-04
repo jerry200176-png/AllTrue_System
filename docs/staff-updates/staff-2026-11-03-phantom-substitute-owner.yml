@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-03-phantom-substitute-owner
+    published_at: "2026-11-03"
+    audiences:
+      - teacher
+      - director
+    importance: digest
+    title: 老師課表不會再少掉自己的課
+    summary: 有幾堂課因為舊的錯誤代課紀錄，沒出現在任課老師的「我的課表」；現在會正常顯示。
+    items:
+      - category: fixed
+        text: 主任行事曆看得到、老師手機「我的課表」卻看不到的那幾堂課，現在會出現在任課老師的課表上。
+    source_refs:
+      - "changelog:2026-11-03:phantom-substitute-owner"
