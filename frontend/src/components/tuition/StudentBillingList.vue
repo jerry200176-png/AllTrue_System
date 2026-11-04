@@ -193,7 +193,9 @@ const SORTS = {
   remaining: { label: '剩餘堂數（少到多）', cmp: (a, b) => (a.min_remaining ?? Infinity) - (b.min_remaining ?? Infinity) || b.owed_now - a.owed_now },
   name: { label: '姓名', cmp: (a, b) => a.student_name.localeCompare(b.student_name, 'zh-Hant') },
 };
-const sortKey = ref('amount');
+// in-app #494: 需續課 is for 「誰快沒堂數」, so it lists fewest lessons left first (the sort stays changeable).
+const sortKey = ref(filter.value === 'renew' ? 'remaining' : 'amount');
+watch(filter, (f) => { if (f === 'renew') sortKey.value = 'remaining'; });
 const visible = computed(() => {
   const list = rows.value.filter((r) => STUDENT_FILTERS[filter.value].test(r)
     && (!query.value.trim() || r.student_name.includes(query.value.trim())));

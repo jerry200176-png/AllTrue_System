@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-04-renew-sort
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 「需續課」會先列快沒堂數的學生
+    summary: 在收款名單按「需續課」，剩最少堂數的學生排最前面。
+    items:
+      - category: improved
+        text: 按「需續課」就自動依剩餘堂數由少到多排，方便提早發繳費通知。
+    source_refs:
+      - "changelog:2026-11-04:renew-sort"
