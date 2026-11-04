@@ -7,6 +7,7 @@
       data-guide="tuition-header"
     >
       <template #actions>
+        <AtButton variant="secondary" shape="rect" icon="help" @click="$emit('start-guide')">操作導覽</AtButton>
         <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
         <AtButton
           variant="secondary"
@@ -738,7 +739,7 @@ const props = defineProps({
   initialCourseId: { type: [Number, String], default: null },
 });
 
-const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-context']);
+const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-context', 'start-guide']);
 
 const loading = ref(false);
 const error = ref('');

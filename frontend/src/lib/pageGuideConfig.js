@@ -507,7 +507,7 @@ const pageGuideConfig = {
       target: '[data-guide="tuition-chips"]',
       icon: 'sort',
       title: '剩餘堂數少的先處理',
-      description: '按「需續課」，堂數最少的學生會排最前面（也可在排序選「剩餘堂數（少到多）」），提早寄繳費單。',
+      description: '按「需續課」，排序選「剩餘堂數（少到多）」，堂數最少的排最前面，提早寄繳費單。',
       placement: 'bottom',
     },
     {
@@ -535,7 +535,7 @@ const pageGuideConfig = {
       target: '[data-guide="tuition-header"]',
       icon: 'event_repeat',
       title: '續課在課程管理',
-      description: '到「課程管理」，在該課程按「管理課程」，再選「續課」。續課會另外建立新一期的堂數和帳單。',
+      description: '到「課程管理」→ 該課程「管理課程」→「續課」。續完回這裡看，出現「開帳單」就開。',
       placement: 'bottom',
     },
   ],

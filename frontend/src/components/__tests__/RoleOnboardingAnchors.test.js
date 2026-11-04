@@ -80,4 +80,9 @@ describe('tuition-collect page guide', () => {
       expect(step.title && step.description && step.icon).toBeTruthy();
     }
   });
+
+  it('directors can open it from the page (the help button opens role onboarding instead)', () => {
+    expect(pageSource('TuitionCollectionPage.vue')).toContain("@click=\"$emit('start-guide')\"");
+    expect(appSource).toContain("@start-guide=\"guideTour.startTour('tuition-collect', { role })\"");
+  });
 });
