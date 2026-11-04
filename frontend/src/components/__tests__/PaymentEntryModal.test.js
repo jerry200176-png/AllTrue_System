@@ -183,3 +183,34 @@ describe('PaymentEntryModal — monthly month by month (in-app #432)', () => {
     expect(w.find('.pe-info').text()).toContain('NT$ 1,650');
   });
 });
+
+describe('PaymentEntryModal — side sheet placement (#4659 step 3)', () => {
+  it('placement="right" renders the same form inside the AtDialog sheet and still submits', async () => {
+    global.fetch.mockResolvedValueOnce(ok({ report_id: 9, status: 'pending' }));
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row, placement: 'right', mode: 'legacy-backfill' } });
+    await w.setProps({ show: true });
+    await nextTick();
+    expect(document.body.querySelector('.at-dialog-overlay--right .at-dialog__panel--sheet')).not.toBeNull();
+    expect(document.body.querySelector('.modal-overlay')).toBeNull();
+    expect(document.body.querySelector('.at-dialog__title').textContent).toBe('補登收款');
+    document.body.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect(w.emitted('confirmed')).toHaveLength(1);
+    w.unmount();
+  });
+
+  it('Esc, 取消 and the backdrop do not close the form while a save is in flight', async () => {
+    global.fetch.mockReturnValue(new Promise(() => {}));
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row, placement: 'right' } });
+    await w.setProps({ show: true });
+    await nextTick();
+    document.body.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await nextTick();
+    const panel = document.body.querySelector('.at-dialog__panel');
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    document.body.querySelector('.at-dialog-overlay').click();
+    expect(document.body.querySelector('.pe-actions .ghost').disabled).toBe(true);
+    expect(w.emitted('close')).toBeUndefined();
+    w.unmount();
+  });
+});

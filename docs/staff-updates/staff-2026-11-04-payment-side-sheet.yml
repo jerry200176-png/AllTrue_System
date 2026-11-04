@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-payment-side-sheet
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 登記收款改在右邊打開，不用離開課程頁
+    summary: 在課程列按「登記收款」或「補登收款」，表單會從右邊滑出，課程列表留在原地。
+    items:
+      - category: improved
+        text: 不用先打開帳務視窗，也不會跳到別的頁面。
+      - category: improved
+        text: 存好後右邊自動關起來，列表停在原來的位置，只更新收款狀態。
+    source_refs:
+      - "changelog:2026-11-04:payment-side-sheet"
