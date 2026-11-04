@@ -320,6 +320,7 @@ import CoursePaymentDateField from './CoursePaymentDateField.vue';
 import AtNumberStepper from './design-system/AtNumberStepper.vue';
 import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
 import { TRIAL_TARGET_CLASS_TYPE_OPTIONS } from '../lib/trialTarget.js';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -478,7 +479,7 @@ watch(
       const toDate = new Date(today);
       toDate.setDate(today.getDate() + 13);
       const to = toDate.toISOString().slice(0, 10);
-      const resp = await fetch(
+      const resp = await trackedFetch(
         `/api/v1/class-sessions?teacher_id=${tid}&start=${from}&end=${to}&status=scheduled&per_page=200`,
         { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
       );

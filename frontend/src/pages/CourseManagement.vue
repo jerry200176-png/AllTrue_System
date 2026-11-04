@@ -1469,6 +1469,7 @@ import {
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 import { trialTargetPayload } from '../lib/trialTarget.js';
 import { listExceptionWorkflows } from '../api';
+import { trackedFetch } from '../lib/loadingBar';
 import {
   buildCourseLeaveDeepLink,
   pendingLeaveSessionLabel,
@@ -4835,7 +4836,7 @@ const loadRoomsForBranch = async () => {
     const token = await getAccessToken();
     const headers = { 'Accept': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
+    const res = await trackedFetch(`/api/v1/rooms?branch_id=${props.branchId}`, { credentials: 'include', headers });
     if (res.ok) {
       const data = await res.json();
       rooms.value = Array.isArray(data) ? data : [];

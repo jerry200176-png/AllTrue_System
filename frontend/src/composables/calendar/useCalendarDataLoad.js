@@ -3,6 +3,7 @@ import { supabase } from '../../supabase';
 import { fetchClassSessionsProjection, mapSessionViewModelsForCalendar, mergeSessionsByCourse } from '../../lib/classSessionsApi';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { shouldUseLegacyCalendarFallback } from '../../lib/calendarLoadPerformance';
+import { trackedFetch } from '../../lib/loadingBar';
 import {
   fetchCalendarCoursesAndSchedulesParallel,
   fetchCalendarStudentClassesApi,
@@ -263,7 +264,7 @@ export function useCalendarDataLoad({
     const stuParams = new URLSearchParams({ per_page: '500' });
     if (!teacherMode && bid) stuParams.set('branch_id', String(bid));
     try {
-      const res = await fetch(`/api/v1/students?${stuParams.toString()}`, {
+      const res = await trackedFetch(`/api/v1/students?${stuParams.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -298,7 +299,7 @@ export function useCalendarDataLoad({
         params.set('branch_id', String(bid));
         params.set('strict_branch', '1');
       }
-      const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
+      const res = await trackedFetch(`/api/v1/teachers?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();

@@ -630,6 +630,7 @@ import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveE
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
 import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
 import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1837,7 +1838,7 @@ const loadRooms = async () => {
   try {
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
     const roomParams = props.branchId ? `branch_id=${props.branchId}` : '';
-    const res = await fetch(`${baseUrl}/v1/rooms?${roomParams}`, {
+    const res = await trackedFetch(`${baseUrl}/v1/rooms?${roomParams}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     if (res.ok) {
@@ -1857,12 +1858,12 @@ const saveRoom = async () => {
   const payload = { name: roomForm.value.name, capacity: Number(roomForm.value.capacity) || 1, campus_id: Number(props.branchId) };
   try {
     if (editingRoomId.value) {
-      await fetch(`${baseUrl}/v1/rooms/${editingRoomId.value}`, {
+      await trackedFetch(`${baseUrl}/v1/rooms/${editingRoomId.value}`, {
         method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
     } else {
-      await fetch(`${baseUrl}/v1/rooms`, {
+      await trackedFetch(`${baseUrl}/v1/rooms`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -1886,7 +1887,7 @@ const deleteRoom = async (room) => {
   const token = session?.access_token || '';
   const baseUrl = import.meta.env.VITE_API_BASE || '/api';
   try {
-    await fetch(`${baseUrl}/v1/rooms/${room.id}`, {
+    await trackedFetch(`${baseUrl}/v1/rooms/${room.id}`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
     });
     await loadRooms();
@@ -2221,7 +2222,7 @@ const loadCourseEvalRecords = async (courseId) => {
   evalRecordsLoading.value = true;
   try {
     const token = await getToken();
-    const resp = await fetch(`/api/v1/learning-records?student_class_id=${courseId}&limit=100`, {
+    const resp = await trackedFetch(`/api/v1/learning-records?student_class_id=${courseId}&limit=100`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
     const json = await resp.json();
@@ -2363,7 +2364,7 @@ const cancelMakeupClass = async () => {
 
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   const token = session?.access_token || '';
-  const res = await fetch(`/api/v1/schedules/${exc.original_id}/cancel-makeup`, {
+  const res = await trackedFetch(`/api/v1/schedules/${exc.original_id}/cancel-makeup`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
@@ -2472,7 +2473,7 @@ const doConfirmCancelSession = async () => {
   try {
     const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const token = session?.access_token || '';
-    const res = await fetch(`/api/v1/class-sessions/${row.id}`, {
+    const res = await trackedFetch(`/api/v1/class-sessions/${row.id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ status: 'cancelled' }),
@@ -2503,7 +2504,7 @@ const loadSessionRecovery = async (sessionId) => {
   }
   try {
     const token = await getToken();
-    const res = await fetch('/api/v1/class-sessions/' + sessionId + '/recovery', {
+    const res = await trackedFetch('/api/v1/class-sessions/' + sessionId + '/recovery', {
       headers: token ? { Authorization: 'Bearer ' + token } : {},
     });
     const data = await res.json();
@@ -2530,7 +2531,7 @@ const moveContract = ref(makeMoveContract());
 
 const moveContractRequest = async (sessionId, body, method = 'POST') => {
   const token = await getToken();
-  const res = await fetch('/api/v1/class-sessions/' + sessionId + '/reassign-contract' + (method === 'GET' ? '-targets' : ''), {
+  const res = await trackedFetch('/api/v1/class-sessions/' + sessionId + '/reassign-contract' + (method === 'GET' ? '-targets' : ''), {
     method,
     headers: {
       Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json',
@@ -2590,7 +2591,7 @@ const restoreCancelledSession = async () => {
   recovery.submitting = true;
   try {
     const token = await getToken();
-    const res = await fetch('/api/v1/class-sessions/' + row.id + '/restore', {
+    const res = await trackedFetch('/api/v1/class-sessions/' + row.id + '/restore', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer ' + token,
