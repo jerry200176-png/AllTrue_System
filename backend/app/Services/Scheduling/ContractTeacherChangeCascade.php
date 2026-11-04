@@ -2,6 +2,7 @@
 
 namespace App\Services\Scheduling;
 
+use App\Exceptions\ApprovedAssessmentTeacherLockedException;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
@@ -101,7 +102,8 @@ final class ContractTeacherChangeCascade
         int $newTeacherId,
         ?string $effectiveDate,
         ?int $actorId
-    ): void {
+    ): array {
+        $skipped = [];
         $oldTeacherId = (int) ($course->TeacherID ?? 0);
         $courseId = (int) $course->ID;
         $writer = app(OccurrenceAssignmentService::class);
@@ -138,8 +140,14 @@ final class ContractTeacherChangeCascade
             if ($teacherId === $newTeacherId) {
                 continue;
             }
-            $writer->pinTaughtTeacher($session, $teacherId, $actorId, $conflict ? 'pin_conflict' : 'pin');
+            try {
+                $writer->pinTaughtTeacher($session, $teacherId, $actorId, $conflict ? 'pin_conflict' : 'pin');
+            } catch (ApprovedAssessmentTeacherLockedException $e) {
+                $skipped[] = (int) $row->id; // in-app #499: the approved author keeps the lesson; the batch goes on
+            }
         }
+
+        return $skipped;
     }
 
     /** Teacher with evidence of teaching the session: non-voided attendance sign-in first, else a filled+approved assessment. 0 = no evidence. */
@@ -161,22 +169,25 @@ final class ContractTeacherChangeCascade
      * Calendar display prefers substitute schedule rows (original_schedule_id NOT NULL
      * + teacher_id <> contract). Without pinning, past attended sessions fall through
      * to the new contract teacher and look like history was rewritten.
+     *
+     * @return list<int> ClassSession ids skipped because an approved assessment locks the lesson to its author (in-app #499)
      */
     public static function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
         int $courseId,
         int $oldTeacherId,
         int $newTeacherId,
         ?string $effectiveDate = null
-    ): void {
+    ): array {
+        $skipped = [];
         if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
-            return;
+            return $skipped;
         }
         // Sessions before this date keep the former teacher (default: today).
         $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
 
         $course = DB::table('StudentClass')->where('ID', $courseId)->first();
         if (!$course) {
-            return;
+            return $skipped;
         }
 
         $studentId = (int) ($course->StudentID ?? 0);
@@ -184,7 +195,7 @@ final class ContractTeacherChangeCascade
             ? (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0)
             : 0;
         if ($studentId <= 0 || $campusId <= 0) {
-            return;
+            return $skipped;
         }
 
         $today = Carbon::today()->toDateString();
@@ -226,6 +237,12 @@ final class ContractTeacherChangeCascade
             // evidence falls back to the former contract teacher. The new contract teacher needs no pin.
             $taughtBy = self::evidencedTeacherId((int) $session->id) ?: $oldTeacherId;
             if ($taughtBy === $newTeacherId) {
+                continue;
+            }
+            try {
+                LearningRecordMutableOwnership::assertLessonTeacherUnlocked((int) $session->id, $taughtBy); // in-app #499
+            } catch (ApprovedAssessmentTeacherLockedException $e) {
+                $skipped[] = (int) $session->id;
                 continue;
             }
 
@@ -274,6 +291,8 @@ final class ContractTeacherChangeCascade
                 'updated_at' => $now,
             ]);
         }
+
+        return $skipped;
     }
 
     /**

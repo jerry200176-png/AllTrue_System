@@ -9,6 +9,7 @@ use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Support\LearningRecordMutableOwnership;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -138,6 +139,7 @@ class OccurrenceAssignmentService
             $this->lockOccurrence($session);
             [$course, $date, $start, $end] = $this->slotOf($session);
             $contractTeacherId = (int) ($course->TeacherID ?? 0);
+            LearningRecordMutableOwnership::assertLessonTeacherUnlocked((int) $session->id, $newTeacherId); // in-app #499
 
             $live = $this->findLive((int) $course->ID, $date, $start, $contractTeacherId);
             $anchor = $live && $live->original_schedule_id
@@ -200,6 +202,7 @@ class OccurrenceAssignmentService
             if (!$live) {
                 return null;
             }
+            LearningRecordMutableOwnership::assertLessonTeacherUnlocked((int) $session->id, $contractTeacherId); // in-app #499
             $anchor = $live->original_schedule_id
                 ? Schedule::where('id', (int) $live->original_schedule_id)->lockForUpdate()->first()
                 : null;

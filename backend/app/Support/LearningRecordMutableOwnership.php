@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Exceptions\ApprovedAssessmentTeacherLockedException;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Services\SubstituteScheduleService;
@@ -9,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -69,6 +71,21 @@ final class LearningRecordMutableOwnership
         $locked = self::protectedRecordForSession($classSessionId, true);
         if ($locked !== null && (int) $locked->TeacherID !== $newTeacherId) {
             throw new HttpResponseException(self::lockedResponse());
+        }
+    }
+
+    /**
+     * The one domain guard every teacher-relabel writer routes through (in-app #499): refuses when the session's non-voided,
+     * filled+approved assessment was written by a teacher other than $newTeacherId. Batch callers catch and skip.
+     */
+    public static function assertLessonTeacherUnlocked(int $classSessionId, int $newTeacherId): void
+    {
+        $locked = self::protectedRecordForSession($classSessionId);
+        if ($locked !== null && (int) $locked->TeacherID > 0 && (int) $locked->TeacherID !== $newTeacherId) {
+            Log::warning('lesson teacher locked to approved assessment author', [
+                'class_session_id' => $classSessionId, 'author_teacher_id' => (int) $locked->TeacherID, 'attempted_teacher_id' => $newTeacherId,
+            ]);
+            throw new ApprovedAssessmentTeacherLockedException($classSessionId, (int) $locked->TeacherID, $newTeacherId);
         }
     }
 

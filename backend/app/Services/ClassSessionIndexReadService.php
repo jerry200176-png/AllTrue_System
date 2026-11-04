@@ -266,6 +266,10 @@ class ClassSessionIndexReadService
         $row->learning_record_status = $row->learning_record_status ?? 'missing';
         $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
         $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
+        // in-app #499: the author of a filled, approved assessment is the lesson's teacher, whatever a stray pin says.
+        if ($row->learning_record_body_filled && strtolower((string) $row->learning_record_status) === 'approved' && $row->learning_record_teacher_id) {
+            $row->teacher_id = $row->learning_record_teacher_id;
+        }
         $row->has_learning_record_history = (bool) ($row->learning_record_history ?? false);
         $row->has_attendance_history = (bool) ($row->attendance_history ?? false);
         $row->recoverable_cancelled = strtolower((string) ($row->Status ?? '')) === 'cancelled'
