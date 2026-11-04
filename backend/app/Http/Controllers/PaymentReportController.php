@@ -568,14 +568,22 @@ class PaymentReportController extends Controller
             ]);
 
             // F7 S7: only the resolver (all non-void invoices) may settle the course; a partial leaves Paid=0.
-            if ($sc && !$sc->Paid && $this->courseResolvedPaid($sc)) {
-                $sc->update([
-                    'Paid' => 1,
-                    'PayDate' => Carbon::today()->toDateString(),
-                    'closed_reason' => $sc->getAttribute('closed_reason') === 'settled_pending'
-                        ? 'settled'
-                        : $sc->getAttribute('closed_reason'),
-                ]);
+            // A paid shared bill also settles each other monthly course it carries an item for, never a sibling without one.
+            $settle = $sc ? collect([$sc]) : collect();
+            if ($status === 'paid' && $sc && $sc->getAttribute('ScheduleMode') === 'date') {
+                $settle = $settle->merge(StudentClass::query()->where('ScheduleMode', 'date')
+                    ->whereIn('ID', $invoice->items()->pluck('StudentClassID')->filter()->unique()->diff([(int) $sc->ID])->all())->get());
+            }
+            foreach ($settle as $course) {
+                if (!$course->Paid && $this->courseResolvedPaid($course)) {
+                    $course->update([
+                        'Paid' => 1,
+                        'PayDate' => Carbon::today()->toDateString(),
+                        'closed_reason' => $course->getAttribute('closed_reason') === 'settled_pending'
+                            ? 'settled'
+                            : $course->getAttribute('closed_reason'),
+                    ]);
+                }
             }
             // A count package is one shared obligation; a monthly ('date') member settles only itself (#3892 D4, in-app #478).
             if ($package && $status === 'paid' && !$enteredOnlyPackageBill && $sc->getAttribute('ScheduleMode') !== 'date') {
@@ -1647,7 +1655,7 @@ class PaymentReportController extends Controller
 
     private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc): ?Invoice
     {
-        $live = app(BillingPayableResolver::class)->collectionOrder(Invoice::where('StudentClassID', $studentClassId)
+        $live = app(BillingPayableResolver::class)->collectionOrder(Invoice::coveringCourses([$studentClassId], $sc?->getAttribute('ScheduleMode') === 'date' ? [$studentClassId] : [])
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
             ->orderBy('id')->lockForUpdate()->get(), $sc);
 

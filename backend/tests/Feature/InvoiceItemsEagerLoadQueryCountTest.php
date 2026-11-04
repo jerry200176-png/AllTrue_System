@@ -57,7 +57,7 @@ class InvoiceItemsEagerLoadQueryCountTest extends TestCase
         });
     }
 
-    public function test_resolver_loads_items_once_for_date_courses_and_never_for_count_courses(): void
+    public function test_resolver_loads_items_in_constant_queries_for_date_courses_and_never_for_count_courses(): void
     {
         $resolverItemQueries = function (array $extra): int {
             $ids = $this->seedCourses(5, $extra);
@@ -71,7 +71,8 @@ class InvoiceItemsEagerLoadQueryCountTest extends TestCase
             return count(array_filter($log, fn ($q) => str_contains((string) $q['query'], '`InvoiceItem`')));
         };
 
-        $this->assertSame(1, $resolverItemQueries([]));
+        // 1 coverage lookup (shared bills carry items for other courses) + 1 batched items load, constant in course count.
+        $this->assertSame(2, $resolverItemQueries([]));
         $this->assertSame(0, $resolverItemQueries(['ScheduleMode' => 'count']));
     }
 

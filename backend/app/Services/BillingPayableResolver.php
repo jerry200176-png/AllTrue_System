@@ -152,13 +152,13 @@ class BillingPayableResolver
         }
         // One query for package paid state (isEffectivelyPaid would otherwise query per package member).
         (new \Illuminate\Database\Eloquent\Collection($courseMap))->loadMissing('coursePackage');
-        $invoicesByClass = Invoice::query()
+        $dateIds = $this->dateModeIds($courseMap);
+        $invoicesByClass = Invoice::groupByCoveredCourse(Invoice::query()
             ->where(fn ($query) => $query->whereNull('Status')->orWhere('Status', '!=', 'void'))
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
-            ->whereIn('StudentClassID', $ids->all())
+            ->coveringCourses($ids->all(), $dateIds)
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason', 'billing_snapshot'])
-            ->groupBy('StudentClassID');
+            ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason', 'billing_snapshot']), $ids->all(), $dateIds);
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
         $out = [];
@@ -174,6 +174,12 @@ class BillingPayableResolver
         }
 
         return $out;
+    }
+
+    /** @param array<int, StudentClass> $courseMap @return int[] */
+    private function dateModeIds(array $courseMap): array
+    {
+        return array_keys(array_filter($courseMap, fn ($c) => (string) $c->getAttribute('ScheduleMode') === 'date'));
     }
 
     private function unattributedPeriod(?string $billingPeriod): array
@@ -325,16 +331,16 @@ class BillingPayableResolver
                 $courseMap[(int) $course->getAttribute('ID')] = $course;
             }
         }
-        $invoicesByClass = Invoice::query()
+        $itemIds = $this->dateModeIds($courseMap);
+        $invoicesByClass = Invoice::groupByCoveredCourse(Invoice::query()
             ->where(function ($query) {
                 $query->whereNull('Status')->orWhere('Status', '!=', 'void');
             })
             ->with(['payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
-            ->whereIn('StudentClassID', $ids->all())
-            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
-            ->groupBy('StudentClassID');
+            ->coveringCourses($ids->all(), $itemIds)
+            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period']), $ids->all(), $itemIds);
 
         // resolve() reads items only for date-mode courses (#3454): one batched query, none for count-only batches.
         // Selection projects candidates too (#3875), so every date-mode candidate gets its items here.
@@ -342,7 +348,7 @@ class BillingPayableResolver
             ->filter(fn ($invoices, $classId) => (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date')
             ->flatten(1);
         if ($needItems->isNotEmpty()) {
-            (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->load('items');
+            (new \Illuminate\Database\Eloquent\Collection($needItems->all()))->loadMissing('items');
         }
 
         // One session query for all monthly candidates (sole caller AlertController is never inside another preload).

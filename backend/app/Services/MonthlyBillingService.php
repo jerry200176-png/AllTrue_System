@@ -146,7 +146,7 @@ class MonthlyBillingService
         if ((string) $course->getAttribute('ScheduleMode') !== 'date' || !$start || !$end) {
             return null;
         }
-        $invoices ??= Invoice::query()->where('StudentClassID', $id)
+        $invoices ??= Invoice::query()->coveringCourses([$id], [$id])
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')->get();
         $ranges = [];
         foreach ($invoices as $invoice) {

@@ -142,6 +142,46 @@ class Invoice extends Model
             || self::courseHasPositiveBill($course, null, $openOnly);
     }
 
+    /**
+     * Bills a date-mode course owes or has paid: headed by it, or carrying an item for it (a shared bill pays every
+     * course it has a line for). Count-mode ids ($itemIds omits them) keep the header-only rule.
+     *
+     * @param int[] $ids
+     * @param int[] $itemIds
+     */
+    public function scopeCoveringCourses($query, array $ids, array $itemIds)
+    {
+        return $query->where(fn ($q) => $q->whereIn('StudentClassID', $ids)
+            ->when($itemIds !== [], fn ($q) => $q->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $itemIds))));
+    }
+
+    /**
+     * Group bills (items loaded) by every course in $ids they cover: the header, plus item courses in $itemIds.
+     *
+     * @param \Illuminate\Database\Eloquent\Collection<int, Invoice> $invoices
+     * @param int[] $ids
+     * @param int[] $itemIds
+     * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, Invoice>>
+     */
+    public static function groupByCoveredCourse($invoices, array $ids, array $itemIds)
+    {
+        $out = [];
+        if ($itemIds !== []) {
+            $invoices->loadMissing('items');
+        }
+        foreach ($invoices as $invoice) {
+            $covered = [(int) $invoice->StudentClassID];
+            if ($itemIds !== []) {
+                $covered = array_merge($covered, array_intersect($invoice->items->pluck('StudentClassID')->map(fn ($c) => (int) $c)->all(), $itemIds));
+            }
+            foreach (array_intersect(array_unique($covered), $ids) as $id) {
+                $out[$id][] = $invoice;
+            }
+        }
+
+        return collect($out)->map(fn (array $list) => collect($list));
+    }
+
     public function scopeNotVoided($query)
     {
         return $query->where(function ($q) {

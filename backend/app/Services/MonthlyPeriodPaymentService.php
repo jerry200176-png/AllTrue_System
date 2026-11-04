@@ -19,8 +19,8 @@ final class MonthlyPeriodPaymentService
         $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date');
         if ($courses->isEmpty()) return [];
         $ids = $courses->pluck('ID')->all();
-        $invoices = (new Invoice)->scopeNotVoided(Invoice::query())->whereIn('StudentClassID', $ids)
-            ->with(['payments', 'items'])->orderBy('id')->get()->groupBy('StudentClassID');
+        $invoices = Invoice::groupByCoveredCourse((new Invoice)->scopeNotVoided(Invoice::query())->coveringCourses($ids, $ids)
+            ->with(['payments', 'items'])->orderBy('id')->get(), $ids, $ids);
         $sessions = ClassSession::query()->whereIn('StudentClassID', $ids)
             ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])
             ->orderBy('SessionDate')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge'])->groupBy('StudentClassID');
