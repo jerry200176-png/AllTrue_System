@@ -344,7 +344,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, onActivated, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentStatus.js';
 import { getBranchName } from '../lib/useBranches';
@@ -1123,12 +1123,12 @@ const submitWorkflowDecision = async () => {
   await waiveWorkflow(modal.workflow);
 };
 
-const loadData = async () => {
+const loadData = async ({ quiet = false } = {}) => {
   if (!props.branchId) return;
 
   const token = getToken();
   const baseUrl = getBaseUrl();
-  dashboardLoading.value = true;
+  if (!quiet) dashboardLoading.value = true;
   dashboardPrimaryError.value = '';
 
   try {
@@ -1557,6 +1557,13 @@ onMounted(async () => {
   await loadPendingReviewSummaries();
   if (dashboardViewMode.value === 'full') await loadSecondaryData();
   applyFocusFromInbox();
+});
+
+// Kept alive by App.vue: refresh in the background on return, keeping the cards on screen.
+let dashboardActivatedOnce = false;
+onActivated(() => {
+  if (dashboardActivatedOnce) { void loadData({ quiet: true }); void loadPendingReviewSummaries(); }
+  dashboardActivatedOnce = true;
 });
 
 onBeforeUnmount(() => {
