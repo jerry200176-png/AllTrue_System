@@ -1,0 +1,3 @@
+## 2026-11-04 — fix(scheduling): 換合約老師不再覆蓋已上課的授課老師（in-app #499）
+<!-- release-notes: staff_update=staff-2026-11-04-pin-pass-keeps-taught-teacher -->
+- `ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange` pinned every taught or past slot to the OLD contract teacher, and added a second pin even when a live pin already named the new teacher, so the newest pin overrode who really taught. It now pins the evidenced teacher (attendance sign-in, else a filled and approved assessment), never adds a pin over a live one, and falls back to the former contract teacher only when a slot has no evidence and no pin. Existing duplicate pins are not repaired by this change.
