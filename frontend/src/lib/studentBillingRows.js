@@ -99,7 +99,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       // in-app #495: a contract already renewed by a newer one is not the student's lessons-left signal.
       // in-app #467: the student's fewest lessons left, so the list can sort by it like the old 剩餘堂數 column (#309).
       const left = row.contracts[row.contracts.length - 1].remaining;
-      if (left !== null && r.has_newer_course !== true && (row.min_remaining === null || left < row.min_remaining)) {
+      if (left !== null && r.renewed_by_newer_course !== true && (row.min_remaining === null || left < row.min_remaining)) {
         row.min_remaining = left;
         row.remaining_hint = `${r.subject ? `${r.subject} ` : ''}剩 ${left} 堂`;
       }
@@ -112,7 +112,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (paidSignal && isLegacyPaidFlagOnly(r)) row.legacy_flag_only += 1;
     else if (paidSignal) row.has_paid = true;
     // The old queue's 續課/將到期 tab: few lessons left (renew_needed) or a monthly term ending (monthly_due_soon).
-    if (r.has_newer_course !== true && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon')) row.renewing += 1;
+    if (r.renewed_by_newer_course !== true && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon')) row.renewing += 1;
     if (r.payment_status === 'pending_report') { row.waiting_confirm += 1; row.confirm_class_id ??= r.id != null ? Number(r.id) : null; }
     // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
     if (pendingReviewAmount(r) > 0) {

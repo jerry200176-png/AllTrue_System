@@ -1048,6 +1048,41 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertFalse($row['newer_course_overlap']);
     }
 
+    // Codex P2 on #4887: a later free tutoring course is not a renewal, so the old course still needs one.
+    public function test_later_tutoring_course_does_not_clear_renew_needed(): void
+    {
+        $token = $this->createDirectorToken([1], 'tutoring-later@example.com');
+        $student = Student::create([
+            'name' => 'T495b', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $old = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 8000, 'SubjectID' => 96]);
+        $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 0, 'SubjectID' => 96, 'ClassType' => 'tutoring']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $old->ID);
+        $this->assertNotNull($row);
+        $this->assertFalse($row['renewed_by_newer_course']);
+        $this->assertSame('renew_needed', $row['payment_status']);
+    }
+
+    // Codex P2 on #4887: with A < B < C, A's overlap is checked against B (its successor), not the newest C.
+    public function test_overlap_uses_the_nearest_later_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'overlap-abc@example.com');
+        $student = Student::create([
+            'name' => 'T495c', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $a = $this->createCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 97, 'EndDate' => '2026-08-08']);
+        $b = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 97, 'StartDate' => '2026-08-05']);
+        $this->createCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 97, 'StartDate' => '2026-09-01']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $a->ID);
+        $this->assertNotNull($row);
+        $this->assertSame($b->ID, $row['newer_course_id']);
+        $this->assertTrue($row['newer_course_overlap']);
+    }
+
     // in-app #495: a newer same-subject contract that is itself listed still supersedes the old one.
     public function test_listed_newer_course_supersedes_old_one_and_clears_renew_needed(): void
     {
