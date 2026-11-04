@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-status-label-short
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 收款頁狀態字變短，說明放在「?」
+    summary: 收款頁的狀態字改成短短幾個字，一眼就看懂；原本比較長的說明，把滑鼠移上去就看得到。
+    items:
+      - category: improved
+        text: 「舊資料標已收，查無收款」現在只顯示「查無收款」，完整說明在滑鼠移上去的提示裡。
+      - category: improved
+        text: 月結帳單與堂數不符，列上顯示「月結待核對」；收款紀錄裡「已收（多出部分未入帳）」顯示「已收超額」。
+    source_refs:
+      - "changelog:2026-11-04:status-label-short"

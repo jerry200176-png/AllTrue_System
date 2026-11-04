@@ -10,7 +10,7 @@
     <!-- Excel card: pay date + amount on top, remaining lessons as the big number (spec 2.3). -->
     <div class="contract__excel" data-testid="contract-excel">
       <div class="contract__pay">
-        <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
+        <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_HELP }}</p>
         <p v-else-if="payLineText" class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
         <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
@@ -141,7 +141,7 @@ import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
 import { AMOUNT_PENDING_REASON, slipAvailability } from '../../lib/billingDocState.js';
-import { LEGACY_FLAG_UNVERIFIED_LABEL, WAIVED_LABEL, canResolveLegacyPaidFlag, isWaivedContract } from '../../lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_HELP, WAIVED_LABEL, canResolveLegacyPaidFlag, isWaivedContract } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   course: { type: Object, required: true },

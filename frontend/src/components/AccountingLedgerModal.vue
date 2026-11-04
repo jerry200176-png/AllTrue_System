@@ -216,7 +216,7 @@
                               <div class="ledger-timeline__when">{{ p.paid_at ? fmtDate(p.paid_at) : '未記錄日期' }}</div>
                               <div class="ledger-timeline__body">
                                 <strong>{{ p.is_void ? '更正收款' : paymentMethodLabel(p.method) }} {{ signedCurrency(p.amount) }}</strong>
-                                <span :class="['ledger-chip', applicationStatusClass(p.application_status)]">
+                                <span :class="['ledger-chip', applicationStatusClass(p.application_status)]" :title="p.application_status === 'partially_applied' ? '已收（多出部分未入帳）' : undefined">
                                   {{ applicationStatusLabel(p.application_status) }}
                                 </span>
                                 <div class="ledger-timeline__meta">
@@ -1110,7 +1110,7 @@ const formatPeriod = (period) => !period ? '—' : (String(period).split('-').le
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
 const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS, status);
 const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS, status);
-const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收（多出部分未入帳）', overpayment_pending_review: '多收', voided: '已撤銷', refunded: '已退費' }, status);
+const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收超額', overpayment_pending_review: '多收', voided: '已撤銷', refunded: '已退費' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
   unpaid: 'chip--danger',
