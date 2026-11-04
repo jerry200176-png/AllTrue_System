@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 已續約的課不再提醒需續課
-    summary: 學生同一科目已有新合約時，舊合約不會再顯示「需續課」。
+    summary: 學生同一科目已買了新合約時，不會再被列進「需續課」。
     items:
       - category: fixed
         text: 舊合約堂數用完、但已經續約的學生，不會再被標成需續課。

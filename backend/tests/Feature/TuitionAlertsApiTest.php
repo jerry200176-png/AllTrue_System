@@ -1122,7 +1122,9 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNotNull($newRow);
         $this->assertTrue($oldRow['has_newer_course']);
         $this->assertSame($new->ID, $oldRow['newer_course_id']);
-        $this->assertNotSame('renew_needed', $oldRow['payment_status']);
+        $this->assertTrue($oldRow['renewed_by_newer_course']);
+        // The status stays renew_needed: it keeps the old contract's 結案 action (Codex P2 on #4887).
+        $this->assertSame('renew_needed', $oldRow['payment_status']);
         $this->assertFalse($newRow['has_newer_course']);
     }
 

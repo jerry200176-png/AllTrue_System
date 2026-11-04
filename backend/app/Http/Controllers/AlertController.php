@@ -439,11 +439,8 @@ class AlertController extends Controller
                 }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
-                // in-app #495: a renewal already exists, so low lessons / term end on the old contract needs no action.
-                // Money statuses (unpaid, partial, ...) are untouched.
-                if (($newerInfo['renewed'] ?? false) && in_array($paymentStatus, ['renew_needed', 'monthly_due_soon'], true)) {
-                    $paymentStatus = 'paid';
-                }
+                // in-app #495: the status stays (it drives the old contract's 結案 action, Codex P2 on #4887);
+                // renewed_by_newer_course below tells the list not to count it as 需續課.
 
                 // #1100 (FD-3): leave-cascade extension of this (A) course's EndDate must
                 // never silently shift a pre-purchased (B) course's StartDate — surface an
