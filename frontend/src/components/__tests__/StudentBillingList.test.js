@@ -210,6 +210,18 @@ describe('StudentBillingList contract expansion (in-app #396 #404)', () => {
     expect(order).toEqual(['sbl-row-4', 'sbl-row-5', 'sbl-row-6']);
   });
 
+  it('需續課 lists fewest lessons left first (in-app #494)', async () => {
+    const w = mount(StudentBillingList, { props: { alertRows: [
+      { id: 71, student_id: 7, student_name: '庚', subject: '數學', schedule_mode: 'count', remaining_sessions: 2, payment_status: 'renew_needed', payable_outstanding: 0 },
+      { id: 81, student_id: 8, student_name: '辛', subject: '英文', schedule_mode: 'count', remaining_sessions: 1, payment_status: 'renew_needed', payable_outstanding: 500 },
+      { id: 91, student_id: 9, student_name: '壬', subject: '國文', schedule_mode: 'count', remaining_sessions: 0, payment_status: 'renew_needed', payable_outstanding: 0 },
+    ], today: '2026-10-07' } });
+    await w.find('[data-testid="sbl-filter-renew"]').trigger('click');
+    expect(w.find('[data-testid="sbl-sort"]').element.value).toBe('remaining');
+    const order = w.findAll('[data-testid^="sbl-row-"]').map((r) => r.attributes('data-testid'));
+    expect(order).toEqual(['sbl-row-9', 'sbl-row-8', 'sbl-row-7']);
+  });
+
   it('says 已收 only with a payment on record and flags owing contracts with no bill (in-app #407)', () => {
     const w = mount(StudentBillingList, { props: { alertRows: [
       { id: 51, student_id: 5, student_name: '戊', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null },
