@@ -53,7 +53,9 @@ export function useCalendarDataLoad({
     return true;
   };
 
-  const loadCourses = async () => {
+  // quiet: background refetch for a kept-alive page, no loading flag/overlay; rows stay until the new ones arrive.
+  const loadCourses = async (opts) => {
+    const quiet = opts?.quiet === true;
     const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const token = session?.access_token || '';
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
@@ -72,9 +74,9 @@ export function useCalendarDataLoad({
       return;
     }
 
-    calendarLoading.value = true;
+    if (!quiet) calendarLoading.value = true;
     calendarLoadError.value = '';
-    calendarLoadProgress.value = '載入課程與排程中…';
+    if (!quiet) calendarLoadProgress.value = '載入課程與排程中…';
     const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
 
     let courseList = [];
@@ -111,7 +113,7 @@ export function useCalendarDataLoad({
           schedEnd,
           fetchAllPages,
           onProgress: (loaded, total) => {
-            calendarLoadProgress.value = `載入課程與排程中… ${loaded}/${total}`;
+            if (!quiet) calendarLoadProgress.value = `載入課程與排程中… ${loaded}/${total}`;
           },
         }),
         fetchSchedules: () => fetchCalendarSchedulesApi({

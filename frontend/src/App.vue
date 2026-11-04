@@ -543,21 +543,21 @@
         :badge-count="getItemBadgeCount"
         @select="setActivePage"
       />
-      <DirectorDashboard v-if="!isPasswordChangeLocked && directorBranchReady && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
+      <KeepAlive><DirectorDashboard v-if="!isPasswordChangeLocked && directorBranchReady && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" /></KeepAlive>
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && directorBranchReady && active === 'notifications'"
         :branch-id="currentBranch"
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
-      <StudentsList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" @start-guide="guideTour.startTour('tuition-collect', { role })" />
+      <KeepAlive><SmartCalendar v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" /></KeepAlive>
+      <KeepAlive><StudentsList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" /></KeepAlive>
+      <KeepAlive><TuitionCollectionPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" @start-guide="guideTour.startTour('tuition-collect', { role })" /></KeepAlive>
       <TuitionReportPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && directorBranchReady && active === 'course-mgmt'" :branch-id="currentBranch" :user-role="role" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-course-id="courseMgmtFocusCourseId" :initial-student-name="courseMgmtFocusStudentName" :initial-course-intent="courseMgmtFocusIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <KeepAlive><CourseManagement v-if="!isPasswordChangeLocked && directorBranchReady && active === 'course-mgmt'" :branch-id="currentBranch" :user-role="role" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-course-id="courseMgmtFocusCourseId" :initial-student-name="courseMgmtFocusStudentName" :initial-course-intent="courseMgmtFocusIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" /></KeepAlive>
       <AdmissionInquiriesPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'admission-inquiries'" :branch-id="currentBranch" :token="session?.access_token ?? ''" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && directorBranchReady && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
@@ -2011,6 +2011,10 @@ function clearExamNavigationContext() {
   examFocusRoundId.value = null;
 }
 
+// Pages wrapped in <KeepAlive> in the template: their state survives a switch away and back.
+const KEEP_ALIVE_PAGES = new Set(['director', 'course-mgmt', 'students', 'tuition-collect', 'calendar']);
+const pageScroll = new Map();
+
 function setActivePage(page, { history = 'push', preserveInboxContext = false } = {}) {
   if (page === 'truefit') {
     openTrueFitWorkspace();
@@ -2051,13 +2055,23 @@ function setActivePage(page, { history = 'push', preserveInboxContext = false } 
     syncAppPageUrl(page, { mode: history, preserveInboxContext });
   }
   if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+    const mainEl = document.querySelector('.main-content');
+    // Kept-alive pages keep their list position: remember it on the way out, put it back on the way in.
+    if (KEEP_ALIVE_PAGES.has(prev)) pageScroll.set(prev, { y: window.scrollY, main: mainEl?.scrollTop || 0 });
     try {
       window.scrollTo({ top: 0, behavior: 'instant' });
     } catch {
       // jsdom fallback
     }
-    const mainEl = document.querySelector('.main-content');
     if (mainEl) mainEl.scrollTop = 0;
+    const saved = page !== prev && KEEP_ALIVE_PAGES.has(page) ? pageScroll.get(page) : null;
+    if (saved) {
+      nextTick(() => {
+        try { window.scrollTo({ top: saved.y, behavior: 'instant' }); } catch { /* jsdom */ }
+        const el = document.querySelector('.main-content');
+        if (el) el.scrollTop = saved.main;
+      });
+    }
   }
   if (isTeacher.value && page !== prev) {
     if (skipTeacherNavSfxOnce) {
