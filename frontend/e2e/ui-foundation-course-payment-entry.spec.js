@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { LEGACY_FLAG_UNVERIFIED_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
@@ -20,8 +20,8 @@ const STATES = [
   { paymentStatus: 'partial', actionLabel: '登記收款', badge: TUITION_STATUS_CONFIG.partial.label },
   { paymentStatus: 'pending_report', actionLabel: `查看「${REPORT_STATUS_LABELS.pending}」`, badge: TUITION_STATUS_CONFIG.pending_report.label },
   { paymentStatus: 'paid', actionLabel: '在這裡看帳務', badge: TUITION_STATUS_CONFIG.paid.label },
-  // #4174: paid by the legacy flag alone (no payment record) reads 需核對, never 已收.
-  { paymentStatus: 'paid', legacyFlagOnly: true, actionLabel: '補登收款', badge: LEGACY_FLAG_UNVERIFIED_LABEL },
+  // #4174: paid by the legacy flag alone (no payment record) reads 需核對, never 已收. The course page keeps the full wording (#4900 shortens only payment pages).
+  { paymentStatus: 'paid', legacyFlagOnly: true, actionLabel: '補登收款', badge: LEGACY_FLAG_UNVERIFIED_HELP },
 ];
 
 /**
