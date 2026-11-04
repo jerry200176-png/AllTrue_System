@@ -2933,7 +2933,6 @@ class ClassSessionController extends Controller
                 $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
                 $lrStatus = (string) ($lrRow->Status ?? '');
                 if ($lrOldTeacher !== $newTeacherId) {
-                    \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null, $data['reason'] ?? '代課');
                     $lrUpdate = ['TeacherID' => $newTeacherId];
                     if (Schema::hasColumn($lrTable, 'updated_at')) {
                         $lrUpdate['updated_at'] = now();
@@ -3307,7 +3306,6 @@ class ClassSessionController extends Controller
                 $lrId = (int) $lrRow->id;
                 $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
                 if ($lrOldTeacher !== $originalTeacherId) {
-                    \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, $originalTeacherId, $changedBy > 0 ? $changedBy : null, $data['reason'] ?? '回復正班老師');
                     $lrUpdate = ['TeacherID' => $originalTeacherId];
                     if (Schema::hasColumn($lrTable, 'updated_at')) {
                         $lrUpdate['updated_at'] = now();

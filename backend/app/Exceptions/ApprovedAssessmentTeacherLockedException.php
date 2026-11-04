@@ -14,7 +14,7 @@ class ApprovedAssessmentTeacherLockedException extends RuntimeException
     public function __construct(public readonly int $classSessionId, public readonly int $authorTeacherId, public readonly int $attemptedTeacherId)
     {
         $name = (string) (DB::table('User')->where('id', $authorTeacherId)->value('Name') ?? $authorTeacherId);
-        parent::__construct("這堂已有 {$name} 老師寫的評量，老師不能改；要改請先處理評量");
+        parent::__construct("這堂已有 {$name} 老師寫的評量，老師不能改；要改請先作廢評量");
     }
 
     /** @return array<string, mixed> */
