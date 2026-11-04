@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-04-ledger-ui-legacy-backfill
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 收款畫面更清楚
+    summary: 補登收款的按鈕更好找，收款紀錄和雜費選學生的畫面也排整齊了。
+    items:
+      - category: improved
+        text: 舊資料標已收的課，按鈕直接寫「補登收款」，按了就開表單。
+      - category: fixed
+        text: 收款紀錄的按鈕排整齊。
+      - category: fixed
+        text: 雜費選學生時名字不再一字一行。
+    source_refs:
+      - "changelog:2026-11-04:ledger-ui-legacy-backfill"
