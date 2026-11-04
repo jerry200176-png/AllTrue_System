@@ -4343,7 +4343,7 @@ const formatMoney = (value) => {
 
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
-const loadCourses = async (page = 1) => {
+const loadCourses = async (page = 1, { quiet = false } = {}) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
   if (!props.branchId) {
@@ -4356,7 +4356,7 @@ const loadCourses = async (page = 1) => {
     courseListOutcome.cleared();
     return;
   }
-  coursesLoading.value = true;
+  if (!quiet) coursesLoading.value = true;
   // Cleared only once this request wins, so a failed/superseded load keeps them (Codex r4289665973).
   const sessionCaches = [completedSessionDatesByCourse, sessionsByCourse];
   const listKey = JSON.stringify([props.branchId, page, filters.value, pendingConvertTrialId.value, pendingManualSessionId.value, pendingLessonsCourseId.value, convertTrialStudentId.value]);
@@ -5599,6 +5599,7 @@ onDeactivated(() => {
 onActivated(() => {
   if (!wasHidden) return;
   wasHidden = false;
+  if (!coursesLoading.value) void loadCourses(pagination.value.page, { quiet: true }); // stale-while-revalidate, rows stay on screen
   document.addEventListener('click', closeActionMenu);
   if (focusedStudentKey.value) lockScroll();
 });

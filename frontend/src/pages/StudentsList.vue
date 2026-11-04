@@ -1812,9 +1812,9 @@ const loadBranchStudentTotal = async () => {
   }
 };
 
-const loadStudents = async () => {
+const loadStudents = async ({ quiet = false } = {}) => {
   const requestSequence = ++studentsRequestSequence;
-  studentsLoading.value = true;
+  if (!quiet) studentsLoading.value = true;
   studentsLoadError.value = '';
   try {
     if (!props.branchId) {
@@ -2287,7 +2287,12 @@ watch(showStudentModal, (open) => {
 onBeforeUnmount(() => window.removeEventListener('keydown', onStudentModalKeydown));
 // Kept alive by App.vue: a hidden page must not react to Escape.
 onDeactivated(() => window.removeEventListener('keydown', onStudentModalKeydown));
-onActivated(() => { if (showStudentModal.value) window.addEventListener('keydown', onStudentModalKeydown); });
+let studentsActivatedOnce = false;
+onActivated(() => {
+  if (showStudentModal.value) window.addEventListener('keydown', onStudentModalKeydown);
+  if (studentsActivatedOnce) void loadStudents({ quiet: true }); // stale-while-revalidate, list stays on screen
+  studentsActivatedOnce = true;
+});
 
 const fetchLineBindings = async (studentId) => {
   if (!studentId) return;

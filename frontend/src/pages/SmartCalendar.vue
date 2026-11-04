@@ -985,6 +985,7 @@ const {
   teachersLoaded,
   lastCalendarFetch,
   loadCourses,
+  loadStudents: loadCalendarStudents,
   loadTeachers,
   reloadCalendarData: reloadCalendarDataCore,
 } = useCalendarDataLoad({
@@ -2812,7 +2813,13 @@ onMounted(() => {
   addContextMenuListeners();
 });
 // Kept alive by App.vue: listeners follow the page being visible (and are no longer leaked on unmount).
-onActivated(addContextMenuListeners);
+// Stale-while-revalidate: on coming back, refetch in the background (bypasses lastCalendarFetch, no overlay).
+let calendarActivatedOnce = false;
+onActivated(() => {
+  addContextMenuListeners();
+  if (calendarActivatedOnce) { void loadCourses({ quiet: true }); void loadCalendarStudents(); }
+  calendarActivatedOnce = true;
+});
 onDeactivated(removeContextMenuListeners);
 onUnmounted(removeContextMenuListeners);
 </script>
