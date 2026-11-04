@@ -13,6 +13,8 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
   const target = ref(null);
   const submitting = ref(false);
   const cancelRemaining = ref(true);
+  // A super admin undoing a mistaken close gives a reason; the server audits it (Founder 2026-10-28, in-app #484).
+  const reopenReason = ref('');
   const isResume = computed(() => target.value?.status === 'inactive');
   const impacts = computed(() => isResume.value
     ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '恢復成功時，會接回因暫停、結案或停用而取消的排課；其他另行取消的堂次不會一併恢復']
@@ -25,6 +27,7 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
   function request(course) {
     if (courseLock.isPending(course)) { notify(COURSE_LIFECYCLE_BUSY_MESSAGE); return; }
     cancelRemaining.value = true;
+    reopenReason.value = '';
     target.value = course;
   }
 
@@ -46,6 +49,7 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
 
       const body = { action: paused ? 'resume' : 'pause' };
       if (!paused) body.cancel_remaining = !!cancelRemaining.value;
+      if (paused && reopenReason.value.trim()) body.reopen_reason = reopenReason.value.trim();
 
       const res = await authedFetch(`/api/v1/student-classes/${course.id}/pause`, {
         method: 'POST',
@@ -68,5 +72,5 @@ export function useCoursePause({ onChanged, notify = (msg) => alert(msg), course
     }
   }
 
-  return { target, submitting, cancelRemaining, isResume, impacts, request, confirm };
+  return { target, submitting, cancelRemaining, reopenReason, isResume, impacts, request, confirm };
 }

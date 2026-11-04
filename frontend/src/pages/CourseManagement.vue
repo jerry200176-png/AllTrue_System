@@ -1316,6 +1316,10 @@
             <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
             <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
           </label>
+          <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
+            如果是誤結案，寫下原因才能恢復（會留紀錄）
+            <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
+          </label>
         </div>
       </template>
       <template #actions>
@@ -2632,7 +2636,7 @@ const packageConversionSubjects = computed(() => {
 const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const {
-  target: pauseConfirmTarget, submitting: pauseConfirmSubmitting, cancelRemaining: pauseCancelRemaining,
+  target: pauseConfirmTarget, submitting: pauseConfirmSubmitting, cancelRemaining: pauseCancelRemaining, reopenReason: pauseReopenReason,
   isResume: pauseConfirmIsResume, impacts: pauseConfirmImpacts,
   request: requestCoursePause, confirm: confirmCoursePause,
 } = useCoursePause({
