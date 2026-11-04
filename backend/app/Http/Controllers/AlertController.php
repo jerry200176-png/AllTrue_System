@@ -1148,7 +1148,7 @@ class AlertController extends Controller
 
         $candidates = StudentClass::where('Stop', 0)
             ->whereIn('StudentID', $pairs->pluck('sid')->unique())
-            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType']);
+            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate']);
         $byKey = $candidates->groupBy(fn ($c) => $c->StudentID . '-' . $c->SubjectID);
 
         // Listed courses are candidates too (in-app #495). The nearest later course is the overlap
@@ -1164,8 +1164,9 @@ class AlertController extends Controller
                 'newer_id'   => (int) $newer->ID,
                 'remaining'  => (int) ($newer->RemainingSessions ?? 0),
                 'start_date' => $newer->StartDate ? substr($newer->StartDate, 0, 10) : null,
-                // A free tutoring course is not a purchased renewal (Codex P2 on #4887).
-                'renewed'    => $later->contains(fn ($c) => strtolower(trim((string) ($c->ClassType ?? ''))) !== 'tutoring'),
+                // Only a priced, non-tutoring course is a purchased renewal; free tutoring or a free trial is not (Codex P2s on #4887).
+                'renewed'    => $later->contains(fn ($c) => strtolower(trim((string) ($c->ClassType ?? ''))) !== 'tutoring'
+                    && ((float) ($c->Charge ?? 0) > 0 || (float) ($c->Rate ?? 0) > 0)),
             ];
         }
 

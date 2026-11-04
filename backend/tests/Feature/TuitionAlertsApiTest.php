@@ -1065,6 +1065,23 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('renew_needed', $row['payment_status']);
     }
 
+    // Codex P2 on #4887: a later free trial is not a renewal either.
+    public function test_later_free_trial_does_not_clear_renew_needed(): void
+    {
+        $token = $this->createDirectorToken([1], 'trial-later@example.com');
+        $student = Student::create([
+            'name' => 'T495d', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $old = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 8000, 'SubjectID' => 98]);
+        $this->createCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 1, 'Charge' => 0, 'Rate' => 0, 'SubjectID' => 98, 'ClassType' => 'trial']);
+
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $old->ID);
+        $this->assertNotNull($row);
+        $this->assertFalse($row['renewed_by_newer_course']);
+        $this->assertSame('renew_needed', $row['payment_status']);
+    }
+
     // Codex P2 on #4887: with A < B < C, A's overlap is checked against B (its successor), not the newest C.
     public function test_overlap_uses_the_nearest_later_course(): void
     {
