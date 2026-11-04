@@ -1853,7 +1853,9 @@ const backfillSelectedDates = ref([]);
 const backfillCalendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const backfillCsvInputRef = ref(null);
 const backfillImporting = ref(false);
-const todayYmd = computed(() => toYmd(new Date()));
+// Re-read the clock when the kept-alive page is shown again (bumped in onActivated), or it goes stale overnight.
+const clockTick = ref(0);
+const todayYmd = computed(() => (clockTick.value, toYmd(new Date())));
 const backfillRemainingSessions = computed(() => {
   const purchased = Math.max(0, Number(backfillForm.value.sessions_purchased) || 0);
   return Math.max(0, purchased - backfillSelectedDates.value.length);
@@ -5600,6 +5602,7 @@ onDeactivated(() => {
   if (focusedStudentKey.value) unlockScroll();
 });
 onActivated(() => {
+  clockTick.value += 1;
   if (!wasHidden) return;
   wasHidden = false;
   if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen

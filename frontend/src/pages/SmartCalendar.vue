@@ -2820,7 +2820,10 @@ onActivated(() => {
   if (calendarActivatedOnce) { void loadCourses({ quiet: true }); void loadCalendarStudents(); }
   calendarActivatedOnce = true;
 });
-onDeactivated(removeContextMenuListeners);
+onDeactivated(() => {
+  removeContextMenuListeners();
+  showCalendarPrint.value = false; // CalendarPrintDialog has its own Teleport + keydown listener; close via its normal path
+});
 onUnmounted(removeContextMenuListeners);
 </script>
 

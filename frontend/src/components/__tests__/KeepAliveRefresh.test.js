@@ -58,3 +58,40 @@ describe('kept-alive pages refetch quietly on return (stale-while-revalidate)', 
     expect(w.find('.rows').text()).toBe('new');
   });
 });
+
+describe('cached-page regressions (Codex P2s)', () => {
+  it('StudentsList: an explicit student jump outside the filtered list resets filters and reloads before focusing', () => {
+    const src = read('../../pages/StudentsList.vue');
+    const w = src.slice(src.indexOf('watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent]'));
+    const body = w.slice(0, w.indexOf('}, { immediate: true });'));
+    expect(body).toContain('hasStudentFilters.value');
+    expect(body).toContain("filters.value = { search: '', grade: '', status: 'active' };");
+    expect(body.indexOf('await loadStudents()')).toBeGreaterThan(0);
+    expect(body.indexOf('await loadStudents()')).toBeLessThan(body.indexOf('focusInitialStudent()'));
+  });
+
+  it('SmartCalendar: deactivating closes the print dialog', () => {
+    const src = read('../../pages/SmartCalendar.vue');
+    const d = src.slice(src.indexOf('onDeactivated(() => {'));
+    expect(d.slice(0, d.indexOf('});'))).toContain('showCalendarPrint.value = false');
+  });
+
+  it('CourseManagement: todayYmd depends on a tick bumped on activation', () => {
+    const src = read('../../pages/CourseManagement.vue');
+    expect(src).toContain('const todayYmd = computed(() => (clockTick.value, toYmd(new Date())));');
+    const a = src.slice(src.indexOf('onActivated(() => {'));
+    expect(a.slice(0, 120)).toContain('clockTick.value += 1;');
+  });
+
+  it('harness: a computed with a tick recomputes after reactivation, one without stays stale', async () => {
+    const { computed, ref: r } = await import('vue');
+    let day = 'd1';
+    const tick = r(0);
+    const withTick = computed(() => (tick.value, day));
+    const noTick = computed(() => day);
+    expect([withTick.value, noTick.value]).toEqual(['d1', 'd1']);
+    day = 'd2';
+    tick.value += 1;
+    expect([withTick.value, noTick.value]).toEqual(['d2', 'd1']);
+  });
+});

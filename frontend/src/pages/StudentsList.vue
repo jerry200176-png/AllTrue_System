@@ -3616,8 +3616,16 @@ const importStudents = async (event) => {
 };
 
 watch(() => props.branchId, () => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
-watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent], () => {
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent], async () => {
   handledInitialFocusKey.value = null;
+  // A kept-alive list may still carry filters/search from before. An explicit jump to a student missing from
+  // that filtered list resets them to the defaults and reloads first (ordinary page switches keep filters).
+  const targetId = Number(props.initialStudentId);
+  const inList = students.value.some((s) => Number(s?._laravelId ?? s?.id ?? 0) === targetId);
+  if (targetId > 0 && !inList && hasStudentFilters.value) {
+    filters.value = { search: '', grade: '', status: 'active' };
+    await loadStudents();
+  }
   focusInitialStudent();
 }, { immediate: true });
 watch(students, focusInitialStudent, { flush: 'post' });
