@@ -92,6 +92,12 @@ _DEPLOY_EXECUTOR_PATHS = frozenset({
     "scripts/post-deploy-verify.py",
 })
 
+# Request files that start production-SSH dump workflows (#3964): never docs-only.
+_WORKFLOW_TRIGGER_PATHS = frozenset({
+    "operations/closeout/bug-queue-dump.request.md",
+    "operations/closeout/bug-detail-dump.request.md",
+})
+
 _WORKFLOW_ONLY_PREFIXES = (
     ".github/",
     "scripts/governance/",
@@ -992,7 +998,8 @@ def classify_scope(
     # mention a protected domain such as auth or billing.
     non_runtime_only = normalized and not any(is_deployable_path(path) for path in normalized)
     runtime_paths = [path for path in normalized if is_deployable_path(path) and path not in additive]
-    marker_paths = runtime_paths or [path for path in normalized if path not in additive]
+    # With an exempted additive migration the test/doc paths must not re-raise the tier (#4082).
+    marker_paths = runtime_paths or ([] if additive else normalized)
     # Release-note bundles are deployable assets, but their historical copy is
     # not evidence of the current change's runtime effect. Use the same
     # narrowed semantic input as activation classification; paths themselves
@@ -1016,6 +1023,9 @@ def classify_scope(
         if path in additive:
             minimum = max(minimum, 2)
             reasons.append(f"additive-only migration: {path}")
+        elif path in _WORKFLOW_TRIGGER_PATHS:
+            minimum = max(minimum, 1)
+            reasons.append(f"workflow trigger request file: {path}")
         elif path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
             path.startswith("frontend/e2e/")
             and path not in _LOCAL_ONLY_E2E_SPECS
