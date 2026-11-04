@@ -3,14 +3,15 @@ name: Founder POP contract charge correction (#3868)
 # Case adapter for POP operation contract-charge-correction-3868 (Founder decision 2026-10-29, GitHub #3868).
 # direction=repair applies 2569 8000->4000 and 3288 8800->1100; direction=rollback is the reverse manifest through the same operation.
 # contract_case=4138 (GitHub #4138, Founder 2026-10-29) selects the 4050/4051 455->9100 manifests through the same operation.
+# contract_case=472 (in-app #472, Founder 2026-11-04) selects 2525 88000->83600; its paid 83600 bill is checked, not changed.
 on:
   workflow_dispatch:
     inputs:
       contract_case:
-        description: "3868 (2569/3288) or 4138 (4050/4051 455 to 9100)"
+        description: "3868 (2569/3288), 4138 (4050/4051 455 to 9100) or 472 (2525 88000 to 83600)"
         required: true
         type: choice
-        options: ['3868', '4138']
+        options: ['3868', '4138', '472']
         default: '3868'
       mode:
         description: dry-run or approve (approve waits for Pi-local verify)
@@ -61,7 +62,7 @@ jobs:
           set -euo pipefail
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
           [[ "$DIRECTION" == repair || "$DIRECTION" == rollback ]] || exit 1
-          [[ "$CASE_ID" == 3868 || "$CASE_ID" == 4138 ]] || exit 1
+          [[ "$CASE_ID" == 3868 || "$CASE_ID" == 4138 || "$CASE_ID" == 472 ]] || exit 1
           [[ "$ATTEMPT" =~ ^[1-9]$ ]] || { echo '::error::attempt must be one digit 1-9'; exit 1; }
           SUFFIX="${DIRECTION^^}"
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
@@ -121,7 +122,7 @@ jobs:
           set -euo pipefail
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
           # All five values were allowlisted by the guard job (case, mode and direction choices, one-digit attempt, 40-hex SHA) before reaching the remote shell.
-          [[ "$CASE_ID" == 3868 || "$CASE_ID" == 4138 ]] && [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$DIRECTION" == repair || "$DIRECTION" == rollback ]] && [[ "$ATTEMPT" =~ ^[1-9]$ ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CASE_ID" == 3868 || "$CASE_ID" == 4138 || "$CASE_ID" == 472 ]] && [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$DIRECTION" == repair || "$DIRECTION" == rollback ]] && [[ "$ATTEMPT" =~ ^[1-9]$ ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           SSH_DIR="$RUNNER_TEMP/pop-charge3868-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
@@ -168,7 +169,8 @@ jobs:
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
           # Exact catalog-bound parameters; the manifests live in code (ContractChargeCorrectionStrategy::MANIFESTS).
-          PARAMETERS_JSON="{\"parameters\":{\"decision_reference\":\"$DIRECTION-contract-charge-$CASE_ID-20261029\"},\"idempotency_key\":\"founder-contract-charge-$CASE_ID-$DIRECTION-$ATTEMPT\"}"
+          DECIDED=20261029; [[ "$CASE_ID" == 472 ]] && DECIDED=20261104
+          PARAMETERS_JSON="{\"parameters\":{\"decision_reference\":\"$DIRECTION-contract-charge-$CASE_ID-$DECIDED\"},\"idempotency_key\":\"founder-contract-charge-$CASE_ID-$DIRECTION-$ATTEMPT\"}"
           draft="$WORK_DIR/draft.json"
           draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
           [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }
