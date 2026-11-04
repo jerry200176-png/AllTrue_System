@@ -198,4 +198,19 @@ describe('PaymentEntryModal — side sheet placement (#4659 step 3)', () => {
     expect(w.emitted('confirmed')).toHaveLength(1);
     w.unmount();
   });
+
+  it('Esc, 取消 and the backdrop do not close the form while a save is in flight', async () => {
+    global.fetch.mockReturnValue(new Promise(() => {}));
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row, placement: 'right' } });
+    await w.setProps({ show: true });
+    await nextTick();
+    document.body.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await nextTick();
+    const panel = document.body.querySelector('.at-dialog__panel');
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    document.body.querySelector('.at-dialog-overlay').click();
+    expect(document.body.querySelector('.pe-actions .ghost').disabled).toBe(true);
+    expect(w.emitted('close')).toBeUndefined();
+    w.unmount();
+  });
 });

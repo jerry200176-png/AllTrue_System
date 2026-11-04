@@ -51,6 +51,46 @@ describe('學生帳務 · 右側收款面板 (sheetEntry, #4659 step 3)', () => 
     w.unmount();
   });
 
+  it('another row\'s 登記收款 while the sheet is open re-arms it for that course (no dead sheet)', async () => {
+    const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11), inv(2, 12)], props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
+    await w.setProps({ studentClassId: 12 });
+    await flushPromises();
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('12');
+    expect(w.get('.ledger-overlay').isVisible()).toBe(false);
+    w.unmount();
+  });
+
+  it('a 補登收款 blocked by a confirmed report after a conflict shows the visible ledger with the reason', async () => {
+    const receipts = [];
+    const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], receipts, props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    w.vm.$.setupState.openEntry(course(11), 'legacy-backfill');
+    await flushPromises();
+    receipts.push({ report_id: 5, student_class_id: 11, status: 'confirmed', amount: 4400 });
+    w.getComponent(EntryStub).vm.$emit('conflict');
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('.ledger-overlay').isVisible()).toBe(true);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('shows a loading sheet while the ledger loads, and the ledger itself if it never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+      await w.setProps({ studentClassId: 12 });
+      expect(document.body.querySelector('[data-testid="ledger-sheet-loading"]')).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(10_100);
+      expect(w.get('.ledger-overlay').isVisible()).toBe(true);
+      expect(document.body.querySelector('[data-testid="ledger-sheet-loading"]')).toBeNull();
+      w.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+
   it('a blocked course falls back to the visible ledger with the reason', async () => {
     const w = mountLedger({ courses: [course(11, { class_type: 'tutoring' })], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
     await flushPromises();

@@ -337,6 +337,9 @@
           <AtButton size="sm" shape="rect" :loading="issueBusy" data-testid="ledger-issue-submit" @click="submitIssue">開立帳單</AtButton>
         </template>
       </AtDialog>
+      <AtDialog :open="sheetWaiting" placement="right" title="載入中…" title-id="ledger-sheet-loading-title" @close="$emit('close')">
+        <p class="ledger-state" data-testid="ledger-sheet-loading">正在讀取帳務…</p>
+      </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
@@ -345,7 +348,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { formatDate as fmtDate } from '../lib/billingDocumentView.js';
 import { splitOwed } from '../lib/studentBillingRows.js';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
@@ -382,6 +385,8 @@ import {
 } from '../lib/ledgerCoverageDates.js';
 
 const EXCEPTION_PREVIEW = 2;
+const justRecorded = ref(null); // F-2: the 現在確認入帳 prompt after a 登記 save
+const ledgerFellBack = ref(false); // sheet mode: the sheet could not open, so the visible ledger shows (reason, or load error)
 
 const props = defineProps({
   show: Boolean, studentClassId: [Number, String], reportId: [Number, String], studentId: [Number, String], branchId: [Number, String], canStep: Boolean, studentWide: Boolean,
@@ -576,8 +581,8 @@ async function loadLedger() {
     runInitialAction(loadDrafts());
     if (armed && !entryOpen.value) ledgerFellBack.value = true; // only the first load decides the fallback
   } catch (e) {
-    ledgerFellBack.value = true;
     if (requestVersion !== ledgerRequestVersion) return;
+    ledgerFellBack.value = true;
     error.value = humanizeApiErrorMessage(e.message || '載入學生帳務失敗');
   } finally {
     if (requestVersion === ledgerRequestVersion) loading.value = false;
@@ -892,7 +897,6 @@ async function submitIssue() {
 const entryOpen = ref(false);
 const entryRow = ref(null);
 const entryMode = ref('record');
-const ledgerFellBack = ref(false);
 const sheetOnly = computed(() => props.sheetEntry && !ledgerFellBack.value);
 function onEntryClose() {
   entryOpen.value = false;
@@ -956,8 +960,27 @@ watch(() => props.show, (open) => { pendingInitialAction = open ? props.initialA
 const initialActionNote = ref('');
 watch(() => props.show, () => { initialActionNote.value = ''; ledgerFellBack.value = false; });
 watch(() => entryOpen.value && entryMode.value === 'legacy-backfill' && hasConfirmedReportFor(entryRow.value?.id), (blocked) => {
-  if (blocked) { entryOpen.value = false; initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP; }
+  if (blocked) {
+    entryOpen.value = false; initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
+    if (props.sheetEntry) ledgerFellBack.value = true; // the visible ledger shows the reason
+  }
 });
+// Sheet mode: another row's 登記收款 while open (same show, new course) re-arms the pending action for that course.
+watch(() => props.studentClassId, () => {
+  if (!props.show || !props.sheetEntry) return;
+  pendingInitialAction = props.initialAction;
+  ledgerFellBack.value = false;
+  entryOpen.value = false;
+  justRecorded.value = null;
+});
+// Sheet mode invariant: while open, one of form, confirm prompt, loading sheet or the fallback ledger is visible, never nothing.
+const sheetWaiting = computed(() => props.show && sheetOnly.value && !entryOpen.value && !justRecorded.value);
+let waitTimer = null;
+watch(sheetWaiting, (waiting) => {
+  clearTimeout(waitTimer);
+  if (waiting) waitTimer = setTimeout(() => { ledgerFellBack.value = true; }, 10000); // ledger never answered: show it with its own error/retry
+}, { immediate: true });
+onBeforeUnmount(() => clearTimeout(waitTimer));
 // F-2: 'confirm' (list row 確認入帳) asks the card's own confirm question straight away.
 const autoConfirmId = ref(null);
 watch(() => props.show, () => { autoConfirmId.value = null; });
@@ -1020,7 +1043,6 @@ async function onEntryConflict() {
 }
 
 // F-2: a recorded (pending) report offers 現在確認入帳; legacy backfill is already confirmed and offers nothing.
-const justRecorded = ref(null);
 const justRecordedAmount = computed(() => {
   const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === justRecorded.value?.reportId);
   return r ? Number(r.amount) : null;
@@ -1035,9 +1057,10 @@ async function onEntryRecorded(result) {
   const stillHere = scope === drawerScope()
     && (payload.value?.receipts || []).some((r) => Number(r.report_id) === reportId && r.status === 'pending');
   if (offer && stillHere) justRecorded.value = { reportId, busy: false, error: '' };
-  else if (sheetOnly.value) emit('close'); // sheet flow: no confirm offer (same conditions as the ledger prompt), nothing left to show
+  else if (sheetOnly.value && scope === drawerScope()) emit('close'); // sheet flow: no confirm offer (same conditions as the ledger prompt), nothing left to show
 }
 function dismissRecorded() {
+  if (justRecorded.value?.busy) return; // a confirm is in flight
   justRecorded.value = null;
   if (sheetOnly.value) emit('close');
 }
@@ -1047,16 +1070,21 @@ async function confirmJustRecorded() {
   if (!cur || cur.busy) return;
   const seq = ++promptSeq;
   justRecorded.value = { ...cur, busy: true, error: '', seq };
+  const scope0 = drawerScope();
   const res = await confirmReport(cur.reportId);
   // A dismissed or replaced prompt must not come back (or confirm a report the drawer no longer shows).
   const same = justRecorded.value?.seq === seq;
   if (!res.ok) { if (same) justRecorded.value = { ...cur, busy: false, error: res.message }; return; }
+  if (sheetOnly.value) { // always close the sheet; the list refreshes itself (the receipt dialog lives in the hidden ledger)
+    justRecorded.value = null;
+    emit('changed');
+    if (scope0 === drawerScope()) emit('close');
+    return;
+  }
   if (same) justRecorded.value = null;
   const scope = drawerScope();
   await onPanelChanged();
-  if (!same || scope !== drawerScope()) return;
-  if (sheetOnly.value) emit('close'); // the receipt dialog lives in the hidden ledger; the list already refreshed
-  else openReceipt(cur.reportId);
+  if (same && scope === drawerScope()) openReceipt(cur.reportId);
 }
 watch(() => props.show, () => { justRecorded.value = null; });
 

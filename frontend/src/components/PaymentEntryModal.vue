@@ -1,8 +1,8 @@
 <template>
-  <component :is="sheet ? AtDialog : PlainShell" :open="show" :placement="placement" :title="sheet ? formTitle : ''" panel-class="pe-sheet" @close="$emit('close')">
+  <component :is="sheet ? AtDialog : PlainShell" :open="show" :placement="placement" :title="sheet ? formTitle : ''" panel-class="pe-sheet" @close="requestClose">
       <div v-if="!sheet" class="pe-header">
         <h3>登記收款</h3>
-        <button class="pe-close" @click="$emit('close')" title="關閉">
+        <button class="pe-close" @click="requestClose" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
@@ -87,7 +87,7 @@
         <div v-if="submitError" class="pe-error" role="alert">{{ submitError }}</div>
 
         <div class="pe-actions">
-          <button type="button" class="ghost" @click="$emit('close')">取消</button>
+          <button type="button" class="ghost" :disabled="submitting" @click="requestClose">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
             {{ submitting ? '處理中…' : (form.free_gift ? `登錄${FREE_GIFT_LABEL}帳單` : '登記收款') }}
@@ -132,6 +132,9 @@ function newKey() {
 }
 
 const emit = defineEmits(['close', 'confirmed', 'pending', 'conflict']);
+
+// Esc, backdrop, ×, 取消 and the page leaving all go through here: a save in flight is never abandoned (its result must reach the list).
+function requestClose() { if (!submitting.value) emit('close'); }
 
 const today = computed(() => new Date().toISOString().slice(0, 10));
 

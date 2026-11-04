@@ -260,6 +260,19 @@ describe('現在確認入帳 inside the side sheet (#4659 step 3)', () => {
     w.unmount();
   });
 
+  it('confirm closes the sheet even when the drawer moved on, and does not wait for a ledger reload', async () => {
+    const receipts = [];
+    const { w, fetchMock } = mountLedger({ receipts, props: sheetProps });
+    await saved(w, receipts);
+    const loads = () => fetchMock.mock.calls.filter(([u]) => String(u).startsWith('/api/v1/accounting/ledger')).length;
+    const before = loads();
+    body('ledger-recorded-confirm').click();
+    await flushPromises();
+    expect(w.emitted('close')).toHaveLength(1);
+    expect(loads()).toBe(before);
+    w.unmount();
+  });
+
   it('稍後 closes the sheet without any confirm request', async () => {
     const receipts = [];
     const { w, fetchMock } = mountLedger({ receipts, props: sheetProps });
