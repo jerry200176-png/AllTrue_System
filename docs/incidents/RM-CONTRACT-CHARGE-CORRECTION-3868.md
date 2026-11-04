@@ -14,3 +14,9 @@ Rollback: the reverse manifest `rollback-contract-charge-3868-20261029` (2569 40
 ## Case 4138 (#4138 item 4, Founder 2026-10-29)
 
 The campus-2 director entered the per-lesson price 455 as the total. StudentClass 4050 and 4051 go from Charge 455 to 9100, which is Rate 455 × 20 sessions. The operation, guards and audit are the ones above. Run the same workflow with `contract_case=4138` and confirm `DRY_RUN_CONTRACT_CHARGE_4138_REPAIR`, then `APPROVE_CONTRACT_CHARGE_4138_REPAIR` (Founder click). Rollback is `rollback-contract-charge-4138-20261029` (9100 back to 455), via `direction=rollback`.
+
+## Case 472 (in-app #472, GitHub #4841, Founder 2026-11-04)
+
+調整總堂數 cut StudentClass 2525 from 80 to 76 lessons before #4846, so its Charge stayed 88000 instead of Rate 1100 × 76 = 83600. The contract's bill is already right: Invoice 2466 totals 83600 and is paid by Payment 2423 (read-only dump, 2026-11-04). Only Charge changes, 88000 → 83600; the bill, payment and report are read, never written.
+
+This is the one case that allows existing bills (`BILLED_AT_RATE_TIMES_QUANTITY`). The plan fails unless every live bill is paid, bills and non-void payments both total exactly Rate × quantity, and no payment report is pending. All other guards above still apply. Run the workflow with `contract_case=472`, confirm `DRY_RUN_CONTRACT_CHARGE_472_REPAIR`, then `APPROVE_CONTRACT_CHARGE_472_REPAIR` (Founder click). Rollback is `rollback-contract-charge-472-20261104` (83600 back to 88000), via `direction=rollback`.

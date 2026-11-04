@@ -696,7 +696,7 @@ operations:
     strategy_class: App\Operations\Strategies\ContractChargeCorrectionStrategy
     parameter_keys: [decision_reference]
     tags: [repair, billing, contract, charge, issue-3868]
-    notes: Exact manifest of GitHub #3868 (Founder 2026-10-29: contract 2569 Charge 8000 to 4000, contract 3288 Charge 8800 to 1100, both Rate x sessions). Writes StudentClass.Charge only; any invoice, payment, report, pricing amendment or per-session charge fails the whole plan. The reverse manifest restores 8000/8800 through this same operation. Pi-local POP only.
+    notes: Exact manifests of GitHub #3868 (Founder 2026-10-29: contract 2569 Charge 8000 to 4000, contract 3288 Charge 8800 to 1100, both Rate x sessions), #4138 and in-app #472 (Founder 2026-11-04: contract 2525 Charge 88000 to 83600). Writes StudentClass.Charge only; any invoice, payment, report, pricing amendment or per-session charge fails the whole plan, except that 2525 needs its bills paid at exactly Rate x quantity. The reverse manifest restores 8000/8800 through this same operation. Pi-local POP only.
 
   shared-pool-trim-overplan-20261101:
     lifecycle: active
