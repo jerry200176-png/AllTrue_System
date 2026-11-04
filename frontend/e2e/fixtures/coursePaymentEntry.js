@@ -7,9 +7,11 @@ const UNPAID_ACTION = '登記收款';
 const PENDING_REPORT_ACTION = `查看「${REPORT_STATUS_LABELS.pending}」`;
 /** The billing action every course offers; 課程查找 rows show it once (#3982). */
 export const BILLING_ACTION = '在這裡看帳務';
+/** In-app #490: a director's legacy-paid row (paid flag, no Payment) offers 補登收款 instead. */
+const LEGACY_ACTION = '補登收款';
 
 /** Any 課程查找 payment next action (used only to find a row whose state is not known yet). */
-export const COURSE_PAYMENT_ACTION_NAME = new RegExp(`^(?:${UNPAID_ACTION}|${PENDING_REPORT_ACTION}|${BILLING_ACTION})$`);
+export const COURSE_PAYMENT_ACTION_NAME = new RegExp(`^(?:${UNPAID_ACTION}|${PENDING_REPORT_ACTION}|${BILLING_ACTION}|${LEGACY_ACTION})$`);
 
 /**
  * The next action a 課程查找 course row must offer for its payment state
@@ -21,6 +23,7 @@ export const COURSE_PAYMENT_ACTION_NAME = new RegExp(`^(?:${UNPAID_ACTION}|${PEN
  */
 export function expectedCoursePaymentActionLabel(course) {
   if (course?.class_type === 'tutoring') return null;
+  if (course?.legacy_paid_flag_only === true) return LEGACY_ACTION; // director view (in-app #490)
   if (['unpaid', 'partial'].includes(String(course?.payment_status))) return UNPAID_ACTION;
   if (course?.payment_status === 'pending_report') return PENDING_REPORT_ACTION;
   return BILLING_ACTION;

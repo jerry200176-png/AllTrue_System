@@ -968,6 +968,12 @@ async function runInitialAction(draftsReady) {
     else initialActionNote.value = '這門課目前沒有可以開立的帳單。';
     return;
   }
+  if (action === 'legacy-backfill') {
+    // In-app #490: row button 補登收款 → straight to the back-fill form; anything else just shows the ledger.
+    const legacy = contractCourses.value.find((c) => Number(c.id) === id);
+    if (legacy && needsLegacyChoice(legacy)) openEntry(legacy, 'legacy-backfill');
+    return;
+  }
   if (action !== 'record') return;
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
@@ -1199,7 +1205,8 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-receipts{display:grid;gap:8px}
 .ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-border);border-radius:10px}
-.ledger-receipt-toggle{margin-top:0;font-size:12px}
+.ledger-receipt .ledger-more,.ledger-receipt .billing-notes{margin-top:0}
+.ledger-receipt .ledger-receipt-toggle,.ledger-receipt :deep(.billing-notes__toggle){font-size:13px}
 .ledger-receipt-coverage{flex-basis:100%;padding-top:0}
 .ledger-receipt-extra{flex-basis:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
