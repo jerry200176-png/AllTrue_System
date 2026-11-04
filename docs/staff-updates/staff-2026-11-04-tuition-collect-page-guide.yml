@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 收款頁新增操作導覽
-    summary: 在收款頁開啟頁面導覽，一步步看收款和續課怎麼做。
+    summary: 帳務中心右上角按「操作導覽」，一步步看收款和續課怎麼做。
     items:
       - category: added
         text: 導覽會說明未繳、待確認入帳、需續課的意思，以及開帳單、登記收款、確認入帳的順序。
