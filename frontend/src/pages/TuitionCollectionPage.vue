@@ -7,7 +7,7 @@
       data-guide="tuition-header"
     >
       <template #actions>
-        <AtButton variant="secondary" shape="rect" icon="help" @click="startGuide">操作導覽</AtButton>
+        <AtButton variant="secondary" shape="rect" icon="help" :disabled="loading" @click="startGuide">操作導覽</AtButton>
         <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
         <AtButton
           variant="secondary"
@@ -1176,6 +1176,7 @@ function openReceiptByReport(reportId) {
 }
 
 // The guide's steps point at the student list; other tabs don't render it, and the tour drops absent targets (Codex P2 on #4889).
+// The button is disabled while the list loads, since the list hides its targets until then.
 async function startGuide() {
   activeAccountingTab.value = 'students';
   await nextTick();

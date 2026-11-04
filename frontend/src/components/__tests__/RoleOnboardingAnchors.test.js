@@ -83,7 +83,7 @@ describe('tuition-collect page guide', () => {
 
   it('directors can open it from the page (the help button opens role onboarding instead)', () => {
     const page = pageSource('TuitionCollectionPage.vue');
-    expect(page).toContain('@click="startGuide">操作導覽');
+    expect(page).toContain(':disabled="loading" @click="startGuide">操作導覽');
     // Other tabs don't render the student list the steps point at.
     expect(page).toMatch(/async function startGuide\(\) \{\s+activeAccountingTab\.value = 'students';\s+await nextTick\(\);\s+emit\('start-guide'\);/);
     expect(appSource).toContain("@start-guide=\"guideTour.startTour('tuition-collect', { role })\"");
