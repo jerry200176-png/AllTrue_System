@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-04-loading-bar
+    published_at: "2026-11-04"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 畫面載入時上方會出現進度條
+    summary: 比較慢的畫面載入時，視窗最上方會出現一條橘色細線，表示系統還在忙，不是當機。
+    items:
+      - category: added
+        text: 載入超過一下子才會出現，很快的畫面不會閃。
+      - category: improved
+        text: 載入完成後細線會自動消失。
+    source_refs:
+      - "changelog:2026-11-04:loading-bar"

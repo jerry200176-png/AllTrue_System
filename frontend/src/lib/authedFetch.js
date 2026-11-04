@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { trackedFetch } from './loadingBar';
 
 export async function getAccessToken() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -14,7 +15,7 @@ export async function authedFetch(url, init = {}, token) {
   // new Headers() keeps every HeadersInit form (object, Headers, tuple array).
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${t}`);
-  return fetch(url, { ...init, headers });
+  return trackedFetch(url, { ...init, headers });
 }
 
 // First dashboard loads can race the session: the caller's token may be stale
