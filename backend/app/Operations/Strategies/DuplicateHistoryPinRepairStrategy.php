@@ -52,7 +52,7 @@ final class DuplicateHistoryPinRepairStrategy
             throw new RuntimeException('duplicate_pin_plan_not_pinned');
         }
 
-        return DB::transaction(function () use ($plan, $context): array {
+        return DB::transaction(function () use ($plan): array {
             $ids = array_merge(...array_map(fn ($r) => [$r['pin_id'], $r['anchor_id']], $plan['manifest']));
             DB::table('schedules')->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get();
             [$rows] = $this->build($plan['campus_id']);
