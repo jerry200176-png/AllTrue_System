@@ -819,6 +819,7 @@
       </div>
     </div>
     <AtToast />
+    <AtLoadingBar />
   </div>
 
   <Transition name="onboarding-complete">
@@ -884,7 +885,7 @@ import Login from './pages/Login.vue';
 import ParentPortal from './pages/ParentPortal.vue';
 
 // 頁面 chunk 載入時顯示骨架，150ms 內載入完成則不閃爍
-const asyncPage = (loader) => defineAsyncComponent({ loader, loadingComponent: AtSkeleton, delay: 150 });
+const asyncPage = (loader) => defineAsyncComponent({ loader: trackLoader(loader), loadingComponent: AtSkeleton, delay: 150 });
 const AdmissionInquiriesPage = asyncPage(() => import('./pages/AdmissionInquiriesPage.vue'));
 const TrueFitApp = asyncPage(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = asyncPage(() => import('./pages/StudentsList.vue'));
@@ -926,6 +927,8 @@ import RoleFeatureMapSection from './components/RoleFeatureMapSection.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
+import AtLoadingBar from './components/AtLoadingBar.vue';
+import { trackLoader } from './lib/loadingBar';
 import { useToast } from './composables/useToast';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import { buildInboxDeepLinkQuery, deepLinkTargetPage, hasInboxDeepLink, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
