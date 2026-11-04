@@ -119,7 +119,7 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     const btn = page.locator('button.payment-next-action', { hasText: '登記收款' }).first();
     if (!(await visible(btn))) return { reached: false, note: 'no course with 登記收款 visible' };
     const ledgerLoaded = await clickAndWaitLedger(btn);
-    const reached = await shows(page.locator('.pe-modal h3', { hasText: '登記收款' }));
+    const reached = await shows(page.locator('.at-dialog__panel--sheet .at-dialog__title', { hasText: '登記收款' }));
     return { reached, note: reached ? '' : `entry form not visible${ledgerLoaded ? '' : ' (ledger did not load)'}` };
   });
 
@@ -130,7 +130,7 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     if (!(await visible(row))) return { reached: false, note: 'skipped: no fixture' };
     const ledgerLoaded = await clickAndWaitLedger(row);
     // A legacy-paid row opens the back-fill form directly (initialAction 'legacy-backfill'): that modal counts as reached.
-    const modal = page.locator('.pe-modal');
+    const modal = page.locator('.at-dialog__panel--sheet'); // #4659 step 3: the form opens in the right-side sheet
     if (await shows(modal, ledgerLoaded ? 3_000 : 1_000)) return { reached: true, note: 'back-fill form opened directly' };
     const backfill = page.locator('[data-testid="legacy-backfill-open"]').first();
     if (!(await shows(backfill))) return { reached: false, note: ledgerLoaded ? 'ledger has no 補登收款 button' : 'ledger did not load' };

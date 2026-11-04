@@ -10,6 +10,8 @@ const props = defineProps({
   titleId: { type: String, default: 'at-dialog-title' },
   panelClass: { type: [String, Array, Object], default: '' },
   size: { type: String, default: 'md', validator: (value) => ['sm', 'md', 'lg', 'xl'].includes(value) },
+  // 'right' = full-height side sheet (Stripe-style record panel); same focus trap, Esc, scroll lock and teleport.
+  placement: { type: String, default: 'center', validator: (value) => ['center', 'right'].includes(value) },
   closeOnBackdrop: { type: Boolean, default: true },
   closeLabel: { type: String, default: '關閉視窗' },
   initialFocus: { type: String, default: '' },
@@ -74,11 +76,11 @@ onDeactivated(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="at-dialog-overlay" @click.self="onBackdropClick">
+    <div v-if="open" class="at-dialog-overlay" :class="{ 'at-dialog-overlay--right': placement === 'right' }" @click.self="onBackdropClick">
       <section
         ref="panelRef"
         class="at-dialog__panel"
-        :class="[`at-dialog__panel--${size}`, panelClass]"
+        :class="[`at-dialog__panel--${size}`, { 'at-dialog__panel--sheet': placement === 'right' }, panelClass]"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="title ? titleId : undefined"
@@ -139,6 +141,22 @@ onDeactivated(() => {
 .at-dialog__panel--lg { width: min(100%, 760px); }
 .at-dialog__panel--xl { width: min(100%, 1040px); }
 
+.at-dialog-overlay--right {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.24);
+  backdrop-filter: none;
+}
+.at-dialog__panel--sheet {
+  width: min(420px, 100%);
+  height: 100%;
+  max-height: none;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  animation: at-dialog-sheet-in var(--ds-motion-base, 180ms) var(--ds-ease-standard, ease-out);
+}
+
 .at-dialog__header {
   display: flex;
   align-items: flex-start;
@@ -193,6 +211,11 @@ onDeactivated(() => {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes at-dialog-sheet-in {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 @media (max-width: 640px) {
   .at-dialog-overlay { align-items: flex-end; padding: 0; }
   .at-dialog__panel,
@@ -204,12 +227,14 @@ onDeactivated(() => {
     max-height: 92dvh;
     border-radius: 16px 16px 0 0;
   }
+  .at-dialog__panel.at-dialog__panel--sheet { height: 100dvh; max-height: none; border-radius: 0; }
   .at-dialog__body { padding: var(--ds-space-4); }
   .at-dialog__header { padding: var(--ds-space-4) var(--ds-space-4) var(--ds-space-3); }
   .at-dialog__actions { padding: var(--ds-space-3) var(--ds-space-4) calc(var(--ds-space-4) + env(safe-area-inset-bottom, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .at-dialog__panel { animation: none; }
+  .at-dialog__panel,
+  .at-dialog__panel--sheet { animation: none; }
 }
 </style>

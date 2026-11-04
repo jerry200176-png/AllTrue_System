@@ -1,9 +1,8 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal pe-modal">
-      <div class="pe-header">
+  <component :is="sheet ? AtDialog : PlainShell" :open="show" :placement="placement" :title="sheet ? formTitle : ''" panel-class="pe-sheet" @close="requestClose">
+      <div v-if="!sheet" class="pe-header">
         <h3>登記收款</h3>
-        <button class="pe-close" @click="$emit('close')" title="關閉">
+        <button class="pe-close" @click="requestClose" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
@@ -88,19 +87,19 @@
         <div v-if="submitError" class="pe-error" role="alert">{{ submitError }}</div>
 
         <div class="pe-actions">
-          <button type="button" class="ghost" @click="$emit('close')">取消</button>
+          <button type="button" class="ghost" :disabled="submitting" @click="requestClose">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
             {{ submitting ? '處理中…' : (form.free_gift ? `登錄${FREE_GIFT_LABEL}帳單` : '登記收款') }}
           </button>
         </div>
       </form>
-    </div>
-  </div>
+  </component>
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed } from 'vue';
+import { ref, reactive, watch, computed, h } from 'vue';
+import AtDialog from './design-system/AtDialog.vue';
 import { backfillLegacyPayment, recordPayment } from '../lib/paymentActions.js';
 import { FREE_GIFT_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
@@ -110,8 +109,18 @@ const props = defineProps({
   // 'legacy-backfill' (Founder GO 2026-10-21): 已收過，補登收款 for a course flagged paid with no payment record.
   // Same form; the server records and confirms in one step (director-record legacy_flag_backfill).
   mode: { type: String, default: 'record' },
+  // 'right' renders the same form in AtDialog's right-side sheet (the list stays visible); default is the centered modal.
+  placement: { type: String, default: 'center' },
 });
+const sheet = computed(() => props.placement === 'right');
+// The centered modal keeps its own overlay markup; the sheet reuses AtDialog (focus trap, Esc, scroll lock, teleport).
+const PlainShell = (p, { slots, emit }) => (p.open
+  ? h('div', { class: 'modal-overlay', onClick: (e) => { if (e.target === e.currentTarget) emit('close'); } }, h('div', { class: 'modal pe-modal' }, slots.default?.()))
+  : null);
+PlainShell.props = ['open', 'placement', 'title', 'panelClass'];
+PlainShell.emits = ['close'];
 const legacyBackfill = computed(() => props.mode === 'legacy-backfill');
+const formTitle = computed(() => (legacyBackfill.value ? '補登收款' : '登記收款'));
 // One key per opened form, kept across failed submits: a retry after a lost response replays instead of paying twice.
 const idempotencyKey = ref('');
 function newKey() {
@@ -123,6 +132,9 @@ function newKey() {
 }
 
 const emit = defineEmits(['close', 'confirmed', 'pending', 'conflict']);
+
+// Esc, backdrop, ×, 取消 and the page leaving all go through here: a save in flight is never abandoned (its result must reach the list).
+function requestClose() { if (!submitting.value) emit('close'); }
 
 const today = computed(() => new Date().toISOString().slice(0, 10));
 
@@ -237,7 +249,7 @@ async function submit() {
 </script>
 
 <style scoped>
-.pe-modal {
+:global(.pe-modal) {
   max-width: 440px;
   padding: 24px;
   animation: slideUp 0.2s ease;
