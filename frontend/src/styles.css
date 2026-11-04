@@ -1580,6 +1580,11 @@ textarea {
   font-family: inherit;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
