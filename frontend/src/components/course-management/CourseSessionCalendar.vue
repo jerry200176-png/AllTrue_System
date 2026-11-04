@@ -39,7 +39,7 @@
         :draggable="dragSession(cell) ? 'true' : undefined"
         @click="onCellClick(cell)"
         @dragstart="onDragStart($event, cell)"
-        @dragend="dropDate = ''"
+        @dragend="onDragEnd"
         @dragover="onDragOver($event, cell)"
         @dragleave="dropDate = ''"
         @drop="onDrop($event, cell)"
@@ -119,6 +119,8 @@ function onDragStart(e, cell) {
   dragFrom = { id: s.id, date: cell.date };
   if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(s.id)); }
 }
+// Cancelled (Esc / dropped outside): forget the lesson so a later unrelated drop can't move it (Codex P2 on #4898).
+function onDragEnd() { dragFrom = null; dropDate.value = ''; }
 function onDragOver(e, cell) {
   if (!isDropTarget(cell)) return;
   e.preventDefault();

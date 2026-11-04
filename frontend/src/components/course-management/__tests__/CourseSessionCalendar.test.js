@@ -120,6 +120,16 @@ describe('CourseSessionCalendar times and drag', () => {
     expect(w.emitted('move-session')[0][0]).toEqual({ sessionId: 7, fromDate: '2026-09-24', toDate: '2026-09-25' });
   });
 
+  it('a cancelled drag is forgotten: a later unrelated drop moves nothing', async () => {
+    const { w } = mountWith();
+    await w.setProps({ canMoveSession: () => true });
+    const src = w.find('[data-testid="csc-day-2026-09-24"]');
+    await src.trigger('dragstart');
+    await src.trigger('dragend');
+    await w.find('[data-testid="csc-day-2026-09-25"]').trigger('drop');
+    expect(w.emitted('move-session')).toBeFalsy();
+  });
+
   it('has no drag at all unless the parent passes canMoveSession', () => {
     const { w } = mountWith();
     expect(w.find('[data-testid="csc-day-2026-09-24"]').attributes('draggable')).toBeUndefined();
