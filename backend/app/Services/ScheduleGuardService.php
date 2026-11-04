@@ -823,18 +823,13 @@ class ScheduleGuardService
                 continue;
             }
 
-            // Bounded self-exclusion:
+            // The edited course's own student never takes a capacity seat from itself (in-app #498): an own row the
+            // sync leaves in place that overlaps the new slot is a self_overlap, not an occupant.
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                // Own rows the sync moves to a new slot never block it (in-app #347); rows it leaves in place conflict below.
-                if (isset($remappedIds[(int) $row->class_session_id])) {
-                    continue;
+                if (!isset($remappedIds[(int) $row->class_session_id]) && !($start === $slotStart && $end === $slotEnd)) {
+                    $selfOverlaps[$sessionDate] ??= [substr($start, 0, 5) . '-' . substr($end, 0, 5), substr($slotStart, 0, 5) . '-' . substr($slotEnd, 0, 5)];
                 }
-                // If the session matches the slot being added, it is the course's own
-                // exception session being regularized into this recurring slot. Safe to exclude.
-                if ($start === $slotStart && $end === $slotEnd) {
-                    continue;
-                }
-                // If start/end do not match, it represents an intra-course overlapping conflict.
+                continue;
             }
 
             $key = $courseId . '|' . $sessionDate . '|' . $start . '|' . $end;
@@ -887,14 +882,12 @@ class ScheduleGuardService
                 continue;
             }
 
-            // Bounded self-exclusion for schedules:
+            // Same rule for the course's own schedule rows (in-app #498).
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                if (isset($movedScheduleKeys[$scheduleDate . '|' . $start])) {
-                    continue;
+                if (!isset($movedScheduleKeys[$scheduleDate . '|' . $start]) && !($start === $slotStart && $end === $slotEnd)) {
+                    $selfOverlaps[$scheduleDate] ??= [substr($start, 0, 5) . '-' . substr($end, 0, 5), substr($slotStart, 0, 5) . '-' . substr($slotEnd, 0, 5)];
                 }
-                if ($start === $slotStart && $end === $slotEnd) {
-                    continue;
-                }
+                continue;
             }
 
             $key = $courseId . '|' . $scheduleDate . '|' . $start . '|' . $end;

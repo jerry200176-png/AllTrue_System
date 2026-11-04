@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-capacity-self-seat
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 改固定時段時，不會再把自己算成佔位學生
+    summary: 修改一對二課程的固定時段時，不會再因為這位學生自己的舊堂次而誤報「已達上限」。
+    items:
+      - category: fixed
+        text: 改固定時段時，不會再把自己算成佔位學生。
+      - category: improved
+        text: 如果自己的某一堂真的和新時段重疊，會提示「與自己的堂次重疊」，不再說名額已滿。
+    source_refs:
+      - "changelog:2026-11-04:capacity-self-seat"

@@ -556,6 +556,60 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     }
 
     /** @return list<string> H:i starts of the course's sessions on $date */
+    /**
+     * In-app #498: a one-on-two course edit must never seat its own student against itself. Own rows the sync
+     * leaves in place (locked, exception) block only as a self-overlap; one other student leaves room.
+     */
+    private function editOneOnTwo(string $token, StudentClass $course, string $start)
+    {
+        return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
+                'days_of_week' => [1], 'start_time' => $start, 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 1, 'start_time' => $start, 'duration_minutes' => 60]],
+            ]);
+    }
+
+    private function seedOneOnTwoWithOneOther(int $otherCount = 1): array
+    {
+        $token = $this->createDirectorToken([1]);
+        $mine = Student::create(['name' => 'own498', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($mine->id, 159, ['ClassType' => 'one_on_two']);
+        for ($i = 0; $i < $otherCount; $i++) {
+            $o = Student::create(['name' => 'other498-' . $i, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+            $oc = $this->createCourseRecord($o->id, 159, ['ClassType' => 'one_on_two']);
+            $this->createSessionRecord($oc->ID, '2026-04-27', '17:30:00', '18:30:00');
+        }
+        return [$token, $mine, $course];
+    }
+
+    public function test_498_own_exception_and_locked_rows_are_not_a_capacity_seat(): void
+    {
+        [$token, $mine, $course] = $this->seedOneOnTwoWithOneOther();
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00', 'scheduled', 1);
+        $this->createSessionRecord($course->ID, '2026-05-04', '17:00:00', '18:00:00');
+        $locked = $this->createSessionRecord($course->ID, '2026-05-11', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $mine->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-05-11 17:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $resp = $this->editOneOnTwo($token, $course, '17:30');
+        // The locked row stays and truly overlaps: self-overlap, never a capacity conflict.
+        $resp->assertStatus(409);
+        $types = array_column($resp->json('conflicts') ?? $resp->json('data.conflicts') ?? [], 'type');
+        $this->assertNotEmpty($types, $resp->getContent());
+        $this->assertSame(['self_overlap'], array_values(array_unique($types)), $resp->getContent());
+    }
+
+    public function test_498_two_other_students_still_hit_capacity(): void
+    {
+        [$token, , $course] = $this->seedOneOnTwoWithOneOther(2);
+        $this->createSessionRecord($course->ID, '2026-05-04', '17:00:00', '18:00:00');
+
+        $resp = $this->editOneOnTwo($token, $course, '17:30');
+        $resp->assertStatus(409);
+        $this->assertStringContainsString('已達', (string) $resp->json('message'));
+        $this->assertSame(['teacher_capacity'], array_values(array_unique(array_column($resp->json('conflicts'), 'type'))));
+    }
+
     private function startsOn(StudentClass $course, string $date): array
     {
         return ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', $date)
