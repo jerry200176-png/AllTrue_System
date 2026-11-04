@@ -2,19 +2,17 @@
 
 namespace App\Exceptions;
 
-use Illuminate\Support\Facades\DB;
-use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
- * A write would relabel a lesson's teacher away from the author of its filled assessment (in-app #499 / #4901).
- * Rendered as HTTP 409 `approved_assessment_teacher_locked`; batch passes catch it, skip the lesson and report it.
+ * A write would relabel a lesson's teacher away from the author of its teacher-filled assessment (in-app #499 / #4901).
+ * A 409 `approved_assessment_teacher_locked`; batch passes catch it, skip the lesson and report it.
  */
-class ApprovedAssessmentTeacherLockedException extends RuntimeException
+class ApprovedAssessmentTeacherLockedException extends ConflictHttpException
 {
-    public function __construct(public readonly int $classSessionId, public readonly int $authorTeacherId, public readonly int $attemptedTeacherId)
+    public function __construct(public readonly int $classSessionId, public readonly int $authorTeacherId, string $authorName)
     {
-        $name = (string) (DB::table('User')->where('id', $authorTeacherId)->value('Name') ?? $authorTeacherId);
-        parent::__construct("這堂已有 {$name} 老師寫的評量，老師不能改；要改請先作廢評量");
+        parent::__construct("這堂已有 {$authorName} 老師寫的評量，老師不能改；要改請先作廢評量");
     }
 
     /** @return array<string, mixed> */

@@ -50,6 +50,21 @@ final class LearningRecordMutableOwnership
         return self::hasSubstantiveTeacherContent($record);
     }
 
+    /** SQL twin of isFilledByTeacher() for read models (kept in step by LockedLessonTeacherGuardTest). */
+    public static function filledByTeacherSql(string $lr): string
+    {
+        $c = "TRIM(COALESCE({$lr}.Content, ''))";
+        $parts = ["({$c} NOT IN ('', '（評量表）', '（系統自動核准）', '補登／納入科目數') AND {$c} NOT LIKE '（系統補登%')"];
+        foreach (['Progress', 'NextHomework', 'NextWeekTestScope', 'QuizScore', 'HomeworkStatus', 'Performance', 'Comment', 'AttachmentUrl'] as $col) {
+            $parts[] = "TRIM(COALESCE({$lr}.{$col}, '')) <> ''";
+        }
+        if (Schema::hasTable('learning_record_teacher_comments')) {
+            $parts[] = "EXISTS (SELECT 1 FROM learning_record_teacher_comments lrtc_f WHERE lrtc_f.learning_record_id = {$lr}.id)";
+        }
+
+        return '(' . implode(' OR ', $parts) . ')';
+    }
+
     /** System-generated markers (back-fill / auto-approval) are not a teacher-written body. */
     private static function isSystemFillContent(string $content): bool
     {
@@ -86,12 +101,12 @@ final class LearningRecordMutableOwnership
      */
     public static function assertLessonTeacherUnlocked(int $classSessionId, int $newTeacherId): void
     {
-        $locked = self::protectedRecordForSession($classSessionId);
+        $locked = self::protectedRecordForSession($classSessionId, DB::transactionLevel() > 0);
         if ($locked !== null && (int) $locked->TeacherID > 0 && (int) $locked->TeacherID !== $newTeacherId) {
             Log::warning('lesson teacher locked to assessment author', [
                 'class_session_id' => $classSessionId, 'author_teacher_id' => (int) $locked->TeacherID, 'attempted_teacher_id' => $newTeacherId,
             ]);
-            throw new ApprovedAssessmentTeacherLockedException($classSessionId, (int) $locked->TeacherID, $newTeacherId);
+            throw new ApprovedAssessmentTeacherLockedException($classSessionId, (int) $locked->TeacherID, (string) (DB::table('User')->where('id', (int) $locked->TeacherID)->value('Name') ?? $locked->TeacherID));
         }
     }
 

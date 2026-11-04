@@ -16,6 +16,8 @@ use App\Services\ClassSessionIndexReadService;
 use App\Services\OccurrenceAssignmentService;
 use App\Services\Scheduling\ContractTeacherChangeCascade;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use App\Services\SubstituteScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -65,24 +67,41 @@ class LockedLessonTeacherGuardTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_legacy_pin_pass_skips_a_lesson_locked_to_another_author_and_reports_it(): void
+    public function test_legacy_pin_pass_pins_the_author_of_a_filled_assessment_even_when_another_teacher_signed_in(): void
     {
-        $s = $this->taughtSession($this->sub, $this->old); // signed in by sub, approved assessment by old
+        $s = $this->taughtSession($this->old, $this->sub); // old signed in, sub authored (approved)
 
-        $skipped = ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
+        ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
 
-        $this->assertSame([(int) $s->id], $skipped);
-        $this->assertSame(0, Schedule::count(), 'no pin over the locked lesson');
+        $this->assertSame($this->sub, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'));
+        $this->assertSame($this->sub, $this->effective($s));
     }
 
-    public function test_legacy_pin_pass_still_pins_a_lesson_without_an_approved_assessment(): void
+    public function test_legacy_pin_pass_still_pins_the_sign_in_teacher_without_a_record(): void
     {
         $this->taughtSession($this->sub, null);
 
-        $skipped = ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
+        ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
 
-        $this->assertSame([], $skipped);
         $this->assertSame($this->sub, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'));
+    }
+
+    public function test_an_unapproved_filled_author_is_pinned_and_a_system_backfill_or_voided_row_is_not(): void
+    {
+        $s = $this->taughtSession($this->old, $this->sub);
+        LearningRecord::where('ClassSessionID', $s->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
+        ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
+        $this->assertSame($this->sub, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'));
+
+        Schedule::query()->delete();
+        LearningRecord::where('ClassSessionID', $s->id)->update(['Content' => '（系統補登/扣除堂數）', 'Progress' => null]);
+        ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
+        $this->assertSame($this->old, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'), 'back-fill: sign-in teacher');
+
+        Schedule::query()->delete();
+        LearningRecord::where('ClassSessionID', $s->id)->update(['Content' => 'x', 'Progress' => 'p', 'VoidedAt' => now()]);
+        ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01');
+        $this->assertSame($this->old, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'), 'voided: sign-in teacher');
     }
 
     public function test_writer_refuses_assign_and_restore_on_a_locked_lesson_but_allows_the_author(): void
@@ -100,6 +119,11 @@ class LockedLessonTeacherGuardTest extends TestCase
         $this->assertSame(0, Schedule::count());
         $writer->assignTeacher($s, $this->old, null); // the author itself is fine
         $this->assertSame(2, Schedule::count());
+
+        // restore to the contract teacher (new != author) is refused too
+        DB::table('StudentClass')->where('ID', $this->course->ID)->update(['TeacherID' => $this->new]);
+        $this->expectException(ApprovedAssessmentTeacherLockedException::class);
+        $writer->restoreContractTeacher($s->fresh(), null);
     }
 
     public function test_writer_allows_a_lesson_without_a_record_and_a_future_lesson(): void
@@ -112,35 +136,42 @@ class LockedLessonTeacherGuardTest extends TestCase
         $this->assertSame($this->new, (int) $writer->assignTeacher($future, $this->new, null)->teacher_id);
     }
 
-    public function test_flag_on_pin_pass_skips_the_locked_lesson_and_reports_it(): void
+    public function test_flag_on_pin_pass_pins_the_author_over_conflicting_evidence(): void
     {
-        $locked = $this->taughtSession($this->new, $this->sub); // conflicting evidence would pin the old contract teacher, not the author
+        $locked = $this->taughtSession($this->new, $this->sub); // sign-in new, author sub: conflict would pin the old contract teacher
 
-        $skipped = ContractTeacherChangeCascade::pinTaughtOccurrencesBeforeContractTeacherChange($this->course, $this->sub, '2026-11-01', null);
-        $this->assertSame([(int) $locked->id], $skipped);
-        $this->assertSame(0, Schedule::count());
+        ContractTeacherChangeCascade::pinTaughtOccurrencesBeforeContractTeacherChange($this->course, $this->new, '2026-11-01', null);
+
+        $this->assertSame($this->sub, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'));
+        $this->assertSame($this->sub, $this->effective($locked));
+    }
+
+    public function test_voided_record_does_not_lock_the_writer_and_the_sql_twin_matches_the_php_rule(): void
+    {
+        $writer = app(OccurrenceAssignmentService::class);
+        $s = $this->taughtSession($this->old, $this->old);
+        $rows = [
+            ['Content' => 'body', 'Progress' => null], ['Content' => '', 'Progress' => 'p'], ['Content' => '（評量表）', 'Progress' => null],
+            ['Content' => '（系統補登/扣除堂數）', 'Progress' => null], ['Content' => '（系統自動核准）', 'Progress' => null], ['Content' => '（系統補登）', 'Progress' => 'p'],
+        ];
+        foreach ($rows as $r) {
+            LearningRecord::where('ClassSessionID', $s->id)->update($r);
+            $lr = LearningRecord::where('ClassSessionID', $s->id)->first();
+            $sql = (bool) DB::table('LearningRecord as lr')->where('lr.id', $lr->id)->selectRaw(\App\Support\LearningRecordMutableOwnership::filledByTeacherSql('lr') . ' as f')->value('f');
+            $this->assertSame(\App\Support\LearningRecordMutableOwnership::isFilledByTeacher($lr), $sql, json_encode($r));
+        }
+        LearningRecord::where('ClassSessionID', $s->id)->update(['Content' => 'body', 'VoidedAt' => now()]);
+        $this->assertSame($this->new, (int) $writer->assignTeacher($s, $this->new, null)->teacher_id);
     }
 
     public function test_calendar_row_shows_the_filling_author_over_a_stray_pin(): void
     {
         $row = (object) ['id' => 1, 'StudentClassID' => 1, 'StudentID' => 1, 'TeacherID' => 7, 'substitute_teacher_id' => 9, 'SessionDate' => '2026-10-25', 'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'attendance_sign_in_at' => null, 'attendance_memo' => null, 'Note' => null,
-            'learning_record_id' => 5, 'learning_record_status' => 'draft', 'learning_record_progress' => 'p', 'learning_record_teacher_id' => 7, 'learning_record_teacher_name' => 'author', 'teacher_name' => 'pin'];
+            'learning_record_id' => 5, 'learning_record_status' => 'draft', 'learning_record_progress' => null, 'learning_record_filled' => 1, 'learning_record_teacher_id' => 7, 'learning_record_teacher_name' => 'author', 'teacher_name' => 'pin'];
         $out = app(ClassSessionIndexReadService::class)->transformRow($row);
         $this->assertSame(7, $out->teacher_id);
         $this->assertSame('author', $out->teacher_name);
         $this->assertTrue($out->teacher_locked_to_author);
-    }
-
-    public function test_automatic_pin_pass_skips_a_filled_but_unapproved_assessment_and_ignores_system_backfill(): void
-    {
-        $draft = $this->taughtSession($this->sub, $this->old);
-        LearningRecord::where('ClassSessionID', $draft->id)->update(['Status' => 'pending', 'ApprovedAt' => null]);
-        $this->assertSame([(int) $draft->id], ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01'));
-        $this->assertSame(0, Schedule::count());
-
-        LearningRecord::where('ClassSessionID', $draft->id)->update(['Content' => '（系統補登/扣除堂數）', 'Progress' => null]);
-        $this->assertSame([], ContractTeacherChangeCascade::pinPastSessionsToFormerTeacherAfterContractTeacherChange((int) $this->course->ID, $this->old, $this->new, '2026-11-01'));
-        $this->assertSame($this->sub, (int) Schedule::where('status', 'scheduled')->whereNotNull('original_schedule_id')->value('teacher_id'));
     }
 
     private function taughtSession(int $signInTeacher, ?int $author): ClassSession
@@ -157,5 +188,10 @@ class LockedLessonTeacherGuardTest extends TestCase
         }
 
         return $s;
+    }
+
+    private function effective(ClassSession $s): int
+    {
+        return SubstituteScheduleService::effectiveInstructorUserId((int) $this->course->ID, self::DATE, (int) $this->course->fresh()->TeacherID, '13:00:00');
     }
 }

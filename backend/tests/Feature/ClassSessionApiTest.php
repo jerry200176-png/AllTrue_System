@@ -169,7 +169,7 @@ class ClassSessionApiTest extends TestCase
         $this->assertFalse((bool) ($plainRow['recoverable_cancelled'] ?? false));
     }
 
-    public function test_class_sessions_index_uses_current_course_teacher_name_over_old_learning_record_teacher(): void
+    public function test_class_sessions_index_shows_the_filling_author_over_the_current_course_teacher(): void
     {
         $token = $this->createDirectorToken([1], 'director-class-session-teacher-name@example.com');
         $oldTeacherId = $this->createTeacher(1, 'teacher-old-class-session@example.com', '陳暉諺');
@@ -198,9 +198,11 @@ class ClassSessionApiTest extends TestCase
         $res->assertOk();
         $hit = collect($res->json('data'))->firstWhere('id', $classSession->id);
         $this->assertNotNull($hit);
-        $this->assertSame($newTeacherId, (int) ($hit['teacher_id'] ?? 0));
-        $this->assertSame('邱御碩', $hit['teacher_name'] ?? '');
+        // in-app #499: the author of a teacher-filled assessment is the lesson's teacher, not the new contract teacher
+        $this->assertSame($oldTeacherId, (int) ($hit['teacher_id'] ?? 0));
+        $this->assertSame('陳暉諺', $hit['teacher_name'] ?? '');
         $this->assertSame($oldTeacherId, (int) ($hit['learning_record_teacher_id'] ?? 0));
+        $this->assertTrue((bool) ($hit['teacher_locked_to_author'] ?? false));
     }
 
     public function test_class_sessions_index_exposes_substitute_teacher_contract(): void
