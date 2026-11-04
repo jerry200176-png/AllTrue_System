@@ -59,7 +59,9 @@ export function reviewGate(comments, head, owner) {
     return { ok: false, why: 'Codex current-head review state ambiguous' };
   }
   const cr = latest?.cr || records[0]?.cr;
-  const onHead = cr?.commit_sha === head;
+  // `failed` = Codex could not run on this head (e.g. usage limit). Its findings flag is carried over from an
+  // earlier head, not a result, so it neither passes nor vetoes; open review threads are gated separately.
+  const onHead = cr?.commit_sha === head && cr.status !== 'failed';
   if (onHead && cr.status === 'completed' && cr.has_unresolved_findings === false) return { ok: true, via: 'codex' };
   if (onHead && (cr.has_unresolved_findings === true || (cr.status === 'completed' && cr.has_unresolved_findings !== false))) return { ok: false, why: `Codex reported unresolved findings on ${short}` };
   // A fallback is for absent/limited review capacity, not an override of an active

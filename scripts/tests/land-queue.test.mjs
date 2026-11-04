@@ -314,7 +314,7 @@ test('review gate: fallback marker by the owner with the exact head SHA -> merge
 });
 
 test('review gate: incomplete current-head Codex cannot be overridden by an owner fallback', () => {
-  for (const status of ['running', 'queued', 'pending', 'cancelled', 'failed', 'unknown', null, undefined]) {
+  for (const status of ['running', 'queued', 'pending', 'cancelled', 'unknown', null, undefined]) {
     const comments = [codex(clean(H, { status, has_unresolved_findings: null })), fallback(H)];
     assert.equal(gateOf(comments).ok, false, String(status));
     assert.equal(decideWith(comments).reason, 'review-pending', String(status));
@@ -322,6 +322,16 @@ test('review gate: incomplete current-head Codex cannot be overridden by an owne
   assert.equal(gateOf([codex(clean(H, { status: 'running' })), fallback(H)]).ok, false);
   // A rate-limit notice without an on-head review state does not erase an actual independent review.
   assert.equal(gateOf([{ user: { login: CODEX_LOGIN }, body: 'Code review could not start: rate limit exceeded.' }, fallback(H)]).ok, true);
+});
+
+test('review gate: a failed (could-not-run) current-head Codex state neither passes nor vetoes', () => {
+  // Usage-limited Codex rewrites its sticky state as failed and keeps the old findings flag.
+  const failed = codex(clean(H, { status: 'failed', has_any_findings: true, has_unresolved_findings: true }));
+  assert.deepEqual(gateOf([failed, fallback(H)]), { ok: true, via: 'independent-review' });
+  assert.equal(decideWith([failed, fallback(H)]).action, 'merge');
+  assert.equal(gateOf([failed]).ok, false); // still needs an actual independent review
+  assert.equal(gateOf([failed, fallback(OLD)]).ok, false);
+  assert.equal(gateOf([codex(clean(H, { status: 'failed', has_unresolved_findings: false }))]).ok, false); // never a Codex pass
 });
 
 test('review gate: fallback marker with a mismatched SHA or another author -> wait', () => {
