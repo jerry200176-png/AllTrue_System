@@ -1695,6 +1695,12 @@ function syncScrollLock() {
   else if (!want && ownsScrollLock) { unlockScroll(); ownsScrollLock = false; }
 }
 watch(focusedStudentKey, syncScrollLock);
+// An explicit jump (student, teacher, dashboard drill-down) replaces the kept-alive page's old filters and focus,
+// as a fresh mount did; ordinary page switches keep them (Codex P2s on #4894).
+function applyExplicitNav(patch) {
+  filters.value = { name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '', ...patch };
+  focusedStudentKey.value = null;
+}
 const visibleGroups = computed(() =>
   focusedStudentKey.value
     ? groupedCourses.value.filter((g) => g.key === focusedStudentKey.value)
@@ -5485,12 +5491,8 @@ watch(
   () => {
     const id = props.initialTeacherId;
     if (id == null || id === '') return;
-    filters.value.teacher_id = String(id);
     const t = (teachers.value || []).find((x) => String(x.id) === String(id));
-    if (t) {
-      const label = t.username || t.name || t.Name || '';
-      if (label) filters.value.teacher_name = label;
-    }
+    applyExplicitNav({ teacher_id: String(id), teacher_name: (t && (t.username || t.name || t.Name)) || '' });
     loadCourses(1);
     emit('clear-initial-teacher');
   },
@@ -5529,9 +5531,7 @@ watch(
     const name = String(props.initialStudentName || '').trim();
     const sid = props.initialStudentId;
     if (!name && (sid == null || sid === '')) return;
-    // An explicit jump replaces the kept-alive page's old filters and focus, as a fresh mount did (Codex P2 on #4894).
-    filters.value = { name: name.slice(0, 40), class_type: '', teacher_name: '', teacher_id: '', course_status: '' };
-    focusedStudentKey.value = null;
+    applyExplicitNav({ name: name.slice(0, 40) });
     // in-app #374: Students sends trial 「轉為正式課程」 here. Consumed by the coursesLoading watcher
     // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
     if (props.initialCourseIntent === 'convert-trial') {
@@ -5596,7 +5596,7 @@ function consumeTrustFocus() {
     const focus = JSON.parse(raw);
     const ageMs = Date.now() - Number(focus?.at || 0);
     if (!(ageMs >= 0 && ageMs < 5 * 60 * 1000 && focus?.student_name)) return false;
-    filters.value = { name: String(focus.student_name).slice(0, 40), class_type: '', teacher_name: '', teacher_id: '', course_status: '' };
+    applyExplicitNav({ name: String(focus.student_name).slice(0, 40) });
     return true;
   } catch (_) { return false; }
 }
@@ -5620,7 +5620,7 @@ onActivated(() => {
   pageVisible = true;
   syncScrollLock();
   document.addEventListener('click', closeActionMenu);
-  if (consumeTrustFocus()) { focusedStudentKey.value = null; void loadCourses(1); return; }
+  if (consumeTrustFocus()) { void loadCourses(1); return; }
   if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen
 });
 onUnmounted(() => {

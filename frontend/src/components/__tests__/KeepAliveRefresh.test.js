@@ -98,7 +98,7 @@ describe('cached-page regressions (Codex P2s)', () => {
   it('CourseManagement: a dashboard drill-down is consumed on return, not only on mount', () => {
     const src = read('../../pages/CourseManagement.vue');
     const activated = src.slice(src.lastIndexOf('onActivated(() => {'));
-    expect(activated).toContain('if (consumeTrustFocus()) { focusedStudentKey.value = null; void loadCourses(1); return; }');
+    expect(activated).toContain('if (consumeTrustFocus()) { void loadCourses(1); return; }');
     expect(src).toMatch(/onMounted\(\(\) => \{\s+consumeTrustFocus\(\);/);
   });
 
@@ -109,10 +109,13 @@ describe('cached-page regressions (Codex P2s)', () => {
     expect(src).not.toMatch(/if \(focusedStudentKey\.value\) (un)?lockScroll\(\)/);
   });
 
-  it('CourseManagement: an explicit student jump replaces cached filters and student focus', () => {
+  it('CourseManagement: explicit student, teacher and drill-down jumps replace cached filters and focus', () => {
     const src = read('../../pages/CourseManagement.vue');
-    const nav = src.slice(src.indexOf('() => [props.initialStudentId, props.initialCourseId, props.initialStudentName]'));
-    expect(nav).toMatch(/filters\.value = \{ name: name\.slice\(0, 40\), class_type: '', teacher_name: '', teacher_id: '', course_status: '' \};\s+focusedStudentKey\.value = null;/);
+    expect(src).toMatch(/function applyExplicitNav\(patch\) \{\s+filters\.value = \{ name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '', \.\.\.patch \};\s+focusedStudentKey\.value = null;/);
+    expect(src).toContain('applyExplicitNav({ name: name.slice(0, 40) });');
+    expect(src).toContain("applyExplicitNav({ teacher_id: String(id), teacher_name:");
+    expect(src).toContain('applyExplicitNav({ name: String(focus.student_name).slice(0, 40) });');
+    expect(src).not.toContain('filters.value.teacher_id = String(id);');
   });
 });
 
