@@ -11,7 +11,7 @@ updates:
         text: 月曆格子顯示上課時間；一天有兩堂時顯示第一堂時間加上「+1」。
       - category: improved
         text: 請假、取消、例外等狀態會用短短一個字標出來。
-      - category: new
+      - category: added
         text: 電腦上可以把還沒上的課拖到別天，會打開調課畫面並帶入新日期，按確認才會改。
     source_refs:
       - "changelog:2026-11-04:course-calendar-times-drag"
