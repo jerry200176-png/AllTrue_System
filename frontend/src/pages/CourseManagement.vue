@@ -2751,9 +2751,12 @@ const courseManagerActionModel = (c) => {
   groups.splice(end < 0 ? groups.length : end, 0, { id: 'records', label: '紀錄', items: [{ id: 'learning-log', label: '學習日誌' }] });
   return { primary: m.primary.id === 'manage' ? null : m.primary, groups };
 };
-function onCourseManagerMoveLesson({ mode, unit }) {
+async function onCourseManagerMoveLesson({ mode, unit, date }) {
   const c = courseManagerCourse.value;
-  if (c) moveLesson(c, mode, unit);
+  if (!c) return;
+  await moveLesson(c, mode, unit);
+  // Calendar drag: prefill the existing 調課 form's new date; saving still needs its own confirm.
+  if (date && sessionEditMode.value === 'reschedule') sessionEditForm.value.new_date = date;
 }
 function onCourseManagerOpenSession({ unit, date, id }) {
   const c = courseManagerCourse.value;
