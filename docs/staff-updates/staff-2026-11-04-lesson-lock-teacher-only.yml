@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-lesson-lock-teacher-only
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 評量沒填可換老師
+    summary: 評量還沒填時可以換老師；主任留言不會鎖住。
+    items:
+      - category: fixed
+        text: 評量還沒填時可以換老師；主任留言不會鎖住。
+      - category: fixed
+        text: 撤銷代課若剛好換回填評量的老師，現在可以撤銷。
+    source_refs:
+      - "changelog:2026-11-04:lesson-lock-teacher-only"

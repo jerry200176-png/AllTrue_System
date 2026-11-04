@@ -281,7 +281,7 @@ class TeacherLeaveController extends Controller
         // #3824/#3966: refuse only a real reassignment; re-asserting the assessment's own teacher is a safe repair, as in single substitute.
         $protectedLr = \App\Support\LearningRecordMutableOwnership::protectedRecordForSession($classSessionId);
         if ($protectedLr && (int) $protectedLr->TeacherID !== $teacherId) {
-            return ['ok' => false, 'error' => '此堂評量已填寫並核准，不能更改授課老師', 'class_session_id' => $classSessionId];
+            return ['ok' => false, 'error' => '此堂老師已填寫評量，不能更改授課老師', 'class_session_id' => $classSessionId];
         }
         if (!$svc->teacherBoundToAny($teacherId, $managedCampusIds)) {
             return ['ok' => false, 'error' => '代課老師未綁定任一您管理的分校', 'class_session_id' => $classSessionId];
