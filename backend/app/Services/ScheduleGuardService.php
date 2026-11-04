@@ -831,7 +831,9 @@ class ScheduleGuardService
             // The edited course's own student never takes a capacity seat from itself (in-app #498): an own row the
             // sync leaves in place that overlaps the new slot is a self_overlap, not an occupant.
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                if (!isset($remappedIds[(int) $row->class_session_id]) && !($start === $slotStart && $end === $slotEnd) && !($start === $slotStart && isset($heldStarts[$sessionDate . '|' . $start]))) {
+                // Global remap (non-null $remapMoves): collectRemapSelfOverlaps() is the self_overlap source; only an
+                // exception row the plan never adopts or moves is added here (it keeps its start key, so no regular row fits beside it).
+                if (($remapMoves === null || $row->IsContractException) && !isset($remappedIds[(int) $row->class_session_id]) && !($start === $slotStart && $end === $slotEnd) && !($start === $slotStart && isset($heldStarts[$sessionDate . '|' . $start]))) {
                     $selfOverlaps[$sessionDate] ??= [substr($start, 0, 5) . '-' . substr($end, 0, 5), substr($slotStart, 0, 5) . '-' . substr($slotEnd, 0, 5)];
                 }
                 continue;
@@ -889,7 +891,7 @@ class ScheduleGuardService
 
             // Same rule for the course's own schedule rows (in-app #498).
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                if (!isset($movedScheduleKeys[$scheduleDate . '|' . $start]) && !($start === $slotStart && ($end === $slotEnd || isset($heldStarts[$scheduleDate . '|' . $start])))) {
+                if ($remapMoves === null && !isset($movedScheduleKeys[$scheduleDate . '|' . $start]) && !($start === $slotStart && ($end === $slotEnd || isset($heldStarts[$scheduleDate . '|' . $start])))) {
                     $selfOverlaps[$scheduleDate] ??= [substr($start, 0, 5) . '-' . substr($end, 0, 5), substr($slotStart, 0, 5) . '-' . substr($slotEnd, 0, 5)];
                 }
                 continue;

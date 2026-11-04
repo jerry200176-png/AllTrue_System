@@ -359,6 +359,24 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['15:00'], $this->startsOn($course, '2026-04-28'));
     }
 
+    /** Codex on #4899: sparse count course, global remap puts the unlocked row on an earlier date, so the locked date keeps only itself. */
+    public function test_498_sparse_remap_with_locked_later_row_saves(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => 'own498c', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159, ['ClassType' => 'one_on_two']);
+        $this->createSessionRecord($course->ID, '2026-04-27', '16:00:00', '17:00:00');
+        $locked = $this->createSessionRecord($course->ID, '2026-05-06', '16:30:00', '17:30:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-05-06 16:30:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
+                'days_of_week' => [3], 'start_time' => '17:00', 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60]],
+            ])->assertOk();
+    }
+
     /** #3502: on a remapped edit a row the remap lands next to a locked row that stays still conflicts. */
     public function test_added_weekday_remap_landing_on_a_locked_row_still_conflicts(): void
     {
