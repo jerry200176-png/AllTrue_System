@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-capacity-self-seat
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 改固定時段被擋時會說明是哪一堂
+    summary: 改固定時段被擋時，會說清楚是哪一堂自己的課擋住，不再誤報名額已滿。
+    items:
+      - category: improved
+        text: 改固定時段被擋時，會說清楚是哪一堂自己的課擋住。
+      - category: improved
+        text: 提示會告訴你日期和時間，先改那一堂，再改固定時段即可。
+    source_refs:
+      - "changelog:2026-11-04:capacity-self-seat"

@@ -30,7 +30,7 @@ describe('legacy paid flag without a payment record (#4114)', () => {
 
     // F-5: the queue table is gone; the student list and the drawer's card actions carry these rules.
     const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).findAll('.at-badge').map((b) => b.text());
-    expect(badge(1)).toEqual(['需核對（舊資料標已收，查無收款）']);
+    expect(badge(1)).toEqual(['查無收款']);
     expect(badge(2)).toEqual(['已收']);
     expect(w.find('[data-testid="sbl-summary"]').text()).toContain('本校區到今天未繳 NT$ 0');
 
