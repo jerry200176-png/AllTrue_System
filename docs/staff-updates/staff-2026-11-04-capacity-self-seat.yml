@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 改固定時段時，不會再把自己算成佔位學生
+    title: 改固定時段不再誤報名額已滿
     summary: 修改一對二課程的固定時段時，不會再因為這位學生自己的舊堂次而誤報「已達上限」。
     items:
       - category: fixed
