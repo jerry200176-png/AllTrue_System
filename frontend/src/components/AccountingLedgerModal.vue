@@ -316,13 +316,14 @@
         </template>
       </div>
       <!-- F-2 (Founder A): step 2 right after step 1, same person, but its own button and its own request. -->
-      <AtDialog :open="!!justRecorded" title="已登記，待確認入帳" size="sm" title-id="ledger-recorded-title" @close="justRecorded = null">
+      <AtDialog :open="!!justRecorded" title="已登記，待確認入帳" size="sm" title-id="ledger-recorded-title" :placement="sheetOnly ? 'right' : 'center'" @close="dismissRecorded">
         <p v-if="justRecorded" class="ledger-issue" data-testid="ledger-recorded-text">
-          {{ payload?.student?.name || '這位學生' }}已登記{{ justRecordedAmount != null ? ` ${formatCurrency(justRecordedAmount)}` : '' }}，現在是「待確認入帳」。確認收到款項後，按「現在確認入帳」才算已收；也可以稍後在課程卡確認。
+          <template v-if="sheetOnly">已登記{{ justRecordedAmount != null ? ` ${formatCurrency(justRecordedAmount)}` : '' }}，待確認入帳。確認收到款項後按「現在確認入帳」才算已收。</template>
+          <template v-else>{{ payload?.student?.name || '這位學生' }}已登記{{ justRecordedAmount != null ? ` ${formatCurrency(justRecordedAmount)}` : '' }}，現在是「待確認入帳」。確認收到款項後，按「現在確認入帳」才算已收；也可以稍後在課程卡確認。</template>
         </p>
         <p v-if="justRecorded?.error" class="ledger-error-text" role="alert" data-testid="ledger-recorded-error">{{ justRecorded.error }}</p>
         <template #actions>
-          <AtButton variant="secondary" size="sm" shape="rect" data-testid="ledger-recorded-later" :disabled="justRecorded?.busy === true" @click="justRecorded = null">稍後再確認</AtButton>
+          <AtButton variant="secondary" size="sm" shape="rect" data-testid="ledger-recorded-later" :disabled="justRecorded?.busy === true" @click="dismissRecorded">{{ sheetOnly ? '稍後' : '稍後再確認' }}</AtButton>
           <AtButton size="sm" shape="rect" :loading="justRecorded?.busy === true" data-testid="ledger-recorded-confirm" @click="confirmJustRecorded">現在確認入帳</AtButton>
         </template>
       </AtDialog>
@@ -571,8 +572,9 @@ async function loadLedger() {
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
+    const armed = pendingInitialAction != null;
     runInitialAction(loadDrafts());
-    if (!entryOpen.value) ledgerFellBack.value = true;
+    if (armed && !entryOpen.value) ledgerFellBack.value = true; // only the first load decides the fallback
   } catch (e) {
     ledgerFellBack.value = true;
     if (requestVersion !== ledgerRequestVersion) return;
@@ -1025,7 +1027,6 @@ const justRecordedAmount = computed(() => {
 });
 const drawerScope = () => `${props.show}|${props.studentClassId}|${props.studentId}`;
 async function onEntryRecorded(result) {
-  if (sheetOnly.value) { entryOpen.value = false; emit('changed'); emit('close'); return; }
   const reportId = Number(result?.report_id);
   const offer = entryMode.value === 'record' && result?.status === 'pending' && reportId > 0 && canManageInvoices();
   const scope = drawerScope();
@@ -1034,6 +1035,11 @@ async function onEntryRecorded(result) {
   const stillHere = scope === drawerScope()
     && (payload.value?.receipts || []).some((r) => Number(r.report_id) === reportId && r.status === 'pending');
   if (offer && stillHere) justRecorded.value = { reportId, busy: false, error: '' };
+  else if (sheetOnly.value) emit('close'); // sheet flow: no confirm offer (same conditions as the ledger prompt), nothing left to show
+}
+function dismissRecorded() {
+  justRecorded.value = null;
+  if (sheetOnly.value) emit('close');
 }
 let promptSeq = 0;
 async function confirmJustRecorded() {
@@ -1048,7 +1054,9 @@ async function confirmJustRecorded() {
   if (same) justRecorded.value = null;
   const scope = drawerScope();
   await onPanelChanged();
-  if (same && scope === drawerScope()) openReceipt(cur.reportId);
+  if (!same || scope !== drawerScope()) return;
+  if (sheetOnly.value) emit('close'); // the receipt dialog lives in the hidden ledger; the list already refreshed
+  else openReceipt(cur.reportId);
 }
 watch(() => props.show, () => { justRecorded.value = null; });
 
