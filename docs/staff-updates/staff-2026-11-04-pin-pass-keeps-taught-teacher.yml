@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-04-pin-pass-keeps-taught-teacher
+    published_at: "2026-11-04"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 換老師不改已上課紀錄
+    summary: 更換合約老師後，已經上過的課會保留實際授課的老師。
+    items:
+      - category: fixed
+        text: 以前換合約老師，有些已上完的課會被改成別位老師；現在會依簽到與已核准的評量保留原授課老師。
+    source_refs:
+      - "changelog:2026-11-04:pin-pass-keeps-taught-teacher"
