@@ -405,6 +405,17 @@ class ApprovedAssessmentTeacherLockTest extends TestCase
         ]));
     }
 
+    /** in-app #499: the ensure-past self-heal restamped any not-filled-and-approved row, incl. approved blank and authored pending ones. */
+    public function test_ensure_past_does_not_restamp_a_taught_or_authored_record_to_the_current_contract_teacher(): void
+    {
+        $blankApproved = $this->lr($this->mkSession('attended', '2026-04-01'), 'approved', false, '2026-04-01', '（評量表）');
+        $authoredPending = $this->lr($this->mkSession('attended', '2026-04-02'), 'pending', true, '2026-04-02');
+        DB::table('StudentClass')->where('ID', $this->sc->ID)->update(['TeacherID' => $this->bId]);
+        $this->api()->postJson('/api/v1/learning-records/ensure-past', ['branch_id' => 1])->assertOk();
+        $this->assertSame($this->aId, (int) $blankApproved->fresh()->TeacherID);
+        $this->assertSame($this->aId, (int) $authoredPending->fresh()->TeacherID);
+    }
+
     public function test_contract_change_keeps_a_protected_child_of_a_stale_anchor_and_reads_the_bound_session_slot(): void
     {
         $day = '2026-04-18';

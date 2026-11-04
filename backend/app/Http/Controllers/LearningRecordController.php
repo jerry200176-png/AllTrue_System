@@ -2302,7 +2302,10 @@ class LearningRecordController extends Controller
         $contractTid = (int) ($fallbackTeacherId ?? 0);
         $effectiveTeacherId = $subTid !== null ? $subTid : max(0, $contractTid);
         // #3824: a filled+approved assessment keeps its recorded teacher; only the session mirrors heal here.
-        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId && !LearningRecordMutableOwnership::isFilledAndApproved($record)) {
+        // in-app #499: so does any taught / authored / approved / signed-in record. Only a substitute row or a mutable
+        // (unperformed) placeholder may be restamped; the current contract teacher must never rewrite history.
+        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId && !LearningRecordMutableOwnership::isFilledAndApproved($record)
+            && ($subTid !== null || LearningRecordMutableOwnership::canFollowCurrentCourseTeacher($record))) {
             $record->TeacherID = $effectiveTeacherId;
             $dirty = true;
         }
