@@ -16,14 +16,14 @@ Parameters: `campus_id` (0 = all), `decision_reference = repair-duplicate-histor
 The shape is detected, not hard-coded. Scope: live pins (`status=scheduled`, `original_schedule_id` set, not `extra`, anchor `rescheduled`) on slots before today (Asia/Taipei)
 whose slot has a non-voided attendance sign-in with a teacher E. Rows (`class_id, campus_id, pin_id, anchor_id, pin_teacher_id, evidence_teacher_id, session_date, start_time, class, reason`):
 
-- `delete / duplicate_over_older_pin`: an older live pin on the slot already names E and this one does not.
-- `delete / pin_over_contract_teacher_sign_in`: the only pin, it does not name E, E is the course's current contract teacher and a live learning record (if any) names E; the contract teacher resolves to E without it.
-- `review / pin_disagrees_with_sign_in`: any other disagreement. Listed, never written.
+- `delete / duplicate_over_older_pin`: an older live pin on the slot already names E, this one does not, and its anchor has no other live child.
+- `review / shared_anchor`: the anchor still has another live child; listed, never written.
+- `review / pin_disagrees_with_sign_in`: any other disagreement, including a lone pin. Listed, never written: RFID and leave sign-ins stamp the contract teacher, so a real substitute or reschedule pin looks the same.
 
 ## Execute
 
 One transaction: lock the listed schedule rows, recompute the plan and compare its digest (`duplicate_pin_digest_drift` aborts on any change), snapshot the full
-rows of every pin and anchor to delete, delete exactly those rows with the query builder, then write a strict `pop.duplicate_history_pin_repair` audit event.
+rows of every pin and anchor to delete, delete exactly those rows with the query builder, then write a strict `pop.duplicate_history_pin_repair` audit event (`reason_code`, `row_count`, `outcome`).
 No ClassSession, LearningRecord, sign-in, ledger or billing row is written.
 
 Verify: the snapshot ids are gone and no `delete` row remains.

@@ -12,11 +12,10 @@ use RuntimeException;
  * scheduled child) over a slot that already had a live pin and a sign-in at the real teacher. The newest pin wins in the
  * effective-teacher resolver, so a taught past lesson showed the former contract teacher. This deletes exactly those pins.
  *
- * A pin pair is `delete` only when the slot's attendance sign-in (non-voided) names teacher E and either
- *  - an older live pin on the same slot already names E and this one does not (a duplicate), or
- *  - this is the only pin, it does not name E, E is the course's current contract teacher and a live record agrees
- *    (the contract teacher then resolves to E on its own).
- * Any other slot where the winning pin disagrees with the sign-in is `review`: listed, never written.
+ * A pin pair is `delete` only when the slot's attendance sign-in (non-voided) names teacher E, an older live pin on the same
+ * slot already names E and this one does not (a duplicate), and the pair's anchor has no other live child.
+ * Any other slot where a pin disagrees with the sign-in is `review`: listed, never written. A lone pin is never deleted: RFID and
+ * leave sign-ins stamp the contract teacher, so a real substitute or reschedule pin has the same shape.
  * Only past slots (before today, Asia/Taipei) are scanned. Execute is bound to the reviewed dry run by `expected_digest`
  * (Td076 pattern), re-checks under lock, snapshots the deleted rows (rollback re-inserts them by id) and writes an audit event.
  */
@@ -67,8 +66,7 @@ final class DuplicateHistoryPinRepairStrategy
             if (count($snapshot) !== count($delIds) || DB::table('schedules')->whereIn('id', $delIds)->exists()) {
                 throw new RuntimeException('duplicate_pin_incomplete');
             }
-            $this->audit(['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
-                'pin_count' => count($del), 'row_count' => count($delIds), 'review_count' => count($rows) - count($del), 'outcome' => 'success']);
+            $this->audit(['reason_code' => self::REF, 'row_count' => count($delIds), 'outcome' => 'success']);
 
             return ['ok' => true, 'deleted' => count($delIds), 'snapshot' => ['rows' => $snapshot]];
         }, 3);
@@ -106,7 +104,7 @@ final class DuplicateHistoryPinRepairStrategy
                 DB::table('schedules')->insert($r);
                 $restored++;
             }
-            $this->audit(['reason_code' => self::REF, 'row_count' => $restored, 'skipped' => count($skipped), 'outcome' => 'success'], '.rollback');
+            $this->audit(['reason_code' => self::REF, 'row_count' => $restored, 'outcome' => 'success'], '.rollback');
 
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'restored' => $restored, 'skipped_ids' => $skipped];
         }, 3);
@@ -155,20 +153,27 @@ final class DuplicateHistoryPinRepairStrategy
             if ($evidence === 0) {
                 continue;
             }
-            $record = DB::table('LearningRecord')->whereIn('ClassSessionID', $sessionIds)->whereNull('VoidedAt')->value('TeacherID');
             $first = $group[0];
             foreach ($group as $i => $p) {
                 if ((int) $p->teacher_id === $evidence) {
                     continue;
                 }
                 $older = $i > 0 && (int) $first->teacher_id === $evidence;
-                $alone = count($group) === 1 && (int) $p->contract_teacher_id === $evidence && ($record === null || (int) $record === $evidence);
                 $rows[] = ['class_id' => (int) $classId, 'campus_id' => (int) $p->campus_id, 'session_date' => $date, 'start_time' => $start,
                     'pin_id' => (int) $p->pin_id, 'anchor_id' => (int) $p->anchor_id, 'pin_teacher_id' => (int) $p->teacher_id,
-                    'evidence_teacher_id' => $evidence, 'class' => $older || $alone ? 'delete' : 'review',
-                    'reason' => $older ? 'duplicate_over_older_pin' : ($alone ? 'pin_over_contract_teacher_sign_in' : 'pin_disagrees_with_sign_in')];
+                    'evidence_teacher_id' => $evidence, 'class' => $older ? 'delete' : 'review',
+                    'reason' => $older ? 'duplicate_over_older_pin' : 'pin_disagrees_with_sign_in'];
             }
         }
+        // An anchor that another live child (or another delete row) still uses is never deleted: list the group instead.
+        $children = DB::table('schedules')->whereIn('original_schedule_id', array_column($rows, 'anchor_id'))->where('status', 'scheduled')
+            ->selectRaw('original_schedule_id as anchor_id, COUNT(*) as n')->groupBy('original_schedule_id')->pluck('n', 'anchor_id');
+        foreach ($rows as &$r) {
+            if ($r['class'] === 'delete' && (int) ($children[$r['anchor_id']] ?? 0) !== 1) {
+                [$r['class'], $r['reason']] = ['review', 'shared_anchor'];
+            }
+        }
+        unset($r);
         usort($rows, fn ($a, $b) => $a['pin_id'] <=> $b['pin_id']);
         $totals = ['rows' => count($rows), 'delete' => 0, 'review' => 0];
         foreach ($rows as $r) {
