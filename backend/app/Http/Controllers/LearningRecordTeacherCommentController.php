@@ -33,7 +33,7 @@ class LearningRecordTeacherCommentController extends Controller
             return response()->json(['message' => '主任評語需為 1-500 字'], 422);
         }
 
-        // #3824: same record lock as AssessmentAuthorSnapshot, so a teacher change cannot snapshot-and-delete a half-saved comment.
+        // #3824: same record row lock, so a concurrent change cannot race a half-saved comment.
         $comment = DB::transaction(function () use ($learningRecord, $ctx, $request, $content) {
             DB::table('LearningRecord')->where('id', (int) $learningRecord->id)->lockForUpdate()->value('id');
 

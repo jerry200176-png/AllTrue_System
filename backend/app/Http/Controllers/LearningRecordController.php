@@ -1281,9 +1281,7 @@ class LearningRecordController extends Controller
             'Comment' => 'nullable|string|max:2000',
         ]);
 
-        // #4661: lock and re-read the row before the ownership checks. A teacher change (AssessmentAuthorSnapshot takes the
-        // same row lock) and this edit then serialize: the edit lands first and is captured in the snapshot, or it sees the
-        // new owner and is rejected. It can no longer refill the new teacher's cleared row.
+        // #4661: lock and re-read the row before the ownership checks, so an edit and a concurrent change serialize.
         return DB::transaction(fn () => $this->updateLocked(
             $request, $data, LearningRecord::query()->whereKey($learningRecord->getKey())->lockForUpdate()->firstOrFail()
         ));
@@ -1445,7 +1443,6 @@ class LearningRecordController extends Controller
                     );
                 }
             }
-            \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $learningRecord->ClassSessionID, $newTeacherId, (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null, $data['reason'] ?? null);
             $learningRecord->refresh();
             $learningRecord->TeacherID = $newTeacherId;
             $learningRecord->save();
@@ -2304,7 +2301,7 @@ class LearningRecordController extends Controller
         // #3824: a filled+approved assessment keeps its recorded teacher; only the session mirrors heal here.
         // in-app #499: so does any taught / authored / approved / signed-in record. Only a substitute row or a mutable
         // (unperformed) placeholder may be restamped; the current contract teacher must never rewrite history.
-        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId && !LearningRecordMutableOwnership::isFilledAndApproved($record)
+        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId && !LearningRecordMutableOwnership::isFilledByTeacher($record)
             && ($subTid !== null || LearningRecordMutableOwnership::canFollowCurrentCourseTeacher($record))) {
             $record->TeacherID = $effectiveTeacherId;
             $dirty = true;

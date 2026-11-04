@@ -135,6 +135,8 @@ final class ContractTeacherChangeCascade
                 }
             }
             $teacherId = $conflict ? $oldTeacherId : ($ids[0] ?? $oldTeacherId);
+            // in-app #499: a teacher-filled assessment's author keeps the lesson (pinned, so it cannot fall to the new contract teacher).
+            $teacherId = (int) (LearningRecordMutableOwnership::protectedRecordForSession((int) $row->id, true)?->TeacherID ?: $teacherId);
             if ($teacherId === $newTeacherId) {
                 continue;
             }
@@ -142,16 +144,15 @@ final class ContractTeacherChangeCascade
         }
     }
 
-    /** Teacher with evidence of teaching the session: non-voided attendance sign-in first, else a filled+approved assessment. 0 = no evidence. */
+    /** Who taught: the author of a teacher-filled assessment (locked, in-app #499), else the first non-voided attendance sign-in. 0 = no evidence. */
     private static function evidencedTeacherId(int $sessionId): int
     {
-        $signIn = (int) (StudentSignIn::where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->where('TeacherID', '>', 0)->orderBy('SignInDT')->value('TeacherID') ?? 0);
-        if ($signIn > 0) {
-            return $signIn;
+        $lr = LearningRecordMutableOwnership::protectedRecordForSession($sessionId, true);
+        if ($lr && (int) $lr->TeacherID > 0) {
+            return (int) $lr->TeacherID;
         }
-        $lr = LearningRecordMutableOwnership::protectedRecordForSession($sessionId);
 
-        return $lr ? (int) $lr->TeacherID : 0;
+        return (int) (StudentSignIn::where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->where('TeacherID', '>', 0)->orderBy('SignInDT')->value('TeacherID') ?? 0);
     }
 
     /**
