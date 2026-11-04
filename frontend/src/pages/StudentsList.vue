@@ -973,7 +973,7 @@
 <script setup>
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import { askConfirm } from '../composables/useConfirmDialog';
-import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
@@ -2285,6 +2285,9 @@ watch(showStudentModal, (open) => {
   window[open ? 'addEventListener' : 'removeEventListener']('keydown', onStudentModalKeydown);
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onStudentModalKeydown));
+// Kept alive by App.vue: a hidden page must not react to Escape.
+onDeactivated(() => window.removeEventListener('keydown', onStudentModalKeydown));
+onActivated(() => { if (showStudentModal.value) window.addEventListener('keydown', onStudentModalKeydown); });
 
 const fetchLineBindings = async (studentId) => {
   if (!studentId) return;

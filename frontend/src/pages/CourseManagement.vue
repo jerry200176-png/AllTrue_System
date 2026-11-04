@@ -1359,7 +1359,7 @@
 
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
@@ -5589,6 +5589,19 @@ onMounted(() => {
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
 });
+// Kept alive by App.vue: a hidden page must not listen to the document or hold the body scroll lock.
+let wasHidden = false;
+onDeactivated(() => {
+  wasHidden = true;
+  document.removeEventListener('click', closeActionMenu);
+  if (focusedStudentKey.value) unlockScroll();
+});
+onActivated(() => {
+  if (!wasHidden) return;
+  wasHidden = false;
+  document.addEventListener('click', closeActionMenu);
+  if (focusedStudentKey.value) lockScroll();
+});
 onUnmounted(() => {
   monthlySummary.dispose();
   document.removeEventListener('click', closeActionMenu);
@@ -5599,7 +5612,7 @@ onUnmounted(() => {
   // 若使用者在「聚焦中」直接切換頁面，元件卸載不會觸發 focusedStudentKey watcher，
   // scroll lock 會洩漏並殘留在 body，導致之後的頁面看起來像蓋了一層灰白遮罩、無法點選/捲動。
   // 卸載時若仍處於聚焦狀態，補一次解除以平衡計數。
-  if (focusedStudentKey.value) unlockScroll();
+  if (focusedStudentKey.value && !wasHidden) unlockScroll();
 });
 </script>
 

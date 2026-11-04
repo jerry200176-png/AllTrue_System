@@ -694,7 +694,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onActivated } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { summarizeBatchResults } from '../lib/batchResultSummary.js';
 import { useToast } from '../composables/useToast';
@@ -1302,8 +1302,8 @@ function exportCSV(data) {
   setTimeout(() => { csvExporting.value = false; }, 500);
 }
 
-async function loadAlerts() {
-  loading.value = true;
+async function loadAlerts({ quiet = false } = {}) {
+  loading.value = !quiet;
   error.value = '';
   try {
     const token = getToken();
@@ -1852,6 +1852,13 @@ watch(activeAccountingTab, (tab) => {
     loadAccountingPayments();
   }
 }, { flush: 'post' });
+
+// Kept alive by App.vue: on coming back, refresh the student list in the background (no spinner, rows stay).
+let activatedOnce = false;
+onActivated(() => {
+  if (activatedOnce && activeAccountingTab.value === 'students') loadAlerts({ quiet: true });
+  activatedOnce = true;
+});
 
 loadAlerts();
 loadCampusStudents();

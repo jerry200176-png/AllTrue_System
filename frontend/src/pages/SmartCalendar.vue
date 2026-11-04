@@ -554,7 +554,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
@@ -2787,19 +2787,34 @@ watch(isTeacher, (val) => {
     isWeekOverview.value = true;
   }
 });
+const onDocClick = (e) => {
+  if (e.button === 0) contextMenu.value.show = false;
+};
+const onDocContextMenu = (e) => {
+  if (e.target.closest && e.target.closest('.context-menu')) return;
+  if (e.target.closest && e.target.closest('.course-block')) return;
+  contextMenu.value.show = false;
+};
+const onDocKeydown = (e) => { if (e.key === 'Escape') contextMenu.value.show = false; };
+function addContextMenuListeners() {
+  document.addEventListener('click', onDocClick);
+  document.addEventListener('contextmenu', onDocContextMenu);
+  document.addEventListener('keydown', onDocKeydown);
+}
+function removeContextMenuListeners() {
+  document.removeEventListener('click', onDocClick);
+  document.removeEventListener('contextmenu', onDocContextMenu);
+  document.removeEventListener('keydown', onDocKeydown);
+}
 onMounted(() => {
   reloadCalendarData();
   // 僅在左鍵點擊時關閉右鍵選單，避免右鍵觸發的後續事件誤關選單
-  document.addEventListener('click', (e) => {
-    if (e.button === 0) contextMenu.value.show = false;
-  });
-  document.addEventListener('contextmenu', (e) => {
-    if (e.target.closest && e.target.closest('.context-menu')) return;
-    if (e.target.closest && e.target.closest('.course-block')) return;
-    contextMenu.value.show = false;
-  });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') contextMenu.value.show = false; });
+  addContextMenuListeners();
 });
+// Kept alive by App.vue: listeners follow the page being visible (and are no longer leaked on unmount).
+onActivated(addContextMenuListeners);
+onDeactivated(removeContextMenuListeners);
+onUnmounted(removeContextMenuListeners);
 </script>
 
 <style scoped>
