@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { lockScroll, unlockScroll } from '../../lib/useScrollLock';
 import { trapTab } from '../../lib/focusTrap';
 
@@ -63,6 +63,13 @@ function onBackdropClick() {
 
 watch(() => props.open, syncScrollLock, { immediate: true });
 onBeforeUnmount(() => syncScrollLock(false));
+// A kept-alive page was hidden while this (teleported) dialog was open: release the scroll lock and close it
+// through the normal close path, so the page comes back without a stale dialog.
+onDeactivated(() => {
+  if (!props.open) return;
+  syncScrollLock(false);
+  close();
+});
 </script>
 
 <template>

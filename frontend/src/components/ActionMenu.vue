@@ -55,7 +55,7 @@
 // Shared overflow menu (課程查找 redesign). WAI-ARIA menu button: Enter/Space/↓ open on the first item,
 // ↑ on the last; ↑/↓/Home/End move, type-ahead jumps, Esc/Tab close; Esc returns focus to the trigger.
 // ≤640px renders as a bottom sheet with 48px targets.
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue';
 
 defineProps({
   groups: { type: Array, required: true },
@@ -146,6 +146,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onViewportChange);
   window.removeEventListener('scroll', onViewportChange, true);
 });
+// The menu teleports to body; a kept-alive page leaving must take it along (Codex P2 on #4894).
+onDeactivated(() => close(false));
 defineExpose({ openAt, close });
 </script>
 
