@@ -120,7 +120,7 @@ final class MonthlyPeriodPaymentService
             $charge = (int) $course->getAttribute('PackageID') > 0
                 ? (int) $this->billing->summarizePeriod($course, $period)['charge'] : max(0, (int) $course->getAttribute('Charge'));
             $periods[$period] = ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
-                'charge' => $charge, 'paid_amount' => (int) $course->getAttribute('Paid') === 1 ? $charge : 0,
+                'charge' => $charge, 'paid_amount' => $course->isEffectivelyPaid() ? $charge : 0, // a package marked paid counts (Codex P2 on #4867)
                 'invoice_ids' => [], 'source' => 'single_period_legacy'];
             $uncoveredMonths = [];
         }

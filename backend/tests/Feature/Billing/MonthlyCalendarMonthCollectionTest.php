@@ -150,6 +150,18 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertFalse(($status()['monthly_payment']['payment_status'] ?? null) === 'paid');
     }
 
+    /** Codex P2 on #4867: a legacy plan member whose package alone is marked paid (Paid 0, no bill) still lists as paid. */
+    public function test_plan_member_paid_through_its_package_flag_lists_as_paid(): void
+    {
+        $sc = $this->course('2026-10-01', '2026-10-31', ['2026-10-05' => 'attended', '2026-10-12' => 'attended'], ['Charge' => 0, 'Rate' => 1000]);
+        $pkg = \Illuminate\Support\Facades\DB::table('course_packages')->insertGetId(['student_id' => $sc->StudentID, 'campus_id' => 1, 'name' => 'p',
+            'total_sessions' => 0, 'rate' => 1000, 'class_type' => 'one_on_three', 'paid' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $sc->update(['PackageID' => $pkg, 'Paid' => 0]);
+        $row = collect($this->api('getJson', '/api/v1/student-classes?branch_id=1&student_id='.$sc->StudentID)->assertOk()->json('data'))->firstWhere('ID', $sc->ID);
+        $this->assertSame('paid', $row['monthly_payment']['payment_status'] ?? null);
+        $this->assertSame('paid', $row['payment_status']);
+    }
+
     /** Codex P2 on #4867: a monthly plan member (Charge 0) with lessons in two months stays collectible month by month. */
     public function test_monthly_plan_member_cross_month_collects_august_then_september(): void
     {
