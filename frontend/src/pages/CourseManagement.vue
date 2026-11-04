@@ -1291,9 +1291,10 @@
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
       :initial-action="ledgerInitialAction"
+      :sheet-entry="ledgerSheetEntry"
       :branch-id="props.branchId"
       @close="ledgerOpen = false"
-      @changed="loadCourses(pagination.page)"
+      @changed="reloadCoursesQuietly"
     />
 
     <AtDialog
@@ -4361,6 +4362,7 @@ const formatMoney = (value) => {
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
 let quietRefreshNext = false; // set by the re-activation refetch: no loading flag, rows stay on screen
+const reloadCoursesQuietly = () => { quietRefreshNext = true; return loadCourses(pagination.value.page); };
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
@@ -5135,6 +5137,7 @@ const deleteCourseSubmitting = ref(false);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerInitialAction = ref(null);
+const ledgerSheetEntry = ref(false);
 const studentGroupTabs = ref({});
 const studentBillingState = ref({});
 const paymentSlipOpen = ref(false);
@@ -5260,6 +5263,8 @@ const openLedgerForCourse = (course, initialAction = null) => {
   if (!course?.id) return;
   ledgerStudentClassId.value = course.id;
   ledgerInitialAction.value = initialAction;
+  // Step 3 of #4659: 登記收款/補登收款 open the entry form in a right-side sheet over the list (no ledger, no page switch).
+  ledgerSheetEntry.value = initialAction === 'record' || initialAction === 'legacy-backfill';
   ledgerOpen.value = true;
 };
 

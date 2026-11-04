@@ -91,7 +91,15 @@ for (const { paymentStatus, legacyFlagOnly = false, actionLabel, badge } of STAT
           await route.fulfill({ status: 404, json: { message: 'not found' } });
           return;
         }
-        await route.fulfill({ json: { student: { id: match.student_id, name: match.student_name }, invoices: [], payments: [], reports: [] } });
+        // An unpaid/legacy course carries its ledger card and open bill so the side sheet can open (same guards as the real ledger).
+        const entry = ['登記收款', '補登收款'].includes(actionLabel) && match === target;
+        const open = [{ id: 9001, student_class_id: match.id, status: 'unpaid', outstanding_amount: 4000, total_amount: 4000, due_date: '2026-10-01', payments: [] }];
+        await route.fulfill({ json: {
+          student: { id: match.student_id, name: match.student_name },
+          scope: { student_class_id: match.id },
+          courses: entry ? [{ id: match.id, subject: match.subject, schedule_mode: 'count', charge: 4000, paid: legacyFlagOnly, stop: false, package_id: null, payment_status: match.payment_status }] : [],
+          invoices: entry && !legacyFlagOnly ? open : [], payments: [], reports: [], receipts: [], anomalies: [],
+        } });
         return;
       }
       await route.fulfill({ json: { data: [] } });
@@ -108,7 +116,15 @@ for (const { paymentStatus, legacyFlagOnly = false, actionLabel, badge } of STAT
     await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: heading, courses, actionLabel });
     await expect(page.locator(`.payment-status-and-action[data-course-id="${target.id}"] .payment-status-badge`)).toHaveText(badge);
     expect(ledgerIds).toEqual([target.id]);
-    await expect(page.locator('#ledger-modal-title')).toHaveText(`${target.student_name}的帳務`);
+    if (['登記收款', '補登收款'].includes(actionLabel)) {
+      // Side sheet: the form shows this student's course and the bill amount; the list is still on screen behind it.
+      const sheet = page.locator('.at-dialog__panel--sheet');
+      await expect(sheet).toContainText(target.student_name);
+      if (!legacyFlagOnly) await expect(sheet).toContainText('4,000');
+      await expect(page.locator(`.payment-status-and-action[data-course-id="${target.id}"]`)).toBeVisible();
+    } else {
+      await expect(page.locator('#ledger-modal-title')).toHaveText(`${target.student_name}的帳務`);
+    }
     expect(writes, 'payment entry must not issue any non-GET API request').toEqual([]);
   });
 }

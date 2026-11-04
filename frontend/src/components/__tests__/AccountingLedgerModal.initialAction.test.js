@@ -9,7 +9,7 @@ import AccountingLedgerModal from '../AccountingLedgerModal.vue';
 const course = (id, extra = {}) => ({ id, subject: `科目${id}`, schedule_mode: 'count', charge: 4400, paid: false, stop: false, package_id: null, ...extra });
 const inv = (id, scId) => ({ id, student_class_id: scId, status: 'unpaid', outstanding_amount: 4400, total_amount: 4400, due_date: '2026-10-01', payments: [] });
 
-const EntryStub = { name: 'PaymentEntryModal', props: ['show', 'row', 'mode'], template: '<div v-if="show" data-testid="entry-stub">{{ row && row.id }}</div>' };
+const EntryStub = { name: 'PaymentEntryModal', props: ['show', 'row', 'mode', 'placement'], template: '<div v-if="show" data-testid="entry-stub">{{ row && row.id }}</div>' };
 const ReceiptStub = { name: 'ReceiptModal', props: ['show', 'reportId', 'laterLabel'], template: '<div v-if="show" data-testid="receipt-stub">{{ reportId }}|{{ laterLabel }}</div>' };
 const SlipStub = { name: 'PaymentSlipModal', props: ['show', 'invoiceId', 'studentClassId'], template: '<div v-if="show" data-testid="slip-stub">{{ invoiceId }}|{{ studentClassId }}</div>' };
 
@@ -29,6 +29,77 @@ function mountLedger({ courses, invoices = [], receipts = [], props = {}, role =
 }
 
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); document.body.innerHTML = ''; });
+
+describe('學生帳務 · 右側收款面板 (sheetEntry, #4659 step 3)', () => {
+  it('shows only the entry sheet (ledger hidden), and saving closes it and refreshes the list', async () => {
+    const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    expect(w.getComponent(EntryStub).props('placement')).toBe('right');
+    expect(w.get('.ledger-overlay').isVisible()).toBe(false);
+    w.getComponent(EntryStub).vm.$emit('confirmed', { report_id: 5, status: 'pending' });
+    await flushPromises();
+    expect(w.emitted('changed')).toHaveLength(1);
+    expect(w.emitted('close')).toHaveLength(1);
+    w.unmount();
+  });
+
+  it('cancelling the sheet closes everything', async () => {
+    const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    w.getComponent(EntryStub).vm.$emit('close');
+    expect(w.emitted('close')).toHaveLength(1);
+    w.unmount();
+  });
+
+  it('another row\'s 登記收款 while the sheet is open re-arms it for that course (no dead sheet)', async () => {
+    const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11), inv(2, 12)], props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
+    await w.setProps({ studentClassId: 12 });
+    await flushPromises();
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('12');
+    expect(w.get('.ledger-overlay').isVisible()).toBe(false);
+    w.unmount();
+  });
+
+  it('a 補登收款 blocked by a confirmed report after a conflict shows the visible ledger with the reason', async () => {
+    const receipts = [];
+    const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], receipts, props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    w.vm.$.setupState.openEntry(course(11), 'legacy-backfill');
+    await flushPromises();
+    receipts.push({ report_id: 5, student_class_id: 11, status: 'confirmed', amount: 4400 });
+    w.getComponent(EntryStub).vm.$emit('conflict');
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('.ledger-overlay').isVisible()).toBe(true);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('shows a loading sheet while the ledger loads, and the ledger itself if it never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+      await w.setProps({ studentClassId: 12 });
+      expect(document.body.querySelector('[data-testid="ledger-sheet-loading"]')).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(10_100);
+      expect(w.get('.ledger-overlay').isVisible()).toBe(true);
+      expect(document.body.querySelector('[data-testid="ledger-sheet-loading"]')).toBeNull();
+      w.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('a blocked course falls back to the visible ledger with the reason', async () => {
+    const w = mountLedger({ courses: [course(11, { class_type: 'tutoring' })], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('.ledger-overlay').isVisible()).toBe(true);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('輔導課不用繳費');
+    w.unmount();
+  });
+});
 
 describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
   it('a tutoring course with a stale paid flag still explains that no payment is required', async () => {

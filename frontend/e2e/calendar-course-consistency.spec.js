@@ -746,9 +746,14 @@ test.describe('production acceptance — calendar/course parity', () => {
       const actionLabel = await actionCells.getByRole('button', { name: BILLING_ACTION, exact: true }).count() > 0
         ? BILLING_ACTION : undefined;
       if (!actionLabel) notePreconditionAbsent('course_row_billing_action');
-      const { ledger, studentClassId, paymentCell } = await expectCoursePaymentEntryOpensLedgerInPlace(page, {
+      const { ledger, studentClassId, paymentCell, sheet } = await expectCoursePaymentEntryOpensLedgerInPlace(page, {
         pageHeading: heading, courses, actionLabel,
       });
+      if (sheet) { // 登記收款 / 補登收款 open the side sheet, not the ledger (#4659 step 3)
+        await page.keyboard.press('Escape');
+        await expect(sheet, 'payment sheet closes on Esc').toHaveCount(0);
+        return;
+      }
       if (actionLabel) {
         const row = paymentCell.locator('xpath=ancestor::tr[contains(concat(" ", normalize-space(@class), " "), " course-row ")][1]');
         await expect(row.getByRole('button', { name: BILLING_ACTION, exact: true }), 'the row offers 在這裡看帳務 once').toHaveCount(1);
