@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-04-record-teacher-keeps-history
+    published_at: "2026-11-04"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 已上課的評量不換老師
+    summary: 開啟評量頁時，已上過課的評量不會再被改成現任老師。
+    items:
+      - category: fixed
+        text: 換了合約老師後，已上完課的評量仍顯示當時授課的老師，科目數也留在原老師。
+    source_refs:
+      - "changelog:2026-11-04:record-teacher-keeps-history"
