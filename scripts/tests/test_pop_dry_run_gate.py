@@ -19,6 +19,7 @@ SPLIT = {
     "pop-forward-extra-cancel.yml": "cancel",
     "pop-forward-overdeduct-reassign.yml": "reassign",
     "pop-founder-scoped-repair.yml": "repair",
+    "pop-invoice-header-item-repair.yml": "repair",
     "pop-invoice1997-stale-values.yml": "repair",
     "pop-muzha-chen-billing-catchup.yml": "repair",
     "pop-package-ledger-net-repair-4455.yml": "repair",

@@ -2,7 +2,9 @@
 
 namespace App\Operations\Strategies;
 
+use App\Models\Invoice;
 use App\Models\SecurityAuditEvent;
+use App\Services\InvoiceAmountReconciliationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -12,7 +14,8 @@ use RuntimeException;
  * committed manifest chosen by decision_reference. The reverse manifest (rollback) runs through the same operation. A course must be
  * an unbilled, unpaid, count-mode, non-package contract whose Charge is the manifest's `from` (or `to`, when already applied) and
  * whose Rate x quantity is the manifest's third number, so the G-009 preservedDelta cannot re-apply the old difference on a later edit.
- * Any invoice, payment, report, active pricing amendment or per-session charge fails the whole plan. Output carries ids and counts.
+ * Any invoice, payment, report, active pricing amendment or per-session charge fails the whole plan, except for a course listed in
+ * BILLED_AT_RATE_TIMES_QUANTITY, whose bills must all be paid and total exactly Rate x quantity. Output carries ids and counts.
  */
 final class ContractChargeCorrectionStrategy
 {
@@ -23,7 +26,13 @@ final class ContractChargeCorrectionStrategy
         // #4138 item 4 (Founder 2026-10-29): campus-2 director keyed the per-lesson price 455 into the total; Rate x 20 = 9100.
         'repair-contract-charge-4138-20261029' => [4050 => [455, 9100, 9100], 4051 => [455, 9100, 9100]],
         'rollback-contract-charge-4138-20261029' => [4050 => [9100, 455, 9100], 4051 => [9100, 455, 9100]],
+        // in-app #472 (Founder 2026-11-04): 調整總堂數 80 -> 76 left Charge at 88000; the bill (83600) is already right and paid.
+        'repair-contract-charge-472-20261104' => [2525 => [88000, 83600, 83600]],
+        'rollback-contract-charge-472-20261104' => [2525 => [83600, 88000, 83600]],
     ];
+
+    /** Courses already billed and paid at exactly Rate x quantity: only the stored Charge is stale, so those bills are allowed. */
+    private const BILLED_AT_RATE_TIMES_QUANTITY = [2525];
 
     public function plan(array $parameters): array
     {
@@ -143,6 +152,19 @@ final class ContractChargeCorrectionStrategy
             $amendments = DB::table('student_class_pricing_amendments')->where('student_class_id', $id)->whereNull('voided_at')->count();
             $sessionCharges = DB::table('ClassSession')->where('StudentClassID', $id)->whereNotNull('session_charge')->count();
             $paidFlag = (int) $c->Paid !== 0 || (int) $c->Pay !== 0 || !empty($c->PayDate);
+            if (in_array((int) $id, self::BILLED_AT_RATE_TIMES_QUANTITY, true)) {
+                // Allowed only when every live bill is paid and bills and net payments (the canonical netting, reversals
+                // subtracted) both total exactly Rate x quantity; a void bill may keep no net payment.
+                $live = DB::table('Invoice')->whereIn('id', $invoiceIds)->where('Status', '!=', 'void');
+                $net = fn (bool $void): int => Invoice::query()->whereIn('id', $invoiceIds)->where('Status', $void ? '=' : '!=', 'void')->get()
+                    ->sum(fn (Invoice $i): int => (int) app(InvoiceAmountReconciliationService::class)->resolve($i)['net_applied']);
+                $settled = (int) (clone $live)->sum('TotalAmount') === $expectedBase
+                    && (clone $live)->where('Status', '!=', 'paid')->count() === 0
+                    && $net(false) === $expectedBase && $net(true) === 0
+                    && DB::table('payment_reports')->where(fn ($q) => $q->where('StudentClassID', $id)->orWhereIn('InvoiceID', $invoiceIds))->where('status', 'pending')->count() === 0;
+                if (!$settled) $errors[] = "course_{$id}_bills_not_settled_at_rate_times_quantity";
+                [$invoices, $payments, $paidFlag] = [0, 0, false];
+            }
             if ((string) $c->ScheduleMode !== 'count') $errors[] = "course_{$id}_schedule_mode";
             if ((int) ($c->PackageID ?? 0) > 0) $errors[] = "course_{$id}_package";
             if (!empty($c->settlement_locked_at)) $errors[] = "course_{$id}_settlement_locked";

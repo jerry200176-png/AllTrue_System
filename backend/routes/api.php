@@ -571,11 +571,14 @@ Route::prefix('v1')->group(function () {
     });
 
     // Cross-campus student identity bridge: explicit two-campus authorization only.
-    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change', 'refuse_terminal'])->group(function () {
         // Agreed-fee correction (S1): default-off; controller 404 when flag false; service 503 without extension schema.
         Route::post('student-classes/{studentClass}/agreed-fee-correction/preview', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'preview']);
         Route::post('student-classes/{studentClass}/agreed-fee-correction/apply', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'apply']);
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
+        Route::post('student-classes/{studentClass}/payment-review/check', [StudentClassController::class, 'paymentReviewCheck']);
+        Route::get('student-classes/{studentClass}/refund/preview', [\App\Http\Controllers\BillingRefundController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/refund', [\App\Http\Controllers\BillingRefundController::class, 'refund']);
         Route::post('student-classes/{studentClass}/contract-amendment/preview', [ContractAmendmentController::class, 'preview']);
         Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);
         Route::post('student-classes/{studentClass}/contract-amendment/revert/preview', [ContractAmendmentController::class, 'revertPreview']);
@@ -600,13 +603,13 @@ Route::prefix('v1')->group(function () {
         Route::post('bindings/conflicts/{id}/resolve', [\App\Http\Controllers\BindingConflictController::class, 'resolve'])->whereNumber('id');
     });
 
-    Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+    Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change', 'refuse_terminal'])->group(function () {
         Route::post('student-classes/{studentClass}/continue-tutoring', [StudentClassController::class, 'continueTutoring']);
         Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
         Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
     });
 
-    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change', 'refuse_terminal'])->group(function () {
         Route::get('global-search', [GlobalSearchController::class, 'index']);
         // #768 教學日誌漏交追蹤（主任看本校各老師、老師看自己）。
         Route::get('teaching-logs/missing', [\App\Http\Controllers\TeachingLogController::class, 'missing']);

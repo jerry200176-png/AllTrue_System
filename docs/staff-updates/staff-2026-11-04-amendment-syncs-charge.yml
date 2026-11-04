@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-amendment-syncs-charge
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 調整合約總堂數時，合約金額會一起改
+    summary: 用「提前結束／調整合約總堂數」改堂數後，合約金額會變成新堂數乘以單價。
+    items:
+      - category: fixed
+        text: 以前只改堂數、金額不變；現在確認前就會看到新的合約金額。
+      - category: improved
+        text: 已經開的帳單、收款和收據不會被改；按「撤銷調整」會連金額一起改回來。
+    source_refs:
+      - "changelog:2026-11-04:amendment-syncs-charge"

@@ -11,7 +11,7 @@
     <div class="contract__excel" data-testid="contract-excel">
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_LABEL }}</p>
-        <p v-else class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
+        <p v-else-if="payLineText" class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
         <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
@@ -54,6 +54,7 @@
         <AtButton v-if="rowActions.void" variant="secondary" size="sm" shape="rect" data-testid="contract-void" @click="emit('row-action', 'void')">撤銷收款</AtButton>
         <AtButton v-if="rowActions.settle" variant="secondary" size="sm" shape="rect" data-testid="contract-settle" @click="emit('row-action', 'settle')">結案（不續報）</AtButton>
       </template>
+      <AtButton v-if="canRefund" variant="secondary" size="sm" shape="rect" data-testid="contract-refund" @click="refundOpen = true">退費</AtButton>
       <span v-if="actionError" class="contract__error">{{ actionError }}</span>
     </div>
 
@@ -86,7 +87,8 @@
     </p>
     <template v-else>
       <p class="contract__summary" data-testid="contract-summary">
-        共 {{ sessions.length }} 堂・已上 {{ heldCount }}・還沒上 {{ upcomingCount }}
+        <!-- in-app #472: 共 = 已上 + 還沒上; leave / cancelled lessons are listed but never counted as lessons. -->
+        共 {{ heldCount + upcomingCount }} 堂・已上 {{ heldCount }}・還沒上 {{ upcomingCount }}<template v-if="notCountedCount">・請假／取消 {{ notCountedCount }} 次（不算堂數）</template>
       </p>
       <section v-for="m in months" :key="m.key" class="contract__month">
         <h6>{{ m.label }}<span v-if="m.summary" data-testid="contract-month-summary">　{{ m.summary }}</span></h6>
@@ -97,12 +99,13 @@
             <span class="contract__time">{{ s.start_time || '' }}</span>
             <span v-if="s.numberText" class="contract__num" data-testid="contract-session-no">{{ s.numberText }}</span>
             <span :class="['contract__chip', `tone-${statusTone(s.status)}`]">{{ STATUS_ZH[s.status] || '' }}</span>
-            <span v-if="!(s.payment === 'no_invoice' && !billable(s))" :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
+            <span v-if="!noObligation && !(s.payment === 'no_invoice' && !billable(s))" :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
           </li>
         </ol>
       </section>
       <p v-if="unscheduled > 0" class="contract__muted" data-testid="contract-unscheduled">還有 {{ unscheduled }} 堂還沒排日期</p>
     </template>
+    <RefundDialog v-if="canRefund" :open="refundOpen" :course-id="Number(course.id)" @close="refundOpen = false" @done="refundOpen = false; emit('changed')" />
     <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
       <p class="contract__confirm-text" data-testid="contract-confirm-text">
         確認收到 {{ money(pendingReport?.amount) }}？確認後算「已收」。金額不對請取消，改按「退回」。
@@ -132,6 +135,7 @@ import AtButton from '../design-system/AtButton.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import RefundDialog from './RefundDialog.vue';
 import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
@@ -194,6 +198,7 @@ const sessions = computed(() => data.value?.sessions || []);
 const unscheduled = computed(() => Number(data.value?.unscheduled_count || 0));
 const heldCount = computed(() => sessions.value.filter((s) => HELD.includes(s.status)).length);
 const upcomingCount = computed(() => sessions.value.filter((s) => UPCOMING.includes(s.status)).length + unscheduled.value);
+const notCountedCount = computed(() => sessions.value.filter((s) => !billable(s)).length);
 
 // in-app #457: a monthly contract whose bills are all paid (due > 0, nothing owed) and has no billable lesson left
 // without a bill is collected, whatever the legacy Paid flag says; the server refuses 登記這筆 there (nothing owed).
@@ -216,9 +221,13 @@ const modeLine = computed(() => ((data.value?.schedule_mode || props.course.sche
   : '堂數制：先買堂數，上一堂扣一堂'));
 
 const isMonthly = computed(() => (data.value?.schedule_mode || props.course.schedule_mode) === 'date');
+// 退費 (issue 4843) only for an open lesson-count contract with money in; the server re-checks everything.
+const refundOpen = ref(false);
+const canRefund = computed(() => !isMonthly.value && Number(props.amounts?.received) > 0 && !props.course.closed_reason && !props.course.stop);
 // Server `current_contract_charge` only (AccountingController::currentContractCharge). It is null for a monthly contract
 // or a package member, whose stored Charge is no contract price: in-app #432 showed a monthly Charge as 合約金額.
 const contractCharge = computed(() => {
+  if (noObligation.value) return null; // in-app #475: a tutoring course has no price to show
   const raw = props.course?.current_contract_charge;
   if (raw == null || raw === '') return null;
   const n = Number(raw);
@@ -243,6 +252,7 @@ const legacyResolvable = computed(() => canResolveLegacyPaidFlag(props.course, {
 }));
 const payLineText = computed(() => {
   const p = props.lastPayment;
+  if (noObligation.value) return ''; // in-app #475: the money row says 輔導課不用繳費; never 還沒繳費 on top
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
   if (p?.fullDiscount) return '全額折扣，不用繳費'; // #4656
   if (!p?.date) return '還沒繳費';
@@ -282,7 +292,7 @@ const months = computed(() => {
   }
   for (const g of groups) {
     const counted = g.sessions.filter((s) => s.numberText);
-    g.summary = isMonthly.value && counted.length ? `${counted.length} 堂・${monthPayState(counted)}` : '';
+    g.summary = isMonthly.value && counted.length ? `${counted.length} 堂${noObligation.value ? '' : `・${monthPayState(counted)}`}` : '';
   }
   return groups;
 });

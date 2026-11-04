@@ -102,6 +102,9 @@ describe('BillingDocument header layout (in-app #444)', () => {
     expect(src).toMatch(/\.slip-brand-campus\s*\{[^}]*white-space:\s*nowrap/);
     expect(src).toMatch(/\.slip-brand-text\s*\{[^}]*min-width:\s*0/);
   });
+  it('the big amount stays on one line, so a PNG export cannot spill it out of its box (in-app #466)', () => {
+    expect(src).toMatch(/\.slip-amount\s*\{[^}]*white-space:\s*nowrap/);
+  });
   it('watermark sits behind the text so the footer is not smudged', () => {
     expect(src).toMatch(/\.slip-watermark\s*\{\s*z-index:\s*0/);
     expect(src).toContain('.slip > :not(.slip-watermark)');

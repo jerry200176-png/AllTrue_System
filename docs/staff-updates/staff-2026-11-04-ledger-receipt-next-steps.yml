@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-ledger-receipt-next-steps
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費明細的「要先處理」會說怎麼處理
+    summary: 收據對不到帳單時，現在只顯示一張卡，寫清楚發生什麼事和下一步。
+    items:
+      - category: improved
+        text: 同一張收據的問題合成一張卡，不會再出現兩行看起來互相矛盾的說明。
+      - category: improved
+        text: 每張卡都有「怎麼處理」；錢真的收了就先不要撤銷，只有收據開錯才按「撤銷收據」。
+    source_refs:
+      - "changelog:2026-11-04:ledger-receipt-next-steps"

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-binding-conflict-page
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 「衝突審查」頁面現在看得到案件了
+    summary: 同一位學生綁了多個 LINE 帳號時，這一頁會列出案件，也能直接處理。
+    items:
+      - category: fixed
+        text: 以前這一頁一直顯示沒有案件，現在會列出每位學生和他綁的 LINE 帳號。
+      - category: fixed
+        text: 總管理員可以保留其中一個帳號；校長可以解除自己分校的那個帳號。
+    source_refs:
+      - "changelog:2026-11-04:binding-conflict-page"

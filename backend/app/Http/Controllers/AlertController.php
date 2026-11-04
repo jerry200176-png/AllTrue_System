@@ -439,6 +439,8 @@ class AlertController extends Controller
                 }
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
+                // in-app #495: the status stays (it drives the old contract's 結案 action, Codex P2 on #4887);
+                // renewed_by_newer_course below tells the list not to count it as 需續課.
 
                 // #1100 (FD-3): leave-cascade extension of this (A) course's EndDate must
                 // never silently shift a pre-purchased (B) course's StartDate — surface an
@@ -480,6 +482,7 @@ class AlertController extends Controller
                     'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,
+                    'renewed_by_newer_course'  => (bool) ($newerInfo['renewed'] ?? false),
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
                     'newer_course_remaining'   => $newerInfo['remaining'] ?? null,
                     'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
@@ -900,6 +903,10 @@ class AlertController extends Controller
                 'source' => 'stored_charge_count_mode',
             ];
         $charge = (int) $billing['charge'];
+        // A multi-course bill is asked for at its stored total, not this course's own lessons (same as the queue and confirm).
+        if ($payableInvoice && $payableInvoice->items()->distinct()->count('StudentClassID') > 1) {
+            $charge = (int) $payable['payable_amount'];
+        }
 
         $dueDate = null;
         $daysUntilSettlement = null;
@@ -1116,10 +1123,10 @@ class AlertController extends Controller
     /**
      * Batch-detect newer same-subject courses for the given StudentClass IDs.
      * For each ID, finds another active (Stop=0) StudentClass with the same
-     * StudentID + SubjectID but a different ID.
+     * StudentID + SubjectID but a higher ID.
      *
      * @param  int[]  $studentClassIds
-     * @return array<int, array{newer_id: int, remaining: int, start_date: string|null}>
+     * @return array<int, array{newer_id: int, remaining: int, start_date: string|null, renewed: bool}>
      */
     public static function newerCourseByStudentClassIds(array $studentClassIds): array
     {
@@ -1138,28 +1145,26 @@ class AlertController extends Controller
 
         $candidates = StudentClass::where('Stop', 0)
             ->whereIn('StudentID', $pairs->pluck('sid')->unique())
-            ->whereNotIn('ID', $studentClassIds)
-            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate']);
+            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate']);
+        $byKey = $candidates->groupBy(fn ($c) => $c->StudentID . '-' . $c->SubjectID);
 
-        $candidateIndex = [];
-        foreach ($candidates as $c) {
-            $key = $c->StudentID . '-' . $c->SubjectID;
-            if (!isset($candidateIndex[$key]) || $c->ID > $candidateIndex[$key]->ID) {
-                $candidateIndex[$key] = $c;
-            }
-        }
-
+        // Listed courses are candidates too (in-app #495). The nearest later course is the overlap
+        // successor (#1100), so a third, newer course cannot hide it (Codex P2 on #4887).
         $map = [];
         foreach ($pairs as $p) {
-            $key = $p['sid'] . '-' . $p['sub'];
-            if (isset($candidateIndex[$key])) {
-                $newer = $candidateIndex[$key];
-                $map[$p['id']] = [
-                    'newer_id'   => (int) $newer->ID,
-                    'remaining'  => (int) ($newer->RemainingSessions ?? 0),
-                    'start_date' => $newer->StartDate ? substr($newer->StartDate, 0, 10) : null,
-                ];
+            $later = ($byKey[$p['sid'] . '-' . $p['sub']] ?? collect())->filter(fn ($c) => $c->ID > $p['id'])->sortBy('ID');
+            $newer = $later->first();
+            if ($newer === null) {
+                continue;
             }
+            $map[$p['id']] = [
+                'newer_id'   => (int) $newer->ID,
+                'remaining'  => (int) ($newer->RemainingSessions ?? 0),
+                'start_date' => $newer->StartDate ? substr($newer->StartDate, 0, 10) : null,
+                // Only a priced, non-tutoring course is a purchased renewal; free tutoring or a free trial is not (Codex P2s on #4887).
+                'renewed'    => $later->contains(fn ($c) => strtolower(trim((string) ($c->ClassType ?? ''))) !== 'tutoring'
+                    && ((float) ($c->Charge ?? 0) > 0 || (float) ($c->Rate ?? 0) > 0)),
+            ];
         }
 
         return $map;

@@ -240,7 +240,7 @@ class AccountingController extends Controller
                     ? '課已結束，尚未收款 · 月結帳單與上課堂數不符，請核對'
                     : ($pendingReconciliation
                         ? ($closedReason === '' ? '暫停中，尚未收款' : '課已結束，尚未收款')
-                        : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : null))),
+                        : ($paymentReview ? '月結帳單與上課堂數不符，請核對' : ($waived ? '歷史 · 確認不收' : ($closedReason === 'refunded' ? '歷史 · 已退費' : null)))),
                 'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
@@ -279,7 +279,9 @@ class AccountingController extends Controller
             return BillingPayableResolver::isAmountPendingConfirmation($course, $status) ? 'pending_review' : 'review';
         }
         // Settled by Payment rows although the invoice/closure state says otherwise: keep it in history.
-        if ($status['status'] === 'paid' && in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended'], true)) {
+        // #4832: so does a course a director marked 已核對 (the resolver verdict, not the stale invoice/Paid flags).
+        if ($status['status'] === 'paid' && (!empty($status['review_checked'])
+            || in_array((string) $course->getAttribute('closed_reason'), ['settled_pending', 'contract_amended', 'refunded'], true))) {
             return 'history';
         }
 
@@ -556,7 +558,7 @@ class AccountingController extends Controller
             $reversedReceiptIds = [];
             $receiptRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) > 0 && (string) ($p->Method ?? '') !== 'void'
                 && !isset($restatedPaymentIds[(int) $p->id]))->sortBy('id')->values();
-            $reversalRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void')->sortBy('id');
+            $reversalRows = $payments->filter(fn ($p) => ((int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void') && !((string) ($p->Method ?? '') === 'refund' && (int) ($p->Amount ?? 0) < 0))->sortBy('id');
             foreach ($reversalRows as $reversal) {
                 $reportId = (int) ($reversal->payment_report_id ?? 0);
                 $amount = abs((int) ($reversal->Amount ?? 0));
@@ -581,7 +583,8 @@ class AccountingController extends Controller
                 }
             }
 
-            $remainingInvoiceAmount = $totalAmount;
+            // A refund cut the total by the same money it returned (退費), so the receipts still apply in full.
+            $remainingInvoiceAmount = $totalAmount + (int) $payments->filter(fn ($p) => (string) ($p->Method ?? '') === 'refund' && (int) $p->Amount < 0)->sum(fn ($p) => -(int) $p->Amount);
             $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reversedReceiptIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
@@ -592,7 +595,7 @@ class AccountingController extends Controller
                 $appliedToInvoice = 0;
                 $unappliedAmount = 0;
                 $isReversed = isset($reversedReceiptIds[(int) $payment->id]);
-                $applicationStatus = $isVoid || $isReversed ? 'voided' : 'applied';
+                $applicationStatus = (string) ($payment->Method ?? '') === 'refund' && (int) $payment->Amount < 0 ? 'refunded' : ($isVoid || $isReversed ? 'voided' : 'applied');
 
                 if (!$isVoid && !$isReversed && $amount > 0) {
                     $appliedToInvoice = min($amount, max(0, $remainingInvoiceAmount));
@@ -704,7 +707,10 @@ class AccountingController extends Controller
         $paymentIds = $invoices->flatMap(fn ($invoice) => $invoice->payments)->pluck('id')->map(fn ($id) => (int) $id)->all();
         $reportRows = $reports->map(function (PaymentReport $report) use ($invoiceIds, $paymentIds, &$anomalies) {
             $row = $this->ledgerReportRow($report);
-            if ($report->status === 'confirmed' && !in_array((int) $report->InvoiceID, $invoiceIds, true)) {
+            // A report without InvoiceID whose Payment sits on this student's bill is on the bill (#4847 review; the same
+            // COALESCE(pr.InvoiceID, p.InvoiceID) AlertController uses), not a receipt_without_invoice.
+            $linkedByPayment = !$report->InvoiceID && $report->payment_id && in_array((int) $report->payment_id, $paymentIds, true);
+            if ($report->status === 'confirmed' && !$linkedByPayment && !in_array((int) $report->InvoiceID, $invoiceIds, true)) {
                 $anomalies[] = [
                     'code' => 'receipt_without_invoice',
                     'severity' => 'warning',

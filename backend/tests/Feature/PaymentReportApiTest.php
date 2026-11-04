@@ -1040,6 +1040,18 @@ class PaymentReportApiTest extends TestCase
         $this->recordDirect($token, $sc->ID, 3000, $invoice->id)->assertOk();
     }
 
+    public function test_inapp_461_unbilled_count_course_refuses_an_entry_above_its_contract_charge(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createCountModeClass($this->createStudent(1)->id, ['Charge' => 20000]);
+
+        $this->recordDirect($token, $sc->ID, 22000, null)->assertStatus(422)
+            ->assertJsonPath('code', 'amount_exceeds_outstanding')->assertJsonPath('expected_amount', 20000);
+        $this->assertSame(0, Invoice::where('StudentClassID', $sc->ID)->count());
+        $this->recordDirect($token, $sc->ID, 20000, null)->assertOk();
+    }
+
     public function test_f7_s6_batch_confirm_second_report_for_the_same_balance_is_rejected(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
@@ -2609,6 +2621,27 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('cancelled', $histRow['first_session_source']);
         $this->assertFalse($histRow['is_prepaid']);
         $this->assertStringContainsString('歷史', $histRow['first_session_note']);
+    }
+
+    /** #4847 review: a confirmed report without InvoiceID whose Payment is on this student's bill is not a mismatch. */
+    public function test_ledger_receipt_linked_only_by_payment_is_on_the_bill(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid', 'billing_period' => '2026-04']);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
+        $report = PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name, 'payment_date' => '2026-04-05', 'payment_method' => 'cash', 'reported_amount' => 8800,
+            'status' => 'confirmed', 'confirmed_at' => Carbon::parse('2026-04-05 12:00:00'), 'confirmed_by' => 1, 'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'ledger-link-' . uniqid()), 'token_expires_at' => Carbon::now()->addDay()]);
+        $report->update(['InvoiceID' => null]);
+        $payment->update(['payment_report_id' => $report->id]);
+
+        $codes = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk()->json('anomalies'))->pluck('code')->all();
+        $this->assertNotContains('receipt_without_invoice', $codes);
     }
 
     public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void

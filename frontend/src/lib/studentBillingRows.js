@@ -69,7 +69,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
       byStudent.set(id, {
         student_id: id, student_name: name || '', owed_now: 0, owed_later: 0, open_contracts: 0,
         waiting_confirm: 0, pending_review_amount: 0, pending_review_count: 0,
-        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0, renewing: 0,
+        overdue_days: 0, last_paid_at: null, first_class_id: null, confirm_class_id: null, record_class_id: null, unbilled_class_id: null, contracts: [], notes: [], unbilled: 0, has_paid: false, legacy_flag_only: 0, renewing: 0, min_remaining: null, remaining_hint: '',
       });
     }
     return byStudent.get(id);
@@ -92,7 +92,17 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
         id: Number(r.id), ref: formatCourseRef(r.id), period: formatCoursePeriod(r.course_start_date, r.course_end_date),
         owed: OWING.has(r.payment_status) && !isPendingConfirmation(r) ? rowOwedTotal(r) : 0, paid: Number(r.paid_amount ?? 0),
         pending_review: pendingReviewAmount(r),
+        // in-app #465: the per-course table that showed 剩餘堂數 was removed (#4715); each contract line carries it again.
+        subject: r.subject || '',
+        remaining: r.schedule_mode === 'date' || r.remaining_sessions == null ? null : Math.max(0, Number(r.remaining_sessions)),
       });
+      // in-app #495: a contract already renewed by a newer one is not the student's lessons-left signal.
+      // in-app #467: the student's fewest lessons left, so the list can sort by it like the old 剩餘堂數 column (#309).
+      const left = row.contracts[row.contracts.length - 1].remaining;
+      if (left !== null && r.renewed_by_newer_course !== true && (row.min_remaining === null || left < row.min_remaining)) {
+        row.min_remaining = left;
+        row.remaining_hint = `${r.subject ? `${r.subject} ` : ''}剩 ${left} 堂`;
+      }
     }
     // in-app #407 / #4123: 已收 follows the server's authoritative paid status only. A payment date alone
     // (legacy PayDate, an earlier term's payment) is not proof the contract is paid, nor is the raw `paid` flag
@@ -102,7 +112,7 @@ export function buildStudentBillingRows(alertRows, students = [], today = new Da
     if (paidSignal && isLegacyPaidFlagOnly(r)) row.legacy_flag_only += 1;
     else if (paidSignal) row.has_paid = true;
     // The old queue's 續課/將到期 tab: few lessons left (renew_needed) or a monthly term ending (monthly_due_soon).
-    if (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon') row.renewing += 1;
+    if (r.renewed_by_newer_course !== true && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon')) row.renewing += 1;
     if (r.payment_status === 'pending_report') { row.waiting_confirm += 1; row.confirm_class_id ??= r.id != null ? Number(r.id) : null; }
     // Founder D2: 金額待確認 is its own line, never part of owed_now / owed_later.
     if (pendingReviewAmount(r) > 0) {

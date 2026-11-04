@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-03-paid-shared-bill-not-review
+    published_at: "2026-11-03"
+    audiences:
+      - director
+    importance: digest
+    title: 繳清的合併帳單不再列為待核對
+    summary: 一張帳單包含多門課或多個項目，只要已經全部繳清，就不會再出現在「待核對」。
+    items:
+      - category: improved
+        text: 合併帳單還有欠款時，仍會列在「待核對」，提醒你確認每門課的金額。
+    source_refs:
+      - "changelog:2026-11-03:paid-shared-bill-not-review"

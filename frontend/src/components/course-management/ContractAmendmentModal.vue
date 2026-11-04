@@ -40,6 +40,9 @@
           <span v-if="preview.closes_contract">合約會提前結束，之後無法再排新堂次。</span>
           <span v-else>合約仍可使用，剩餘 {{ preview.new_remaining_sessions }} 堂可繼續排課。</span>
         </p>
+        <p v-if="preview.financial_mutation === 'charge'" class="amendment-charge" data-testid="amendment-new-charge">
+          合約金額 NT${{ Number(preview.original_charge || 0).toLocaleString() }} → <strong>NT${{ Number(preview.new_charge || 0).toLocaleString() }}</strong>
+        </p>
         <p class="financial-note">帳務摘要：Invoice {{ preview.financial?.invoice_count ?? 0 }} 筆／Payment {{ preview.financial?.payment_count ?? 0 }} 筆／PaymentReport {{ preview.financial?.payment_report_count ?? 0 }} 筆。{{ preview.financial_note }}</p>
       </div>
 

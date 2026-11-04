@@ -108,7 +108,7 @@ final class AgreedFeeCorrection
     private function eligible(StudentClass $course, array $request, $invoices, $items, $reports, $amendments): void
     {
         if ($course->ScheduleMode !== 'count' || (int) $course->PackageID > 0 || strtolower(trim((string) $course->ClassType)) === 'tutoring'
-            || (int) $course->Charge <= 0 || strtolower(trim((string) $course->getAttribute('closed_reason'))) === 'waived') {
+            || (int) $course->Charge <= 0 || in_array(strtolower(trim((string) $course->getAttribute('closed_reason'))), StudentClass::TERMINAL_MONEY_CLOSURES, true)) {
             $this->refuse('目前只支援有正數約定費用的單科堂數課（含試聽）；方案、月結、輔導、免費與確認不收請另行核對。', 'unsupported_course');
         }
         if ($request['scope'] === 'unbilled' && $request['new_charge'] === (int) $course->Charge) $this->refuse('約定費用沒有變更。', 'unchanged_charge');

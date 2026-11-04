@@ -283,6 +283,28 @@ export function formatLedgerReceiptBillLine(r) {
   return `${bill} · ${formatLedgerCourseLabel(r)}`;
 }
 
+// in-app #474: what happened and what to do, for receipt mismatches. One receipt can fail several checks; the
+// modal merges them into one card. A mismatch never proves the money is wrong, so voiding is only for a receipt
+// issued in error (Xero/QuickBooks reconciliation pattern: explain first, safe step first).
+const RECEIPT_MISMATCH_CODES = ['receipt_without_invoice', 'receipt_payment_outside_ledger', 'confirmed_receipt_without_payment'];
+export function ledgerReceiptHelp(codes) {
+  const set = new Set(codes);
+  if (!RECEIPT_MISMATCH_CODES.some((c) => set.has(c))) return null;
+  if (set.has('confirmed_receipt_without_payment')) {
+    return {
+      title: '收據確認了，但沒有收款紀錄',
+      message: '這張收據已經確認，可是沒有對應的收款。',
+      hint: '怎麼處理：錢真的收了，請聯絡總部補記收款；收據開錯、根本沒收這筆錢，才按「撤銷收據」。',
+    };
+  }
+  // Which bill the money is on is not known here (#4847 review), so the copy never guesses another student's bill.
+  return {
+    title: '這張收據對不到這位學生的帳單',
+    message: '收據已經確認，但這位學生的帳單上找不到對應的收款，可能記在別的帳單上（例如兄弟姊妹合開的帳單）。',
+    hint: '怎麼處理：先不要撤銷。錢真的收了，請聯絡總部對帳；收據開錯、根本沒收這筆錢，才按「撤銷收據」。',
+  };
+}
+
 /** Anomaly detail — no Payment # / bare invoice id. */
 export function formatLedgerAnomalyDetail(a) {
   const parts = [];
@@ -418,12 +440,21 @@ export function formatLedgerDriftLine(inv) {
 }
 
 /** Pre-filled in-app report for the 回報給系統管理員 action: IDs only, never names. */
+// in-app #476: the report a director sends says the problem in words; the code stays in brackets for triage.
+const LEDGER_CODE_WORDS = {
+  overpayment_pending_review: '多收，沒有記進帳單',
+  paid_amount_mismatch: '帳單已收金額和收款紀錄對不上',
+  receipt_without_invoice: '收據對不到帳單',
+  receipt_payment_outside_ledger: '收據的收款不在這位學生的帳上',
+  confirmed_receipt_without_payment: '收據確認了但沒有收款紀錄',
+};
+
 export function buildLedgerIssueReport(a, inv, studentId) {
   const ids = [`學生ID ${studentId || '-'}`, `帳單ID ${a?.invoice_id || inv?.id || '-'}`, `課程ID ${a?.student_class_id || inv?.student_class_id || '-'}`];
   const recorded = inv ? Number(inv.calculated_applied_amount || 0) + Number(inv.overpaid_amount || 0) : null;
   const nums = inv ? `應收 ${inv.total_amount}、帳單記錄已收 ${inv.paid_amount}、收款紀錄合計 ${recorded}` : '';
   return {
-    description: `學生帳務出現「${a?.code || 'ledger'}」，沒有可撤銷的收款，請核對。${nums}`,
+    description: `學生帳務出現「${LEDGER_CODE_WORDS[a?.code] ? `${LEDGER_CODE_WORDS[a.code]}（${a.code}）` : (a?.code || 'ledger')}」，沒有可撤銷的收款，請核對。${nums}`,
     relatedReference: ids.join(' / '),
   };
 }

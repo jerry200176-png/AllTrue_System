@@ -5,9 +5,10 @@
       <p class="modal-desc">{{ studentName }}／{{ subjectLabel }}</p>
       <p class="choice-intro">先選你要處理的事情，系統會帶到正確流程。</p>
 
-      <!-- Founder 2026-10-15 Q8=A (#4014): lessons are added through 續課, never by raising this contract. -->
+      <!-- Founder 2026-10-15 Q8=A (#4014): lessons still to come are added through 續課. Founder 2026-11-03 (in-app #466):
+           lessons already taught beyond an unbilled, unpaid contract can be covered by 未付款，更正堂數 below. -->
       <div class="renew-hint" data-testid="contract-adjust-renew-hint">
-        <p class="renew-hint__text"><strong>要加堂？</strong>這裡不能把堂數改多，請用「續課」：會另外建立一期新的堂數和帳單，原合約與已上課紀錄都不變。</p>
+        <p class="renew-hint__text"><strong>要加之後的課？</strong>請用「續課」：會另外建立一期新的堂數和帳單，原合約與已上課紀錄都不變。</p>
         <button type="button" class="renew-hint__action" data-testid="contract-adjust-renew" @click="onChoose('renew')">前往續課</button>
       </div>
 
@@ -22,8 +23,8 @@
         >
           <span class="choice-card__icon" aria-hidden="true">↺</span>
           <span class="choice-card__copy">
-            <strong>未付款，堂數改少</strong>
-            <small>例如原本 5 堂，最後只收 4 堂；已上課紀錄保留。</small>
+            <strong>未付款，更正堂數</strong>
+            <small>例如原本 5 堂，最後只收 4 堂；或還沒開帳單、已經多上了 1 堂，把 4 堂補成 5 堂。已上課紀錄保留。</small>
             <small v-if="!billingEnabled" class="choice-card__blocked">{{ billingDisabledReason }}</small>
           </span>
           <span class="choice-card__arrow" aria-hidden="true">›</span>
@@ -33,7 +34,7 @@
           <span class="choice-card__icon" aria-hidden="true">⊖</span>
           <span class="choice-card__copy">
             <strong>提前結束／調整合約總堂數</strong>
-            <small>例如原本 8 堂、已完成 3 堂，調整為 3 堂；不需要目標課程，未來預排會取消。</small>
+            <small>例如原本 8 堂、已完成 3 堂，調整為 3 堂；不需要目標課程，未來預排會取消，合約金額照新堂數重新計算。</small>
           </span>
           <span class="choice-card__arrow" aria-hidden="true">›</span>
         </button>

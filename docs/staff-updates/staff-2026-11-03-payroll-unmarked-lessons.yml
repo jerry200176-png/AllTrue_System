@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-03-payroll-unmarked-lessons
+    published_at: "2026-11-03"
+    audiences:
+      - director
+    importance: digest
+    title: 兼職薪資提醒漏點名的課
+    summary: 已上完沒點名的兼職課，薪資頁會提醒補點名。
+    items:
+      - category: improved
+        text: 兼職薪資頁會提醒已結束但沒有點名的堂次，請補點名；這只是提醒，不會擋住鎖帳。
+    source_refs:
+      - "changelog:2026-11-03:payroll-unmarked-lessons"

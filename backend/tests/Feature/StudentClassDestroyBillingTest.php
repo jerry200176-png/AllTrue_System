@@ -84,6 +84,19 @@ class StudentClassDestroyBillingTest extends TestCase
         $this->assertUntouched($anchor, $inv, 'unpaid');
     }
 
+    /** in-app #483: a contract with no lesson used but a reminder sent says which record blocks the delete. */
+    public function test_history_refusal_names_the_blocking_record(): void
+    {
+        $c = $this->course($this->student()->id);
+        \Illuminate\Support\Facades\DB::table('dunning_events')->insert(['student_id' => $c->StudentID, 'student_class_id' => $c->ID, 'campus_id' => 1,
+            'rule_key' => 'due', 'channel' => 'in_app', 'sent_at' => now()]);
+
+        $res = $this->deleteJson("/api/v1/student-classes/{$c->ID}", [], $this->auth())->assertStatus(422)
+            ->assertJsonPath('code', 'course_has_history')->assertJsonPath('reasons', ['dunning_events']);
+        $this->assertStringContainsString('繳費提醒', $res->json('message'));
+        $this->assertNotNull(StudentClass::find($c->ID));
+    }
+
     public function test_long_note_is_bounded_and_actor_recorded(): void
     {
         $c = $this->course($this->student()->id);

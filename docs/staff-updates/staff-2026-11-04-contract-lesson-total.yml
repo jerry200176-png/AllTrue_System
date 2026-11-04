@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-contract-lesson-total
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 合約的「共幾堂」算對了
+    summary: 繳費明細裡每份合約的「共幾堂」，現在等於已上加還沒上，請假和取消另外列出。
+    items:
+      - category: fixed
+        text: 以前請假、取消的課也被算進「共幾堂」，所以總數會比合約多；現在不算進去。
+      - category: improved
+        text: 有請假或取消的話，會另外寫「請假／取消幾次（不算堂數）」。
+    source_refs:
+      - "changelog:2026-11-04:contract-lesson-total"

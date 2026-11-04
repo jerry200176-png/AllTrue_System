@@ -90,7 +90,8 @@ class MonthlyPeriodPaymentTest extends TestCase
         $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
         $this->assertSame('paid', $summary['payment_status']);
         $course->setAttribute('PackageID', 1);
-        $this->assertSame([], app(MonthlyPeriodPaymentService::class)->batch(collect([$course])));
+        // A monthly ('date') package member is billed per member (#3892 D4, in-app #478), so it gets the same period attribution.
+        $this->assertSame('paid', app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID]['payment_status']);
     }
 
     public function test_next_period_without_sessions_is_still_not_covered_by_august_payment(): void
@@ -226,6 +227,50 @@ class MonthlyPeriodPaymentTest extends TestCase
         $mid->update(['StartDate' => '2026-09-04', 'EndDate' => '2026-09-30']);
         $inv = $this->invoice($mid, '2026-09', 1000);
         $inv->items()->create(['StudentClassID' => $mid->ID, 'Description' => 'm', 'Amount' => 1000, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']);
-        $this->assertContains('item_period_outside_contract', $svc->batch(collect([$mid->fresh()]))[$mid->ID]['review_reasons']);
+        $this->assertNotContains('item_period_outside_contract', $svc->batch(collect([$mid->fresh()]))[$mid->ID]['review_reasons']); // #4799: whole first month is normal
+
+        $early = $this->course();
+        $early->update(['StartDate' => '2026-09-04', 'EndDate' => '2026-09-30']);
+        $inv = $this->invoice($early, '2026-09', 1000);
+        $inv->items()->create(['StudentClassID' => $early->ID, 'Description' => 'm', 'Amount' => 1000, 'PeriodStart' => '2026-08-25', 'PeriodEnd' => '2026-09-30']);
+        $this->assertContains('item_period_outside_contract', $svc->batch(collect([$early->fresh()]))[$early->ID]['review_reasons']); // earlier month still flagged
+    }
+
+    public function test_fully_paid_shared_bill_is_not_a_review_but_an_owing_one_is(): void
+    {
+        // #4803 (Founder 2026-11-03): one bill for two courses, fully paid, is normal; the same bill still owing is reviewed.
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $other = $this->course();
+        foreach ([1500 => false, 1000 => true] as $paid => $flagged) {
+            $course = $this->course();
+            $this->invoice($course, '2026-09', 1000);
+            $shared = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01',
+                'billing_period' => '2026-08', 'TotalAmount' => 1500, 'PaidAmount' => $paid, 'Status' => $paid === 1500 ? 'paid' : 'partial']);
+            Payment::create(['InvoiceID' => $shared->id, 'Amount' => $paid, 'PaidAt' => '2026-08-20', 'Method' => 'cash']);
+            $shared->items()->create(['StudentClassID' => $course->ID, 'Description' => 'a', 'Amount' => 1000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+            $shared->items()->create(['StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+            $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
+            $this->assertSame($flagged, in_array('shared_or_multi_line_bill', $summary['review_reasons'], true), "paid {$paid}");
+        }
+        // A legacy PaidAmount with no Payment rows is not payment evidence for the resolver, so it stays reviewed.
+        $legacy = $this->course();
+        $this->invoice($legacy, '2026-09', 1000);
+        $bill = Invoice::create(['StudentID' => $legacy->StudentID, 'StudentClassID' => $legacy->ID, 'IssueDate' => '2026-08-01',
+            'billing_period' => '2026-08', 'TotalAmount' => 1500, 'PaidAmount' => 1500, 'Status' => 'paid']);
+        $bill->items()->create(['StudentClassID' => $legacy->ID, 'Description' => 'a', 'Amount' => 1000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+        $bill->items()->create(['StudentClassID' => $other->ID, 'Description' => 'b', 'Amount' => 500, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+        $this->assertContains('shared_or_multi_line_bill', $svc->batch(collect([$legacy->fresh()]))[$legacy->ID]['review_reasons']);
+        $this->assertSame('review_required', app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$legacy->ID])[$legacy->ID]['status']);
+        // A paid bill whose own lines skip a month (Aug + Oct, September taught and unbilled) stays reviewed.
+        $gap = $this->course();
+        $gap->update(['EndDate' => '2026-10-31']);
+        ClassSession::create(['StudentClassID' => $gap->ID, 'SessionDate' => '2026-10-07', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $bill = Invoice::create(['StudentID' => $gap->StudentID, 'StudentClassID' => $gap->ID, 'IssueDate' => '2026-08-01',
+            'billing_period' => '2026-08', 'TotalAmount' => 2000, 'PaidAmount' => 2000, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 2000, 'PaidAt' => '2026-08-20', 'Method' => 'cash']);
+        $bill->items()->create(['StudentClassID' => $gap->ID, 'Description' => 'a', 'Amount' => 1000, 'PeriodStart' => '2026-08-01', 'PeriodEnd' => '2026-08-31']);
+        $bill->items()->create(['StudentClassID' => $gap->ID, 'Description' => 'c', 'Amount' => 1000, 'PeriodStart' => '2026-10-01', 'PeriodEnd' => '2026-10-31']);
+        $this->assertContains('shared_or_multi_line_bill', $svc->batch(collect([$gap->fresh()]))[$gap->ID]['review_reasons']);
+        $this->assertSame('review_required', app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$gap->ID])[$gap->ID]['status']);
     }
 }

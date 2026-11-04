@@ -15,6 +15,7 @@ use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
+use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\SubjectUnitsTimelineService;
 use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
@@ -1057,6 +1058,8 @@ class FinanceController extends Controller
             // Otherwise keep 待確認 in each covered month, uncounted, so nothing is double-counted or shown paid.
             $spanReview = $monthlyBilled && $spans->isNotEmpty() && (
                 (bool) ($coverage[(int) $c->ID]['review_required'] ?? false)
+                // #4803: a paid shared/multi-line bill is settled but still cannot be placed in one month.
+                || (bool) ($coverage[(int) $c->ID]['attribution_ambiguous'] ?? false)
                 || $spans->contains(fn ($r) => substr((string) $r['billing_period'], 0, 7) !== substr((string) $r['period_start'], 0, 7))
                 // the start month's row only exists when it has lessons; else nothing would carry the invoice amount
                 || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['period_start'], 0, 7)))
@@ -1205,6 +1208,7 @@ class FinanceController extends Controller
 
         $lockedRun = $this->lockedPayrollRun($lockRow);
         $anomalies = $lockedRun ? ($lockedRun->anomalies ?? []) : $this->parttimePayrollAnomalies($campusIds, $month . '-01', date('Y-m-t', strtotime($month . '-01')));
+        $unmarkedLessons = $lockedRun ? [] : $this->parttimeUnmarkedLessons($campusIds, $month . '-01', date('Y-m-t', strtotime($month . '-01')));
         $rows = $lockedRun
             ? $this->buildParttimePayrollRowsFromSnapshot($lockedRun)
             : $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
@@ -1245,6 +1249,8 @@ class FinanceController extends Controller
                 'payroll_basis'   => 'attendance',
                 'anomaly_count'   => count($anomalies),
                 'anomalies'       => array_values($anomalies),
+                'unmarked_count'  => count($unmarkedLessons),
+                'unmarked_lessons' => $unmarkedLessons,
             ],
             'teachers' => $rows,
         ]);
@@ -1667,6 +1673,8 @@ class FinanceController extends Controller
         $query = DB::table('ClassSession as cs')
             ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->leftJoin('Subject as su', 'su.id', '=', 'sc.SubjectID')
             ->whereNull('si.VoidedAt')
             ->whereIn('si.Status', AttendanceStatus::payableCodes())
             ->where('cs.Status', '!=', 'cancelled')
@@ -1674,15 +1682,19 @@ class FinanceController extends Controller
             ->select([
                 'cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status as session_status',
                 'si.id as student_sign_in_id', 'si.Status as attendance_status', 'si.TeacherID', 'sc.StudentID', 'sc.ClassType', 'sc.TeacherID as ContractTeacherID',
+                'st.name as student_name', 'su.Subject_Name as subject_name',
             ]);
 
-        if (!empty($studentIds)) {
+        if (!empty($campusIds) && empty($studentIds)) {
+            $query->whereRaw('1=0'); // campus scope with no students must fail closed
+        } elseif (!empty($studentIds)) {
             $query->whereIn('sc.StudentID', $studentIds);
         }
 
         $rows = $query->get();
         $anomalies = [];
         $seen = [];
+        $rowOf = [];
 
         foreach ($rows as $row) {
             if (($row->ClassType ?? null) === 'trial') {
@@ -1702,6 +1714,7 @@ class FinanceController extends Controller
 
             $key = (int) $row->class_session_id;
             $seen[$key][] = (int) $row->student_sign_in_id;
+            $rowOf[$key] = $row;
             $add = function (string $code, string $message) use (&$anomalies, $row, $key): void {
                 $anomalies[] = [
                     'code' => $code,
@@ -1709,7 +1722,7 @@ class FinanceController extends Controller
                     'class_session_id' => $key,
                     'student_sign_in_id' => (int) $row->student_sign_in_id,
                     'session_date' => $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null,
-                ];
+                ] + self::payrollLessonLabel($row);
             };
 
             if (!$row->StartTime || !$row->EndTime) {
@@ -1734,12 +1747,84 @@ class FinanceController extends Controller
                     'message' => '同一堂存在多筆有效點名',
                     'class_session_id' => (int) $sessionId,
                     'student_sign_in_id' => null,
-                    'session_date' => null,
-                ];
+                    'session_date' => $rowOf[$sessionId]->SessionDate ? substr((string) $rowOf[$sessionId]->SessionDate, 0, 10) : null,
+                ] + self::payrollLessonLabel($rowOf[$sessionId]);
             }
         }
 
         return $anomalies;
+    }
+
+    /**
+     * 已結束卻沒有任何有效點名的堂次不會進薪資。僅提醒，不計入 anomalies，也不擋鎖帳。
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    /** in-app #482: who / what / when for a payroll notice row, so staff never read a bare 堂次 id. */
+    private static function payrollLessonLabel(object $row): array
+    {
+        $hm = static fn ($t) => $t ? substr((string) $t, 0, 5) : null;
+
+        return [
+            'student_class_id' => (int) ($row->StudentClassID ?? 0) ?: null,
+            'start_time' => $hm($row->StartTime ?? null),
+            'end_time' => $hm($row->EndTime ?? null),
+            'student_name' => ($row->student_name ?? null) !== null ? (string) $row->student_name : null,
+            'subject_name' => ($row->subject_name ?? null) !== null ? (string) $row->subject_name : null,
+        ];
+    }
+
+    private function parttimeUnmarkedLessons(array $campusIds, string $startDate, string $endDate): array
+    {
+                $partTimeIdSet = array_flip($this->partTimeTeacherUserIds());
+        $studentIds = !empty($campusIds)
+            ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all()
+            : [];
+        $lessons = [];
+        $unmarked = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->leftJoin('Subject as su', 'su.id', '=', 'sc.SubjectID')
+            // Only lessons with no recorded outcome: leave / excused / voided keep no attendance on purpose.
+            ->whereIn(DB::raw('LOWER(TRIM(cs.Status))'), ['scheduled', 'completed', 'attended'])
+            ->whereBetween('cs.SessionDate', [$startDate, $endDate])
+            ->where('cs.SessionDate', '<=', date('Y-m-d'))
+            ->where(fn ($q) => $q->where('sc.ClassType', '!=', 'trial')->orWhereNull('sc.ClassType'))
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('StudentSingIn as si')
+                ->whereColumn('si.ClassSessionID', 'cs.id')->whereNull('si.VoidedAt'))
+            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.TeacherID as ContractTeacherID',
+                'st.name as student_name', 'su.Subject_Name as subject_name']);
+        if (!empty($campusIds) && empty($studentIds)) {
+            $unmarked->whereRaw('1=0'); // campus scope with no students must fail closed
+        } elseif (!empty($studentIds)) {
+            $unmarked->whereIn('sc.StudentID', $studentIds);
+        }
+
+        // ponytail: per-row payee lookup, same cost model as the sign-in loop above; batch if month volume grows.
+        foreach ($unmarked->get() as $row) {
+            $date = substr((string) $row->SessionDate, 0, 10);
+            if ($row->EndTime && !ContractSessionSchedule::sessionEndedByEndTime($date, (string) $row->EndTime)) {
+                continue;
+            }
+            $teacherId = $this->resolveParttimePayrollTeacherId((object) [
+                'StudentClassID' => (int) $row->StudentClassID,
+                'SessionDate' => $row->SessionDate,
+                'StartTime' => $row->StartTime,
+                'TeacherID' => 0,
+                'studentClass' => (object) ['TeacherID' => $row->ContractTeacherID ?? 0],
+            ]);
+            if ($teacherId > 0 && isset($partTimeIdSet[$teacherId])) {
+                $lessons[] = [
+                    'code' => 'unmarked_attendance',
+                    'message' => '已結束但沒有點名，不會算進薪資',
+                    'class_session_id' => (int) $row->id,
+                    'student_sign_in_id' => null,
+                    'session_date' => $date,
+                ] + self::payrollLessonLabel($row);
+            }
+        }
+
+        return $lessons;
     }
 
     private function buildParttimePayrollRowsFromSnapshot(PayrollRun $run): array

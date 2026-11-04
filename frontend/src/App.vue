@@ -552,7 +552,7 @@
       />
       <SmartCalendar v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
       <StudentsList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" @start-guide="guideTour.startTour('tuition-collect', { role })" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
@@ -819,6 +819,7 @@
       </div>
     </div>
     <AtToast />
+    <AtLoadingBar />
   </div>
 
   <Transition name="onboarding-complete">
@@ -884,7 +885,7 @@ import Login from './pages/Login.vue';
 import ParentPortal from './pages/ParentPortal.vue';
 
 // 頁面 chunk 載入時顯示骨架，150ms 內載入完成則不閃爍
-const asyncPage = (loader) => defineAsyncComponent({ loader, loadingComponent: AtSkeleton, delay: 150 });
+const asyncPage = (loader) => defineAsyncComponent({ loader: trackLoader(loader), loadingComponent: AtSkeleton, delay: 150 });
 const AdmissionInquiriesPage = asyncPage(() => import('./pages/AdmissionInquiriesPage.vue'));
 const TrueFitApp = asyncPage(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = asyncPage(() => import('./pages/StudentsList.vue'));
@@ -926,6 +927,8 @@ import RoleFeatureMapSection from './components/RoleFeatureMapSection.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
+import AtLoadingBar from './components/AtLoadingBar.vue';
+import { trackLoader } from './lib/loadingBar';
 import { useToast } from './composables/useToast';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import { buildInboxDeepLinkQuery, deepLinkTargetPage, hasInboxDeepLink, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';

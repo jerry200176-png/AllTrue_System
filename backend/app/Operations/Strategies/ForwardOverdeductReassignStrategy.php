@@ -206,7 +206,7 @@ final class ForwardOverdeductReassignStrategy
 
     private function settled(object $course): bool
     {
-        return $course->settlement_locked_at !== null || in_array((string) $course->closed_reason, ['usage_settled', 'contract_amended', 'waived'], true);
+        return $course->settlement_locked_at !== null || in_array((string) $course->closed_reason, \App\Models\StudentClass::USAGE_LOCK_CLOSURES, true);
     }
 
     private function audit(array $metadata, string $suffix = ''): void
@@ -284,7 +284,7 @@ final class ForwardOverdeductReassignStrategy
             }
             $sourceSettled = $this->settled($source);
             $targets = array_values(array_filter(array_map('intval', array_filter(explode(',', (string) $x['c']['later_course_ids']))),
-                fn (int $id) => ($c = $courses->get($id)) && strtolower((string) $c->ScheduleMode) === 'count' && (string) $c->closed_reason !== 'waived' && !$this->settled($c) && (int) $c->PackageID <= 0));
+                fn (int $id) => ($c = $courses->get($id)) && strtolower((string) $c->ScheduleMode) === 'count' && !in_array((string) $c->closed_reason, \App\Models\StudentClass::TERMINAL_MONEY_CLOSURES, true) && !$this->settled($c) && (int) $c->PackageID <= 0));
             foreach ($candidates as $s) {
                 $date = substr((string) $s->SessionDate, 0, 10);
                 $start = substr((string) $s->StartTime, 0, 5);

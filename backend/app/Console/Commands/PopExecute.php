@@ -27,7 +27,14 @@ final class PopExecute extends Command
             $result = $service->runApprovedLocally($this->option('request') ?: null, (string) $this->option('phase'));
             $this->line(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
-            return ($result['ok'] ?? false) ? self::SUCCESS : self::FAILURE;
+            if (! ($result['ok'] ?? false)) {
+                // #4820: name the request in the alert; the scheduler's output file is overwritten next minute. IDs only.
+                report(new \RuntimeException('POP failed closed: ' . json_encode($result, JSON_UNESCAPED_SLASHES)));
+
+                return self::FAILURE;
+            }
+
+            return self::SUCCESS;
         } catch (\Throwable $exception) {
             report($exception);
             $this->error('POP failed closed. See the execution record or server log for the correlation id.');

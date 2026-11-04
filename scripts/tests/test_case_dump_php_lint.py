@@ -41,7 +41,7 @@ PROBE_PY = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)
 # Cases keyed by a StudentClass ID from the masked CASE_INPUT_STUDENT_CLASS_ID secret (no dispatch ID input accepted).
 SECRET_ID_CASES = {"inapp_414_amount_source"}
 # Cases that refuse any student or course target.
-NO_TARGET_CASES = {"migration_4283_preconditions", "review_4554_4753", "inapp_458_receipt_courses", "settled_pending_paid_scan"}
+NO_TARGET_CASES = {"migration_4283_preconditions", "review_4554_4753", "inapp_458_receipt_courses", "settled_pending_paid_scan", "inapp_460_payroll_1031", "inapp_461_464_billing", "inapp_460_payroll_teacher", "inapp_466_count_contract", "inapp_468_teacher_calendar"}
 
 
 def render_secret_case(case, student_id="", student_class_id="", secret_class_id="1"):
@@ -108,6 +108,36 @@ class SettledPendingPaidScanCase(Review45544753Case):
     """#4790: fleet scan of settled_pending-but-fully-paid courses plus 3511/3517 history, no target, no free text."""
 
     CASE = "settled_pending_paid_scan"
+
+
+class Inapp460PayrollCase(Review45544753Case):
+    """In-app #460: campus-9 2026-10-31 back-to-back lessons and payroll rate inputs, no target, no free text."""
+
+    CASE = "inapp_460_payroll_1031"
+
+
+class Inapp461464BillingCase(Review45544753Case):
+    """In-app #461/#464: invoice 2438 origin and campus-9 Tuesday monthly review inputs, no target, no free text."""
+
+    CASE = "inapp_461_464_billing"
+
+
+class Inapp460PayrollTeacherCase(Review45544753Case):
+    """In-app #460 round 2: campus-9 2026-10-31 lessons by payroll payee, rate rules and the October run, no target, no free text."""
+
+    CASE = "inapp_460_payroll_teacher"
+
+
+class Inapp466CountContractCase(Review45544753Case):
+    """In-app #466: the student named in report 466 matched on the server; course numbers only, no target, no free text."""
+
+    CASE = "inapp_466_count_contract"
+
+
+class Inapp468TeacherCalendarCase(Review45544753Case):
+    """In-app #468: the student named in report 468 matched on the server; director vs teacher calendar sources, IDs/dates/codes only."""
+
+    CASE = "inapp_468_teacher_calendar"
 
 
 class ConfirmedReportVoidBlockedCase(unittest.TestCase):

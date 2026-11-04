@@ -31,6 +31,18 @@ class Schedule extends Model
     /** Retired by a TD-076 repair; not live. Readers whitelist 'scheduled' / 'leave', so it is invisible to them. */
     public const STATUS_SUPERSEDED = 'superseded';
 
+    protected static function booted(): void
+    {
+        // Schedule rows of a waived or refunded contract are frozen (the refund cancels its own rows by query before closing).
+        $guard = function (Schedule $row): void {
+            if ($closure = StudentClass::terminalClosureInDb((int) $row->getAttribute('student_course_id'))) {
+                abort(422, $closure === 'refunded' ? StudentClass::REFUNDED_MESSAGE : '此合約已確認不收，課表不能再變更。');
+            }
+        };
+        static::saving($guard);
+        static::deleting($guard);
+    }
+
     protected $table = 'schedules';
 
     protected $fillable = [

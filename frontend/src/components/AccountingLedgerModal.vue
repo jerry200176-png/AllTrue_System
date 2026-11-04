@@ -62,7 +62,8 @@
               <div v-for="x in visibleExceptions" :key="x.key" class="ledger-receipt">
                 <strong>{{ x.title }}</strong>
                 <span>{{ x.message }}</span>
-                <small>{{ x.detail }}</small>
+                <small v-if="x.detail">{{ x.detail }}</small>
+                <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
                 <button
                   v-if="x.can_void"
                   class="ledger-action ledger-action--danger"
@@ -70,7 +71,6 @@
                   :disabled="busyReportId === x.report_id"
                   @click="voidReport(x.report_id)"
                 >{{ x.action_label || '撤銷收款' }}</button>
-                <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
                 <template v-if="!x.can_void && !x.report_id">
                   <span class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
                   <button class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給系統管理員</button>
@@ -164,6 +164,7 @@
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（金額不同可能是約定調整，不代表帳單有誤）</small>
+                        <small v-if="inv.amount_discrepancy" class="ledger-rate-hint" :data-testid="`ledger-amount-discrepancy-${inv.id}`">帳單 {{ formatCurrency(inv.stored_total_amount) }}，照這個月上的 {{ inv.period_sessions }} 堂算是 {{ formatCurrency(inv.computed_total_amount) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
@@ -351,6 +352,7 @@ import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  ledgerReceiptHelp,
   formatLedgerDriftLine,
   buildLedgerIssueReport,
 } from '../lib/studentClassDisplay.js';
@@ -612,9 +614,17 @@ const ledgerBothEmpty = computed(() => {
 
 const ledgerExceptions = computed(() => {
   const rows = [];
+  const byReceipt = new Map(); // in-app #474: one card per receipt, however many checks it fails
   (payload.value?.anomalies || []).forEach((a, idx) => {
-    rows.push({
+    const same = a.report_id ? byReceipt.get(a.report_id) : null;
+    if (same) {
+      same.codes.push(a.code);
+      same.can_void = same.can_void || a.action?.type === 'void_report';
+      return;
+    }
+    const row = {
       key: `a-${idx}-${a.code}-${a.report_id || 'na'}-${a.payment_id || 'na'}`,
+      codes: [a.code],
       title: anomalyLabel(a.code),
       message: a.message,
       detail: formatLedgerAnomalyDetail(a),
@@ -623,7 +633,13 @@ const ledgerExceptions = computed(() => {
       drift_line: formatLedgerDriftLine((payload.value?.invoices || []).find((i) => Number(i.id) === Number(a.invoice_id))),
       anomaly: a,
       severity: a.severity === 'critical' ? 0 : 1,
-    });
+    };
+    rows.push(row);
+    if (a.report_id) byReceipt.set(a.report_id, row);
+  });
+  rows.forEach((row) => {
+    const help = ledgerReceiptHelp(row.codes);
+    if (help) Object.assign(row, help, { detail: '', action_label: '撤銷收據' });
   });
   (payload.value?.invoices || []).forEach((inv) => {
     (inv.payments || []).forEach((p) => {
@@ -952,6 +968,12 @@ async function runInitialAction(draftsReady) {
     else initialActionNote.value = '這門課目前沒有可以開立的帳單。';
     return;
   }
+  if (action === 'legacy-backfill') {
+    // In-app #490: row button 補登收款 → straight to the back-fill form; anything else just shows the ledger.
+    const legacy = contractCourses.value.find((c) => Number(c.id) === id);
+    if (legacy && needsLegacyChoice(legacy)) openEntry(legacy, 'legacy-backfill');
+    return;
+  }
   if (action !== 'record') return;
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (!course) return;
@@ -1087,7 +1109,7 @@ const formatPeriod = (period) => !period ? '—' : (String(period).split('-').le
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
 const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS, status);
 const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS, status);
-const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收（多出部分未入帳）', overpayment_pending_review: '多收', voided: '已撤銷' }, status);
+const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收（多出部分未入帳）', overpayment_pending_review: '多收', voided: '已撤銷', refunded: '已退費' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
   unpaid: 'chip--danger',
@@ -1183,7 +1205,8 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-receipts{display:grid;gap:8px}
 .ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-border);border-radius:10px}
-.ledger-receipt-toggle{margin-top:0;font-size:12px}
+.ledger-receipt .ledger-more,.ledger-receipt .billing-notes{margin-top:0}
+.ledger-receipt .ledger-receipt-toggle,.ledger-receipt :deep(.billing-notes__toggle){font-size:13px}
 .ledger-receipt-coverage{flex-basis:100%;padding-top:0}
 .ledger-receipt-extra{flex-basis:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
