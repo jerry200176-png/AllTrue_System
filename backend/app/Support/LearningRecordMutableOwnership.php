@@ -121,7 +121,7 @@ final class LearningRecordMutableOwnership
     public static function lockedResponse(): JsonResponse
     {
         return response()->json([
-            'message' => '這堂已有老師寫的評量，老師不能改；要改請先作廢評量',
+            'message' => '這堂已有老師寫的評量，老師不能改；要改請先刪除這筆評量（已核准的先退回待審）',
             'code' => 'approved_assessment_teacher_locked',
         ], 409);
     }

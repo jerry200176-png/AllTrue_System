@@ -12,7 +12,7 @@ class ApprovedAssessmentTeacherLockedException extends ConflictHttpException
 {
     public function __construct(public readonly int $classSessionId, public readonly int $authorTeacherId, string $authorName)
     {
-        parent::__construct("這堂已有 {$authorName} 老師寫的評量，老師不能改；要改請先作廢評量");
+        parent::__construct("這堂已有 {$authorName} 老師寫的評量，老師不能改；要改請先刪除這筆評量（已核准的先退回待審）");
     }
 
     /** @return array<string, mixed> */

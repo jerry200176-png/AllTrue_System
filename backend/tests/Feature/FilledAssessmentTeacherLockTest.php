@@ -208,7 +208,7 @@ class FilledAssessmentTeacherLockTest extends TestCase
     {
         $r->assertStatus(409)->assertJsonPath('code', 'approved_assessment_teacher_locked');
         $this->assertStringContainsString('已有', (string) $r->json('message'));
-        $this->assertStringContainsString('作廢評量', (string) $r->json('message'));
+        $this->assertStringContainsString('刪除這筆評量', (string) $r->json('message'));
     }
 
     /** @return array{0: ClassSession, 1: LearningRecord} filled but unapproved, by teacher A */
