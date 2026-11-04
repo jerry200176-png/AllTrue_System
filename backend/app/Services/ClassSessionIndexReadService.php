@@ -114,6 +114,7 @@ class ClassSessionIndexReadService
                 'lr.id as learning_record_id',
                 'lr.Status as learning_record_status',
                 'lr.TeacherID as learning_record_teacher_id',
+                'lru.Name as learning_record_teacher_name',
                 'lr.Progress as learning_record_progress',
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
@@ -266,10 +267,13 @@ class ClassSessionIndexReadService
         $row->learning_record_status = $row->learning_record_status ?? 'missing';
         $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
         $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
-        // in-app #499: the author of a filled, approved assessment is the lesson's teacher, whatever a stray pin says.
-        if ($row->learning_record_body_filled && strtolower((string) $row->learning_record_status) === 'approved' && $row->learning_record_teacher_id) {
+        // in-app #499: the author of a teacher-filled assessment (approved or not) is the lesson's teacher, whatever a stray pin says.
+        $row->teacher_locked_to_author = $row->learning_record_body_filled && $row->learning_record_teacher_id > 0;
+        if ($row->teacher_locked_to_author) {
             $row->teacher_id = $row->learning_record_teacher_id;
+            $row->teacher_name = (string) ($row->learning_record_teacher_name ?? $row->teacher_name ?? '');
         }
+        unset($row->learning_record_teacher_name);
         $row->has_learning_record_history = (bool) ($row->learning_record_history ?? false);
         $row->has_attendance_history = (bool) ($row->attendance_history ?? false);
         $row->recoverable_cancelled = strtolower((string) ($row->Status ?? '')) === 'cancelled'

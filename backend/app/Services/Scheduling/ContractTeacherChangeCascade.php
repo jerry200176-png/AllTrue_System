@@ -141,6 +141,7 @@ final class ContractTeacherChangeCascade
                 continue;
             }
             try {
+                LearningRecordMutableOwnership::assertLessonTeacherUnlocked((int) $row->id, $teacherId, true);
                 $writer->pinTaughtTeacher($session, $teacherId, $actorId, $conflict ? 'pin_conflict' : 'pin');
             } catch (ApprovedAssessmentTeacherLockedException $e) {
                 $skipped[] = (int) $row->id; // in-app #499: the approved author keeps the lesson; the batch goes on
@@ -240,7 +241,7 @@ final class ContractTeacherChangeCascade
                 continue;
             }
             try {
-                LearningRecordMutableOwnership::assertLessonTeacherUnlocked((int) $session->id, $taughtBy); // in-app #499
+                LearningRecordMutableOwnership::assertLessonTeacherUnlocked((int) $session->id, $taughtBy, true); // in-app #499
             } catch (ApprovedAssessmentTeacherLockedException $e) {
                 $skipped[] = (int) $session->id;
                 continue;

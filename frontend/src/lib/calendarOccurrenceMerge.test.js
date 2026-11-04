@@ -648,3 +648,18 @@ assert.equal(
   const legacy = { id: 1, student_id: 9, student_name: 'x', day_of_week: 5, start_time: '18:00' };
   assert.equal(dedupeCalendarRowsByStudentSlot([legacy, { ...legacy, id: 2 }]).length, 1);
 }
+
+// in-app #499: a stray pin over a lesson whose assessment a teacher filled must not relabel the lesson.
+{
+  const lockedRows = merge({
+    courses: [substituteVisibilityCourse],
+    allCourses: [substituteVisibilityCourse],
+    weekDatesByDow: weekWithSundaySession,
+    sessionDatesByCourseId: {
+      503: [{ ...substituteVisibilitySessions[503][0], teacher_id: 41, teacher_name: '作者', teacher_locked_to_author: true }],
+    },
+    exceptions: substituteVisibilityExceptions,
+  });
+  assert.equal(lockedRows.length, 1);
+  assert.equal(String(lockedRows[0].teacher_id), '41', 'the assessment author keeps the lesson over a stray pin');
+}

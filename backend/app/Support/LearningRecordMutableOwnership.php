@@ -33,9 +33,15 @@ final class LearningRecordMutableOwnership
     public static function isFilledAndApproved(LearningRecord $record): bool
     {
         // Approved status alone is enough: legacy/imported approved rows may lack ApprovedAt (review r4247040043).
-        if (strtolower(trim((string) $record->getAttribute('Status'))) !== 'approved') {
-            return false;
-        }
+        return strtolower(trim((string) $record->getAttribute('Status'))) === 'approved' && self::isFilledByTeacher($record);
+    }
+
+    /**
+     * Founder: 「哪個老師填的要鎖死」. A real teacher-written body (approved or not) locks the lesson to its author;
+     * blank / placeholder / system back-fill / auto-approval rows do not.
+     */
+    public static function isFilledByTeacher(LearningRecord $record): bool
+    {
         if (self::isSystemFillContent((string) $record->getAttribute('Content'))) {
             $record = clone $record;
             $record->setAttribute('Content', '');
@@ -75,14 +81,17 @@ final class LearningRecordMutableOwnership
     }
 
     /**
-     * The one domain guard every teacher-relabel writer routes through (in-app #499): refuses when the session's non-voided,
-     * filled+approved assessment was written by a teacher other than $newTeacherId. Batch callers catch and skip.
+     * The one domain guard every teacher-relabel writer routes through (in-app #499): refuses when the session's non-voided
+     * assessment (approved; with $anyFilled any teacher-filled body, for automatic passes) was written by a teacher other than
+     * $newTeacherId. Batch callers catch and skip. Director edits keep the #3824 rule: an unapproved body is snapshotted, not locked.
      */
-    public static function assertLessonTeacherUnlocked(int $classSessionId, int $newTeacherId): void
+    public static function assertLessonTeacherUnlocked(int $classSessionId, int $newTeacherId, bool $anyFilled = false): void
     {
-        $locked = self::protectedRecordForSession($classSessionId);
-        if ($locked !== null && (int) $locked->TeacherID > 0 && (int) $locked->TeacherID !== $newTeacherId) {
-            Log::warning('lesson teacher locked to approved assessment author', [
+        $q = LearningRecord::query()->where('ClassSessionID', $classSessionId)->whereNull('VoidedAt');
+        $locked = $classSessionId > 0 ? $q->first() : null;
+        $isLocked = $locked && ($anyFilled ? self::isFilledByTeacher($locked) : self::isFilledAndApproved($locked));
+        if ($isLocked && (int) $locked->TeacherID > 0 && (int) $locked->TeacherID !== $newTeacherId) {
+            Log::warning('lesson teacher locked to assessment author', [
                 'class_session_id' => $classSessionId, 'author_teacher_id' => (int) $locked->TeacherID, 'attempted_teacher_id' => $newTeacherId,
             ]);
             throw new ApprovedAssessmentTeacherLockedException($classSessionId, (int) $locked->TeacherID, $newTeacherId);
