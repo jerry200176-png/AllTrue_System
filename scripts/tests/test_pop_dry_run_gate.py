@@ -17,6 +17,7 @@ SPLIT = {
     "pop-contract-charge-correction-3868.yml": "repair",
     "pop-duplicate-attended-cancel.yml": "cancel",
     "pop-forward-extra-cancel.yml": "cancel",
+    "pop-duplicate-history-pin-repair.yml": "cancel",
     "pop-forward-overdeduct-reassign.yml": "reassign",
     "pop-founder-scoped-repair.yml": "repair",
     "pop-invoice-header-item-repair.yml": "repair",

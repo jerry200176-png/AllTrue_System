@@ -65,6 +65,7 @@ pop-muzha-chen-billing-catchup.yml
 pop-package-ledger-net-repair-4455.yml
 pop-duplicate-attended-cancel.yml
 pop-forward-extra-cancel.yml
+pop-duplicate-history-pin-repair.yml
 pop-forward-overdeduct-reassign.yml
 pop-past-scheduled-cancel.yml
 pop-td076-occurrence-repairs.yml
