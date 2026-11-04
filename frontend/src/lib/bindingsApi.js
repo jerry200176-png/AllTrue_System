@@ -72,7 +72,7 @@ export async function unbindBinding(id) {
 
 /* ── P2-2：衝突審查 ───────────────────────────────────────────── */
 
-/** 衝突清單。@returns {Promise<{ data?: Array }>} */
+/** 衝突清單。@returns {Promise<{ conflicts: Array }>} */
 export async function fetchBindingConflicts({ campusId } = {}) {
   const params = new URLSearchParams();
   if (campusId) params.set('campus_id', String(campusId));
@@ -82,15 +82,17 @@ export async function fetchBindingConflicts({ campusId } = {}) {
 }
 
 /**
- * 解決衝突：保留 keepBindingId 綁定、撤除同一學生的另一綁定。
+ * 解決衝突。action=keep（僅 super_admin）保留 bindingId、撤除其餘跨校綁定；
+ * action=delete 只解除 bindingId。
  * @param {number|string} conflictId
- * @param {number|string} keepBindingId
+ * @param {number|string} bindingId
+ * @param {'keep'|'delete'} action
  */
-export async function resolveBindingConflict(conflictId, keepBindingId) {
+export async function resolveBindingConflict(conflictId, bindingId, action = 'keep') {
   const res = await fetch(`${API}/bindings/conflicts/${conflictId}/resolve`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ keep_binding_id: keepBindingId }),
+    body: JSON.stringify({ action, binding_id: bindingId }),
   });
   return parse(res);
 }
