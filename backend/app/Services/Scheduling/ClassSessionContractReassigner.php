@@ -4,7 +4,6 @@ namespace App\Services\Scheduling;
 
 use App\Models\ClassSession;
 use App\Models\ClassSessionReassignment;
-use App\Models\LearningRecord;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;

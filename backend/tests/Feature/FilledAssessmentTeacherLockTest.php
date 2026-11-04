@@ -125,18 +125,25 @@ class FilledAssessmentTeacherLockTest extends TestCase
         $this->api()->postJson("/api/v1/class-sessions/{$future->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
     }
 
-    public function test_a_teacher_comment_alone_locks_and_a_director_can_unlock_by_deleting_the_unapproved_record(): void
+    public function test_a_director_comment_on_a_blank_record_does_not_lock(): void
     {
         $s = $this->mkSession();
         $lr = LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
             'Content' => '', 'Status' => 'pending', 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
         DB::table('learning_record_teacher_comments')->insert([
             'learning_record_id' => $lr->id, 'student_id' => $this->sc->StudentID, 'student_class_id' => $this->sc->ID, 'class_session_id' => $s->id,
-            'teacher_id' => $this->aId, 'campus_id' => 1, 'author_user_id' => $this->aId, 'content' => '給家長的話', 'created_at' => now(), 'updated_at' => now(),
+            'teacher_id' => $this->aId, 'campus_id' => 1, 'author_user_id' => $this->aId, 'content' => 'note', 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $this->assertLockedResponse($this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId]));
-        $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}")->assertOk();
-        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+    }
+
+    public function test_undo_is_allowed_when_it_restores_the_assessment_author(): void
+    {
+        [$s, $lr] = $this->filled();
+        $n = \App\Models\Notification::create(['Title' => 't', 'SourceKey' => 'k', 'Type' => 'substitute', 'SourceType' => 'ClassSession', 'SourceID' => $s->id, 'Payload' => ['old_teacher_id' => $this->bId, 'new_teacher_id' => $this->aId, 'operator_id' => 0]]);
+        $this->assertLockedResponse($this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo", []));
+        $n->update(['Payload' => ['old_teacher_id' => $this->aId, 'new_teacher_id' => $this->bId, 'operator_id' => 0]]);
+        $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute/undo", [])->assertStatus(200);
     }
 
     public function test_approved_assessment_stays_locked_and_must_be_rolled_back_then_deleted_to_correct(): void

@@ -47,19 +47,18 @@ final class LearningRecordMutableOwnership
             $record->setAttribute('Content', '');
         }
 
-        return self::hasSubstantiveTeacherContent($record);
+        return self::hasSubstantiveTeacherContent($record, false); // a director comment is not the teacher's evaluation
     }
 
     /** SQL twin of isFilledByTeacher() for read models (kept in step by LockedLessonTeacherGuardTest). */
     public static function filledByTeacherSql(string $lr): string
     {
-        $c = "TRIM(COALESCE({$lr}.Content, ''))";
+        // Strip all PHP trim() whitespace (space, \n, \r, \t) so a whitespace-only body is blank here too.
+        $strip = fn (string $col) => "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE({$lr}.{$col}, ''), CHAR(10), ''), CHAR(13), ''), CHAR(9), ''), ' ', '')";
+        $c = $strip('Content');
         $parts = ["({$c} NOT IN ('', '（評量表）', '（系統自動核准）', '補登／納入科目數') AND {$c} NOT LIKE '（系統補登%')"];
         foreach (['Progress', 'NextHomework', 'NextWeekTestScope', 'QuizScore', 'HomeworkStatus', 'Performance', 'Comment', 'AttachmentUrl'] as $col) {
-            $parts[] = "TRIM(COALESCE({$lr}.{$col}, '')) <> ''";
-        }
-        if (Schema::hasTable('learning_record_teacher_comments')) {
-            $parts[] = "EXISTS (SELECT 1 FROM learning_record_teacher_comments lrtc_f WHERE lrtc_f.learning_record_id = {$lr}.id)";
+            $parts[] = $strip($col) . " <> ''";
         }
 
         return '(' . implode(' OR ', $parts) . ')';
@@ -217,7 +216,7 @@ final class LearningRecordMutableOwnership
         return false;
     }
 
-    public static function hasSubstantiveTeacherContent(LearningRecord $record): bool
+    public static function hasSubstantiveTeacherContent(LearningRecord $record, bool $countDirectorComment = true): bool
     {
         $content = trim((string) ($record->getAttribute('Content') ?? ''));
         if ($content !== '' && !in_array($content, self::PLACEHOLDER_CONTENT, true)) {
@@ -230,6 +229,9 @@ final class LearningRecordMutableOwnership
         }
         if (trim((string) ($record->getAttribute('AttachmentUrl') ?? '')) !== '') {
             return true;
+        }
+        if (!$countDirectorComment) {
+            return false;
         }
         if ($record->relationLoaded('teacherComment')) {
             return $record->getRelation('teacherComment') !== null; // #3059: list pages preload it

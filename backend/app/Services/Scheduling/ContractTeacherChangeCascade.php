@@ -223,7 +223,7 @@ final class ContractTeacherChangeCascade
                 continue;
             }
 
-            // Pin who actually taught (attendance sign-in, else a filled+approved assessment); only a slot with no
+            // Pin who actually taught (attendance sign-in, else a teacher-filled assessment); only a slot with no
             // evidence falls back to the former contract teacher. The new contract teacher needs no pin.
             $taughtBy = self::evidencedTeacherId((int) $session->id) ?: $oldTeacherId;
             if ($taughtBy === $newTeacherId) {
@@ -287,7 +287,7 @@ final class ContractTeacherChangeCascade
         }
 
         $today = Carbon::today()->toDateString();
-        // #3824: an occurrence whose assessment is filled AND approved keeps its occurrence teacher (pin / substitute rows).
+        // #3824: an occurrence whose assessment a teacher has filled (approved or not) keeps its occurrence teacher (pin / substitute rows).
         $locked = LearningRecordMutableOwnership::protectedSlots($courseId, $today);
 
         Schedule::where('student_course_id', $courseId)
