@@ -99,6 +99,14 @@ final class ContractChargeCorrectionStrategyTest extends TestCase
             $plan = (new ContractChargeCorrectionStrategy())->plan(['decision_reference' => 'repair-contract-charge-472-20261104']);
             self::assertSame(['course_2525_bills_not_settled_at_rate_times_quantity'], $plan['errors'], "$total/$paid/$report");
         }
+        // Codex: a 4400 void posting under a bill that kept Status=paid nets 79200, not 83600.
+        foreach (['payment_reports', 'Payment', 'Invoice'] as $t) DB::table($t)->delete();
+        DB::table('StudentClass')->where('ID', 2525)->delete();
+        DB::table('Student')->where('id', 2525)->delete();
+        $this->billed2525();
+        DB::table('Payment')->insert(['InvoiceID' => 2466, 'Amount' => 4400, 'PaidAt' => now(), 'Method' => 'void', 'created_at' => now()]);
+        self::assertSame(['course_2525_bills_not_settled_at_rate_times_quantity'],
+            (new ContractChargeCorrectionStrategy())->plan(['decision_reference' => 'repair-contract-charge-472-20261104'])['errors']);
     }
 
     public function test_4138_manifest_sets_the_total_from_the_keyed_lesson_price_and_reverses(): void
