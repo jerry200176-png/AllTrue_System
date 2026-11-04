@@ -296,7 +296,6 @@ class SubstituteController extends Controller
                 }
                 $lrRow = $lrRowQuery->first();
                 if ($lrRow && $oldTeacherId > 0) {
-                    \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, $oldTeacherId, $currentOperatorId ?: null, '代課撤銷（Undo）');
                     $lrUpdate = [
                         'TeacherID' => $oldTeacherId,
                         'updated_at' => now(),
@@ -373,6 +372,8 @@ class SubstituteController extends Controller
             return response()->json($e->toResponseArray(), 422);
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
             return $e->getResponse(); // #3824 transactional recheck: keep the 409
+        } catch (\App\Exceptions\ApprovedAssessmentTeacherLockedException $e) {
+            return response()->json($e->toResponseArray(), 409);
         } catch (\Throwable $e) {
             Log::error('[substitute_undo] failed', [
                 'class_session_id' => $classSessionId,

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-lesson-teacher-locked
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 評量寫好老師就鎖住
+    summary: 老師寫了評量（不論核准與否），那堂課的老師就會鎖住，不會再被改成別人。
+    items:
+      - category: fixed
+        text: 換合約老師、代課、改評量老師，都不會改掉已寫評量的老師；行事曆也顯示寫評量的老師。
+      - category: improved
+        text: 想改老師時，畫面會提示先刪除這筆評量；已核准的先退回待審。
+    source_refs:
+      - "changelog:2026-11-04:lesson-teacher-locked"
