@@ -39,6 +39,16 @@ class AdditiveMigrationGate(unittest.TestCase):
         return classify_scope(list(paths), patch, True)["machine_minimum_tier"], \
             classify_activation_scope(list(paths), patch, True)["machine_minimum_tier"]
 
+    def test_additive_migration_with_test_only_marker_path_stays_t2(self):  # #4082
+        test = "backend/tests/Feature/InvoiceMigrationTest.php"
+        self.assertEqual(self.tiers(new_file(MIG, ADD), (MIG, test))[0], 2)
+
+    def test_bug_dump_request_files_are_not_docs_only(self):  # #3964
+        for name in ("bug-queue-dump", "bug-detail-dump"):
+            path = f"operations/closeout/{name}.request.md"
+            self.assertEqual(classify_scope([path], "")["machine_minimum_tier"], 1)
+        self.assertEqual(classify_scope(["operations/closeout/other.request.md"], "")["machine_minimum_tier"], 0)
+
     def test_add_column_and_create_table_are_t2(self):
         for body in (ADD, CREATE):
             patch = new_file(MIG, body)
