@@ -42,6 +42,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -108,7 +109,7 @@ async function runSearch() {
   }
   const my = ++seq;
   try {
-    const res = await fetch(`/api/v1/schools?q=${encodeURIComponent(q)}&limit=12`, {
+    const res = await trackedFetch(`/api/v1/schools?q=${encodeURIComponent(q)}&limit=12`, {
       headers: {
         Authorization: `Bearer ${props.authToken}`,
         Accept: 'application/json',

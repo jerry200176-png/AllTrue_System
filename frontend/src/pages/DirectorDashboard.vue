@@ -387,6 +387,7 @@ import { parseInboxCount } from '../lib/actionInboxContract.js';
 import { buildDirectorDashboardTasks, isLiveScheduleRow } from '../lib/directorDashboardTasks.js';
 import { runDashboardLoaders } from '../lib/dashboardLoadPlan.js';
 import { isUserEngagementRankDisplayEnabled } from '../lib/userEngagementDisplay';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -542,7 +543,7 @@ async function loadAdoptionTaskTracker(token, baseUrl) {
   adoptionTaskLoading.value = true;
   try {
     const params = new URLSearchParams({ branch_id: String(props.branchId) });
-    const res = await fetch(`${baseUrl}/v1/adoption/task-tracker?${params}`, {
+    const res = await trackedFetch(`${baseUrl}/v1/adoption/task-tracker?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) return;
@@ -560,7 +561,7 @@ async function loadAdoptionActivityLog(token, baseUrl) {
   adoptionActivityLoading.value = true;
   try {
     const params = new URLSearchParams({ branch_id: String(props.branchId) });
-    const res = await fetch(`${baseUrl}/v1/adoption/activity-log?${params}`, {
+    const res = await trackedFetch(`${baseUrl}/v1/adoption/activity-log?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) return;
@@ -578,7 +579,7 @@ async function loadAdoptionWeeklyMetrics(token, baseUrl) {
   adoptionWeeklyMetricsLoading.value = true;
   try {
     const params = new URLSearchParams({ branch_id: String(props.branchId) });
-    const res = await fetch(`${baseUrl}/v1/adoption/weekly-metrics?${params}`, {
+    const res = await trackedFetch(`${baseUrl}/v1/adoption/weekly-metrics?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) return;
@@ -1413,7 +1414,7 @@ const approveEvaluation = async (evalItem) => {
   const token = getToken();
   const baseUrl = getBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/v1/learning-records/${evalItem.id}/approve`, {
+    const res = await trackedFetch(`${baseUrl}/v1/learning-records/${evalItem.id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({}),
@@ -1432,7 +1433,7 @@ const rejectEvaluation = async (evalItem) => {
   const token = getToken();
   const baseUrl = getBaseUrl();
   try {
-    await fetch(`${baseUrl}/v1/learning-records/${evalItem.id}/reject`, {
+    await trackedFetch(`${baseUrl}/v1/learning-records/${evalItem.id}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ ReviewNote: note }),
@@ -1479,7 +1480,7 @@ const copyPaymentMessage = async (student) => {
   }
 
   try {
-    const res = await fetch(`${baseUrl}/v1/parent/payment-message/${studentId}`, {
+    const res = await trackedFetch(`${baseUrl}/v1/parent/payment-message/${studentId}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     const data = await res.json();

@@ -371,6 +371,7 @@ import AtHelpDisclosure from './design-system/AtHelpDisclosure.vue';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import PaymentEntryModal from './PaymentEntryModal.vue';
 import PaymentAllocation from './tuition/PaymentAllocation.vue';
+import { trackedFetch } from '../lib/loadingBar';
 import {
   canShowReceiptCoverage,
   coverageFromReceipt,
@@ -518,7 +519,7 @@ async function loadCoverage(kind, id) {
     const token = getToken();
     if (!token) throw new Error('no_token');
     const url = kind === 'inv' ? invoiceCoverageUrl(id) : receiptCoverageUrl(id);
-    const resp = await fetch(url, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
+    const resp = await trackedFetch(url, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
     if (!resp.ok) throw new Error(`coverage_${resp.status}`);
     const json = await resp.json();
     const sessions = kind === 'inv' ? coverageFromSlip(json) : coverageFromReceipt(json, id);
@@ -559,7 +560,7 @@ async function loadLedger() {
     if (studentId && !studentClassId && !reportId) params.set('student_id', String(studentId));
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
 
-    const resp = await fetch(`/api/v1/accounting/ledger?${params}`, {
+    const resp = await trackedFetch(`/api/v1/accounting/ledger?${params}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     const json = await resp.json().catch(() => ({}));
@@ -852,7 +853,7 @@ async function loadDrafts() {
     if (!token) return;
     const params = new URLSearchParams({ month: todayStr().slice(0, 7) });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
-    const resp = await fetch(`/api/v1/accounting/monthly-drafts?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
+    const resp = await trackedFetch(`/api/v1/accounting/monthly-drafts?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok || !Array.isArray(json.data)) return;
     drafts.value = Object.fromEntries(json.data

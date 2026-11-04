@@ -64,6 +64,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
 import { supabase } from '../../supabase';
+import { trackedFetch } from '../../lib/loadingBar';
 
 const props = defineProps({
   show: Boolean,
@@ -109,7 +110,7 @@ async function run(previewOnly) {
   error.value = '';
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`/api/v1/student-classes/${props.courseId}/split-contract${previewOnly ? '/preview' : ''}`, {
+    const res = await trackedFetch(`/api/v1/student-classes/${props.courseId}/split-contract${previewOnly ? '/preview' : ''}`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },

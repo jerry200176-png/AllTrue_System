@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 import { resolveSessionIdForSubstitute } from '../../lib/classSessionPick.js';
 import { undoSubstitute } from '../../lib/substituteApi.js';
+import { trackedFetch } from '../../lib/loadingBar';
 
 const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
 
@@ -149,7 +150,7 @@ export function useCalendarSubstitute({
       const token = session?.access_token || '';
       if (!token) { alert('請重新登入'); return; }
 
-      const res = await fetch(`/api/v1/class-sessions/${substituteForm.value.session_id}/substitute`, {
+      const res = await trackedFetch(`/api/v1/class-sessions/${substituteForm.value.session_id}/substitute`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -256,7 +257,7 @@ export function useCalendarSubstitute({
         body.new_start_time = new_start_time;
         body.new_end_time = new_end_time;
       }
-      const res = await fetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
+      const res = await trackedFetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${tkn}` },
         body: JSON.stringify(body),

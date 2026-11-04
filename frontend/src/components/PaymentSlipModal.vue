@@ -53,6 +53,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import BillingDocument from './BillingDocument.vue';
 import { paymentSlipView } from '../lib/billingDocumentView.js';
 import { trapTab } from '../lib/focusTrap';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   show: Boolean,
@@ -77,7 +78,7 @@ function getToken() {
 }
 
 async function fetchInvoiceSlip(id) {
-  const resp = await fetch(`/api/v1/invoices/${id}/slip-data`, {
+  const resp = await trackedFetch(`/api/v1/invoices/${id}/slip-data`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
   });
   if (!resp.ok) {
@@ -92,7 +93,7 @@ async function fetchInvoiceSlip(id) {
 }
 
 async function fetchTuitionSlip(scId) {
-  const resp = await fetch(`/api/v1/alerts/tuition-slip/${scId}`, {
+  const resp = await trackedFetch(`/api/v1/alerts/tuition-slip/${scId}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
   });
   if (!resp.ok) {

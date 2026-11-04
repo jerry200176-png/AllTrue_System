@@ -104,6 +104,7 @@ import {
 import { receiptImageBlob } from '../lib/receiptImage.js';
 import { receiptView } from '../lib/billingDocumentView.js';
 import BillingDocument from './BillingDocument.vue';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   show: Boolean,
@@ -160,7 +161,7 @@ async function loadReceipt() {
   }
 
   try {
-    const resp = await fetch(paymentReportReceiptUrl(reportId), {
+    const resp = await trackedFetch(paymentReportReceiptUrl(reportId), {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     if (!resp.ok) throw await parseError(resp);

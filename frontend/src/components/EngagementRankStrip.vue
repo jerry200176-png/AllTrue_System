@@ -63,6 +63,7 @@
 import { computed, ref } from 'vue';
 import { rankTierProgress, xpRemainingToNext } from '../lib/engagementRankProgress';
 import RocRankBadge from './RocRankBadge.vue';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
   overlayZIndex: { type: Number, default: 10000 },
@@ -116,7 +117,7 @@ async function loadRankOverview() {
   rankOverviewError.value = '';
   try {
     const token = extractToken();
-    const res = await fetch('/api/v1/engagement/rank-thresholds', {
+    const res = await trackedFetch('/api/v1/engagement/rank-thresholds', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {

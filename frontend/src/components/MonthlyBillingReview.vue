@@ -4,6 +4,7 @@ import AtButton from './design-system/AtButton.vue';
 import AtEmpty from './design-system/AtEmpty.vue';
 import AtInlineAlert from './design-system/AtInlineAlert.vue';
 import AtSkeleton from './design-system/AtSkeleton.vue';
+import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({ branchId: { type: [Number, String], default: null } });
 const emit = defineEmits(['ledger', 'navigate']);
@@ -32,7 +33,7 @@ async function reload() {
     const params = new URLSearchParams({ schedule_mode: 'date', status: 'active', per_page: '100', page: String(page.value) });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(props.branchId));
     if (appliedName.value) params.set('name', appliedName.value);
-    const response = await fetch(`/api/v1/student-classes?${params}`, {
+    const response = await trackedFetch(`/api/v1/student-classes?${params}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal,
     });
     if (!response.ok) throw new Error(`月結核對資料載入失敗（${response.status}）`);
