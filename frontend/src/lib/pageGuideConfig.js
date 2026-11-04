@@ -521,7 +521,7 @@ const pageGuideConfig = {
       target: '[data-guide="tuition-rows"]',
       icon: 'payments',
       title: '收到錢：登記收款',
-      description: '按「登記收款」，填付款方式和收據編號。家長自己回報的會顯示「待確認入帳」，核對無誤再按「確認入帳」。',
+      description: '按「登記收款」，填日期、方式、金額。你登記的和家長回報的都會先變「待確認入帳」，核對後按「確認入帳」才算收到。',
       placement: 'top',
     },
     {

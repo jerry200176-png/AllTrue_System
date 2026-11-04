@@ -7,7 +7,7 @@
       data-guide="tuition-header"
     >
       <template #actions>
-        <AtButton variant="secondary" shape="rect" icon="help" @click="$emit('start-guide')">操作導覽</AtButton>
+        <AtButton variant="secondary" shape="rect" icon="help" @click="startGuide">操作導覽</AtButton>
         <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
         <AtButton
           variant="secondary"
@@ -1173,6 +1173,13 @@ function defaultAccountingFilters() {
 function openReceiptByReport(reportId) {
   receiptReportId.value = Number(reportId);
   receiptOpen.value = true;
+}
+
+// The guide's steps point at the student list; other tabs don't render it, and the tour drops absent targets (Codex P2 on #4889).
+async function startGuide() {
+  activeAccountingTab.value = 'students';
+  await nextTick();
+  emit('start-guide');
 }
 
 function refreshActiveTab() {
