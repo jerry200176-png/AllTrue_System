@@ -1,6 +1,6 @@
 <template>
   <AtDialog
-    :open="!!state"
+    :open="live && !!state"
     :title="state?.title || ''"
     title-id="confirm-dialog-title"
     size="sm"
@@ -23,8 +23,14 @@
 
 <script setup>
 // Destructive confirms start on 取消 (safe default); other confirms start on the action button.
+import { ref, onActivated, onDeactivated } from 'vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import { confirmState as state, settleConfirm } from '../../composables/useConfirmDialog';
+
+// Every page has a host on the shared confirmState; a hidden kept-alive page's host must not open too (Codex P2 on #4894).
+const live = ref(true);
+onActivated(() => { live.value = true; });
+onDeactivated(() => { live.value = false; });
 </script>
 
 <style scoped>
