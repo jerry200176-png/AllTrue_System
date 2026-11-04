@@ -99,10 +99,16 @@ class ScheduleGuardService
             foreach ($byDate ?: [[]] as $dateOverlaps) {
                 $overlaps = array_merge($recurringOverlaps, $dateOverlaps);
                 $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps, $trialTarget);
+                if ($tc) {
+                    $tc = $this->nameOwnRetainedLesson($tc, $classType, $slot, $overlaps, $excludeStudentClassId, $excludeStudentId, $trialTarget);
+                }
                 if ($tc && (!$teacherConflict || ($tc['current_students'] ?? 0) > ($teacherConflict['current_students'] ?? 0))) {
                     $teacherConflict = $tc;
                 }
                 $rc = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
+                if ($rc) {
+                    $rc = $this->nameOwnRetainedLesson($rc, $classType, $slot, $overlaps, $excludeStudentClassId, $excludeStudentId, $trialTarget);
+                }
                 if ($rc && (!$roomConflict || ($rc['current_students'] ?? 0) > ($roomConflict['current_students'] ?? 0))) {
                     $roomConflict = $rc;
                 }
@@ -959,6 +965,42 @@ class ScheduleGuardService
         }
 
         return $slots;
+    }
+
+    /**
+     * In-app #498: when the edited course's own retained lesson is what fills the slot (without it the slot is under
+     * the limit), keep the conflict and its type but say so, instead of claiming the slot is full. Blocking is unchanged.
+     *
+     * @param  array<string, mixed>  $conflict
+     * @param  array<int, array<string, mixed>>  $overlaps
+     * @return array<string, mixed>
+     */
+    private function nameOwnRetainedLesson(array $conflict, string $classType, array $slot, array $overlaps, ?int $ownCourseId, ?int $ownStudentId, ?string $trialTarget): array
+    {
+        if (!$ownCourseId && !$ownStudentId) {
+            return $conflict;
+        }
+        $isOwn = fn ($e) => ($ownCourseId && (int) ($e['course_id'] ?? $e['source_id'] ?? 0) === $ownCourseId && ($e['source'] ?? '') !== 'student_class')
+            || ($ownStudentId && (int) ($e['student_id'] ?? 0) === $ownStudentId);
+        $own = array_values(array_filter($overlaps, $isOwn));
+        $dated = array_values(array_filter($own, fn ($e) => !empty($e['schedule_date'])));
+        if (!$dated) {
+            return $conflict;
+        }
+        $others = array_values(array_filter($overlaps, fn ($e) => !$isOwn($e)));
+        if (($conflict['type'] ?? '') === 'room_capacity') {
+            $roomId = (int) ($conflict['room_id'] ?? 0);
+            $stillFull = $this->countDistinctStudents(array_values(array_filter($others, fn ($e) => (int) ($e['room_id'] ?? 0) === $roomId))) >= (int) ($conflict['allowed_students'] ?? 0);
+        } else {
+            $stillFull = !$this->teacherCapacityDecision($classType, $slot, $this->withTrialTargets(array_values(array_filter($others, fn ($e) => $e['teacher_occupancy'] ?? true))), $trialTarget)['allowed'];
+        }
+        if ($stillFull) {
+            return $conflict;
+        }
+        $e = $dated[0];
+        $conflict['message'] = sprintf('這門課自己在 %s 還有一堂 %s-%s 沒有跟著改（已鎖定、例外或補課），會和新時段重疊。請先改那一堂，再改固定時段。', $e['schedule_date'], $e['start_time'], $e['end_time']);
+
+        return $conflict;
     }
 
     /**
