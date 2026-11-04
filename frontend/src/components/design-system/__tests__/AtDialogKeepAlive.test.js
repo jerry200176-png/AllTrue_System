@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h, ref, KeepAlive } from 'vue';
 import AtDialog from '../AtDialog.vue';
+import ActionMenu from '../../ActionMenu.vue';
 import ConfirmDialogHost from '../../course-management/ConfirmDialogHost.vue';
 import { askConfirm, settleConfirm } from '../../../composables/useConfirmDialog';
 
@@ -43,6 +44,22 @@ describe('AtDialog inside a kept-alive page', () => {
     expect(document.body.querySelectorAll('[data-testid="confirm-dialog-confirm"]')).toHaveLength(1);
     settleConfirm(false);
     await answer;
+    w.unmount();
+  });
+
+  it('an open action menu closes when its page is deactivated', async () => {
+    const Page = defineComponent({ setup: () => () => h(ActionMenu, { groups: [{ items: [{ id: 'x', label: 'X' }] }] }) });
+    const Shell = defineComponent({
+      props: { show: Boolean },
+      setup: (p) => () => h('div', [h(KeepAlive, null, { default: () => (p.show ? h(Page) : null) })]),
+    });
+    const w = mount(Shell, { props: { show: true }, attachTo: document.body });
+    await w.find('.am__trigger').trigger('click');
+    await flushPromises();
+    expect(document.body.querySelector('[role="menu"]')).not.toBeNull();
+    await w.setProps({ show: false });
+    await flushPromises();
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
     w.unmount();
   });
 });
