@@ -65,3 +65,19 @@ describe('role onboarding spotlight anchors', () => {
     expect(appSource).toContain('開始工作（返回工作台）');
   });
 });
+
+describe('tuition-collect page guide', () => {
+  it('has steps whose data-guide targets exist in the page or billing list', async () => {
+    const { resolvePageGuideSteps } = await import('../../lib/pageGuideConfig.js');
+    const steps = resolvePageGuideSteps('tuition-collect');
+    expect(steps.length).toBeGreaterThanOrEqual(5);
+    const source = pageSource('TuitionCollectionPage.vue')
+      + readFileSync(resolve(__dirname, '../tuition/StudentBillingList.vue'), 'utf8');
+    for (const step of steps) {
+      const guide = step.target.match(/^\[data-guide="(.+)"\]$/)?.[1];
+      expect(guide, `${step.title} target shape`).toBeTruthy();
+      expect(source, step.title).toContain(`data-guide="${guide}"`);
+      expect(step.title && step.description && step.icon).toBeTruthy();
+    }
+  });
+});

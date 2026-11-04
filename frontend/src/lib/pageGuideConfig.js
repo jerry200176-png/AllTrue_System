@@ -495,6 +495,51 @@ const pageGuideConfig = {
     },
   ],
 
+  'tuition-collect': [
+    {
+      target: '[data-guide="tuition-chips"]',
+      icon: 'filter_alt',
+      title: '先用上方標籤分類',
+      description: '「有未繳」是到期還沒收到的錢；「待確認入帳」是家長回報已繳，等你核對；「需續課」是堂數快用完。',
+      placement: 'bottom',
+    },
+    {
+      target: '[data-guide="tuition-chips"]',
+      icon: 'sort',
+      title: '剩餘堂數少的先處理',
+      description: '排序選「剩餘堂數（少到多）」，堂數最少的學生排最前面，可以提早寄繳費單。',
+      placement: 'bottom',
+    },
+    {
+      target: '[data-guide="tuition-rows"]',
+      icon: 'receipt_long',
+      title: '開帳單，再給家長繳費單',
+      description: '列右側出現「開帳單」就先開。開好後點進學生，用「繳費單」交給家長。',
+      placement: 'top',
+    },
+    {
+      target: '[data-guide="tuition-rows"]',
+      icon: 'payments',
+      title: '收到錢：登記收款',
+      description: '按「登記收款」，填付款方式和收據編號。家長自己回報的會顯示「待確認入帳」，核對無誤再按「確認入帳」。',
+      placement: 'top',
+    },
+    {
+      target: '[data-guide="tuition-rows"]',
+      icon: 'fact_check',
+      title: '標「需核對」的舊資料',
+      description: '舊資料標了已收，卻查不到收款。錢有收到就按「已收過，補登收款」；沒收到就按「其實沒收，改成未繳」。',
+      placement: 'top',
+    },
+    {
+      target: '[data-guide="tuition-header"]',
+      icon: 'event_repeat',
+      title: '續課在課程管理',
+      description: '到「課程管理」，在該課程按「管理課程」，再選「續課」。續課會另外建立新一期的堂數和帳單。',
+      placement: 'bottom',
+    },
+  ],
+
   'schedule-discrepancy': [
     {
       target: '.sdp-sop-card',

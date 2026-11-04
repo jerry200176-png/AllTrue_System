@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-tuition-collect-page-guide
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 收款頁新增操作導覽
+    summary: 在收款頁開啟頁面導覽，一步步看收款和續課怎麼做。
+    items:
+      - category: added
+        text: 導覽會說明未繳、待確認入帳、需續課的意思，以及開帳單、登記收款、確認入帳的順序。
+      - category: added
+        text: 也會提醒舊資料標已收但查無收款時怎麼處理，以及續課要到課程管理操作。
+    source_refs:
+      - "changelog:2026-11-04:tuition-collect-page-guide"

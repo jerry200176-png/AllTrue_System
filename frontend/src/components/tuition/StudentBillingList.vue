@@ -18,7 +18,7 @@
     <p v-if="!inPanel && !alertsFailed && rows.length && !owingCount" class="sbl__clear" data-testid="sbl-clear">本校區沒有到期未繳。</p>
     <div class="sbl__tools">
       <input v-if="!inPanel" v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="sbl-search" />
-      <div class="sbl__chips" role="group" aria-label="篩選">
+      <div class="sbl__chips" role="group" aria-label="篩選" data-guide="tuition-chips">
         <button
           v-for="(f, key) in STUDENT_FILTERS"
           :key="key"
@@ -68,7 +68,7 @@
       <div class="sbl__head" aria-hidden="true">
         <div class="sbl__cols"><span>學生</span><span class="sbl__col-now">到今天未繳</span><span>逾期</span><span>狀態</span><span>最近繳費</span></div>
       </div>
-      <ul class="sbl__list">
+      <ul class="sbl__list" data-guide="tuition-rows">
         <li v-for="r in visible" :key="r.student_id">
           <input
             v-if="batchCounts && isBatchable(r)"
