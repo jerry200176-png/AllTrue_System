@@ -1035,6 +1035,7 @@
 
     <PurchaseSessionsModal
       :show="showPurchaseModal"
+      :placement="purchaseAsSheet ? 'right' : 'center'"
       :form="purchaseForm"
       :submitting="purchaseSubmitting"
       :is-package-mode="isPackageMember(purchaseCourse)"
@@ -2439,6 +2440,7 @@ const settlementDayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
 const showPurchaseModal = ref(false);
 const purchaseCourse = ref(null);
 const purchaseSubmitting = ref(false);
+const purchaseAsSheet = ref(false); // true only for the row 續課 entry; trial/package-set keep the centered modal
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
@@ -2954,6 +2956,7 @@ function purchaseActionTitle(c) {
 }
 
 function openPurchaseModal(course) {
+  purchaseAsSheet.value = false;
   pendingMonthlyBooking.value = null;
   // in-app #374: convert-trial is count-based; never let a monthly trial fall into renew-monthly (it would copy ClassType=trial).
   if (course?.class_type === 'trial' && !isSessionMode(course)) {
@@ -3002,6 +3005,13 @@ function openPurchaseModal(course) {
 function openCommercialPurchaseEntry(course) {
   if (course?.class_type === 'trial') {
     openPurchaseModal(course);
+    return;
+  }
+  // uiux #4659 step 7: a plain lesson-count renewal opens in the right sheet (same purchase-batch form as the
+  // trial/package one); monthly and tutoring renewals keep their existing hop to 學生管理.
+  if (isSessionMode(course) && course?.payment_type !== 'monthly' && !isTutoringCourse(course)) {
+    openPurchaseModal(course);
+    purchaseAsSheet.value = true;
     return;
   }
   goToStudentsCommercial(course, 'purchase');
@@ -3161,7 +3171,7 @@ async function submitPurchaseSessions() {
       return;
     }
     showPurchaseModal.value = false;
-    await loadCourses();
+    await reloadCoursesQuietly();
     const newCourse = json?.new_course || {};
     const groupKey = course?.student_id != null ? `sid:${course.student_id}` : null;
     if (groupKey) {
