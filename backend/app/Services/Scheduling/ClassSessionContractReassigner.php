@@ -75,22 +75,7 @@ final class ClassSessionContractReassigner
             DB::table('ClassSession')->where('id', $session->id)->update(['StudentClassID' => $newId, 'updated_at' => now()]);
             DB::table('StudentSingIn')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
             DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->update(['student_class_id' => $newId]);
-            // #3824 Founder GO: a filled-but-unapproved assessment follows the new contract's teacher via snapshot + refill.
-            $lrBefore = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->lockForUpdate()->first();
-            $newContractTeacher = (int) $new->getAttribute('TeacherID');
-            // An outstanding refill (the LR was snapshotted, body still empty) follows every later transfer. Matching any snapshot,
-            // not one naming the current teacher, keeps A→B→C→D working when B and C never refilled (#4663).
-            $pendingRefill = $lrBefore && (int) $lrBefore->TeacherID !== $newContractTeacher && strtolower((string) $lrBefore->Status) !== 'approved'
-                && !LearningRecordMutableOwnership::hasSubstantiveTeacherContent($lrBefore) // B already wrote: fall through to a new snapshot
-                && DB::table('learning_record_author_snapshots')->where('learning_record_id', $lrBefore->id)->exists();
-            if ($lrBefore && ($pendingRefill || \App\Services\AssessmentAuthorSnapshot::sendBackForRefill((int) $session->id, (int) $new->getAttribute('TeacherID'), (int) $actorId ?: null, $reason))) {
-                DB::table('LearningRecord')->where('id', $lrBefore->id)->update(['TeacherID' => (int) $new->getAttribute('TeacherID')]);
-                DB::table('learning_record_teacher_changes')->insert([
-                    'learning_record_id' => (int) $lrBefore->id, 'old_teacher_id' => (int) $lrBefore->TeacherID ?: null,
-                    'new_teacher_id' => (int) $new->getAttribute('TeacherID'), 'changed_by' => (int) $actorId,
-                    'reason' => 'reassign_contract: ' . mb_substr($reason, 0, 200), 'created_at' => now(), 'updated_at' => now(),
-                ]);
-            }
+            // in-app #499: a teacher-filled assessment locks the teacher (checked above), so no snapshot / refill step remains.
             DB::table('LearningRecord')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
             ClassSession::resetSettlementLockCache();
 

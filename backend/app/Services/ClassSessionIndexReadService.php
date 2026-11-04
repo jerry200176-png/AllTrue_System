@@ -114,7 +114,9 @@ class ClassSessionIndexReadService
                 'lr.id as learning_record_id',
                 'lr.Status as learning_record_status',
                 'lr.TeacherID as learning_record_teacher_id',
+                'lru.Name as learning_record_teacher_name',
                 'lr.Progress as learning_record_progress',
+                DB::raw(\App\Support\LearningRecordMutableOwnership::filledByTeacherSql('lr') . ' as learning_record_filled'),
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
                 DB::raw('COALESCE(rbu.Name, siu.Name, "") as recorded_by_name'),
@@ -266,6 +268,14 @@ class ClassSessionIndexReadService
         $row->learning_record_status = $row->learning_record_status ?? 'missing';
         $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
         $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
+        // in-app #499: the author of a teacher-filled assessment (approved or not) is the lesson's teacher, whatever a stray pin says.
+        $row->teacher_locked_to_author = (bool) ($row->learning_record_filled ?? false) && $row->learning_record_teacher_id > 0;
+        unset($row->learning_record_filled);
+        if ($row->teacher_locked_to_author) {
+            $row->teacher_id = $row->learning_record_teacher_id;
+            $row->teacher_name = (string) ($row->learning_record_teacher_name ?? $row->teacher_name ?? '');
+        }
+        unset($row->learning_record_teacher_name);
         $row->has_learning_record_history = (bool) ($row->learning_record_history ?? false);
         $row->has_attendance_history = (bool) ($row->attendance_history ?? false);
         $row->recoverable_cancelled = strtolower((string) ($row->Status ?? '')) === 'cancelled'

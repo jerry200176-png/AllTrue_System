@@ -242,6 +242,7 @@ export function mergeWeekCalendarOccurrences({
         const scheduledForSlot = scheduledExceptionForSlot(cid, targetDate, start);
         const sessionRow = exactSessionRow(cid, targetDate, start);
         if (!leaveOnDate && scheduledForSlot && !sessionRow) continue;
+        const lockedToAuthor = !!sessionRow?.teacher_locked_to_author;
 
         const end = timeSlot?.end_time
           ? normalizeTime(timeSlot.end_time)
@@ -250,7 +251,7 @@ export function mergeWeekCalendarOccurrences({
           ...course,
           ...timeSlot,
           ...(sessionRow?.teacher_id != null ? { teacher_id: sessionRow.teacher_id, teacher_name: sessionRow.teacher_name || course.teacher_name } : {}),
-          ...(scheduledForSlot && sessionRow && !sessionSubstituteId(sessionRow) ? {
+          ...(scheduledForSlot && sessionRow && !lockedToAuthor && !sessionSubstituteId(sessionRow) ? {
             teacher_id: scheduledForSlot.teacher_id ?? timeSlot.teacher_id ?? course.teacher_id,
             teacher_name: scheduledForSlot.teacher?.username || resolveTeacherName(scheduledForSlot.teacher_id) || timeSlot.teacher_name || course.teacher_name,
             original_schedule_id: scheduledForSlot.original_schedule_id || null,
@@ -311,10 +312,13 @@ export function mergeWeekCalendarOccurrences({
       if (sessionRow && mergedByOccurrence.has(occurrenceKey)) {
         const subId = sessionSubstituteId(sessionRow);
         if (subId && String(ex.teacher_id ?? '') !== subId) continue;
+        const lockedToAuthor = !!sessionRow.teacher_locked_to_author; // in-app #499: the assessment author keeps the lesson
         putOccurrence({
           ...mergedByOccurrence.get(occurrenceKey),
-          teacher_id: ex.teacher_id,
-          teacher_name: ex.teacher?.username || resolveTeacherName(ex.teacher_id) || mergedByOccurrence.get(occurrenceKey)?.teacher_name || '未指派',
+          ...(lockedToAuthor ? {} : {
+            teacher_id: ex.teacher_id,
+            teacher_name: ex.teacher?.username || resolveTeacherName(ex.teacher_id) || mergedByOccurrence.get(occurrenceKey)?.teacher_name || '未指派',
+          }),
           original_schedule_id: ex.original_schedule_id || null,
           exception_status: statusOf(ex),
           is_exception: true,

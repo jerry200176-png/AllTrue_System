@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Exceptions\ApprovedAssessmentTeacherLockedException;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Services\SubstituteScheduleService;
@@ -9,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -31,15 +33,36 @@ final class LearningRecordMutableOwnership
     public static function isFilledAndApproved(LearningRecord $record): bool
     {
         // Approved status alone is enough: legacy/imported approved rows may lack ApprovedAt (review r4247040043).
-        if (strtolower(trim((string) $record->getAttribute('Status'))) !== 'approved') {
-            return false;
-        }
+        return strtolower(trim((string) $record->getAttribute('Status'))) === 'approved' && self::isFilledByTeacher($record);
+    }
+
+    /**
+     * Founder: 「哪個老師填的要鎖死」. A real teacher-written body (approved or not) locks the lesson to its author;
+     * blank / placeholder / system back-fill / auto-approval rows do not.
+     */
+    public static function isFilledByTeacher(LearningRecord $record): bool
+    {
         if (self::isSystemFillContent((string) $record->getAttribute('Content'))) {
             $record = clone $record;
             $record->setAttribute('Content', '');
         }
 
         return self::hasSubstantiveTeacherContent($record);
+    }
+
+    /** SQL twin of isFilledByTeacher() for read models (kept in step by LockedLessonTeacherGuardTest). */
+    public static function filledByTeacherSql(string $lr): string
+    {
+        $c = "TRIM(COALESCE({$lr}.Content, ''))";
+        $parts = ["({$c} NOT IN ('', '（評量表）', '（系統自動核准）', '補登／納入科目數') AND {$c} NOT LIKE '（系統補登%')"];
+        foreach (['Progress', 'NextHomework', 'NextWeekTestScope', 'QuizScore', 'HomeworkStatus', 'Performance', 'Comment', 'AttachmentUrl'] as $col) {
+            $parts[] = "TRIM(COALESCE({$lr}.{$col}, '')) <> ''";
+        }
+        if (Schema::hasTable('learning_record_teacher_comments')) {
+            $parts[] = "EXISTS (SELECT 1 FROM learning_record_teacher_comments lrtc_f WHERE lrtc_f.learning_record_id = {$lr}.id)";
+        }
+
+        return '(' . implode(' OR ', $parts) . ')';
     }
 
     /** System-generated markers (back-fill / auto-approval) are not a teacher-written body. */
@@ -60,7 +83,7 @@ final class LearningRecordMutableOwnership
         $lock && $q->lockForUpdate();
         $lr = $q->first();
 
-        return $lr && self::isFilledAndApproved($lr) ? $lr : null;
+        return $lr && self::isFilledByTeacher($lr) ? $lr : null;
     }
 
     /** Throws a 409 (rolls back the surrounding transaction) when the session's assessment is protected and $newTeacherId is not its teacher. */
@@ -69,6 +92,21 @@ final class LearningRecordMutableOwnership
         $locked = self::protectedRecordForSession($classSessionId, true);
         if ($locked !== null && (int) $locked->TeacherID !== $newTeacherId) {
             throw new HttpResponseException(self::lockedResponse());
+        }
+    }
+
+    /**
+     * The one domain guard every teacher-relabel writer routes through (in-app #499): refuses when the session's non-voided
+     * assessment was filled by a teacher (approved or not; Founder 「也鎖死」) other than $newTeacherId. Batch callers catch and skip.
+     */
+    public static function assertLessonTeacherUnlocked(int $classSessionId, int $newTeacherId): void
+    {
+        $locked = self::protectedRecordForSession($classSessionId, DB::transactionLevel() > 0);
+        if ($locked !== null && (int) $locked->TeacherID > 0 && (int) $locked->TeacherID !== $newTeacherId) {
+            Log::warning('lesson teacher locked to assessment author', [
+                'class_session_id' => $classSessionId, 'author_teacher_id' => (int) $locked->TeacherID, 'attempted_teacher_id' => $newTeacherId,
+            ]);
+            throw new ApprovedAssessmentTeacherLockedException($classSessionId, (int) $locked->TeacherID, (string) (DB::table('User')->where('id', (int) $locked->TeacherID)->value('Name') ?? $locked->TeacherID));
         }
     }
 
@@ -83,7 +121,7 @@ final class LearningRecordMutableOwnership
     public static function lockedResponse(): JsonResponse
     {
         return response()->json([
-            'message' => '這堂評量已填寫並核准，不能更改授課老師。如記錄有誤，請先退回核准再更正。',
+            'message' => '這堂已有老師寫的評量，老師不能改；要改請先刪除這筆評量（已核准的先退回待審）',
             'code' => 'approved_assessment_teacher_locked',
         ], 409);
     }
@@ -111,8 +149,8 @@ final class LearningRecordMutableOwnership
      */
     public static function protectedSlots(int $courseId, string $from): array
     {
-        $records = LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->where('Status', 'approved')->get()
-            ->filter(fn ($lr) => self::isFilledAndApproved($lr));
+        $records = LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->get()
+            ->filter(fn ($lr) => self::isFilledByTeacher($lr));
         $sessions = ClassSession::query()->whereIn('id', $records->pluck('ClassSessionID')->filter()->map(fn ($id) => (int) $id)->all())->get()->keyBy('id');
 
         return $records->map(function ($lr) use ($sessions) {
