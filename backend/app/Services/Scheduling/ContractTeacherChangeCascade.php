@@ -142,6 +142,18 @@ final class ContractTeacherChangeCascade
         }
     }
 
+    /** Teacher with evidence of teaching the session: non-voided attendance sign-in first, else a filled+approved assessment. 0 = no evidence. */
+    private static function evidencedTeacherId(int $sessionId): int
+    {
+        $signIn = (int) (StudentSignIn::where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->where('TeacherID', '>', 0)->orderBy('SignInDT')->value('TeacherID') ?? 0);
+        if ($signIn > 0) {
+            return $signIn;
+        }
+        $lr = LearningRecordMutableOwnership::protectedRecordForSession($sessionId);
+
+        return $lr ? (int) $lr->TeacherID : 0;
+    }
+
     /**
      * Keep past / already-taught sessions on the former contract teacher when
      * StudentClass.TeacherID changes (in-app #207).
@@ -197,16 +209,23 @@ final class ContractTeacherChangeCascade
                 continue;
             }
 
-            // Already has a substitute-style exception with a non-contract teacher → leave it.
+            // in-app #499: never add a second pin over a live one (any teacher), even when the live pin already names the
+            // new contract teacher; the occurrence resolves to the newest pin, so a duplicate would rewrite who taught.
             $existingPin = DB::table('schedules')
                 ->where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'scheduled')
                 ->whereNotNull('original_schedule_id')
                 ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->where('teacher_id', '<>', $newTeacherId)
                 ->exists();
             if ($existingPin) {
+                continue;
+            }
+
+            // Pin who actually taught (attendance sign-in, else a filled+approved assessment); only a slot with no
+            // evidence falls back to the former contract teacher. The new contract teacher needs no pin.
+            $taughtBy = self::evidencedTeacherId((int) $session->id) ?: $oldTeacherId;
+            if ($taughtBy === $newTeacherId) {
                 continue;
             }
 
@@ -218,7 +237,7 @@ final class ContractTeacherChangeCascade
 
             $rescheduledId = DB::table('schedules')->insertGetId([
                 'student_id' => $studentId,
-                'teacher_id' => $oldTeacherId,
+                'teacher_id' => $taughtBy,
                 'subject' => $subject,
                 'day_of_week' => $dayOfWeek,
                 'start_time' => $startTime,
@@ -237,7 +256,7 @@ final class ContractTeacherChangeCascade
 
             DB::table('schedules')->insert([
                 'student_id' => $studentId,
-                'teacher_id' => $oldTeacherId,
+                'teacher_id' => $taughtBy,
                 'subject' => $subject,
                 'day_of_week' => $dayOfWeek,
                 'start_time' => $startTime,
