@@ -9,26 +9,44 @@ const composableSource = readFileSync(resolve(__dirname, '../../composables/cour
 
 describe('CourseManagement upcoming lesson preview (#321)', () => {
   it('uses the existing effective session view model and stable keys', () => {
-    expect(pageSource).toContain('aria-label="近期上課"');
-    expect(pageSource).toContain('upcomingSessionPreview(c, { todayYmd, limit: 3 })');
+    expect(pageSource).toContain('aria-label="下一堂"');
+    expect(pageSource).toContain('upcomingSessionPreview(c, { todayYmd, limit: 1 })');
     expect(pageSource).toContain('formatSessionChipDate(unit)');
     expect(pageSource).toContain(':key="sessionRowKey(unit)"');
     expect(composableSource).toContain('primarySessionUnits(course)');
   });
 
   it('covers loading, retryable error, empty and overflow states', () => {
-    expect(pageSource).toContain('上課日期載入中…');
-    expect(pageSource).toContain('上課日期暫時無法載入。');
-    expect(pageSource).toContain('目前沒有即將上課日期。');
-    expect(pageSource).toContain('另有 {{ upcomingSessionPreview(c, { todayYmd, limit: 3 }).overflow }} 堂');
+    expect(pageSource).toContain('載入中…');
+    expect(pageSource).toContain('暫時無法載入。');
+    expect(pageSource).toContain("'暫無下一堂' : '未排定'");
     expect(pageSource).toContain('重新載入');
   });
 
-  it('keeps the existing six-column dense list and detail action', () => {
+  it('keeps the four-field row (科目・老師, 下一堂, 剩幾堂, 繳費) plus one action cell', () => {
     expect(pageSource).toContain('管理課程');
-    expect(pageSource).toContain('<th>時段</th>');
-    expect(pageSource).toContain('colspan="6"');
+    for (const th of ['科目・老師', '下一堂', '剩幾堂', '繳費']) expect(pageSource).toMatch(new RegExp(`<th[^>]*data-col="\\w+">${th}</th>`));
+    expect(pageSource).not.toContain('<th>時段</th>');
     expect(pageSource).not.toContain('fetch(`/api/v1/student-classes/${c.id}/sessions`');
     expect(pageSource).not.toContain('fetch(`/api/v1/student-classes/${c.id}/session');
+  });
+
+  it('header order equals cell order, and warnings stay in the always-visible first cell (#4659 step 5)', () => {
+    const a = pageSource.indexOf('<table class="course-table course-table--simple">');
+    const table = pageSource.slice(a, pageSource.indexOf('History courses collapsible section', a));
+    const heads = [...table.slice(0, table.indexOf('</thead>')).matchAll(/<th[^>]*data-col="(\w+)"/g)].map((m) => m[1]);
+    const row = table.slice(table.indexOf('<tr :class="[\'course-row\''), table.indexOf('<tr v-if="!courseManagerEnabled && expandedDates'));
+    const cells = [...row.matchAll(/<td[^>]*(?:data-col="(\w+)"|class="(cell-actions)")/g)].map((m) => m[1] || 'actions');
+    expect(heads).toEqual(['subject', 'next', 'remaining', 'payment', 'actions']);
+    expect(cells).toEqual(heads);
+    const subjectCell = row.slice(row.indexOf('data-col="subject"'), row.indexOf('data-col="next"'));
+    for (const w of ['rowWarningSummary(group, c)', 'role="alert"', '查看待核對回報']) expect(subjectCell).toContain(w);
+    const hiddenCells = row.split('<td').filter((t) => t.includes('col-sm-hide'));
+    expect(hiddenCells).toHaveLength(2); // only 下一堂 and 剩幾堂 hide on a phone; 繳費 stays (in-app #396)
+    expect(row.slice(row.indexOf('data-col="payment"'))).toContain('payment-status-badge');
+    for (const hidden of hiddenCells) {
+      expect(hidden).not.toContain('role="alert"');
+      expect(hidden).not.toContain('rowWarningSummary');
+    }
   });
 });

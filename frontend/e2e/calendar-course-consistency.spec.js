@@ -7,7 +7,7 @@ import { formatCourseRef, formatCoursePeriod } from '../src/lib/studentBillingRo
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import {
   BILLING_ACTION,
-  COURSE_PAYMENT_ACTION_NAME,
+  expectedCoursePaymentActionLabel,
   expectCoursePaymentEntryOpensLedgerInPlace,
   recordCourseLists,
 } from './fixtures/coursePaymentEntry.js';
@@ -737,26 +737,25 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(heading).toBeVisible({ timeout: 15_000 });
       await expectCourseListLoaded(page, courses);
       const actionCells = page.locator('.payment-status-and-action');
-      if (await actionCells.filter({ has: page.getByRole('button', { name: COURSE_PAYMENT_ACTION_NAME }) }).count() === 0) {
+      const paymentActionRows = (await actionCells.evaluateAll((cells) => cells.map((cell) => Number(cell.getAttribute('data-course-id')))))
+        .map((id) => courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === id))
+        .filter((course) => course && expectedCoursePaymentActionLabel(course));
+      if (paymentActionRows.length === 0) {
         notePreconditionAbsent('course_row_payment_action');
         return;
       }
       // Prefer a row whose next action is 在這裡看帳務 and check the row offers it once. (The duplicate on
       // 帳務資料 rows, fixed by #4125, is checked in the in-app 404 test.)
-      const actionLabel = await actionCells.getByRole('button', { name: BILLING_ACTION, exact: true }).count() > 0
+      const actionLabel = paymentActionRows.some((course) => expectedCoursePaymentActionLabel(course) === BILLING_ACTION)
         ? BILLING_ACTION : undefined;
       if (!actionLabel) notePreconditionAbsent('course_row_billing_action');
-      const { ledger, studentClassId, paymentCell, sheet } = await expectCoursePaymentEntryOpensLedgerInPlace(page, {
+      const { ledger, studentClassId, sheet } = await expectCoursePaymentEntryOpensLedgerInPlace(page, {
         pageHeading: heading, courses, actionLabel,
       });
       if (sheet) { // 登記收款 / 補登收款 open the side sheet, not the ledger (#4659 step 3)
         await page.keyboard.press('Escape');
         await expect(sheet, 'payment sheet closes on Esc').toHaveCount(0);
         return;
-      }
-      if (actionLabel) {
-        const row = paymentCell.locator('xpath=ancestor::tr[contains(concat(" ", normalize-space(@class), " "), " course-row ")][1]');
-        await expect(row.getByRole('button', { name: BILLING_ACTION, exact: true }), 'the row offers 在這裡看帳務 once').toHaveCount(1);
       }
 
       const card = ledger.getByTestId(`contract-card-${studentClassId}`);

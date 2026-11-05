@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-04-uiux-course-row-simplify
+    published_at: "2026-11-04"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課程列表變簡單
+    summary: 課程管理每一列只放一個主要按鈕，其他在「⋯」裡。
+    items:
+      - category: improved
+        text: 每列只看科目・老師、下一堂、剩幾堂、繳費。
+      - category: improved
+        text: 主要按鈕會自動換：未繳是「登記收款」，快上完是「續課」，其他是「請假／調課」。
+      - category: improved
+        text: 其他功能都在「⋯」裡，改合約、轉課、結案、刪除放在最下面。
+    source_refs:
+      - "changelog:2026-11-04:uiux-course-row-simplify"

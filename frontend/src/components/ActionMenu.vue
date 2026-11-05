@@ -71,10 +71,12 @@ const trigger = ref(null);
 const menu = ref(null);
 const open = ref(false);
 const pos = ref({});
+let placed = { top: 0, left: 0 }; // trigger position when the menu was placed; the menu is fixed, so it only needs closing once the trigger has moved
 // Below the trigger, right-aligned; flips above when the viewport bottom is too close.
 function place() {
   const r = trigger.value?.getBoundingClientRect();
   if (!r) return;
+  placed = { top: r.top, left: r.left };
   const below = window.innerHeight - r.bottom;
   pos.value = {
     right: `${Math.max(8, window.innerWidth - r.right)}px`,
@@ -93,7 +95,8 @@ async function openAt(index) {
   open.value = true;
   await nextTick();
   const list = items();
-  list[index < 0 ? list.length - 1 : index]?.focus();
+  // preventScroll: focusing a fixed-position item must not scroll the page, or the scroll listener below closes the menu at once.
+  list[index < 0 ? list.length - 1 : index]?.focus({ preventScroll: true });
 }
 function close(returnFocus = false) {
   if (!open.value) return;
@@ -109,14 +112,14 @@ function pick(item) {
 function move(step) {
   const list = items();
   const i = list.indexOf(document.activeElement);
-  list[(i + step + list.length) % list.length]?.focus();
+  list[(i + step + list.length) % list.length]?.focus({ preventScroll: true });
 }
 function onKey(e) {
   const list = items();
   if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-  else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
-  else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus(); }
+  else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus({ preventScroll: true }); }
+  else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus({ preventScroll: true }); }
   else if (e.key === 'Escape') { e.preventDefault(); close(true); }
   else if (e.key === 'Tab') close(false);
   else if (e.key.length === 1 && /\S/.test(e.key)) {
@@ -128,7 +131,14 @@ function onKey(e) {
 function onOutside(e) {
   if (open.value && !root.value?.contains(e.target) && !menu.value?.contains(e.target)) close(false);
 }
-const onViewportChange = () => { if (open.value && !sheet.value) close(false); };
+// Close when the page scrolls the trigger away from the placed menu. A scroll event delivered late (the scroll that
+// brought the trigger into view, one frame before the click) or one inside the menu moves nothing, so it must not close it.
+const onViewportChange = (e) => {
+  if (!open.value || sheet.value || (e?.target instanceof Node && menu.value?.contains(e.target))) return;
+  const r = trigger.value?.getBoundingClientRect();
+  if (e?.type === 'scroll' && r && Math.abs(r.top - placed.top) < 1 && Math.abs(r.left - placed.left) < 1) return;
+  close(false);
+};
 
 onMounted(() => {
   mq = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 640px)') : null;
