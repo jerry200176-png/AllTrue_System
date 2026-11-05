@@ -90,7 +90,6 @@
     "frontend/src/components/tuition/ContractCard.vue": {"font_size":20,"border_radius":4,"emoji":1},
     "frontend/src/components/tuition/MonthlyDraftsPanel.vue": {"font_size":1},
     "frontend/src/components/tuition/PaymentAllocation.vue": {"font_size":7,"border_radius":2},
-    "frontend/src/components/tuition/StudentBillingList.vue": {"font_size":11,"border_radius":2},
     "frontend/src/composables/calendar/useCalendarLeaveExtra.js": {"native_dialog":11},
     "frontend/src/composables/calendar/useCalendarReschedule.js": {"native_dialog":1},
     "frontend/src/composables/calendar/useCalendarSubstitute.js": {"native_dialog":7},

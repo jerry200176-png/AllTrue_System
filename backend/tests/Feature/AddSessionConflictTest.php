@@ -792,6 +792,14 @@ class AddSessionConflictTest extends TestCase
             $record = LearningRecord::where('ClassSessionID', $res->json('class_session_id'))->firstOrFail();
             $this->assertSame('approved', (string) $record->Status);
             $this->assertNotNull($record->ApprovedAt);
+
+            // In-app #502: an auto-approved past lesson also gets the sign-in part-time payroll reads, and one debit.
+            $signIns = StudentSignIn::where('ClassSessionID', $res->json('class_session_id'))->active()->get();
+            $this->assertCount(1, $signIns);
+            $this->assertSame('present', (string) $signIns[0]->Status);
+            $this->assertSame((int) $record->TeacherID, (int) $signIns[0]->TeacherID);
+            $this->assertSame(1, \Illuminate\Support\Facades\DB::table('session_deduction_ledger')
+                ->where('class_session_id', $res->json('class_session_id'))->count());
         } finally {
             Carbon::setTestNow();
         }
