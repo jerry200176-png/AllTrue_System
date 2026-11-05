@@ -29,6 +29,48 @@ const rows = [
   },
 ];
 
+test('In-App348: settled labels explain existing meaning without adding payment mutations (待核對課程 strip)', async ({ page }) => {
+  await installMock(page);
+  await page.route('**/api/v1/accounting/settled-courses**', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({
+      data: [
+        { ...settledRows[0], legacy_paid_without_invoice: true },
+        { ...settledRows[1], pending_reconciliation: false, has_exception: true, overpaid_amount: 200 },
+      ],
+      summary: { course_count: 2, legacy_count: 1, exception_count: 1, paid_total: 9800, overpaid_total: 200, pending_reconciliation_count: 1 },
+    }),
+  }));
+  const writes = [];
+  page.on('request', request => { if (!['GET', 'HEAD'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    const strip = page.locator('[data-testid="tc-review-strip"]');
+    await expect(strip).toBeVisible();
+    await page.locator('[data-testid="tc-review-help"] summary').click();
+    const help = page.getByRole('note', { name: '帳務標籤說明' });
+    await expect(help).toBeVisible();
+    await expect(help).toContainText('舊制無帳單：課程已標記繳費，但目前沒有有效帳單');
+    await expect(help).toContainText('例外待處理：至少一張有效帳單的淨收款超過帳單金額');
+    await expect(help).toContainText('請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對');
+    const box = await help.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    await expect(page.locator('[data-testid="tc-review-counts"]')).toContainText('舊制無帳單 1・例外待處理 1');
+    const rows = strip.locator('.tc-review-strip__row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText('舊制無帳單');
+    await expect(rows.last()).toContainText('例外待處理');
+    await expect(rows.first()).toContainText('4,200');
+    await expect(rows.last()).toContainText('5,600');
+    await expect(rows.last()).toContainText('多收');
+    await expect(strip.locator('button')).toHaveText(['account_balance繳費明細', 'account_balance繳費明細']);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+    await page.screenshot({ path: path.join(outDir, `inapp348-label-help-${width}.png`), fullPage: true });
+  }
+  expect(writes).toEqual([]);
+});
+
 const accountingRows = [
   { report_id: 701, payment_date: '2026-09-08', receipt_no: 'AT-260908-0001', student_name: '林宥辰', subject: '國中數學', cash_amount: 0, transfer_amount: 4200, total_amount: 4200, confirmed_by_name: 'E2E 主任' },
   { report_id: 702, payment_date: '2026-09-07', receipt_no: 'AT-260907-0002', student_name: '陳品妤', subject: '高中英文', cash_amount: 5600, transfer_amount: 0, total_amount: 5600, confirmed_by_name: 'E2E 主任', is_prepaid: true },

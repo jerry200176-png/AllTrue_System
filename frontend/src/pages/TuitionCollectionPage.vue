@@ -304,10 +304,21 @@
 
     <!-- 已結清 is the 已收 filter of the bill list now. What only the old settled table offered, 已核對 / 到課程處理, stays here for 待核對 courses. -->
     <section v-if="activeAccountingTab === 'students' && reviewRows.length" class="tc-review-strip" data-testid="tc-review-strip" aria-label="待核對課程">
-      <h3 class="tc-review-strip__title">待核對課程 {{ reviewRows.length }}</h3>
+      <h3 class="tc-review-strip__title">待核對課程 {{ reviewRows.length }}<span v-if="reviewCounts.legacy || reviewCounts.exception" class="tc-review-strip__counts" data-testid="tc-review-counts">　舊制無帳單 {{ reviewCounts.legacy }}・例外待處理 {{ reviewCounts.exception }}</span></h3>
+      <details class="tc-review-strip__help" data-testid="tc-review-help">
+        <summary>？ 標籤說明</summary>
+        <p role="note" aria-label="帳務標籤說明" class="tc-summary-note">
+          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
+          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+        </p>
+      </details>
       <div v-for="row in reviewRows" :key="row.student_class_id" class="tc-review-strip__row">
         <div class="tc-review-strip__who">
           <strong>{{ row.student_name }}</strong> {{ row.subject }}
+          <span class="text-light">已收 {{ formatCurrency(row.paid_amount || 0) }}<template v-if="Number(row.overpaid_amount) > 0">・多收 {{ formatCurrency(row.overpaid_amount) }}</template></span>
+          <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
+          <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
+          <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}</span>
           <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending" :title="REVIEW_REQUIRED_LABEL">{{ REVIEW_REQUIRED_SHORT_LABEL }}</span>
           <template v-if="row.payment_review_required">
             <div v-for="r in reviewReasonFixes(row.review_reasons)" :key="r.code" class="text-light" :data-testid="`tc-review-fix-${row.student_class_id}-${r.code}`">需核對：{{ r.label }}。怎麼處理：{{ r.text }}</div>
@@ -703,7 +714,8 @@ const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
 const accountingRows = ref([]);
-const reviewRows = ref([]); // 待核對 courses, from /accounting/settled-courses
+const reviewRows = ref([]);
+const reviewCounts = computed(() => ({ legacy: reviewRows.value.filter((r) => r.legacy_paid_without_invoice).length, exception: reviewRows.value.filter((r) => r.has_exception).length })); // 待核對 courses, from /accounting/settled-courses
 const accountingSummary = ref({
   total_count: 0,
   cash_total: 0,
@@ -1315,7 +1327,7 @@ async function loadReviewCourses() {
     const resp = await authedFetch(`/api/v1/accounting/settled-courses?${params}`, { headers: { Accept: 'application/json' } }, token);
     if (!resp.ok) return; // the strip is an extra; the bill list stays usable
     const json = await resp.json();
-    reviewRows.value = (Array.isArray(json.data) ? json.data : []).filter((r) => r.payment_review_required);
+    reviewRows.value = (Array.isArray(json.data) ? json.data : []).filter((r) => r.payment_review_required || r.pending_reconciliation || r.legacy_paid_without_invoice || r.has_exception || Number(r.overpaid_amount) > 0);
   } catch {
     reviewRows.value = [];
   }
@@ -1917,6 +1929,8 @@ loadCampusStudents();
 .acct-warn { color: var(--ds-danger-text); }
 .tc-review-strip { border: 1px solid var(--ds-border); border-radius: var(--ds-radius-sm); padding: 10px 12px; margin: 12px 0; }
 .tc-review-strip__title { margin: 0 0 8px; font-size: var(--ds-font-size-md); }
+.tc-review-strip__help { margin-bottom: 6px; font-size: var(--ds-font-size-sm); }
+.tc-review-strip__help summary { cursor: pointer; min-height: 32px; display: inline-flex; align-items: center; }
 .tc-review-strip__row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid var(--ds-border); }
 .acct-filter-actions {
   display: flex;
