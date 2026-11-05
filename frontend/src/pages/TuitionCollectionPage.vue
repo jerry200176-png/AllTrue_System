@@ -741,7 +741,7 @@ const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-contex
 const loading = ref(false);
 const error = ref('');
 
-// PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 keeps its own list, entered from the link under 帳單.
+// PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 stays reachable from the reminder bar.
 const ACCOUNTING_TABS = [
   { key: 'students', label: '帳單', icon: 'receipt' },
   { key: 'monthly', label: '月結', icon: 'event_repeat' },
