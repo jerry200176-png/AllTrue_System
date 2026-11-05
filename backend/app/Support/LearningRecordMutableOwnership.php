@@ -65,7 +65,7 @@ final class LearningRecordMutableOwnership
     }
 
     /** System-generated markers (back-fill / auto-approval) are not a teacher-written body. */
-    private static function isSystemFillContent(string $content): bool
+    public static function isSystemFillContent(string $content): bool
     {
         $content = trim($content);
 
@@ -89,7 +89,7 @@ final class LearningRecordMutableOwnership
     public static function assertTeacherChangeAllowed(int $classSessionId, ?int $newTeacherId = null): void
     {
         $locked = self::protectedRecordForSession($classSessionId, true);
-        if ($locked !== null && (int) $locked->TeacherID !== $newTeacherId) {
+        if ($locked !== null && ((int) $newTeacherId <= 0 || (int) $locked->TeacherID !== $newTeacherId)) {
             throw new HttpResponseException(self::lockedResponse());
         }
     }

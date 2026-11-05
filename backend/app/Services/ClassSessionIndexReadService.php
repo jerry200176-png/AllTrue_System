@@ -149,13 +149,21 @@ class ClassSessionIndexReadService
             [$attendanceAsOfDate, $attendanceAsOfDate, $attendanceAsOfTime]
         );
 
+        // Same author-wins teacher the row shows (teacher_locked_to_author): a filled assessment belongs to its author.
+        $lockedSql = '(' . \App\Support\LearningRecordMutableOwnership::filledByTeacherSql('lr') . ' AND COALESCE(lr.TeacherID, 0) > 0)';
+        $matchTeacher = fn ($q, int $tid) => $q->where(function ($w) use ($tid, $lockedSql, $subTeacherSql) {
+            $w->whereRaw("{$lockedSql} AND lr.TeacherID = ?", [$tid])
+                ->orWhere(function ($free) use ($tid, $lockedSql, $subTeacherSql) {
+                    $free->whereRaw("NOT {$lockedSql}")->where(function ($t) use ($tid, $subTeacherSql) {
+                        $t->where(function ($inner) use ($tid, $subTeacherSql) {
+                            $inner->whereRaw("{$subTeacherSql} IS NULL")->where('sc.TeacherID', $tid);
+                        })->orWhereRaw("{$subTeacherSql} = ?", [$tid]);
+                    });
+                });
+        });
+
         if ($role === 'teacher') {
-            $query->where(function ($q) use ($teacherId, $subTeacherSql) {
-                $q->where(function ($inner) use ($teacherId, $subTeacherSql) {
-                    $inner->whereRaw("{$subTeacherSql} IS NULL")
-                        ->where('sc.TeacherID', $teacherId);
-                })->orWhereRaw("{$subTeacherSql} = ?", [$teacherId]);
-            });
+            $matchTeacher($query, $teacherId);
         }
 
         if (!empty($campusIds)) {
@@ -163,13 +171,7 @@ class ClassSessionIndexReadService
         }
 
         if ($request->filled('teacher_id')) {
-            $filterTid = (int) $request->input('teacher_id');
-            $query->where(function ($q) use ($filterTid, $subTeacherSql) {
-                $q->where(function ($inner) use ($filterTid, $subTeacherSql) {
-                    $inner->whereRaw("{$subTeacherSql} IS NULL")
-                        ->where('sc.TeacherID', $filterTid);
-                })->orWhereRaw("{$subTeacherSql} = ?", [$filterTid]);
-            });
+            $matchTeacher($query, (int) $request->input('teacher_id'));
         }
 
         if ($request->filled('student_id')) {

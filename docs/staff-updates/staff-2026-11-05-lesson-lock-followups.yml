@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-05-lesson-lock-followups
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 評量刪除前先留紀錄
+    summary: 刪除評量前會先保留一份紀錄；行事曆用老師篩選時，以寫評量的老師為準。
+    items:
+      - category: fixed
+        text: 刪除老師寫過的評量前，系統會先留一份內容紀錄。
+      - category: fixed
+        text: 行事曆用老師篩選時，已有評量的課會算在寫評量的老師名下。
+      - category: fixed
+        text: 刪除已核准的評量，會一併退回這堂的出席、扣堂與鐘點；刪除前畫面會先提醒。
+    source_refs:
+      - "changelog:2026-11-05:lesson-lock-followups"
