@@ -10,7 +10,6 @@ export const BILLING_ACTION = '在這裡看帳務';
 /** In-app #490: a director's legacy-paid row (paid flag, no Payment) offers 補登收款 instead. */
 const LEGACY_ACTION = '補登收款';
 
-
 /**
  * The next action a 課程查找 course row must offer for its payment state
  * (CourseManagement.vue paymentNextActionLabel): unpaid/partial → 登記收款,

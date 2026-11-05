@@ -66,7 +66,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('role="status"');
     expect(source).toContain('付款狀態不可直接操作');
     // #4659 step 5: the next action is the row's primary button (or an item in ⋯), not a second button in the cell.
-    expect(source).toContain("'payment-next-action': rowModel2(c).primary.id === 'payment'");
+    expect(source).toContain("'payment-next-action': m.primary.id === 'payment'");
     expect(source).toContain('paymentActionLabel: (c) => (shouldShowPaymentAction(c) ? paymentNextActionLabel(c) : \'\')');
     expect(source).toContain('onPaymentNextAction,');
     // PRD v2 D2: every billing action opens the ledger panel in place, never another page
@@ -77,7 +77,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('ledgerInitialAction.value = initialAction;');
     expect(source).toContain('const openTuitionLedger = (course) => openLedgerForCourse(course);');
     expect(source).not.toMatch(/emit\('navigate', buildTuitionCollectNav/);
-    expect(source).toContain('<th class="col-sm-hide">剩幾堂</th>');
+    expect(source).toContain('剩幾堂</th>');
     expect(source).not.toContain('<th>剩餘堂數</th>');
     expect(source).not.toContain("'btn-status'");
     expect(source).not.toContain('>帳務</button>');

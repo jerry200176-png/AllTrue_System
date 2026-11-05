@@ -267,11 +267,11 @@
             <table class="course-table course-table--simple">
               <thead>
                 <tr>
-                  <th>科目・老師</th>
-                  <th class="col-sm-hide">下一堂</th>
-                  <th class="col-sm-hide">剩幾堂</th>
-                  <th class="col-sm-hide">繳費</th>
-                  <th class="col-actions">操作</th>
+                  <th data-col="subject">科目・老師</th>
+                  <th class="col-sm-hide" data-col="next">下一堂</th>
+                  <th class="col-sm-hide" data-col="remaining">剩幾堂</th>
+                  <th class="col-sm-hide" data-col="payment">繳費</th>
+                  <th class="col-actions" data-col="actions">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -300,7 +300,7 @@
                     </td>
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
-                    <td class="td-subject">
+                    <td class="td-subject" data-col="subject">
                       <div v-if="isClosedReason(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
@@ -320,8 +320,8 @@
                         >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                       </div>
                       <small class="class-type-line"><span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span></small>
-                    </td>
-                    <td class="cell-schedule col-sm-hide">
+                      <!-- Warnings stay in the always-visible first cell so the phone layout never hides them. -->
+                      <div class="row-warnings" data-testid="row-warnings">
                       <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
                            time string, competing with it for attention. Collapse to one summary
                            chip on its own line; the full list is still in its tooltip. -->
@@ -330,6 +330,14 @@
                           <span class="row-badge" :class="'row-badge--' + w.tone" :title="w.title">{{ w.label }}</span>
                         </div>
                       </template>
+                      <span v-if="isTutoringBillingAnomaly(c)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
+                      <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
+                        已繳清；另有回報待核對。
+                        <button type="button" class="small ghost" @click="openLedgerForCourse(c)">查看待核對回報</button>
+                      </div>
+                      </div>
+                    </td>
+                    <td class="cell-schedule col-sm-hide" data-col="next">
                       <div class="upcoming-session-preview" aria-label="下一堂">
                         <span v-if="coursesLoading" class="hint">載入中…</span>
                         <template v-else-if="sessionDataLoadFailed">
@@ -344,7 +352,10 @@
                         </template>
                       </div>
                     </td>
-                    <td class="col-sm-hide">
+                    <td data-col="remaining" :class="{ 'col-sm-hide': true, 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
+                      {{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}<span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint">（方案共用）</span>
+                    </td>
+                    <td class="col-sm-hide" data-col="payment">
                       <div class="payment-status-and-action" :data-course-id="c.id">
                         <span
                           :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
@@ -352,14 +363,6 @@
                           :title="paymentStatusHelpTitle(c)"
                         >{{ paymentStatusButtonLabel(c) }}</span>
                       </div>
-                      <span v-if="isTutoringBillingAnomaly(c)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
-                      <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
-                        已繳清；另有回報待核對。
-                        <button type="button" class="small ghost" @click="openLedgerForCourse(c)">查看待核對回報</button>
-                      </div>
-                    </td>
-                    <td :class="{ 'col-sm-hide': true, 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
-                      {{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}<span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint">（方案共用）</span>
                     </td>
                     <td class="cell-actions">
                       <div v-if="courseManagerEnabled" class="action-btns-row">
@@ -372,22 +375,24 @@
                       </div>
                       <template v-else>
 
+                      <template v-for="m in [simpleRowModel(c)]" :key="c.id">
                       <div class="action-btns-row action-btns-row--model" data-testid="course-row-actions">
                         <button
                           type="button"
                           class="small primary course-primary-action"
-                          :class="{ 'payment-next-action': rowModel2(c).primary.id === 'payment' }"
+                          :class="{ 'payment-next-action': m.primary.id === 'payment' }"
                           data-testid="course-row-primary"
-                          :data-action="rowModel2(c).primary.id"
-                          @click="runRowAction(c, rowModel2(c).primary.id)"
-                        >{{ rowModel2(c).primary.label }}</button>
+                          :data-action="m.primary.id"
+                          @click="runRowAction(c, m.primary.id)"
+                        >{{ m.primary.label }}</button>
                         <ActionMenu
-                          :groups="rowModel2(c).groups"
+                          :groups="m.groups"
                           :label="`${getSubjectLabel(c.subject)} 的更多課程操作`"
                           trigger-class="action-menu-trigger"
                           @select="(id) => runRowAction(c, id)"
                         />
                       </div>
+                      </template>
                       </template>
                     </td>
                   </tr>
@@ -396,26 +401,26 @@
                       <div class="detail-panel">
                         <div class="detail-summary">
                           <div v-if="courseMemo(c)" class="memo-line">備註：{{ courseMemo(c) }}</div>
-                      <div v-if="coursePaymentSummary(c)" class="payment-summary-line" role="note">
-                        <span class="payment-summary-label">最近繳費：</span>{{ formatPaymentSummary(c.latest_payment_summary) }}
-                      </div>
+                          <div v-if="coursePaymentSummary(c)" class="payment-summary-line" role="note">
+                            <span class="payment-summary-label">最近繳費：</span>{{ formatPaymentSummary(c.latest_payment_summary) }}
+                          </div>
                           <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                           <div v-if="formatDayTimeSlotLines(c).length > 0" class="schedule-slot-lines">
-                        <div
-                          v-for="(line, sidx) in formatDayTimeSlotLines(c)"
-                          :key="`${c.id}-slot-${sidx}`"
-                          class="schedule-slot-line"
-                        >
-                          {{ line }}
-                        </div>
-                      </div>
-                      <span v-else-if="(c.days_of_week || []).length > 0">
-                        {{ (c.days_of_week || []).map(d => dayLabel(d)).join('、') }} {{ c.start_time }}~{{ c.end_time }}
-                      </span>
-                      <span v-else-if="c.day_of_week">
-                        {{ dayLabel(c.day_of_week) }} {{ c.start_time }}~{{ c.end_time }}
-                      </span>
-                      <span v-else class="hint">未排定</span>
+                            <div
+                              v-for="(line, sidx) in formatDayTimeSlotLines(c)"
+                              :key="`${c.id}-slot-${sidx}`"
+                              class="schedule-slot-line"
+                              >
+                              {{ line }}
+                            </div>
+                          </div>
+                          <span v-else-if="(c.days_of_week || []).length > 0">
+                            {{ (c.days_of_week || []).map(d => dayLabel(d)).join('、') }} {{ c.start_time }}~{{ c.end_time }}
+                          </span>
+                          <span v-else-if="c.day_of_week">
+                            {{ dayLabel(c.day_of_week) }} {{ c.start_time }}~{{ c.end_time }}
+                          </span>
+                          <span v-else class="hint">未排定</span>
                         </div>
                         <div class="detail-meta">
                           <span class="detail-item"><span class="detail-label">{{ getRateUnitDisplayLabel(c) }}</span> ${{ sessionPrice(c) }}</span>
@@ -5593,7 +5598,7 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   openContractRevertModal, openPackageConversionPreview, openPaymentSlip, openTuitionLedger,
 });
 // Row model for the simplified 課程管理 row (#4659 step 5).
-const rowModel2 = (c) => rowModelFor(c, { simple: true });
+const simpleRowModel = (c) => rowModelFor(c, { simple: true });
 // Dashboard drill-down context; read on mount and on every return to the kept-alive page.
 function consumeTrustFocus() {
   try {
@@ -6585,6 +6590,7 @@ onUnmounted(() => {
 }
 .subject-teacher { font-weight: 600; margin-right: 6px; }
 .class-type-line { display: block; margin-top: 2px; font-size: 12px; color: var(--ds-ink-secondary); }
+.row-warnings { display: grid; gap: 2px; margin-top: 4px; }
 .detail-summary { display: grid; gap: 4px; margin-bottom: 8px; }
 /* #4659 step 5 (picture 2): on a phone the row is 科目・老師 + the button + ⋯. */
 @media (max-width: 720px) {

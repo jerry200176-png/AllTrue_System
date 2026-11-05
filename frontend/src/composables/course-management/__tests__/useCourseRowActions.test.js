@@ -166,6 +166,12 @@ describe('useCourseRowActions', () => {
       expect(m.groups.flatMap((g) => g.items).find((i) => i.id === 'payment-next')?.label).toBe('登記收款');
     });
 
+    it('a course that needs scheduling gets 排課 as primary, 請假／調課 stays in ⋯', () => {
+      const m = simple({ planningStatusVisible: () => true, planningStatusFor: () => ({ action: 'quick_add' }) });
+      expect(m.primary.id).toBe('manual-session');
+      expect(ids(m)).toContain('reschedule');
+    });
+
     it('almost used up (and paid) → 續課', () => {
       const m = simple({ purchaseActionIsRenew: () => true, purchaseActionLabel: () => '續課', paymentActionLabel: () => '在這裡看帳務' });
       expect(m.primary).toEqual({ id: 'purchase', label: '續課' });

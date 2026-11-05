@@ -28,6 +28,7 @@ export function courseActions(course, caps = {}) {
   else if (caps.simple) {
     // 課程管理 row (#4659 step 5): unpaid → 登記收款; nearly used up → 續課; otherwise 請假／調課.
     if (caps.paymentAction) primary = { id: 'payment', label: caps.paymentAction };
+    else if (caps.needsScheduling && schedule) primary = schedule; // no lessons: 請假／調課 would dead-end
     else if (caps.renewalDue) primary = purchase;
     else if (caps.open) primary = { id: 'reschedule', label: '請假／調課' };
   } else if (caps.needsScheduling && schedule) primary = schedule;
