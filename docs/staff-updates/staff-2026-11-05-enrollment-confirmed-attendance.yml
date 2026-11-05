@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-05-enrollment-confirmed-attendance
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 補登已上的課會算薪資
+    summary: 新增課程或加課時標成已上過的課，現在會記出席，兼職薪資算得到。
+    items:
+      - category: fixed
+        text: 新增課程或加課時標成已上過的堂次，現在會一併記出席，兼職薪資與出缺勤都算得到，扣堂仍只扣一次。
+    source_refs:
+      - "changelog:2026-11-05:enrollment-confirmed-attendance"
