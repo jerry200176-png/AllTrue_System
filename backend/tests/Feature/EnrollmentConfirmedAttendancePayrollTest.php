@@ -174,6 +174,27 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         $this->assertPaid($token, $teacherId);
     }
 
+    /** #4937: production has no unique index, so concurrent calendar + approval callers are serialised on the ClassSession row. */
+    public function test_payable_sign_in_locks_the_lesson_row_and_two_calls_make_one_live_sign_in_one_debit(): void
+    {
+        [, $teacherId, $course, $session] = $this->pastScheduledLesson('serialize');
+        $queries = [];
+        DB::listen(function ($q) use (&$queries) { $queries[] = strtolower($q->sql); });
+
+        $first = ApprovalSessionSyncService::payableSignIn($session, $course, 'present', $teacherId, null, 'status_attended');
+        \App\Services\SessionDeductionService::deductOnAttendance($course, $first, (int) $session->id);
+        $second = ApprovalSessionSyncService::payableSignIn($session, $course, 'present', $teacherId, null, 'lr_approve');
+        \App\Services\SessionDeductionService::deductOnAttendance($course, $second, (int) $session->id);
+
+        $this->assertNotEmpty(array_filter($queries, fn ($q) => str_contains($q, "from `classsession`") && str_contains($q, 'for update')),
+            'payableSignIn must lock the lesson row before reading its sign-ins');
+        // REPEATABLE READ: the sign-in reads must be locking (current-state) reads, or an outer snapshot hides the first caller's row
+        $this->assertNotEmpty(array_filter($queries, fn ($q) => str_contains($q, 'from `studentsingin`') && str_contains($q, 'for update')));
+        $this->assertSame((int) $first->id, (int) $second->id);
+        $this->assertSame(1, StudentSignIn::where('ClassSessionID', $session->id)->active()->count());
+        $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->count());
+    }
+
     /** @return array{0: string, 1: int, 2: StudentClass, 3: ClassSession} a 2026-04-13 lesson still 未上 on 2026-04-14 */
     private function pastScheduledLesson(string $tag): array
     {

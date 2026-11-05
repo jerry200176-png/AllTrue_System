@@ -10,6 +10,7 @@ use App\Models\StudentSignIn;
 use App\Services\LearningRecordBackfillService;
 use App\Support\AttendanceStatus;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ApprovalSessionSyncService
 {
@@ -72,40 +73,45 @@ class ApprovalSessionSyncService
      */
     public static function payableSignIn(ClassSession $cs, StudentClass $sc, string $status, ?int $teacherId, ?int $recordedBy, string $memo): ?StudentSignIn
     {
-        $live = StudentSignIn::where('ClassSessionID', $cs->id)->active()->orderBy('id')->get();
-        if ($live->isNotEmpty()) {
-            return $live->first(fn (StudentSignIn $s) => in_array(strtolower((string) $s->Status), AttendanceStatus::deductibleCodes(), true));
-        }
+        // #4937: production has no unique index per lesson, so concurrent callers (calendar status, evaluation approval)
+        // are serialised on the lesson row; the second one then sees the first one's sign-in.
+        return DB::transaction(function () use ($cs, $sc, $status, $teacherId, $recordedBy, $memo) {
+            ClassSession::whereKey($cs->id)->lockForUpdate()->first();
+            $live = StudentSignIn::where('ClassSessionID', $cs->id)->active()->orderBy('id')->lockForUpdate()->get(); // locking read: current rows, not the outer transaction's REPEATABLE READ snapshot
+            if ($live->isNotEmpty()) {
+                return $live->first(fn (StudentSignIn $s) => in_array(strtolower((string) $s->Status), AttendanceStatus::deductibleCodes(), true));
+            }
 
-        $fields = [
-            'StudentClassID'  => $sc->ID,
-            'StudentID'       => $sc->StudentID,
-            'TeacherID'       => $teacherId,
-            'RecordedByUserID' => $recordedBy ?: null,
-            'GradeID'         => $sc->GradeID,
-            'SubjectID'       => $sc->SubjectID,
-            'Get1byID'        => $sc->by1,
-            'SignInDT'        => Carbon::parse($cs->SessionDate . ' ' . ($cs->StartTime ?? '00:00')),
-            'SignOutDT'       => Carbon::parse($cs->SessionDate . ' ' . ($cs->EndTime ?? '23:59')),
-            'MDT'             => now(),
-            'ClassSessionID'  => $cs->id,
-            'Status'          => $status,
-            'CampusID'        => Student::find($sc->StudentID)->CampusID ?? null,
-            'PersonType'      => 'student',
-            'SessionDeducted' => false,
-            'Memo'            => $memo,
-        ];
+            $fields = [
+                'StudentClassID'  => $sc->ID,
+                'StudentID'       => $sc->StudentID,
+                'TeacherID'       => $teacherId,
+                'RecordedByUserID' => $recordedBy ?: null,
+                'GradeID'         => $sc->GradeID,
+                'SubjectID'       => $sc->SubjectID,
+                'Get1byID'        => $sc->by1,
+                'SignInDT'        => Carbon::parse($cs->SessionDate . ' ' . ($cs->StartTime ?? '00:00')),
+                'SignOutDT'       => Carbon::parse($cs->SessionDate . ' ' . ($cs->EndTime ?? '23:59')),
+                'MDT'             => now(),
+                'ClassSessionID'  => $cs->id,
+                'Status'          => $status,
+                'CampusID'        => Student::find($sc->StudentID)->CampusID ?? null,
+                'PersonType'      => 'student',
+                'SessionDeducted' => false,
+                'Memo'            => $memo,
+            ];
 
-        // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
-        // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062. The lesson may have moved
-        // since the void, so the row takes the lesson's current values (times, course, student, campus).
-        $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->first();
-        if ($voided) {
-            $voided->update($fields + ['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
-            return $voided;
-        }
+            // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
+            // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062. The lesson may have moved
+            // since the void, so the row takes the lesson's current values (times, course, student, campus).
+            $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->lockForUpdate()->first();
+            if ($voided) {
+                $voided->update($fields + ['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
+                return $voided;
+            }
 
-        return StudentSignIn::create($fields);
+            return StudentSignIn::create($fields);
+        });
     }
 
     /** An active, deducted sign-in: the lesson is recorded as taught for attendance, usage and part-time payroll. */
