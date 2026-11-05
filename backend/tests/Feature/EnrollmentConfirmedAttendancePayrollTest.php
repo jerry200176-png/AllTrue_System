@@ -67,6 +67,35 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         $this->assertPaid($token, $teacherId);
     }
 
+    /** In-app #504: a lesson left taught-but-unsigned by the old path shows in 待補點名, and 補登 there makes it paid. */
+    public function test_taught_lesson_without_sign_in_is_listed_for_makeup_and_marking_it_pays_once(): void
+    {
+        [$token, $teacherId] = $this->actors('makeup');
+        $courseId = $this->enroll($token, $teacherId, [self::PAST_DATE], ['2026-04-13'], 1);
+        // The pre-fix state: completed, approved record and one debit, but no sign-in.
+        $session = ClassSession::where('StudentClassID', $courseId)->whereDate('SessionDate', self::PAST_DATE)->firstOrFail();
+        StudentSignIn::where('ClassSessionID', $session->id)->delete();
+        $session->update(['Status' => 'completed']);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $unmarked = fn () => array_column($this->withHeaders($headers)
+            ->getJson('/api/v1/attendance/ended-sessions?branch_id=1&start_date=2026-04-01&end_date=2026-04-08')
+            ->assertOk()->json('data'), 'session_status', 'class_session_id');
+
+        $this->assertSame('completed', $unmarked()[$session->id] ?? null);
+        $this->assertSame(1, (int) $this->withHeaders($headers)
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1')->json('summary.unmarked_count'));
+
+        $this->withHeaders($headers)->postJson('/api/v1/attendance', [
+            'StudentID' => (int) StudentClass::findOrFail($courseId)->StudentID, 'StudentClassID' => $courseId,
+            'TeacherID' => $teacherId, 'ClassSessionID' => $session->id, 'Status' => 'present',
+        ])->assertCreated();
+
+        $this->assertSame('attended', (string) $session->fresh()->Status);
+        $this->assertTaughtOnce($courseId, $teacherId, self::PAST_DATE);
+        $this->assertPaid($token, $teacherId);
+        $this->assertArrayNotHasKey($session->id, $unmarked());
+    }
+
     private function assertTaughtOnce(int $courseId, int $teacherId, string $date): ClassSession
     {
         $session = ClassSession::where('StudentClassID', $courseId)->whereDate('SessionDate', $date)->firstOrFail();

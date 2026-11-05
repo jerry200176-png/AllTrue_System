@@ -5,9 +5,11 @@ updates:
       - director
     importance: digest
     title: 補登已上的課會算薪資
-    summary: 新增課程或加課時標成已上過的課，現在會記出席，兼職薪資算得到。
+    summary: 標成已上過的課現在會記出席，兼職薪資算得到；沒點名的課會出現在待補點名。
     items:
       - category: fixed
         text: 新增課程或加課時標成已上過的堂次，現在會一併記出席，兼職薪資與出缺勤都算得到，扣堂仍只扣一次。
+      - category: fixed
+        text: 「待補點名」也會列出已標成上過、但沒點名的課，和兼職薪資的提醒一致；在這裡補登就算進薪資，不會重複扣堂。
     source_refs:
       - "changelog:2026-11-05:enrollment-confirmed-attendance"
