@@ -90,6 +90,33 @@ class StudentLearningTimelineTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'items');
     }
 
+    public function test_substitute_sees_only_the_lesson_they_covered(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $regular = $this->staff('T', $campus);
+        $sub = $this->staff('T', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student->id, $regular['user']->id, $campus);
+        $covered = $this->lesson($course, '2026-10-01');
+        $other = $this->lesson($course, '2026-10-08');
+        $this->signIn($student, $course, $covered, 'present');
+        $this->signIn($student, $course, $other, 'present');
+        DB::table('schedules')->insert([
+            'student_id' => $student->id, 'teacher_id' => $sub['user']->id, 'subject' => 'Math', 'day_of_week' => 4,
+            'start_time' => '16:00:00', 'end_time' => '17:00:00', 'class_type' => 'one_on_one', 'status' => 'scheduled',
+            'type' => 'extra', 'deduction' => 1, 'branch_id' => $campus, 'schedule_date' => '2026-10-01',
+            'student_course_id' => $course->ID, 'original_schedule_id' => 1,
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $course->ID, 'ClassSessionID' => $other->id, 'TeacherID' => $regular['user']->id,
+            'Content' => 'x', 'Status' => 'approved', 'SessionDate' => '2026-10-08',
+        ]);
+
+        $json = fn (array $t) => $this->withAuth($t['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")->assertOk()->json('items');
+        $this->assertSame(['2026-10-01'], array_column($json($sub), 'date'));
+        $this->assertSame(['2026-10-08'], array_column($json($regular), 'date'));
+    }
+
     /** @return array{token:string,user:User} */
     private function staff(string $type, int $campus): array
     {

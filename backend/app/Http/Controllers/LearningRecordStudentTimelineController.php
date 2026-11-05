@@ -32,20 +32,27 @@ class LearningRecordStudentTimelineController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $courses = StudentClass::query()->where('StudentID', $student->id)
-            ->when($role === 'teacher', fn ($q) => $q->visibleToTeacher((int) $request->attributes->get('auth_teacher_id')))
-            ->get(['ID', 'SubjectID']);
-        if ($role === 'teacher' && $courses->isEmpty()) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
+        $teacherId = $role === 'teacher' ? (int) $request->attributes->get('auth_teacher_id') : null;
+        $courses = StudentClass::query()->where('StudentID', $student->id)->get(['ID', 'SubjectID', 'TeacherID']);
         $courseIds = $courses->pluck('ID')->all();
         $subjectNames = DB::table('Subject')->pluck('Subject_Name', 'id');
         $courseSubject = $courses->pluck('SubjectID', 'ID');
 
-        $records = LearningRecord::active()->whereIn('StudentClassID', $courseIds)
-            ->orderByDesc('SessionDate')->orderByDesc('id')->limit(self::PER_SOURCE_LIMIT)->get();
+        $recordQuery = LearningRecord::active()->whereIn('StudentClassID', $courseIds);
+        $sessionIds = null;
+        if ($teacherId !== null) {
+            // Same rule as GET learning-records for a teacher; sign-ins follow the lessons that rule lets them see.
+            LearningRecordController::applyTeacherScopedLearningRecordConstraint($recordQuery, $teacherId);
+            $sessionIds = $this->lessonsTaughtBy($teacherId, $courseIds);
+        }
+        $records = $recordQuery->orderByDesc('SessionDate')->orderByDesc('id')->limit(self::PER_SOURCE_LIMIT)->get();
+        $ownCourseIds = $courses->where('TeacherID', $teacherId)->pluck('ID')->all();
+        if ($teacherId !== null && $records->isEmpty() && $sessionIds === [] && $ownCourseIds === []) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         $signIns = DB::table('StudentSingIn')->where('StudentID', $student->id)->whereNull('VoidedAt')
             ->whereNotNull('ClassSessionID')->whereIn('StudentClassID', $courseIds)
+            ->when($sessionIds !== null, fn ($q) => $q->whereIn('ClassSessionID', array_merge($sessionIds, $records->pluck('ClassSessionID')->filter()->all())))
             ->pluck('Status', 'ClassSessionID');
         $statusLabel = fn ($code) => $code === null ? null : AttendanceStatus::label((string) $code);
 
@@ -73,7 +80,7 @@ class LearningRecordStudentTimelineController extends Controller
         }
 
         $results = AssessmentResult::query()->with('assessment')->where('student_id', $student->id)
-            ->when($role === 'teacher', fn ($q) => $q->whereIn('student_class_id', $courseIds))
+            ->when($teacherId !== null, fn ($q) => $q->whereIn('student_class_id', $ownCourseIds))
             ->orderByDesc('id')->limit(self::PER_SOURCE_LIMIT)->get();
         foreach ($results as $res) {
             $a = $res->assessment;
@@ -91,5 +98,29 @@ class LearningRecordStudentTimelineController extends Controller
         usort($items, fn ($x, $y) => [$y['date'], $y['id']] <=> [$x['date'], $x['id']]);
 
         return response()->json(['items' => $items]);
+    }
+
+    /**
+     * Lessons a teacher may see, mirroring the learning-record scope: their own course lessons that were not
+     * handed to a substitute, plus the lessons they substituted for. Never the rest of someone else's course.
+     *
+     * @param  list<int>  $courseIds
+     * @return list<int>
+     */
+    private function lessonsTaughtBy(int $teacherId, array $courseIds): array
+    {
+        $sub = fn ($q) => $q->select(DB::raw(1))->from('schedules as s')
+            ->whereColumn('s.student_course_id', 'cs.StudentClassID')
+            ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+            ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+            ->where('s.status', 'scheduled')->whereNotNull('s.original_schedule_id')
+            ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID');
+
+        return DB::table('ClassSession as cs')->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->whereIn('cs.StudentClassID', $courseIds)
+            ->where(function ($q) use ($teacherId, $sub) {
+                $q->where(fn ($own) => $own->where('sc.TeacherID', $teacherId)->whereNotExists($sub))
+                    ->orWhereExists(fn ($x) => $sub($x)->where('s.teacher_id', $teacherId));
+            })->pluck('cs.id')->map(fn ($id) => (int) $id)->all();
     }
 }

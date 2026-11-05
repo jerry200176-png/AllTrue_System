@@ -893,7 +893,7 @@ class LearningRecordController extends Controller
      * in-app #314: mutable unperformed LRs follow StudentClass.TeacherID —
      * a stale LR.TeacherID stamp alone must not keep the former teacher in queue.
      */
-    private function applyTeacherScopedLearningRecordConstraint(Builder $query, int $teacherId): void
+    public static function applyTeacherScopedLearningRecordConstraint(Builder $query, int $teacherId): void
     {
         // 與 class-sessions 可見性一致：
         // 1) 若該堂存在代課（teacher_id != 正班老師），僅代課老師可見；
