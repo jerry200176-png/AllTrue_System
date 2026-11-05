@@ -47,6 +47,11 @@ class StudentLearningTimelineTest extends TestCase
             'attempt_no' => 1, 'score' => 80, 'max_score_snapshot' => 100, 'percent' => 80, 'status' => 'submitted',
             'recorded_at' => '2026-10-08 10:00:00',
         ]);
+        AssessmentResult::create([ // voided results stay hidden, as in every assessment view
+            'assessment_id' => $assessment->id, 'student_id' => $student->id, 'student_class_id' => $course->ID,
+            'attempt_no' => 2, 'score' => 10, 'max_score_snapshot' => 100, 'percent' => 10, 'status' => 'voided',
+            'recorded_at' => '2026-10-09 10:00:00',
+        ]);
 
         $items = $this->withAuth($director['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")
             ->assertOk()->json('items');

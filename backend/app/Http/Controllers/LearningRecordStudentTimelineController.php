@@ -79,7 +79,7 @@ class LearningRecordStudentTimelineController extends Controller
             ];
         }
 
-        $results = AssessmentResult::query()->with('assessment')->where('student_id', $student->id)
+        $results = AssessmentResult::query()->with('assessment')->where('student_id', $student->id)->where('status', '!=', 'voided')
             ->when($teacherId !== null, fn ($q) => $q->whereIn('student_class_id', $ownCourseIds))
             ->orderByDesc('id')->limit(self::PER_SOURCE_LIMIT)->get();
         foreach ($results as $res) {
