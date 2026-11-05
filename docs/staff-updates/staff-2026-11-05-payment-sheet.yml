@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-05-payment-sheet
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 登記收款改在右側打開
+    summary: 帳單清單按「登記收款」，右邊會打開那一筆課程的登記表。
+    items:
+      - category: improved
+        text: 登記表一定是你按的那一列的課程；金額預設是還沒收的部分。
+      - category: improved
+        text: 新增「儲存並看下一筆未繳」，連續登記時不用回到清單。
+    source_refs:
+      - "changelog:2026-11-05:payment-sheet"

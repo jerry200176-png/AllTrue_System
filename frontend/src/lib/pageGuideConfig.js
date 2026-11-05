@@ -521,14 +521,14 @@ const pageGuideConfig = {
       target: '[data-guide="tuition-rows"]',
       icon: 'payments',
       title: '收到錢：登記收款',
-      description: '按「登記收款」，填日期、方式、金額。你登記的和家長回報的都會先變「待確認入帳」，核對後按「確認入帳」才算收到。',
+      description: '按「登記收款」，右邊會打開那一筆的登記表，填日期、方式、金額。連續要登記時按「儲存並看下一筆未繳」。你登記的和家長回報的都會先變「待確認入帳」，核對後按「確認入帳」才算收到。',
       placement: 'top',
     },
     {
       target: '[data-guide="tuition-rows"]',
       icon: 'fact_check',
       title: '標「需核對」的舊資料',
-      description: '舊資料標了已收，卻查不到收款。錢有收到就按「已收過，補登收款」；沒收到就按「其實沒收，改成未繳」。',
+      description: '舊資料標了已收，卻查不到收款。按列上的「核對」打開學生帳務：錢有收到就按「已收過，補登收款」；沒收到就按「其實沒收，改成未繳」。',
       placement: 'top',
     },
     {

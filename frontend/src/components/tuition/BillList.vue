@@ -77,10 +77,10 @@
               :data-testid="`bill-pick-${b.key}`"
               @change="pick(b.key, $event.target.checked)"
             />
-            <div class="bl__row">
+            <div class="bl__row" @click="$emit('quick', b)">
               <span class="bl__who">
-                <button type="button" class="bl__name" :data-testid="`bill-name-${b.key}`" :data-student="b.student_id" @click="$emit('student', b)">{{ b.student_name }}</button>
-                <span class="bl__subject">{{ b.subject }}</span>
+                <button type="button" class="bl__name" :data-testid="`bill-name-${b.key}`" :data-student="b.student_id" @click.stop="$emit('student', b)">{{ b.student_name }}</button>
+                <button type="button" class="bl__subject bl__open" :data-testid="`bill-open-${b.key}`" :aria-label="`看這筆帳單：${b.student_name} ${b.subject}`" @click.stop="$emit('quick', b)">{{ b.subject || '帳單' }}</button>
               </span>
               <span class="bl__period">{{ b.period }}</span>
               <span class="bl__status"><AtBadge :tone="TONES[b.kind]" :label="b.label" :title="b.help || undefined" /></span>
@@ -116,7 +116,7 @@ import AtButton from '../design-system/AtButton.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import AtSkeleton from '../design-system/AtSkeleton.vue';
-import { billCounts, billRows, TODO_KINDS } from '../../lib/billRows.js';
+import { billCounts, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 
 const props = defineProps({
@@ -135,7 +135,7 @@ const props = defineProps({
   canDocs: { type: Boolean, default: false },
   exportDisabled: { type: Boolean, default: false },
 });
-defineEmits(['student', 'action', 'menu', 'batch', 'export', 'retry']);
+defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
 
 const CHIPS = [
   { key: 'todo', label: '要處理' }, { key: 'confirm', label: '待確認入帳' }, { key: 'owing', label: '未繳' },
@@ -148,6 +148,8 @@ const PRIMARY = { confirm: ['確認入帳', 'confirm'], owing: ['登記收款', 
 function primaryOf(b) {
   if (PRIMARY[b.kind]) return { label: PRIMARY[b.kind][0], action: PRIMARY[b.kind][1] };
   if (b.kind !== 'issue') return null;
+  // #4919: a package row has no contract to issue against (class_id null), so it only opens the billing.
+  if (b.class_id == null) return { label: '看帳務', action: 'open' };
   if (b.src.schedule_mode === 'date') return { label: '開帳單', action: 'issue' };
   return slipOf(b).ok ? { label: '繳費單', action: 'slip' } : { label: '看帳務', action: 'open' };
 }
@@ -204,25 +206,7 @@ const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
 const dueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.due_date && b.kind === 'owing' ? `${md(b.due_date)} 到期` : '—');
 
-// Dangerous actions sit after the divider, only where the page allows them (same guards as the drawer's contract card).
-function menuGroups(b) {
-  const a = (b.class_id != null && props.rowActions[b.class_id]) || {};
-  const slip = slipOf(b);
-  const canRefund = b.class_id != null && b.src.schedule_mode !== 'date' && Number(b.src.paid_amount) > 0 && !b.src.closed_reason && !b.src.stop;
-  const safe = [
-    ...(b.kind === 'confirm' ? [{ id: 'reject', label: '退回' }] : []),
-    { id: 'slip', label: '傳繳費單', disabled: !slip.ok, reason: slip.ok ? '' : slip.reason },
-    { id: 'student', label: '看學生全部帳務' },
-    ...(b.class_id != null ? [{ id: 'sessions', label: '上課明細' }] : []),
-  ];
-  const danger = [
-    ...(a.waive ? [{ id: 'waive', label: '改成不收', danger: true }] : []),
-    ...(a.void ? [{ id: 'void', label: '撤銷收款', danger: true }] : []),
-    ...(a.settle ? [{ id: 'settle', label: '結案', danger: true }] : []),
-    ...(canRefund ? [{ id: 'refund', label: '退費', danger: true }] : []),
-  ];
-  return [{ id: 'safe', label: '', items: safe }, ...(danger.length ? [{ id: 'danger', label: '', items: danger }] : [])];
-}
+const menuGroups = (b) => billMenuGroups(b, props);
 
 // Batch: only rows of the same kind can be picked together, and only contracts the page's batch preview accepts.
 const selected = ref(new Set());
@@ -249,7 +233,9 @@ function neighbor(studentId, dir) {
   const b = i >= 0 && ids[i + dir] != null ? visible.value.find((x) => x.student_id === ids[i + dir]) : null;
   return b ? { student_id: b.student_id, first_class_id: b.class_id } : null;
 }
-defineExpose({ neighbor, clearSelection });
+// Contract ids of the owing rows in the order and filter on screen (for 儲存並看下一筆未繳).
+const owingQueue = () => visible.value.filter((b) => b.kind === 'owing' && b.class_id != null).map((b) => Number(b.class_id));
+defineExpose({ neighbor, clearSelection, owingQueue });
 </script>
 
 <style scoped>
@@ -276,6 +262,8 @@ defineExpose({ neighbor, clearSelection });
 .bl__row{border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;min-height:52px}
 .bl__check{grid-column:1;width:20px;height:20px;margin:0}
 .bl__who{display:grid}
+.bl__row{cursor:pointer}
+.bl__open{background:none;border:0;padding:0;font:inherit;text-align:left;cursor:pointer;min-height:28px}
 .bl__name{background:none;border:0;padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;color:inherit;text-decoration:underline;text-decoration-color:var(--ds-border);min-height:28px}
 .bl__subject,.bl__hint{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute)}
 .bl__hint,.bl__warn{grid-column:1/-1}
@@ -296,7 +284,7 @@ defineExpose({ neighbor, clearSelection });
   .bl__chip{flex:0 0 auto;min-height:44px}
   .bl__tools input{min-height:44px}
   .bl__list>li{grid-template-columns:var(--bl-check) minmax(0,1fr)}
-  .bl__name{min-height:44px}
+  .bl__name,.bl__open{min-height:44px}
   .bl :deep(.am__trigger){min-height:44px;min-width:44px}
   .bl__row{grid-template-columns:1fr auto;grid-template-areas:"who status" "hint hint";gap:2px 12px}
   /* phone: name + status on the first line, 到期／逾期 and 未收 on the second (the old list kept both) */
