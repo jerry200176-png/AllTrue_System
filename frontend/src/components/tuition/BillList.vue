@@ -10,6 +10,12 @@
       <AtSkeleton :rows="6" height="28px" />
     </div>
     <template v-else>
+      <AtInlineAlert v-if="error" tone="warning" title="帳務資料更新失敗" data-testid="bill-stale">
+        {{ error }}。下面是上次載入的資料，可能不是最新的。
+        <template #action>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" data-testid="bill-stale-retry" @click="$emit('retry')">重試</AtButton>
+        </template>
+      </AtInlineAlert>
       <div class="bl__summary" role="group" aria-label="數字條" data-testid="bill-summary">
         <button type="button" :class="{ 'is-on': filter === 'owing' }" data-testid="bill-sum-owed" @click="setFilter('owing')">到今天未收 <strong>{{ money(totalOwed) }}</strong></button>
         <button type="button" :class="{ 'is-on': filter === 'overdue' }" data-testid="bill-sum-overdue" @click="setFilter('overdue')">逾期 <strong>{{ overdueCount }}</strong> 筆</button>
@@ -79,7 +85,7 @@
               <span class="bl__period">{{ b.period }}</span>
               <span class="bl__status"><AtBadge :tone="TONES[b.kind]" :label="b.label" :title="b.help || undefined" /></span>
               <span :class="['bl__due', { due: b.overdue_days > 0 }]">{{ dueText(b) }}</span>
-              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}<small v-if="b.review_amount > 0" class="bl__review" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</small></span>
+              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}<small v-if="b.owed_later > 0" class="bl__review" :data-testid="`bill-later-${b.key}`">之後還會到期 {{ money(b.owed_later) }}</small><small v-if="b.review_amount > 0" class="bl__review" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</small></span>
               <span v-if="b.hint" class="bl__hint">{{ b.hint }}</span>
               <span v-for="w in b.warnings" :key="w" class="bl__warn" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
             </div>
@@ -147,7 +153,8 @@ function primaryOf(b) {
 }
 const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
 const SORTS = {
-  amount: { label: '未繳金額', cmp: null },
+  // D8: owed now first, then what falls due later, then name (the explicit order the label promises).
+  amount: { label: '未繳金額', cmp: (a, b) => b.owed - a.owed || b.owed_later - a.owed_later || a.student_name.localeCompare(b.student_name, 'zh-Hant') },
   overdue: { label: '逾期天數', cmp: (a, b) => b.overdue_days - a.overdue_days || b.owed - a.owed },
   // in-app #467 / #4824: fewest lessons left first; contracts without a count go last.
   remaining: { label: '剩餘堂數（少到多）', cmp: (a, b) => (a.sort_remaining ?? Infinity) - (b.sort_remaining ?? Infinity) || b.owed - a.owed },
@@ -177,7 +184,8 @@ const TESTS = {
 };
 // in-app #494 / #4884: 要開帳單 lists fewest lessons left first (the sort stays changeable).
 const sortKey = ref(filter.value === 'issue' ? 'remaining' : 'amount');
-watch(filter, (f) => { sortKey.value = f === 'issue' ? 'remaining' : 'amount'; clearSelection(); });
+watch(filter, (f) => { sortKey.value = f === 'issue' ? 'remaining' : 'amount'; });
+watch([activeFilter, query], () => clearSelection());
 const visible = computed(() => {
   const list = rows.value.filter((b) => (TESTS[activeFilter.value] || ((x) => x.kind === activeFilter.value))(b)
     && (!query.value.trim() || b.student_name.includes(query.value.trim())));
@@ -221,7 +229,8 @@ const selected = ref(new Set());
 const selectable = (b) => (b.kind === 'confirm' || b.kind === 'owing') && b.class_id != null && Boolean(props.batchModes[b.class_id]);
 const selectableRows = computed(() => visible.value.filter(selectable));
 const anyCheck = computed(() => selectableRows.value.length > 0);
-const picked = computed(() => selectableRows.value.filter((b) => selected.value.has(b.key)));
+// Derived from every selected row (not just the visible ones), and cleared on any view change, so the bar never mixes kinds.
+const picked = computed(() => rows.value.filter((b) => selected.value.has(b.key) && selectable(b)));
 const pickedKind = computed(() => picked.value[0]?.kind || '');
 const pickedMode = computed(() => (pickedKind.value === 'confirm' ? 'confirm' : 'report'));
 const allKind = computed(() => pickedKind.value || selectableRows.value[0]?.kind);

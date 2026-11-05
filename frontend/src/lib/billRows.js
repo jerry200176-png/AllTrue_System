@@ -35,10 +35,9 @@ function labelOf(kind, r, owedNow) {
   return r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation' ? TUITION_STATUS_CONFIG[r.payment_status].label : TUITION_STATUS_CONFIG.unpaid.label;
 }
 
-function hintOf(kind, r, owedNow, owedLater) {
+function hintOf(kind, r) {
   if (kind === 'confirm') return '家長已回報';
   if (kind === 'owing' && r.payment_status === 'partial' && Number(r.paid_amount) > 0) return `已收 ${money(r.paid_amount)}`;
-  if (kind === 'owing' && owedNow > 0 && owedLater > 0) return `之後還會到期 ${money(owedLater)}`;
   return '';
 }
 
@@ -84,7 +83,7 @@ export function billRows(alertRows, today = new Date().toISOString().slice(0, 10
       review_amount: pendingReviewAmount(r),
       warnings: warningsOf(r),
       label: labelOf(kind, r, owed),
-      hint: hintOf(kind, r, owed, later),
+      hint: hintOf(kind, r),
       help: kind === 'review' && isLegacyPaidFlagOnly(r) ? LEGACY_FLAG_UNVERIFIED_HELP : '',
     };
   });

@@ -127,4 +127,52 @@ describe('BillList', () => {
     expect(css).not.toMatch(/\.bl__(due|num)[^{]*\{[^}]*display:none/);
     expect(css).toMatch(/\.bl__period\{display:none\}/);
   });
+
+  it('keeps cached rows and shows a stale-data error with 重試 above them', async () => {
+    const w = mountList({ error: '載入失敗（500）' });
+    expect(w.find('[data-testid="bill-row-c2"]').exists()).toBe(true);
+    expect(w.get('[data-testid="bill-stale"]').text()).toContain('可能不是最新');
+    await w.get('[data-testid="bill-stale-retry"]').trigger('click');
+    expect(w.emitted('retry')).toHaveLength(1);
+  });
+
+  it('never mixes kinds in the batch bar across chip, summary, search and 更多 changes', async () => {
+    const w = mountList();
+    const bar = () => (w.find('[data-testid="bill-batch"]').exists() ? w.get('[data-testid="bill-batch"]').text() : '');
+    await w.get('[data-testid="bill-filter-confirm"]').trigger('click');
+    await w.get('[data-testid="bill-pick-c1"]').setValue(true);
+    expect(bar()).toBe('確認入帳 1 筆');
+    await w.get('[data-testid="bill-filter-owing"]').trigger('click');
+    expect(bar()).toBe('');
+    await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+    await w.get('[data-testid="bill-filter-todo"]').trigger('click');
+    expect(bar()).toBe('');
+    await w.get('[data-testid="bill-pick-c1"]').setValue(true);
+    await w.get('[data-testid="bill-sum-owed"]').trigger('click'); // summary strip
+    await w.get('[data-testid="bill-search"]').setValue('學生');  // search
+    expect(bar()).toBe('');
+    await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+    expect(bar()).toBe('登記 1 筆');
+  });
+
+  it('shows 之後還會到期 whenever something falls due later, even with nothing owed now', () => {
+    const w = mountList({ alertRows: [
+      row({ id: 30, payable_outstanding: 700, open_periods: [{ outstanding: 700, due_date: '2026-12-01' }] }),
+      row({ id: 31, student_id: 2, payment_status: 'partial', open_periods: [{ outstanding: 200, due_date: '2026-11-01' }, { outstanding: 300, due_date: '2026-12-01' }] }),
+    ] });
+    expect(w.get('[data-testid="bill-later-c30"]').text()).toBe('之後還會到期 NT$ 700');
+    expect(w.get('[data-testid="bill-later-c31"]').text()).toBe('之後還會到期 NT$ 300');
+    expect(w.get('[data-testid="bill-row-c30"]').text()).toContain('—');
+  });
+
+  it('sorts 未繳金額 by owed now, then owed later, then name', () => {
+    const w = mountList({ alertRows: [
+      row({ id: 40, student_id: 4, student_name: '丙', payable_outstanding: 500 }),
+      row({ id: 41, student_id: 5, student_name: '乙', payable_outstanding: 500, open_periods: [{ outstanding: 500, due_date: '2026-11-01' }, { outstanding: 100, due_date: '2026-12-01' }] }),
+      row({ id: 42, student_id: 6, student_name: '甲', payable_outstanding: 500 }),
+      row({ id: 43, student_id: 7, student_name: '丁', payable_outstanding: 900 }),
+    ] });
+    expect(w.get('[data-testid="bill-sort"]').element.value).toBe('amount');
+    expect(w.findAll('[data-testid^="bill-name-"]').map((e) => e.text())).toEqual(['丁', '乙', ...['甲', '丙'].sort((a, b) => a.localeCompare(b, 'zh-Hant'))]);
+  });
 });
