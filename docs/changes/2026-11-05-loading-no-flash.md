@@ -1,0 +1,3 @@
+## 2026-11-05 — fix(ui): 載入畫面不再閃爍（in-app #503）
+<!-- release-notes: staff_update=staff-2026-11-05-loading-no-flash -->
+- Loading indicators now follow "fast load shows nothing, slow load shows a stable indicator". `AtSkeleton` stays invisible (space reserved, no layout shift) for the first 300ms via CSS `animation-delay`. The boot full-screen spinner in `App.vue` uses the new `useDelayedLoading` composable (appears after 300ms, stays at least 300ms). `useRefetchView` keeps existing content on screen (`.at-refetch.is-busy`, `aria-busy`) on refetch instead of swapping to a skeleton; applied to 分校健康. The top progress bar (`AtLoadingBar`, 300ms delay) already existed and is unchanged.

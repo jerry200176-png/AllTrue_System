@@ -23,9 +23,11 @@
   </div>
 
   <div v-else-if="isStandaloneTrueFit" class="standalone-truefit-shell">
-    <div v-if="loading" class="loading-screen">
-      <div class="spinner"></div>
-      <span>載入 TrueFit…</span>
+    <div v-if="loading || showBootSpinner" class="loading-screen" role="status" aria-busy="true" aria-label="載入中">
+      <template v-if="showBootSpinner">
+        <div class="spinner"></div>
+        <span>載入 TrueFit…</span>
+      </template>
     </div>
     <Login v-else-if="!session" @login-success="handleLoginSuccess" />
     <div v-else-if="role !== 'teacher'" class="standalone-truefit-disabled">
@@ -57,9 +59,11 @@
     >?</button>
   </div>
 
-  <div v-else-if="loading" class="loading-screen">
-    <div class="spinner"></div>
-    <span>載入中…</span>
+  <div v-else-if="loading || showBootSpinner" class="loading-screen" role="status" aria-busy="true" aria-label="載入中">
+    <template v-if="showBootSpinner">
+      <div class="spinner"></div>
+      <span>載入中…</span>
+    </template>
   </div>
 
   <Login v-else-if="!session" @login-success="handleLoginSuccess" />
@@ -929,6 +933,7 @@ import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
 import AtLoadingBar from './components/AtLoadingBar.vue';
 import { trackLoader } from './lib/loadingBar';
+import { useDelayedLoading } from './composables/useDelayedLoading';
 import { useToast } from './composables/useToast';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import { buildInboxDeepLinkQuery, deepLinkTargetPage, hasInboxDeepLink, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
@@ -1045,6 +1050,7 @@ const session = ref(null);
 const userProfile = ref(null);
 const staffCapabilities = ref([]);
 const loading = ref(true);
+const showBootSpinner = useDelayedLoading(loading);
 const directorBranchAuthorization = useDirectorBranchAuthorization();
 const directorBranchStatus = directorBranchAuthorization.status;
 const directorContextKey = computed(() => {
