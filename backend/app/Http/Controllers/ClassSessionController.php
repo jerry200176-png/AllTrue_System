@@ -15,6 +15,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\ApprovalSessionSyncService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\CourseLeaveCascadeService;
@@ -1197,12 +1198,9 @@ class ClassSessionController extends Controller
                     $this->applyTimeAndNoteUpdates($session, $data);
                     $session->save();
 
-                    if (in_array($newStatus, ['attended', 'late'], true)) {
-                        SessionDeductionService::deductOnAttendance($studentClass, null, (int) $session->id);
-                    }
-
                     // TD-005: sync active StudentSignIn.Status if one exists (e.g. RFID swipe already in)
                     $this->syncStudentSignInStatus($session->id, $newStatus);
+                    $this->debitTaughtLesson($session, $studentClass, $newStatus, $authUserId);
 
                     // R55: attended→scheduled voids LR as 由已上調整狀態; coming back
                     // to attended/late must resurrect or teachers have nothing to fill.
@@ -1218,6 +1216,9 @@ class ClassSessionController extends Controller
                     $session->save();
                     // TD-005: sync active StudentSignIn.Status so fetchRecords reflects true state
                     $this->syncStudentSignInStatus($session->id, $newStatus);
+                    if ($currentStatus === 'absent') {
+                        $this->debitTaughtLesson($session, $studentClass, $newStatus, $authUserId); // 缺席 was never debited
+                    }
                     return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
                 }
 
@@ -1880,6 +1881,20 @@ class ClassSessionController extends Controller
      * ClassSession status → StudentSignIn status 對照：
      *   attended/completed → present | late → late | absent → absent
      */
+    /**
+     * #4931: a lesson marked 已上/遲到 here is taught: it gets exactly one payable sign-in (part-time payroll pays only
+     * lessons with one) and its debit, as the attendance and evaluation paths do. Other statuses are not debited.
+     */
+    private function debitTaughtLesson(ClassSession $session, StudentClass $studentClass, string $newStatus, int $authUserId): void
+    {
+        if (!in_array($newStatus, ['attended', 'late'], true)) {
+            return;
+        }
+        $signIn = ApprovalSessionSyncService::payableSignIn($session, $studentClass, $newStatus === 'late' ? 'late' : 'present',
+            $studentClass->TeacherID, $authUserId, 'status_attended');
+        SessionDeductionService::deductOnAttendance($studentClass, $signIn, (int) $session->id);
+    }
+
     private function syncStudentSignInStatus(int $classSessionId, string $csStatus): void
     {
         $siStatus = match ($csStatus) {
