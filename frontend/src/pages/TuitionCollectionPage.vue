@@ -21,7 +21,7 @@
       </template>
     </AtPageHeader>
 
-    <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁">
+    <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁" data-guide="tuition-tabs">
       <button
         v-for="tab in visibleAccountingTabs"
         :key="tab.key"
@@ -47,7 +47,7 @@
     </div>
 
     <!-- in-app #480: 已結清 is a tuition list; on 收款紀錄 / 代收代付 it read like a status of that page. -->
-    <nav v-if="!['payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+    <nav v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="!['students', 'monthly', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回帳單清單</button>
       <button
         v-for="v in REMINDER_VIEWS"
@@ -81,6 +81,10 @@
         @retry="loadAlerts"
       />
     </section>
+    <!-- 已結清課程 keeps its own list (the bill list has no stopped, fully paid contracts); entry is this quiet link. -->
+    <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below" aria-label="其他清單" data-testid="tc-reminders">
+      <button v-for="v in REMINDER_VIEWS" :key="v.key" type="button" class="tc-reminder" :data-testid="`tc-reminder-${v.key}`" @click="activeAccountingTab = v.key">{{ v.label }}</button>
+    </nav>
 
     <!-- 月結 (Square "Recurring series"): the bills still to issue this month, and the monthly bills to check. -->
     <section v-if="activeAccountingTab === 'monthly'" id="tuition-accounting-panel-monthly" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly" tabindex="0">
@@ -106,6 +110,10 @@
             迄日
             <input v-model="accountingFilters.end" type="date" />
           </label>
+        </div>
+        <details class="acct-more-filters" data-testid="acct-more-filters">
+          <summary>篩選<span v-if="moreFiltersActive" class="acct-more-filters__count">{{ moreFiltersActive }}</span></summary>
+          <div class="acct-filter-grid">
           <label>
             學生
             <input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" />
@@ -130,7 +138,8 @@
               <option value="transfer">匯款</option>
             </select>
           </label>
-        </div>
+          </div>
+        </details>
         <div class="acct-filter-actions">
           <button class="tc-btn tc-btn--ghost" @click="loadAccountingPayments()" :disabled="accountingLoading">
             <span class="material-symbols-outlined" :class="{ spin: accountingLoading }" style="font-size:16px">refresh</span>
@@ -160,18 +169,6 @@
 
       <template v-else>
         <div class="tc-summary">
-          <div class="tc-card tc-card--total">
-            <span class="tc-card-num">{{ accountingSummary.total_count || 0 }}</span>
-            <span class="tc-card-label">已確認收款筆數</span>
-          </div>
-          <div class="tc-card tc-card--info">
-            <span class="tc-card-num">{{ accountingSummary.unique_paid_course_count || 0 }}</span>
-            <span class="tc-card-label">涵蓋課程數</span>
-          </div>
-          <div class="tc-card" :class="{ 'tc-card--warn': (accountingSummary.duplicate_payment_course_count || 0) > 0 }">
-            <span class="tc-card-num">{{ accountingSummary.duplicate_payment_course_count || 0 }}</span>
-            <span class="tc-card-label">同課程多筆收款</span>
-          </div>
           <div class="tc-card tc-card--success">
             <span class="tc-card-num">{{ formatCurrency(accountingSummary.cash_total || 0) }}</span>
             <span class="tc-card-label">現金</span>
@@ -184,13 +181,9 @@
             <span class="tc-card-num">{{ formatCurrency(accountingSummary.grand_total || 0) }}</span>
             <span class="tc-card-label">合計</span>
           </div>
-          <div class="tc-card tc-card--warn">
-            <span class="tc-card-num">{{ accountingSummary.prepaid_count || 0 }}</span>
-            <span class="tc-card-label">預收筆數</span>
-          </div>
         </div>
-        <p class="tc-summary-note">
-          「已確認收款筆數」是一筆筆收據；「涵蓋課程數」是這些收款對到的不同課程。若同一課程有多筆收款，請逐筆撤銷錯的那筆，不要刪除原紀錄。作廢紀錄不計入收款合計，可開啟繳費明細追蹤。
+        <p class="tc-summary-note" data-testid="acct-count-line">
+          已確認 {{ accountingSummary.total_count || 0 }} 筆收款・涵蓋 {{ accountingSummary.unique_paid_course_count || 0 }} 門課・預收 {{ accountingSummary.prepaid_count || 0 }} 筆<template v-if="(accountingSummary.duplicate_payment_course_count || 0) > 0">・<strong class="acct-warn">同課程多筆收款 {{ accountingSummary.duplicate_payment_course_count }} 門</strong>（請逐筆撤銷錯的那筆，不要刪除原紀錄）</template>。作廢紀錄不計入合計，可開啟繳費明細追蹤。
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
@@ -831,6 +824,10 @@ const accountingSummary = ref({
   prepaid_count: 0,
 });
 const accountingFilters = ref(defaultAccountingFilters());
+const moreFiltersActive = computed(() => {
+  const f = accountingFilters.value;
+  return [f.student.trim(), f.subject.trim(), f.status !== 'confirmed', f.payment_method].filter(Boolean).length;
+});
 
 // Sortable + selectable 收據紀錄 table (mirrors mature accounting-software list
 // patterns: click a header to sort, checkbox rows to bulk-export a subset).
@@ -2084,6 +2081,10 @@ loadCampusStudents();
   color: var(--text);
   font: inherit;
 }
+.acct-more-filters { margin-top: 8px; }
+.acct-more-filters > summary { cursor: pointer; font-size: var(--ds-font-size-md); min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
+.acct-more-filters__count { background: var(--ds-ink-mute); color: var(--ds-canvas); border-radius: var(--ds-radius-pill); padding: 0 6px; font-size: var(--ds-font-size-sm); }
+.acct-warn { color: var(--ds-danger-text); }
 .acct-filter-actions {
   display: flex;
   justify-content: flex-end;

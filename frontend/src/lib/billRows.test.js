@@ -71,3 +71,22 @@ describe('billRows', () => {
     expect([a.sort_remaining, b.sort_remaining].sort()).toEqual([2, null]);
   });
 });
+
+// Ported from the retired student-list tests (#4114): nothing without a real payment on record reads 已收.
+describe('billRows 已收 regressions (#4114)', () => {
+  const kindOf = (o) => billRows([r(o)], T)[0].kind;
+  it.each([
+    ['no invoice and no payment', { payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null, last_paid_at: null }, 'issue'],
+    ['a zero amount due alone', { payment_status: 'unpaid', payable_status: 'review_required', payable_outstanding: 0, last_paid_at: null }, 'review'],
+    ['a pending payment report', { payment_status: 'pending_report', payable_status: 'unbilled', payable_outstanding: null }, 'confirm'],
+    ['a voided report (invoice back to unpaid)', { payment_status: 'unpaid', payable_status: 'unpaid', payable_outstanding: 5000, paid_amount: 0, due_date: '2026-10-01' }, 'owing'],
+    ['a stale PayDate with no payment', { payment_status: 'unpaid', payable_status: 'review_required', payable_outstanding: null, last_paid_at: '2025-01-15' }, 'review'],
+    ['a partial payment', { payment_status: 'partial', payable_status: 'partial', payable_outstanding: 3000, paid_amount: 2000, due_date: '2026-10-01' }, 'owing'],
+    ['a legacy paid flag alone', { payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0, legacy_paid_flag_only: true }, 'review'],
+  ])('%s is not 已收', (_n, o, kind) => {
+    expect(kindOf(o)).toBe(kind);
+  });
+  it('a paid contract next to an owing one stays its own row', () => {
+    expect(kinds([r({ id: 281, payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0 }), r({ id: 282, payment_status: 'unpaid', due_date: '2026-10-01' })])).toEqual({ c281: 'paid', c282: 'owing' });
+  });
+});

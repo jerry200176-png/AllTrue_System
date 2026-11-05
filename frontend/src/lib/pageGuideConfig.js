@@ -532,6 +532,13 @@ const pageGuideConfig = {
       placement: 'top',
     },
     {
+      target: '[data-guide="tuition-tabs"]',
+      icon: 'receipt_long',
+      title: '收款紀錄：先看三個數字',
+      description: '「收款紀錄」分頁上方只有現金、匯款、合計。日期留在外面，學生、科目、收據狀態、付款方式收進「篩選」。要看作廢的收據，在「篩選」把收據狀態改成「已作廢紀錄」。已結清課程在帳單清單下方的「已結清課程」連結。',
+      placement: 'bottom',
+    },
+    {
       target: '[data-guide="tuition-header"]',
       icon: 'event_repeat',
       title: '續課在課程管理',
