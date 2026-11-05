@@ -78,10 +78,10 @@ describe('BillQuickView', () => {
     expect(global.fetch.mock.calls.some(([u]) => String(u).includes('/sessions'))).toBe(false);
   });
 
-  it('says 尚未開帳單 (not NT$ 0) when the contract has no bill, and still offers the pending report', async () => {
+  it('says 還沒開帳單 (not NT$ 0) when the contract has no bill, and still offers the pending report', async () => {
     global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/accounting/ledger') ? { ...LEDGER, invoices: [{ id: 2, student_class_id: 7, status: 'void', total_amount: 5, outstanding_amount: 5 }] } : {})));
     const w = await mountQv();
-    expect(w.get('[data-testid="qv-unbilled"]').text()).toBe('尚未開帳單');
+    expect(w.get('[data-testid="qv-unbilled"]').text()).toBe('還沒開帳單');
     expect(w.find('[data-testid="qv-money"]').exists()).toBe(false);
     expect(w.find('[data-testid="qv-confirm"]').exists()).toBe(true);
     expect(w.find('[data-testid="qv-reject"]').exists()).toBe(true);
@@ -110,5 +110,28 @@ describe('BillQuickView', () => {
     await d2.trigger('toggle');
     await flushPromises();
     expect(global.fetch.mock.calls.some(([u]) => String(u).includes('/contracts/8/sessions'))).toBe(true);
+  });
+
+  it('hides 登記收款 on 不收了 and 要開帳單 rows, and shows no 還沒開帳單 for a waived contract with only void bills', async () => {
+    global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/accounting/ledger') ? { ...LEDGER, receipts: [], invoices: [{ id: 2, student_class_id: 7, status: 'void', total_amount: 5, outstanding_amount: 5 }] } : {})));
+    const waived = await mountQv({ bill: { ...BILL, kind: 'waived', label: '不收了' } });
+    expect(waived.find('[data-testid="qv-record"]').exists()).toBe(false);
+    expect(waived.find('[data-testid="qv-unbilled"]').exists()).toBe(false);
+    const issue = await mountQv({ bill: { ...BILL, kind: 'issue', label: '要開帳單' } });
+    expect(issue.find('[data-testid="qv-record"]').exists()).toBe(false);
+    expect(issue.find('[data-testid="qv-unbilled"]').text()).toBe('還沒開帳單');
+  });
+
+  it('marks 上課日 as expandable and shows the busy state on the confirm and reject submits', async () => {
+    const w = await mountQv();
+    expect(w.get('[data-testid="qv-lessons"] summary').text()).toContain('▸');
+    await w.get('[data-testid="qv-confirm"]').trigger('click');
+    let finish;
+    global.fetch = vi.fn(() => new Promise((r) => { finish = () => r(json({ message: 'ok' })); }));
+    await w.get('[data-testid="qv-confirm-submit"]').trigger('click');
+    await flushPromises();
+    expect(w.get('[data-testid="qv-confirm"]').classes().join(' ')).toContain('loading');
+    finish();
+    await flushPromises();
   });
 });
