@@ -181,6 +181,7 @@ final class PopOperationService
             && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactForwardExtraCancel($entry)
             && !$this->isExactDuplicateHistoryPinRepair($entry)
+            && !$this->isExactTaughtLessonSignInRepair($entry)
             && !$this->isExactDuplicateAttendedCancel($entry)
             && !$this->isExactForwardOverdeductReassign($entry)
             && !$this->isExactTd076Repair($entry)
@@ -351,7 +352,7 @@ final class PopOperationService
     ): array
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
-        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $this->request($requestId)->strategy_id)) return $run();
         return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
@@ -443,7 +444,7 @@ final class PopOperationService
                     $this->durationMs($startedAt)
                 );
                 // Co-commit financial repair/receipt; preserve other strategies' external-effect contracts.
-                return $this->atomicFinancialRepair($strategy)
+                return $this->coCommitsWithRecord($strategy)
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
             }
@@ -456,7 +457,7 @@ final class PopOperationService
             $complete = fn () => $this->record($request, $entry, $parameters, $phase,
                 $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
                 $actor, $approval, $commitSha, $this->durationMs($startedAt));
-            return $this->atomicFinancialRepair($strategy)
+            return $this->coCommitsWithRecord($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             return $this->record($request, $entry, $parameters, $phase, [
@@ -464,6 +465,13 @@ final class PopOperationService
                 'errors' => ['execution_failed'],
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
         }
+    }
+
+    /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
+    private function coCommitsWithRecord(object|string $strategy): bool
+    {
+        return $this->atomicFinancialRepair($strategy)
+            || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
     }
 
     private function atomicFinancialRepair(object|string $strategy): bool
@@ -847,6 +855,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactTaughtLessonSignInRepair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'campus_scoped_taught_lesson_sign_ins_created'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactDuplicateAttendedCancel($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1172,6 +1195,15 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\DuplicateHistoryPinRepairStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-duplicate-history-pin-repair'
             && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
+    }
+
+    /** #4925 #4927 #4931 (in-app #502, #504): campus_id + expected_digest pin each run to its dry-run; restore_request_id deletes the created sign-ins. */
+    private function isExactTaughtLessonSignInRepair(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'taught-lesson-signin-repair-20261105'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-taught-lesson-signin-repair'
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest', 'restore_request_id'];
     }
 
     /** #4554 #4753: hard-coded duplicate-attended lessons and duplicate packages; campus_id + expected_digest pin each run; restore_request_id undoes it. */
