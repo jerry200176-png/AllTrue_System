@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-05-billing-v3-payments-slim
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 收款紀錄變簡單
+    summary: 收款紀錄只留現金、匯款、合計；已結清課程改從帳單清單下方的連結進入。
+    items:
+      - category: improved
+        text: 收款紀錄上方數字卡從七張減為三張：現金、匯款、合計。筆數與預收改成一行小字。
+      - category: improved
+        text: 學生、科目、收據狀態、付款方式收進「篩選」，日期留在外面。
+      - category: improved
+        text: 「已結清課程」入口移到帳單清單下方，內容不變。
+    source_refs:
+      - "changelog:2026-11-05:billing-v3-payments-slim"
