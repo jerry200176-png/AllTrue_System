@@ -30,6 +30,13 @@ defineProps({
   flex-direction: column;
   gap: var(--ds-space-2);
   padding: var(--ds-space-2) 0;
+  /* Fast loads never flash: stay invisible (but laid out, no shift) for the first 300ms. */
+  opacity: 0;
+  animation: at-skeleton-reveal 0s linear 300ms forwards;
+}
+
+@keyframes at-skeleton-reveal {
+  to { opacity: 1; }
 }
 
 .at-skeleton__row {
