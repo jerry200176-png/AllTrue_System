@@ -3,9 +3,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
 import ContractCard from '../tuition/ContractCard.vue';
 import LegacyPaidFlagActions from '../tuition/LegacyPaidFlagActions.vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
+import { menuIds, openCardMenu, menuItem, pickMenu } from './cardMenu.js';
 
 const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...args) => authedFetch(...args), getAccessToken: async () => 'fixture-token' }));
@@ -20,6 +22,7 @@ const mountLedger = async (receipts, options = {}) => {
   fetch.mockImplementation(async (url) => response(String(url).includes('monthly-drafts') ? { data: [] } : body));
   const wrapper = mountWith(AccountingLedgerModal, { props: { show: true, studentClassId: 2, ...options.props } });
   await flushPromises();
+  await openAll(wrapper);
   return wrapper;
 };
 
@@ -40,8 +43,9 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     const card = w.find('[data-testid="contract-card-2"]');
     expect(card.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
     expect(card.find('[data-testid="legacy-flag-help"]').text()).toContain('收款紀錄');
-    expect(card.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
-    expect(card.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+    const ids = await menuIds(card);
+    expect(ids).toContain('memo');
+    expect(ids.filter((id) => id.startsWith('legacy'))).toEqual([]);
     expect(card.find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card.text()).not.toContain('已收清');
     expect(posted()).toEqual([]);
@@ -54,7 +58,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-amounts"]').text()).toContain('未繳 NT$ 6,000');
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
+    expect((await menuIds(w.find('[data-testid="contract-card-2"]'))).filter((id) => id.startsWith('legacy'))).toEqual([]);
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(false);
   });
 
@@ -62,6 +66,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     const w = await mountLedger([{ ...receipt, payment_date: null }], { props: { initialAction: 'record' } });
     expect(w.text()).toContain('收款紀錄');
     expect(w.text()).not.toContain('再選擇補登收款或改成未繳');
+    expect(w.text()).not.toContain('選擇補登收款或改成未繳');
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(false);
   });
 
@@ -75,27 +80,31 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
 
   it('a refreshed confirmed report closes a previously opened backfill form', async () => {
     const w = await mountLedger([]);
-    await w.find('[data-testid="legacy-backfill-open"]').trigger('click');
+    await pickMenu(w, 'legacy-backfill');
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(true);
     const body = { scope: {}, student: { id: 1, name: 'Fixture' }, courses: [course], invoices: [], receipts: [{ ...receipt, payment_date: null }], anomalies: [] };
     fetch.mockImplementation(async (url) => response(String(url).includes('monthly-drafts') ? { data: [] } : body));
     await w.setProps({ reportId: 5 });
     await flushPromises();
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(false);
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
+    await w.find('.am__trigger').trigger('click');
+    await flushPromises();
+    expect(menuItem('legacy-backfill')).toBeNull();
     expect(posted()).toEqual([]);
   });
 
   it.each(['voided', 'rejected'])('a %s report does not block the existing legacy choices', async (status) => {
     const w = await mountLedger([{ ...receipt, status }]);
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
-    expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(true);
+    await openCardMenu(w);
+    expect(menuItem('legacy-backfill')).not.toBeNull();
+    expect(menuItem('legacy-clear')).not.toBeNull();
   });
 
   it('confirmed evidence on another course does not hide this course actions', async () => {
     const w = await mountLedger([{ ...receipt, student_class_id: 99 }]);
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
-    expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(true);
+    await openCardMenu(w);
+    expect(menuItem('legacy-backfill')).not.toBeNull();
+    expect(menuItem('legacy-clear')).not.toBeNull();
   });
 
   it('a confirmed report on a shared-package sibling closes the lead card like the server does', async () => {
@@ -103,8 +112,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     const w = await mountLedger([{ ...receipt, student_class_id: 3, payment_date: null }], { body: { courses: [pkg, { ...pkg, id: 3, subject: '同方案' }] } });
     const lead = w.find('[data-testid="contract-card-2"]');
     expect(lead.find('[data-testid="legacy-flag-help"]').text()).toContain('收款紀錄');
-    expect(lead.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
-    expect(lead.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+    expect((await menuIds(lead)).filter((id) => id.startsWith('legacy'))).toEqual([]);
   });
 
   it('a valid receipt retains its date, amount and existing payment display', async () => {
@@ -116,8 +124,9 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
   it('ContractCard keeps the legacy-choice gate while confirmed-report controls are suppressed', async () => {
     const w = mountWith(ContractCard, { props: { course, outstanding: 6000, lastPayment: { legacyUnverified: true }, canResolveLegacy: true, hasConfirmedReport: true } });
     await flushPromises();
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
-    expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+    const ids = await menuIds(w);
+    expect(ids).toContain('memo');
+    expect(ids.filter((id) => id.startsWith('legacy'))).toEqual([]);
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.emitted('legacy-backfill')).toBeUndefined();
   });

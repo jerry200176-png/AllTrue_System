@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +16,7 @@ async function mountWith(payload) {
     global: { stubs: { Transition: false } },
   });
   await flushPromises();
+  await openAll(w);
   return w;
 }
 

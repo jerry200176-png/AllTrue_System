@@ -8,23 +8,28 @@ import { fileURLToPath } from 'node:url';
 
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: async () => ({ ok: true, status: 200, json: async () => ({ sessions: [] }) }), getAccessToken: async () => 'tok' }));
 import ContractCard from '../tuition/ContractCard.vue';
+import { openCardMenu, menuItem } from './cardMenu.js';
 
-const card = (rowActions) => mount(ContractCard, { props: { course: { id: 9, subject: '數學' }, rowActions } });
+const card = (rowActions) => mount(ContractCard, { props: { focused: true, course: { id: 9, subject: '數學' }, rowActions } });
 const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/TuitionCollectionPage.vue'), 'utf8');
 
 describe('ContractCard row actions (F-5a1)', () => {
   it('offers no money action without rowActions', async () => {
     const w = card(null);
     await flushPromises();
-    for (const id of ['waive', 'void', 'settle']) expect(w.find(`[data-testid="contract-${id}"]`).exists()).toBe(false);
+    await openCardMenu(w);
+    for (const id of ['waive', 'void', 'settle']) expect(menuItem(id)).toBeNull();
   });
 
   it('shows only the allowed actions and emits the kind', async () => {
     const w = card({ waive: true, void: false, settle: true });
     await flushPromises();
-    expect(w.find('[data-testid="contract-void"]').exists()).toBe(false);
-    await w.get('[data-testid="contract-waive"]').trigger('click');
-    await w.get('[data-testid="contract-settle"]').trigger('click');
+    await openCardMenu(w);
+    expect(menuItem('void')).toBeNull();
+    menuItem('waive').click();
+    await flushPromises();
+    await openCardMenu(w);
+    menuItem('settle').click();
     expect(w.emitted('row-action')).toEqual([['waive'], ['settle']]);
   });
 });

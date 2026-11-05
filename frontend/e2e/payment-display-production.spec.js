@@ -492,6 +492,11 @@ test.describe('production acceptance — payment display (#4150)', () => {
         const relevant = (rule === 'waived' && fact.waived && fact.tutoring !== true)
           || (rule === 'legacy' && fact.legacyNoStanding) || (rule === 'reversed' && fact.netZeroReversed);
         if (relevant && !(await appears(card, 5_000))) { violations.push({ course_id: fact.id, problem: 'contract_card_missing' }); continue; }
+        // #4659 step 5: cards start on one line; open the one under test (the opened course is already open).
+        if (relevant) {
+          const toggle = card.getByTestId('contract-toggle');
+          if ((await toggle.getAttribute('aria-expanded', SHORT)) === 'false') await toggle.click();
+        }
         if (rule === 'waived' && fact.waived && fact.tutoring !== true) {
           counts.cases_checked += 1;
           const money = card.locator('[data-testid="contract-waived"]');
@@ -509,7 +514,12 @@ test.describe('production acceptance — payment display (#4150)', () => {
             if (BRANCH_ID === 15 && fact.id === REPORTED_LEGACY_COURSE_ID) counts.reported_course_confirmed_cases_checked += 1;
             try {
               await expect(card.getByTestId('legacy-flag-help')).toHaveText(LEGACY_CONFIRMED_REPORT_HELP, SHORT);
-              await expect(card.locator('[data-testid="legacy-backfill-open"], [data-testid="legacy-clear-open"]')).toHaveCount(0, SHORT);
+              // The two actions live in the card's ••• menu: open it, prove it rendered (改備註 is always there), then check they are absent.
+              await card.locator('.am__trigger').click(SHORT);
+              const menu = page.locator('.am__menu').last();
+              await expect(menu.locator('[data-action="memo"]')).toBeVisible(SHORT);
+              await expect(menu.locator('[data-action="legacy-backfill"], [data-action="legacy-clear"]')).toHaveCount(0, SHORT);
+              await page.keyboard.press('Escape');
             } catch {
               violations.push({ course_id: fact.id, problem: 'confirmed_legacy_offers_actions_or_lacks_receipt_guidance' });
             }

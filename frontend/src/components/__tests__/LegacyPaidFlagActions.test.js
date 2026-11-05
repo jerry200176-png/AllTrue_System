@@ -7,6 +7,7 @@ import { nextTick } from 'vue';
 const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 
+import { openCardMenu, menuItem, pickMenu } from './cardMenu.js';
 import ContractCard from '../tuition/ContractCard.vue';
 import LegacyPaidFlagActions from '../tuition/LegacyPaidFlagActions.vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
@@ -24,6 +25,7 @@ describe('ContractCard legacy-flag actions', () => {
   const mountCard = async (course, props = {}) => {
     authedFetch.mockResolvedValueOnce(respond({ sessions: [], unscheduled_count: 0 }));
     wrapper = mount(ContractCard, { attachTo: document.body, props: {
+      focused: true,
       course: { id: 9, subject: '數學', schedule_mode: 'count', paid: true, charge: 8800, current_contract_charge: 8800, ...course },
       lastPayment: { legacyUnverified: true }, canResolveLegacy: true, ...props,
     } });
@@ -34,14 +36,17 @@ describe('ContractCard legacy-flag actions', () => {
     const w = await mountCard({});
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
     expect(w.find('[data-testid="legacy-flag-help"]').text()).toBe(HELP);
-    expect(w.find('[data-testid="legacy-backfill-open"]').text()).toBe('已收過，補登收款');
-    expect(w.find('[data-testid="legacy-clear-open"]').text()).toBe('其實沒收，改成未繳');
+    await openCardMenu(w);
+    expect(menuItem('legacy-backfill').textContent).toBe('已收過，補登收款');
+    expect(menuItem('legacy-clear').textContent).toBe('其實沒收，改成未繳');
   });
   it('with an open bill the card has one way to take money: 補登收款, never 登記這筆 as well', async () => {
     const w = await mountCard({}, { outstanding: 3000 });
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
+    await openCardMenu(w);
+    expect(menuItem('legacy-backfill')).not.toBeNull();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
-    await w.find('[data-testid="legacy-backfill-open"]').trigger('click');
+    expect(menuItem('record')).toBeNull();
+    await pickMenu(w, 'legacy-backfill');
     expect(w.emitted('legacy-backfill')[0][0].id).toBe(9);
   });
   it.each([
@@ -61,29 +66,27 @@ describe('ContractCard legacy-flag actions', () => {
   ])('offers both actions on %s', async (_label, course) => {
     const w = await mountCard(course);
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
-    expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(true);
-    await w.find('[data-testid="legacy-backfill-open"]').trigger('click');
+    await openCardMenu(w);
+    expect(menuItem('legacy-backfill')).not.toBeNull();
+    expect(menuItem('legacy-clear')).not.toBeNull();
+    await pickMenu(w, 'legacy-backfill');
     expect(w.emitted('legacy-backfill')[0][0].id).toBe(9);
   });
   it('tells a shared package that 改成未繳 clears every member, and a single course nothing extra', async () => {
     const shared = await mountCard({ package_id: 3 });
-    await shared.find('[data-testid="legacy-clear-open"]').trigger('click');
-    await flushPromises();
+    await pickMenu(shared, 'legacy-clear');
     expect(q('legacy-shared-note').textContent).toBe('這門課屬於共用方案：方案內所有課程會一起改成未繳。');
     wrapper.unmount();
     document.body.innerHTML = '';
     wrapper.unmount();
     document.body.innerHTML = '';
     const monthlyMember = await mountCard({ schedule_mode: 'date', package_id: null, in_package: true });
-    await monthlyMember.find('[data-testid="legacy-clear-open"]').trigger('click');
-    await flushPromises();
+    await pickMenu(monthlyMember, 'legacy-clear');
     expect(q('legacy-shared-note')).not.toBeNull();
     wrapper.unmount();
     document.body.innerHTML = '';
     const single = await mountCard({});
-    await single.find('[data-testid="legacy-clear-open"]').trigger('click');
-    await flushPromises();
+    await pickMenu(single, 'legacy-clear');
     expect(q('legacy-clear-reason')).not.toBeNull();
     expect(q('legacy-shared-note')).toBeNull();
   });

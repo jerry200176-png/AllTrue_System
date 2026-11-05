@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
 import PaymentAllocation from '../tuition/PaymentAllocation.vue';
 
 const course = (id, subject) => ({ id, subject, schedule_mode: 'date', charge: 0, paid: false, stop: false, package_id: null });
@@ -137,6 +138,7 @@ describe('帳務面板 · 整個學生開啟不標「其他課程」 (#3987)', (
       ? { ok: true, status: 200, json: async () => payload } : { ok: false, status: 500, json: async () => ({}) })));
     const w = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 42, branchId: 1, studentWide }, global: { stubs: { Transition: false } } });
     await flushPromises();
+    await openAll(w);
     return w;
   }
   it('course-scoped launch labels the sibling course invoice and focuses the card', async () => {
