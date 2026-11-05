@@ -144,4 +144,58 @@ describe('AccountingLedgerModal sections', () => {
     await flushPromises();
     expect(w.get('[data-testid="ledger-fold-receipts"]').attributes('aria-expanded')).toBe('true');
   });
+
+  it('auto-opens 帳單 and counts bills with a warning (差額 / 多收), so the fold never hides them', async () => {
+    ledger.invoices = [{ ...ledger.invoices[0], id: 6, amount_discrepancy: true, stored_total_amount: 100, computed_total_amount: 120, period_sessions: 4 }];
+    const w = await open();
+    expect(w.get('[data-testid="ledger-fold-invoices"]').attributes('aria-expanded')).toBe('true');
+    expect(w.get('[data-testid="ledger-fold-warn"]').text()).toBe('需留意 1');
+    expect(w.find('[data-testid="ledger-amount-discrepancy-6"]').exists()).toBe(true);
+    ledger.invoices = [{ ...ledger.invoices[0], amount_discrepancy: false }];
+    wrapper.unmount();
+    const q = await open();
+    expect(q.get('[data-testid="ledger-fold-invoices"]').attributes('aria-expanded')).toBe('false');
+    expect(q.find('[data-testid="ledger-fold-warn"]').exists()).toBe(false);
+  });
+
+  it('a hand-opened card stays open after an action reloads the ledger', async () => {
+    const w = await open();
+    const toggle = () => w.get('[data-testid="contract-card-3"] [data-testid="contract-toggle"]');
+    await toggle().trigger('click');
+    await pickMenu(w.get('[data-testid="contract-card-3"]'), 'memo');
+    await w.get('[data-testid="contract-card-3"] [data-testid="contract-memo-input"]').setValue('新備註');
+    await w.get('[data-testid="contract-card-3"] [data-testid="contract-memo-save"]').trigger('click');
+    await flushPromises(); await flushPromises();
+    expect(toggle().attributes('aria-expanded')).toBe('true');
+  });
+
+  it('folds and hand-opened cards reset when the branch changes', async () => {
+    const w = await open();
+    await unfold(w, 'receipts');
+    await w.setProps({ branchId: 2 });
+    await flushPromises();
+    expect(w.get('[data-testid="ledger-fold-receipts"]').attributes('aria-expanded')).toBe('false');
+  });
+});
+
+describe('ContractCard accessibility and status', () => {
+  it('the toggle is inside a heading, named by the course, and controls the body only while open', async () => {
+    const w = await card({ outstanding: 1 });
+    const t = w.get('h5 [data-testid="contract-toggle"]');
+    expect(t.attributes('aria-label')).toBeUndefined();
+    expect(t.text()).toContain('課程');
+    expect(t.attributes('aria-controls')).toBeUndefined();
+    await t.trigger('click');
+    expect(t.attributes('aria-controls')).toBe(w.get('[data-testid="contract-body"]').attributes('id'));
+  });
+
+  it.each([
+    ['shared follower', { sharedFollower: true, outstanding: 5 }, '共用方案'],
+    ['tutoring', { course: { id: 9, subject: '數學', no_payment_obligation: true } }, '輔導課'],
+    ['unbilled', {}, '還沒開帳單'],
+    ['legacy and owing', { course: { id: 9, subject: '數學', paid: true }, lastPayment: { legacyUnverified: true }, outstanding: 300 }, '需核對 NT$ 300'],
+  ])('%s keeps a status pill when collapsed', async (_l, props, text) => {
+    const w = await card(props);
+    expect(w.get('[data-testid="contract-pill"]').text()).toBe(text);
+  });
 });

@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
-import { expandAll, openCardMenu, menuItem, pickMenu, unfold } from './cardMenu.js';
+import { menuIds, expandAll, openCardMenu, menuItem, pickMenu, unfold } from './cardMenu.js';
 
 const course = (id, extra = {}) => ({ id, subject: `科目${id}`, schedule_mode: 'count', charge: 4400, paid: false, stop: false, package_id: null, ...extra });
 const inv = (id, scId) => ({ id, student_class_id: scId, status: 'unpaid', outstanding_amount: 4400, total_amount: 4400, due_date: '2026-10-01', payments: [] });
@@ -199,8 +199,7 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
   it('F-5a1: a card action is passed up with the contract id, and only where the page allowed it', async () => {
     const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11)], props: { rowActions: { 11: { waive: true } } } });
     await flushPromises();
-    expect(w.find('[data-testid="contract-card-12"] .am__trigger').exists()).toBe(true);
-    expect(w.find('[data-testid="contract-card-12"] [data-testid="contract-waive"]').exists()).toBe(false);
+    expect(await menuIds(w.find('[data-testid="contract-card-12"]'))).not.toContain('waive');
     await expandAll(w);
     await openCardMenu(w);
     expect(menuItem('waive')).not.toBeNull();

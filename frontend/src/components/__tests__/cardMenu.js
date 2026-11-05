@@ -36,3 +36,18 @@ export async function openAll(wrapper) {
   await expandAll(wrapper);
   for (const k of ['invoices', 'receipts', 'voided']) await unfold(wrapper, k);
 }
+
+// Items a card's ••• menu offers right now (opens it, reads it, closes it with Escape). Throws if the menu never opened,
+// so "item X is absent" can never pass on a menu that did not render.
+export async function menuIds(scope) {
+  const t = scope.find('.am__trigger');
+  if (!t.exists()) throw new Error('card has no ••• menu');
+  if (t.attributes('aria-expanded') !== 'true') await t.trigger('click');
+  await flushPromises();
+  const menu = [...document.body.querySelectorAll('.am__menu')].at(-1);
+  if (!menu) throw new Error('••• menu did not open');
+  const ids = [...menu.querySelectorAll('[data-action]')].map((n) => n.dataset.action);
+  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await flushPromises();
+  return ids;
+}

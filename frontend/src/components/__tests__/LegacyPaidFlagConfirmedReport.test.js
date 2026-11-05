@@ -7,7 +7,7 @@ import { openAll } from './cardMenu.js';
 import ContractCard from '../tuition/ContractCard.vue';
 import LegacyPaidFlagActions from '../tuition/LegacyPaidFlagActions.vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
-import { openCardMenu, menuItem, pickMenu } from './cardMenu.js';
+import { menuIds, openCardMenu, menuItem, pickMenu } from './cardMenu.js';
 
 const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...args) => authedFetch(...args), getAccessToken: async () => 'fixture-token' }));
@@ -43,8 +43,9 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     const card = w.find('[data-testid="contract-card-2"]');
     expect(card.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
     expect(card.find('[data-testid="legacy-flag-help"]').text()).toContain('收款紀錄');
-    expect(card.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
-    expect(card.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+    const ids = await menuIds(card);
+    expect(ids).toContain('memo');
+    expect(ids.filter((id) => id.startsWith('legacy'))).toEqual([]);
     expect(card.find('[data-testid="contract-last-payment"]').exists()).toBe(false);
     expect(card.text()).not.toContain('已收清');
     expect(posted()).toEqual([]);
@@ -57,7 +58,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-sticky-pay-btn"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-amounts"]').text()).toContain('未繳 NT$ 6,000');
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
+    expect((await menuIds(w.find('[data-testid="contract-card-2"]'))).filter((id) => id.startsWith('legacy'))).toEqual([]);
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(false);
   });
 
@@ -65,6 +66,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     const w = await mountLedger([{ ...receipt, payment_date: null }], { props: { initialAction: 'record' } });
     expect(w.text()).toContain('收款紀錄');
     expect(w.text()).not.toContain('再選擇補登收款或改成未繳');
+    expect(w.text()).not.toContain('選擇補登收款或改成未繳');
     expect(w.findComponent(PaymentEntryModal).props('show')).toBe(false);
   });
 
@@ -110,8 +112,7 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
     const w = await mountLedger([{ ...receipt, student_class_id: 3, payment_date: null }], { body: { courses: [pkg, { ...pkg, id: 3, subject: '同方案' }] } });
     const lead = w.find('[data-testid="contract-card-2"]');
     expect(lead.find('[data-testid="legacy-flag-help"]').text()).toContain('收款紀錄');
-    expect(lead.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
-    expect(lead.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+    expect((await menuIds(lead)).filter((id) => id.startsWith('legacy'))).toEqual([]);
   });
 
   it('a valid receipt retains its date, amount and existing payment display', async () => {
@@ -123,8 +124,9 @@ describe('confirmed receipt keeps impossible legacy actions closed', () => {
   it('ContractCard keeps the legacy-choice gate while confirmed-report controls are suppressed', async () => {
     const w = mountWith(ContractCard, { props: { course, outstanding: 6000, lastPayment: { legacyUnverified: true }, canResolveLegacy: true, hasConfirmedReport: true } });
     await flushPromises();
-    expect(w.find('[data-testid="legacy-backfill-open"]').exists()).toBe(false);
-    expect(w.find('[data-testid="legacy-clear-open"]').exists()).toBe(false);
+    const ids = await menuIds(w);
+    expect(ids).toContain('memo');
+    expect(ids.filter((id) => id.startsWith('legacy'))).toEqual([]);
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.emitted('legacy-backfill')).toBeUndefined();
   });

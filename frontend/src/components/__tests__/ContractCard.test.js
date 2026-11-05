@@ -30,7 +30,7 @@ describe('ContractCard', () => {
     await flushPromises();
 
     expect(authedFetch.mock.calls[0][0]).toBe('/api/v1/accounting/contracts/9/sessions');
-    expect(w.find('h5').text()).toBe('數學・2026/09/01–2026/12/31');
+    expect(w.find('h5').text().replace(/^[▾▸]/, '')).toBe('數學・2026/09/01–2026/12/31');
     expect(w.find('[data-testid="contract-memo"]').text()).toContain('第二行');
     expect(w.findAll('h6').map((h) => h.text())).toEqual(['2026 年 9 月', '2026 年 10 月']);
     const rows = w.findAll('[data-testid="contract-session"]').map((r) => r.text());

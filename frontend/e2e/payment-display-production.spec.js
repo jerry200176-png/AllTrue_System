@@ -514,7 +514,12 @@ test.describe('production acceptance — payment display (#4150)', () => {
             if (BRANCH_ID === 15 && fact.id === REPORTED_LEGACY_COURSE_ID) counts.reported_course_confirmed_cases_checked += 1;
             try {
               await expect(card.getByTestId('legacy-flag-help')).toHaveText(LEGACY_CONFIRMED_REPORT_HELP, SHORT);
-              await expect(card.locator('[data-testid="legacy-backfill-open"], [data-testid="legacy-clear-open"]')).toHaveCount(0, SHORT);
+              // The two actions live in the card's ••• menu: open it, prove it rendered (改備註 is always there), then check they are absent.
+              await card.locator('.am__trigger').click(SHORT);
+              const menu = page.locator('.am__menu').last();
+              await expect(menu.locator('[data-action="memo"]')).toBeVisible(SHORT);
+              await expect(menu.locator('[data-action="legacy-backfill"], [data-action="legacy-clear"]')).toHaveCount(0, SHORT);
+              await page.keyboard.press('Escape');
             } catch {
               violations.push({ course_id: fact.id, problem: 'confirmed_legacy_offers_actions_or_lacks_receipt_guidance' });
             }

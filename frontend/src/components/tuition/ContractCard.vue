@@ -2,10 +2,11 @@
   <article :class="['contract', { 'contract--focused': focused }]" :data-testid="`contract-card-${course.id}`">
     <!-- Step 5: one line when collapsed (科目・期間 | 剩幾堂 | 狀態 | 主按鈕 | ••• | ▸); the opened contract starts expanded. -->
     <div class="contract__line" data-testid="contract-line">
-      <button type="button" class="contract__toggle" :aria-expanded="open" :aria-label="open ? '收合合約' : '展開合約'" data-testid="contract-toggle" @click="open = !open">
-        <span aria-hidden="true">{{ open ? '▾' : '▸' }}</span>
-        <h5>{{ title }}</h5>
-      </button>
+      <h5>
+        <button type="button" class="contract__toggle" :aria-expanded="open" :aria-controls="open ? bodyId : undefined" data-testid="contract-toggle" @click="open = !open">
+          <span aria-hidden="true">{{ open ? '▾' : '▸' }}</span>{{ title }}
+        </button>
+      </h5>
       <span v-if="!isMonthly && state === 'ready'" class="contract__leftline" data-testid="contract-left-line">剩 {{ upcomingCount }} 堂</span>
       <span v-if="pill" :class="['contract__chip', pill.cls]" data-testid="contract-pill">{{ pill.text }}</span>
       <AtButton v-if="primary === 'confirm'" size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
@@ -18,7 +19,7 @@
     <!-- Dialog owner stays mounted while collapsed so the ••• items can open it. -->
     <LegacyPaidFlagActions v-show="open" v-if="legacyResolvable" ref="legacyRef" hide-buttons :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
 
-    <div v-if="open" class="contract__body" data-testid="contract-body">
+    <div v-if="open" :id="bodyId" class="contract__body" data-testid="contract-body">
     <header class="contract__head">
       <span v-if="courseRef" class="contract__ref" data-testid="contract-ref">{{ courseRef }}</span>
       <span v-if="focused" class="contract__focused" data-testid="contract-focused">你點開的這門課</span>
@@ -171,8 +172,10 @@ const props = defineProps({
   autoConfirm: { type: Boolean, default: false },
   // F-5a1: { waive, void, settle } booleans the page derives from the same alert row and rules the old table used.
   rowActions: { type: Object, default: null },
+  // Remembered by the drawer so a reload keeps the card open.
+  expanded: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
@@ -393,7 +396,10 @@ async function decide(action, note = '') {
 }
 
 // ---- Step 5: collapsed one-liner. Expanded = everything the card always showed.
-const open = ref(props.focused);
+const open = ref(props.focused || props.expanded);
+const bodyId = `contract-body-${props.course.id}`;
+// The drawer remembers which cards are open, because an action reloads the ledger and remounts every card.
+watch(open, (v) => emit('toggle', v));
 const legacyRef = ref(null);
 const canRecord = computed(() => !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
@@ -405,12 +411,12 @@ const primary = computed(() => (props.pendingReport ? 'confirm' : canRecord.valu
 const pill = computed(() => {
   const C = TUITION_STATUS_CONFIG;
   if (props.pendingReport) return { text: `${C.pending_report.label} ${money(props.pendingReport.amount)}`, cls: 'pay-partial' };
-  if (noObligation.value) return null;
+  if (noObligation.value) return { text: '輔導課', cls: '' };
   if (waived.value) return { text: WAIVED_LABEL, cls: '' };
-  if (followerPointer.value) return null;
-  if (legacyUnverified.value) return { text: '需核對', cls: 'tone-warn' };
+  if (followerPointer.value) return { text: '共用方案', cls: '' };
+  if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
   if (props.outstanding > 0) return { text: `${C.unpaid.label} ${money(props.outstanding)}`, cls: 'pay-unpaid' };
-  if (!props.course.paid && !fullyCollected.value) return { text: '未開帳單', cls: '' };
+  if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
   return { text: C.paid.label, cls: 'pay-paid' };
 });
 const outsideText = computed(() => `需核對：${outsideDates.value.map(md).join('、')} 的課不在合約日期（${[md(props.course.start_date), md(props.course.end_date)].join('–')}）內，請先改合約日期`);
@@ -459,7 +465,7 @@ onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); }
 <style scoped>
 .contract{border:1px solid var(--ds-border);border-radius:12px;padding:12px 14px;display:grid;gap:10px;background:var(--surface,var(--ds-canvas))}
 .contract__line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
-.contract__toggle{display:inline-flex;align-items:baseline;gap:6px;flex:1 1 160px;min-width:0;border:0;background:transparent;padding:4px 0;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.contract__toggle{display:inline-flex;align-items:baseline;gap:6px;max-width:100%;border:0;background:transparent;padding:4px 0;text-align:left;cursor:pointer;color:inherit;font:inherit}
 .contract__leftline{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);white-space:nowrap}
 .contract__warn{margin:0;font-size:var(--ds-font-size-sm);font-weight:600;color:var(--ds-warning)}
 .contract__body{display:grid;gap:10px}
@@ -473,7 +479,7 @@ onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); }
 .contract__left strong{font-size:20px;font-variant-numeric:tabular-nums}
 .contract__monthpay{margin:0 0 4px;font-size:12px;color:var(--ds-ink-mute)}
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
-.contract__head h5{margin:0;font-size:15px}
+.contract__line h5{margin:0;font-size:15px;flex:1 1 160px;min-width:0}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
 .contract__ref{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
 .contract--focused{border-color:var(--ds-cta);border-width:2px}
