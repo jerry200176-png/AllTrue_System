@@ -2061,7 +2061,11 @@ class EnrollmentService
         }
 
         $alreadyDeducted = $hasSessionDeductedColumn && (bool) $record->SessionDeducted;
-        if (!$alreadyDeducted && $this->deductSessionForApprovedRecord($studentClass, $classSession->id)) {
+        // In-app #502: the same pipeline as approving an evaluation, so the lesson also gets the lr_approve
+        // sign-in that part-time payroll and attendance read. A bare ledger debit left it taught but unpaid.
+        // Idempotent: an active deducted sign-in short-circuits, and the ledger debit is once per session.
+        ApprovalSessionSyncService::syncOnApprove($record, $studentClass, (int) $approvedByUserId);
+        if (!$alreadyDeducted && ApprovalSessionSyncService::hasDeductedSignIn((int) $classSession->id)) {
             $deducted = true;
             if ($hasSessionDeductedColumn) {
                 $record->SessionDeducted = true;
@@ -2074,15 +2078,6 @@ class EnrollmentService
             'approved' => $approved,
             'deducted' => $deducted,
         ];
-    }
-
-    private function deductSessionForApprovedRecord(StudentClass $studentClass, int $classSessionId): bool
-    {
-        return SessionDeductionService::deductOnAttendance(
-            $studentClass,
-            null,
-            $classSessionId > 0 ? $classSessionId : null
-        );
     }
 
     private function resolveStudentGradeId(int $studentId): int

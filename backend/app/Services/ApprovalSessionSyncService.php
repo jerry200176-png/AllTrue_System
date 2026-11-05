@@ -43,11 +43,7 @@ class ApprovalSessionSyncService
             $lr->save();
         }
 
-        $alreadyDeducted = StudentSignIn::where('ClassSessionID', $cs->id)
-            ->active()
-            ->where('SessionDeducted', true)
-            ->exists();
-        if ($alreadyDeducted) {
+        if (self::hasDeductedSignIn((int) $cs->id)) {
             if (strtolower(trim((string) $cs->Status)) === 'scheduled') {
                 $cs->Status = 'attended';
                 $cs->save();
@@ -81,6 +77,12 @@ class ApprovalSessionSyncService
 
         SessionDeductionService::deductOnAttendance($sc, $signIn);
         app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($cs);
+    }
+
+    /** An active, deducted sign-in: the lesson is recorded as taught for attendance, usage and part-time payroll. */
+    public static function hasDeductedSignIn(int $classSessionId): bool
+    {
+        return StudentSignIn::where('ClassSessionID', $classSessionId)->active()->where('SessionDeducted', true)->exists();
     }
 
     /**
