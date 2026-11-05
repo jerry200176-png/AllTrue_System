@@ -1190,7 +1190,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('billing top-level tabs show one selected panel', async ({ page }) => {
     await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width: 1440, height: 900 } });
 
-    // PRD v2 D10: two tabs (學生 / 收款紀錄); the former views live in the reminder bar.
+    // PRD v3 §0: tabs are 帳單 / 月結 / 收款紀錄 / 代收代付; 已結清課程 lives in the reminder bar.
     const students = page.locator('#tuition-accounting-tab-students');
     const payments = page.locator('#tuition-accounting-tab-payments');
 
@@ -1211,12 +1211,12 @@ test.describe('UI foundation — real Vue page evidence', () => {
     test(`billing missing monthly invoices are discoverable at ${width}px`, async ({ page }) => {
       await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width, height: 900 } });
       const request = page.waitForRequest(req => req.url().includes('/student-classes?'));
-      await page.locator('[data-testid="sbl-panel-monthly-review"]').click();
+      await page.locator('#tuition-accounting-tab-monthly').click();
       const query = await request;
       expect(query.method()).toBe('GET');
       expect(new URL(query.url()).searchParams.get('branch_id')).toBe('1');
       expect(new URL(query.url()).searchParams.get('schedule_mode')).toBe('date');
-      const review = page.locator('#tuition-accounting-panel-students');
+      const review = page.locator('#tuition-accounting-panel-monthly');
       await expect(review).toContainText('測試月結學生');
       await expect(review).toContainText('2026-09 · 已上 4 堂 · 試算 NT$ 6,000');
       await expect(review).toContainText('4 堂沒有帳單');

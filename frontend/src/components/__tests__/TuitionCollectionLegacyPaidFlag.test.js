@@ -29,10 +29,11 @@ describe('legacy paid flag without a payment record (#4114)', () => {
     await flushPromises();
 
     // F-5: the queue table is gone; the student list and the drawer's card actions carry these rules.
-    const badge = (id) => w.find(`[data-testid="sbl-row-${id}"]`).findAll('.at-badge').map((b) => b.text());
+    await w.find('[data-testid="bill-search"]').setValue('生'); // a name search looks through every status, 已收 included
+    const badge = (id) => w.find(`[data-testid="bill-row-c${id}"]`).findAll('.at-badge').map((b) => b.text());
     expect(badge(1)).toEqual(['查無收款']);
     expect(badge(2)).toEqual(['已收']);
-    expect(w.find('[data-testid="sbl-summary"]').text()).toContain('本校區到今天未繳 NT$ 0');
+    expect(w.find('[data-testid="bill-sum-owed"]').text()).toContain('NT$ 0');
 
     // #4174 review: no receipt stands behind a flag-only row, so there is nothing to 撤銷
     const actions = w.findComponent({ name: 'AccountingLedgerModal' }).props('rowActions');

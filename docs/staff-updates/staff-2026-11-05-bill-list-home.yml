@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-05-bill-list-home
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心改成帳單清單
+    summary: 帳務中心一打開就是「要處理」的帳單，一筆合約一列，上面有數字。
+    items:
+      - category: improved
+        text: 一打開先看到要處理的帳單和筆數；每一列直接有確認入帳、登記收款等按鈕，按下去就是那一筆。
+      - category: improved
+        text: 「要開帳單」和「月結要核對」搬到自己的「月結」分頁。
+    source_refs:
+      - "changelog:2026-11-05:bill-list-home"

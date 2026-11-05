@@ -76,7 +76,7 @@ it.each(['accounting ledger', 'ledger inside collection'])('keeps mismatched pen
   try {
     await flushPromises();
     if (owner === 'ledger inside collection') {
-      await w.find('[data-testid="sbl-row-11"]').trigger('click'); // F-5: the student list opens the drawer
+      await w.find('[data-testid="bill-name-c901"]').trigger('click'); // F-5: the student list opens the drawer
       await flushPromises();
     }
     const frame = owner === 'ledger inside collection' ? w.findComponent(AccountingLedgerModal) : w;
@@ -100,7 +100,7 @@ it.each(['accounting ledger', 'ledger inside collection'])('keeps mismatched pen
       expect(global.fetch.mock.calls.filter(([url]) => String(url).includes('/alerts/tuition'))).toHaveLength(2);
       await frame.find('button[aria-label="關閉學生帳務"]').trigger('click');
       await flushPromises();
-      expect(w.find('[data-testid="sbl-action-11"]').text()).toBe('確認入帳');
+      expect(w.find('[data-testid="bill-action-c901"]').text()).toBe('確認入帳');
     }
   } finally { w.unmount(); }
 });

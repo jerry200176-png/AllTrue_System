@@ -156,32 +156,32 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    // 預設「學生」清單的載入／錯誤／重試；
+    // 預設「帳單」清單的載入／錯誤／重試；
     await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
-    await expect(page.getByTestId('sbl-loading')).toBeVisible();
+    await expect(page.getByTestId('bill-loading')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=empty');
-    await expect(page.getByTestId('sbl-empty')).toBeVisible();
+    await expect(page.getByTestId('bill-empty')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=error');
-    await expect(page.getByTestId('sbl-error')).toContainText('帳務資料載入失敗');
+    await expect(page.getByTestId('bill-error')).toContainText('帳務資料載入失敗');
     await page.evaluate(() => { window.__tuitionCollectionRetryAllowed = true; });
-    await page.getByTestId('sbl-retry').click();
+    await page.getByTestId('bill-retry').click();
     await expect(page.getByText('林宥辰', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
-  test('In-App471: student list columns line up with the header on every row', async ({ page }) => {
+  test('In-App471: bill list columns line up with the header on every row', async ({ page }) => {
     await installMock(page);
     for (const width of [1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
-      await expect(page.locator('[data-testid^="sbl-row-"]').first()).toBeVisible();
+      await expect(page.locator('[data-testid^="bill-row-"]').first()).toBeVisible();
       const geo = await page.evaluate(() => {
         const box = (el) => el.getBoundingClientRect();
-        const rows = [...document.querySelectorAll('.sbl__row')];
+        const rows = [...document.querySelectorAll('.bl__row')];
         return {
-          head: Math.round(box(document.querySelector('.sbl__col-now')).right),
+          head: Math.round(box(document.querySelector('.bl__cols .bl__num')).right),
           rowLefts: rows.map((r) => Math.round(box(r).left)),
-          nowRights: rows.map((r) => Math.round(box(r.querySelector('.sbl__now')).right)),
-          lastLefts: rows.map((r) => Math.round(box(r.querySelector('.sbl__last')).left)),
+          nowRights: rows.map((r) => Math.round(box(r.querySelector('.bl__num')).right)),
+          lastLefts: rows.map((r) => Math.round(box(r.querySelector('.bl__due')).left)),
         };
       });
       expect(geo.rowLefts.length).toBeGreaterThan(1);
@@ -192,13 +192,23 @@ test.describe('Tuition Collection clarity browser verification', () => {
     }
   });
 
-  test('In-App480: 已結清課程 sits only on the student list, never above 收款紀錄 / 代收代付', async ({ page }) => {
+  test('v3: 未收 and 逾期 stay visible on a phone row', async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    const row = page.locator('[data-testid^="bill-row-"]').first();
+    await expect(row).toBeVisible();
+    await expect(row.locator('.bl__num')).toBeVisible();
+    await expect(row.locator('.bl__due')).toBeVisible();
+  });
+
+  test('In-App480: 已結清課程 sits only on the bill list, never above 收款紀錄 / 代收代付', async ({ page }) => {
     await installMock(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveText('已結清課程');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
-    await page.getByRole('tab', { name: '學生' }).click();
+    await page.getByRole('tab', { name: '帳單' }).click();
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toBeVisible();
   });
 
