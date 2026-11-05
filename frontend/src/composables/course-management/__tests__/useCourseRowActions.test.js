@@ -14,7 +14,7 @@ const bag = (over = {}) => {
     openSessionEditFromAction: vi.fn(async () => {}), startSessionReschedule: fn(), startSubstitute: fn(), openSubstituteV2FromEdit: fn(),
     editCourse: fn(), toggleDatesAndMakeups: fn(), requestCoursePause: fn(), closeCourseInPlace: fn(), openManualSessionModal: fn(),
     openMonthlySessionModal: fn(), openQuickAddSessionModal: fn(), duplicateCourseForTeacher: fn(), openCommercialPurchaseEntry: fn(),
-    openContractAdjustmentModal: fn(), openContractRevertModal: fn(), openPackageConversionPreview: fn(), openPaymentSlip: fn(), openTuitionLedger: fn(),
+    openContractAdjustmentModal: fn(), openContractRevertModal: fn(), openPackageConversionPreview: fn(), openPaymentSlip: fn(), openTuitionLedger: fn(), onPaymentNextAction: fn(), paymentActionLabel: () => '',
     ...over,
   };
 };
@@ -144,5 +144,61 @@ describe('useCourseRowActions', () => {
     const renew = useCourseRowActions(bag({ purchaseActionIsRenew: () => true })).rowModel(course, { fallback: 'manage', details: false });
     expect(renew.groups[0].items.map((i) => i.id)).toContain('manage');
     expect(renew.groups.flatMap((g) => g.items).map((i) => i.id)).not.toContain('details');
+  });
+
+  // #4659 step 5: the simplified 課程管理 row.
+  describe('simple row (one primary + ⋯)', () => {
+    const simple = (over, c = course) => useCourseRowActions(bag(over)).rowModel(c, { simple: true });
+    const all = (m) => [m.primary.id, ...ids(m)];
+
+    it('unpaid → 登記收款 (legacy-paid → 補登收款) and it runs the existing payment handler', () => {
+      const d = bag({ paymentActionLabel: () => '登記收款', purchaseActionIsRenew: () => true });
+      const { rowModel, runRowAction } = useCourseRowActions(d);
+      expect(rowModel(course, { simple: true }).primary).toEqual({ id: 'payment', label: '登記收款' });
+      runRowAction(course, 'payment');
+      expect(d.onPaymentNextAction).toHaveBeenCalledWith(course);
+      expect(simple({ paymentActionLabel: () => '補登收款' }).primary.label).toBe('補登收款');
+    });
+
+    it('almost used up (and paid) → 續課', () => {
+      const m = simple({ purchaseActionIsRenew: () => true, purchaseActionLabel: () => '續課', paymentActionLabel: () => '在這裡看帳務' });
+      expect(m.primary).toEqual({ id: 'purchase', label: '續課' });
+    });
+
+    it('otherwise → 請假／調課, which starts the existing 調課 flow', async () => {
+      const d = bag({ paymentActionLabel: () => '在這裡看帳務', upcomingLessonOptions: () => [{ key: 'a', date: '2026-10-01', id: 1, unit: { id: 1 } }] });
+      const { rowModel, runRowAction } = useCourseRowActions(d);
+      const m = rowModel(course, { simple: true });
+      expect(m.primary).toEqual({ id: 'reschedule', label: '請假／調課' });
+      expect(ids(m)).not.toContain('reschedule');
+      await runRowAction(course, m.primary.id);
+      expect(d.openSessionEdit).toHaveBeenCalled();
+    });
+
+    it('a closed course never gets 請假／調課; paused still resumes first', () => {
+      expect(simple({ effectiveClosedReason: () => 'settled' }).primary.id).toBe('edit');
+      expect(simple({}, { ...course, status: 'inactive' }).primary.id).toBe('resume');
+    });
+
+    it('every former row action is still reachable (primary or ⋯)', () => {
+      const caps = { canSiblingTransfer: () => true, isPaymentNoticeAvailable: () => true, paymentActionLabel: () => '查看「待確認入帳」' };
+      const m = simple({ ...caps, effectiveClosedReason: () => 'contract_amended' });
+      const former = ['edit', 'details', 'reschedule', 'substitute', 'manual-session', 'quick-add', 'transfer', 'duplicate', 'purchase',
+        'contract-adjust', 'sibling-transfer', 'contract-revert', 'package-preview', 'payment-slip', 'invoice', 'pause', 'close', 'delete'];
+      expect(all(m)).toEqual(expect.arrayContaining(former));
+      expect(all(simple(caps))).toEqual(expect.arrayContaining(['pause', 'payment-next']));
+      expect(all(simple({ ...caps, purchaseActionIsRenew: () => true }))).toContain('reschedule');
+    });
+
+    it('dangerous items come last: 改合約, 轉課, 結案, 刪除', () => {
+      const m = simple({});
+      expect(m.groups.at(-1).items.map((i) => i.id)).toEqual(['contract-adjust', 'transfer', 'close', 'delete']);
+    });
+
+    it('a disabled action keeps its reason', () => {
+      const item = simple({ canQuickAddSession: () => false, quickAddDisabledReason: () => '課程已暫停，請先恢復後再補課' })
+        .groups.flatMap((g) => g.items).find((i) => i.id === 'quick-add');
+      expect(item).toMatchObject({ disabled: true, reason: '課程已暫停，請先恢復後再補課' });
+    });
   });
 });

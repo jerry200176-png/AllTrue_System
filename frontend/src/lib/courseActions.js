@@ -25,10 +25,36 @@ export function courseActions(course, caps = {}) {
   const fallback = { id: caps.fallback === 'manage' ? 'manage' : 'edit', label: caps.fallback === 'manage' ? '管理課程' : '編輯' };
   let primary = fallback;
   if (canResume) primary = { id: 'resume', label: '恢復課程' };
-  else if (caps.needsScheduling && schedule) primary = schedule;
+  else if (caps.simple) {
+    // 課程管理 row (#4659 step 5): unpaid → 登記收款; nearly used up → 續課; otherwise 請假／調課.
+    if (caps.paymentAction) primary = { id: 'payment', label: caps.paymentAction };
+    else if (caps.renewalDue) primary = purchase;
+    else if (caps.open) primary = { id: 'reschedule', label: '請假／調課' };
+  } else if (caps.needsScheduling && schedule) primary = schedule;
   else if (caps.renewalDue) primary = purchase;
 
-  const groups = [
+  const stateItem = paused ? (canResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' };
+  const groups = caps.simple ? [
+    { id: 'lead', label: '', items: [fallback, caps.details && { id: 'details', label: caps.detailsOpen ? '收起詳情' : '詳情' }] },
+    { id: 'move', label: '調動', items: [{ id: 'reschedule', label: '調課' }, { id: 'substitute', label: '代課' }, schedule, extra, { id: 'duplicate', label: DUAL_TEACHER_COPY_LABEL }] },
+    { id: 'billing', label: '帳務', items: [
+      purchase,
+      caps.paymentOther && { id: 'payment-next', label: caps.paymentOther },
+      caps.siblingTransfer && { id: 'sibling-transfer', label: '轉給手足' },
+      caps.packagePreview && { id: 'package-preview', label: '轉多科方案預檢' },
+      caps.paymentNotice && { id: 'payment-slip', label: '繳費單' },
+      { id: 'invoice', label: '在這裡看帳務' },
+    ] },
+    { id: 'end', label: '狀態', items: [stateItem] },
+    // Hardest-to-undo last: 改合約, 轉課, 結案, 刪除.
+    { id: 'danger', label: '', items: [
+      { id: 'contract-adjust', label: '合約／堂次調整' },
+      caps.contractAmended && { id: 'contract-revert', label: '撤銷調整' },
+      { id: 'transfer', label: '轉課' },
+      caps.canClose && { id: 'close', label: '結束課程（不再續課）', confirm: true },
+      { id: 'delete', label: '刪除課程', danger: true, confirm: true },
+    ] },
+  ] : [
     // 編輯 is not a "move": first and ungrouped. Filtered out below when it is the primary.
     { id: 'lead', label: '', items: [fallback, caps.details && { id: 'details', label: caps.detailsOpen ? '收起詳情' : '詳情' }] },
     { id: 'move', label: '調動', items: [
@@ -49,7 +75,7 @@ export function courseActions(course, caps = {}) {
       { id: 'invoice', label: '在這裡看帳務' },
     ] },
     { id: 'end', label: '狀態', items: [
-      paused ? (canResume && { id: 'resume', label: '恢復課程' }) : { id: 'pause', label: '暫停課程' },
+      stateItem,
       caps.canClose && { id: 'close', label: '結束課程（不再續課）', confirm: true },
     ] },
     { id: 'danger', label: '', items: [{ id: 'delete', label: '刪除課程', danger: true, confirm: true }] },

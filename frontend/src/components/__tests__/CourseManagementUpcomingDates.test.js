@@ -9,25 +9,25 @@ const composableSource = readFileSync(resolve(__dirname, '../../composables/cour
 
 describe('CourseManagement upcoming lesson preview (#321)', () => {
   it('uses the existing effective session view model and stable keys', () => {
-    expect(pageSource).toContain('aria-label="近期上課"');
-    expect(pageSource).toContain('upcomingSessionPreview(c, { todayYmd, limit: 3 })');
+    expect(pageSource).toContain('aria-label="下一堂"');
+    expect(pageSource).toContain('upcomingSessionPreview(c, { todayYmd, limit: 1 })');
     expect(pageSource).toContain('formatSessionChipDate(unit)');
     expect(pageSource).toContain(':key="sessionRowKey(unit)"');
     expect(composableSource).toContain('primarySessionUnits(course)');
   });
 
   it('covers loading, retryable error, empty and overflow states', () => {
-    expect(pageSource).toContain('上課日期載入中…');
-    expect(pageSource).toContain('上課日期暫時無法載入。');
-    expect(pageSource).toContain('目前沒有即將上課日期。');
-    expect(pageSource).toContain('另有 {{ upcomingSessionPreview(c, { todayYmd, limit: 3 }).overflow }} 堂');
+    expect(pageSource).toContain('載入中…');
+    expect(pageSource).toContain('暫時無法載入。');
+    expect(pageSource).toContain("'暫無下一堂' : '未排定'");
     expect(pageSource).toContain('重新載入');
   });
 
-  it('keeps the existing six-column dense list and detail action', () => {
+  it('keeps the four-field row (科目・老師, 下一堂, 剩幾堂, 繳費) plus one action cell', () => {
     expect(pageSource).toContain('管理課程');
-    expect(pageSource).toContain('<th>時段</th>');
-    expect(pageSource).toContain('colspan="6"');
+    expect(pageSource).toContain('<th>科目・老師</th>');
+    for (const th of ['下一堂', '剩幾堂', '繳費']) expect(pageSource).toContain(`<th class="col-sm-hide">${th}</th>`);
+    expect(pageSource).not.toContain('<th>時段</th>');
     expect(pageSource).not.toContain('fetch(`/api/v1/student-classes/${c.id}/sessions`');
     expect(pageSource).not.toContain('fetch(`/api/v1/student-classes/${c.id}/session');
   });
