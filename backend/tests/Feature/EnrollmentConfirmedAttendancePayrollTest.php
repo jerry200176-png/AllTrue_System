@@ -157,9 +157,14 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         $this->patchStatus($token, $session, 'scheduled');
         $this->assertSame(1, StudentSignIn::where('ClassSessionID', $session->id)->voided()->count());
 
+        // The lesson moved after the void: the revived row must follow it, not keep the old hours.
+        $session->update(['StartTime' => '10:00:00', 'EndTime' => '11:00:00']);
+
         $this->patchStatus($token, $session, 'late');
 
         $this->assertSame(1, StudentSignIn::where('ClassSessionID', $session->id)->count());
+        $row = StudentSignIn::where('ClassSessionID', $session->id)->firstOrFail();
+        $this->assertSame(['2026-04-13 10:00:00', '2026-04-13 11:00:00'], [(string) $row->SignInDT, (string) $row->SignOutDT]);
         $live = StudentSignIn::where('ClassSessionID', $session->id)->active()->firstOrFail();
         $this->assertSame('late', $live->Status);
         $this->assertTrue((bool) $live->SessionDeducted);

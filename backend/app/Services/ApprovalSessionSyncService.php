@@ -77,16 +77,7 @@ class ApprovalSessionSyncService
             return $live->first(fn (StudentSignIn $s) => in_array(strtolower((string) $s->Status), AttendanceStatus::deductibleCodes(), true));
         }
 
-        // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
-        // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062.
-        $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->first();
-        if ($voided) {
-            $voided->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null, 'Status' => $status,
-                'TeacherID' => $teacherId, 'RecordedByUserID' => $recordedBy ?: null, 'SessionDeducted' => false, 'MDT' => now(), 'Memo' => $memo]);
-            return $voided;
-        }
-
-        return StudentSignIn::create([
+        $fields = [
             'StudentClassID'  => $sc->ID,
             'StudentID'       => $sc->StudentID,
             'TeacherID'       => $teacherId,
@@ -103,7 +94,18 @@ class ApprovalSessionSyncService
             'PersonType'      => 'student',
             'SessionDeducted' => false,
             'Memo'            => $memo,
-        ]);
+        ];
+
+        // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
+        // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062. The lesson may have moved
+        // since the void, so the row takes the lesson's current values (times, course, student, campus).
+        $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->first();
+        if ($voided) {
+            $voided->update($fields + ['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
+            return $voided;
+        }
+
+        return StudentSignIn::create($fields);
     }
 
     /** An active, deducted sign-in: the lesson is recorded as taught for attendance, usage and part-time payroll. */
