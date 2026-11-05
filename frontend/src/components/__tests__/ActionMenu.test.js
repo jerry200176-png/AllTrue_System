@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DOMWrapper, mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import ActionMenu from '../ActionMenu.vue';
 
 const groups = [
@@ -121,5 +123,21 @@ describe('ActionMenu', () => {
     await w.get('.am__trigger').trigger('click');
     await w.vm.$nextTick();
     expect(has('.am__scrim')).toBe(true);
+  });
+
+  it('a scroll inside the menu does not close it; item focus never scrolls the page', async () => {
+    const w = mountMenu();
+    await w.get('.am__trigger').trigger('click');
+    await w.vm.$nextTick();
+    document.body.querySelector('[role="menu"]').dispatchEvent(new Event('scroll'));
+    expect(has('[role="menu"]')).toBe(true);
+    // a late scroll event that moved nothing keeps it open (jsdom rects are all 0, so the trigger has not moved)
+    window.dispatchEvent(new Event('scroll'));
+    await w.vm.$nextTick();
+    expect(has('[role="menu"]')).toBe(true);
+    // A page scroll caused by focusing an item used to close the menu the moment it opened (below-the-fold rows).
+    const src = readFileSync(resolve(__dirname, '../ActionMenu.vue'), 'utf8');
+    expect(src).not.toMatch(/list\[[^\]]*\]\?\.focus\(\)/);
+    expect(src).toContain('focus({ preventScroll: true })');
   });
 });
