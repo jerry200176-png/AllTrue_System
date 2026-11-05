@@ -188,6 +188,8 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
 
         $this->assertNotEmpty(array_filter($queries, fn ($q) => str_contains($q, "from `classsession`") && str_contains($q, 'for update')),
             'payableSignIn must lock the lesson row before reading its sign-ins');
+        // REPEATABLE READ: the sign-in reads must be locking (current-state) reads, or an outer snapshot hides the first caller's row
+        $this->assertNotEmpty(array_filter($queries, fn ($q) => str_contains($q, 'from `studentsingin`') && str_contains($q, 'for update')));
         $this->assertSame((int) $first->id, (int) $second->id);
         $this->assertSame(1, StudentSignIn::where('ClassSessionID', $session->id)->active()->count());
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->count());

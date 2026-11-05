@@ -77,7 +77,7 @@ class ApprovalSessionSyncService
         // are serialised on the lesson row; the second one then sees the first one's sign-in.
         return DB::transaction(function () use ($cs, $sc, $status, $teacherId, $recordedBy, $memo) {
             ClassSession::whereKey($cs->id)->lockForUpdate()->first();
-            $live = StudentSignIn::where('ClassSessionID', $cs->id)->active()->orderBy('id')->get();
+            $live = StudentSignIn::where('ClassSessionID', $cs->id)->active()->orderBy('id')->lockForUpdate()->get(); // locking read: current rows, not the outer transaction's REPEATABLE READ snapshot
             if ($live->isNotEmpty()) {
                 return $live->first(fn (StudentSignIn $s) => in_array(strtolower((string) $s->Status), AttendanceStatus::deductibleCodes(), true));
             }
@@ -104,7 +104,7 @@ class ApprovalSessionSyncService
             // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
             // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062. The lesson may have moved
             // since the void, so the row takes the lesson's current values (times, course, student, campus).
-            $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->first();
+            $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->lockForUpdate()->first();
             if ($voided) {
                 $voided->update($fields + ['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
                 return $voided;
