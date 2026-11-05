@@ -282,14 +282,23 @@ final class TaughtLessonSignInRepairStrategy
                 FROM session_deduction_ledger l WHERE l.student_class_id = sc.ID AND l.class_session_id = cs.id) = 1")
             ->when($campusId > 0, fn ($q) => $q->where('st.CampusID', $campusId))
             ->orderBy('cs.id')
-            ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.Note', 'cs.Status', 'st.CampusID', 'sc.TeacherID']);
+            ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Note', 'cs.Status', 'sc.StudentID', 'sc.GradeID', 'sc.SubjectID', 'st.CampusID', 'sc.TeacherID']);
         $records = DB::table('LearningRecord')->whereIn('ClassSessionID', $lessons->pluck('id')->all())->whereNull('VoidedAt')
             ->where('Status', 'approved')->pluck('Content', 'ClassSessionID');
         $voided = DB::table('StudentSingIn')->whereIn('ClassSessionID', $lessons->pluck('id')->all())->whereNotNull('VoidedAt')
             ->groupBy('ClassSessionID')->selectRaw('ClassSessionID, MAX(id) as id')->pluck('id', 'ClassSessionID');
+        $voidedRows = DB::table('StudentSingIn')->whereIn('id', $voided->values()->all())
+            ->get(['id', 'StudentClassID', 'StudentID', 'CampusID', 'GradeID', 'SubjectID', 'PersonType', 'SignInDT', 'SignOutDT'])->keyBy('id');
         $rows = [];
         foreach ($lessons as $l) {
             $voidedId = (int) ($voided[$l->id] ?? 0);
+            // The un-void keeps the row's own lesson fields, so it is only safe when they already equal what an insert would write.
+            $date0 = substr((string) $l->SessionDate, 0, 10);
+            $want = ['StudentClassID' => (int) $l->StudentClassID, 'StudentID' => (int) $l->StudentID, 'CampusID' => (int) $l->CampusID, 'GradeID' => (int) $l->GradeID,
+                'SubjectID' => (int) $l->SubjectID, 'PersonType' => 'student', 'SignInDT' => $date0 . ' ' . ($l->StartTime ?? '00:00:00'), 'SignOutDT' => $date0 . ' ' . ($l->EndTime ?? '23:59:00')];
+            $have = $voidedId > 0 ? (array) $voidedRows[$voidedId] : [];
+            $same = $voidedId <= 0 || array_reduce(array_keys($want), fn ($ok, $k) => $ok && ($k === 'PersonType' ? (string) ($have[$k] ?? '') === 'student'
+                : (str_ends_with($k, 'DT') ? ($have[$k] ?? null) !== null && strtotime((string) $have[$k]) === strtotime($want[$k]) : (int) ($have[$k] ?? 0) === $want[$k])), true);
             $group = $voidedId > 0 ? 'voided' : (strtolower(trim((string) $l->Status)) === 'late' ? 'late' : 'missing');
             $date = substr((string) $l->SessionDate, 0, 10);
             $payee = (int) ((SubstituteScheduleService::occurrence((int) $l->StudentClassID, $date, $l->StartTime)[0] ?? null)
@@ -301,7 +310,7 @@ final class TaughtLessonSignInRepairStrategy
             $rows[] = ['session_id' => (int) $l->id, 'class_id' => (int) $l->StudentClassID, 'campus_id' => (int) $l->CampusID,
                 'session_date' => $date, 'start_time' => substr((string) $l->StartTime, 0, 5), 'payee_teacher_id' => $payee,
                 'employment_type' => $type === null ? null : (preg_match('/^[a-z_]{1,32}$/', (string) $type) ? (string) $type : 'other'),
-                'group' => $group, 'voided_sign_in_id' => $voidedId, 'month' => $month, 'month_locked' => DB::table('payroll_month_status')->where('branch_id', (int) $l->CampusID)->where('month', $month)
+                'group' => $group, 'voided_sign_in_id' => $voidedId, 'voided_fields' => $voidedId > 0 ? array_map(fn ($v) => $v === null ? null : (string) $v, array_diff_key($have, ['id' => 1])) : null, 'month' => $month, 'month_locked' => DB::table('payroll_month_status')->where('branch_id', (int) $l->CampusID)->where('month', $month)
                     ->where('status', 'locked')->whereNotNull('current_run_id')->exists(),
                 'source' => match (true) {
                     $content === '（系統自動核准）' => 'enrollment_confirmed',
@@ -309,7 +318,8 @@ final class TaughtLessonSignInRepairStrategy
                     str_contains((string) $l->Note, '系統判定補登') => 'enrollment_backfill',
                     default => 'other',
                 },
-                'class' => $known ? 'write' : 'review', 'reason' => $known ? ($group === 'voided' ? 'taught_debited_only_voided_sign_in' : 'taught_debited_no_sign_in') : 'payee_unresolved'];
+                'class' => $known && $same ? 'write' : 'review',
+                'reason' => !$known ? 'payee_unresolved' : (!$same ? 'voided_row_fields_differ' : ($group === 'voided' ? 'taught_debited_only_voided_sign_in' : 'taught_debited_no_sign_in'))];
         }
         $totals = ['rows' => count($rows), 'write' => 0, 'review' => 0, 'part_time' => 0, 'month_locked' => 0, 'by_group' => [], 'by_source' => [], 'by_campus' => []];
         foreach ($rows as $r) {

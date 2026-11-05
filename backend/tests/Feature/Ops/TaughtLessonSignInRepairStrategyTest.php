@@ -41,8 +41,12 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         $this->lesson(47301, 4640, '2026-10-24', 'completed', 0, '', null, 'pending');    // pending evaluation, not debited: out
         $this->lesson(47302, 4640, '2026-10-17', 'completed', 1);                         // only a voided sign-in row: write by un-voiding it
         DB::table('StudentSingIn')->insert(['StudentClassID' => 4640, 'StudentID' => 2432, 'TeacherID' => 288, 'ClassSessionID' => 47302,
-            'SignInDT' => '2026-10-17 17:00:00', 'SignOutDT' => '2026-10-17 19:00:00', 'Status' => 'absent', 'MDT' => '2026-10-18 09:00:00', 'VoidedAt' => '2026-10-18 10:00:00',
+            'SignInDT' => '2026-10-17 17:00:00', 'SignOutDT' => '2026-10-17 19:00:00', 'StudentID' => 2432, 'CampusID' => 9, 'GradeID' => 1, 'SubjectID' => 1, 'PersonType' => 'student', 'Status' => 'absent', 'MDT' => '2026-10-18 09:00:00', 'VoidedAt' => '2026-10-18 10:00:00',
             'VoidedByUserID' => 30, 'VoidReason' => 'r', 'SessionDeducted' => 0, 'Memo' => 'old']);
+        $this->lesson(47309, 4640, '2026-10-14', 'completed', 1);                         // voided row from another time slot (rescheduled): review, not written
+        DB::table('StudentSingIn')->insert(['StudentClassID' => 4640, 'StudentID' => 2432, 'TeacherID' => 289, 'ClassSessionID' => 47309, 'CampusID' => 9, 'GradeID' => 1,
+            'SubjectID' => 1, 'PersonType' => 'student', 'SignInDT' => '2026-10-14 15:00:00', 'SignOutDT' => '2026-10-14 16:00:00', 'Status' => 'present', 'MDT' => now(),
+            'VoidedAt' => now()]);
         $this->lesson(47308, 4640, '2026-10-12', 'late', 1);                              // old calendar 遲到, debited, no sign-in: write
         $this->lesson(47303, 4640, '2026-10-10', 'completed', 1);                         // debited then reversed (net 0): out
         DB::table('session_deduction_ledger')->insert(['student_class_id' => 4640, 'class_session_id' => 47303, 'event_type' => 'reverse', 'source' => 'retro_leave']);
@@ -103,14 +107,16 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         self::assertTrue($plan['ok']);
         self::assertSame('unpinned', $plan['state']);
         $byId = array_column($plan['manifest'], null, 'session_id');
-        self::assertSame([43605, 47205, 47300, 47302, 47308, 50000], array_keys($byId));
+        self::assertSame([43605, 47205, 47300, 47302, 47308, 47309, 50000], array_keys($byId));
+        self::assertSame(['review', 'voided_row_fields_differ', 'voided'], [$byId[47309]['class'], $byId[47309]['reason'], $byId[47309]['group']]);
+        self::assertSame('2026-10-14 15:00:00', $byId[47309]['voided_fields']['SignInDT']); // the compared fields are in the manifest, so the digest covers them
         self::assertSame([['missing', 0], ['missing', 0], ['voided', 1], ['late', 0]], array_map(fn ($id) => [$byId[$id]['group'], (int) ($byId[$id]['voided_sign_in_id'] > 0)], [47205, 47300, 47302, 47308]));
         self::assertSame(['write', 289, 'part_time', '2026-10', false, 'enrollment_confirmed'],
             [$byId[47205]['class'], $byId[47205]['payee_teacher_id'], $byId[47205]['employment_type'], $byId[47205]['month'], $byId[47205]['month_locked'], $byId[47205]['source']]);
         self::assertSame([true, 'other'], [$byId[47300]['month_locked'], $byId[47300]['source']]);
         self::assertSame(['full_time', 'enrollment_backfill'], [$byId[43605]['employment_type'], $byId[43605]['source']]);
         self::assertSame(['review', 'payee_unresolved'], [$byId[50000]['class'], $byId[50000]['reason']]);
-        self::assertSame(['rows' => 6, 'write' => 5, 'review' => 1, 'part_time' => 4, 'month_locked' => 1, 'by_group' => ['late' => 1, 'missing' => 4, 'voided' => 1],
+        self::assertSame(['rows' => 7, 'write' => 5, 'review' => 2, 'part_time' => 4, 'month_locked' => 1, 'by_group' => ['late' => 1, 'missing' => 4, 'voided' => 2],
             'by_source' => ['enrollment_backfill' => 1, 'enrollment_confirmed' => 1, 'other' => 3], 'by_campus' => [9 => ['write' => 5, 'other' => 3]]], $plan['totals']);
         self::assertSame([50000], array_column($s->plan($this->params(2))['manifest'], 'session_id'));
 
@@ -227,7 +233,7 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         } catch (\RuntimeException $e) {
             self::assertSame('taught_signin_digest_drift', $e->getMessage());
         }
-        self::assertSame(1, DB::table('StudentSingIn')->count()); // only the voided fixture row, still voided
+        self::assertSame(2, DB::table('StudentSingIn')->count()); // only the voided fixture rows, still voided
         self::assertNotNull(DB::table('StudentSingIn')->where('ClassSessionID', 47302)->value('VoidedAt'));
     }
 
