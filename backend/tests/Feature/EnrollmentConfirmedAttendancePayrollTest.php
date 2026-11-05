@@ -208,6 +208,11 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         $this->assertNotEmpty(array_filter($queries, fn ($q) => str_contains($q, 'from `session_deduction_ledger`') && str_contains($q, 'for update')),
             'the existing-debit read must be FOR UPDATE');
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->count());
+
+        $queries = [];
+        $this->assertTrue(\App\Services\SessionDeductionService::reverseForSession((int) $course->ID, (int) $session->id));
+        $this->assertNotEmpty(array_filter($queries, fn ($q) => str_contains($q, "event_type") && str_contains($q, 'order by `id` desc') && str_contains($q, 'for update')),
+            'the matching-deduct minutes lookup must be FOR UPDATE too');
     }
 
     /** @return array{0: string, 1: int, 2: StudentClass, 3: ClassSession} a 2026-04-13 lesson still 未上 on 2026-04-14 */

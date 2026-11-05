@@ -453,6 +453,7 @@ class SessionDeductionService
                     ->where('class_session_id', $classSessionId)
                     ->where('event_type', 'deduct')
                     ->orderByDesc('id')
+                    ->lockForUpdate() // current read, same reason as sessionLedgerNet (#4939)
                     ->value('minutes');
                 if ($matched !== null) {
                     $minutes = (int) $matched;
