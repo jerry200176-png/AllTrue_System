@@ -6591,7 +6591,7 @@ onUnmounted(() => {
 .class-type-line { display: block; margin-top: 2px; font-size: 12px; color: var(--ds-ink-secondary); }
 .row-warnings { display: grid; gap: 2px; margin-top: 4px; }
 .detail-summary { display: grid; gap: 4px; margin-bottom: 8px; }
-/* #4659 step 5 (picture 2): on a phone the row is 科目・老師 + the button + ⋯. */
+/* #4659 step 5 (picture 2): on a phone the row is 科目・老師 + 繳費 + the button + ⋯ (in-app 396 keeps 繳費 visible). */
 @media (max-width: 720px) {
   .course-table--simple .col-sm-hide { display: none; }
 }
