@@ -10,8 +10,6 @@ export const BILLING_ACTION = '在這裡看帳務';
 /** In-app #490: a director's legacy-paid row (paid flag, no Payment) offers 補登收款 instead. */
 const LEGACY_ACTION = '補登收款';
 
-/** Any 課程查找 payment next action (used only to find a row whose state is not known yet). */
-export const COURSE_PAYMENT_ACTION_NAME = new RegExp(`^(?:${UNPAID_ACTION}|${PENDING_REPORT_ACTION}|${BILLING_ACTION}|${LEGACY_ACTION})$`);
 
 /**
  * The next action a 課程查找 course row must offer for its payment state
@@ -69,18 +67,32 @@ export function recordCourseLists(page) {
  *   the open billing panel, the course it was opened for, and the clicked row's payment cell
  */
 export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading, courses, actionLabel }) {
-  const actionName = actionLabel ? new RegExp(`^${actionLabel}$`) : COURSE_PAYMENT_ACTION_NAME;
-  const paymentCell = page.locator('.payment-status-and-action').filter({
-    has: page.getByRole('button', { name: actionName }),
-  }).first();
-  await expect(paymentCell, 'a 課程查找 row with a payment next action').toBeVisible({ timeout: 15_000 });
+  // #4659 step 5: the payment action is the row's primary button (登記收款 / 補登收款) or an item in its ⋯ menu.
+  const cells = page.locator('.payment-status-and-action');
+  await expect(cells.first(), 'a 課程查找 row with a payment status').toBeVisible({ timeout: 15_000 });
+  let paymentCell = null;
+  let wanted = '';
+  for (let i = 0; i < await cells.count(); i += 1) {
+    const cell = cells.nth(i);
+    const cellCourseId = Number(await cell.getAttribute('data-course-id'));
+    const course = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === cellCourseId);
+    const label = course ? expectedCoursePaymentActionLabel(course) : null;
+    if (label && (!actionLabel || label === actionLabel)) { paymentCell = cell; wanted = label; break; }
+  }
+  expect(paymentCell, 'a 課程查找 row with a payment next action').toBeTruthy();
+  const row = paymentCell.locator('xpath=ancestor::tr[contains(concat(" ", normalize-space(@class), " "), " course-row ")][1]');
+  const primary = row.getByTestId('course-row-primary');
+  const primaryIsPayment = (await primary.getAttribute('data-action')) === 'payment';
+  const menuItem = page.getByRole('menuitem', { name: wanted, exact: true });
+  if (!primaryIsPayment) await row.locator('.action-menu-trigger').click();
+  const action = primaryIsPayment ? primary : menuItem;
   const status = paymentCell.locator('.payment-status-badge');
-  const action = paymentCell.getByRole('button', { name: actionName });
   await expect(status).toBeVisible({ timeout: 15_000 });
   await expect(status).toHaveAttribute('role', 'status');
   await expect(status).toHaveCSS('cursor', 'default');
   await expect(page.locator('.btn-status')).toHaveCount(0);
   await expect(action).toBeVisible();
+  if (!primaryIsPayment) await expect(menuItem, 'the ⋯ menu offers this action once').toHaveCount(1);
   const clickedLabel = (await action.innerText()).trim();
   const rowCourseId = Number(await paymentCell.getAttribute('data-course-id'));
   expect(rowCourseId, 'the payment cell names its course (data-course-id)').toBeGreaterThan(0);

@@ -160,6 +160,12 @@ describe('useCourseRowActions', () => {
       expect(simple({ paymentActionLabel: () => '補登收款' }).primary.label).toBe('補登收款');
     });
 
+    it('a paused unpaid course still offers 登記收款 in ⋯', () => {
+      const m = simple({ paymentActionLabel: () => '登記收款' }, { ...course, status: 'inactive' });
+      expect(m.primary.id).toBe('resume');
+      expect(m.groups.flatMap((g) => g.items).find((i) => i.id === 'payment-next')?.label).toBe('登記收款');
+    });
+
     it('almost used up (and paid) → 續課', () => {
       const m = simple({ purchaseActionIsRenew: () => true, purchaseActionLabel: () => '續課', paymentActionLabel: () => '在這裡看帳務' });
       expect(m.primary).toEqual({ id: 'purchase', label: '續課' });

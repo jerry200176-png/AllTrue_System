@@ -126,7 +126,8 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   await run('2 補登收款 for legacy-paid course', async () => {
     await nav('課程查找');
     await coursesSettled();
-    const row = page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }).locator('button.payment-next-action').first();
+    // #4659 step 5: the action is the row's primary button, next to (not inside) the status pill.
+    const row = page.locator('tr.course-row', { has: page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }) }).locator('button.payment-next-action').first();
     if (!(await visible(row))) return { reached: false, note: 'skipped: no fixture' };
     const ledgerLoaded = await clickAndWaitLedger(row);
     // A legacy-paid row opens the back-fill form directly (initialAction 'legacy-backfill'): that modal counts as reached.
@@ -155,8 +156,13 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await nav('課程查找');
     await coursesSettled();
     const direct = page.locator('[data-testid="course-row-actions"]').getByRole('button', { name: /^續課/ }).first();
+    // 續課 is the row's primary button when the course is nearly used up and paid; otherwise it sits in ⋯.
+    const rowMenu = page.locator('[data-testid="course-row-actions"] .action-menu-trigger').first();
     if (await visible(direct)) await click(direct);
-    else {
+    else if (await visible(rowMenu)) {
+      await click(rowMenu);
+      await click(page.getByRole('menuitem', { name: /^續課/ }).first());
+    } else {
       const manage = page.locator('[data-testid="course-manager-open"]').first();
       if (!(await visible(manage))) return { reached: false, note: 'no course row with 續課 / 管理課程' };
       await click(manage);
