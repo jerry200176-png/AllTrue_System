@@ -1056,7 +1056,7 @@ class LearningRecordController extends Controller
             'StudentID' => 'required|integer',
             'ClassSessionID' => 'nullable|integer',
             'TeacherID' => 'required|integer',
-            'Content' => 'nullable|string|max:65535',
+            'Content' => ['nullable', 'string', 'max:65535', fn ($a, $v, $fail) => str_starts_with(trim((string) $v), '（系統') ? $fail('內容不能以「（系統」開頭') : null], // system markers are written by code only
             'AttachmentUrl' => ['nullable', 'string', 'max:255', 'regex:#^(https?://|/(?!/))#i'], // #3824: http(s) or site-relative only
             'Subject' => 'nullable|string|max:32',
             'SessionDate' => 'nullable|date',
@@ -1267,7 +1267,7 @@ class LearningRecordController extends Controller
     public function update(Request $request, LearningRecord $learningRecord)
     {
         $data = $request->validate([
-            'Content' => 'nullable|string|max:65535',
+            'Content' => ['nullable', 'string', 'max:65535', fn ($a, $v, $fail) => str_starts_with(trim((string) $v), '（系統') ? $fail('內容不能以「（系統」開頭') : null], // system markers are written by code only
             'AttachmentUrl' => ['nullable', 'string', 'max:255', 'regex:#^(https?://|/(?!/))#i'], // #3824: http(s) or site-relative only
             'Subject' => 'nullable|string|max:32',
             'SessionDate' => 'nullable|date',

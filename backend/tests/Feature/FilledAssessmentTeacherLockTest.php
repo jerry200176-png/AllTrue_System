@@ -280,6 +280,16 @@ class FilledAssessmentTeacherLockTest extends TestCase
         $this->assertSame('note', LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->firstOrFail()->payload['teacher_comment']['content']);
     }
 
+    public function test_user_written_content_cannot_start_with_a_system_marker(): void
+    {
+        [$s, $lr] = $this->filled();
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => ' （系統補登）xxx'])->assertStatus(422)->assertJsonValidationErrors('Content');
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '正常內容'])->assertOk();
+        $s2 = $this->mkSession('2026-04-11');
+        $this->api()->postJson('/api/v1/learning-records', ['StudentID' => $this->sc->StudentID, 'ClassSessionID' => $s2->id, 'TeacherID' => $this->aId, 'Content' => '（系統補登）xxx'])
+            ->assertStatus(422)->assertJsonValidationErrors('Content');
+    }
+
     private function comment(LearningRecord $lr, ClassSession $s, int $teacherId): void
     {
         DB::table('learning_record_teacher_comments')->insert([
