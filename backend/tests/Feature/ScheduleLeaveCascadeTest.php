@@ -216,6 +216,7 @@ class ScheduleLeaveCascadeTest extends TestCase
         $session->Status = 'scheduled';
         $session->save();
         LearningRecord::where('ClassSessionID', $session->id)->delete();
+        StudentSignIn::where('ClassSessionID', $session->id)->delete(); // no attendance yet (#502 sign-in)
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
