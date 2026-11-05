@@ -64,7 +64,6 @@ final class TaughtLessonSignInRepairStrategy
         $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
         $todo = array_filter($rows, fn ($r) => in_array($r['class'], ['write', 'delete', 'revoid'], true));
         $state = $want === '' ? 'unpinned' : ($todo === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
-
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
             'state' => $state, 'mode' => $source === '' ? 'repair' : 'restore', 'restore_request_id' => $source,
             'campus_id' => (int) $campus, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
@@ -146,7 +145,6 @@ final class TaughtLessonSignInRepairStrategy
                 throw new RuntimeException('taught_signin_ledger_moved');
             }
             $this->audit(['reason_code' => self::REF, 'row_count' => count($snapshot), 'outcome' => 'success']);
-
             return ['ok' => true, 'created' => count($snapshot), 'snapshot' => ['rows' => $snapshot]];
         }, 3);
     }
@@ -206,7 +204,6 @@ final class TaughtLessonSignInRepairStrategy
                 }
             }
             $this->audit(['reason_code' => self::REF, 'row_count' => $deleted + $revoided, 'outcome' => 'success'], '.rollback');
-
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'deleted' => $deleted, 'revoided' => $revoided, 'skipped_ids' => $skipped];
         }, 3);
     }
