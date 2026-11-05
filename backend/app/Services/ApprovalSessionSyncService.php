@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\LearningRecordBackfillService;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 
 class ApprovalSessionSyncService
@@ -20,6 +21,7 @@ class ApprovalSessionSyncService
      * 2. ClassSession 為 leave/leave_adjusted/cancelled → skip
      * 3. SessionDate > today → skip（未來堂次不預扣）
      * 4. 已有 active + SessionDeducted SignIn → idempotent skip
+     * 5. 已有 active 但不可扣堂的 SignIn（如缺席）→ skip，不再新增第二筆（#4931）
      */
     public static function syncOnApprove(LearningRecord $lr, StudentClass $sc, int $approvedByUserId): void
     {
@@ -51,13 +53,35 @@ class ApprovalSessionSyncService
             return;
         }
 
-        $student = Student::find($sc->StudentID);
+        $signIn = self::payableSignIn($cs, $sc, 'present', $lr->TeacherID ?? $sc->TeacherID, $approvedByUserId, 'lr_approve');
+        if (!$signIn) {
+            return; // #4931: the live 缺席 sign-in is the attendance decision; approving the evaluation adds no second row
+        }
 
-        $signIn = StudentSignIn::create([
+        $cs->Status = 'attended';
+        $cs->save();
+
+        SessionDeductionService::deductOnAttendance($sc, $signIn);
+        app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($cs);
+    }
+
+    /**
+     * The one sign-in a taught lesson is debited against (#4931): the live deductible one if there is one, a new one (or the latest voided one, un-voided)
+     * when the lesson has no live sign-in, or null when a live non-deductible sign-in (缺席) already records the lesson.
+     * The caller debits it with SessionDeductionService::deductOnAttendance.
+     */
+    public static function payableSignIn(ClassSession $cs, StudentClass $sc, string $status, ?int $teacherId, ?int $recordedBy, string $memo): ?StudentSignIn
+    {
+        $live = StudentSignIn::where('ClassSessionID', $cs->id)->active()->orderBy('id')->get();
+        if ($live->isNotEmpty()) {
+            return $live->first(fn (StudentSignIn $s) => in_array(strtolower((string) $s->Status), AttendanceStatus::deductibleCodes(), true));
+        }
+
+        $fields = [
             'StudentClassID'  => $sc->ID,
             'StudentID'       => $sc->StudentID,
-            'TeacherID'       => $lr->TeacherID ?? $sc->TeacherID,
-            'RecordedByUserID' => $approvedByUserId ?: null,
+            'TeacherID'       => $teacherId,
+            'RecordedByUserID' => $recordedBy ?: null,
             'GradeID'         => $sc->GradeID,
             'SubjectID'       => $sc->SubjectID,
             'Get1byID'        => $sc->by1,
@@ -65,18 +89,23 @@ class ApprovalSessionSyncService
             'SignOutDT'       => Carbon::parse($cs->SessionDate . ' ' . ($cs->EndTime ?? '23:59')),
             'MDT'             => now(),
             'ClassSessionID'  => $cs->id,
-            'Status'          => 'present',
-            'CampusID'        => $student->CampusID ?? null,
+            'Status'          => $status,
+            'CampusID'        => Student::find($sc->StudentID)->CampusID ?? null,
             'PersonType'      => 'student',
             'SessionDeducted' => false,
-            'Memo'            => 'lr_approve',
-        ]);
+            'Memo'            => $memo,
+        ];
 
-        $cs->Status = 'attended';
-        $cs->save();
+        // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
+        // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062. The lesson may have moved
+        // since the void, so the row takes the lesson's current values (times, course, student, campus).
+        $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->first();
+        if ($voided) {
+            $voided->update($fields + ['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
+            return $voided;
+        }
 
-        SessionDeductionService::deductOnAttendance($sc, $signIn);
-        app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($cs);
+        return StudentSignIn::create($fields);
     }
 
     /** An active, deducted sign-in: the lesson is recorded as taught for attendance, usage and part-time payroll. */
