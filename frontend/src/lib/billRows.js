@@ -1,5 +1,6 @@
 import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_HELP, LEGACY_FLAG_UNVERIFIED_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL } from './courseMoneyState.js';
-import { formatCoursePeriod, isDueLater, isPendingConfirmation, owedItems, splitOwed } from './studentBillingRows.js';
+import { formatCoursePeriod, isDueLater, isPendingConfirmation, owedItems, pendingReviewAmount, splitOwed } from './studentBillingRows.js';
+import { formatNewerCourseOverlapWarning } from './studentClassDisplay.js';
 
 // Billing v3 (PRD §0): one row per contract that needs something, built from the same /alerts/tuition rows as before.
 // `kind` drives the chip, the primary button and which rows can be batched together.
@@ -35,11 +36,19 @@ function labelOf(kind, r, owedNow) {
 }
 
 function hintOf(kind, r, owedNow, owedLater) {
-  if (kind === 'confirm') return '家長已回報，等你確認';
-  if (r.invoice_amount_discrepancy) return '帳單金額與實際上課數不符';
+  if (kind === 'confirm') return '家長已回報';
   if (kind === 'owing' && r.payment_status === 'partial' && Number(r.paid_amount) > 0) return `已收 ${money(r.paid_amount)}`;
   if (kind === 'owing' && owedNow > 0 && owedLater > 0) return `之後還會到期 ${money(owedLater)}`;
   return '';
+}
+
+// Notes the old list carried beside a row (#1100 期間重疊, 依實際堂數計算): always shown, never replaced by a hint.
+function warningsOf(r) {
+  const who = r.subject ? `${r.subject}：` : '';
+  const out = [];
+  if (r.newer_course_overlap) out.push(`${who}${formatNewerCourseOverlapWarning(r).primary}`);
+  if (r.invoice_amount_discrepancy) out.push(`${who}依實際 ${r.invoice_period_sessions} 堂計算（原始帳單 ${money(r.invoice_stored_amount)}；實際計算 ${money(r.invoice_computed_amount)}）`);
+  return out;
 }
 
 /**
@@ -70,6 +79,10 @@ export function billRows(alertRows, today = new Date().toISOString().slice(0, 10
       owed_later: later,
       due_date: nextDue,
       overdue_days: kind === 'owing' && dues[0] ? Math.max(0, Math.round((dayStart(today) - dayStart(dues[0])) / 86400000)) : 0,
+      remaining,
+      sort_remaining: r.renewed_by_newer_course === true ? null : remaining, // in-app #495: a renewed contract is not the lessons-left signal
+      review_amount: pendingReviewAmount(r),
+      warnings: warningsOf(r),
       label: labelOf(kind, r, owed),
       hint: hintOf(kind, r, owed, later),
       help: kind === 'review' && isLegacyPaidFlagOnly(r) ? LEGACY_FLAG_UNVERIFIED_HELP : '',

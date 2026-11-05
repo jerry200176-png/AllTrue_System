@@ -1,5 +1,5 @@
 <template>
-  <div class="tc-page at-page">
+  <div ref="pageEl" class="tc-page at-page">
     <AtPageHeader
       title="帳務中心"
       :description="`處理未繳、${REPORT_STATUS_LABELS.pending}與確認入帳。`"
@@ -64,6 +64,7 @@
       <BillList
         ref="billList"
         :alert-rows="rows"
+        :students="campusStudents"
         :loading="loading"
         :error="error"
         :preset-filter="listFilter"
@@ -74,7 +75,7 @@
         @batch="onBillBatch"
         @export="exportCSV"
         @student="(b) => openBillLedger(b, null)"
-        @action="(b, kind) => openBillLedger(b, BILL_LEDGER_ACTION[kind])"
+        @action="onBillAction"
         @menu="onBillMenu"
         @retry="loadAlerts"
       />
@@ -527,7 +528,7 @@
       @row-action="onLedgerRowAction"
     />
 
-    <PaymentSlipModal :show="slipOpen" :student-class-id="slipClassId" :invoice-id="slipInvoiceId" @close="slipOpen = false" />
+    <PaymentSlipModal :show="slipOpen" :student-class-id="slipClassId" :invoice-id="slipInvoiceId" :return-focus-to="pageEl" @close="slipOpen = false" />
     <RefundDialog v-if="refundCourseId" :open="Boolean(refundCourseId)" :course-id="refundCourseId" @close="refundCourseId = null" @done="onRefundDone" />
 
     <!-- Void Confirmation Dialog -->
@@ -777,6 +778,7 @@ async function loadCampusStudents() {
 }
 // ↑/↓ in the drawer: the student list decides who is adjacent (current filter and sort).
 const billList = ref(null);
+const pageEl = ref(null);
 const listFilter = ref({ key: 'todo' }); // a new object per deep link, so the same chip is re-applied; the list owns it in between
 const ledgerNavStudentId = ref(null);
 function stepLedger(dir) {
@@ -1022,10 +1024,20 @@ function onBillBatch(mode, classIds) {
 }
 
 // Billing v3: the clicked row's own contract goes to the drawer / entry action, never "the first owing contract".
-const BILL_LEDGER_ACTION = { confirm: 'confirm', owing: 'record', issue: 'issue', review: null };
+const BILL_LEDGER_ACTION = { confirm: 'confirm', record: 'record', issue: 'issue', open: null };
 function openBillLedger(b, kind) {
   const classId = b.class_id ?? null;
   openLedgerForStudent({ student_id: b.student_id, first_class_id: classId }, kind && classId ? { kind, classId } : null);
+}
+function onBillAction(b, action) {
+  if (action === 'slip') openBillSlip(b);
+  else openBillLedger(b, BILL_LEDGER_ACTION[action]);
+}
+function openBillSlip(b) {
+  if (!slipAvailability({ ...b.src, id: b.class_id }, canWaive.value).ok) return;
+  slipInvoiceId.value = b.src.payable_invoice_id ? Number(b.src.payable_invoice_id) : null;
+  slipClassId.value = slipInvoiceId.value ? null : b.class_id;
+  slipOpen.value = true;
 }
 const slipOpen = ref(false);
 const slipClassId = ref(null);
@@ -1040,12 +1052,8 @@ function onBillMenu(b, id) {
   if (id === 'student') openBillLedger(b, null);
   else if (id === 'reject') openBillLedger(b, null);
   else if (id === 'sessions') openSessionDetail(b.src);
-  else if (id === 'slip') {
-    if (!slipAvailability({ ...b.src, id: b.class_id }, canWaive.value).ok) return;
-    slipInvoiceId.value = b.src.payable_invoice_id ? Number(b.src.payable_invoice_id) : null;
-    slipClassId.value = slipInvoiceId.value ? null : b.class_id;
-    slipOpen.value = true;
-  } else if (id === 'refund') refundCourseId.value = b.class_id;
+  else if (id === 'slip') openBillSlip(b);
+  else if (id === 'refund') refundCourseId.value = b.class_id;
   else onLedgerRowAction({ kind: id, courseId: b.class_id });
 }
 
@@ -1834,7 +1842,7 @@ watch(() => props.branchId, () => {
 }, { flush: 'post' });
 
 // The old 待處理 table is unreachable: deep links to one of its filters land on the matching chip of the student list.
-const LIST_FILTER_FOR_TAB = { pending: 'confirm', pending_report: 'confirm', unpaid: 'owing', pending_reconciliation: 'owing', amount_review: 'review', renewal: 'issue', all: 'todo' };
+const LIST_FILTER_FOR_TAB = { pending: 'confirm', pending_report: 'confirm', unpaid: 'todo', pending_reconciliation: 'todo', amount_review: 'review', renewal: 'issue', all: 'todo' };
 watch(() => props.initialTab, (tab) => {
   if (!tab) return;
   if (LIST_FILTER_FOR_TAB[tab]) {

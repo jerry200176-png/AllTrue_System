@@ -28,6 +28,11 @@
             @click="setFilter(c.key)"
           >{{ c.label }} {{ counts[c.key] }}</button>
           <ActionMenu :groups="moreGroups" label="更多篩選" trigger-text="更多" trigger-class="bl__more" @select="setFilter" />
+          <label class="bl__sort">排序
+            <select v-model="sortKey" data-testid="bill-sort">
+              <option v-for="(o, key) in SORTS" :key="key" :value="key">{{ o.label }}</option>
+            </select>
+          </label>
           <span v-if="MORE.some((m) => m.key === activeFilter)" class="bl__chip is-on" data-testid="bill-filter-current">{{ filterLabel }} {{ activeFilter === 'all' ? rows.length : counts[activeFilter] }}</span>
         </div>
       </div>
@@ -42,12 +47,18 @@
         </template>
         <AtButton class="bl__csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', visible.map((b) => b.src))">匯出 CSV</AtButton>
       </div>
-      <AtEmpty v-if="!visible.length" icon="search_off" :title="query.trim() ? '找不到符合的帳單' : '目前沒有要處理的帳單'" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。'" data-testid="bill-empty" data-guide="tuition-rows" />
+      <AtEmpty v-if="!visible.length && !noRowStudents.length" icon="search_off" :title="query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單`" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。'" data-testid="bill-empty" data-guide="tuition-rows" />
       <template v-else>
-        <div class="bl__head" aria-hidden="true">
+        <ul v-if="noRowStudents.length" class="bl__list" data-testid="bill-no-rows">
+          <li v-for="st in noRowStudents" :key="st.id" class="bl__plain">
+            <button type="button" class="bl__name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
+            <span class="bl__subject">沒有待收款項</span>
+          </li>
+        </ul>
+        <div v-if="visible.length" class="bl__head" aria-hidden="true">
           <div class="bl__cols"><span>學生・科目</span><span>期間／剩幾堂</span><span>狀態</span><span>到期／逾期</span><span class="bl__num">未收</span></div>
         </div>
-        <ul class="bl__list" data-guide="tuition-rows">
+        <ul v-if="visible.length" class="bl__list" data-guide="tuition-rows">
           <li v-for="b in visible" :key="b.key" :data-testid="`bill-row-${b.key}`" :data-kind="b.kind">
             <input
               v-if="selectable(b)"
@@ -68,19 +79,20 @@
               <span class="bl__period">{{ b.period }}</span>
               <span class="bl__status"><AtBadge :tone="TONES[b.kind]" :label="b.label" :title="b.help || undefined" /></span>
               <span :class="['bl__due', { due: b.overdue_days > 0 }]">{{ dueText(b) }}</span>
-              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}</span>
+              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}<small v-if="b.review_amount > 0" class="bl__review" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</small></span>
               <span v-if="b.hint" class="bl__hint">{{ b.hint }}</span>
+              <span v-for="w in b.warnings" :key="w" class="bl__warn" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
             </div>
             <div class="bl__actions">
               <AtButton
-                v-if="PRIMARY[b.kind]"
+                v-if="primaryOf(b)"
                 size="sm"
                 shape="rect"
                 :variant="b.kind === 'confirm' ? 'primary' : 'secondary'"
                 :data-testid="`bill-action-${b.key}`"
-                :aria-label="`${PRIMARY[b.kind]}：${b.student_name} ${b.subject}`"
-                @click="$emit('action', b, b.kind)"
-              >{{ PRIMARY[b.kind] }}</AtButton>
+                :aria-label="`${primaryOf(b).label}：${b.student_name} ${b.subject}`"
+                @click="$emit('action', b, primaryOf(b).action)"
+              >{{ primaryOf(b).label }}</AtButton>
               <ActionMenu :groups="menuGroups(b)" :label="`更多操作：${b.student_name} ${b.subject}`" trigger-class="bl__menu" @select="(id) => $emit('menu', b, id)" />
             </div>
           </li>
@@ -103,6 +115,8 @@ import { slipAvailability } from '../../lib/billingDocState.js';
 
 const props = defineProps({
   alertRows: { type: Array, default: () => [] },
+  // Campus students, so a name search still finds a fully paid student (one line 「沒有待收款項」).
+  students: { type: Array, default: () => [] },
   today: { type: String, default: undefined },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
@@ -122,7 +136,23 @@ const CHIPS = [
   { key: 'issue', label: '要開帳單' }, { key: 'review', label: '需核對' },
 ];
 const MORE = [{ key: 'paid', label: '已收' }, { key: 'waived', label: '不收了' }, { key: 'all', label: '全部' }];
-const PRIMARY = { confirm: '確認入帳', owing: '登記收款', issue: '開帳單', review: '核對' };
+const PRIMARY = { confirm: ['確認入帳', 'confirm'], owing: ['登記收款', 'record'], review: ['核對', 'open'] };
+// Every primary opens something that works today: 開帳單 only for monthly bills (drafts); a count-mode contract gets its 繳費單
+// when one can be issued, else its billing in the drawer (a paid renewal has no bill to issue).
+function primaryOf(b) {
+  if (PRIMARY[b.kind]) return { label: PRIMARY[b.kind][0], action: PRIMARY[b.kind][1] };
+  if (b.kind !== 'issue') return null;
+  if (b.src.schedule_mode === 'date') return { label: '開帳單', action: 'issue' };
+  return slipOf(b).ok ? { label: '繳費單', action: 'slip' } : { label: '看帳務', action: 'open' };
+}
+const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
+const SORTS = {
+  amount: { label: '未繳金額', cmp: null },
+  overdue: { label: '逾期天數', cmp: (a, b) => b.overdue_days - a.overdue_days || b.owed - a.owed },
+  // in-app #467 / #4824: fewest lessons left first; contracts without a count go last.
+  remaining: { label: '剩餘堂數（少到多）', cmp: (a, b) => (a.sort_remaining ?? Infinity) - (b.sort_remaining ?? Infinity) || b.owed - a.owed },
+  name: { label: '姓名', cmp: (a, b) => a.student_name.localeCompare(b.student_name, 'zh-Hant') },
+};
 const TONES = { confirm: 'warning', owing: 'danger', issue: 'neutral', review: 'info', paid: 'success', waived: 'neutral' };
 const FILTERS = [...CHIPS, ...MORE, { key: 'overdue', label: '逾期' }].map((f) => f.key);
 const moreGroups = [{ id: 'more', label: '', items: MORE.map((m) => ({ id: m.key, label: m.label })) }];
@@ -145,8 +175,22 @@ const TESTS = {
   overdue: (b) => b.overdue_days > 0,
   all: () => true,
 };
-const visible = computed(() => rows.value.filter((b) => (TESTS[activeFilter.value] || ((x) => x.kind === activeFilter.value))(b)
-  && (!query.value.trim() || b.student_name.includes(query.value.trim()))));
+// in-app #494 / #4884: 要開帳單 lists fewest lessons left first (the sort stays changeable).
+const sortKey = ref(filter.value === 'issue' ? 'remaining' : 'amount');
+watch(filter, (f) => { sortKey.value = f === 'issue' ? 'remaining' : 'amount'; clearSelection(); });
+const visible = computed(() => {
+  const list = rows.value.filter((b) => (TESTS[activeFilter.value] || ((x) => x.kind === activeFilter.value))(b)
+    && (!query.value.trim() || b.student_name.includes(query.value.trim())));
+  const cmp = SORTS[sortKey.value].cmp;
+  return cmp ? [...list].sort(cmp) : list;
+});
+const chipLabel = computed(() => [...CHIPS, ...MORE, { key: 'overdue', label: '逾期' }].find((c) => c.key === activeFilter.value)?.label || '');
+const noRowStudents = computed(() => {
+  const q = query.value.trim();
+  if (!q) return [];
+  const have = new Set(rows.value.map((b) => b.student_id));
+  return props.students.filter((st) => !have.has(Number(st.id)) && String(st.name || '').includes(q));
+});
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
@@ -155,7 +199,7 @@ const dueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.
 // Dangerous actions sit after the divider, only where the page allows them (same guards as the drawer's contract card).
 function menuGroups(b) {
   const a = (b.class_id != null && props.rowActions[b.class_id]) || {};
-  const slip = slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
+  const slip = slipOf(b);
   const canRefund = b.class_id != null && b.src.schedule_mode !== 'date' && Number(b.src.paid_amount) > 0 && !b.src.closed_reason && !b.src.stop;
   const safe = [
     ...(b.kind === 'confirm' ? [{ id: 'reject', label: '退回' }] : []),
@@ -225,7 +269,12 @@ defineExpose({ neighbor, clearSelection });
 .bl__who{display:grid}
 .bl__name{background:none;border:0;padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;color:inherit;text-decoration:underline;text-decoration-color:var(--ds-border);min-height:28px}
 .bl__subject,.bl__hint{font-size:12px;color:var(--ds-ink-mute)}
-.bl__hint{grid-column:1/-1}
+.bl__hint,.bl__warn{grid-column:1/-1}
+.bl__warn{font-size:13px;color:var(--ds-warning-text,var(--ds-ink-mute))}
+.bl__review{display:block;font-size:12px;color:var(--ds-ink-mute)}
+.bl__sort{display:flex;white-space:nowrap;align-items:center;gap:6px;font-size:13px;color:var(--ds-ink-mute)}
+.bl__sort select{min-height:36px;font:inherit;padding:4px 8px}
+.bl__plain{grid-column:2;display:flex;gap:12px;align-items:center;padding:6px 12px}
 .bl__num{text-align:right;font-variant-numeric:tabular-nums}
 .bl__due{font-size:13px;font-variant-numeric:tabular-nums}
 .bl__num.due,.bl__due.due{color:var(--ds-danger);font-weight:700}
@@ -241,7 +290,9 @@ defineExpose({ neighbor, clearSelection });
   .bl__name{min-height:44px}
   .bl :deep(.am__trigger){min-height:44px;min-width:44px}
   .bl__row{grid-template-columns:1fr auto;grid-template-areas:"who status" "hint hint";gap:2px 12px}
-  .bl__period,.bl__due,.bl__num{display:none}
+  /* phone: name + status on the first line, 到期／逾期 and 未收 on the second (the old list kept both) */
+  .bl__period{display:none}
+  .bl__sort select{min-height:44px}
   .bl__actions{grid-column:2;justify-content:flex-start;padding:4px 0}
 }
 </style>

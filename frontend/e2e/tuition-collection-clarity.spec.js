@@ -192,6 +192,16 @@ test.describe('Tuition Collection clarity browser verification', () => {
     }
   });
 
+  test('v3: 未收 and 逾期 stay visible on a phone row', async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    const row = page.locator('[data-testid^="bill-row-"]').first();
+    await expect(row).toBeVisible();
+    await expect(row.locator('.bl__num')).toBeVisible();
+    await expect(row.locator('.bl__due')).toBeVisible();
+  });
+
   test('In-App480: 已結清課程 sits only on the bill list, never above 收款紀錄 / 代收代付', async ({ page }) => {
     await installMock(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=normal');

@@ -40,6 +40,7 @@ describe('金額待確認 rows in the student list (Founder D2)', () => {
     // the review amount is never part of 到今天未收
     expect(w.find('[data-testid="bill-sum-owed"]').text()).toContain('NT$ 8,800');
     expect(w.find('[data-testid="bill-filter-review"]').text()).toContain('1');
+    expect(w.find('[data-testid="bill-review-c2"]').text()).toBe('需核對金額 NT$ 3,400'); // D2: the amount stays on the row
     w.unmount();
   });
 
@@ -49,6 +50,7 @@ describe('金額待確認 rows in the student list (Founder D2)', () => {
     expect(w.find('[data-testid="bill-action-c3"]').text()).toBe('確認入帳');
     expect(w.find('[data-testid="bill-sum-owed"]').text()).toContain('NT$ 8,800');
     expect(w.find('[data-testid="bill-sum-confirm"]').text()).toContain('1');
+    expect(w.find('[data-testid="bill-review-c3"]').text()).toBe('需核對金額 NT$ 4,400');
     w.unmount();
   });
 });

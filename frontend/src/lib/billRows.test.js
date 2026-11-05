@@ -45,4 +45,29 @@ describe('billRows', () => {
     expect(billCounts(rows)).toEqual({ confirm: 1, owing: 2, issue: 1, review: 1, paid: 1, waived: 1, todo: 5 });
     expect(rows.map((b) => b.kind)).toEqual(['confirm', 'owing', 'owing', 'issue', 'review', 'paid', 'waived']);
   });
+
+  it('always carries the old warning notes, even on a confirm row, and never replaces them with the hint', () => {
+    const [b] = billRows([r({
+      payment_status: 'pending_report', latest_payment_report_id: 5,
+      newer_course_overlap: true, current_course_end_date: '2026-12-31', newer_course_start_date: '2026-12-01',
+      invoice_amount_discrepancy: true, invoice_period_sessions: 8, invoice_stored_amount: 9000, invoice_computed_amount: 8800,
+    })], T);
+    expect(b.kind).toBe('confirm');
+    expect(b.hint).toBe('家長已回報');
+    expect(b.warnings).toHaveLength(2);
+    expect(b.warnings[0]).toMatch(/^數學：本期順延與下一期重疊，請調整/);
+    expect(b.warnings[1]).toBe('數學：依實際 8 堂計算（原始帳單 NT$ 9,000；實際計算 NT$ 8,800）');
+  });
+
+  it('keeps the 需核對金額 amount on review rows and uses no retired wording', () => {
+    const [b] = billRows([r({ payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 3400 })], T);
+    expect(b.review_amount).toBe(3400);
+    const all = billRows([r({ payment_status: 'pending_report', latest_payment_report_id: 5 })], T).map((x) => `${x.hint}${x.label}`).join();
+    expect(all).not.toMatch(/等你確認|已回報付款|待核對入帳/);
+  });
+
+  it('gives the lessons-left sort signal only to contracts not renewed by a newer one', () => {
+    const [a, b] = billRows([r({ id: 1, remaining_sessions: 2 }), r({ id: 2, remaining_sessions: 1, renewed_by_newer_course: true })], T);
+    expect([a.sort_remaining, b.sort_remaining].sort()).toEqual([2, null]);
+  });
 });
