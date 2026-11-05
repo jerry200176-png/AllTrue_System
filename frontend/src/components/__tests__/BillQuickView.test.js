@@ -77,4 +77,38 @@ describe('BillQuickView', () => {
     expect(w.emitted('record')).toHaveLength(1);
     expect(global.fetch.mock.calls.some(([u]) => String(u).includes('/sessions'))).toBe(false);
   });
+
+  it('says 尚未開帳單 (not NT$ 0) when the contract has no bill, and still offers the pending report', async () => {
+    global.fetch = vi.fn((url) => Promise.resolve(json(String(url).includes('/accounting/ledger') ? { ...LEDGER, invoices: [{ id: 2, student_class_id: 7, status: 'void', total_amount: 5, outstanding_amount: 5 }] } : {})));
+    const w = await mountQv();
+    expect(w.get('[data-testid="qv-unbilled"]').text()).toBe('尚未開帳單');
+    expect(w.find('[data-testid="qv-money"]').exists()).toBe(false);
+    expect(w.find('[data-testid="qv-confirm"]').exists()).toBe(true);
+    expect(w.find('[data-testid="qv-reject"]').exists()).toBe(true);
+  });
+
+  it('drops a late lessons answer from the previous contract', async () => {
+    let resolveA;
+    global.fetch = vi.fn((url) => {
+      const u = String(url);
+      if (u.includes('/accounting/ledger')) return Promise.resolve(json(LEDGER));
+      if (u.includes('/contracts/7/sessions')) return new Promise((r) => { resolveA = () => r(json({ sessions: [{ class_session_id: 1, date: '2026-11-04', start_time: '18:00', status: 'attended' }] })); });
+      return Promise.resolve(json({ sessions: [] }));
+    });
+    const w = await mountQv();
+    const details = w.get('[data-testid="qv-lessons"]');
+    details.element.open = true;
+    await details.trigger('toggle');
+    await w.setProps({ open: false });
+    await w.setProps({ open: true, bill: { ...BILL, key: 'c8', class_id: 8 } });
+    await flushPromises();
+    resolveA();
+    await flushPromises();
+    expect(w.findAll('[data-testid="qv-lessons"] li')).toHaveLength(0);
+    const d2 = w.get('[data-testid="qv-lessons"]');
+    d2.element.open = true;
+    await d2.trigger('toggle');
+    await flushPromises();
+    expect(global.fetch.mock.calls.some(([u]) => String(u).includes('/contracts/8/sessions'))).toBe(true);
+  });
 });

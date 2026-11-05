@@ -10,7 +10,8 @@
         <AtBadge :tone="bill.kind === 'confirm' ? 'warning' : bill.kind === 'owing' ? 'danger' : 'neutral'" :label="bill.label" />
         <ActionMenu :groups="menuGroups" label="更多操作" trigger-class="qv__menu" @select="(id) => $emit('menu', id)" />
       </div>
-      <dl class="qv__money" data-testid="qv-money">
+      <p v-if="!amounts" class="qv__muted" data-testid="qv-unbilled">尚未開帳單</p>
+      <dl v-else class="qv__money" data-testid="qv-money">
         <div><dt>應收</dt><dd>{{ money(amounts.due) }}</dd></div>
         <div><dt>已收</dt><dd>{{ money(amounts.received) }}</dd></div>
         <div><dt>未收</dt><dd :class="{ due: amounts.owed > 0 }">{{ money(amounts.owed) }}</dd></div>
@@ -20,8 +21,8 @@
         <p v-if="report.note" class="qv__muted">備註：{{ report.note }}</p>
         <p v-if="actionError" class="qv__error" role="alert" data-testid="qv-action-error">{{ actionError }}</p>
         <div class="qv__actions">
-          <AtButton size="sm" shape="rect" :disabled="busy" data-testid="qv-confirm" @click="confirmOpen = true">確認入帳</AtButton>
-          <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="qv-reject" @click="openReject">退回</AtButton>
+          <AtButton size="sm" shape="rect" :loading="busy" :disabled="busy" data-testid="qv-confirm" @click="confirmOpen = true">確認入帳</AtButton>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="busy" :disabled="busy" data-testid="qv-reject" @click="openReject">退回</AtButton>
         </div>
       </section>
       <p v-else-if="rejectWanted" class="qv__muted" data-testid="qv-no-report">這筆已經沒有待確認的回報了。</p>
@@ -103,15 +104,17 @@ const memberIds = computed(() => {
 });
 // The pending parent report that covers this contract (any member of a shared package counts, as the contract card does).
 const report = computed(() => (payload.value?.receipts || []).find((r) => r.status === 'pending' && memberIds.value.includes(Number(r.student_class_id))) || null);
+// Same rule as the drawer's amountsFor(): no non-void invoice = no amounts (a bill-less contract is not "NT$ 0").
 const amounts = computed(() => {
   const list = (payload.value?.invoices || []).filter((i) => Number(i.student_class_id) === classId.value && i.status !== 'void');
+  if (!list.length) return null;
   const sum = (k) => list.reduce((t, i) => t + Number(i[k] || 0), 0);
   return { due: sum('total_amount'), received: sum('calculated_applied_amount'), owed: sum('outstanding_amount') };
 });
 
 async function load() {
+  const mine = ++seq; // every open / close / contract change starts a new generation, so late answers are dropped
   if (!props.open || !classId.value) return;
-  const mine = ++seq;
   loading.value = true;
   error.value = '';
   payload.value = null;
@@ -137,13 +140,18 @@ function openReject() { rejectReason.value = ''; rejectOpen.value = true; }
 
 async function onToggle(e) {
   if (!e.target.open || lessonsState.value !== 'idle') return;
+  const mine = seq;
+  const id = classId.value;
+  const current = () => mine === seq && id === classId.value; // same generation and still the same contract
   lessonsState.value = 'loading';
   try {
-    const resp = await authedFetch(`/api/v1/accounting/contracts/${classId.value}/sessions`, { headers: { Accept: 'application/json' } });
+    const resp = await authedFetch(`/api/v1/accounting/contracts/${id}/sessions`, { headers: { Accept: 'application/json' } });
     if (!resp.ok) throw new Error(String(resp.status));
-    lessons.value = (await resp.json()).sessions || [];
+    const json = await resp.json();
+    if (!current()) return;
+    lessons.value = json.sessions || [];
     lessonsState.value = 'ready';
-  } catch { lessonsState.value = 'error'; }
+  } catch { if (current()) lessonsState.value = 'error'; }
 }
 
 async function decide(action, note = '') {
