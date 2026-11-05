@@ -9,6 +9,7 @@ use App\Models\LearningRecord;
 use App\Models\Notification;
 use App\Models\PendingSwipe;
 use App\Models\Student;
+use App\Models\StudentSignIn;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
@@ -512,13 +513,16 @@ class NotificationApiTest extends TestCase
             'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => $status, 'Note' => '',
         ]);
         $lesson(3, 'scheduled');  // waiting for attendance: counts
-        $lesson(2, 'attended');   // marked: no
+        $marked = $lesson(2, 'attended');   // marked (has a live sign-in): no
+        StudentSignIn::create(['StudentClassID' => $class->ID, 'StudentID' => $student->id, 'ClassSessionID' => $marked->id,
+            'SignInDT' => now()->subDays(2)->setTime(10, 0), 'MDT' => now(), 'Status' => 'present', 'CampusID' => 1, 'SessionDeducted' => false]);
+        $lesson(4, 'completed');  // in-app #504: marked taught but never signed in: counts (payroll calls it 沒點名)
         $lesson(9, 'scheduled');  // outside the list's 7-day window: no
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson('/api/v1/notifications/unread-count?branch_id=1')
             ->assertOk()
-            ->assertJsonPath('by_type.attendance.total', 1);
+            ->assertJsonPath('by_type.attendance.total', 2);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director@example.com'): string

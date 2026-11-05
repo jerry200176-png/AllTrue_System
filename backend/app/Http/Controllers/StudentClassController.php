@@ -39,6 +39,7 @@ use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\LearningRecordResurrectionPolicy;
+use App\Services\ApprovalSessionSyncService;
 use App\Services\SessionDeductionService;
 use App\Services\StudentClassActivity;
 use App\Services\SessionContractRecoveryService;
@@ -4022,7 +4023,9 @@ class StudentClassController extends Controller
                 $approved = true;
 
                 $alreadyDeducted = $hasLearningRecordSessionDeducted && (bool) ($record->SessionDeducted ?? false);
-                if (!$alreadyDeducted && SessionDeductionService::deductOnAttendance($studentClass, null, (int) $classSession->id)) {
+                // In-app #502: the approve pipeline also writes the sign-in that part-time payroll reads.
+                ApprovalSessionSyncService::syncOnApprove($record, $studentClass, $authUserId);
+                if (!$alreadyDeducted && ApprovalSessionSyncService::hasDeductedSignIn((int) $classSession->id)) {
                     if ($hasLearningRecordSessionDeducted) {
                         $record->SessionDeducted = true;
                         $record->save();

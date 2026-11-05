@@ -107,7 +107,8 @@ class ClassSessionBatchApiTest extends TestCase
             [substr($pastDate, 0, 10), substr($futureDate, 0, 10)],
             $sessions->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all()
         );
-        $this->assertSame('completed', (string) ($sessions[0]->Status ?? ''));
+        // In-app #502: a taught past row goes through the approve pipeline (lr_approve sign-in), so it reads attended.
+        $this->assertSame('attended', (string) ($sessions[0]->Status ?? ''));
         $this->assertSame('scheduled', (string) ($sessions[1]->Status ?? ''));
 
         $learningRecords = LearningRecord::where('StudentClassID', $studentClassId)->get();
@@ -182,9 +183,10 @@ class ClassSessionBatchApiTest extends TestCase
 
         $completedCount = DB::table('ClassSession')
             ->where('StudentClassID', $studentClassId)
-            ->where('Status', 'completed')
+            ->where('Status', 'attended')
             ->count();
         $this->assertSame(3, $completedCount);
+        $this->assertSame(3, DB::table('StudentSingIn')->where('StudentClassID', $studentClassId)->whereNull('VoidedAt')->count());
     }
 
     /**
