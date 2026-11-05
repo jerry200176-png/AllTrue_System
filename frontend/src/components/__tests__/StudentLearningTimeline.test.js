@@ -7,6 +7,7 @@ const ITEMS = [
   { type: 'evaluation', id: 1, date: '2026-10-01', subject: '數學', attendance: '到班', approval_status: 'approved', homework_status: '完成', next_week_scope: '第三章' },
 ];
 vi.mock('../../lib/authedFetch', () => ({ authedFetch: vi.fn(async () => ({ ok: true, json: async () => ({ items: ITEMS }) })) }));
+import { authedFetch } from '../../lib/authedFetch';
 import StudentLearningTimeline from '../students/StudentLearningTimeline.vue';
 
 describe('StudentLearningTimeline', () => {
@@ -19,5 +20,17 @@ describe('StudentLearningTimeline', () => {
     expect(w.findAll('[data-testid="timeline-row"]')).toHaveLength(2);
     await w.get('[data-testid="timeline-subject"]').setValue('英文');
     expect(w.text()).toContain('80/100');
+  });
+
+  it('ignores a superseded request that resolves last', async () => {
+    let resolveA;
+    authedFetch.mockImplementationOnce(() => new Promise((r) => { resolveA = r; }));
+    const w = mount(StudentLearningTimeline, { props: { show: true, studentId: 1, studentName: 'A' } });
+    await w.setProps({ studentId: 2, studentName: 'B' });
+    await flushPromises();
+    resolveA({ ok: true, json: async () => ({ items: [{ type: 'attendance', id: 99, date: '2020-01-01', subject: '舊', attendance: '到班' }] }) });
+    await flushPromises();
+    expect(w.text()).not.toContain('2020-01-01');
+    expect(w.findAll('[data-testid="timeline-row"]')).toHaveLength(3);
   });
 });

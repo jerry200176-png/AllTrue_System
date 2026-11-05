@@ -117,6 +117,33 @@ class StudentLearningTimelineTest extends TestCase
         $this->assertSame(['2026-10-08'], array_column($json($regular), 'date'));
     }
 
+    public function test_evaluated_lessons_past_the_cap_do_not_reappear_as_attendance_rows(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $director = $this->staff('A', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student->id, $director['user']->id, $campus);
+        $lesson = $this->lesson($course, '2024-01-01');
+        $this->signIn($student, $course, $lesson, 'present');
+        LearningRecord::create([
+            'StudentClassID' => $course->ID, 'ClassSessionID' => $lesson->id, 'TeacherID' => $director['user']->id,
+            'Content' => 'x', 'Status' => 'approved', 'SessionDate' => '2024-01-01',
+        ]);
+        // 300 newer evaluations push the oldest one past the per-source cap.
+        $rows = [];
+        for ($i = 1; $i <= 300; $i++) {
+            $sessionId = $this->lesson($course, date('Y-m-d', strtotime("2024-01-01 +{$i} days")))->id;
+            $rows[] = [
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $sessionId, 'TeacherID' => $director['user']->id, 'Content' => 'x', 'Status' => 'approved',
+                'SessionDate' => date('Y-m-d', strtotime("2024-01-01 +{$i} days")), 'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        DB::table('LearningRecord')->insert($rows);
+
+        $types = array_column($this->withAuth($director['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")->json('items'), 'type');
+        $this->assertSame(['evaluation' => 300], array_count_values($types));
+    }
+
     /** @return array{token:string,user:User} */
     private function staff(string $type, int $campus): array
     {

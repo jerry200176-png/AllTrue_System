@@ -34,16 +34,19 @@ function detail(i) {
     .filter(Boolean).join('　');
 }
 
+let seq = 0; // only the latest request may write state
 async function load() {
+  const mine = ++seq;
   loading.value = true; error.value = ''; subject.value = '';
   try {
     const res = await authedFetch(`/api/v1/students/${props.studentId}/learning-timeline`, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(String(res.status));
-    items.value = (await res.json()).items || [];
+    const body = await res.json();
+    if (mine === seq) items.value = body.items || [];
   } catch {
-    items.value = []; error.value = '載入失敗，請稍後再試';
+    if (mine === seq) { items.value = []; error.value = '載入失敗，請稍後再試'; }
   } finally {
-    loading.value = false;
+    if (mine === seq) loading.value = false;
   }
 }
 

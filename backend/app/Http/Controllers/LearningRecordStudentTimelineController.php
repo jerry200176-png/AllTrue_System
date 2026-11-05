@@ -45,6 +45,7 @@ class LearningRecordStudentTimelineController extends Controller
             LearningRecordController::applyTeacherScopedLearningRecordConstraint($recordQuery, $teacherId);
             $sessionIds = $this->lessonsTaughtBy($teacherId, $courseIds);
         }
+        $evaluated = (clone $recordQuery)->whereNotNull('ClassSessionID')->pluck('ClassSessionID')->all(); // all of them, not just the capped page
         $records = $recordQuery->orderByDesc('SessionDate')->orderByDesc('id')->limit(self::PER_SOURCE_LIMIT)->get();
         $ownCourseIds = $courses->where('TeacherID', $teacherId)->pluck('ID')->all();
         if ($teacherId !== null && $records->isEmpty() && $sessionIds === [] && $ownCourseIds === []) {
@@ -67,7 +68,6 @@ class LearningRecordStudentTimelineController extends Controller
             ];
         }
 
-        $evaluated = $records->pluck('ClassSessionID')->filter()->all();
         $sessions = DB::table('ClassSession')->whereIn('id', $signIns->keys()->diff($evaluated)->all())
             ->orderByDesc('SessionDate')->limit(self::PER_SOURCE_LIMIT)->get(['id', 'StudentClassID', 'SessionDate', 'SubjectID']);
         foreach ($sessions as $s) {
