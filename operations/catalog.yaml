@@ -781,9 +781,9 @@ operations:
     estimated_duration: 5m
     invariant_packs: [session-pack@1.0.0]
     strategy_class: App\Operations\Strategies\TaughtLessonSignInRepairStrategy
-    parameter_keys: [campus_id, decision_reference, expected_digest]
+    parameter_keys: [campus_id, decision_reference, expected_digest, restore_request_id]
     tags: [repair, session, attendance, issue-4925, issue-4927, issue-4931]
-    notes: GitHub #4925 #4927 #4931 (in-app #502, #504), Founder approval 2026-11-05. For past lessons since 2026-08-01 that are completed or attended, hold exactly one ledger debit and have no sign-in row at all, writes one present sign-in at the payroll payee (SessionDeducted, no ledger or counter change, lesson status unchanged). Rows whose payee does not resolve are only listed. Payroll tables are never written; month_locked rows go to next month's adjustment. Execute is pinned to the dry-run digest; rollback deletes exactly the created sign-ins. Pi-local POP only.
+    notes: GitHub #4925 #4927 #4931 (in-app #502, #504), Founder approval 2026-11-05. For past lessons since 2026-08-01 that are completed or attended, hold exactly one ledger debit and have no sign-in row at all, writes one present sign-in at the payroll payee (SessionDeducted, no ledger or counter change, lesson status unchanged). Rows whose payee does not resolve are only listed. Payroll tables are never written; month_locked rows go to next month's adjustment. Execute is pinned to the dry-run digest; restore_request_id (a new Founder-approved request naming the repair request) deletes exactly the created sign-ins. Pi-local POP only.
 
   forward-extra-cancel-20261101:
     lifecycle: active

@@ -22,8 +22,13 @@ on:
         required: false
         type: string
         default: ''
+      restore_request_id:
+        description: Empty to repair. To undo a repair run, its POP request id (the plan reads that request's stored snapshot)
+        required: false
+        type: string
+        default: ''
       confirm:
-        description: "DRY_RUN_TAUGHT_SIGNIN_REPAIR or APPROVE_TAUGHT_SIGNIN_REPAIR"
+        description: "DRY_RUN_TAUGHT_SIGNIN_REPAIR / APPROVE_TAUGHT_SIGNIN_REPAIR (or ..._RESTORE with restore_request_id)"
         required: true
         type: string
       deployed_backend_sha:
@@ -49,19 +54,22 @@ jobs:
           INPUT_SHA: ${{ inputs.deployed_backend_sha }}
           CAMPUS: ${{ inputs.campus_id }}
           DIGEST: ${{ inputs.expected_digest }}
+          RESTORE: ${{ inputs.restore_request_id }}
         run: |
           set -euo pipefail
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
           [[ "$CAMPUS" =~ ^(0|[1-9][0-9]{0,5})$ ]] || { echo '::error::campus_id must be a number (0 = all campuses)'; exit 1; }
           [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] || { echo '::error::expected_digest must be empty or 64 hex'; exit 1; }
           [[ "$MODE" == dry-run || -n "$DIGEST" ]] || { echo '::error::approve requires the reviewed expected_digest'; exit 1; }
+          [[ "$RESTORE" =~ ^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$ ]] || { echo '::error::restore_request_id must be empty or a POP request UUID'; exit 1; }
+          KIND=$([[ -n "$RESTORE" ]] && echo RESTORE || echo REPAIR)
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
           if [[ "$MODE" == dry-run ]]; then
-            [[ "$CONFIRM" == DRY_RUN_TAUGHT_SIGNIN_REPAIR ]] || { echo "::error::confirm must be DRY_RUN_TAUGHT_SIGNIN_REPAIR"; exit 1; }
+            [[ "$CONFIRM" == "DRY_RUN_TAUGHT_SIGNIN_$KIND" ]] || { echo "::error::confirm must be DRY_RUN_TAUGHT_SIGNIN_$KIND"; exit 1; }
           else
-            [[ "$CONFIRM" == APPROVE_TAUGHT_SIGNIN_REPAIR ]] || { echo "::error::confirm must be APPROVE_TAUGHT_SIGNIN_REPAIR"; exit 1; }
+            [[ "$CONFIRM" == "APPROVE_TAUGHT_SIGNIN_$KIND" ]] || { echo "::error::confirm must be APPROVE_TAUGHT_SIGNIN_$KIND"; exit 1; }
           fi
-          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA campus=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
+          echo "Founder gate passed: mode=$MODE kind=$KIND restore=${RESTORE:--} backend_sha=$INPUT_SHA campus=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
   founder-approval:
     # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
     name: Founder approval (approve mode only)
@@ -107,6 +115,7 @@ jobs:
           TARGET_SHA: ${{ inputs.deployed_backend_sha }}
           CAMPUS: ${{ inputs.campus_id }}
           DIGEST: ${{ inputs.expected_digest }}
+          RESTORE: ${{ inputs.restore_request_id }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -114,6 +123,7 @@ jobs:
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CAMPUS" =~ ^(0|[1-9][0-9]{0,5})$ ]] && [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RESTORE" =~ ^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$ ]]
           SSH_DIR="$RUNNER_TEMP/pop-taughtsignin-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
@@ -122,13 +132,13 @@ jobs:
           ssh -i "$SSH_DIR/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' CAMPUS='$CAMPUS' DIGEST='$DIGEST' RUN_ID='$RUN_ID' bash -s" <<'REMOTE' | tee "$RUNNER_TEMP/pop-taughtsignin.log"
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' CAMPUS='$CAMPUS' DIGEST='$DIGEST' RESTORE='$RESTORE' RUN_ID='$RUN_ID' bash -s" <<'REMOTE' | tee "$RUNNER_TEMP/pop-taughtsignin.log"
           set -euo pipefail
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
-          OPERATION=taught-lesson-signin-repair-20261105; REF=repair-taught-lesson-signin-20261105; AUDIT=pop.taught_lesson_signin_repair
-          CAMPUS_KEY="$CAMPUS"
+          OPERATION=taught-lesson-signin-repair-20261105; REF=repair-taught-lesson-signin-20261105; AUDIT="pop.taught_lesson_signin_repair${RESTORE:+.rollback}"
+          CAMPUS_KEY="$CAMPUS${RESTORE:+-r${RESTORE:0:8}}"
           APPROVAL_REF="founder-go-taught-signin-c$CAMPUS_KEY-${DIGEST:0:12}"
           WORK_DIR="$(mktemp -d /tmp/pop-taughtsignin.XXXXXX)"
           TOKEN=''
@@ -161,7 +171,7 @@ jobs:
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
           # Exact catalog-bound parameters; campus and digest were allowlisted by the guard job. The run id keeps each dry-run fresh.
-          PARAMETERS_JSON="{\"parameters\":{\"campus_id\":$CAMPUS,\"decision_reference\":\"$REF\",\"expected_digest\":\"$DIGEST\"},\"idempotency_key\":\"taught-signin-c$CAMPUS_KEY-${DIGEST:0:12}-$RUN_ID\"}"
+          PARAMETERS_JSON="{\"parameters\":{\"campus_id\":$CAMPUS,\"decision_reference\":\"$REF\",\"expected_digest\":\"$DIGEST\",\"restore_request_id\":\"$RESTORE\"},\"idempotency_key\":\"taught-signin-c$CAMPUS_KEY-${DIGEST:0:12}-$RUN_ID\"}"
           draft="$WORK_DIR/draft.json"
           draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
           [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }
@@ -189,6 +199,9 @@ jobs:
           def ids(v):
               return re.sub(r'[^0-9a-z_:-]', '?', ('yes' if v else 'no') if isinstance(v, bool) else str('-' if v is None else v))
           for r in plan.get('manifest') or []:
+              if 'sign_in_id' in r:  # restore mode
+                  print('row sign_in=%s session=%s kind=%s' % tuple(ids(r.get(k)) for k in ('sign_in_id', 'session_id', 'class')))
+                  continue
               print('row session=%s course=%s campus=%s date=%s start=%s payee=%s employment=%s month=%s locked=%s source=%s kind=%s reason=%s' % tuple(
                   ids(r.get(k)) for k in ('session_id', 'class_id', 'campus_id', 'session_date', 'start_time', 'payee_teacher_id', 'employment_type',
                                           'month', 'month_locked', 'source', 'class', 'reason')))
@@ -269,7 +282,7 @@ jobs:
           out="$RUNNER_TEMP/pop-taughtsignin.log"; ids="$RUNNER_TEMP/pop-taughtsignin-ids.txt"
           [[ -f "$out" ]] || exit 0
           # Only the whitelisted ids-and-counts lines printed above; nothing else from the remote shell.
-          grep -E '^(dry_run ok=|digest=|row session=|dry-run only|approval=|execute=|pi_local=)' "$out" > "$ids" || true
+          grep -E '^(dry_run ok=|digest=|row (session|sign_in)=|dry-run only|approval=|execute=|pi_local=)' "$out" > "$ids" || true
           { echo '### POP taught-lesson sign-in repair (ids and counts only)'; echo '```'; cat "$ids"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the ids-only result
         if: ${{ !cancelled() }}

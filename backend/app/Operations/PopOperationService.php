@@ -1190,13 +1190,13 @@ final class PopOperationService
             && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
     }
 
-    /** #4925 #4927 #4931 (in-app #502, #504): campus_id + expected_digest pin each run to its dry-run; rollback deletes the created sign-ins. */
+    /** #4925 #4927 #4931 (in-app #502, #504): campus_id + expected_digest pin each run to its dry-run; restore_request_id deletes the created sign-ins. */
     private function isExactTaughtLessonSignInRepair(array $entry): bool
     {
         return ($entry['id'] ?? null) === 'taught-lesson-signin-repair-20261105'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-taught-lesson-signin-repair'
-            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest', 'restore_request_id'];
     }
 
     /** #4554 #4753: hard-coded duplicate-attended lessons and duplicate packages; campus_id + expected_digest pin each run; restore_request_id undoes it. */

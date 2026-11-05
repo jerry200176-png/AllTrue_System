@@ -60,9 +60,9 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         parent::tearDown();
     }
 
-    private function params(int $campus = 0, string $digest = ''): array
+    private function params(int $campus = 0, string $digest = '', string $restore = ''): array
     {
-        return ['campus_id' => $campus, 'decision_reference' => self::REF, 'expected_digest' => $digest];
+        return ['campus_id' => $campus, 'decision_reference' => self::REF, 'expected_digest' => $digest, 'restore_request_id' => $restore];
     }
 
     private function course(int $id, int $student, int $teacher): void
@@ -148,6 +148,46 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         self::assertSame('unpinned', $s->plan($this->params())['state']);
     }
 
+    public function test_verify_fails_closed_when_a_repaired_lessons_ledger_disappears(): void
+    {
+        // Codex P1: a lesson whose ledger rows are gone must not pass as `ledger_net_one`.
+        $s = new TaughtLessonSignInRepairStrategy();
+        $plan = $s->plan($this->params(0, $s->plan($this->params())['digest']));
+        $result = $s->execute($plan, []);
+        DB::table('session_deduction_ledger')->where('class_session_id', 47205)->delete();
+        $verify = $s->verify($plan, $result);
+        self::assertFalse($verify['ok']);
+        self::assertContains('ledger_net_not_one_47205', $verify['errors']);
+    }
+
+    public function test_a_repair_run_is_undone_by_an_approved_restore_request(): void
+    {
+        // Codex P1: the reachable rollback is a new approved request of this operation naming the repair request (#4736 pattern).
+        $service = new PopOperationService(new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
+        $sha = str_repeat('c', 40);
+        $go = function (string $restore) use ($service, $sha): array {
+            $draft = fn (string $digest): string => (string) $service->createDraft('taught-lesson-signin-repair-20261105', $this->params(9, $digest, $restore),
+                'ts-test-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
+            $digest = (string) $service->runDryRun($draft(''), 'user:1', 1, 'super_admin', [])['plan']['digest'];
+            $id = $draft($digest);
+            $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
+            $token = $service->approve($id, 'founder-go-taught-signin-test-' . substr($id, 0, 8), 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
+
+            return [$id, $service->run($id, 'execute', $token, $sha, 'pop-pi-local')['result'], $service->run($id, 'verify', $token, $sha, 'pop-pi-local')['result']];
+        };
+        $before = $this->untouched();
+
+        [$repairId, $execute, $verify] = $go('');
+        $this->assertSame(['succeeded', 'succeeded', 3], [$execute, $verify, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count()]);
+        [, $execute, $verify] = $go($repairId);
+        $this->assertSame(['succeeded', 'succeeded', 0], [$execute, $verify, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count()]);
+        $this->assertSame($before, $this->untouched());
+        $this->assertTrue(DB::table('security_audit_events')->where('event_type', 'pop.taught_lesson_signin_repair.rollback')->exists());
+        $plan = (new TaughtLessonSignInRepairStrategy())->plan($this->params(9, '', $repairId));
+        $this->assertSame(['skip', 'skip', 'skip'], array_column($plan['manifest'], 'class'), 'nothing left to delete');
+        $this->assertSame('restore_source_not_found', (new TaughtLessonSignInRepairStrategy())->plan($this->params(2, '', $repairId))['errors'][0]);
+    }
+
     public function test_execute_refuses_a_drifted_digest(): void
     {
         $s = new TaughtLessonSignInRepairStrategy();
@@ -183,7 +223,7 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']]);
         $this->assertSame(3, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
         $adapter = (string) file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-taught-lesson-signin-repair.yml');
-        $this->assertStringContainsString('AUDIT=pop.taught_lesson_signin_repair', $adapter);
+        $this->assertStringContainsString('AUDIT="pop.taught_lesson_signin_repair${RESTORE:+.rollback}"', $adapter);
         $entry = $catalog->operation('taught-lesson-signin-repair-20261105');
         $roles = new ReflectionMethod($service, 'approvalRoles');
         $this->assertSame(['super_admin'], $roles->invoke($service, $entry));

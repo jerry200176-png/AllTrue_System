@@ -11,7 +11,8 @@ attendance views read sign-ins, so the lesson was taught and debited but unpaid,
 
 ## Plan (computed at dry-run, ids only, no names)
 
-Parameters: `campus_id` (0 = all), `decision_reference = repair-taught-lesson-signin-20261105`, `expected_digest` (empty on the dry-run).
+Parameters: `campus_id` (0 = all), `decision_reference = repair-taught-lesson-signin-20261105`, `expected_digest` (empty on the dry-run),
+`restore_request_id` (empty to repair; see Rollback).
 The rule is DB facts, not the path that made the lesson:
 
 - lesson dated 2026-08-01 (part-time payroll reads sign-ins from then on) up to yesterday (Asia/Taipei);
@@ -40,10 +41,13 @@ Locked payroll months: the locked run keeps its snapshot (`payroll_month_status`
 
 Verify: each lesson has exactly the created live sign-in, its status is unchanged, its ledger net is still 1, and no `write` row remains.
 
-## Rollback
+## Rollback (restore request)
 
-`rollback` deletes exactly the snapshot sign-ins (matched by id, lesson and memo); one already gone is reported in `skipped_ids`. The lesson status
-was never written, so there is nothing to restore. A rerun after execute is `state=after`.
+The reachable rollback is a new Founder-approved request of this operation with `restore_request_id` = the repair request's id (#4736 pattern;
+same campus). Its plan reads that request's stored execute snapshot and lists each created sign-in as `delete` while it is still there
+(id, lesson and memo match), else `skip`. Execute is pinned to that digest, locks the sign-ins, deletes exactly the `delete` rows all or nothing
+(`taught_signin_restore_incomplete`), and writes a `pop.taught_lesson_signin_repair.rollback` audit event; verify checks they are gone. The lesson
+status was never written, so there is nothing else to restore. A rerun after execute is `state=after`.
 
 ## Flow
 
@@ -51,3 +55,4 @@ was never written, so there is nothing to restore. A rerun after execute is `sta
    Read the job summary / artifact: per-campus `write` and `other`, `part_time`, `month_locked`. Check session 47205 (campus 9) is a `write` row.
 2. The Founder approves that exact digest (`mode=approve`, confirm `APPROVE_TAUGHT_SIGNIN_REPAIR`, `expected_digest`; policy `founder-exact-taught-lesson-signin-repair`, super_admin, bound to the deployed SHA).
 3. Pi-local execute and verify. Hand the `month_locked` part-time rows to next month's payroll adjustment; review any `review` rows by hand.
+4. To undo: dry-run with `restore_request_id` = the repair request id (confirm `DRY_RUN_TAUGHT_SIGNIN_RESTORE`), then approve that digest (`APPROVE_TAUGHT_SIGNIN_RESTORE`) with the Founder click.

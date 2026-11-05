@@ -23,10 +23,13 @@ use RuntimeException;
  * moves; the lesson status is left as is (completed and attended are read the same). Payroll tables are never written: a
  * locked month's run keeps its snapshot, and the row's `month_locked` flags it for next month's adjustment (Founder).
  * Bound to the reviewed dry run by `expected_digest` (Td076 pattern); rollback deletes exactly the created sign-ins.
+ * Restore (the reachable rollback, #4736 pattern) = a new Founder-approved request of this operation with `restore_request_id` =
+ * the repair request: its plan reads that request's stored snapshot and lists each created sign-in still present.
  */
 final class TaughtLessonSignInRepairStrategy
 {
     private const REF = 'repair-taught-lesson-signin-20261105';
+    private const OPERATION = 'taught-lesson-signin-repair-20261105';
     private const FLOOR = '2026-08-01'; // part-time payroll reads sign-ins from 2026-08 on; ponytail: widen only by a new Founder decision
     private const MEMO = 'pop_taught_signin_20261105';
 
@@ -34,20 +37,32 @@ final class TaughtLessonSignInRepairStrategy
     {
         $campus = $parameters['campus_id'] ?? null;
         $want = (string) ($parameters['expected_digest'] ?? '');
+        $source = (string) ($parameters['restore_request_id'] ?? '');
         $errors = [];
         if (($parameters['decision_reference'] ?? null) !== self::REF) $errors[] = 'case_parameters_mismatch';
         if (!is_numeric($campus) || (int) $campus < 0 || (string) (int) $campus !== (string) $campus) $errors[] = 'campus_id_invalid';
         if ($want !== '' && !preg_match('/^[0-9a-f]{64}$/', $want)) $errors[] = 'digest_format';
+        if ($source !== '' && !Str::isUuid($source)) $errors[] = 'restore_request_id_format';
         if ($errors !== []) {
             return ['ok' => false, 'errors' => $errors, 'state' => 'invalid'];
         }
-        [$rows, $totals] = $this->build((int) $campus);
+        if ($source !== '') {
+            $snapshot = $this->sourceSnapshot($source, (int) $campus);
+            if ($snapshot === null) {
+                return ['ok' => false, 'errors' => ['restore_source_not_found'], 'state' => 'invalid'];
+            }
+            $rows = $this->restoreRows($snapshot);
+            $totals = ['rows' => count($rows), 'delete' => count(array_filter($rows, fn ($r) => $r['class'] === 'delete'))];
+        } else {
+            [$rows, $totals] = $this->build((int) $campus);
+        }
         $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
-        $todo = array_filter($rows, fn ($r) => $r['class'] === 'write');
+        $todo = array_filter($rows, fn ($r) => in_array($r['class'], ['write', 'delete'], true));
         $state = $want === '' ? 'unpinned' : ($todo === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
 
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
-            'state' => $state, 'campus_id' => (int) $campus, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
+            'state' => $state, 'mode' => $source === '' ? 'repair' : 'restore', 'restore_request_id' => $source,
+            'campus_id' => (int) $campus, 'digest' => $digest, 'totals' => $totals, 'manifest' => $rows];
     }
 
     public function execute(array $plan, array $context): array
@@ -57,6 +72,25 @@ final class TaughtLessonSignInRepairStrategy
         }
         if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'pinned') {
             throw new RuntimeException('taught_signin_plan_not_pinned');
+        }
+
+        if (($plan['mode'] ?? 'repair') === 'restore') {
+            return DB::transaction(function () use ($plan, $context): array {
+                $snapshot = $this->sourceSnapshot((string) $plan['restore_request_id'], (int) $plan['campus_id']) ?? [];
+                DB::table('StudentSingIn')->whereIn('id', array_column($snapshot, 'sign_in_id'))->orderBy('id')->lockForUpdate()->get();
+                $rows = $this->restoreRows($snapshot);
+                if (hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)) !== $plan['digest']) {
+                    throw new RuntimeException('taught_signin_digest_drift');
+                }
+                $ids = array_column(array_filter($rows, fn ($r) => $r['class'] === 'delete'), 'sign_in_id');
+                $result = $this->rollback(['rows' => array_values(array_filter($snapshot, fn ($r) => in_array((int) $r['sign_in_id'], $ids, true)))],
+                    $context + ['source_request_id' => (string) $plan['restore_request_id']]);
+                if (($result['ok'] ?? false) !== true) {
+                    throw new RuntimeException('taught_signin_restore_incomplete'); // all or nothing
+                }
+
+                return ['ok' => true, 'deleted' => $result['deleted'], 'snapshot' => ['deleted_sign_in_ids' => $ids]];
+            }, 3);
         }
 
         return DB::transaction(function () use ($plan): array {
@@ -98,6 +132,12 @@ final class TaughtLessonSignInRepairStrategy
 
     public function verify(array $plan, array $result): array
     {
+        if (($plan['mode'] ?? 'repair') === 'restore') {
+            $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
+            if (DB::table('StudentSingIn')->whereIn('id', $result['snapshot']['deleted_sign_in_ids'] ?? [])->exists()) $errors[] = 'not_deleted';
+
+            return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['deleted']];
+        }
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
         if (($result['snapshot']['incomplete'] ?? false) === true) $errors[] = 'snapshot_incomplete_manual_resolution';
         foreach ($result['snapshot']['rows'] ?? [] as $r) {
@@ -106,8 +146,9 @@ final class TaughtLessonSignInRepairStrategy
             if ((string) DB::table('ClassSession')->where('id', $r['session_id'])->value('Status') !== $r['prior_status']) $errors[] = "status_changed_{$r['session_id']}";
         }
         $sessionIds = array_column($result['snapshot']['rows'] ?? [], 'session_id');
-        foreach ($this->ledger($sessionIds) as $sessionId => $l) {
-            if ($l['net'] !== 1) $errors[] = "ledger_net_not_one_{$sessionId}";
+        $ledger = $this->ledger($sessionIds);
+        foreach ($sessionIds as $sessionId) { // every repaired lesson must still carry exactly its one debit; a missing ledger fails closed
+            if (($ledger[$sessionId]['net'] ?? 0) !== 1) $errors[] = "ledger_net_not_one_{$sessionId}";
         }
         foreach ($this->build((int) ($plan['campus_id'] ?? 0))[0] as $r) {
             if ($r['class'] === 'write') $errors[] = "still_missing_{$r['session_id']}";
@@ -138,6 +179,32 @@ final class TaughtLessonSignInRepairStrategy
 
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'deleted' => $deleted, 'skipped_ids' => $skipped];
         }, 3);
+    }
+
+    /** The stored snapshot of a succeeded repair request of this operation for the same campus, or null. @return list<array<string,mixed>>|null */
+    private function sourceSnapshot(string $requestId, int $campus): ?array
+    {
+        $request = DB::table('pop_operation_requests')->where('id', $requestId)->first();
+        $parameters = $request ? json_decode((string) $request->parameters, true) : null;
+        if (!$request || (string) $request->operation_id !== self::OPERATION || !is_array($parameters)
+            || ($parameters['restore_request_id'] ?? '') !== '' || (int) ($parameters['campus_id'] ?? -1) !== $campus) {
+            return null;
+        }
+        $execute = DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')
+            ->where('result', 'succeeded')->orderByDesc('attempt_no')->first();
+        $snapshot = $execute ? json_decode((string) $execute->snapshot, true) : null;
+
+        return is_array($snapshot['rows'] ?? null) && $snapshot['rows'] !== [] ? $snapshot['rows'] : null;
+    }
+
+    /** ids-only rows: `delete` while the created sign-in is still there, else `skip` (gone since). @return list<array<string,mixed>> */
+    private function restoreRows(array $snapshot): array
+    {
+        $live = DB::table('StudentSingIn')->whereIn('id', array_column($snapshot, 'sign_in_id'))->where('Memo', self::MEMO)
+            ->pluck('ClassSessionID', 'id');
+
+        return array_map(fn (array $r): array => ['sign_in_id' => (int) $r['sign_in_id'], 'session_id' => (int) $r['session_id'],
+            'class' => (int) ($live[$r['sign_in_id']] ?? 0) === (int) $r['session_id'] ? 'delete' : 'skip'], array_values($snapshot));
     }
 
     private function audit(array $metadata, string $suffix = ''): void
