@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-06-student-learning-timeline
+    published_at: "2026-11-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學生學習歷程（唯讀）
+    summary: 學生管理每位學生多一個「學習歷程」，一頁看評量、測驗成績和出席。
+    items:
+      - category: added
+        text: 新到舊排列，可依科目篩選。老師只看得到自己的學生。
+    source_refs:
+      - "changelog:2026-11-06:student-learning-timeline"
