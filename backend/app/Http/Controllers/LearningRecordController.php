@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ClassSession;
 use App\Services\OccurrenceAssignmentService;
 use App\Models\LearningRecord;
+use App\Models\LearningRecordAuthorSnapshot;
 use App\Models\LearningRecordFeedback;
 use App\Models\LearningRecordTeacherComment;
 use App\Models\LearningRecordTeacherChange;
@@ -1446,6 +1447,8 @@ class LearningRecordController extends Controller
             $learningRecord->refresh();
             $learningRecord->TeacherID = $newTeacherId;
             $learningRecord->save();
+            // A director comment follows the record's teacher, or the new teacher gets 403 marking it read.
+            DB::table('learning_record_teacher_comments')->where('learning_record_id', (int) $learningRecord->id)->update(['teacher_id' => $newTeacherId]);
 
             if ($updateClass) {
                 $studentClass = StudentClass::find($learningRecord->StudentClassID);
@@ -1505,7 +1508,31 @@ class LearningRecordController extends Controller
             // #3824: deleting would unprotect the occurrence without rolling back the teacher's count or audit.
             return response()->json(['message' => '這堂評量已填寫並核准，不能刪除。請先退回核准再處理。', 'code' => 'approved_assessment_teacher_locked'], 409);
         }
-        $learningRecord->delete();
+        $reviewerId = $this->reviewerUserId($request);
+        DB::transaction(function () use ($learningRecord, $reviewerId) {
+            // #4907: keep the teacher's text (insert-only snapshot, no migration) before the hard delete.
+            if (LearningRecordMutableOwnership::isFilledByTeacher($learningRecord)) {
+                LearningRecordAuthorSnapshot::create([
+                    'learning_record_id' => (int) $learningRecord->id,
+                    'author_teacher_id' => (int) $learningRecord->TeacherID ?: null,
+                    'new_teacher_id' => 0, // no successor: the record is deleted
+                    'status_at_snapshot' => (string) $learningRecord->Status,
+                    'payload' => $learningRecord->toArray() + ['teacher_comment' => $learningRecord->teacherComment?->toArray()],
+                    'created_by' => $reviewerId,
+                    'reason' => 'deleted',
+                ]);
+            }
+            // Same rollback as rollbackApproval(), for any approved record (blank body + director comment included).
+            if (strtolower(trim((string) $learningRecord->Status)) === 'approved') {
+                app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $learningRecord->id);
+                User::where('id', $learningRecord->TeacherID)->where('TeachingSessionCount', '>', 0)->decrement('TeachingSessionCount');
+                $sc = StudentClass::find($learningRecord->StudentClassID);
+                if ($sc) {
+                    ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($reviewerId ?? 0));
+                }
+            }
+            $learningRecord->delete();
+        });
         return response()->json(['message' => 'Deleted']);
     }
 

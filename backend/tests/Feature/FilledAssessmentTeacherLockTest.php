@@ -211,6 +211,63 @@ class FilledAssessmentTeacherLockTest extends TestCase
     }
 
 
+    public function test_delete_keeps_a_snapshot_of_the_teachers_text_first(): void
+    {
+        [$s, $lr] = $this->filled();
+        $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}")->assertOk();
+        $snap = LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->firstOrFail();
+        $this->assertSame($this->aId, (int) $snap->author_teacher_id);
+        $this->assertSame(self::BODY, $snap->payload['Content']);
+        $this->assertSame('deleted', $snap->reason);
+    }
+
+    public function test_deleting_an_approved_blank_record_with_only_a_director_comment_rolls_back_the_count(): void
+    {
+        $s = $this->mkSession();
+        $lr = LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => '', 'Status' => 'approved', 'ApprovedAt' => now(), 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        $this->comment($lr, $s, $this->aId);
+        User::where('id', $this->aId)->update(['TeachingSessionCount' => 3]);
+        $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}")->assertOk();
+        $this->assertSame(2, (int) User::find($this->aId)->TeachingSessionCount);
+    }
+
+    public function test_moving_a_blank_record_readdresses_its_director_comment(): void
+    {
+        $s = $this->mkSession();
+        $lr = LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => '', 'Status' => 'pending', 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        $this->comment($lr, $s, $this->aId);
+        $this->api()->patchJson("/api/v1/learning-records/{$lr->id}/teacher", ['TeacherID' => $this->bId])->assertOk();
+        $this->assertSame($this->bId, (int) DB::table('learning_record_teacher_comments')->where('learning_record_id', $lr->id)->value('teacher_id'));
+    }
+
+    public function test_calendar_filters_follow_the_author_not_the_contract_teacher(): void
+    {
+        $s = ClassSession::create(['StudentClassID' => $this->scB->ID, 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'scheduled']);
+        LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => self::BODY, 'Status' => 'pending', 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        $ids = fn (int $t) => collect($this->api()->getJson("/api/v1/class-sessions?start=" . self::DATE . "&end=" . self::DATE . "&teacher_id={$t}&per_page=100")->assertOk()->json('data') ?? [])->pluck('id')->all();
+        $this->assertContains($s->id, $ids($this->aId));
+        $this->assertNotContains($s->id, $ids($this->bId));
+    }
+
+    public function test_the_in_transaction_recheck_refuses_a_zero_teacher_even_when_the_author_id_is_zero(): void
+    {
+        [$s, $lr] = $this->filled();
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['TeacherID' => 0]);
+        $this->expectException(\Illuminate\Http\Exceptions\HttpResponseException::class);
+        \App\Support\LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $s->id, 0);
+    }
+
+    private function comment(LearningRecord $lr, ClassSession $s, int $teacherId): void
+    {
+        DB::table('learning_record_teacher_comments')->insert([
+            'learning_record_id' => $lr->id, 'student_id' => $this->sc->StudentID, 'student_class_id' => $this->sc->ID, 'class_session_id' => $s->id,
+            'teacher_id' => $teacherId, 'campus_id' => 1, 'author_user_id' => $this->aId, 'content' => 'note', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
     private function assertLockedResponse(\Illuminate\Testing\TestResponse $r): void
     {
         $r->assertStatus(409)->assertJsonPath('code', 'approved_assessment_teacher_locked');

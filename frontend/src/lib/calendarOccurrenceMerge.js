@@ -335,6 +335,7 @@ export function mergeWeekCalendarOccurrences({
         continue;
       }
       const baseCourse = scid ? allCoursesById.get(scid) : null;
+      const authorLocked = !!sessionRow?.teacher_locked_to_author; // in-app #499: the author keeps the lesson here too
       putOccurrence({
         id: `ex_${ex.id}`,
         original_id: ex.id,
@@ -342,8 +343,11 @@ export function mergeWeekCalendarOccurrences({
         source: 'schedule_exception',
         student_id: ex.student_id,
         student_name: ex.student?.name || resolveStudentName(ex.student_id) || '—',
-        teacher_id: ex.teacher_id,
-        teacher_name: ex.teacher?.username || resolveTeacherName(ex.teacher_id) || '未指派',
+        teacher_id: authorLocked ? sessionRow.teacher_id : ex.teacher_id,
+        teacher_name: authorLocked
+          ? (sessionRow.teacher_name || resolveTeacherName(sessionRow.teacher_id) || '未指派')
+          : (ex.teacher?.username || resolveTeacherName(ex.teacher_id) || '未指派'),
+        teacher_locked_to_author: authorLocked || undefined,
         subject: baseCourse?.subject || ex.subject,
         class_type: baseCourse?.class_type || ex.class_type,
         day_of_week: dow,
