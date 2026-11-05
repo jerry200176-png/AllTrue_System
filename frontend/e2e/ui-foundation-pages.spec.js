@@ -1190,7 +1190,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('billing top-level tabs show one selected panel', async ({ page }) => {
     await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width: 1440, height: 900 } });
 
-    // PRD v3 §0: tabs are 帳單 / 月結 / 收款紀錄 / 代收代付; 已結清課程 lives in the reminder bar.
+    // PRD v3 §0: tabs are 帳單 / 月結 / 收款紀錄 / 代收代付; 已結清 is the 已收 filter of 帳單.
     const students = page.locator('#tuition-accounting-tab-students');
     const payments = page.locator('#tuition-accounting-tab-payments');
 
@@ -1198,13 +1198,11 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.locator('#tuition-accounting-panel-students')).toHaveCount(1);
     await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
 
-    await page.locator('[data-testid="tc-reminder-settled"]').click();
-    await expect(page.locator('#tuition-accounting-panel-settled')).toBeVisible();
-    await expect(page.locator('#tuition-accounting-panel-students')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
 
     await payments.click();
     await expect(page.locator('#tuition-accounting-panel-payments')).toBeVisible();
-    await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
+    await expect(page.locator('#tuition-accounting-panel-students')).toHaveCount(0);
   });
 
   for (const width of [1440, 390]) {

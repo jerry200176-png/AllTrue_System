@@ -2,7 +2,7 @@
 // The API answers 422; every slip entry shows that reason instead of a slip.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import TuitionDocActions from '../TuitionDocActions.vue';
+import { slipAvailability } from '../../lib/billingDocState.js';
 import PaymentSlipModal from '../PaymentSlipModal.vue';
 
 vi.mock('modern-screenshot', () => ({ domToBlob: vi.fn() }));
@@ -15,10 +15,8 @@ describe('payment slip on 金額待確認 contracts', () => {
     global.fetch = vi.fn();
   });
 
-  it('the queue slip button is disabled with the 金額待確認 reason', () => {
-    const w = mount(TuitionDocActions, { props: { row: { id: 1, payable_status: 'invoiced', payment_status: 'pending_reconciliation', amount_pending_confirmation: true }, canView: true } });
-    expect(w.get('[data-testid="tc-doc-slip"]').element.disabled).toBe(true);
-    expect(w.get('[data-testid="tc-doc-slip-reason"]').text()).toBe(MSG);
+  it('the list slip rule refuses with the 金額待確認 reason', () => {
+    expect(slipAvailability({ id: 1, payable_status: 'invoiced', payment_status: 'pending_reconciliation', amount_pending_confirmation: true }, true)).toEqual({ ok: false, reason: MSG });
   });
 
   it('course slip (course page, dashboard) shows the API 422 reason and renders no slip', async () => {

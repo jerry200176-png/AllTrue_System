@@ -21,11 +21,11 @@ describe('TuitionCollectionPage top-level tabs', () => {
     expect(source).toContain('id="tuition-accounting-panel-students"');
     expect(source).toContain('id="tuition-accounting-panel-monthly"');
     expect(source).toContain('id="tuition-accounting-panel-payments"');
-    expect(source).toContain('id="tuition-accounting-panel-settled"');
+    expect(source).not.toContain('tuition-accounting-panel-settled'); // 已結清 is the 已收 filter of 帳單
+    expect(source).not.toContain('tc-reminder');
     expect(source).toContain('role="tabpanel"');
     expect(source).toContain('aria-labelledby="tuition-accounting-tab-students"');
     expect(source).toContain('aria-labelledby="tuition-accounting-tab-payments"');
-    expect(source).toContain('aria-labelledby="tuition-accounting-tab-settled"');
     expect(source).toContain('tabindex="0"');
   });
 });

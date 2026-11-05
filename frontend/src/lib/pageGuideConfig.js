@@ -528,8 +528,22 @@ const pageGuideConfig = {
       target: '[data-guide="tuition-rows"]',
       icon: 'fact_check',
       title: '標「需核對」的舊資料',
-      description: '舊資料標了已收，卻查不到收款。錢有收到就按「已收過，補登收款」；沒收到就按「其實沒收，改成未繳」。',
+      description: '舊資料標了已收，卻查不到收款。錢有收到就按「已收過，補登收款」；沒收到就按「其實沒收，改成未繳」。清單下方「待核對課程」也有「已核對」和「到課程處理」。',
       placement: 'top',
+    },
+    {
+      target: '[data-guide="tuition-chips"]',
+      icon: 'task_alt',
+      title: '收好的帳單在「已收」',
+      description: '已經收完的帳單在狀態列「更多」→「已收」，不再有獨立的「已結清課程」頁。',
+      placement: 'bottom',
+    },
+    {
+      target: '[data-guide="tuition-tabs"]',
+      icon: 'receipt_long',
+      title: '收款紀錄：先看三個數字',
+      description: '「收款紀錄」分頁上方只有現金、匯款、合計。日期留在外面，學生、科目、收據狀態、付款方式收進「篩選」。要看作廢的收據，在「篩選」把收據狀態改成「已作廢紀錄」。',
+      placement: 'bottom',
     },
     {
       target: '[data-guide="tuition-header"]',

@@ -20,17 +20,11 @@ describe('tuition 確認不收 (waive) action', () => {
     expect(source).toContain('JSON.stringify({ reason, expected_amount: waivableAmount.value })');
     expect(source).toContain('waivable_amount');
     expect(source).not.toContain('waiveTarget.payable_outstanding');
-    expect(source).toMatch(/已改成「\$\{WAIVED_LABEL\}」[\s\S]{0,120}loadAlerts\(\), loadSettledCourses\(\)/);
+    expect(source).toMatch(/已改成「\$\{WAIVED_LABEL\}」[\s\S]{0,120}loadAlerts\(\), loadReviewCourses\(\)/);
   });
 
-  it('labels waived rows in the settled table instead of 正常', () => {
-    expect(source).toContain(`v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}`);
-  });
-
-  it('F7 S3a: shows the backend reconciliation label and the review-required state instead of 正常', () => {
-    expect(source).toContain(`row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}`);
+  it('F7 S3a: the 待核對 strip shows the review-required state and why', () => {
     expect(source).toContain(`row.payment_review_required" class="acct-chip acct-chip--pending" :title="REVIEW_REQUIRED_LABEL">{{ REVIEW_REQUIRED_SHORT_LABEL }}`);
-    expect(source).toContain('!row.pending_reconciliation && !row.payment_review_required" class="text-light">正常');
     expect(source).toContain('需核對：{{ r.label }}。怎麼處理：{{ r.text }}'); // #4797, in-app #469
   });
 
@@ -54,7 +48,7 @@ describe('tuition 已核對 (#4798)', () => {
     // askConfirm() only resolves through a mounted host (Codex P1 on #4828).
     expect(source).toMatch(/<ConfirmDialogHost \/>/);
     expect(source).toContain("import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';");
-    expect(source).toMatch(/payment-review\/check[\s\S]{0,400}json\.message[\s\S]{0,300}loadAlerts\(\), loadSettledCourses\(\)/);
+    expect(source).toMatch(/payment-review\/check[\s\S]{0,400}json\.message[\s\S]{0,300}loadAlerts\(\), loadReviewCourses\(\)/);
   });
 });
 

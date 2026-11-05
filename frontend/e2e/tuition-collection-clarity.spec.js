@@ -29,44 +29,6 @@ const rows = [
   },
 ];
 
-test('In-App348: settled labels explain existing meaning without adding payment mutations', async ({ page }) => {
-  await installMock(page);
-  await page.route('**/api/v1/accounting/settled-courses**', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({
-      data: [
-        { ...settledRows[0], legacy_paid_without_invoice: true },
-        { ...settledRows[1], has_exception: true, overpaid_amount: 200 },
-      ],
-      summary: { course_count: 2, legacy_count: 1, exception_count: 1, paid_total: 9800, overpaid_total: 200, pending_reconciliation_count: 1 },
-    }),
-  }));
-  const writes = [];
-  page.on('request', request => { if (!['GET', 'HEAD'].includes(request.method())) writes.push(request.method() + ' ' + request.url()); });
-  for (const width of [390, 1280]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
-    await page.locator('[data-testid="tc-reminder-settled"]').click();
-    const help = page.getByRole('note', { name: '帳務標籤說明' });
-    await expect(help).toBeVisible();
-    await expect(help).toContainText('舊制無帳單：課程已標記繳費，但目前沒有有效帳單');
-    await expect(help).toContainText('例外待處理：至少一張有效帳單的淨收款超過帳單金額');
-    await expect(help).toContainText('請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對');
-    const box = await help.boundingBox();
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(width);
-    await expect(page.locator('.acct-table--settled:visible tbody tr')).toHaveCount(2);
-    await expect(page.locator('.tc-card').filter({ has: page.getByText('舊制無帳單', { exact: true }) }).locator('.tc-card-num')).toHaveText('1');
-    await expect(page.locator('.tc-card').filter({ has: page.getByText('例外待處理', { exact: true }) }).locator('.tc-card-num')).toHaveText('1');
-    await expect(page.locator('.acct-table--settled:visible tbody tr').first()).toContainText('舊制無帳單');
-    await expect(page.locator('.acct-table--settled:visible tbody tr').last()).toContainText('例外待處理');
-    await expect(page.locator('.acct-table--settled:visible tbody tr').first()).toContainText('4,200');
-    await expect(page.locator('.acct-table--settled:visible tbody tr').last()).toContainText('5,600');
-    await expect(page.locator('.acct-table--settled:visible button')).toHaveText(['account_balance繳費明細', 'account_balance繳費明細']);
-    await page.screenshot({ path: path.join(outDir, `inapp348-label-help-${width}.png`), fullPage: true });
-  }
-  expect(writes).toEqual([]);
-});
-
 const accountingRows = [
   { report_id: 701, payment_date: '2026-09-08', receipt_no: 'AT-260908-0001', student_name: '林宥辰', subject: '國中數學', cash_amount: 0, transfer_amount: 4200, total_amount: 4200, confirmed_by_name: 'E2E 主任' },
   { report_id: 702, payment_date: '2026-09-07', receipt_no: 'AT-260907-0002', student_name: '陳品妤', subject: '高中英文', cash_amount: 5600, transfer_amount: 0, total_amount: 5600, confirmed_by_name: 'E2E 主任', is_prepaid: true },
@@ -202,25 +164,23 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(row.locator('.bl__due')).toBeVisible();
   });
 
-  test('In-App480: 已結清課程 sits only on the bill list, never above 收款紀錄 / 代收代付', async ({ page }) => {
+  test('v3: no reminder bar; 已結清 is the 已收 filter of the bill list', async ({ page }) => {
     await installMock(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
-    await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveText('已結清課程');
+    await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveCount(0);
     await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
-    await page.getByRole('tab', { name: '帳單' }).click();
-    await expect(page.locator('[data-testid="tc-reminder-settled"]')).toBeVisible();
   });
 
   test('captures the accounting tabs without page overflow', async ({ page }) => {
     await installMock(page);
-    for (const tab of ['payments', 'settled']) {
+    for (const tab of ['payments']) {
       for (const viewport of viewports) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
         await expect(page.getByText('帳務中心', { exact: true })).toBeVisible();
-        if (tab === 'payments') await page.getByRole('tab', { name: '收款紀錄' }).click();
-        else await page.locator('[data-testid="tc-reminder-settled"]').click();
+        await page.getByRole('tab', { name: '收款紀錄' }).click();
         await expect(page.locator('.acct-table:visible')).toBeVisible();
         await expectNoOverflowAndReachableControls(page);
         await page.screenshot({ path: path.join(outDir, `${tab}-${viewport.name}.png`), fullPage: true });
@@ -238,8 +198,8 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await page.getByRole('button', { name: '重新載入' }).click();
     await expect(page.locator('.acct-table:visible')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=empty');
-    await page.locator('[data-testid="tc-reminder-settled"]').click();
-    await expect(page.getByText('目前查無已結清課程', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: '收款紀錄' }).click();
+    await expect(page.getByText('此區間尚無已核帳收款', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
 
@@ -251,10 +211,6 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.getByTestId('at-skeleton')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
-    await expectNoOverflowAndReachableControls(page);
-    await page.goto('/tuition-collection-pilot-mount.html?mode=long');
-    await page.locator('[data-testid="tc-reminder-settled"]').click();
     await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
