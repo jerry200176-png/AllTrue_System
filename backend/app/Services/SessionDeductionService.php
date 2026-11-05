@@ -401,7 +401,7 @@ class SessionDeductionService
             }
 
             if ($classSessionId && $classSessionId > 0
-                && self::sessionLedgerNet($studentClassId, $classSessionId) > 0) {
+                && self::sessionLedgerNet($studentClassId, $classSessionId, true) > 0) {
                 return false;
             }
 
@@ -442,7 +442,7 @@ class SessionDeductionService
             }
 
             if ($classSessionId && $classSessionId > 0
-                && self::sessionLedgerNet($studentClassId, $classSessionId) <= 0) {
+                && self::sessionLedgerNet($studentClassId, $classSessionId, true) <= 0) {
                 return false;
             }
 
@@ -477,17 +477,24 @@ class SessionDeductionService
         }, DeadlockRetry::ATTEMPTS);
     }
 
-    /** Net ledger events for one session: deduct(+1) − reverse(−1). */
-    private static function sessionLedgerNet(int $studentClassId, int $classSessionId): int
+    /**
+     * Net ledger events for one session: deduct(+1) − reverse(−1).
+     * $lock = locking read (#4939): MySQL REPEATABLE READ would otherwise miss a debit committed by a
+     * racing path after our snapshot. Only pass true inside a transaction.
+     */
+    private static function sessionLedgerNet(int $studentClassId, int $classSessionId, bool $lock = false): int
     {
-        return (int) (SessionDeductionLedger::query()
+        $query = SessionDeductionLedger::query()
             ->where('student_class_id', $studentClassId)
             ->where('class_session_id', $classSessionId)
             ->selectRaw(
                 "COALESCE(SUM(CASE WHEN event_type='deduct' THEN 1 "
                 . "WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net"
-            )
-            ->value('net') ?? 0);
+            );
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        return (int) ($query->value('net') ?? 0);
     }
 
     /**
