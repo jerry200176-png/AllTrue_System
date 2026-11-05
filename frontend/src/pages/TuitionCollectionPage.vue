@@ -2021,7 +2021,7 @@ loadCampusStudents();
   font: inherit;
 }
 .acct-more-filters { margin-top: 8px; }
-.acct-more-filters > summary { cursor: pointer; font-size: var(--ds-font-size-md); min-height: 32px; display: inline-flex; align-items: center; gap: 6px; }
+.acct-more-filters > summary { cursor: pointer; font-size: var(--ds-font-size-md); min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
 .acct-more-filters__count { background: var(--ds-ink-mute); color: var(--ds-canvas); border-radius: var(--ds-radius-pill); padding: 0 6px; font-size: var(--ds-font-size-sm); }
 .acct-warn { color: var(--ds-danger-text); }
 .acct-filter-actions {

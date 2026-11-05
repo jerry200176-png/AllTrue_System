@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 收款紀錄變簡單
-    summary: 收款紀錄上方只留現金、匯款、合計；其他篩選收進「篩選」。已結清課程改在帳單清單下方的連結進入。
+    summary: 收款紀錄只留現金、匯款、合計；已結清課程改從帳單清單下方的連結進入。
     items:
       - category: improved
         text: 收款紀錄上方數字卡從七張減為三張：現金、匯款、合計。筆數與預收改成一行小字。
