@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
 import { COVERAGE_PREVIEW_LIMIT } from '../../lib/ledgerCoverageDates.js';
 
 const MONTHLY_INVOICE = {
@@ -64,6 +65,7 @@ async function mountLedger(payload, routes = {}) {
     global: { stubs: { Transition: false } },
   });
   await flushPromises();
+  await openAll(w);
   return { w, fetchMock };
 }
 

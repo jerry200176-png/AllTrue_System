@@ -9,6 +9,7 @@ vi.mock('../../lib/authedFetch.js', () => ({
   getAccessToken: async () => 'tok',
 }));
 import ContractCard from '../tuition/ContractCard.vue';
+import { unfold } from './cardMenu.js';
 
 const course = (over = {}) => ({ id: 7, schedule_mode: 'count', paid: false, package_id: null, current_contract_charge: 7200, ...over });
 const bill = (over = {}) => ({ id: 41, student_class_id: 7, status: 'unpaid', total_amount: 8800, paid_amount: 0, calculated_applied_amount: 0, single_course_items: true, hand_priced: false, ...over });
@@ -80,7 +81,7 @@ describe('ContractCard issued-bill note', () => {
   const note = { invoiceId: 41, issued: 8800, current: 7200 };
 
   it('shows both amounts and neutral copy with no void call to action (Founder D3)', async () => {
-    const w = mount(ContractCard, { props: { course: { id: 7 }, rateNote: note } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 7 }, rateNote: note } });
     await flushPromises();
     const text = w.find('[data-testid="contract-rate-note"]').text();
     expect(text).toContain('開單時金額 NT$ 8,800 ／ 目前課程金額 NT$ 7,200');
@@ -93,7 +94,7 @@ describe('ContractCard issued-bill note', () => {
   });
 
   it('has no note without a difference', async () => {
-    const none = mount(ContractCard, { props: { course: { id: 7 } } });
+    const none = mount(ContractCard, { props: { focused: true, course: { id: 7 } } });
     await flushPromises();
     expect(none.find('[data-testid="contract-rate-note"]').exists()).toBe(false);
   });
@@ -108,6 +109,7 @@ describe('AccountingLedgerModal issued-bill row hint', () => {
       json: async () => ({ summary: {}, scope: { student_class_id: 7 }, courses: [course()], invoices, receipts: [], anomalies: [] }) })));
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 7, branchId: 1 }, global: { stubs: { Transition: false } } });
     await flushPromises();
+    await unfold(w, 'invoices');
     const hint = w.find('[data-testid="ledger-rate-hint-41"]').text();
     expect(hint).toContain('開單時金額 NT$ 8,800');
     expect(hint).toContain('目前課程金額 NT$ 7,200');

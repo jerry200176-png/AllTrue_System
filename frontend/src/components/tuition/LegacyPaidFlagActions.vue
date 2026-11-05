@@ -3,7 +3,7 @@
     <p v-if="hasConfirmedReport" class="legacy__text" data-testid="legacy-flag-help">{{ LEGACY_CONFIRMED_REPORT_HELP }}</p>
     <template v-else>
       <p class="legacy__text" data-testid="legacy-flag-help">{{ LEGACY_FLAG_ACTION_HELP }}</p>
-      <div class="legacy__buttons">
+      <div v-if="!hideButtons" class="legacy__buttons">
         <AtButton size="sm" shape="rect" :disabled="busy" data-testid="legacy-backfill-open" @click="openBackfill">已收過，補登收款</AtButton>
         <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="legacy-clear-open" @click="openClear">其實沒收，改成未繳</AtButton>
       </div>
@@ -38,6 +38,8 @@ const props = defineProps({
   hasConfirmedReport: { type: Boolean, default: false },
   // A shared package's members are one obligation: clearing the mark clears them all (server rule), so say so.
   sharedPackage: { type: Boolean, default: false },
+  // ContractCard offers the two actions in its ••• menu and drives the dialog through the exposed openers.
+  hideButtons: { type: Boolean, default: false },
 });
 const emit = defineEmits(['backfill', 'resolved']);
 
@@ -71,6 +73,7 @@ async function submitClear() {
   clearOpen.value = false;
   emit('resolved');
 }
+defineExpose({ openBackfill, openClear });
 </script>
 
 <style scoped>

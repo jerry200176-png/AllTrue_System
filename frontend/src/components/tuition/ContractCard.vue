@@ -1,7 +1,26 @@
 <template>
   <article :class="['contract', { 'contract--focused': focused }]" :data-testid="`contract-card-${course.id}`">
+    <!-- Step 5: one line when collapsed (科目・期間 | 剩幾堂 | 狀態 | 主按鈕 | ••• | ▸); the opened contract starts expanded. -->
+    <div class="contract__line" data-testid="contract-line">
+      <h5>
+        <button type="button" class="contract__toggle" :aria-expanded="open" :aria-controls="open ? bodyId : undefined" data-testid="contract-toggle" @click="open = !open">
+          <span aria-hidden="true">{{ open ? '▾' : '▸' }}</span>{{ title }}
+        </button>
+      </h5>
+      <span v-if="!isMonthly && state === 'ready'" class="contract__leftline" data-testid="contract-left-line">剩 {{ upcomingCount }} 堂</span>
+      <span v-if="pill" :class="['contract__chip', pill.cls]" data-testid="contract-pill">{{ pill.text }}</span>
+      <AtButton v-if="primary === 'confirm'" size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
+      <AtButton v-else-if="primary === 'record'" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <AtButton v-else-if="primary === 'issue'" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
+      <ActionMenu v-if="menuGroups.length" :groups="menuGroups" :label="`${course.subject || '課程'} 的更多操作`" trigger-class="contract__more" @select="onMenu" />
+    </div>
+    <p v-for="w in (open ? [] : warnings)" :key="w.testid" class="contract__warn" :data-testid="w.testid">{{ w.text }}</p>
+    <p v-if="actionError" class="contract__error">{{ actionError }}</p>
+    <!-- Dialog owner stays mounted while collapsed so the ••• items can open it. -->
+    <LegacyPaidFlagActions v-show="open" v-if="legacyResolvable" ref="legacyRef" hide-buttons :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
+
+    <div v-if="open" :id="bodyId" class="contract__body" data-testid="contract-body">
     <header class="contract__head">
-      <h5>{{ title }}</h5>
       <span v-if="courseRef" class="contract__ref" data-testid="contract-ref">{{ courseRef }}</span>
       <span v-if="focused" class="contract__focused" data-testid="contract-focused">你點開的這門課</span>
       <span class="contract__mode">{{ modeLine }}</span>
@@ -12,7 +31,6 @@
       <div class="contract__pay">
         <p v-if="legacyUnverified" class="contract__payline contract__payline--review" data-testid="contract-legacy-unverified">{{ LEGACY_FLAG_UNVERIFIED_HELP }}</p>
         <p v-else-if="payLineText" class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
-        <LegacyPaidFlagActions v-if="legacyResolvable" :course-id="Number(course.id)" :has-confirmed-report="hasConfirmedReport" :shared-package="Boolean(course.package_id) || course.in_package === true" @backfill="emit('legacy-backfill', course)" @resolved="emit('changed')" />
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
         <p v-if="amounts && !followerPointer" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
@@ -27,35 +45,12 @@
       <!-- F-3: a shared package is one obligation. A follower shows no 未繳 / 還沒開帳單 of its own, only where to pay. -->
       <span v-else-if="followerPointer" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
-      <template v-else-if="!course.paid && !fullyCollected">
-        <span class="contract__muted">還沒開帳單</span>
-        <AtButton v-if="billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
-      </template>
+      <span v-else-if="!course.paid && !fullyCollected" class="contract__muted">還沒開帳單</span>
       <span v-else-if="!legacyUnverified">已收</span>
-      <!-- The current period is collected, but a ready renewal draft (next period) can still be billed here. -->
-      <AtButton v-if="fullyCollected && billDraft" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
-      <template v-if="pendingReport">
-        <span class="contract__chip pay-partial">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</span>
-        <AtButton size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
-        <AtButton variant="secondary" size="sm" shape="rect" :disabled="busy" data-testid="contract-reject" @click="openReject">退回這筆</AtButton>
-      </template>
-      <!-- A resolvable legacy card takes money only through 已收過，補登收款: one way in, not two. -->
-      <AtButton v-else-if="!followerPointer && !outsideDates.length && !legacyResolvable && !noObligation && !waived && (outstanding > 0 || (!course.paid && !fullyCollected))" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
+      <span v-if="pendingReport" class="contract__chip pay-partial">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</span>
       <!-- #4765: taught lessons fall outside the contract dates; billing cannot price them, so no 登記這筆 / 繳費單 until the dates are fixed. -->
-      <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">需核對：{{ outsideDates.map(md).join('、') }} 的課不在合約日期（{{ [md(course.start_date), md(course.end_date)].join('–') }}）內，請先改合約日期</span>
-      <!-- in-app #425: 繳費單 here too, same modal as the 帳務中心 list; disabled with a one-line reason like TuitionDocActions. -->
-      <template v-if="showSlip">
-        <AtButton variant="secondary" size="sm" shape="rect" :disabled="!slipState.ok" :aria-describedby="slipState.ok ? undefined : `contract-slip-reason-${course.id}`" data-testid="contract-slip" @click="$emit('slip', course)">繳費單</AtButton>
-        <span v-if="!slipState.ok" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
-      </template>
-      <!-- F-5a1: the table's money actions, offered where the director already works. Each opens the page's existing dialog. -->
-      <template v-if="rowActions">
-        <AtButton v-if="rowActions.waive" variant="secondary" size="sm" shape="rect" data-testid="contract-waive" @click="emit('row-action', 'waive')">改成「{{ WAIVED_LABEL }}」</AtButton>
-        <AtButton v-if="rowActions.void" variant="secondary" size="sm" shape="rect" data-testid="contract-void" @click="emit('row-action', 'void')">撤銷收款</AtButton>
-        <AtButton v-if="rowActions.settle" variant="secondary" size="sm" shape="rect" data-testid="contract-settle" @click="emit('row-action', 'settle')">結案（不續報）</AtButton>
-      </template>
-      <AtButton v-if="canRefund" variant="secondary" size="sm" shape="rect" data-testid="contract-refund" @click="refundOpen = true">退費</AtButton>
-      <span v-if="actionError" class="contract__error">{{ actionError }}</span>
+      <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
+      <span v-if="slipReasonShown" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
     </div>
 
     <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
@@ -68,7 +63,6 @@
       <template v-if="!editing">
         <p v-if="memo" class="contract__memo-text" data-testid="contract-memo">{{ memo }}</p>
         <p v-else class="contract__muted">沒有合約備註</p>
-        <button class="contract__link" type="button" data-testid="contract-memo-edit" @click="startEdit">✎ 改備註</button>
       </template>
       <template v-else>
         <textarea v-model="draft" rows="3" aria-label="合約備註" data-testid="contract-memo-input" />
@@ -105,6 +99,7 @@
       </section>
       <p v-if="unscheduled > 0" class="contract__muted" data-testid="contract-unscheduled">還有 {{ unscheduled }} 堂還沒排日期</p>
     </template>
+    </div>
     <RefundDialog v-if="canRefund" :open="refundOpen" :course-id="Number(course.id)" @close="refundOpen = false" @done="refundOpen = false; emit('changed')" />
     <AtDialog :open="confirmOpen" title="確認入帳？" size="sm" title-id="contract-confirm-title" @close="confirmOpen = false">
       <p class="contract__confirm-text" data-testid="contract-confirm-text">
@@ -135,13 +130,14 @@ import AtButton from '../design-system/AtButton.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
+import ActionMenu from '../ActionMenu.vue';
 import RefundDialog from './RefundDialog.vue';
 import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
 import { STATUS_ZH, statusTone, formatSessionDate } from '../../lib/billingDocumentView.js';
 import { formatCourseRef } from '../../lib/studentBillingRows.js';
 import { AMOUNT_PENDING_REASON, slipAvailability } from '../../lib/billingDocState.js';
-import { LEGACY_FLAG_UNVERIFIED_HELP, WAIVED_LABEL, canResolveLegacyPaidFlag, isWaivedContract } from '../../lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_HELP, TUITION_STATUS_CONFIG, WAIVED_LABEL, canResolveLegacyPaidFlag, isWaivedContract } from '../../lib/courseMoneyState.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
@@ -176,8 +172,10 @@ const props = defineProps({
   autoConfirm: { type: Boolean, default: false },
   // F-5a1: { waive, void, settle } booleans the page derives from the same alert row and rules the old table used.
   rowActions: { type: Object, default: null },
+  // Remembered by the drawer so a reload keeps the card open.
+  expanded: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
@@ -397,12 +395,80 @@ async function decide(action, note = '') {
   emit('changed');
 }
 
+// ---- Step 5: collapsed one-liner. Expanded = everything the card always showed.
+const open = ref(props.focused || props.expanded);
+const bodyId = `contract-body-${props.course.id}`;
+// The drawer remembers which cards are open, because an action reloads the ledger and remounts every card.
+watch(open, (v) => emit('toggle', v));
+const legacyRef = ref(null);
+const canRecord = computed(() => !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
+  && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
+// Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
+const canIssue = computed(() => !!props.billDraft && (fullyCollected.value
+  || (!noObligation.value && !waived.value && !followerPointer.value && !(props.outstanding > 0) && !props.course.paid)));
+// 登記這筆 leads when money is owed; an unbilled term with a ready draft leads with 開帳單 and keeps 登記這筆 in •••.
+const primary = computed(() => (props.pendingReport ? 'confirm' : canRecord.value && (props.outstanding > 0 || !canIssue.value) ? 'record' : canIssue.value ? 'issue' : ''));
+const pill = computed(() => {
+  const C = TUITION_STATUS_CONFIG;
+  if (props.pendingReport) return { text: `${C.pending_report.label} ${money(props.pendingReport.amount)}`, cls: 'pay-partial' };
+  if (noObligation.value) return { text: '輔導課', cls: '' };
+  if (waived.value) return { text: WAIVED_LABEL, cls: '' };
+  if (followerPointer.value) return { text: '共用方案', cls: '' };
+  if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
+  if (props.outstanding > 0) return { text: `${C.unpaid.label} ${money(props.outstanding)}`, cls: 'pay-unpaid' };
+  if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
+  return { text: C.paid.label, cls: 'pay-paid' };
+});
+const outsideText = computed(() => `需核對：${outsideDates.value.map(md).join('、')} 的課不在合約日期（${[md(props.course.start_date), md(props.course.end_date)].join('–')}）內，請先改合約日期`);
+const slipReasonShown = computed(() => showSlip.value && !slipState.value.ok);
+// Warnings never hide: a collapsed card keeps them as one warning-tone line each.
+const warnings = computed(() => [
+  legacyUnverified.value && { testid: 'contract-legacy-unverified', text: LEGACY_FLAG_UNVERIFIED_HELP },
+  outsideDates.value.length && { testid: 'contract-outside', text: outsideText.value },
+  slipReasonShown.value && { testid: 'contract-slip-reason', text: slipState.value.reason },
+].filter(Boolean));
+const menuGroups = computed(() => {
+  const main = [
+    props.pendingReport && { id: 'reject', label: '退回這筆', disabled: busy.value },
+    canRecord.value && primary.value !== 'record' && { id: 'record', label: '登記這筆' },
+    canIssue.value && primary.value !== 'issue' && { id: 'issue', label: `開帳單 ${money(props.billDraft.amount)}` },
+    showSlip.value && { id: 'slip', label: '繳費單', disabled: !slipState.value.ok, reason: slipState.value.ok ? '' : slipState.value.reason },
+    { id: 'memo', label: '改備註' },
+  ].filter(Boolean);
+  const ra = props.rowActions || {};
+  const risky = [
+    ra.waive && { id: 'waive', label: `改成「${WAIVED_LABEL}」`, danger: true },
+    ra.void && { id: 'void', label: '撤銷收款', danger: true },
+    ra.settle && { id: 'settle', label: '結案（不續報）', danger: true },
+    canRefund.value && { id: 'refund', label: '退費', danger: true },
+    legacyResolvable.value && !props.hasConfirmedReport && { id: 'legacy-backfill', label: '已收過，補登收款', danger: true },
+    legacyResolvable.value && !props.hasConfirmedReport && { id: 'legacy-clear', label: '其實沒收，改成未繳', danger: true },
+  ].filter(Boolean);
+  return [{ id: 'main', label: '', items: main }, ...(risky.length ? [{ id: 'risk', label: '', items: risky }] : [])];
+});
+function onMenu(id) {
+  if (id === 'reject') openReject();
+  else if (id === 'record') emit('record', props.course);
+  else if (id === 'issue') emit('issue', props.billDraft);
+  else if (id === 'slip') emit('slip', props.course);
+  else if (id === 'memo') { open.value = true; startEdit(); }
+  else if (['waive', 'void', 'settle'].includes(id)) emit('row-action', id);
+  else if (id === 'refund') refundOpen.value = true;
+  else if (id === 'legacy-backfill') legacyRef.value?.openBackfill();
+  else if (id === 'legacy-clear') legacyRef.value?.openClear();
+}
+
 watch(() => props.course.id, load, { immediate: true });
 onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); });
 </script>
 
 <style scoped>
 .contract{border:1px solid var(--ds-border);border-radius:12px;padding:12px 14px;display:grid;gap:10px;background:var(--surface,var(--ds-canvas))}
+.contract__line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.contract__toggle{display:inline-flex;align-items:baseline;gap:6px;max-width:100%;border:0;background:transparent;padding:4px 0;text-align:left;cursor:pointer;color:inherit;font:inherit}
+.contract__leftline{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);white-space:nowrap}
+.contract__warn{margin:0;font-size:var(--ds-font-size-sm);font-weight:600;color:var(--ds-warning)}
+.contract__body{display:grid;gap:10px}
 .contract__excel{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-canvas-soft)}
 .contract__pay{display:grid;gap:2px;min-width:0}
 .contract__pay p{margin:0}
@@ -413,7 +479,7 @@ onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); }
 .contract__left strong{font-size:20px;font-variant-numeric:tabular-nums}
 .contract__monthpay{margin:0 0 4px;font-size:12px;color:var(--ds-ink-mute)}
 .contract__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
-.contract__head h5{margin:0;font-size:15px}
+.contract__line h5{margin:0;font-size:15px;flex:1 1 160px;min-width:0}
 .contract__mode{font-size:12px;color:var(--ds-ink-mute)}
 .contract__ref{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
 .contract--focused{border-color:var(--ds-cta);border-width:2px}

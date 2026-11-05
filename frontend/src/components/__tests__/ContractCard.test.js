@@ -7,6 +7,7 @@ const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 
 import ContractCard from '../tuition/ContractCard.vue';
+import { expandAll, pickMenu, unfold } from './cardMenu.js';
 
 const respond = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
 const COVERAGE = {
@@ -25,11 +26,11 @@ beforeEach(() => authedFetch.mockReset());
 describe('ContractCard', () => {
   it('shows title, full memo, month groups, payment state and unscheduled count', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9, subject: '數學' } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, subject: '數學' } } });
     await flushPromises();
 
     expect(authedFetch.mock.calls[0][0]).toBe('/api/v1/accounting/contracts/9/sessions');
-    expect(w.find('h5').text()).toBe('數學・2026/09/01–2026/12/31');
+    expect(w.find('h5').text().replace(/^[▾▸]/, '')).toBe('數學・2026/09/01–2026/12/31');
     expect(w.find('[data-testid="contract-memo"]').text()).toContain('第二行');
     expect(w.findAll('h6').map((h) => h.text())).toEqual(['2026 年 9 月', '2026 年 10 月']);
     const rows = w.findAll('[data-testid="contract-session"]').map((r) => r.text());
@@ -46,14 +47,14 @@ describe('ContractCard', () => {
 
   it('hides the course reference when the contract id is not a positive integer', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 'x', subject: '數學' } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 'x', subject: '數學' } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-ref"]').exists()).toBe(false);
   });
 
   it('U1 numbers count-mode lessons (第 n 堂, no per-row countdown: G-011) and skips cancelled/leave', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 } } });
     await flushPromises();
     // leave gets no number; rows never show a remaining count (the payload has no deduction units).
     expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['第 1 堂', '第 2 堂']);
@@ -72,7 +73,7 @@ describe('ContractCard', () => {
         { class_session_id: 4, date: '2026-10-06', status: 'scheduled', payment: 'unpaid' },
       ],
     }));
-    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 } } });
     await flushPromises();
     expect(w.findAll('[data-testid="contract-month-summary"]').map((n) => n.text())).toEqual(['2 堂・已收', '1 堂・未繳']);
     expect(w.findAll('[data-testid="contract-session-no"]').map((n) => n.text())).toEqual(['本月第 1 堂', '本月第 2 堂', '本月第 1 堂']);
@@ -80,11 +81,11 @@ describe('ContractCard', () => {
 
   it('U3 shows 繳費日 + amount on top, or 還沒繳費 when nothing was paid', async () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 }, amounts: { due: 6600, received: 6600, owed: 0 } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, lastPayment: { date: '2026-10-05', amount: 6600 }, amounts: { due: 6600, received: 6600, owed: 0 } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/10/05　NT$ 6,600');
     expect(w.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 6,600・已收 NT$ 6,600・未繳 NT$ 0');
-    const w2 = mount(ContractCard, { props: { course: { id: 9 } } });
+    const w2 = mount(ContractCard, { props: { focused: true, course: { id: 9 } } });
     await flushPromises();
     expect(w2.find('[data-testid="contract-last-payment"]').text()).toBe('還沒繳費');
     expect(w2.find('[data-testid="contract-amounts"]').exists()).toBe(false);
@@ -95,6 +96,7 @@ describe('ContractCard', () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
     const w = mount(ContractCard, {
       props: {
+        focused: true,
         course: { id: 9, current_contract_charge: 8800 },
         amounts: { due: 8000, received: 8000, owed: 0 },
         rateNote: { invoiceId: 1, issued: 8000, current: 8800 },
@@ -113,7 +115,7 @@ describe('ContractCard', () => {
     ['package member', { schedule_mode: 'count', package_id: 3, charge: 4400 }],
   ])('shows no 合約金額 for a %s contract, whatever its stored Charge', async (_, course) => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9, current_contract_charge: null, ...course } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, current_contract_charge: null, ...course } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-charge"]').exists()).toBe(false);
   });
@@ -123,7 +125,7 @@ describe('ContractCard', () => {
       { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'paid' },
       { class_session_id: 4, date: '2026-10-06', status: 'scheduled', payment: 'unpaid' },
     ] }));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, monthLines: { '2026-09': { due: 4800, paidDate: '2026-09-05', paidAmount: 4800 }, '2026-10': { due: 4800, paidDate: '', paidAmount: 0 } } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, monthLines: { '2026-09': { due: 4800, paidDate: '2026-09-05', paidAmount: 4800 }, '2026-10': { due: 4800, paidDate: '', paidAmount: 0 } } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-left"]').exists()).toBe(false);
     expect(w.findAll('[data-testid="contract-month-pay"]').map((n) => n.text())).toEqual(['應繳 NT$ 4,800　已收 9/5 NT$ 4,800', '應繳 NT$ 4,800']);
@@ -131,17 +133,17 @@ describe('ContractCard', () => {
 
   it('pending report line carries the reported date', async () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 7, amount: 8000, date: '2026-10-05' } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, pendingReport: { report_id: 7, amount: 8000, date: '2026-10-05' } } });
     await flushPromises();
     expect(w.text()).toContain('待確認入帳 NT$ 8,000（10/5 家長回報）');
   });
 
   it('saves a memo-only PUT and shows the new memo', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({}));
-    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 } } });
     await flushPromises();
 
-    await w.find('[data-testid="contract-memo-edit"]').trigger('click');
+    await pickMenu(w, 'memo');
     await w.find('[data-testid="contract-memo-input"]').setValue('改成週四');
     await w.find('[data-testid="contract-memo-save"]').trigger('click');
     await flushPromises();
@@ -156,7 +158,7 @@ describe('ContractCard', () => {
 
   it('keeps the card usable when dates fail to load', async () => {
     authedFetch.mockResolvedValueOnce(respond({}, 500));
-    const w = mount(ContractCard, { props: { course: { id: 9, subject: '英文' } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, subject: '英文' } } });
     await flushPromises();
     expect(w.text()).toContain('上課日載入失敗');
   });
@@ -217,7 +219,7 @@ describe('AccountingLedgerModal receipt after 確認入帳 (#398/#405)', () => {
 describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
   it('offers 登記收款 when money is due and emits record', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000 } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, outstanding: 3000 } });
     await flushPromises();
     expect(w.find('[data-testid="contract-money"]').text()).toContain('NT$ 3,000');
     await w.find('[data-testid="contract-record"]').trigger('click');
@@ -226,7 +228,7 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
 
   it('asks before confirming a pending report (取消 focused), then confirms in place', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({}));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, outstanding: 3000, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
     expect(w.text()).toContain('待確認入帳 NT$ 1,000');
@@ -257,10 +259,9 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
     const prompt = vi.fn();
     vi.stubGlobal('prompt', prompt);
     authedFetch.mockResolvedValueOnce(respond(COVERAGE)).mockResolvedValueOnce(respond({ message: '已處理過' }, 422));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
-    await w.find('[data-testid="contract-reject"]').trigger('click');
-    await flushPromises();
+    await pickMenu(w, 'reject');
     const q = (id) => document.body.querySelector(`[data-testid="${id}"]`);
     expect(prompt).not.toHaveBeenCalled();
     expect(authedFetch).toHaveBeenCalledTimes(1);
@@ -286,10 +287,9 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
 
   it('cancelling the reject dialog sends nothing', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, pendingReport: { report_id: 77, amount: 1000 } }, attachTo: document.body });
     await flushPromises();
-    await w.find('[data-testid="contract-reject"]').trigger('click');
-    await flushPromises();
+    await pickMenu(w, 'reject');
     document.body.querySelector('[data-testid="contract-reject-cancel"]').click();
     await flushPromises();
     expect(document.body.querySelector('[data-testid="contract-reject-reason"]')).toBeNull();
@@ -300,7 +300,7 @@ describe('ContractCard payment steps (PRD v2 D2/D9/D20)', () => {
 
   it('hides 登記收款 for a paid contract with nothing due', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: true }, outstanding: 0 } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: true }, outstanding: 0 } });
     await flushPromises();
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
   });
@@ -332,7 +332,7 @@ describe('AccountingLedgerModal 登記收款', () => {
 describe('ContractCard money states (#3731 review)', () => {
   it('tutoring shows no payment action', async () => {
     authedFetch.mockResolvedValueOnce(respond({ ...COVERAGE, class_type: 'tutoring' }));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, current_contract_charge: 0 }, outstanding: 0 } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, current_contract_charge: 0 }, outstanding: 0 } });
     await flushPromises();
     expect(w.text()).toContain('輔導課不用繳費');
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
@@ -344,7 +344,7 @@ describe('ContractCard money states (#3731 review)', () => {
 
   it('unbilled debt is not shown as NT$ 0', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0 } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false }, outstanding: 0 } });
     await flushPromises();
     expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單');
     expect(w.find('[data-testid="contract-money"]').text()).not.toContain('NT$ 0');
@@ -360,7 +360,7 @@ describe('ContractCard fully paid monthly contract (in-app #457)', () => {
       { class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' },
       { class_session_id: 2, date: '2026-10-16', status: 'leave', payment: 'no_invoice' },
     ]));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts } });
     await flushPromises();
     expect(w.find('[data-testid="contract-money"]').text()).toContain('已收');
     expect(w.find('[data-testid="contract-money"]').text()).not.toContain('還沒開帳單');
@@ -370,7 +370,7 @@ describe('ContractCard fully paid monthly contract (in-app #457)', () => {
 
   it('still offers 開帳單 for a ready next-period draft once the current period is collected', async () => {
     authedFetch.mockResolvedValueOnce(monthly([{ class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' }]));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts, billDraft: { amount: 3600 } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts, billDraft: { amount: 3600 } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-money"]').text()).toContain('已收');
     expect(w.find('[data-testid="contract-issue"]').text()).toContain('開帳單');
@@ -382,7 +382,7 @@ describe('ContractCard fully paid monthly contract (in-app #457)', () => {
       { class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' },
       { class_session_id: 2, date: '2026-10-17', status: 'attended', payment: 'no_invoice' },
     ]));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts } });
     await flushPromises();
     expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單');
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(true);
@@ -390,7 +390,7 @@ describe('ContractCard fully paid monthly contract (in-app #457)', () => {
 
   it('count contract with the same numbers is unchanged', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false }, outstanding: 0, amounts } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false }, outstanding: 0, amounts } });
     await flushPromises();
     expect(w.find('[data-testid="contract-money"]').text()).toContain('還沒開帳單');
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(true);
@@ -460,6 +460,7 @@ describe('AccountingLedgerModal mobile (PRD v2 D5)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => respond(ledger)));
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 1 }, global: { stubs: { Transition: false } } });
     await flushPromises();
+    await unfold(w, 'invoices');
     return w;
   };
   const INVOICE = { id: 5, student_class_id: 2, outstanding_amount: 3000, total_amount: 3000, status: 'unpaid', due_date: '2026-10-01', payments: [] };
@@ -516,7 +517,7 @@ describe('billing panel visual tokens (spec B-PR2)', () => {
 
   it('keeps 已付 / 未付 stated on every lesson day (D16) with 已付 as plain text', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9 } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 } } });
     await flushPromises();
     const rows = w.findAll('[data-testid="contract-session"]');
     expect(rows.every((r) => /已收|未繳/.test(r.text()))).toBe(true);
@@ -533,6 +534,7 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
     vi.stubGlobal('fetch', f);
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } }, attachTo: document.body });
     await flushPromises();
+    await expandAll(w); await unfold(w, 'invoices'); await unfold(w, 'receipts');
     return { w, f };
   };
   const inv = (o) => ({ id: 1, student_class_id: 2, total_amount: 3000, calculated_applied_amount: 0, status: 'unpaid', payments: [], ...o });
@@ -650,6 +652,7 @@ describe('AccountingLedgerModal Excel-card sources (spec B-PR3)', () => {
     })));
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } } });
     await flushPromises();
+    await expandAll(w);
     const text = (id) => w.find(`[data-testid="contract-card-${id}"]`).text();
     expect(text(2)).toContain('繳費日 2026/09/03　NT$ 8,000');
     expect(text(2)).toContain('本合約帳單 應收 NT$ 8,000・已收 NT$ 8,000・未繳 NT$ 0');
@@ -758,6 +761,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     })));
     const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } } });
     await flushPromises();
+    await expandAll(w);
     return w;
   };
   const card = (w) => w.find('[data-testid="contract-card-2"]');
@@ -911,7 +915,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
 
   it('ContractCard: a waived course offers neither 登記這筆 nor 開帳單, even with a ready draft', async () => {
     authedFetch.mockResolvedValueOnce(respond(COVERAGE));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: false, waived: true }, billDraft: { amount: 4000 }, lastPayment: { waived: true } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, waived: true }, billDraft: { amount: 4000 }, lastPayment: { waived: true } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-issue"]').exists()).toBe(false);
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
@@ -968,7 +972,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
 
   it('ContractCard: a tutoring course never shows the note', async () => {
     authedFetch.mockResolvedValueOnce(respond({ ...COVERAGE, class_type: 'tutoring' }));
-    const w = mount(ContractCard, { props: { course: { id: 9, paid: true }, lastPayment: { legacyUnverified: true } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: true }, lastPayment: { legacyUnverified: true } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
     // in-app #475: a tutoring course never reads 還沒繳費

@@ -4,6 +4,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
+import { menuIds, openCardMenu, menuItem } from './cardMenu.js';
 
 const course = (id, subject, over = {}) => ({ id, subject, schedule_mode: 'count', charge: 500, paid: true, stop: false,
   free_gift_settled: false, waived: false, paid_at: '2026-10-20', package_id: null, trial_fee_recorded_by_date: false, ...over });
@@ -16,6 +18,7 @@ async function mountLedger(courses) {
     : { ok: false, status: 500, json: async () => ({}) })));
   const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 1, branchId: 1 }, global: { stubs: { Transition: false } } });
   await flushPromises();
+  await openAll(w);
   return w;
 }
 afterEach(() => vi.unstubAllGlobals());
@@ -51,8 +54,13 @@ describe('帳務面板 · 只有方案已收標記的共用方案成員 (#4597)'
     const w = await mountLedger([course(1, '數學', member), course(2, '英文', { ...member, package_id: null, paid: false })]);
     const card = w.find('[data-testid="contract-card-1"]');
     expect(card.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
-    expect(card.find('[data-testid="legacy-backfill-open"]').exists()).toBe(true);
-    expect(card.find('[data-testid="legacy-clear-open"]').exists()).toBe(true);
-    expect(w.find('[data-testid="contract-card-2"] [data-testid="legacy-backfill-open"]').exists()).toBe(false);
+    await openCardMenu(w);
+    expect(menuItem('legacy-backfill')).not.toBeNull();
+    expect(menuItem('legacy-clear')).not.toBeNull();
+    document.body.querySelector('.am__menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flushPromises();
+    const ids = await menuIds(w.find('[data-testid="contract-card-2"]'));
+    expect(ids).toContain('memo');
+    expect(ids.filter((id) => id.startsWith('legacy'))).toEqual([]);
   });
 });

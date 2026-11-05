@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -11,6 +12,7 @@ async function mountWith(extra) {
     json: async () => ({ summary: {}, scope: { student_class_id: 1 }, invoices: [], receipts: [], anomalies: [], ...extra }) })));
   const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 1, branchId: 1 }, global: { stubs: { Transition: false } } });
   await flushPromises();
+  await openAll(w);
   return w;
 }
 

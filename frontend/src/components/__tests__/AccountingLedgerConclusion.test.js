@@ -1,5 +1,6 @@
 // F-1 (billing copy spec L1+L2): one-line conclusion at the top of the student drawer, long explanations behind 「為什麼？」.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { openAll } from './cardMenu.js';
 import { mount, flushPromises } from '@vue/test-utils';
 
 const authedFetch = vi.fn();
@@ -16,6 +17,7 @@ const open = async (ledger) => {
   vi.stubGlobal('fetch', vi.fn(async (url) => respond(String(url).includes('monthly-drafts') ? { data: [] } : ledger)));
   const w = mount(Modal, { props: { show: true, studentClassId: 2 }, global: { stubs: { Transition: false } }, attachTo: document.body });
   await flushPromises();
+  await openAll(w);
   return w;
 };
 const base = { student: { id: 1, name: '王小明' }, scope: {}, anomalies: [], receipts: [], summary: {} };

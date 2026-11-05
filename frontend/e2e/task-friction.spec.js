@@ -133,8 +133,12 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     // A legacy-paid row opens the back-fill form directly (initialAction 'legacy-backfill'): that modal counts as reached.
     const modal = page.locator('.at-dialog__panel--sheet'); // #4659 step 3: the form opens in the right-side sheet
     if (await shows(modal, ledgerLoaded ? 3_000 : 1_000)) return { reached: true, note: 'back-fill form opened directly' };
-    const backfill = page.locator('[data-testid="legacy-backfill-open"]').first();
-    if (!(await shows(backfill))) return { reached: false, note: ledgerLoaded ? 'ledger has no 補登收款 button' : 'ledger did not load' };
+    // #4659 step 5: 補登收款 lives in the contract card's ••• menu.
+    const more = page.locator('[data-testid^="contract-card-"]', { has: page.locator('[data-testid="contract-legacy-unverified"]') }).locator('.am__trigger').first();
+    if (!(await shows(more))) return { reached: false, note: ledgerLoaded ? 'ledger has no contract menu' : 'ledger did not load' };
+    await click(more);
+    const backfill = page.locator('.am__menu [data-action="legacy-backfill"]').first();
+    if (!(await shows(backfill))) return { reached: false, note: ledgerLoaded ? 'ledger has no 補登收款 item' : 'ledger did not load' };
     await click(backfill);
     const reached = await shows(modal);
     return { reached, note: reached ? '' : 'entry form not visible' };

@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { openAll } from './cardMenu.js';
 import PaymentAllocation from '../tuition/PaymentAllocation.vue';
 const course = (id, subject, packageId) => ({ id, subject, schedule_mode: 'count', charge: 0, paid: false, stop: false, package_id: packageId });
 function ledger(over = {}) {
@@ -22,6 +23,7 @@ async function mountLedger(payload) {
     global: { stubs: { Transition: false } },
   });
   await flushPromises();
+  await openAll(w);
   return w;
 }
 afterEach(() => vi.unstubAllGlobals());
