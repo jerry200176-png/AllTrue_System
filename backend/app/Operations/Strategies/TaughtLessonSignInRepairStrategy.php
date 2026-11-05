@@ -308,7 +308,7 @@ final class TaughtLessonSignInRepairStrategy
             $month = substr($date, 0, 7);
             $content = (string) ($records[$l->id] ?? '');
             $rows[] = ['session_id' => (int) $l->id, 'class_id' => (int) $l->StudentClassID, 'campus_id' => (int) $l->CampusID,
-                'session_date' => $date, 'start_time' => substr((string) $l->StartTime, 0, 5), 'payee_teacher_id' => $payee,
+                'session_date' => $date, 'start_time' => substr((string) $l->StartTime, 0, 5), 'end_time' => substr((string) $l->EndTime, 0, 5), 'payee_teacher_id' => $payee,
                 'employment_type' => $type === null ? null : (preg_match('/^[a-z_]{1,32}$/', (string) $type) ? (string) $type : 'other'),
                 'group' => $group, 'voided_sign_in_id' => $voidedId, 'voided_fields' => $voidedId > 0 ? array_map(fn ($v) => $v === null ? null : (string) $v, array_diff_key($have, ['id' => 1])) : null, 'month' => $month, 'month_locked' => DB::table('payroll_month_status')->where('branch_id', (int) $l->CampusID)->where('month', $month)
                     ->where('status', 'locked')->whereNotNull('current_run_id')->exists(),

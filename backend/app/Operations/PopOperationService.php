@@ -352,7 +352,7 @@ final class PopOperationService
     ): array
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
-        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->atomicFinancialRepair((string) $this->request($requestId)->strategy_id)) return $run();
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $this->request($requestId)->strategy_id)) return $run();
         return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
@@ -444,7 +444,7 @@ final class PopOperationService
                     $this->durationMs($startedAt)
                 );
                 // Co-commit financial repair/receipt; preserve other strategies' external-effect contracts.
-                return $this->atomicFinancialRepair($strategy)
+                return $this->coCommitsWithRecord($strategy)
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
             }
@@ -457,7 +457,7 @@ final class PopOperationService
             $complete = fn () => $this->record($request, $entry, $parameters, $phase,
                 $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
                 $actor, $approval, $commitSha, $this->durationMs($startedAt));
-            return $this->atomicFinancialRepair($strategy)
+            return $this->coCommitsWithRecord($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             return $this->record($request, $entry, $parameters, $phase, [
@@ -465,6 +465,13 @@ final class PopOperationService
                 'errors' => ['execution_failed'],
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
         }
+    }
+
+    /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
+    private function coCommitsWithRecord(object|string $strategy): bool
+    {
+        return $this->atomicFinancialRepair($strategy)
+            || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
     }
 
     private function atomicFinancialRepair(object|string $strategy): bool

@@ -222,6 +222,35 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         $this->assertSame('restore_source_not_found', (new TaughtLessonSignInRepairStrategy())->plan($this->params(2, '', $repairId))['errors'][0]);
     }
 
+    public function test_a_failed_execute_record_rolls_back_the_repair_writes(): void
+    {
+        // Codex P1 (#4933): the sign-ins must commit with their execute snapshot, or a crash leaves an unrestorable repair.
+        $service = new PopOperationService(new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
+        $sha = str_repeat('d', 40);
+        $draft = fn (string $digest): string => (string) $service->createDraft('taught-lesson-signin-repair-20261105', $this->params(9, $digest, ''),
+            'ts-test-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
+        $id = $draft((string) $service->runDryRun($draft(''), 'user:1', 1, 'super_admin', [])['plan']['digest']);
+        $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
+        $token = $service->approve($id, 'founder-go-taught-signin-test-' . substr($id, 0, 8), 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
+        $before = $this->untouched();
+        $fault = (object) ['active' => true];
+        DB::listen(function ($q) use ($fault) {
+            if ($fault->active && preg_match('/^insert (ignore )?into `pop_execution_records`/', $q->sql)) throw new \RuntimeException('synthetic_record_failure');
+        });
+        $error = null;
+        try {
+            $service->run($id, 'execute', $token, $sha, 'pop-pi-local');
+        } catch (\RuntimeException $e) {
+            $error = $e->getMessage();
+        } finally {
+            $fault->active = false;
+        }
+        $this->assertSame('synthetic_record_failure', $error);
+        $this->assertSame(0, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
+        $this->assertSame($before, $this->untouched());
+        $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->count());
+    }
+
     public function test_execute_refuses_a_drifted_digest(): void
     {
         $s = new TaughtLessonSignInRepairStrategy();
