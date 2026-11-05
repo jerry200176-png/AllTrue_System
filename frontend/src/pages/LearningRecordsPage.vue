@@ -1517,6 +1517,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
 import { safeHttpHref } from '../lib/safeHttpHref.js';
+import { deleteRecordConfirmText } from '../lib/learningRecordDeleteConfirm.js';
 import { isDirectorRole as roleIsDirector } from '../lib/roleCapabilities.js';
 import { supabase } from '../supabase';
 import LearningRecordExportModal from '../components/learning-records/LearningRecordExportModal.vue';
@@ -4220,7 +4221,7 @@ const scheduleActionLabel = (ev) => {
 };
 
 const deleteRecord = async (record) => {
-  if (!confirm(`確定要刪除 ${record.student_name} — ${record.SessionDate} 的評量記錄嗎？此操作無法還原。`)) return;
+  if (!confirm(deleteRecordConfirmText(record))) return;
   const token = await getToken();
   const res = await fetch(`/api/v1/learning-records/${record.id}`, {
     method: 'DELETE',

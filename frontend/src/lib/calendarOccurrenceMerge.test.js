@@ -663,3 +663,16 @@ assert.equal(
   assert.equal(lockedRows.length, 1);
   assert.equal(String(lockedRows[0].teacher_id), '41', 'the assessment author keeps the lesson over a stray pin');
 }
+
+// #4907: the standalone-exception branch keeps the assessment author too.
+{
+  const rows = merge({
+    courses: [],
+    allCourses: [baseCourse],
+    sessionDatesByCourseId: {
+      382: [{ id: 7001, student_class_id: 382, session_date: '2026-05-10', start_time: '15:00', end_time: '17:00', status: 'scheduled', teacher_id: 41, teacher_name: '作者', teacher_locked_to_author: true }],
+    },
+    exceptions: [{ id: 611, status: 'scheduled', schedule_date: '2026-05-10', student_course_id: 382, student_id: 1205, start_time: '15:00', end_time: '17:00', teacher_id: 99, original_schedule_id: 610 }],
+  });
+  assert.ok(rows.length >= 1 && rows.every((row) => String(row.teacher_id) === '41'), 'exception teacher must not relabel a locked lesson');
+}
