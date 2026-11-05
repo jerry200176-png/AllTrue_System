@@ -6806,11 +6806,8 @@ onUnmounted(() => {
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
 }
-.upcoming-session-preview__item,
-.upcoming-session-preview__item + .upcoming-session-preview__item::before {
-  content: '／';
-  color: var(--ds-hairline);
-  margin-right: 6px;
+.upcoming-session-preview__item {
+  color: var(--ds-ink);
 }
 .upcoming-session-preview__projected {
   color: var(--ds-ink-mute);
