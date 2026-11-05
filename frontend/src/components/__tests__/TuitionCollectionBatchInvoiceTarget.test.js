@@ -54,8 +54,8 @@ async function captureBatch({ row: r }) {
   });
   await flushPromises();
   // F-5: the batch starts from the student list; the 回報 fields live in the 送出前確認 dialog.
-  await wrapper.find('[data-testid="sbl-pick-1"]').setValue(true);
-  await wrapper.find('[data-testid="sbl-batch-report"]').trigger('click');
+  await wrapper.find('[data-testid^="bill-pick-"]').setValue(true);
+  await wrapper.find('[data-testid="bill-batch"]').trigger('click');
   await flushPromises();
   await wrapper.find('[data-testid="batch-report-fields"] select').setValue('cash');
   await wrapper.findAll('button').find((b) => b.text().includes('確認送出回報')).trigger('click');

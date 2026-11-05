@@ -62,15 +62,15 @@ describe('director billing M2: one authoritative entry (帳務中心 → 學生�
       const ledger = wrapper.findComponent({ name: 'AccountingLedgerModal' });
       expect(ledger.props('show')).toBe(true);
       expect(ledger.props('studentClassId')).toBe(6201);
-      expect(wrapper.findComponent({ name: 'StudentBillingList' }).props('presetFilter')).toEqual({ key: 'all' });
+      expect(wrapper.findComponent({ name: 'BillList' }).props('presetFilter')).toEqual({ key: 'owing' });
       expect(wrapper.find('.tc-focus-context').text()).toContain('已定位：合成學生甲');
     } finally { wrapper.unmount(); }
   });
 
-  it('a low-sessions (renewal) notification lands on the 需續課 chip', async () => {
+  it('a low-sessions (renewal) notification lands on the 要開帳單 chip', async () => {
     const wrapper = await mountTuition({ initialTab: 'renewal' });
     try {
-      expect(wrapper.findComponent({ name: 'StudentBillingList' }).props('presetFilter')).toEqual({ key: 'renew' });
+      expect(wrapper.findComponent({ name: 'BillList' }).props('presetFilter')).toEqual({ key: 'issue' });
     } finally { wrapper.unmount(); }
   });
 

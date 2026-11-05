@@ -98,11 +98,11 @@ describe('deep-link preset filter (F-5-1)', () => {
 describe('page wiring (F-5a2)', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/TuitionCollectionPage.vue'), 'utf8');
   it('reuses the table batch preview, submit functions and CSV/session handlers', () => {
-    expect(page).toContain('@batch="onListBatch"');
-    expect(page).toContain('exportCSV(rows.filter((r) => studentIds.includes(r.student_id)))');
+    expect(page).toContain('@batch="onBillBatch"');
+    expect(page).toContain('@export="exportCSV"');
     expect(page).toContain('watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; })');
-    expect(page).toContain('openSessionDetail(r)');
-    expect(page).toMatch(/function onListBatch[\s\S]{0,400}openBatchPreview\(\);/);
+    expect(page).toContain('openSessionDetail(b.src)');
+    expect(page).toMatch(/function onBillBatch[\s\S]{0,400}openBatchPreview\(\);/);
     // the list picks contracts with the table's own rules
     expect(page).toContain("['unpaid', 'partial', 'pending_reconciliation'].includes(r.payment_status) && r.payable_status === 'invoiced' && hasBatchAmount(r)");
     expect(page).toContain("r.payment_status === 'pending_report' && Boolean(r.latest_payment_report_id)");

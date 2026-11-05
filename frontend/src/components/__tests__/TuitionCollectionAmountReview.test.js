@@ -30,26 +30,25 @@ async function mountPage(alertRows = [CONFIRMED, REVIEW]) {
 }
 
 // F-5: the queue table is gone; the same rules are read off the student list.
-const badges = (w, id) => w.find(`[data-testid="sbl-row-${id}"]`).findAll('.at-badge').map((b) => b.text());
+const badges = (w, id) => w.find(`[data-testid="bill-row-c${id}"]`).findAll('.at-badge').map((b) => b.text());
 
 describe('金額待確認 rows in the student list (Founder D2)', () => {
   it('marks the row 需核對 and keeps its amount out of the 未繳 total', async () => {
     const w = await mountPage();
     expect(badges(w, 2)).toEqual(['需核對']);
-    expect(badges(w, 1)).toEqual(['未繳']);
-    const summary = w.find('[data-testid="sbl-summary"]').text();
-    expect(summary).toContain('本校區到今天未繳 NT$ 8,800');
-    expect(summary).toContain('NT$ 3,400（1 筆，不在未繳內）');
+    expect(badges(w, 1)).toEqual(['已結束，未收']);
+    // the review amount is never part of 到今天未收
+    expect(w.find('[data-testid="bill-sum-owed"]').text()).toContain('NT$ 8,800');
+    expect(w.find('[data-testid="bill-filter-review"]').text()).toContain('1');
     w.unmount();
   });
 
   it('keeps a pending parent report on a 金額待確認 bill confirmable, but its amount out of the 未繳 total', async () => {
     const w = await mountPage([CONFIRMED, REPORTED]);
-    expect(badges(w, 3)).toEqual(['需核對', '待確認入帳']);
-    expect(w.find('[data-testid="sbl-action-3"]').text()).toBe('確認入帳');
-    const summary = w.find('[data-testid="sbl-summary"]').text();
-    expect(summary).toContain('本校區到今天未繳 NT$ 8,800');
-    expect(summary).toContain('NT$ 4,400（1 筆，不在未繳內）');
+    expect(badges(w, 3)).toEqual(['待確認入帳']); // a waiting report wins over 需核對
+    expect(w.find('[data-testid="bill-action-c3"]').text()).toBe('確認入帳');
+    expect(w.find('[data-testid="bill-sum-owed"]').text()).toContain('NT$ 8,800');
+    expect(w.find('[data-testid="bill-sum-confirm"]').text()).toContain('1');
     w.unmount();
   });
 });

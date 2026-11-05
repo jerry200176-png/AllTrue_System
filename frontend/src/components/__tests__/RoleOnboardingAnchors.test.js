@@ -72,7 +72,7 @@ describe('tuition-collect page guide', () => {
     const steps = resolvePageGuideSteps('tuition-collect');
     expect(steps.length).toBeGreaterThanOrEqual(5);
     const source = pageSource('TuitionCollectionPage.vue')
-      + readFileSync(resolve(__dirname, '../tuition/StudentBillingList.vue'), 'utf8');
+      + readFileSync(resolve(__dirname, '../tuition/BillList.vue'), 'utf8');
     for (const step of steps) {
       const guide = step.target.match(/^\[data-guide="(.+)"\]$/)?.[1];
       expect(guide, `${step.title} target shape`).toBeTruthy();

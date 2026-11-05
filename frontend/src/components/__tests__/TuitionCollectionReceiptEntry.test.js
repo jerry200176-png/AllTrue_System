@@ -25,7 +25,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('const STATUS_CONFIG = TUITION_STATUS_CONFIG;');
     expect(source).not.toContain('TAB_DEFS');
     expect(source).not.toContain("activeAccountingTab === 'receivables'");
-    expect(source).toContain('@batch="onListBatch"');
+    expect(source).toContain('@batch="onBillBatch"');
   });
 
   it('receipt records fetch accounting/payments without a page-local PIN modal', () => {
@@ -53,7 +53,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('requires a read-only batch preview before either batch endpoint can run', () => {
-    expect(source).toMatch(/function onListBatch[\s\S]{0,400}openBatchPreview\(\);/);
+    expect(source).toMatch(/function onBillBatch[\s\S]{0,400}openBatchPreview\(\);/);
     expect(source).toContain('role="dialog"');
     expect(source).toContain('aria-modal="true"');
     expect(source).toContain('送出前確認');
