@@ -756,6 +756,35 @@ operations:
     tags: [repair, session, history-pin, issue-4901]
     notes: GitHub #4901 (in-app #499). Deletes the second history pin (anchor and child schedule rows) the legacy contract-teacher-change pin pass added over a past slot that already had a live pin and a sign-in at the real teacher. Other slots where the winning pin disagrees with the sign-in are only listed. Execute is pinned to the dry-run digest; rollback re-inserts exactly the deleted rows. Pi-local POP only.
 
+  taught-lesson-signin-repair-20261105:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-taught-lesson-signin-repair
+    founder_approval_required: true
+    runbook: docs/incidents/RM-TAUGHT-LESSON-SIGNIN-REPAIR-20261105.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: campus_scoped_taught_lesson_sign_ins_created
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\TaughtLessonSignInRepairStrategy
+    parameter_keys: [campus_id, decision_reference, expected_digest]
+    tags: [repair, session, attendance, issue-4925, issue-4927, issue-4931]
+    notes: GitHub #4925 #4927 #4931 (in-app #502, #504), Founder approval 2026-11-05. For past lessons since 2026-08-01 that are completed or attended, hold exactly one ledger debit and have no sign-in row at all, writes one present sign-in at the payroll payee (SessionDeducted, no ledger or counter change, lesson status unchanged). Rows whose payee does not resolve are only listed. Payroll tables are never written; month_locked rows go to next month's adjustment. Execute is pinned to the dry-run digest; rollback deletes exactly the created sign-ins. Pi-local POP only.
+
   forward-extra-cancel-20261101:
     lifecycle: active
     domain: session

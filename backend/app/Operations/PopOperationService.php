@@ -181,6 +181,7 @@ final class PopOperationService
             && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactForwardExtraCancel($entry)
             && !$this->isExactDuplicateHistoryPinRepair($entry)
+            && !$this->isExactTaughtLessonSignInRepair($entry)
             && !$this->isExactDuplicateAttendedCancel($entry)
             && !$this->isExactForwardOverdeductReassign($entry)
             && !$this->isExactTd076Repair($entry)
@@ -847,6 +848,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactTaughtLessonSignInRepair($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'campus_scoped_taught_lesson_sign_ins_created'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactDuplicateAttendedCancel($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1171,6 +1187,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'duplicate-history-pin-repair-20261104'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\DuplicateHistoryPinRepairStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-duplicate-history-pin-repair'
+            && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
+    }
+
+    /** #4925 #4927 #4931 (in-app #502, #504): campus_id + expected_digest pin each run to its dry-run; rollback deletes the created sign-ins. */
+    private function isExactTaughtLessonSignInRepair(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'taught-lesson-signin-repair-20261105'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-taught-lesson-signin-repair'
             && ($entry['parameter_keys'] ?? null) === ['campus_id', 'decision_reference', 'expected_digest'];
     }
 

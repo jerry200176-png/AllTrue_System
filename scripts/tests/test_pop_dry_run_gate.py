@@ -18,6 +18,7 @@ SPLIT = {
     "pop-duplicate-attended-cancel.yml": "cancel",
     "pop-forward-extra-cancel.yml": "cancel",
     "pop-duplicate-history-pin-repair.yml": "cancel",
+    "pop-taught-lesson-signin-repair.yml": "repair",
     "pop-forward-overdeduct-reassign.yml": "reassign",
     "pop-founder-scoped-repair.yml": "repair",
     "pop-invoice-header-item-repair.yml": "repair",
