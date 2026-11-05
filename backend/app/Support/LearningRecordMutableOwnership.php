@@ -65,7 +65,7 @@ final class LearningRecordMutableOwnership
     }
 
     /** System-generated markers (back-fill / auto-approval) are not a teacher-written body. */
-    private static function isSystemFillContent(string $content): bool
+    public static function isSystemFillContent(string $content): bool
     {
         $content = trim($content);
 

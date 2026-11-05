@@ -260,6 +260,26 @@ class FilledAssessmentTeacherLockTest extends TestCase
         \App\Support\LearningRecordMutableOwnership::assertTeacherChangeAllowed((int) $s->id, 0);
     }
 
+    public function test_deleting_a_system_approved_row_leaves_the_count_alone(): void
+    {
+        $s = $this->mkSession();
+        $lr = LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => '（系統補登/扣除堂數）', 'Status' => 'approved', 'ApprovedAt' => now(), 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        User::where('id', $this->aId)->update(['TeachingSessionCount' => 3]);
+        $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}")->assertOk();
+        $this->assertSame(3, (int) User::find($this->aId)->TeachingSessionCount);
+    }
+
+    public function test_deleting_a_blank_record_with_only_a_director_comment_keeps_the_comment_in_a_snapshot(): void
+    {
+        $s = $this->mkSession();
+        $lr = LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => '', 'Status' => 'pending', 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        $this->comment($lr, $s, $this->aId);
+        $this->api()->deleteJson("/api/v1/learning-records/{$lr->id}")->assertOk();
+        $this->assertSame('note', LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->firstOrFail()->payload['teacher_comment']['content']);
+    }
+
     private function comment(LearningRecord $lr, ClassSession $s, int $teacherId): void
     {
         DB::table('learning_record_teacher_comments')->insert([

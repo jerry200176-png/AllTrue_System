@@ -1511,7 +1511,7 @@ class LearningRecordController extends Controller
         $reviewerId = $this->reviewerUserId($request);
         DB::transaction(function () use ($learningRecord, $reviewerId) {
             // #4907: keep the teacher's text (insert-only snapshot, no migration) before the hard delete.
-            if (LearningRecordMutableOwnership::isFilledByTeacher($learningRecord)) {
+            if (LearningRecordMutableOwnership::isFilledByTeacher($learningRecord) || $learningRecord->teacherComment !== null) {
                 LearningRecordAuthorSnapshot::create([
                     'learning_record_id' => (int) $learningRecord->id,
                     'author_teacher_id' => (int) $learningRecord->TeacherID ?: null,
@@ -1525,7 +1525,10 @@ class LearningRecordController extends Controller
             // Same rollback as rollbackApproval(), for any approved record (blank body + director comment included).
             if (strtolower(trim((string) $learningRecord->Status)) === 'approved') {
                 app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $learningRecord->id);
-                User::where('id', $learningRecord->TeacherID)->where('TeachingSessionCount', '>', 0)->decrement('TeachingSessionCount');
+                // System-created approved rows (auto-approval / back-fill) never added to the count.
+                if (!LearningRecordMutableOwnership::isSystemFillContent((string) $learningRecord->Content)) {
+                    User::where('id', $learningRecord->TeacherID)->where('TeachingSessionCount', '>', 0)->decrement('TeachingSessionCount');
+                }
                 $sc = StudentClass::find($learningRecord->StudentClassID);
                 if ($sc) {
                     ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($reviewerId ?? 0));

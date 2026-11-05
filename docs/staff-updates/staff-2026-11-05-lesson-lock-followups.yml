@@ -12,6 +12,6 @@ updates:
       - category: fixed
         text: 行事曆用老師篩選時，已有評量的課會算在寫評量的老師名下。
       - category: fixed
-        text: 已核准但沒內容的評量刪除後，老師的授課堂數會一併扣回。
+        text: 刪除已核准的評量，會一併退回這堂的出席、扣堂與鐘點；刪除前畫面會先提醒。
     source_refs:
       - "changelog:2026-11-05:lesson-lock-followups"
