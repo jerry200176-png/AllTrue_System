@@ -202,9 +202,9 @@ jobs:
               if 'sign_in_id' in r:  # restore mode
                   print('row sign_in=%s session=%s kind=%s' % tuple(ids(r.get(k)) for k in ('sign_in_id', 'session_id', 'class')))
                   continue
-              print('row session=%s course=%s campus=%s date=%s start=%s payee=%s employment=%s month=%s locked=%s source=%s kind=%s reason=%s' % tuple(
+              print('row session=%s course=%s campus=%s date=%s start=%s payee=%s employment=%s group=%s month=%s locked=%s source=%s kind=%s reason=%s' % tuple(
                   ids(r.get(k)) for k in ('session_id', 'class_id', 'campus_id', 'session_date', 'start_time', 'payee_teacher_id', 'employment_type',
-                                          'month', 'month_locked', 'source', 'class', 'reason')))
+                                          'group', 'month', 'month_locked', 'source', 'class', 'reason')))
           PY
           [[ "$dry_status" == 200 ]] || { echo "::error::POP dry-run rejected with HTTP $dry_status"; exit 1; }
           if [[ "$MODE" == approve ]]; then

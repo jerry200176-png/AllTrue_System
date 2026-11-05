@@ -13,18 +13,22 @@ use RuntimeException;
  * (enrollment 已上過 / 系統判定補登, add-session auto-approve, the calendar's scheduled → attended). Part-time payroll and
  * attendance read sign-ins, so the lesson was taught and debited but unpaid. Founder approved the repair 2026-11-05.
  *
- * The rule is DB facts, not the path: a lesson dated FLOOR..yesterday (Asia/Taipei), status completed/attended, ledger net
- * exactly 1 for its course and lesson, and no sign-in row at all (live or voided). A row is `write` when the payee resolves
+ * The rule is DB facts, not the path: a lesson dated FLOOR..yesterday (Asia/Taipei), status completed/attended/late, ledger net
+ * exactly 1 for its course and lesson, and no live sign-in. Each row is in one `group`: `missing` (no sign-in row at all),
+ * `late` (status late, no row: the old calendar's 遲到 debited without a sign-in) or `voided` (only voided rows; the latest
+ * one is un-voided, because test/staging carry a unique index on the session id and a second insert would fail 1062). A row is `write` when the payee resolves
  * (occurrence, substitute, else contract teacher, as part-time payroll does) to an existing user; otherwise `review`, listed only.
  * Pending evaluations that were never debited fail the ledger rule and stay with the normal approve / 補登 flow.
  *
- * Execute writes one present sign-in per `write` row (payee as teacher, scheduled times, SessionDeducted=1 because the ledger
- * already holds the debit) with the query builder. It never calls the deduction service, so no ledger row or course counter
+ * Execute writes one present (late for a late lesson) sign-in per `write` row (payee as teacher, scheduled times, SessionDeducted=1
+ * because the ledger already holds the debit) with the query builder: an insert, or for `voided` the un-void of the latest voided row. It never calls the deduction service, so no ledger row or course counter
  * moves; the lesson status is left as is (completed and attended are read the same). Payroll tables are never written: a
  * locked month's run keeps its snapshot, and the row's `month_locked` flags it for next month's adjustment (Founder).
- * Bound to the reviewed dry run by `expected_digest` (Td076 pattern); rollback deletes exactly the created sign-ins.
+ * Bound to the reviewed dry run by `expected_digest` (Td076 pattern); rollback deletes exactly the created sign-ins and re-voids
+ * exactly the un-voided ones from their snapshotted original state.
  * Restore (the reachable rollback, #4736 pattern) = a new Founder-approved request of this operation with `restore_request_id` =
- * the repair request: its plan reads that request's stored snapshot and lists each created sign-in still present.
+ * the repair request: its plan reads that request's stored snapshot and lists each created sign-in still present (`delete`)
+ * and each un-voided one still carrying the marker (`revoid`).
  */
 final class TaughtLessonSignInRepairStrategy
 {
@@ -52,12 +56,13 @@ final class TaughtLessonSignInRepairStrategy
                 return ['ok' => false, 'errors' => ['restore_source_not_found'], 'state' => 'invalid'];
             }
             $rows = $this->restoreRows($snapshot);
-            $totals = ['rows' => count($rows), 'delete' => count(array_filter($rows, fn ($r) => $r['class'] === 'delete'))];
+            $totals = ['rows' => count($rows), 'delete' => count(array_filter($rows, fn ($r) => $r['class'] === 'delete')),
+                'revoid' => count(array_filter($rows, fn ($r) => $r['class'] === 'revoid'))];
         } else {
             [$rows, $totals] = $this->build((int) $campus);
         }
         $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
-        $todo = array_filter($rows, fn ($r) => in_array($r['class'], ['write', 'delete'], true));
+        $todo = array_filter($rows, fn ($r) => in_array($r['class'], ['write', 'delete', 'revoid'], true));
         $state = $want === '' ? 'unpinned' : ($todo === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
 
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
@@ -82,14 +87,17 @@ final class TaughtLessonSignInRepairStrategy
                 if (hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)) !== $plan['digest']) {
                     throw new RuntimeException('taught_signin_digest_drift');
                 }
-                $ids = array_column(array_filter($rows, fn ($r) => $r['class'] === 'delete'), 'sign_in_id');
+                $deleteIds = array_column(array_filter($rows, fn ($r) => $r['class'] === 'delete'), 'sign_in_id');
+                $revoidIds = array_column(array_filter($rows, fn ($r) => $r['class'] === 'revoid'), 'sign_in_id');
+                $ids = array_merge($deleteIds, $revoidIds);
                 $result = $this->rollback(['rows' => array_values(array_filter($snapshot, fn ($r) => in_array((int) $r['sign_in_id'], $ids, true)))],
                     $context + ['source_request_id' => (string) $plan['restore_request_id']]);
                 if (($result['ok'] ?? false) !== true) {
                     throw new RuntimeException('taught_signin_restore_incomplete'); // all or nothing
                 }
 
-                return ['ok' => true, 'deleted' => $result['deleted'], 'snapshot' => ['deleted_sign_in_ids' => $ids]];
+                return ['ok' => true, 'deleted' => $result['deleted'], 'revoided' => $result['revoided'],
+                    'snapshot' => ['deleted_sign_in_ids' => $deleteIds, 'revoided_sign_in_ids' => $revoidIds]];
             }, 3);
         }
 
@@ -107,14 +115,27 @@ final class TaughtLessonSignInRepairStrategy
                     ->join('Student as st', 'st.id', '=', 'sc.StudentID')->where('cs.id', $r['session_id'])
                     ->first(['cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status', 'sc.ID', 'sc.StudentID', 'sc.GradeID', 'sc.SubjectID', 'sc.by1', 'st.CampusID']);
                 $date = substr((string) $s->SessionDate, 0, 10);
+                $status = strtolower(trim((string) $s->Status)) === 'late' ? 'late' : 'present';
+                if ($r['group'] === 'voided') {
+                    $id = (int) $r['voided_sign_in_id'];
+                    $original = (array) DB::table('StudentSingIn')->where('id', $id)->where('ClassSessionID', $r['session_id'])->whereNotNull('VoidedAt')
+                        ->first(['VoidedAt', 'VoidedByUserID', 'VoidReason', 'Status', 'TeacherID', 'SessionDeducted', 'MDT', 'Memo']);
+                    if ($original === []) {
+                        throw new RuntimeException('taught_signin_voided_row_missing');
+                    }
+                    DB::table('StudentSingIn')->where('id', $id)->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null,
+                        'Status' => $status, 'TeacherID' => $r['payee_teacher_id'], 'SessionDeducted' => 1, 'MDT' => now(), 'Memo' => self::MEMO]);
+                    $snapshot[] = ['sign_in_id' => $id, 'session_id' => $r['session_id'], 'prior_status' => (string) $s->Status, 'action' => 'unvoid', 'original' => $original];
+                    continue;
+                }
                 $id = DB::table('StudentSingIn')->insertGetId([
                     'StudentClassID' => (int) $s->ID, 'StudentID' => (int) $s->StudentID, 'TeacherID' => $r['payee_teacher_id'],
                     'RecordedByUserID' => null, 'GradeID' => $s->GradeID, 'SubjectID' => $s->SubjectID, 'Get1byID' => $s->by1,
                     'SignInDT' => $date . ' ' . ($s->StartTime ?? '00:00:00'), 'SignOutDT' => $date . ' ' . ($s->EndTime ?? '23:59:00'),
-                    'MDT' => now(), 'ClassSessionID' => $r['session_id'], 'Status' => 'present', 'CampusID' => $s->CampusID,
+                    'MDT' => now(), 'ClassSessionID' => $r['session_id'], 'Status' => $status, 'CampusID' => $s->CampusID,
                     'PersonType' => 'student', 'SessionDeducted' => 1, 'Memo' => self::MEMO,
                 ]);
-                $snapshot[] = ['sign_in_id' => (int) $id, 'session_id' => $r['session_id'], 'prior_status' => (string) $s->Status];
+                $snapshot[] = ['sign_in_id' => (int) $id, 'session_id' => $r['session_id'], 'prior_status' => (string) $s->Status, 'action' => 'create'];
             }
             foreach ($snapshot as $row) {
                 if (DB::table('StudentSingIn')->where('ClassSessionID', $row['session_id'])->whereNull('VoidedAt')->count() !== 1) {
@@ -135,8 +156,10 @@ final class TaughtLessonSignInRepairStrategy
         if (($plan['mode'] ?? 'repair') === 'restore') {
             $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
             if (DB::table('StudentSingIn')->whereIn('id', $result['snapshot']['deleted_sign_in_ids'] ?? [])->exists()) $errors[] = 'not_deleted';
+            $revoided = $result['snapshot']['revoided_sign_in_ids'] ?? [];
+            if ($revoided !== [] && DB::table('StudentSingIn')->whereIn('id', $revoided)->whereNotNull('VoidedAt')->count() !== count($revoided)) $errors[] = 'not_revoided';
 
-            return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['deleted']];
+            return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['deleted', 'revoided']];
         }
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
         if (($result['snapshot']['incomplete'] ?? false) === true) $errors[] = 'snapshot_incomplete_manual_resolution';
@@ -157,7 +180,7 @@ final class TaughtLessonSignInRepairStrategy
         return ['ok' => $errors === [], 'errors' => array_values(array_unique($errors)), 'checks' => ['one_live_sign_in', 'ledger_net_one', 'none_left']];
     }
 
-    /** Deletes exactly the created sign-ins (by id, lesson and marker). The lesson status was never written, so there is none to restore. */
+    /** Deletes exactly the created sign-ins and re-voids exactly the un-voided ones to their snapshotted state (by id, lesson and marker). The lesson status was never written. */
     public function rollback(array $snapshot, array $context): array
     {
         $rows = $snapshot['rows'] ?? null;
@@ -167,17 +190,24 @@ final class TaughtLessonSignInRepairStrategy
 
         return DB::transaction(function () use ($rows): array {
             $deleted = 0;
+            $revoided = 0;
             $skipped = [];
             foreach ($rows as $r) {
-                if (DB::table('StudentSingIn')->where('id', $r['sign_in_id'])->where('ClassSessionID', $r['session_id'])->where('Memo', self::MEMO)->delete() === 1) {
-                    $deleted++;
+                $mine = DB::table('StudentSingIn')->where('id', $r['sign_in_id'])->where('ClassSessionID', $r['session_id'])->where('Memo', self::MEMO);
+                if (($r['action'] ?? 'create') === 'unvoid') {
+                    $done = is_array($r['original'] ?? null) && $mine->whereNull('VoidedAt')->update($r['original']) === 1;
+                    $revoided += $done ? 1 : 0;
                 } else {
+                    $done = $mine->delete() === 1;
+                    $deleted += $done ? 1 : 0;
+                }
+                if (!$done) {
                     $skipped[] = (int) $r['sign_in_id'];
                 }
             }
-            $this->audit(['reason_code' => self::REF, 'row_count' => $deleted, 'outcome' => 'success'], '.rollback');
+            $this->audit(['reason_code' => self::REF, 'row_count' => $deleted + $revoided, 'outcome' => 'success'], '.rollback');
 
-            return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'deleted' => $deleted, 'skipped_ids' => $skipped];
+            return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'deleted' => $deleted, 'revoided' => $revoided, 'skipped_ids' => $skipped];
         }, 3);
     }
 
@@ -197,14 +227,18 @@ final class TaughtLessonSignInRepairStrategy
         return is_array($snapshot['rows'] ?? null) && $snapshot['rows'] !== [] ? $snapshot['rows'] : null;
     }
 
-    /** ids-only rows: `delete` while the created sign-in is still there, else `skip` (gone since). @return list<array<string,mixed>> */
+    /** ids-only rows: `delete` (created) or `revoid` (un-voided) while the row still carries the marker, else `skip` (gone or changed since). @return list<array<string,mixed>> */
     private function restoreRows(array $snapshot): array
     {
         $live = DB::table('StudentSingIn')->whereIn('id', array_column($snapshot, 'sign_in_id'))->where('Memo', self::MEMO)
-            ->pluck('ClassSessionID', 'id');
+            ->whereNull('VoidedAt')->pluck('ClassSessionID', 'id');
 
-        return array_map(fn (array $r): array => ['sign_in_id' => (int) $r['sign_in_id'], 'session_id' => (int) $r['session_id'],
-            'class' => (int) ($live[$r['sign_in_id']] ?? 0) === (int) $r['session_id'] ? 'delete' : 'skip'], array_values($snapshot));
+        return array_map(function (array $r) use ($live): array {
+            $here = (int) ($live[$r['sign_in_id']] ?? 0) === (int) $r['session_id'];
+
+            return ['sign_in_id' => (int) $r['sign_in_id'], 'session_id' => (int) $r['session_id'],
+                'class' => !$here ? 'skip' : (($r['action'] ?? 'create') === 'unvoid' ? 'revoid' : 'delete')];
+        }, array_values($snapshot));
     }
 
     private function audit(array $metadata, string $suffix = ''): void
@@ -231,7 +265,7 @@ final class TaughtLessonSignInRepairStrategy
     }
 
     /**
-     * Ids-only rows, one per taught, debited lesson with no sign-in row.
+     * Ids-only rows, one per taught, debited lesson with no live sign-in.
      *
      * @return array{0: list<array<string,mixed>>, 1: array<string,mixed>}
      */
@@ -241,18 +275,22 @@ final class TaughtLessonSignInRepairStrategy
         $lessons = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->whereIn(DB::raw('LOWER(TRIM(cs.Status))'), ['completed', 'attended'])
+            ->whereIn(DB::raw('LOWER(TRIM(cs.Status))'), ['completed', 'attended', 'late'])
             ->where('cs.SessionDate', '>=', self::FLOOR)->where('cs.SessionDate', '<', $today)
-            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('StudentSingIn as si')->whereColumn('si.ClassSessionID', 'cs.id'))
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('StudentSingIn as si')->whereColumn('si.ClassSessionID', 'cs.id')->whereNull('si.VoidedAt'))
             ->whereRaw("(SELECT COALESCE(SUM(CASE WHEN l.event_type='deduct' THEN 1 WHEN l.event_type='reverse' THEN -1 ELSE 0 END), 0)
                 FROM session_deduction_ledger l WHERE l.student_class_id = sc.ID AND l.class_session_id = cs.id) = 1")
             ->when($campusId > 0, fn ($q) => $q->where('st.CampusID', $campusId))
             ->orderBy('cs.id')
-            ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.Note', 'st.CampusID', 'sc.TeacherID']);
+            ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.Note', 'cs.Status', 'st.CampusID', 'sc.TeacherID']);
         $records = DB::table('LearningRecord')->whereIn('ClassSessionID', $lessons->pluck('id')->all())->whereNull('VoidedAt')
             ->where('Status', 'approved')->pluck('Content', 'ClassSessionID');
+        $voided = DB::table('StudentSingIn')->whereIn('ClassSessionID', $lessons->pluck('id')->all())->whereNotNull('VoidedAt')
+            ->groupBy('ClassSessionID')->selectRaw('ClassSessionID, MAX(id) as id')->pluck('id', 'ClassSessionID');
         $rows = [];
         foreach ($lessons as $l) {
+            $voidedId = (int) ($voided[$l->id] ?? 0);
+            $group = $voidedId > 0 ? 'voided' : (strtolower(trim((string) $l->Status)) === 'late' ? 'late' : 'missing');
             $date = substr((string) $l->SessionDate, 0, 10);
             $payee = (int) ((SubstituteScheduleService::occurrence((int) $l->StudentClassID, $date, $l->StartTime)[0] ?? null)
                 ?? SubstituteScheduleService::resolveSubstituteUserId((int) $l->StudentClassID, $date, $l->StartTime) ?? $l->TeacherID ?? 0);
@@ -263,7 +301,7 @@ final class TaughtLessonSignInRepairStrategy
             $rows[] = ['session_id' => (int) $l->id, 'class_id' => (int) $l->StudentClassID, 'campus_id' => (int) $l->CampusID,
                 'session_date' => $date, 'start_time' => substr((string) $l->StartTime, 0, 5), 'payee_teacher_id' => $payee,
                 'employment_type' => $type === null ? null : (preg_match('/^[a-z_]{1,32}$/', (string) $type) ? (string) $type : 'other'),
-                'month' => $month, 'month_locked' => DB::table('payroll_month_status')->where('branch_id', (int) $l->CampusID)->where('month', $month)
+                'group' => $group, 'voided_sign_in_id' => $voidedId, 'month' => $month, 'month_locked' => DB::table('payroll_month_status')->where('branch_id', (int) $l->CampusID)->where('month', $month)
                     ->where('status', 'locked')->whereNotNull('current_run_id')->exists(),
                 'source' => match (true) {
                     $content === '（系統自動核准）' => 'enrollment_confirmed',
@@ -271,11 +309,12 @@ final class TaughtLessonSignInRepairStrategy
                     str_contains((string) $l->Note, '系統判定補登') => 'enrollment_backfill',
                     default => 'other',
                 },
-                'class' => $known ? 'write' : 'review', 'reason' => $known ? 'taught_debited_no_sign_in' : 'payee_unresolved'];
+                'class' => $known ? 'write' : 'review', 'reason' => $known ? ($group === 'voided' ? 'taught_debited_only_voided_sign_in' : 'taught_debited_no_sign_in') : 'payee_unresolved'];
         }
-        $totals = ['rows' => count($rows), 'write' => 0, 'review' => 0, 'part_time' => 0, 'month_locked' => 0, 'by_source' => [], 'by_campus' => []];
+        $totals = ['rows' => count($rows), 'write' => 0, 'review' => 0, 'part_time' => 0, 'month_locked' => 0, 'by_group' => [], 'by_source' => [], 'by_campus' => []];
         foreach ($rows as $r) {
             $totals[$r['class']]++;
+            $totals['by_group'][$r['group']] = ($totals['by_group'][$r['group']] ?? 0) + 1;
             if ($r['class'] !== 'write') continue;
             $totals['part_time'] += $r['employment_type'] === 'part_time' ? 1 : 0;
             $totals['month_locked'] += $r['month_locked'] ? 1 : 0;
@@ -283,6 +322,7 @@ final class TaughtLessonSignInRepairStrategy
             $totals['by_campus'][$r['campus_id']]['write'] = ($totals['by_campus'][$r['campus_id']]['write'] ?? 0) + 1;
             $totals['by_campus'][$r['campus_id']]['other'] = ($totals['by_campus'][$r['campus_id']]['other'] ?? 0) + ($r['source'] === 'other' ? 1 : 0);
         }
+        ksort($totals['by_group']);
         ksort($totals['by_source']);
         ksort($totals['by_campus']);
 

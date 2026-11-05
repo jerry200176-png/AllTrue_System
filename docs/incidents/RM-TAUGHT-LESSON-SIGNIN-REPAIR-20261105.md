@@ -16,11 +16,11 @@ Parameters: `campus_id` (0 = all), `decision_reference = repair-taught-lesson-si
 The rule is DB facts, not the path that made the lesson:
 
 - lesson dated 2026-08-01 (part-time payroll reads sign-ins from then on) up to yesterday (Asia/Taipei);
-- status `completed` or `attended`;
+- status `completed`, `attended` or `late` (the old calendar's 遲到 debited without a sign-in);
 - ledger net exactly 1 for its course and lesson (`session_deduction_ledger`), so an undebited pending evaluation stays with the normal approve / 補登 flow;
-- no `StudentSingIn` row at all for the lesson (live or voided).
+- no live `StudentSingIn` row for the lesson. `group` shows which case: `missing` (no row at all), `late` (late lesson, no row) or `voided` (only voided rows; the latest is un-voided, never a second insert, because test/staging have a unique index on the session id).
 
-Each row: `session_id, class_id, campus_id, session_date, start_time, payee_teacher_id, employment_type, month, month_locked, source, class, reason`.
+Each row: `session_id, class_id, campus_id, session_date, start_time, payee_teacher_id, employment_type, group, voided_sign_in_id, month, month_locked, source, class, reason`.
 The payee resolves as part-time payroll does (occurrence, substitute, else contract teacher). `source` only labels the path
 (`enrollment_confirmed` = record 「（系統自動核准）」, `add_session_auto_approve` = 「（系統補登加課）」, `enrollment_backfill` = note 系統判定補登, `other`).
 `totals` gives `write`, `review`, `part_time`, `month_locked`, `by_source` and `by_campus` (`write`, and `other` = lessons not from the enrollment paths).
@@ -31,7 +31,7 @@ The payee resolves as part-time payroll does (occurrence, substitute, else contr
 ## Execute
 
 One transaction: lock the listed lessons, recompute the plan and compare its digest (`taught_signin_digest_drift` aborts on any change), then insert one
-`present` sign-in per `write` row with the query builder: payee as teacher, scheduled start and end, `SessionDeducted = 1` (the ledger already holds
+`present` (`late` for a late lesson) sign-in per `write` row, or for `voided` un-void the latest voided row (original void state kept in the snapshot) with the query builder: payee as teacher, scheduled start and end, `SessionDeducted = 1` (the ledger already holds
 the debit), `Memo = pop_taught_signin_20261105`. Before commit it asserts exactly one live sign-in per lesson and that the ledger rows and net of
 those lessons did not move (`taught_signin_not_exactly_one`, `taught_signin_ledger_moved`), then writes a strict `pop.taught_lesson_signin_repair`
 audit event. No ledger, course counter, lesson status, learning record or payroll row is written.
@@ -44,9 +44,9 @@ Verify: each lesson has exactly the created live sign-in, its status is unchange
 ## Rollback (restore request)
 
 The reachable rollback is a new Founder-approved request of this operation with `restore_request_id` = the repair request's id (#4736 pattern;
-same campus). Its plan reads that request's stored execute snapshot and lists each created sign-in as `delete` while it is still there
-(id, lesson and memo match), else `skip`. Execute is pinned to that digest, locks the sign-ins, deletes exactly the `delete` rows all or nothing
-(`taught_signin_restore_incomplete`), and writes a `pop.taught_lesson_signin_repair.rollback` audit event; verify checks they are gone. The lesson
+same campus). Its plan reads that request's stored execute snapshot and lists each created sign-in as `delete`, and each un-voided one as `revoid`, while it is still there
+(id, lesson and memo match), else `skip`. Execute is pinned to that digest, locks the sign-ins, deletes exactly the `delete` rows and re-voids exactly the `revoid` rows to their original state, all or nothing
+(`taught_signin_restore_incomplete`), and writes a `pop.taught_lesson_signin_repair.rollback` audit event; verify checks they are gone or voided again. The lesson
 status was never written, so there is nothing else to restore. A rerun after execute is `state=after`.
 
 ## Flow

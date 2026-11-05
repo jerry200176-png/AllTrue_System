@@ -23,7 +23,7 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow(Carbon::parse('2026-11-05 10:00:00', 'Asia/Taipei'));
-        foreach ([[289, 'part_time'], [30, 'full_time']] as [$id, $type]) {
+        foreach ([[289, 'part_time'], [30, 'full_time'], [288, 'part_time']] as [$id, $type]) {
             DB::table('User')->insert(['id' => $id, 'LoginName' => "t{$id}@test.com", 'Name' => 't', 'PSW' => 'x', 'type' => 'T', 'phone' => '0900000000',
                 'MustChangePassword' => 0, 'employment_type' => $type]);
         }
@@ -39,9 +39,11 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         $this->lesson(43605, 4285, '2026-10-06', 'completed', 1, '系統判定補登（新增時已過下課時間）'); // full-time payee: write
         $this->lesson(50000, 5000, '2026-10-05', 'completed', 1);                         // review: payee unresolved
         $this->lesson(47301, 4640, '2026-10-24', 'completed', 0, '', null, 'pending');    // pending evaluation, not debited: out
-        $this->lesson(47302, 4640, '2026-10-17', 'completed', 1);                         // has a voided sign-in row: out
-        DB::table('StudentSingIn')->insert(['StudentClassID' => 4640, 'StudentID' => 2432, 'TeacherID' => 289, 'ClassSessionID' => 47302,
-            'SignInDT' => '2026-10-17 17:00:00', 'Status' => 'present', 'MDT' => now(), 'VoidedAt' => now()]);
+        $this->lesson(47302, 4640, '2026-10-17', 'completed', 1);                         // only a voided sign-in row: write by un-voiding it
+        DB::table('StudentSingIn')->insert(['StudentClassID' => 4640, 'StudentID' => 2432, 'TeacherID' => 288, 'ClassSessionID' => 47302,
+            'SignInDT' => '2026-10-17 17:00:00', 'SignOutDT' => '2026-10-17 19:00:00', 'Status' => 'absent', 'MDT' => '2026-10-18 09:00:00', 'VoidedAt' => '2026-10-18 10:00:00',
+            'VoidedByUserID' => 30, 'VoidReason' => 'r', 'SessionDeducted' => 0, 'Memo' => 'old']);
+        $this->lesson(47308, 4640, '2026-10-12', 'late', 1);                              // old calendar 遲到, debited, no sign-in: write
         $this->lesson(47303, 4640, '2026-10-10', 'completed', 1);                         // debited then reversed (net 0): out
         DB::table('session_deduction_ledger')->insert(['student_class_id' => 4640, 'class_session_id' => 47303, 'event_type' => 'reverse', 'source' => 'retro_leave']);
         $this->lesson(47304, 4640, '2026-07-20', 'completed', 1);                         // before the floor: out
@@ -101,14 +103,15 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         self::assertTrue($plan['ok']);
         self::assertSame('unpinned', $plan['state']);
         $byId = array_column($plan['manifest'], null, 'session_id');
-        self::assertSame([43605, 47205, 47300, 50000], array_keys($byId));
+        self::assertSame([43605, 47205, 47300, 47302, 47308, 50000], array_keys($byId));
+        self::assertSame([['missing', 0], ['missing', 0], ['voided', 1], ['late', 0]], array_map(fn ($id) => [$byId[$id]['group'], (int) ($byId[$id]['voided_sign_in_id'] > 0)], [47205, 47300, 47302, 47308]));
         self::assertSame(['write', 289, 'part_time', '2026-10', false, 'enrollment_confirmed'],
             [$byId[47205]['class'], $byId[47205]['payee_teacher_id'], $byId[47205]['employment_type'], $byId[47205]['month'], $byId[47205]['month_locked'], $byId[47205]['source']]);
         self::assertSame([true, 'other'], [$byId[47300]['month_locked'], $byId[47300]['source']]);
         self::assertSame(['full_time', 'enrollment_backfill'], [$byId[43605]['employment_type'], $byId[43605]['source']]);
         self::assertSame(['review', 'payee_unresolved'], [$byId[50000]['class'], $byId[50000]['reason']]);
-        self::assertSame(['rows' => 4, 'write' => 3, 'review' => 1, 'part_time' => 2, 'month_locked' => 1,
-            'by_source' => ['enrollment_backfill' => 1, 'enrollment_confirmed' => 1, 'other' => 1], 'by_campus' => [9 => ['write' => 3, 'other' => 1]]], $plan['totals']);
+        self::assertSame(['rows' => 6, 'write' => 5, 'review' => 1, 'part_time' => 4, 'month_locked' => 1, 'by_group' => ['late' => 1, 'missing' => 4, 'voided' => 1],
+            'by_source' => ['enrollment_backfill' => 1, 'enrollment_confirmed' => 1, 'other' => 3], 'by_campus' => [9 => ['write' => 5, 'other' => 3]]], $plan['totals']);
         self::assertSame([50000], array_column($s->plan($this->params(2))['manifest'], 'session_id'));
 
         self::assertSame($plan['digest'], $s->plan($this->params())['digest']); // idempotent
@@ -125,11 +128,12 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         self::assertSame('pinned', $plan['state']);
 
         $result = $s->execute($plan, ['operation_id' => 't']);
-        self::assertSame(3, $result['created']);
-        foreach ([47205 => [289, '2026-10-31'], 47300 => [289, '2026-09-10'], 43605 => [30, '2026-10-06']] as $session => [$teacher, $date]) {
+        self::assertSame(5, $result['created']);
+        foreach ([47205 => [289, '2026-10-31', 'present'], 47300 => [289, '2026-09-10', 'present'], 43605 => [30, '2026-10-06', 'present'],
+            47302 => [289, '2026-10-17', 'present'], 47308 => [289, '2026-10-12', 'late']] as $session => [$teacher, $date, $status]) {
             $rows = DB::table('StudentSingIn')->where('ClassSessionID', $session)->get();
             self::assertCount(1, $rows);
-            self::assertSame(['present', $teacher, 1, null, "$date 17:00:00", "$date 19:00:00"], [(string) $rows[0]->Status, (int) $rows[0]->TeacherID,
+            self::assertSame([$status, $teacher, 1, null, "$date 17:00:00", "$date 19:00:00"], [(string) $rows[0]->Status, (int) $rows[0]->TeacherID,
                 (int) $rows[0]->SessionDeducted, $rows[0]->VoidedAt, (string) $rows[0]->SignInDT, (string) $rows[0]->SignOutDT]);
         }
         self::assertFalse(DB::table('StudentSingIn')->where('ClassSessionID', 50000)->exists());
@@ -140,12 +144,33 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         $again = $s->plan($this->params(0, $digest));
         self::assertSame('after', $again['state']);
         self::assertSame(0, $s->execute($again, [])['created']); // re-execute is a no-op
-        self::assertSame(3, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
+        self::assertSame(5, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
 
-        self::assertSame(3, $s->rollback($result['snapshot'], [])['deleted']);
+        $rolled = $s->rollback($result['snapshot'], []);
+        self::assertSame([4, 1], [$rolled['deleted'], $rolled['revoided']]);
         self::assertSame(0, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
         self::assertSame($before, $this->untouched());
         self::assertSame('unpinned', $s->plan($this->params())['state']);
+    }
+
+    public function test_a_voided_row_is_unvoided_and_rollback_re_voids_exactly_it_and_deletes_only_the_created_rows(): void
+    {
+        $s = new TaughtLessonSignInRepairStrategy();
+        $original = (array) DB::table('StudentSingIn')->where('ClassSessionID', 47302)->first();
+        $result = $s->execute($s->plan($this->params(0, $s->plan($this->params())['digest'])), []);
+
+        $live = DB::table('StudentSingIn')->where('ClassSessionID', 47302)->get();
+        self::assertCount(1, $live); // un-voided, not a second row
+        self::assertSame([$original['id'], null, 'present', 289, 1, 'pop_taught_signin_20261105'],
+            [$live[0]->id, $live[0]->VoidedAt, $live[0]->Status, (int) $live[0]->TeacherID, (int) $live[0]->SessionDeducted, $live[0]->Memo]);
+        self::assertSame('late', DB::table('StudentSingIn')->where('ClassSessionID', 47308)->value('Status'));
+
+        $other = DB::table('StudentSingIn')->where('ClassSessionID', 47205)->value('id');
+        DB::table('StudentSingIn')->where('id', $other)->update(['Memo' => 'edited-by-someone']); // no longer ours: must be skipped
+        $rolled = $s->rollback($result['snapshot'], []);
+        self::assertSame([3, 1, [(int) $other]], [$rolled['deleted'], $rolled['revoided'], $rolled['skipped_ids']]);
+        self::assertSame($original, (array) DB::table('StudentSingIn')->where('id', $original['id'])->first());
+        self::assertTrue(DB::table('StudentSingIn')->where('id', $other)->exists());
     }
 
     public function test_verify_fails_closed_when_a_repaired_lessons_ledger_disappears(): void
@@ -178,13 +203,16 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         $before = $this->untouched();
 
         [$repairId, $execute, $verify] = $go('');
-        $this->assertSame(['succeeded', 'succeeded', 3], [$execute, $verify, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count()]);
+        $this->assertSame(['succeeded', 'succeeded', 5], [$execute, $verify, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count()]);
         [, $execute, $verify] = $go($repairId);
         $this->assertSame(['succeeded', 'succeeded', 0], [$execute, $verify, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count()]);
         $this->assertSame($before, $this->untouched());
         $this->assertTrue(DB::table('security_audit_events')->where('event_type', 'pop.taught_lesson_signin_repair.rollback')->exists());
         $plan = (new TaughtLessonSignInRepairStrategy())->plan($this->params(9, '', $repairId));
-        $this->assertSame(['skip', 'skip', 'skip'], array_column($plan['manifest'], 'class'), 'nothing left to delete');
+        $this->assertSame(array_fill(0, 5, 'skip'), array_column($plan['manifest'], 'class'), 'nothing left to delete or re-void');
+        $voided = DB::table('StudentSingIn')->where('ClassSessionID', 47302)->first(); // re-voided exactly as it was
+        $this->assertSame(['absent', 'old', '2026-10-18 10:00:00', 30, 'r', 0, 288, '2026-10-18 09:00:00'], [$voided->Status, $voided->Memo, (string) $voided->VoidedAt,
+            (int) $voided->VoidedByUserID, $voided->VoidReason, (int) $voided->SessionDeducted, (int) $voided->TeacherID, (string) $voided->MDT]);
         $this->assertSame('restore_source_not_found', (new TaughtLessonSignInRepairStrategy())->plan($this->params(2, '', $repairId))['errors'][0]);
     }
 
@@ -199,7 +227,8 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         } catch (\RuntimeException $e) {
             self::assertSame('taught_signin_digest_drift', $e->getMessage());
         }
-        self::assertSame(1, DB::table('StudentSingIn')->count()); // only the voided fixture row
+        self::assertSame(1, DB::table('StudentSingIn')->count()); // only the voided fixture row, still voided
+        self::assertNotNull(DB::table('StudentSingIn')->where('ClassSessionID', 47302)->value('VoidedAt'));
     }
 
     public function test_the_catalog_entry_runs_through_pop_and_requires_the_exact_founder_shape(): void
@@ -221,7 +250,7 @@ final class TaughtLessonSignInRepairStrategyTest extends TestCase
         [, $execute, $verify] = $run($digest);
 
         $this->assertSame(['succeeded', 'succeeded'], [$execute['result'], $verify['result']]);
-        $this->assertSame(3, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
+        $this->assertSame(5, DB::table('StudentSingIn')->where('Memo', 'pop_taught_signin_20261105')->count());
         $adapter = (string) file_get_contents(dirname(__DIR__, 4) . '/.github/workflows/pop-taught-lesson-signin-repair.yml');
         $this->assertStringContainsString('AUDIT="pop.taught_lesson_signin_repair${RESTORE:+.rollback}"', $adapter);
         $entry = $catalog->operation('taught-lesson-signin-repair-20261105');
