@@ -365,16 +365,7 @@
                       </div>
                     </td>
                     <td class="cell-actions">
-                      <div v-if="courseManagerEnabled" class="action-btns-row">
-                        <button
-                          type="button"
-                          class="small primary course-primary-action"
-                          data-testid="course-manager-open"
-                          @click="openCourseManager(c)"
-                        >管理課程</button>
-                      </div>
-                      <template v-else>
-
+                      <!-- Same primary + ⋯ with the course manager on (production): the payment entry stays on the row (in-app #396). -->
                       <template v-for="m in [simpleRowModel(c)]" :key="c.id">
                       <div class="action-btns-row action-btns-row--model" data-testid="course-row-actions">
                         <button
@@ -384,6 +375,13 @@
                           :data-action="m.primary.id"
                           @click="runRowAction(c, m.primary.id)"
                         >{{ m.primary.label }}</button>
+                        <button
+                          v-if="courseManagerEnabled"
+                          type="button"
+                          class="small course-manager-open"
+                          data-testid="course-manager-open"
+                          @click="openCourseManager(c)"
+                        >管理課程</button>
                         <ActionMenu
                           :groups="m.groups"
                           :label="`${getSubjectLabel(c.subject)} 的更多課程操作`"
@@ -391,7 +389,6 @@
                           @select="(id) => runRowAction(c, id)"
                         />
                       </div>
-                      </template>
                       </template>
                     </td>
                   </tr>
@@ -5597,7 +5594,8 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   openContractRevertModal, openPackageConversionPreview, openPaymentSlip, openTuitionLedger,
 });
 // Row model for the simplified 課程管理 row (#4659 step 5).
-const simpleRowModel = (c) => rowModelFor(c, { simple: true });
+// The course manager has no inline 詳情 row, so its rows offer no 詳情 item.
+const simpleRowModel = (c) => rowModelFor(c, { simple: true, details: !courseManagerEnabled });
 // Dashboard drill-down context; read on mount and on every return to the kept-alive page.
 function consumeTrustFocus() {
   try {
