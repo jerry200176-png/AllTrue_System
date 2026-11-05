@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-05-course-row-actions-manager-flag
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 課程列的登記收款回來了
+    summary: 課程管理每一列又有登記收款等按鈕，不用先打開管理課程。
+    items:
+      - category: fixed
+        text: 每列有一個主要按鈕（例如登記收款），旁邊是管理課程和 ⋯ 更多。
+    source_refs:
+      - "changelog:2026-11-05:course-row-actions-manager-flag"
