@@ -88,6 +88,7 @@
 
         <div class="pe-actions">
           <button type="button" class="ghost" :disabled="submitting" @click="requestClose">取消</button>
+          <button v-if="nextOffer && !legacyBackfill" type="button" class="ghost" :disabled="submitting" data-testid="pe-save-next" @click="submit(true)">儲存並看下一筆未繳</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
             {{ submitting ? '處理中…' : (form.free_gift ? `登錄${FREE_GIFT_LABEL}帳單` : '登記收款') }}
@@ -111,6 +112,8 @@ const props = defineProps({
   mode: { type: String, default: 'record' },
   // 'right' renders the same form in AtDialog's right-side sheet (the list stays visible); default is the centered modal.
   placement: { type: String, default: 'center' },
+  // Billing v3: offer 「儲存並看下一筆未繳」 beside 登記收款 (Teachworks Charge & View Next Unpaid). The owner decides what "next" is.
+  nextOffer: { type: Boolean, default: false },
 });
 const sheet = computed(() => props.placement === 'right');
 // The centered modal keeps its own overlay markup; the sheet reuses AtDialog (focus trap, Esc, scroll lock, teleport).
@@ -170,7 +173,8 @@ watch(() => props.show, (val) => {
 });
 
 
-async function submit() {
+async function submit(andNext = false) {
+  andNext = andNext === true; // the form's submit event also lands here
   submitError.value = '';
 
   const amount = Number(form.amount);
@@ -239,7 +243,7 @@ async function submit() {
     }
 
     const result = res.data;
-    emit('confirmed', result);
+    emit('confirmed', andNext ? { ...result, save_and_next: true } : result);
   } catch (e) {
     submitError.value = e.message || '登錄失敗';
   } finally {

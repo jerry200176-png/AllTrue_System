@@ -28,6 +28,7 @@ describe('帳單 rows open the clicked contract', () => {
     expect(ledger.props('show')).toBe(true);
     expect(ledger.props('studentClassId')).toBe(11);
     expect(ledger.props('initialAction')).toBe('record');
+    expect(ledger.props('sheetEntry')).toBe(true); // the right-side sheet, for that contract only
     w.unmount();
   });
 
@@ -79,6 +80,36 @@ describe('帳單 rows open the clicked contract', () => {
     expect(alertCalls()).toBe(before + 1);
     const t = toastState.toasts.at(-1);
     expect([t.title, t.action.label]).toEqual(['已確認入帳', '看收據']);
+    w.unmount();
+  });
+
+  it('save-and-next walks the owing rows in list order and filter, and the last one closes the sheet with a toast', async () => {
+    const rows = [
+      row({ id: 10, subject: '數學', payable_outstanding: 1000 }),
+      row({ id: 11, subject: '英文', payable_outstanding: 2000 }),
+      row({ id: 12, student_id: 2, student_name: '另一位', subject: '國文', payable_outstanding: 9000 }),
+    ];
+    const w = await pageWith(rows);
+    const ledger = () => w.findComponent({ name: 'AccountingLedgerModal' });
+    await w.get('[data-testid="bill-search"]').setValue('測試'); // filter: only the first student's rows
+    await w.get('[data-testid="bill-action-c11"]').trigger('click'); // list order: 11 (2000) before 10 (1000)
+    expect(ledger().props('studentClassId')).toBe(11);
+    ledger().vm.$emit('save-next');
+    await flushPromises();
+    expect(ledger().props('studentClassId')).toBe(10); // 12 is filtered out, so it is never visited
+    ledger().vm.$emit('save-next');
+    await flushPromises();
+    expect(ledger().props('show')).toBe(false);
+    expect(toastState.toasts.at(-1).title).toBe('已經是最後一筆未繳了');
+    w.unmount();
+  });
+
+  it('核對 on a 需核對 row opens the student drawer on that contract, not the quick view', async () => {
+    const w = await pageWith([row({ id: 13, subject: '自然', payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 500 })]);
+    await w.get('[data-testid="bill-action-c13"]').trigger('click');
+    expect(w.findComponent({ name: 'BillQuickView' }).props('open')).toBe(false);
+    expect(w.findComponent({ name: 'AccountingLedgerModal' }).props('studentClassId')).toBe(13);
+    expect(w.findComponent({ name: 'AccountingLedgerModal' }).props('sheetEntry')).toBe(false);
     w.unmount();
   });
 });

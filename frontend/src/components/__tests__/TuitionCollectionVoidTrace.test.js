@@ -73,7 +73,7 @@ describe('In-app350 existing void/history trace read path', () => {
       expect(url.searchParams.get('status')).toBe('all');
       expect(url.searchParams.get('branch_id')).toBe('1');
       expect(write.mock.calls.at(-1)[0]).toContain('已作廢 / 歷史課程');
-      expect(wrapper.find('.tc-card--total .tc-card-num').text()).toBe('1');
+      expect(wrapper.find('[data-testid="acct-count-line"]').text()).toContain('已確認 1 筆收款');
       expect(wrapper.find('.tc-card--outstanding .tc-card-num').text()).toBe('NT$ 800');
     } finally { window.open.mockRestore(); }
   }));

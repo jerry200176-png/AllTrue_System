@@ -344,7 +344,7 @@
       <AtDialog :open="sheetWaiting" placement="right" title="載入中…" title-id="ledger-sheet-loading-title" @close="$emit('close')">
         <p class="ledger-state" data-testid="ledger-sheet-loading">正在讀取帳務…</p>
       </AtDialog>
-      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" :next-offer="sheetOnly && nextOffer" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -402,11 +402,13 @@ const props = defineProps({
   // Course row 登記收款/補登收款: show only the right-side entry sheet (no ledger behind it). The ledger still loads and runs
   // every guard; if the form does not open (blocked or load error) the ledger shows with the reason.
   sheetEntry: Boolean,
+  // Billing v3: the sheet also offers 儲存並看下一筆未繳; the page then opens the next row ('save-next').
+  nextOffer: Boolean,
   // F-5a1: { [studentClassId]: { waive, void, settle } } from the page's alert rows (the old table's rules).
   rowActions: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(['close', 'changed', 'step', 'row-action']);
+const emit = defineEmits(['close', 'changed', 'step', 'row-action', 'save-next']);
 defineExpose({ reload: () => loadLedger(), focus: () => modalEl.value?.focus() });
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
@@ -1068,6 +1070,8 @@ async function onEntryRecorded(result) {
   const offer = entryMode.value === 'record' && result?.status === 'pending' && reportId > 0 && canManageInvoices();
   const scope = drawerScope();
   await onPanelChanged();
+  // 儲存並看下一筆未繳: the report stays pending (D9, confirm later from the list); hand over to the next row.
+  if (result?.save_and_next && sheetOnly.value && scope === drawerScope()) { emit('save-next'); return; }
   // The director may have stepped to another student while the ledger reloaded: offer only for a drawer that still shows this report.
   const stillHere = scope === drawerScope()
     && (payload.value?.receipts || []).some((r) => Number(r.report_id) === reportId && r.status === 'pending');

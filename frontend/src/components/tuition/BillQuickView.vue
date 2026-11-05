@@ -10,8 +10,8 @@
         <AtBadge :tone="bill.kind === 'confirm' ? 'warning' : bill.kind === 'owing' ? 'danger' : 'neutral'" :label="bill.label" />
         <ActionMenu :groups="menuGroups" label="更多操作" trigger-class="qv__menu" @select="(id) => $emit('menu', id)" />
       </div>
-      <p v-if="!amounts" class="qv__muted" data-testid="qv-unbilled">尚未開帳單</p>
-      <dl v-else class="qv__money" data-testid="qv-money">
+      <p v-if="!amounts && bill.kind !== 'waived'" class="qv__muted" data-testid="qv-unbilled">還沒開帳單</p>
+      <dl v-else-if="amounts" class="qv__money" data-testid="qv-money">
         <div><dt>應收</dt><dd>{{ money(amounts.due) }}</dd></div>
         <div><dt>已收</dt><dd>{{ money(amounts.received) }}</dd></div>
         <div><dt>未收</dt><dd :class="{ due: amounts.owed > 0 }">{{ money(amounts.owed) }}</dd></div>
@@ -26,9 +26,9 @@
         </div>
       </section>
       <p v-else-if="rejectWanted" class="qv__muted" data-testid="qv-no-report">這筆已經沒有待確認的回報了。</p>
-      <AtButton v-if="!report && bill.kind !== 'paid'" variant="secondary" size="sm" shape="rect" data-testid="qv-record" @click="$emit('record')">登記收款</AtButton>
+      <AtButton v-if="!report && !NO_RECORD.includes(bill.kind)" variant="secondary" size="sm" shape="rect" data-testid="qv-record" @click="$emit('record')">登記收款</AtButton>
       <details class="qv__lessons" data-testid="qv-lessons" @toggle="onToggle">
-        <summary>上課日</summary>
+        <summary>上課日<span aria-hidden="true" class="qv__marker">{{ lessonsOpen ? ' ▾' : ' ▸' }}</span></summary>
         <p v-if="lessonsState === 'loading'" class="qv__muted">載入中…</p>
         <p v-else-if="lessonsState === 'error'" class="qv__muted">上課日載入失敗。</p>
         <ol v-else>
@@ -40,7 +40,7 @@
       <p>確認收到 {{ money(report?.amount) }}？確認後算「已收」。金額不對請取消，改按「退回」。</p>
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="qv-confirm-cancel" @click="confirmOpen = false">取消</AtButton>
-        <AtButton size="sm" shape="rect" data-testid="qv-confirm-submit" @click="decide('confirm')">確認入帳</AtButton>
+        <AtButton size="sm" shape="rect" data-testid="qv-confirm-submit" :loading="busy" @click="decide('confirm')">確認入帳</AtButton>
       </template>
     </AtDialog>
     <AtDialog :open="rejectOpen" title="退回這筆繳費回報" size="sm" title-id="qv-reject-title" @close="rejectOpen = false">
@@ -48,7 +48,7 @@
       <AtTextarea id="qv-reject-reason" v-model="rejectReason" :rows="3" data-testid="qv-reject-reason" />
       <template #actions>
         <AtButton variant="secondary" size="sm" shape="rect" data-testid="qv-reject-cancel" @click="rejectOpen = false">取消</AtButton>
-        <AtButton size="sm" shape="rect" :disabled="!rejectReason.trim()" data-testid="qv-reject-submit" @click="decide('reject', rejectReason.trim())">退回這筆</AtButton>
+        <AtButton size="sm" shape="rect" :disabled="!rejectReason.trim()" data-testid="qv-reject-submit" :loading="busy" @click="decide('reject', rejectReason.trim())">退回這筆</AtButton>
       </template>
     </AtDialog>
   </AtDialog>
@@ -89,6 +89,7 @@ const rejectOpen = ref(false);
 const rejectReason = ref('');
 const lessons = ref([]);
 const lessonsState = ref('idle');
+const lessonsOpen = ref(false);
 let seq = 0;
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
@@ -118,7 +119,7 @@ async function load() {
   loading.value = true;
   error.value = '';
   payload.value = null;
-  lessons.value = []; lessonsState.value = 'idle';
+  lessons.value = []; lessonsState.value = 'idle'; lessonsOpen.value = false;
   try {
     const params = new URLSearchParams({ student_class_id: String(classId.value) });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
@@ -138,7 +139,9 @@ watch(() => [props.open, props.bill?.key], load, { immediate: true });
 
 function openReject() { rejectReason.value = ''; rejectOpen.value = true; }
 
+const NO_RECORD = ['paid', 'waived', 'issue']; // nothing to register on a collected, waived or not-yet-billed row
 async function onToggle(e) {
+  lessonsOpen.value = e.target.open;
   if (!e.target.open || lessonsState.value !== 'idle') return;
   const mine = seq;
   const id = classId.value;
