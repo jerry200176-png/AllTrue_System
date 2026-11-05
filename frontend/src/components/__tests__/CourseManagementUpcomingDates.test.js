@@ -41,7 +41,10 @@ describe('CourseManagement upcoming lesson preview (#321)', () => {
     expect(cells).toEqual(heads);
     const subjectCell = row.slice(row.indexOf('data-col="subject"'), row.indexOf('data-col="next"'));
     for (const w of ['rowWarningSummary(group, c)', 'role="alert"', '查看待核對回報']) expect(subjectCell).toContain(w);
-    for (const hidden of row.split('<td').filter((t) => t.includes('col-sm-hide'))) {
+    const hiddenCells = row.split('<td').filter((t) => t.includes('col-sm-hide'));
+    expect(hiddenCells).toHaveLength(2); // only 下一堂 and 剩幾堂 hide on a phone; 繳費 stays (in-app #396)
+    expect(row.slice(row.indexOf('data-col="payment"'))).toContain('payment-status-badge');
+    for (const hidden of hiddenCells) {
       expect(hidden).not.toContain('role="alert"');
       expect(hidden).not.toContain('rowWarningSummary');
     }

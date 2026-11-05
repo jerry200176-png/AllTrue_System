@@ -270,7 +270,7 @@
                   <th data-col="subject">科目・老師</th>
                   <th class="col-sm-hide" data-col="next">下一堂</th>
                   <th class="col-sm-hide" data-col="remaining">剩幾堂</th>
-                  <th class="col-sm-hide" data-col="payment">繳費</th>
+                  <th data-col="payment">繳費</th>
                   <th class="col-actions" data-col="actions">操作</th>
                 </tr>
               </thead>
@@ -352,10 +352,10 @@
                         </template>
                       </div>
                     </td>
-                    <td data-col="remaining" :class="{ 'col-sm-hide': true, 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
+                    <td data-col="remaining" class="col-sm-hide" :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
                       {{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}<span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint">（方案共用）</span>
                     </td>
-                    <td class="col-sm-hide" data-col="payment">
+                    <td data-col="payment">
                       <div class="payment-status-and-action" :data-course-id="c.id">
                         <span
                           :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
@@ -380,7 +380,6 @@
                         <button
                           type="button"
                           class="small primary course-primary-action"
-                          :class="{ 'payment-next-action': m.primary.id === 'payment' }"
                           data-testid="course-row-primary"
                           :data-action="m.primary.id"
                           @click="runRowAction(c, m.primary.id)"
@@ -6642,10 +6641,6 @@ onUnmounted(() => {
   font-weight: 800;
 }
 
-.price-sep {
-  margin: 0 6px;
-  color: var(--ds-ink-faint);
-}
 
 .settled-course-callout {
   display: flex;
@@ -6811,15 +6806,7 @@ onUnmounted(() => {
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
 }
-.upcoming-session-preview__label {
-  flex-basis: 100%;
-  color: var(--ds-ink-mute);
-  font-weight: 700;
-}
 .upcoming-session-preview__item,
-.upcoming-session-preview__overflow {
-  color: var(--ds-ink);
-}
 .upcoming-session-preview__item + .upcoming-session-preview__item::before {
   content: '／';
   color: var(--ds-hairline);
@@ -6827,10 +6814,6 @@ onUnmounted(() => {
 }
 .upcoming-session-preview__projected {
   color: var(--ds-ink-mute);
-}
-.upcoming-session-preview__overflow {
-  color: var(--ds-primary-text);
-  font-weight: 700;
 }
 .upcoming-session-preview__retry {
   padding: 1px 5px;
@@ -7054,18 +7037,6 @@ button.danger:disabled {
   justify-items: start;
   gap: 6px;
   min-width: max-content;
-}
-.payment-next-action {
-  margin: 0 !important;
-  border-color: var(--ds-primary) !important;
-  background: var(--ds-canvas-soft) !important;
-  color: var(--ds-primary-text) !important;
-  font-weight: 800 !important;
-  white-space: nowrap;
-}
-.payment-next-action:hover,
-.payment-next-action:focus-visible {
-  background: var(--ds-info-wash) !important;
 }
 .payment-anomaly-hint {
   display: inline-block;
