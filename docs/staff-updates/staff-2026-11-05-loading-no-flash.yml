@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-05-loading-no-flash
+    published_at: "2026-11-05"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 載入畫面不再閃
+    summary: 很快載入完就不顯示；較慢時才出現穩定的載入提示。
+    items:
+      - category: improved
+        text: 重新整理時畫面會先保留原內容並稍微變淡，不再整頁跳成載入中。
+    source_refs:
+      - "changelog:2026-11-05:loading-no-flash"

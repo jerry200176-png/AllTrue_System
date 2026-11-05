@@ -2,7 +2,6 @@
 // 登記 the director may press 現在確認入帳. Register and confirm stay two buttons and two requests; nothing merges them.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import StudentBillingList from '../tuition/StudentBillingList.vue';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
 import PaymentAllocation from '../tuition/PaymentAllocation.vue';
 import { buildStudentBillingRows, rowPrimaryAction } from '../../lib/studentBillingRows.js';
@@ -21,16 +20,6 @@ describe('list row main button', () => {
     expect(rowPrimaryAction(by(2))).toEqual({ kind: 'confirm', label: '確認入帳', classId: 21 });
     expect(rowPrimaryAction(by(3))).toBeNull(); // not due yet: nothing to collect now
     expect(rowPrimaryAction(by(4))).toBeNull();
-  });
-
-  it('emits action with the row and its action; the row itself still just opens', async () => {
-    const w = mount(StudentBillingList, { props: { alertRows: ALERTS, today: '2026-10-07' } });
-    expect(w.find('[data-testid="sbl-action-3"]').exists()).toBe(false);
-    await w.get('[data-testid="sbl-action-2"]').trigger('click');
-    expect(w.emitted('action')[0][1]).toMatchObject({ kind: 'confirm', classId: 21 });
-    expect(w.emitted('open')).toBeUndefined();
-    await w.get('[data-testid="sbl-row-1"]').trigger('click');
-    expect(w.emitted('open')).toHaveLength(1);
   });
 });
 

@@ -2,7 +2,8 @@
 // The API answers 422; every slip entry shows that reason instead of a slip.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import TuitionDocActions from '../TuitionDocActions.vue';
+import { slipAvailability } from '../../lib/billingDocState.js';
+import { billMenuGroups } from '../../lib/billRows.js';
 import PaymentSlipModal from '../PaymentSlipModal.vue';
 
 vi.mock('modern-screenshot', () => ({ domToBlob: vi.fn() }));
@@ -15,10 +16,11 @@ describe('payment slip on 金額待確認 contracts', () => {
     global.fetch = vi.fn();
   });
 
-  it('the queue slip button is disabled with the 金額待確認 reason', () => {
-    const w = mount(TuitionDocActions, { props: { row: { id: 1, payable_status: 'invoiced', payment_status: 'pending_reconciliation', amount_pending_confirmation: true }, canView: true } });
-    expect(w.get('[data-testid="tc-doc-slip"]').element.disabled).toBe(true);
-    expect(w.get('[data-testid="tc-doc-slip-reason"]').text()).toBe(MSG);
+  it('the list slip rule and the bill ⋯ 傳繳費單 item refuse with the 金額待確認 reason', () => {
+    const src = { id: 1, payable_status: 'invoiced', payment_status: 'pending_reconciliation', amount_pending_confirmation: true };
+    expect(slipAvailability(src, true)).toEqual({ ok: false, reason: MSG });
+    const slip = billMenuGroups({ class_id: 1, src, kind: 'owing' }, { canDocs: true })[0].items.find((i) => i.id === 'slip');
+    expect(slip).toMatchObject({ disabled: true, reason: MSG });
   });
 
   it('course slip (course page, dashboard) shows the API 422 reason and renders no slip', async () => {

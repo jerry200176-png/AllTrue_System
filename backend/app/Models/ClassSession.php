@@ -207,11 +207,15 @@ class ClassSession extends Model
         return $this->belongsTo(\App\Models\Subject::class, 'SubjectID', 'id');
     }
 
-    /** 待補點名 (#4770): an ended lesson with no live sign-in, still scheduled or absent. The attendance list and the nav badge share it. */
+    /**
+     * 待補點名 (#4770): an ended lesson with no live sign-in. The attendance list and the nav badge share it.
+     * In-app #504: a lesson already marked taught (completed / attended) but never signed in is listed too, the same set the
+     * part-time payroll warning (FinanceController::parttimeUnmarkedLessons) calls 沒點名; 補登 there writes the sign-in.
+     */
     public function scopeEndedUnmarked($query, string $now)
     {
         return $query->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
-            ->whereIn('Status', ['scheduled', 'absent'])
+            ->whereIn('Status', ['scheduled', 'absent', 'completed', 'attended'])
             ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now]);
     }
 
