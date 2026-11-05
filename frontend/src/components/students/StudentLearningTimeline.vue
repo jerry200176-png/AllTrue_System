@@ -72,7 +72,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
     <div v-else-if="error" class="error-text">{{ error }}</div>
     <div v-else-if="!visible.length" class="empty-text" data-testid="timeline-empty">尚無學習紀錄</div>
     <ul v-else class="timeline-list" style="list-style: none; padding: 0; max-height: 60vh; overflow: auto;">
-      <li v-for="i in visible" :key="`${i.type}-${i.id}`" data-testid="timeline-row" style="padding: 8px 0; border-bottom: 1px solid var(--border, #eee);">
+      <li v-for="i in visible" :key="`${i.type}-${i.id}`" data-testid="timeline-row" style="padding: 8px 0; border-bottom: 1px solid var(--ds-border);">
         <div><strong>{{ i.date }}</strong></div>
         <div style="display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0;">
           <AtBadge v-for="(b, n) in badges(i)" :key="n" :tone="b.tone" :label="b.label" />
