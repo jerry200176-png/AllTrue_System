@@ -1,4 +1,4 @@
-// 繳費單／收據 availability: the one rule shared by the 帳務中心 list (the 帳務中心 bill list, #3894) and the student
+// 繳費單／收據 availability: the one rule shared by the 帳務中心 list (TuitionDocActions, #3894) and the student
 // ledger contract card (in-app #425). Input is a tuition-list row shape; each surface maps its own data into it.
 // Returns { ok: true } or { ok: false, reason } (one line, shown or used to decide visibility by the caller).
 import { isLegacyPaidNoInvoice, PAID_STATUSES as RECEIPT_STATUSES } from './legacyPaid.js';

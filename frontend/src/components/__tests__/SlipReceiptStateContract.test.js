@@ -1,11 +1,11 @@
 // #3894 — cross-stack contract: backend/tests/Fixtures/slip_receipt_states_3894.json = the API fields the buttons read (PHPUnit
-// SlipReceiptStateContractTest proves the REAL backend returns them) + the outcome of the REAL billingDocState rule. Regenerate: UPDATE_SLIP_FIXTURE=1.
+// SlipReceiptStateContractTest proves the REAL backend returns them) + the outcome of the REAL component. Regenerate: UPDATE_SLIP_FIXTURE=1.
 import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { slipAvailability, receiptAvailability } from '../../lib/billingDocState.js';
-import { isLegacyPaidNoInvoice } from '../../lib/legacyPaid.js';
+import TuitionDocActions from '../TuitionDocActions.vue';
 import { isDirectorRole } from '../../lib/roleCapabilities.js';
 
 const FILE = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../backend/tests/Fixtures/slip_receipt_states_3894.json');
@@ -13,13 +13,12 @@ const fixture = JSON.parse(readFileSync(FILE, 'utf8'));
 
 function outcome(state) {
   const row = { id: 1, ...state.row };
-  const canView = isDirectorRole(state.role);
-  const slip = slipAvailability(row, canView);
-  const receipt = receiptAvailability(row, canView);
+  const w = mount(TuitionDocActions, { props: { row, canView: isDirectorRole(state.role) } });
+  const reason = (k) => (w.find(`[data-testid="tc-doc-${k}-reason"]`).exists() ? w.get(`[data-testid="tc-doc-${k}-reason"]`).text() : null);
   return {
-    slip: { enabled: slip.ok, reason: slip.ok ? null : slip.reason },
-    receipt: { enabled: receipt.ok, reason: receipt.ok ? null : receipt.reason },
-    ledger_link: isLegacyPaidNoInvoice(row) && canView && row.id != null, // the "看繳費明細" link the retired button pair showed
+    slip: { enabled: !w.get('[data-testid="tc-doc-slip"]').element.disabled, reason: reason('slip') },
+    receipt: { enabled: !w.get('[data-testid="tc-doc-receipt"]').element.disabled, reason: reason('receipt') },
+    ledger_link: w.find('[data-testid="tc-doc-ledger"]').exists(),
   };
 }
 

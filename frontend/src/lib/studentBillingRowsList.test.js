@@ -1,5 +1,6 @@
 // Billing redesign PRD v2 D1/D3/D8/D12: one row per student, owed-by-today first.
-import { buildStudentBillingRows, rowOwedTotal, rowPrimaryAction, STUDENT_FILTERS } from '../../lib/studentBillingRows.js';
+import { describe, it, expect } from 'vitest';
+import { buildStudentBillingRows, rowOwedTotal, rowPrimaryAction, STUDENT_FILTERS } from './studentBillingRows.js';
 
 const ROWS = [
   { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
@@ -61,6 +62,7 @@ describe('unbilled contracts and 金額待確認 rows', () => {
     ], [{ id: 7, name: '庚' }], '2026-10-07');
     expect(rows.filter(STUDENT_FILTERS.clear.test).map((r) => r.student_id)).toEqual([7]);
   });
+});
 
 describe('金額待確認 rows (Founder D2)', () => {
   const REVIEW_ROWS = [

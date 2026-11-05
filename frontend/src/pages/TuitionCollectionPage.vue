@@ -46,6 +46,19 @@
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
 
+    <!-- in-app #480: 已結清 is a tuition list; on 收款紀錄 / 代收代付 it read like a status of that page. -->
+    <nav v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+      <button v-if="!['students', 'monthly', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回帳單清單</button>
+      <button
+        v-for="v in REMINDER_VIEWS"
+        :key="v.key"
+        type="button"
+        :class="['tc-reminder', { 'is-on': activeAccountingTab === v.key }]"
+        :data-testid="`tc-reminder-${v.key}`"
+        @click="activeAccountingTab = v.key"
+      >{{ v.label }}</button>
+    </nav>
+
     <!-- Billing v3: 帳單 = one row per contract that needs something (PRD §0 v3). -->
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
       <BillList
@@ -67,6 +80,10 @@
         @retry="loadAlerts"
       />
     </section>
+    <!-- 已結清課程 keeps its own list (the bill list has no stopped, fully paid contracts); entry is this quiet link. -->
+    <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below" aria-label="其他清單" data-testid="tc-reminders">
+      <button v-for="v in REMINDER_VIEWS" :key="v.key" type="button" class="tc-reminder" :data-testid="`tc-reminder-${v.key}`" @click="activeAccountingTab = v.key">{{ v.label }}</button>
+    </nav>
 
     <!-- 月結 (Square "Recurring series"): the bills still to issue this month, and the monthly bills to check. -->
     <section v-if="activeAccountingTab === 'monthly'" id="tuition-accounting-panel-monthly" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly" tabindex="0">
@@ -302,34 +319,94 @@
       <FeeLedgerPanel ref="feeLedger" :branch-id="branchId" :students="campusStudents" />
     </section>
 
-    <!-- 已結清 is the 已收 filter of the bill list now. What only the old settled table offered, 已核對 / 到課程處理, stays here for 待核對 courses. -->
-    <section v-if="activeAccountingTab === 'students' && reviewRows.length" class="tc-review-strip" data-testid="tc-review-strip" aria-label="待核對課程">
-      <h3 class="tc-review-strip__title">待核對課程 {{ reviewRows.length }}<span v-if="reviewCounts.legacy || reviewCounts.exception" class="tc-review-strip__counts" data-testid="tc-review-counts">　舊制無帳單 {{ reviewCounts.legacy }}・例外待處理 {{ reviewCounts.exception }}</span></h3>
-      <details class="tc-review-strip__help" data-testid="tc-review-help">
-        <summary>？ 標籤說明</summary>
-        <p role="note" aria-label="帳務標籤說明" class="tc-summary-note">
-          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
-          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
-        </p>
-      </details>
-      <div v-for="row in reviewRows" :key="row.student_class_id" class="tc-review-strip__row">
-        <div class="tc-review-strip__who">
-          <strong>{{ row.student_name }}</strong> {{ row.subject }}
-          <span class="text-light">已收 {{ formatCurrency(row.paid_amount || 0) }}<template v-if="Number(row.overpaid_amount) > 0">・多收 {{ formatCurrency(row.overpaid_amount) }}</template></span>
-          <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
-          <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-          <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}</span>
-          <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending" :title="REVIEW_REQUIRED_LABEL">{{ REVIEW_REQUIRED_SHORT_LABEL }}</span>
-          <template v-if="row.payment_review_required">
-            <div v-for="r in reviewReasonFixes(row.review_reasons)" :key="r.code" class="text-light" :data-testid="`tc-review-fix-${row.student_class_id}-${r.code}`">需核對：{{ r.label }}。怎麼處理：{{ r.text }}</div>
-          </template>
+    <section
+      v-if="activeAccountingTab === 'settled'"
+      id="tuition-accounting-panel-settled"
+      class="acct-section"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-settled"
+      tabindex="0"
+    >
+      <div class="acct-filter-bar">
+        <div class="acct-filters">
+          <label>學生<input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" /></label>
+          <label>科目<input v-model="accountingFilters.subject" type="text" placeholder="全部科目" /></label>
         </div>
-        <div class="tc-actions">
-          <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
-          <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
-          <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
+        <div class="acct-filter-actions">
+          <button class="tc-btn tc-btn--ghost" @click="loadSettledCourses()" :disabled="settledLoading">
+            <span class="material-symbols-outlined" :class="{ spin: settledLoading }" style="font-size:16px">refresh</span>
+            查詢
+          </button>
         </div>
       </div>
+
+      <AtInlineAlert v-if="settledError" tone="danger" title="已結清課程載入失敗">
+        {{ settledError }}
+        <template #action>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="settledLoading" @click="loadSettledCourses">重新載入</AtButton>
+        </template>
+      </AtInlineAlert>
+
+      <template v-else>
+        <div class="tc-summary">
+          <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結案課程</span></div>
+          <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已收</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.pending_reconciliation_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.pending_reconciliation_count || 0 }}</span><span class="tc-card-label">{{ STATUS_CONFIG.pending_reconciliation.label }}</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.legacy_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.legacy_count || 0 }}</span><span class="tc-card-label">舊制無帳單</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
+          <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收</span></div>
+        </div>
+        <p class="tc-summary-note">「已結案課程」包含已收與課已結束、尚未收款的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
+          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
+          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+          確定是舊標記：在繳費明細的課程卡，已收過就按「已收過，補登收款」，其實沒收就按「其實沒收，改成未繳」（月結、共用方案也一樣）。
+        </p>
+
+        <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
+          <AtSkeleton :rows="4" height="28px" />
+        </div>
+        <div v-else-if="!settledRows.length" class="tc-empty">
+          <AtEmpty icon="task_alt" title="目前查無已結清課程" description="符合目前篩選條件的課程會顯示在這裡。" />
+        </div>
+        <div v-else class="tc-table-wrap">
+          <table class="tc-table acct-table acct-table--settled">
+            <thead>
+              <tr>
+                <th>課程</th><th>學生</th><th>科目</th><th>模式</th><th class="tc-col-currency">已收</th><th>最近付款</th><th>標籤</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in settledRows" :key="row.student_class_id">
+                <td>{{ row.course_ref }}</td>
+                <td class="tc-cell-name">{{ row.student_name }}</td>
+                <td>{{ row.subject }}</td>
+                <td>{{ row.schedule_mode === 'date' ? '月結' : '堂數' }}</td>
+                <td class="tc-col-currency">{{ formatCurrency(row.paid_amount || 0) }}</td>
+                <td>{{ row.last_paid_at || '—' }}</td>
+                <td>
+                  <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
+                  <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">{{ row.closed_reason ? ENDED_PENDING_LABEL : PAUSED_PENDING_LABEL }}</span>
+                  <span v-if="row.payment_review_required" class="acct-chip acct-chip--pending" :title="REVIEW_REQUIRED_LABEL">{{ REVIEW_REQUIRED_SHORT_LABEL }}</span>
+                  <template v-if="row.payment_review_required">
+                    <div v-for="r in reviewReasonFixes(row.review_reasons)" :key="r.code" class="text-light" :data-testid="`tc-review-fix-${row.student_class_id}-${r.code}`">需核對：{{ r.label }}。怎麼處理：{{ r.text }}</div>
+                  </template>
+                  <span v-if="row.closed_reason === 'waived'" class="acct-chip">{{ WAIVED_LABEL }}</span>
+                  <span v-else-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation && !row.payment_review_required" class="text-light">正常</span>
+                </td>
+                <td>
+                  <div class="tc-actions">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
+                    <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
+                    <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </section>
 
     <!-- Modals -->
@@ -664,13 +741,16 @@ const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-contex
 const loading = ref(false);
 const error = ref('');
 
-// PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清 is the 已收 filter of 帳單.
+// PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 keeps its own list, entered from the link under 帳單.
 const ACCOUNTING_TABS = [
   { key: 'students', label: '帳單', icon: 'receipt' },
   { key: 'monthly', label: '月結', icon: 'event_repeat' },
   { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
   // In-app #439: pass-through fees have their own ledger, so they get their own tab, not a tuition list filter.
   { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
+];
+const REMINDER_VIEWS = [
+  { key: 'settled', label: '已結清課程' },
 ];
 const activeAccountingTab = ref('students');
 const campusStudents = ref([]);
@@ -714,8 +794,10 @@ const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
 const accountingRows = ref([]);
-const reviewRows = ref([]);
-const reviewCounts = computed(() => ({ legacy: reviewRows.value.filter((r) => r.legacy_paid_without_invoice).length, exception: reviewRows.value.filter((r) => r.has_exception).length })); // 待核對 courses, from /accounting/settled-courses
+const settledLoading = ref(false);
+const settledError = ref('');
+const settledRows = ref([]);
+const settledSummary = ref({ course_count: 0, legacy_count: 0, exception_count: 0, paid_total: 0, overpaid_total: 0 });
 const accountingSummary = ref({
   total_count: 0,
   cash_total: 0,
@@ -793,7 +875,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly' ? Boolean(monthlyDrafts.value?.loading || monthlyReview.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly' ? Boolean(monthlyDrafts.value?.loading || monthlyReview.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1137,7 +1219,8 @@ function refreshActiveTab() {
     feeLedger.value?.reload();
   } else if (activeAccountingTab.value === 'students') {
     loadAlerts();
-    loadReviewCourses();
+  } else if (activeAccountingTab.value === 'settled') {
+    loadSettledCourses();
   } else {
     loadAccountingPayments();
   }
@@ -1318,23 +1401,35 @@ async function loadAccountingPayments() {
   }
 }
 
-async function loadReviewCourses() {
+async function loadSettledCourses() {
+  settledLoading.value = true;
+  settledError.value = '';
   try {
     const token = getToken();
-    if (!token) return;
+    if (!token) { settledError.value = '請先登入'; return; }
     const params = new URLSearchParams();
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
-    const resp = await authedFetch(`/api/v1/accounting/settled-courses?${params}`, { headers: { Accept: 'application/json' } }, token);
-    if (!resp.ok) return; // the strip is an extra; the bill list stays usable
+    if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
+    if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
+    const resp = await authedFetch(`/api/v1/accounting/settled-courses?${params}`, {
+      headers: { Accept: 'application/json' },
+    }, token);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `載入失敗（${resp.status}）`);
+    }
     const json = await resp.json();
-    reviewRows.value = (Array.isArray(json.data) ? json.data : []).filter((r) => r.payment_review_required || r.pending_reconciliation || r.legacy_paid_without_invoice || r.has_exception || Number(r.overpaid_amount) > 0);
-  } catch {
-    reviewRows.value = [];
+    settledRows.value = Array.isArray(json.data) ? json.data : [];
+    settledSummary.value = json.summary || settledSummary.value;
+  } catch (e) {
+    settledError.value = e.message || '載入失敗';
+  } finally {
+    settledLoading.value = false;
   }
 }
 
 async function onLedgerChanged() {
-  await Promise.all([loadAlerts(), loadAccountingPayments(), loadReviewCourses()]);
+  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
 }
 
 async function fetchAccountingExportRows() {
@@ -1524,7 +1619,7 @@ async function checkReviewed(row) {
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(json.message || `操作失敗（${resp.status}）`);
     showToast(json.message || '已標記為已核對。', 'success');
-    await Promise.all([loadAlerts(), loadReviewCourses()]);
+    await Promise.all([loadAlerts(), loadSettledCourses()]);
   } catch (e) {
     showToast(e.message || '操作失敗', 'error');
   }
@@ -1546,7 +1641,7 @@ async function confirmWaive() {
     }
     waiveDialogOpen.value = false;
     showToast(`已改成「${WAIVED_LABEL}」，移至歷史`, 'warning');
-    await Promise.all([loadAlerts(), loadReviewCourses()]);
+    await Promise.all([loadAlerts(), loadSettledCourses()]);
   } catch (e) {
     showToast(e.message || `改成「${WAIVED_LABEL}」失敗`, 'error');
   } finally {
@@ -1602,7 +1697,7 @@ async function confirmVoid() {
     if (!res.ok) throw new Error(res.message);
     voidDialogOpen.value = false;
     showToast('已撤銷收款，狀態已重置', 'warning');
-    await Promise.all([loadAlerts(), loadAccountingPayments(), loadReviewCourses()]);
+    await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
   } catch (e) {
     showToast(e.message || '撤銷失敗', 'error');
   } finally {
@@ -1755,9 +1850,7 @@ watch(() => props.initialTab, (tab) => {
   } else if (tab === 'receipts' || tab === 'payments') {
     activeAccountingTab.value = 'payments';
   } else if (tab === 'settled') {
-    // Old 已結清 deep links land on the bill list's 已收 filter.
-    activeAccountingTab.value = 'students';
-    listFilter.value = { key: 'paid' };
+    activeAccountingTab.value = 'settled';
   } else if (tab === 'ledger') {
     activeAccountingTab.value = 'students';
     listFilter.value = { key: 'todo' };
@@ -1782,7 +1875,8 @@ watch(activeAccountingTab, (tab) => {
   if (tab === 'monthly' || tab === 'fees') return;
   if (tab === 'students') {
     if (!rows.value.length) loadAlerts();
-    loadReviewCourses();
+  } else if (tab === 'settled') {
+    loadSettledCourses();
   } else {
     loadAccountingPayments();
   }
@@ -1796,11 +1890,14 @@ onActivated(() => {
 });
 
 loadAlerts();
-loadReviewCourses();
 loadCampusStudents();
 </script>
 
 <style scoped>
+.tc-reminders{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.tc-reminder{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;min-height:32px}
+.tc-reminder.is-on{font-weight:700;border-color:var(--ds-ink-mute)}
+.tc-reminder--back{font-weight:700}
 .tc-focus-context {
   display: flex;
   align-items: center;
@@ -1927,11 +2024,6 @@ loadCampusStudents();
 .acct-more-filters > summary { cursor: pointer; font-size: var(--ds-font-size-md); min-height: 32px; display: inline-flex; align-items: center; gap: 6px; }
 .acct-more-filters__count { background: var(--ds-ink-mute); color: var(--ds-canvas); border-radius: var(--ds-radius-pill); padding: 0 6px; font-size: var(--ds-font-size-sm); }
 .acct-warn { color: var(--ds-danger-text); }
-.tc-review-strip { border: 1px solid var(--ds-border); border-radius: var(--ds-radius-sm); padding: 10px 12px; margin: 12px 0; }
-.tc-review-strip__title { margin: 0 0 8px; font-size: var(--ds-font-size-md); }
-.tc-review-strip__help { margin-bottom: 6px; font-size: var(--ds-font-size-sm); }
-.tc-review-strip__help summary { cursor: pointer; min-height: 32px; display: inline-flex; align-items: center; }
-.tc-review-strip__row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid var(--ds-border); }
 .acct-filter-actions {
   display: flex;
   justify-content: flex-end;
@@ -3061,6 +3153,25 @@ loadCampusStudents();
   .tc-table.acct-table--payments td:nth-child(5)::before { content: '現金'; }
   .tc-table.acct-table--payments td:nth-child(6)::before { content: '匯款'; }
   .tc-table.acct-table--payments td:nth-child(7)::before { content: '合計'; }
+
+  .tc-table.acct-table--settled td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .tc-table.acct-table--settled td:nth-child(2) { grid-column: 2; grid-row: 1; text-align: right; font-size: 15px; }
+  .tc-table.acct-table--settled td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .tc-table.acct-table--settled td:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .tc-table.acct-table--settled td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
+  .tc-table.acct-table--settled td:nth-child(6) { grid-column: 1 / -1; grid-row: 4; }
+  .tc-table.acct-table--settled td:nth-child(7) { grid-column: 1 / -1; grid-row: 5; }
+  .tc-table.acct-table--settled td:nth-child(8) { grid-column: 1 / -1; grid-row: 6; padding-top: 10px; }
+  .tc-table.acct-table--settled td:nth-child(4)::before,
+  .tc-table.acct-table--settled td:nth-child(5)::before,
+  .tc-table.acct-table--settled td:nth-child(6)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table.acct-table--settled td:nth-child(4)::before { content: '模式'; }
+  .tc-table.acct-table--settled td:nth-child(5)::before { content: '已收'; }
+  .tc-table.acct-table--settled td:nth-child(6)::before { content: '最近付款'; }
 }
 @media (max-width: 900px) and (min-width: 769px) {
   .acct-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

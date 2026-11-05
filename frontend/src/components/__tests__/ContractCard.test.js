@@ -506,7 +506,7 @@ describe('AccountingLedgerModal mobile (PRD v2 D5)', () => {
 describe('billing panel visual tokens (spec B-PR2)', () => {
   const read = async (rel) => (await import('node:fs')).readFileSync(new URL(rel, import.meta.url), 'utf8');
   it('uses hairline borders, 12px minimum text and AtButton (no white text on --ds-primary)', async () => {
-    for (const rel of ['../tuition/ContractCard.vue', '../AccountingLedgerModal.vue']) {
+    for (const rel of ['../tuition/ContractCard.vue', '../tuition/StudentBillingList.vue', '../AccountingLedgerModal.vue']) {
       const src = await read(rel);
       expect(src, rel).not.toMatch(/border[a-z-]*:\s*[\d.]+px solid var\(--ds-canvas-soft\)/);
       expect(src, rel).not.toContain('font-size:11px');

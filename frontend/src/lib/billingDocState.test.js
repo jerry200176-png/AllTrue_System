@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { slipAvailability, receiptAvailability } from './billingDocState.js';
 
-// #3894 — 繳費單／收據 availability (was asserted through the retired TuitionDocActions button pair). Per-state outcomes for real API rows: SlipReceiptStateContract.test.js.
+// #3894 — 繳費單／收據 availability (rule behind the TuitionDocActions button pair). Per-state outcomes for real API rows: SlipReceiptStateContract.test.js.
 const mk = (row) => ({ id: 1, payable_status: 'invoiced', ...row });
 const out = (row, canView = true) => { const r = mk(row); const s = slipAvailability(r, canView); const c = receiptAvailability(r, canView); return [!s.ok, !c.ok, s.reason ?? null, c.reason ?? null]; };
 const NO_RECEIPT = '收款確認後才有收據', PAID = '已繳清，不用繳費單';
