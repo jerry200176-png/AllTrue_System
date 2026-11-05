@@ -149,6 +149,26 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         $this->assertPaid($token, $teacherId);
     }
 
+    /** #4931: 已上 → 未上 → 已上 re-uses the voided sign-in (a unique ClassSessionID index would reject a second row, 1062). */
+    public function test_calendar_attended_unmarked_then_attended_again_unvoids_the_same_sign_in(): void
+    {
+        [$token, $teacherId, $course, $session] = $this->pastScheduledLesson('cal-redo');
+        $this->patchStatus($token, $session, 'attended');
+        $this->patchStatus($token, $session, 'scheduled');
+        $this->assertSame(1, StudentSignIn::where('ClassSessionID', $session->id)->voided()->count());
+
+        $this->patchStatus($token, $session, 'late');
+
+        $this->assertSame(1, StudentSignIn::where('ClassSessionID', $session->id)->count());
+        $live = StudentSignIn::where('ClassSessionID', $session->id)->active()->firstOrFail();
+        $this->assertSame('late', $live->Status);
+        $this->assertTrue((bool) $live->SessionDeducted);
+        $net = DB::table('session_deduction_ledger')->where('class_session_id', $session->id)
+            ->selectRaw("SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE -1 END) as n")->value('n');
+        $this->assertSame(1, (int) $net);
+        $this->assertPaid($token, $teacherId);
+    }
+
     /** @return array{0: string, 1: int, 2: StudentClass, 3: ClassSession} a 2026-04-13 lesson still 未上 on 2026-04-14 */
     private function pastScheduledLesson(string $tag): array
     {

@@ -66,8 +66,8 @@ class ApprovalSessionSyncService
     }
 
     /**
-     * The one sign-in a taught lesson is debited against (#4931): the live deductible one if there is one, a new one when
-     * the lesson has no live sign-in, or null when a live non-deductible sign-in (缺席) already records the lesson.
+     * The one sign-in a taught lesson is debited against (#4931): the live deductible one if there is one, a new one (or the latest voided one, un-voided)
+     * when the lesson has no live sign-in, or null when a live non-deductible sign-in (缺席) already records the lesson.
      * The caller debits it with SessionDeductionService::deductOnAttendance.
      */
     public static function payableSignIn(ClassSession $cs, StudentClass $sc, string $status, ?int $teacherId, ?int $recordedBy, string $memo): ?StudentSignIn
@@ -75,6 +75,15 @@ class ApprovalSessionSyncService
         $live = StudentSignIn::where('ClassSessionID', $cs->id)->active()->orderBy('id')->get();
         if ($live->isNotEmpty()) {
             return $live->first(fn (StudentSignIn $s) => in_array(strtolower((string) $s->Status), AttendanceStatus::deductibleCodes(), true));
+        }
+
+        // Test/staging carry a unique index on ClassSessionID (production does not): reuse the latest voided row
+        // instead of inserting a second one, so 已上→未上→已上 never hits duplicate key 1062.
+        $voided = StudentSignIn::where('ClassSessionID', $cs->id)->voided()->orderByDesc('id')->first();
+        if ($voided) {
+            $voided->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null, 'Status' => $status,
+                'TeacherID' => $teacherId, 'RecordedByUserID' => $recordedBy ?: null, 'SessionDeducted' => false, 'MDT' => now(), 'Memo' => $memo]);
+            return $voided;
         }
 
         return StudentSignIn::create([
