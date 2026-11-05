@@ -116,7 +116,7 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   await run('1 登記收款 from 課程查找', async () => {
     await nav('課程查找');
     await coursesSettled();
-    const btn = page.locator('button.payment-next-action', { hasText: '登記收款' }).first();
+    const btn = page.locator('[data-testid="course-row-primary"][data-action="payment"]', { hasText: '登記收款' }).first();
     if (!(await visible(btn))) return { reached: false, note: 'no course with 登記收款 visible' };
     const ledgerLoaded = await clickAndWaitLedger(btn);
     const reached = await shows(page.locator('.at-dialog__panel--sheet .at-dialog__title', { hasText: '登記收款' }));
@@ -126,7 +126,8 @@ test('director task friction baseline (read-only)', async ({ page }) => {
   await run('2 補登收款 for legacy-paid course', async () => {
     await nav('課程查找');
     await coursesSettled();
-    const row = page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }).locator('button.payment-next-action').first();
+    // #4659 step 5: the action is the row's primary button, next to (not inside) the status pill.
+    const row = page.locator('tr.course-row', { has: page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }) }).locator('[data-testid="course-row-primary"][data-action="payment"]').first();
     if (!(await visible(row))) return { reached: false, note: 'skipped: no fixture' };
     const ledgerLoaded = await clickAndWaitLedger(row);
     // A legacy-paid row opens the back-fill form directly (initialAction 'legacy-backfill'): that modal counts as reached.
@@ -155,8 +156,13 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await nav('課程查找');
     await coursesSettled();
     const direct = page.locator('[data-testid="course-row-actions"]').getByRole('button', { name: /^續課/ }).first();
+    // 續課 is the row's primary button when the course is nearly used up and paid; otherwise it sits in ⋯.
+    const rowMenu = page.locator('[data-testid="course-row-actions"] .action-menu-trigger').first();
     if (await visible(direct)) await click(direct);
-    else {
+    else if (await visible(rowMenu)) {
+      await click(rowMenu);
+      await click(page.getByRole('menuitem', { name: /^續課/ }).first());
+    } else {
       const manage = page.locator('[data-testid="course-manager-open"]').first();
       if (!(await visible(manage))) return { reached: false, note: 'no course row with 續課 / 管理課程' };
       await click(manage);

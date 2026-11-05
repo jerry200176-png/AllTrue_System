@@ -30,7 +30,7 @@ describe('CourseManagement action hierarchy', () => {
     expect(activeActions).toContain('courseManagerEnabled');
     expect(legacyActions).toContain('course-primary-action');
     expect(legacyActions).toContain('data-testid="course-row-primary"');
-    expect(legacyActions).toContain('@click="runRowAction(c, rowModelFor(c).primary.id)"');
+    expect(legacyActions).toContain('@click="runRowAction(c, m.primary.id)"');
     expect(legacyActions).toContain('<ActionMenu');
     expect(legacyActions).toContain('@select="(id) => runRowAction(c, id)"');
     // one primary + ⋯: no stray row buttons (結束課程 / 排課 / 詳情 / 更多 ▾ live in ⋯ now)

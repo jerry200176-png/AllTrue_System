@@ -22,10 +22,17 @@ export function lessonPickerKey(picker, cur) {
 
 export function useCourseRowActions(d) {
   // The drawer passes { fallback: 'manage', details: false }: it is already managing, so no 管理課程/詳情 item.
-  function rowModel(c, { fallback = 'edit', details = true } = {}) {
+  function rowModel(c, { fallback = 'edit', details = true, simple = false } = {}) {
     const open = c.status !== 'inactive' && !d.effectiveClosedReason(c);
     const planning = d.planningStatusVisible(c) ? d.planningStatusFor(c)?.action : null;
+    const payLabel = d.paymentActionLabel?.(c) || '';
+    const unpaid = ['登記收款', '補登收款'].includes(payLabel);
     return courseActions(c, {
+      simple,
+      open,
+      paymentAction: unpaid ? payLabel : '',
+      // 查看待核對 etc. (not the ledger link, which 在這裡看帳務 already covers) stays reachable in ⋯.
+      paymentOther: payLabel && !unpaid && payLabel !== '在這裡看帳務' ? payLabel : '',
       fallback,
       details,
       detailsOpen: d.isDetailsOpen(c),
@@ -119,6 +126,8 @@ export function useCourseRowActions(d) {
       'package-preview': () => d.openPackageConversionPreview(c),
       'payment-slip': () => d.openPaymentSlip(c),
       invoice: () => d.openTuitionLedger(c),
+      payment: () => d.onPaymentNextAction(c),
+      'payment-next': () => d.onPaymentNextAction(c),
     };
     return map[id]?.();
   }

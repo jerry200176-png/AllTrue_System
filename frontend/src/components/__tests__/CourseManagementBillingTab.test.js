@@ -65,8 +65,11 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain("'payment-status-badge'");
     expect(source).toContain('role="status"');
     expect(source).toContain('付款狀態不可直接操作');
-    expect(source).toContain('class="small ghost payment-next-action"');
-    expect(source).toContain('@click="onPaymentNextAction(c)"');
+    // #4659 step 5: the next action is the row's primary button (or an item in ⋯), not a second button in the cell.
+    expect(source).toContain(':data-action="m.primary.id"');
+    expect(source).not.toContain('payment-next-action');
+    expect(source).toContain('paymentActionLabel: (c) => (shouldShowPaymentAction(c) ? paymentNextActionLabel(c) : \'\')');
+    expect(source).toContain('onPaymentNextAction,');
     // PRD v2 D2: every billing action opens the ledger panel in place, never another page
     // In-app #398: 登記收款 (report_payment) opens the ledger with the entry form; other next actions open the ledger only.
     expect(source).toContain("const onPaymentNextAction = (course) => openLedgerForCourse(course, !course?.id ? null");
@@ -75,7 +78,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('ledgerInitialAction.value = initialAction;');
     expect(source).toContain('const openTuitionLedger = (course) => openLedgerForCourse(course);');
     expect(source).not.toMatch(/emit\('navigate', buildTuitionCollectNav/);
-    expect(source).toContain('<th>堂數</th>');
+    expect(source).toContain('剩幾堂</th>');
     expect(source).not.toContain('<th>剩餘堂數</th>');
     expect(source).not.toContain("'btn-status'");
     expect(source).not.toContain('>帳務</button>');
@@ -97,7 +100,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain("import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';");
     expect(source).toContain('rate_unit: c.rate_unit || \'session\'');
     expect(source).toContain('rate_unit: form.rate_unit || \'session\'');
-    expect(source).toContain('{{ getRateUnitDisplayLabel(c) }} ${{ sessionPrice(c) }}');
+    expect(source).toContain('{{ getRateUnitDisplayLabel(c) }}</span> ${{ sessionPrice(c) }}');
     expect(source).toContain('{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}');
   });
 
