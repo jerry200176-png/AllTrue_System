@@ -284,6 +284,7 @@ class FilledAssessmentTeacherLockTest extends TestCase
     {
         [$s, $lr] = $this->filled();
         $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => ' （系統補登）xxx'])->assertStatus(422)->assertJsonValidationErrors('Content');
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Progress' => '（系統補登）xxx'])->assertStatus(422)->assertJsonValidationErrors('Progress');
         $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '正常內容'])->assertOk();
         $s2 = $this->mkSession('2026-04-11');
         $this->api()->postJson('/api/v1/learning-records', ['StudentID' => $this->sc->StudentID, 'ClassSessionID' => $s2->id, 'TeacherID' => $this->aId, 'Content' => '（系統補登）xxx'])

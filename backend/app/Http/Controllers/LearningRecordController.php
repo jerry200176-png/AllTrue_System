@@ -1064,7 +1064,7 @@ class LearningRecordController extends Controller
             'EndTime' => 'nullable|string|max:8',
             'HomeworkStatus' => 'nullable|string|max:16',
             'QuizScore' => 'nullable|string|max:32',
-            'Progress' => 'nullable|string|max:2000',
+            'Progress' => ['nullable', 'string', 'max:2000', fn ($a, $v, $fail) => str_starts_with(trim((string) $v), '（系統') ? $fail('內容不能以「（系統」開頭') : null], // can fall back into Content
             'NextHomework' => 'nullable|string|max:2000',
             'NextWeekTestScope' => 'nullable|string|max:2000',
             'Performance' => 'nullable|string|max:16',
@@ -1275,7 +1275,7 @@ class LearningRecordController extends Controller
             'EndTime' => 'nullable|string|max:8',
             'HomeworkStatus' => 'nullable|string|max:16',
             'QuizScore' => 'nullable|string|max:32',
-            'Progress' => 'nullable|string|max:2000',
+            'Progress' => ['nullable', 'string', 'max:2000', fn ($a, $v, $fail) => str_starts_with(trim((string) $v), '（系統') ? $fail('內容不能以「（系統」開頭') : null], // can fall back into Content
             'NextHomework' => 'nullable|string|max:2000',
             'NextWeekTestScope' => 'nullable|string|max:2000',
             'Performance' => 'nullable|string|max:16',
