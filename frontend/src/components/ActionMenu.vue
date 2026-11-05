@@ -71,12 +71,12 @@ const trigger = ref(null);
 const menu = ref(null);
 const open = ref(false);
 const pos = ref({});
-let placedTop = 0; // trigger top when the menu was placed; the menu is fixed, so it only needs closing once the trigger has moved
+let placed = { top: 0, left: 0 }; // trigger position when the menu was placed; the menu is fixed, so it only needs closing once the trigger has moved
 // Below the trigger, right-aligned; flips above when the viewport bottom is too close.
 function place() {
   const r = trigger.value?.getBoundingClientRect();
   if (!r) return;
-  placedTop = r.top;
+  placed = { top: r.top, left: r.left };
   const below = window.innerHeight - r.bottom;
   pos.value = {
     right: `${Math.max(8, window.innerWidth - r.right)}px`,
@@ -136,7 +136,7 @@ function onOutside(e) {
 const onViewportChange = (e) => {
   if (!open.value || sheet.value || (e?.target instanceof Node && menu.value?.contains(e.target))) return;
   const r = trigger.value?.getBoundingClientRect();
-  if (e?.type === 'scroll' && r && Math.abs(r.top - placedTop) < 1) return;
+  if (e?.type === 'scroll' && r && Math.abs(r.top - placed.top) < 1 && Math.abs(r.left - placed.left) < 1) return;
   close(false);
 };
 

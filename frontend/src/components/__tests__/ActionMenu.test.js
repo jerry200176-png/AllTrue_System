@@ -140,4 +140,14 @@ describe('ActionMenu', () => {
     expect(src).not.toMatch(/list\[[^\]]*\]\?\.focus\(\)/);
     expect(src).toContain('focus({ preventScroll: true })');
   });
+
+  it('a scroll that moved the trigger sideways closes the menu', async () => {
+    const w = mountMenu();
+    await w.get('.am__trigger').trigger('click');
+    await w.vm.$nextTick();
+    w.get('.am__trigger').element.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 40, right: 40, width: 0, height: 0 });
+    window.dispatchEvent(new Event('scroll'));
+    await w.vm.$nextTick();
+    expect(has('[role="menu"]')).toBe(false);
+  });
 });
