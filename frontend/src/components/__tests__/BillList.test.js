@@ -184,4 +184,23 @@ describe('BillList', () => {
     expect(w.get('[data-testid="bill-sort"]').element.value).toBe('amount');
     expect(w.findAll('[data-testid^="bill-name-"]').map((e) => e.text())).toEqual(['丁', '乙', ...['甲', '丙'].sort((a, b) => a.localeCompare(b, 'zh-Hant'))]);
   });
+
+  it('opens the quick view from a row click and from the subject button, but the name still opens the student', async () => {
+    const w = mountList();
+    await w.get('[data-testid="bill-open-c2"]').trigger('click');
+    expect(w.emitted('quick')[0][0].class_id).toBe(2);
+    await w.get('[data-testid="bill-row-c2"] .bl__row').trigger('click');
+    expect(w.emitted('quick')).toHaveLength(2);
+    await w.get('[data-testid="bill-name-c2"]').trigger('click');
+    expect(w.emitted('student')).toHaveLength(1);
+    expect(w.emitted('quick')).toHaveLength(2);
+  });
+
+  it('#4919: a package row with no contract id gets 看帳務, never 開帳單', () => {
+    const w = mountList({ alertRows: [row({ id: null, package_id: 7, schedule_mode: 'date', payment_status: 'unpaid', payable_status: 'unbilled', payable_outstanding: null })] });
+    const btn = w.get('[data-testid="bill-action-p7"]');
+    expect(btn.text()).toBe('看帳務');
+    btn.trigger('click');
+    expect(w.emitted('action')[0][1]).toBe('open');
+  });
 });

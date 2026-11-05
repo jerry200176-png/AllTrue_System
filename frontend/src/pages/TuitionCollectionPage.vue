@@ -75,6 +75,7 @@
         @batch="onBillBatch"
         @export="exportCSV"
         @student="(b) => openBillLedger(b, null)"
+        @quick="onBillQuick"
         @action="onBillAction"
         @menu="onBillMenu"
         @retry="loadAlerts"
@@ -528,6 +529,17 @@
       @row-action="onLedgerRowAction"
     />
 
+    <BillQuickView
+      :open="Boolean(quickBill)"
+      :bill="quickBill"
+      :branch-id="branchId"
+      :menu-groups="quickMenuGroups"
+      :reject-wanted="quickReject"
+      @close="closeQuick"
+      @menu="onQuickMenu"
+      @record="onQuickRecord"
+      @done="onQuickDone"
+    />
     <PaymentSlipModal :show="slipOpen" :student-class-id="slipClassId" :invoice-id="slipInvoiceId" :return-focus-to="pageEl" @close="slipOpen = false" />
     <RefundDialog v-if="refundCourseId" :open="Boolean(refundCourseId)" :course-id="refundCourseId" @close="refundCourseId = null" @done="onRefundDone" />
 
@@ -707,6 +719,8 @@ import FeeLedgerPanel from '../components/tuition/FeeLedgerPanel.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BillList from '../components/tuition/BillList.vue';
+import BillQuickView from '../components/tuition/BillQuickView.vue';
+import { billMenuGroups } from '../lib/billRows.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import RefundDialog from '../components/tuition/RefundDialog.vue';
 import { slipAvailability } from '../lib/billingDocState.js';
@@ -1029,8 +1043,27 @@ function openBillLedger(b, kind) {
   const classId = b.class_id ?? null;
   openLedgerForStudent({ student_id: b.student_id, first_class_id: classId }, kind && classId ? { kind, classId } : null);
 }
+// Billing v3 step 2: the quick view of THAT contract's bill (row click, 確認入帳 / 核對 primaries, row ⋯ 退回).
+const quickBill = ref(null);
+const quickReject = ref(false);
+const quickMenuGroups = computed(() => (quickBill.value
+  ? billMenuGroups(quickBill.value, { rowActions: ledgerRowActions.value, canDocs: canWaive.value })
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.id !== 'reject') })) : []));
+function openQuick(b, reject = false) { quickReject.value = reject; quickBill.value = b; }
+function closeQuick() { quickBill.value = null; quickReject.value = false; }
+// A package row has no contract to read a ledger for: it keeps opening the student drawer.
+function onBillQuick(b) { if (b.class_id == null) openBillLedger(b, null); else openQuick(b); }
+function onQuickMenu(id) { const b = quickBill.value; closeQuick(); if (b) onBillMenu(b, id); }
+function onQuickRecord() { const b = quickBill.value; closeQuick(); if (b) openBillLedger(b, 'record'); }
+function onQuickDone({ action, reportId }) {
+  closeQuick();
+  loadAlerts();
+  if (action === 'confirm') _toast.success('已確認入帳', { action: { label: '看收據', onClick: () => openReceiptByReport(reportId) } });
+  else showToast('已退回這筆回報');
+}
 function onBillAction(b, action) {
-  if (action === 'slip') openBillSlip(b);
+  if (action === 'confirm' || (b.kind === 'review' && action === 'open')) onBillQuick(b);
+  else if (action === 'slip') openBillSlip(b);
   else openBillLedger(b, BILL_LEDGER_ACTION[action]);
 }
 function openBillSlip(b) {
@@ -1050,7 +1083,7 @@ function onRefundDone() {
 }
 function onBillMenu(b, id) {
   if (id === 'student') openBillLedger(b, null);
-  else if (id === 'reject') openBillLedger(b, null);
+  else if (id === 'reject') { if (b.class_id == null) openBillLedger(b, null); else openQuick(b, true); }
   else if (id === 'sessions') openSessionDetail(b.src);
   else if (id === 'slip') openBillSlip(b);
   else if (id === 'refund') refundCourseId.value = b.class_id;

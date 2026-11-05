@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-05-bill-quick-view
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單可以直接在右側確認
+    summary: 點帳單清單的一列，右邊會打開那一筆帳單，不用先進學生面板。
+    items:
+      - category: improved
+        text: 右側看得到應收、已收、未收，和家長回報的金額、日期、方式、後5碼。
+      - category: improved
+        text: 可以直接按「確認入帳」或「退回」；確認後那一列會消失，並可以點「看收據」。
+    source_refs:
+      - "changelog:2026-11-05:bill-quick-view"

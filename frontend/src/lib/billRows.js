@@ -1,6 +1,7 @@
 import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_HELP, LEGACY_FLAG_UNVERIFIED_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL } from './courseMoneyState.js';
 import { formatCoursePeriod, isDueLater, isPendingConfirmation, owedItems, pendingReviewAmount, splitOwed } from './studentBillingRows.js';
 import { formatNewerCourseOverlapWarning } from './studentClassDisplay.js';
+import { slipAvailability } from './billingDocState.js';
 
 // Billing v3 (PRD §0): one row per contract that needs something, built from the same /alerts/tuition rows as before.
 // `kind` drives the chip, the primary button and which rows can be batched together.
@@ -97,4 +98,27 @@ export function billCounts(rows) {
   for (const r of rows || []) c[r.kind] += 1;
   c.todo = TODO_KINDS.reduce((n, k) => n + c[k], 0);
   return c;
+}
+
+/**
+ * The ⋯ menu of a bill row (and of its quick view): light actions first, then after the divider the dangerous ones, only
+ * where the page allows them (same guards as the drawer's contract card). `rowActions` = { [contractId]: { waive, void, settle } }.
+ */
+export function billMenuGroups(b, { rowActions = {}, canDocs = false } = {}) {
+  const a = (b.class_id != null && rowActions[b.class_id]) || {};
+  const slip = slipAvailability({ ...b.src, id: b.class_id }, canDocs);
+  const canRefund = b.class_id != null && b.src.schedule_mode !== 'date' && Number(b.src.paid_amount) > 0 && !b.src.closed_reason && !b.src.stop;
+  const safe = [
+    ...(b.kind === 'confirm' ? [{ id: 'reject', label: '退回' }] : []),
+    { id: 'slip', label: '傳繳費單', disabled: !slip.ok, reason: slip.ok ? '' : slip.reason },
+    { id: 'student', label: '看學生全部帳務' },
+    ...(b.class_id != null ? [{ id: 'sessions', label: '上課明細' }] : []),
+  ];
+  const danger = [
+    ...(a.waive ? [{ id: 'waive', label: '改成不收', danger: true }] : []),
+    ...(a.void ? [{ id: 'void', label: '撤銷收款', danger: true }] : []),
+    ...(a.settle ? [{ id: 'settle', label: '結案', danger: true }] : []),
+    ...(canRefund ? [{ id: 'refund', label: '退費', danger: true }] : []),
+  ];
+  return [{ id: 'safe', label: '', items: safe }, ...(danger.length ? [{ id: 'danger', label: '', items: danger }] : [])];
 }
