@@ -1,6 +1,6 @@
 // Billing redesign PRD v2 D1/D3/D8/D12: one row per student, owed-by-today first.
 import { describe, it, expect } from 'vitest';
-import { buildStudentBillingRows, rowOwedTotal, rowPrimaryAction, STUDENT_FILTERS } from './studentBillingRows.js';
+import { buildStudentBillingRows, rowOwedTotal, STUDENT_FILTERS } from './studentBillingRows.js';
 
 const ROWS = [
   { id: 11, student_id: 1, student_name: '甲', payment_status: 'unpaid', payable_outstanding: 3000, due_date: '2026-10-01' },
