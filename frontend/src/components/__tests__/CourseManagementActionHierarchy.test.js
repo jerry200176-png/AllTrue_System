@@ -24,7 +24,7 @@ const legacyActionsStart = activeActions.indexOf('<template v-else>');
 const legacyActions = legacyActionsStart >= 0 ? activeActions.slice(legacyActionsStart) : activeActions;
 
 describe('CourseManagement action hierarchy', () => {
-  it('keeps Course Manager primary entry when flag on; flag-off rows render one primary + the shared ⋯ menu', () => {
+  it('every row renders one primary + the shared ⋯ menu; the course manager (production flag) adds 管理課程 beside them', () => {
     expect(activeActions).toContain('data-testid="course-manager-open"');
     expect(activeActions).toContain('管理課程');
     expect(activeActions).toContain('courseManagerEnabled');
@@ -33,8 +33,12 @@ describe('CourseManagement action hierarchy', () => {
     expect(legacyActions).toContain('@click="runRowAction(c, m.primary.id)"');
     expect(legacyActions).toContain('<ActionMenu');
     expect(legacyActions).toContain('@select="(id) => runRowAction(c, id)"');
-    // one primary + ⋯: no stray row buttons (結束課程 / 排課 / 詳情 / 更多 ▾ live in ⋯ now)
-    expect(legacyActions.match(/<button/g)).toHaveLength(1);
+    // one primary (+ 管理課程 only when the course manager is on) + ⋯: no stray row buttons (結束課程 / 排課 / 詳情 / 更多 ▾ live in ⋯ now)
+    expect(legacyActions.match(/<button/g)).toHaveLength(2);
+    expect(legacyActions).toMatch(/v-if="courseManagerEnabled"[\s\S]*?data-testid="course-manager-open"/);
+    // the primary + ⋯ are not behind the flag: production (flag on) keeps the payment entry on the row (in-app #396)
+    expect(legacyActions).not.toContain('<template v-else>');
+    expect(source).toContain('rowModelFor(c, { simple: true, details: !courseManagerEnabled })');
     expect(legacyActions).not.toContain('btn-toggle');
     expect(legacyActions).not.toContain('更多 ▾');
     expect(legacyActions).not.toContain('btn-invoices');
