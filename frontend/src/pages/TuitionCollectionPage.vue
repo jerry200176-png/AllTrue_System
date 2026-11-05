@@ -519,6 +519,9 @@
       :report-id="ledgerReportId"
       :student-id="ledgerStudentId"
       :initial-action="ledgerInitialAction"
+      :sheet-entry="ledgerSheetEntry"
+      :next-offer="ledgerSheetEntry"
+      @save-next="onSaveNext"
       :row-actions="ledgerRowActions"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
@@ -720,7 +723,7 @@ import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BillList from '../components/tuition/BillList.vue';
 import BillQuickView from '../components/tuition/BillQuickView.vue';
-import { billMenuGroups } from '../lib/billRows.js';
+import { billMenuGroups, billRows } from '../lib/billRows.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import RefundDialog from '../components/tuition/RefundDialog.vue';
 import { slipAvailability } from '../lib/billingDocState.js';
@@ -801,6 +804,7 @@ function stepLedger(dir) {
 }
 // F-2: the row button opens the drawer on the contract the action is about, with that step already open.
 function openLedgerForStudent(r, action = null) {
+  ledgerSheetEntry.value = false;
   ledgerNavStudentId.value = r.student_id;
   ledgerInitialAction.value = action?.kind || null;
   ledgerStudentClassId.value = action?.classId || r.first_class_id || null;
@@ -1054,15 +1058,35 @@ function closeQuick() { quickBill.value = null; quickReject.value = false; }
 // A package row has no contract to read a ledger for: it keeps opening the student drawer.
 function onBillQuick(b) { if (b.class_id == null) openBillLedger(b, null); else openQuick(b); }
 function onQuickMenu(id) { const b = quickBill.value; closeQuick(); if (b) onBillMenu(b, id); }
-function onQuickRecord() { const b = quickBill.value; closeQuick(); if (b) openBillLedger(b, 'record'); }
+function onQuickRecord() { const b = quickBill.value; closeQuick(); if (b) openBillSheet(b); }
 function onQuickDone({ action, reportId }) {
   closeQuick();
   loadAlerts();
   if (action === 'confirm') _toast.success('已確認入帳', { action: { label: '看收據', onClick: () => openReceiptByReport(reportId) } });
   else showToast('已退回這筆回報');
 }
+// Billing v3 step 3: 登記收款 opens the right-side payment sheet for THAT row's contract. The owing rows in list order are
+// remembered when it opens, so 儲存並看下一筆未繳 follows the list as the director sees it (current filter and sort).
+let recordQueue = [];
+function openBillSheet(b) {
+  if (b.class_id == null) { openBillLedger(b, 'record'); return; }
+  recordQueue = billList.value?.owingQueue?.() || [];
+  openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id }, { kind: 'record', classId: b.class_id });
+  ledgerNavStudentId.value = null;
+  ledgerSheetEntry.value = true;
+}
+function onSaveNext() {
+  const cur = Number(ledgerStudentClassId.value);
+  const owing = new Map(billRows(rows.value).filter((x) => x.kind === 'owing').map((x) => [Number(x.class_id), x]));
+  const after = recordQueue.slice(recordQueue.indexOf(cur) + 1);
+  const next = after.map((id) => owing.get(Number(id))).find(Boolean);
+  if (next) { ledgerInitialAction.value = 'record'; ledgerStudentClassId.value = next.class_id; ledgerReportId.value = null; return; }
+  ledgerOpen.value = false;
+  showToast('已經是最後一筆未繳了');
+}
 function onBillAction(b, action) {
-  if (action === 'confirm' || (b.kind === 'review' && action === 'open')) onBillQuick(b);
+  if (action === 'confirm') onBillQuick(b);
+  else if (action === 'record') openBillSheet(b);
   else if (action === 'slip') openBillSlip(b);
   else openBillLedger(b, BILL_LEDGER_ACTION[action]);
 }
@@ -1306,6 +1330,7 @@ const ledgerStudentClassId = ref(null);
 const ledgerReportId = ref(null);
 const ledgerStudentId = ref(null);
 const ledgerInitialAction = ref(null);
+const ledgerSheetEntry = ref(false); // 登記收款 from the bill list: only the right-side form shows (the #4905 sheet), for that one contract
 // Closing returns focus to the row of the student last viewed, not the one first opened.
 watch(ledgerOpen, async (open) => {
   if (open || ledgerNavStudentId.value == null) return;
@@ -1316,6 +1341,7 @@ watch(ledgerOpen, async (open) => {
 });
 
 function openLedgerForClass(row) {
+  ledgerSheetEntry.value = false;
   ledgerNavStudentId.value = null;
   ledgerInitialAction.value = null;
   ledgerStudentId.value = null;
@@ -1325,6 +1351,7 @@ function openLedgerForClass(row) {
 }
 
 function openLedgerForReport(row) {
+  ledgerSheetEntry.value = false;
   ledgerNavStudentId.value = null;
   ledgerInitialAction.value = null;
   ledgerStudentId.value = null;
@@ -1896,6 +1923,7 @@ watch(() => props.initialTab, (tab) => {
       ledgerStudentClassId.value = courseId;
       ledgerInitialAction.value = null;
       ledgerReportId.value = null;
+      ledgerSheetEntry.value = false;
       ledgerOpen.value = true;
     }
   }
