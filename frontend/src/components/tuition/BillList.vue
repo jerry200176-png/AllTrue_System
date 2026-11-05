@@ -85,7 +85,7 @@
               <span class="bl__period">{{ b.period }}</span>
               <span class="bl__status"><AtBadge :tone="TONES[b.kind]" :label="b.label" :title="b.help || undefined" /></span>
               <span :class="['bl__due', { due: b.overdue_days > 0 }]">{{ dueText(b) }}</span>
-              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}<small v-if="b.owed_later > 0" class="bl__review" :data-testid="`bill-later-${b.key}`">之後還會到期 {{ money(b.owed_later) }}</small><small v-if="b.review_amount > 0" class="bl__review" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</small></span>
+              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}<small v-if="b.owed_later > 0 && !(b.review_amount > 0)" class="bl__review" :data-testid="`bill-later-${b.key}`">之後還會到期 {{ money(b.owed_later) }}</small><small v-if="b.review_amount > 0" class="bl__review" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</small></span>
               <span v-if="b.hint" class="bl__hint">{{ b.hint }}</span>
               <span v-for="w in b.warnings" :key="w" class="bl__warn" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
             </div>

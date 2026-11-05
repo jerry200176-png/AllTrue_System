@@ -165,6 +165,15 @@ describe('BillList', () => {
     expect(w.get('[data-testid="bill-row-c30"]').text()).toContain('—');
   });
 
+  it('a 需核對 row shows its amount once, as 需核對金額, not also as 之後還會到期 (D2)', () => {
+    const w = mountList({ alertRows: [
+      row({ id: 32, payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 800,
+        open_periods: [{ outstanding: 800, due_date: '2026-12-01' }] }),
+    ] });
+    expect(w.get('[data-testid="bill-review-c32"]').text()).toBe('需核對金額 NT$ 800');
+    expect(w.find('[data-testid="bill-later-c32"]').exists()).toBe(false);
+  });
+
   it('sorts 未繳金額 by owed now, then owed later, then name', () => {
     const w = mountList({ alertRows: [
       row({ id: 40, student_id: 4, student_name: '丙', payable_outstanding: 500 }),
