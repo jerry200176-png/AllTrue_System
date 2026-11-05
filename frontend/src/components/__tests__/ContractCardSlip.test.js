@@ -8,6 +8,7 @@ const authedFetch = vi.fn();
 vi.mock('../../lib/authedFetch.js', () => ({ authedFetch: (...a) => authedFetch(...a), getAccessToken: async () => 'tok' }));
 
 import ContractCard from '../tuition/ContractCard.vue';
+import { openCardMenu, menuItem } from './cardMenu.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 
 const respond = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -17,15 +18,17 @@ beforeEach(() => {
 });
 
 async function card(props) {
-  const w = mount(ContractCard, { props: { course: { id: 9, subject: '數學', paid: false }, canViewDocs: true, ...props } });
+  const w = mount(ContractCard, { props: { focused: true, course: { id: 9, subject: '數學', paid: false }, canViewDocs: true, ...props } });
   await flushPromises();
   return w;
 }
-const slip = (w) => {
-  const b = w.find('[data-testid="contract-slip"]');
-  if (!b.exists()) return null;
-  const r = w.find('[data-testid="contract-slip-reason"]');
-  return { disabled: b.element.disabled, reason: r.exists() ? r.text() : null };
+const slip = async (w) => {
+  if (!w.find('.am__trigger').exists()) return null;
+  await openCardMenu(w);
+  const b = menuItem('slip');
+  if (!b) return null;
+  const r = b.querySelector('.am__reason');
+  return { disabled: b.getAttribute('aria-disabled') === 'true', reason: r ? r.textContent : null };
 };
 
 describe('ContractCard 繳費單 (in-app #425)', () => {
@@ -35,29 +38,29 @@ describe('ContractCard 繳費單 (in-app #425)', () => {
       lastPayment: { legacyUnverified: true },
       outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 },
     });
-    expect(slip(w)).toEqual({ disabled: false, reason: null });
-    await w.get('[data-testid="contract-slip"]').trigger('click');
+    expect(await slip(w)).toEqual({ disabled: false, reason: null });
+    await openCardMenu(w); menuItem('slip').click(); await flushPromises();
     expect(w.emitted('slip')[0][0]).toMatchObject({ id: 9 });
     w.unmount();
   });
 
   it('money owed on an open bill: enabled, and click emits the course', async () => {
     const w = await card({ outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 } });
-    expect(slip(w)).toEqual({ disabled: false, reason: null });
-    await w.get('[data-testid="contract-slip"]').trigger('click');
+    expect(await slip(w)).toEqual({ disabled: false, reason: null });
+    await openCardMenu(w); menuItem('slip').click(); await flushPromises();
     expect(w.emitted('slip')[0][0]).toMatchObject({ id: 9 });
   });
 
   it('no bill yet: the estimated slip by course is offered, same verdict as the unbilled list row', async () => {
-    expect(slip(await card({}))).toEqual({ disabled: false, reason: null });
+    expect(await slip(await card({}))).toEqual({ disabled: false, reason: null });
     expect(slipAvailability({ id: 9, payment_status: 'unpaid', payable_status: 'unbilled' })).toEqual({ ok: true });
   });
 
   it('金額待確認 (server verdict): shown disabled with the list reason', async () => {
     const w = await card({ outstanding: 4400, amounts: { due: 4400, received: 0, owed: 4400 }, course: { id: 9, subject: '數學', paid: false, amount_pending_confirmation: true } });
-    expect(slip(w)).toEqual({ disabled: true, reason: slipAvailability({ id: 9, payment_status: 'unpaid', amount_pending_confirmation: true }).reason });
-    expect(slip(w).reason).toBe('金額需核對，不能產生繳費單');
-    await w.get('[data-testid="contract-slip"]').trigger('click');
+    expect(await slip(w)).toEqual({ disabled: true, reason: slipAvailability({ id: 9, payment_status: 'unpaid', amount_pending_confirmation: true }).reason });
+    expect((await slip(w)).reason).toBe('金額需核對，不能產生繳費單');
+    await openCardMenu(w); menuItem('slip').click(); await flushPromises();
     expect(w.emitted('slip')).toBeUndefined();
   });
 
@@ -70,18 +73,18 @@ describe('ContractCard 繳費單 (in-app #425)', () => {
     ['shared-package follower', { outstanding: 4400, sharedFollower: true }],
     ['waived', { course: { id: 9, subject: '數學', paid: false, waived: true } }],
   ])('%s: no 繳費單 button on the card', async (_l, props) => {
-    expect(slip(await card(props))).toBeNull();
+    expect(await slip(await card(props))).toBeNull();
   });
 
   it('tutoring: no 繳費單 button', async () => {
     authedFetch.mockResolvedValue(respond({ schedule_mode: 'count', sessions: [], unscheduled_count: 0, class_type: 'tutoring' }));
-    expect(slip(await card({}))).toBeNull();
+    expect(await slip(await card({}))).toBeNull();
   });
 
   it('#4765: lessons outside the contract dates show 需核對 and offer neither 登記這筆 nor 繳費單', async () => {
     const w = await card({ course: { id: 9, subject: '數學', paid: false, start_date: '2026-10-10', end_date: '2026-10-31', lessons_outside_contract: ['2026-09-29', '2026-09-30'] } });
     expect(w.get('[data-testid="contract-outside"]').text()).toBe('需核對：9/29、9/30 的課不在合約日期（10/10–10/31）內，請先改合約日期');
     expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
-    expect(slip(w)).toBeNull();
+    expect(await slip(w)).toBeNull();
   });
 });

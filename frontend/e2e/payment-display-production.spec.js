@@ -492,6 +492,11 @@ test.describe('production acceptance — payment display (#4150)', () => {
         const relevant = (rule === 'waived' && fact.waived && fact.tutoring !== true)
           || (rule === 'legacy' && fact.legacyNoStanding) || (rule === 'reversed' && fact.netZeroReversed);
         if (relevant && !(await appears(card, 5_000))) { violations.push({ course_id: fact.id, problem: 'contract_card_missing' }); continue; }
+        // #4659 step 5: cards start on one line; open the one under test (the opened course is already open).
+        if (relevant) {
+          const toggle = card.getByTestId('contract-toggle');
+          if ((await toggle.getAttribute('aria-expanded', SHORT)) === 'false') await toggle.click();
+        }
         if (rule === 'waived' && fact.waived && fact.tutoring !== true) {
           counts.cases_checked += 1;
           const money = card.locator('[data-testid="contract-waived"]');

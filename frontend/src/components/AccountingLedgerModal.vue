@@ -89,7 +89,7 @@
 
           <section v-if="contractCourses.length" class="ledger-section">
             <h4>合約（每一堂課與付款）</h4>
-            <p v-if="contractCourses.some(hasMultiplePackageBills)" class="ledger-empty" data-testid="ledger-package-batch-note">共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p>
+            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
             <div class="ledger-contracts">
               <ContractCard
                 v-for="c in contractCourses"
@@ -123,12 +123,12 @@
           </section>
 
           <section class="ledger-section">
-            <h4>帳單</h4>
+            <h4><button type="button" class="ledger-fold" :aria-expanded="fold.inv" data-testid="ledger-fold-invoices" @click="fold.inv = !fold.inv">帳單（{{ payload.invoices?.length || 0 }}）<span aria-hidden="true">{{ fold.inv ? '▾' : '▸' }}</span></button></h4>
             <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
             <div v-else-if="ledgerBothEmpty && payload.invoices?.length" class="ledger-empty" data-testid="ledger-target-empty">這門課沒有帳單和收款。下面是這位學生的其他紀錄。</div>
             <div v-else-if="ledgerBothEmpty" class="ledger-empty">還沒開帳單，也沒收款。登記收款後會出現在這裡。</div>
             <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
-            <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
+            <div v-else-if="payload.invoices?.length && fold.inv" class="ledger-table-wrap">
               <table class="ledger-table">
                 <thead>
                   <tr>
@@ -240,7 +240,8 @@
 
           <!-- #4041: deleting a course voids its bill; that bill's notes stay readable here, never editable. -->
           <section v-if="payload.voided_invoice_notes?.length" class="ledger-section" data-testid="ledger-voided-invoice-notes">
-            <h4>已刪除課程的帳單備註</h4>
+            <h4><button type="button" class="ledger-fold" :aria-expanded="fold.voided" data-testid="ledger-fold-voided" @click="fold.voided = !fold.voided">已刪除課程的帳單備註（{{ payload.voided_invoice_notes.length }}）<span aria-hidden="true">{{ fold.voided ? '▾' : '▸' }}</span></button></h4>
+            <template v-if="fold.voided">
             <div v-for="g in payload.voided_invoice_notes" :key="g.invoice_id" class="ledger-voided-notes">
               <strong>{{ g.invoice_no }}</strong> <small>{{ g.course_ref }}{{ g.label }}</small>
               <ol class="ledger-voided-notes__list">
@@ -251,12 +252,13 @@
               </ol>
             </div>
             <p class="ledger-muted">帳單已作廢，這些備註只能查看，不能新增或修改。</p>
+            </template>
           </section>
 
           <section v-if="payload.receipts?.length || !ledgerBothEmpty" class="ledger-section">
-            <h4>收款紀錄</h4>
+            <h4><button type="button" class="ledger-fold" :aria-expanded="fold.rcpt" data-testid="ledger-fold-receipts" @click="fold.rcpt = !fold.rcpt">收款紀錄（{{ payload.receipts?.length || 0 }}）<span aria-hidden="true">{{ fold.rcpt ? '▾' : '▸' }}</span></button></h4>
             <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收款紀錄。</div>
-            <div v-else-if="shownReceipts.length" class="ledger-receipts ledger-receipts--compact">
+            <div v-else-if="fold.rcpt && shownReceipts.length" class="ledger-receipts ledger-receipts--compact">
               <div v-for="r in shownReceipts" :key="r.report_id" class="ledger-receipt">
                 <strong>{{ formatCurrency(r.amount) }}</strong>
                 <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
@@ -296,7 +298,7 @@
               </div>
             </div>
             <button
-              v-if="otherReceipts.length"
+              v-if="fold.rcpt && otherReceipts.length"
               class="ledger-more"
               type="button"
               :aria-expanded="showOtherReceipts"
@@ -348,7 +350,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { formatDate as fmtDate } from '../lib/billingDocumentView.js';
 import { splitOwed } from '../lib/studentBillingRows.js';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
@@ -385,6 +387,8 @@ import {
 } from '../lib/ledgerCoverageDates.js';
 
 const EXCEPTION_PREVIEW = 2;
+// Step 5: 帳單 / 收款紀錄 / 已刪除課程備註 open in place; collapsed again for each student.
+const fold = reactive({ inv: false, rcpt: false, voided: false });
 const justRecorded = ref(null); // F-2: the 現在確認入帳 prompt after a 登記 save
 const ledgerFellBack = ref(false); // sheet mode: the sheet could not open, so the visible ledger shows (reason, or load error)
 
@@ -931,6 +935,7 @@ const receiptOpen = ref(false);
 const receiptReportId = ref(null);
 const receiptLaterLabel = ref('');
 function openReceipt(reportId) {
+  fold.rcpt = true; // the receipt step sits on 收款紀錄
   receiptReportId.value = Number(reportId);
   receiptLaterLabel.value = '稍後再開';
   receiptOpen.value = true;
@@ -950,7 +955,7 @@ function openSlip(course) {
   slipStudentClassId.value = inv ? null : Number(course.id);
   slipOpen.value = true;
 }
-watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; fold.inv = fold.rcpt = fold.voided = false; });
 watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpen.value = false; });
 
 // In-app #398: 「登記繳費回報」 from 課程查找 lands on the entry form, with the ledger behind it. Armed once per open;
@@ -1218,6 +1223,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-contracts{display:grid;gap:10px}
 .ledger-section h4{margin:0 0 12px;font-size:var(--ds-font-size-xl);font-weight:var(--ds-font-weight-bold);line-height:var(--ds-line-tight);letter-spacing:.02em}
 .ledger-section+.ledger-section{padding-top:16px;border-top:1px solid var(--ds-border)}
+.ledger-fold{border:0;background:transparent;padding:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer}
 .ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
 .ledger-table{width:100%;border-collapse:collapse;font-size:13px}

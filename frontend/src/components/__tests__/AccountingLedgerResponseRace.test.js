@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { unfold } from './cardMenu.js';
 
 const reply = (id) => ({ ok: true, json: async () => ({ student: { id, name: `Fixture ${id}` }, contracts: [], invoices: [{ id: id * 101, invoice_no: `Fixture ${id}`, total_amount: 100, status: 'unpaid', payments: [] }], receipts: [], scope: {} }) });
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
@@ -19,6 +20,7 @@ describe('ledger note targets follow the latest student request', () => {
     });
     await wrapper.setProps({ studentId: 2 });
     await flushPromises();
+    await unfold(wrapper, 'invoices');
     await wrapper.get('[data-testid="ledger-invoice-toggle-202"]').trigger('click');
     expect(wrapper.findAll('.note-subject').map((n) => n.text())).toContain('202');
     oldError ? rejectOld(new Error('Older request failed')) : resolveOld(reply(1));

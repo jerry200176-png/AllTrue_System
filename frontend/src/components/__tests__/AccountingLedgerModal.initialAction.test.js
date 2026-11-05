@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
+import { expandAll, openCardMenu, menuItem, pickMenu, unfold } from './cardMenu.js';
 
 const course = (id, extra = {}) => ({ id, subject: `科目${id}`, schedule_mode: 'count', charge: 4400, paid: false, stop: false, package_id: null, ...extra });
 const inv = (id, scId) => ({ id, student_class_id: scId, status: 'unpaid', outstanding_amount: 4400, total_amount: 4400, due_date: '2026-10-01', payments: [] });
@@ -116,7 +117,7 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
     expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('舊資料標記已收');
     expect(w.find('[data-testid="ledger-sticky-pay"]').exists()).toBe(false);
-    await w.get('[data-testid="legacy-backfill-open"]').trigger('click');
+    await pickMenu(w, 'legacy-backfill');
     expect(w.getComponent(EntryStub).props('mode')).toBe('legacy-backfill');
     expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
     w.unmount();
@@ -198,8 +199,13 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
   it('F-5a1: a card action is passed up with the contract id, and only where the page allowed it', async () => {
     const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11)], props: { rowActions: { 11: { waive: true } } } });
     await flushPromises();
+    expect(w.find('[data-testid="contract-card-12"] .am__trigger').exists()).toBe(true);
     expect(w.find('[data-testid="contract-card-12"] [data-testid="contract-waive"]').exists()).toBe(false);
-    await w.get('[data-testid="contract-card-11"] [data-testid="contract-waive"]').trigger('click');
+    await expandAll(w);
+    await openCardMenu(w);
+    expect(menuItem('waive')).not.toBeNull();
+    menuItem('waive').click();
+    await flushPromises();
     expect(w.emitted('row-action')).toEqual([[{ kind: 'waive', courseId: 11 }]]);
     w.unmount();
   });
@@ -223,6 +229,7 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
   it('confirmed receipt rows open that receipt; pending and void rows have no button', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts });
     await flushPromises();
+    await unfold(w, 'receipts');
     await w.get('[data-testid="ledger-other-receipts-toggle"]').trigger('click');
     expect(w.findAll('[data-testid^="ledger-receipt-view-"]').map((b) => b.attributes('data-testid'))).toEqual(['ledger-receipt-view-7']);
     await w.get('[data-testid="ledger-receipt-view-7"]').trigger('click');
@@ -234,7 +241,8 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
   it('opening 繳費單 and 查看收據 sends no write request', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts });
     await flushPromises();
-    await w.get('[data-testid="contract-slip"]').trigger('click');
+    await pickMenu(w, 'slip');
+    await unfold(w, 'receipts');
     await w.get('[data-testid="ledger-other-receipts-toggle"]').trigger('click');
     await w.get('[data-testid="ledger-receipt-view-7"]').trigger('click');
     const writes = global.fetch.mock.calls.filter(([, init]) => (init?.method || 'GET').toUpperCase() !== 'GET');
@@ -246,14 +254,15 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts, role: 'teacher' });
     await flushPromises();
     expect(w.find('[data-testid^="ledger-receipt-view-"]').exists()).toBe(false);
-    expect(w.find('[data-testid="contract-slip"]').exists()).toBe(false);
+    await openCardMenu(w);
+    expect(menuItem('slip')).toBeNull();
     w.unmount();
   });
 
   it('繳費單 on a card opens the slip for its oldest open bill, or by course when it has none', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [{ ...inv(2, 12), due_date: '2026-11-01' }, inv(1, 12)] });
     await flushPromises();
-    await w.get('[data-testid="contract-slip"]').trigger('click');
+    await pickMenu(w, 'slip');
     expect(w.get('[data-testid="slip-stub"]').text()).toBe('1|');
     w.unmount();
   });
@@ -261,7 +270,7 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
   it('繳費單 on a contract with no bill yet opens the estimated slip by course', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [] });
     await flushPromises();
-    await w.get('[data-testid="contract-slip"]').trigger('click');
+    await pickMenu(w, 'slip');
     expect(w.get('[data-testid="slip-stub"]').text()).toBe('|12');
     w.unmount();
   });
@@ -269,7 +278,8 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
   it('a 金額待確認 contract keeps 繳費單 disabled with the list reason', async () => {
     const w = mountLedger({ courses: [course(12, { stop: true, amount_pending_confirmation: true })], invoices: [inv(1, 12)] });
     await flushPromises();
-    expect(w.get('[data-testid="contract-slip"]').element.disabled).toBe(true);
+    await openCardMenu(w);
+    expect(menuItem('slip').getAttribute('aria-disabled')).toBe('true');
     expect(w.get('[data-testid="contract-slip-reason"]').text()).toBe('金額需核對，不能產生繳費單');
     w.unmount();
   });

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-04-billing-v3-student-panel
+    published_at: "2026-11-04"
+    audiences:
+      - director
+    importance: digest
+    title: 學生帳務面板更簡潔
+    summary: 學生帳務面板的每門課先收成一行，要看細節再點開。
+    items:
+      - category: improved
+        text: 每門課一行：科目、狀態和一個主按鈕；你點開的那門課會直接展開。
+      - category: improved
+        text: 退回、繳費單、改備註、撤銷收款等收進「⋯」，帳單和收款紀錄點一下就展開。
+    source_refs:
+      - "changelog:2026-11-04:billing-v3-student-panel"
