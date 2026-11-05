@@ -8,7 +8,7 @@ const source = readFileSync(resolve(__dirname, '../../pages/BranchHealthBoard.vu
 
 describe('BranchHealthBoard responsive accessibility', () => {
   it('uses shared primitives for page states and actions', () => {
-    expect(source).toContain('<AtSkeleton v-if="loading"');
+    expect(source).toContain('<AtSkeleton v-if="showSkeleton"');
     expect(source).toContain('<AtInlineAlert v-else-if="error"');
     expect(source).toContain('<AtEmpty v-if="!rows.length"');
     expect((source.match(/<AtButton/g) || []).length).toBeGreaterThanOrEqual(3);

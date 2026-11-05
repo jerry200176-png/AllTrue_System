@@ -5,13 +5,13 @@
       <template #actions><AtButton shape="rect" variant="secondary" icon="refresh" :disabled="loading" @click="load">重新整理</AtButton></template>
     </AtPageHeader>
 
-    <AtSkeleton v-if="loading" rows="6" />
+    <AtSkeleton v-if="showSkeleton" rows="6" />
     <AtInlineAlert v-else-if="error" tone="danger" title="無法載入分校健康">
       <p>{{ error }}</p>
       <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="load">重試</AtButton></template>
     </AtInlineAlert>
 
-    <template v-else>
+    <div v-else class="at-refetch" :class="{ 'is-busy': busy }" :aria-busy="busy ? 'true' : 'false'">
       <div class="branch-health__note" role="note"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>顏色只根據目前系統有的資料判斷；老師流失、老師可排課量、續班率、家長客訴還沒納入。</span></div>
       <section class="branch-health__summary" aria-label="分校健康摘要">
         <AtMetric label="目前分校" :value="rows.length" delta="啟用中的分校" accent="var(--ds-primary)" />
@@ -65,12 +65,13 @@
         </div>
         <p class="branch-health__disclaimer">這份資料只協助總部找出要先看的分校，不代表分校品質保證，也不會自動修改任何資料。</p>
       </AtSection>
-    </template>
+    </div>
   </main>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRefetchView } from '../composables/useDelayedLoading';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSection from '../components/design-system/AtSection.vue';
@@ -81,6 +82,7 @@ import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 
 const props = defineProps({ token: { type: String, default: '' } });
 const rows = ref([]); const selected = ref(null); const loading = ref(true); const error = ref(''); const updatedAt = ref('');
+const { showSkeleton, busy } = useRefetchView(loading, computed(() => rows.value.length > 0));
 const dimensionOrder = [{ key: 'students', label: '學生' }, { key: 'teaching', label: '教學' }, { key: 'parents', label: '家長' }, { key: 'teachers', label: '教師' }, { key: 'operations', label: '營運' }];
 const statusCounts = computed(() => rows.value.reduce((counts, row) => { const status = row.status || 'green'; counts[status] = (counts[status] || 0) + 1; return counts; }, { red: 0, yellow: 0, green: 0 }));
 const unavailableCount = computed(() => rows.value.reduce((count, row) => count + dimensionOrder.filter(({ key }) => row.dimensions?.[key]?.status === 'unavailable').length, 0));
