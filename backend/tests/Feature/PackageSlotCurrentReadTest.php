@@ -65,6 +65,7 @@ class PackageSlotCurrentReadTest extends TestCase
             DB::table('UserCampus')->whereIn('UserID', $this->ownedUserIds)->delete();
             DB::table('User')->whereIn('id', $this->ownedUserIds)->delete();
             DB::table('session_deduction_ledger')->whereIn('student_class_id', $this->ownedCourseIds)->delete();
+            DB::table('StudentSingIn')->whereIn('StudentClassID', $this->ownedCourseIds)->delete();
             DB::table('ClassSession')->whereIn('StudentClassID', $this->ownedCourseIds)->delete();
             DB::table('StudentClass')->whereIn('ID', $this->ownedCourseIds)->delete();
             DB::table('course_packages')->whereIn('id', $this->ownedPackageIds)->delete();
@@ -185,6 +186,7 @@ class PackageSlotCurrentReadTest extends TestCase
             ->patchJson("/api/v1/class-sessions/{$b['lesson']}", ['status' => 'attended'])->assertOk();
         $this->assertBothDebitedOnce($a, $b, $other);
         $this->assertSame('attended', DB::table('ClassSession')->where('id', $b['lesson'])->value('Status'));
+        $this->assertSame(1, DB::table('StudentSingIn')->where('ClassSessionID', $b['lesson'])->count(), 'the rerun leaves one sign-in (#4931)');
     }
 
     /** Two group packages without ledger rows, a lesson each; package A's first debit holds its locks in another process. */

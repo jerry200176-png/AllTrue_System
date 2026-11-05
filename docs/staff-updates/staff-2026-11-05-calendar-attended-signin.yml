@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-05-calendar-attended-signin
+    published_at: "2026-11-05"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆改已上會算薪資
+    summary: 在行事曆把堂次改成已上或遲到，現在會記出席，兼職薪資算得到；缺席後核准評量不會多一筆出席。
+    items:
+      - category: fixed
+        text: 行事曆把堂次改成已上或遲到，現在會記出席並扣堂一次，兼職薪資算得到。
+      - category: fixed
+        text: 已標缺席的課，之後核准評量不會多一筆到班、也不扣堂。
+    source_refs:
+      - "changelog:2026-11-05:calendar-attended-signin"

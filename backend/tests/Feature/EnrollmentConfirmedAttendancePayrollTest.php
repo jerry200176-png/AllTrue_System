@@ -96,6 +96,88 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         $this->assertArrayNotHasKey($session->id, $unmarked());
     }
 
+    /** #4931: 未上 → 已上 in the calendar writes the one payable sign-in with the debit, so payroll pays it. */
+    public function test_calendar_attended_gets_one_sign_in_one_debit_and_is_paid(): void
+    {
+        [$token, $teacherId, $course, $session] = $this->pastScheduledLesson('calendar');
+
+        $this->patchStatus($token, $session, 'attended');
+
+        $this->assertTaughtOnce((int) $course->ID, $teacherId, '2026-04-13');
+        $this->assertPaid($token, $teacherId);
+    }
+
+    /** #4931: 缺席 → 已上 in the calendar debits the lesson against its one sign-in (the 缺席 row becomes 到班). */
+    public function test_calendar_absent_then_attended_debits_once_against_the_existing_sign_in(): void
+    {
+        [$token, $teacherId, $course, $session] = $this->pastScheduledLesson('cal-absent');
+        $this->patchStatus($token, $session, 'absent');
+        $absent = $this->signIn($course, $session, $teacherId, 'absent');
+        $this->assertSame(0, DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->count());
+
+        $this->patchStatus($token, $session, 'attended');
+
+        $this->assertSame((int) $absent->id, (int) $this->assertTaughtOnce((int) $course->ID, $teacherId, '2026-04-13')
+            ->signIns()->active()->value('id'));
+        $this->assertPaid($token, $teacherId);
+    }
+
+    /** #4931: approving the evaluation of a lesson already marked 缺席 adds no second sign-in and no debit. */
+    public function test_approve_after_absent_keeps_the_one_absent_sign_in(): void
+    {
+        [, $teacherId, $course, $session] = $this->pastScheduledLesson('absent');
+        $absent = $this->signIn($course, $session, $teacherId, 'absent');
+        $session->update(['Status' => 'absent']);
+
+        ApprovalSessionSyncService::syncOnApprove($this->record($session, $teacherId), $course, 0);
+
+        $this->assertSame([$absent->id], StudentSignIn::where('ClassSessionID', $session->id)->active()->pluck('id')->all());
+        $this->assertSame('absent', (string) $session->fresh()->Status);
+        $this->assertSame(0, DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->count());
+    }
+
+    /** #4931: a live present sign-in that was never debited (e.g. a failed swipe debit) is debited, not doubled. */
+    public function test_approve_debits_a_live_undebited_sign_in_instead_of_adding_one(): void
+    {
+        [$token, $teacherId, $course, $session] = $this->pastScheduledLesson('swipe');
+        $present = $this->signIn($course, $session, $teacherId, 'present');
+
+        ApprovalSessionSyncService::syncOnApprove($this->record($session, $teacherId), $course, 0);
+
+        $this->assertSame((int) $present->id, (int) $this->assertTaughtOnce((int) $course->ID, $teacherId, '2026-04-13')
+            ->signIns()->active()->value('id'));
+        $this->assertPaid($token, $teacherId);
+    }
+
+    /** @return array{0: string, 1: int, 2: StudentClass, 3: ClassSession} a 2026-04-13 lesson still 未上 on 2026-04-14 */
+    private function pastScheduledLesson(string $tag): array
+    {
+        [$token, $teacherId] = $this->actors($tag);
+        $courseId = $this->enroll($token, $teacherId, [], ['2026-04-13', '2026-04-20'], 1);
+        Carbon::setTestNow(Carbon::parse('2026-04-14 08:00:00', 'Asia/Taipei'));
+
+        return [$token, $teacherId, StudentClass::findOrFail($courseId),
+            ClassSession::where('StudentClassID', $courseId)->whereDate('SessionDate', '2026-04-13')->firstOrFail()];
+    }
+
+    private function patchStatus(string $token, ClassSession $session, string $status): void
+    {
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->patchJson("/api/v1/class-sessions/{$session->id}", ['status' => $status])->assertOk();
+    }
+
+    private function signIn(StudentClass $course, ClassSession $session, int $teacherId, string $status): StudentSignIn
+    {
+        return StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $course->StudentID, 'TeacherID' => $teacherId,
+            'SignInDT' => '2026-04-13 16:00:00', 'SignOutDT' => '2026-04-13 18:00:00', 'MDT' => now(), 'ClassSessionID' => $session->id,
+            'Status' => $status, 'CampusID' => 1, 'PersonType' => 'student', 'SessionDeducted' => false, 'Memo' => 'swipe']);
+    }
+
+    private function record(ClassSession $session, int $teacherId): LearningRecord
+    {
+        return (new LearningRecord())->forceFill(['ClassSessionID' => $session->id, 'TeacherID' => $teacherId]);
+    }
+
     private function assertTaughtOnce(int $courseId, int $teacherId, string $date): ClassSession
     {
         $session = ClassSession::where('StudentClassID', $courseId)->whereDate('SessionDate', $date)->firstOrFail();
@@ -161,7 +243,7 @@ class EnrollmentConfirmedAttendancePayrollTest extends TestCase
         ]);
         UserCampus::create(['CampusID' => 1, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
-        AuthToken::create(['user_id' => $director->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        AuthToken::create(['user_id' => $director->id, 'token' => $token, 'expires_at' => now()->addMonth()]); // outlives the clock moves below
 
         $teacher = User::create([
             'LoginName' => "pt-502-{$tag}@test.com", 'Name' => '兼職', 'PSW' => 'secret',
