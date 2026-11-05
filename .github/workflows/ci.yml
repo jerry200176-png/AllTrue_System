@@ -232,7 +232,7 @@ jobs:
               - 'frontend/e2e/subject-settings-clarity.spec.js'
               # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
               - 'frontend/e2e/tuition-*-clarity.spec.js'
-              - 'frontend/src/{pages/TuitionCollectionPage.vue,components/TuitionDocActions.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
+              - 'frontend/src/{pages/TuitionCollectionPage.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
               - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
               # #4180: sidebar search / hub tabs (ui-foundation-sidebar-navigation.spec.js) and the 課程查找 payment
               # entry (ui-foundation-course-payment-entry.spec.js), incl. the helpers the production acceptance shares

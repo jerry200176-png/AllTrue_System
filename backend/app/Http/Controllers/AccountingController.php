@@ -845,7 +845,7 @@ class AccountingController extends Controller
                 // In-app #428/#438: any PackageID (monthly members too, unlike package_id above), for the legacy-flag clear
                 // warning: that action clears the package and every same-student member.
                 'in_package' => (int) ($class->PackageID ?? 0) > 0,
-                // In-app #425: same 金額待確認 verdict as the tuition list (TuitionDocActions keeps 繳費單 disabled). Read-only.
+                // In-app #425: same 金額待確認 verdict as the tuition list (the bill list keeps 繳費單 disabled). Read-only.
                 'amount_pending_confirmation' => in_array((int) $class->ID, $amountPendingIds, true),
                 // in-app #432: the month and amount 登記收款 collects when no bill of this monthly contract still owes.
                 'collection_period' => $collectionPeriods[(int) $class->ID] ?? null,
