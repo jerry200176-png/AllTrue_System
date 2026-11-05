@@ -23,7 +23,7 @@
   </div>
 
   <div v-else-if="isStandaloneTrueFit" class="standalone-truefit-shell">
-    <div v-if="loading" class="loading-screen" role="status" aria-busy="true" aria-label="載入中">
+    <div v-if="loading || showBootSpinner" class="loading-screen" role="status" aria-busy="true" aria-label="載入中">
       <template v-if="showBootSpinner">
         <div class="spinner"></div>
         <span>載入 TrueFit…</span>
@@ -59,7 +59,7 @@
     >?</button>
   </div>
 
-  <div v-else-if="loading" class="loading-screen" role="status" aria-busy="true" aria-label="載入中">
+  <div v-else-if="loading || showBootSpinner" class="loading-screen" role="status" aria-busy="true" aria-label="載入中">
     <template v-if="showBootSpinner">
       <div class="spinner"></div>
       <span>載入中…</span>

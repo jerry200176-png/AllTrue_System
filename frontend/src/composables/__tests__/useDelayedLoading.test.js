@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
+import { readFileSync } from 'node:fs';
 import { useDelayedLoading, useRefetchView } from '../useDelayedLoading';
 
 beforeEach(() => vi.useFakeTimers());
@@ -63,5 +64,14 @@ describe('useRefetchView', () => {
     loading.value = true; // refetch
     expect(v.showSkeleton.value).toBe(false);
     expect(v.busy.value).toBe(true);
+  });
+});
+
+describe('App boot screen', () => {
+  it('stays mounted while the spinner is in its minimum-visible window, not only while loading', () => {
+    const app = readFileSync(`${process.cwd()}/src/App.vue`, 'utf8');
+    const gates = app.match(/<div v-(?:else-)?if="[^"]*" class="loading-screen"/g) || [];
+    expect(gates).toHaveLength(2); // main boot + standalone TrueFit
+    for (const g of gates) expect(g).toContain('loading || showBootSpinner');
   });
 });
