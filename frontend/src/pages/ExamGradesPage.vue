@@ -11,37 +11,49 @@
       </template>
     </AtPageHeader>
 
-    <AtSkeleton v-if="loading" rows="4" />
-    <AtInlineAlert v-else-if="error" tone="danger" title="無法載入段考">
-      <p>{{ error }}</p>
-      <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="loadRounds">重試</AtButton></template>
-    </AtInlineAlert>
-    <AtEmpty
-      v-else-if="!rounds.length"
-      icon="quiz"
-      :title="isDirector ? '還沒有段考場次' : '目前沒有開放中的段考'"
-      :description="isDirector ? '建立場次並發布後，老師工作台會出現待登清單。' : '主任開放後會出現在這裡。'"
-    />
+    <Tabs v-model="tab" class="tw:gap-3">
+      <TabsList>
+        <TabsTrigger value="rounds">段考場次</TabsTrigger>
+        <TabsTrigger value="periods">各校段考日期</TabsTrigger>
+      </TabsList>
+      <TabsContent value="rounds">
+      <AtSkeleton v-if="loading" rows="4" />
+      <AtInlineAlert v-else-if="error" tone="danger" title="無法載入段考">
+        <p>{{ error }}</p>
+        <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="loadRounds">重試</AtButton></template>
+      </AtInlineAlert>
+      <AtEmpty
+        v-else-if="!rounds.length"
+        icon="quiz"
+        :title="isDirector ? '還沒有段考場次' : '目前沒有開放中的段考'"
+        :description="isDirector ? '建立場次並發布後，老師工作台會出現待登清單。' : '主任開放後會出現在這裡。'"
+      />
 
-    <div v-else class="exam-round-list">
-      <article v-for="round in rounds" :key="round.id" class="exam-round-card">
-        <div class="exam-round-card__head">
-          <div>
-            <strong>{{ round.title }}</strong>
-            <p class="muted">{{ round.exam_date || '未定考試日' }} · 截止 {{ round.entry_deadline || '未設' }}</p>
+      <div v-else class="exam-round-list">
+        <article v-for="round in rounds" :key="round.id" class="exam-round-card">
+          <div class="exam-round-card__head">
+            <div>
+              <strong>{{ round.title }}</strong>
+              <p class="muted">{{ round.exam_date || '未定考試日' }} · 截止 {{ round.entry_deadline || '未設' }}</p>
+            </div>
+            <span :class="['status-pill', `status-${round.status}`]">{{ statusLabel(round.status) }}</span>
           </div>
-          <span :class="['status-pill', `status-${round.status}`]">{{ statusLabel(round.status) }}</span>
-        </div>
-        <p class="muted">科目：{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</p>
-        <div class="exam-round-card__actions">
-          <AtButton shape="rect" size="sm" variant="primary" @click="openRound(round)">
-            {{ examRoundActionLabel(round, isDirector) }}
-          </AtButton>
-          <AtButton v-if="isDirector && round.status === 'draft'" shape="rect" size="sm" variant="ghost" @click="publishRound(round)">發布</AtButton>
-          <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="askCloseRound(round)">關閉</AtButton>
-        </div>
-      </article>
-    </div>
+          <p class="muted">科目：{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</p>
+          <div class="exam-round-card__actions">
+            <AtButton shape="rect" size="sm" variant="primary" @click="openRound(round)">
+              {{ examRoundActionLabel(round, isDirector) }}
+            </AtButton>
+            <AtButton v-if="isDirector && round.status === 'draft'" shape="rect" size="sm" variant="ghost" @click="publishRound(round)">發布</AtButton>
+            <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="askCloseRound(round)">關閉</AtButton>
+          </div>
+        </article>
+      </div>
+
+      </TabsContent>
+      <TabsContent value="periods">
+        <SchoolExamPeriodsPanel :branch-id="branchId" :is-director="isDirector" />
+      </TabsContent>
+    </Tabs>
 
     <AtDialog :open="!!pendingClose" title="關閉段考" title-id="exam-close-title" @close="pendingClose = null">
       <p>關閉後老師不能再改分，確定關閉「{{ pendingClose?.title }}」嗎？</p>
@@ -142,6 +154,8 @@ import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import SchoolExamPeriodsPanel from '../components/SchoolExamPeriodsPanel.vue';
 import { supabase } from '../supabase';
 import { canEditExamRound, examRoundActionLabel, filterExamStudents } from '../lib/examScoreStudentFilter';
 
@@ -154,6 +168,7 @@ const props = defineProps({
 const isDirector = computed(() => ['director', 'super_admin', 'admin'].includes(String(props.userRole || '')));
 const canEditScores = computed(() => canEditExamRound(selected.value, isDirector.value));
 
+const tab = ref('rounds');
 const loading = ref(false);
 const error = ref('');
 const rounds = ref([]);
