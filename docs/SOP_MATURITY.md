@@ -23,7 +23,7 @@
 |---|---|
 | **M1 交付安全網** | AI/Bot review gate（#736）、Rollback 演練 + MTTR 量測（#733）、Playwright E2E merge gate（#730）、Vitest 元件測試（#729）、CI raw-hex guard（#689） |
 | **M2 品質縱深** | PR Design Review Gate + checklist（#737）、Migration 向後相容 + rollback 安全（#734）、覆蓋率 advisory→blocking（#731） |
-| **M3 工程韌性** | 第二 maintainer approval（#738）、漸進發布 + SLO 驅動自動 rollback（#735）、測試金字塔 + 視覺回歸 + flaky 治理（#732）、稽核日誌（#766） |
+| **M3 工程韌性** | 第二 maintainer approval（#738）、漸進發布 + SLO 驅動自動 rollback（#735）、視覺回歸（#4952）；測試金字塔 + flaky 治理（尚無 issue；#732 實為 PHPUnit DB 隔離）、稽核日誌（#766） |
 
 **既有自動化**（`.github/workflows/deploy.yml`）：health-check（`/api/v1/health`）→ post-merge smoke → 失敗**自動 rollback**（前端重 build + `migrate:rollback` + rollback health check）。Sentry DSN 已接、dependabot 已設、CI raw-hex guard 已上。
 
