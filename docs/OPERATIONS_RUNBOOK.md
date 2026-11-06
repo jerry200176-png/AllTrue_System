@@ -277,11 +277,11 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 
 | 項目 | 設定 / 工具 | 為什麼 |
 |------|------------|--------|
-| Branch protection | `main`：required checks + no force push + up-to-date | 事故 A 防再犯 |
+| Branch protection | `main`：required checks + no force push（live 設定見 REF_GITHUB_RULESET_BASELINE.md）| 事故 A 防再犯 |
 | Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
 | Auto-delete head branches | Settings → General | 減少 stale branch |
 | Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
-| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge；T0/T1 由 `auto-merge-safe.yml` 啟用 server-side auto-merge | CI + deterministic risk gate = 自動 reviewer |
+| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge；合併一律加 `queue` label（[`MERGE_SOP.md`](sop/MERGE_SOP.md)；`auto-merge-safe.yml` 目前休眠）| CI + deterministic risk gate = 自動 reviewer |
 | CODEOWNERS | 保留；觸發時 CEO 自審即可 | 高風險路徑提醒 |
 | Dependabot SLA | §B0 / §T | 供應鏈 |
 | Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
@@ -305,7 +305,7 @@ git checkout -b feat|fix|chore/<slug>
 git push -u origin HEAD
 gh pr create --fill
 gh pr checks --watch          # 等到全綠或自己修
-gh pr merge --squash --delete-branch   # 僅 T2/T3/保護性工作在完成對應 review/gate 後；T0/T1 由 auto-merge-safe.yml 自動啟用
+gh pr merge --squash --delete-branch   # 僅 T2/T3/保護性工作在完成對應 review/gate 後；合併用 `queue` label，見 docs/sop/MERGE_SOP.md
 # merge 後只觀察 deploy.yml 的 state、exact SHA、health、critical smoke evidence
 ```
 
@@ -316,7 +316,7 @@ T2，走 CI 後自動 deploy；T3/protected 或 ambiguous evidence 才在同一 
 不得另開第二次 dispatch 或手動 production smoke；workflow success 不等於
 `production-verified`。
 
-- 一 PR 一議題；**≤ 400 行**（hard 700；`chore/docs-*` 無 production 路徑 ≤ 1300，見 presubmit CHECK 2）。
+- 一 PR 一議題；大小上限見 [`FOUNDER_STANDING_DECISIONS.md`](governance/FOUNDER_STANDING_DECISIONS.md)（presubmit CHECK 2）。
 - 多階段 issue：中間 PR 用 `Refs #N`，最後一個 PR 才 `Closes #N`。
 - **禁止** AI 報「完成」而 CI 還在 running / PR 未 merge。
 
