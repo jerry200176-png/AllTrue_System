@@ -46,6 +46,7 @@ export function reviewGate(comments, head, owner, scope, samePatch = () => false
       const old = m[1];
       if (old === head || seen.has(old) || !r3Pass(mine[i], old)) continue;
       seen.add(old);
+      if (mine.some((b) => new RegExp(`<!-- gate:[a-z-]+:v1 sha=${old} verdict=fail -->`).test(b))) continue;
       if (mine.slice(i + 1).some((b) => /<!-- gate:[a-z-]+:v1 sha=[0-9a-f]{40} verdict=fail -->/.test(b))) continue;
       if (samePatch(old)) return { ok: true, via: `r3-carried:${old.slice(0, 7)}` };
     }
@@ -127,7 +128,15 @@ function prScope(n, head) {
 const diffKey = (sha, base) => {
   const files = JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.files || []);
   if (files.length >= 300 || files.some((f) => typeof f.patch !== 'string')) return null;
-  return JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, f.patch]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, f.patch]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+  return { key, paths: files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)) };
+};
+// patch text hides mode changes and file<->symlink swaps: compare tree entries (mode+blob, absent = deleted) of every PR path.
+const treeEntries = (sha, paths) => {
+  const t = api(`git/trees/${sha}?recursive=1`);
+  if (t.truncated || !Array.isArray(t.tree)) return null;
+  const by = new Map(t.tree.map((e) => [e.path, `${e.mode} ${e.type} ${e.sha}`]));
+  return paths.map((p) => by.get(p) ?? 'absent');
 };
 export function samePrPatch(n, head, old) {
   try {
@@ -135,7 +144,10 @@ export function samePrPatch(n, head, old) {
     const base = api(`pulls/${n}`).base?.ref;
     if (!base || !shas.includes(old) || !shas.includes(head)) return false;
     const a = diffKey(old, base);
-    return a !== null && a === diffKey(head, base);
+    const b = a && diffKey(head, base);
+    if (!a || !b || a.key !== b.key) return false;
+    const x = treeEntries(old, a.paths), y = treeEntries(head, a.paths);
+    return x !== null && y !== null && JSON.stringify(x) === JSON.stringify(y);
   } catch { return false; }
 }
 

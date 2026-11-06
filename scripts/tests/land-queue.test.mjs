@@ -3,6 +3,9 @@ import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
+import os from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -557,12 +560,40 @@ test('review gate: R3 marker carries across update-branch only when samePatch', 
   assert.equal(R3([codex(clean()), sec(OLD)], () => false).ok, false); // patch differs / missing patch / sha not in PR -> samePatch false
   assert.equal(R3([codex(clean()), sec(OLD)]).ok, false); // default dependency fails closed
   assert.equal(R3([codex(clean()), sec(OLD), sec(H, 'fail')], () => true).ok, false); // fail on head vetoes
+  assert.equal(R3([codex(clean()), sec(OLD, 'fail'), sec(OLD)], () => true).ok, false); // earlier fail on the carried sha
+  assert.equal(R3([codex(clean()), owner(`${gateMarker('qa-lead', OLD, 'fail')}\n${gateMarker('security-data-reviewer', OLD)}`)], () => true).ok, false); // fail in the same comment
   assert.equal(R3([codex(clean()), sec(OLD), sec('c'.repeat(40), 'fail')], () => true).ok, false); // newer fail vetoes
   assert.equal(R3([codex(clean()), sec('c'.repeat(40), 'fail'), sec(OLD)], () => true).ok, true); // older fail does not
   assert.equal(R3([codex(clean()), { user: { login: 'someone' }, body: gateMarker('security-data-reviewer', OLD) }], () => true).ok, false); // non-owner
   assert.equal(R3([codex(clean()), owner(reviewMarker(OLD))], () => true).via, `r3-carried:${OLD.slice(0, 7)}`);
   assert.equal(R3([codex(clean(OLD))], () => true).ok, false); // Codex gating unchanged
   assert.equal(reviewGate([codex(clean())], H, OWNER, 'lower', () => assert.fail('called')).via, 'codex'); // lower unaffected
+});
+
+test('samePrPatch: identical patch needs identical tree mode/blob; truncated tree fails closed', () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), 'fakegh-'));
+  const A = 'a'.repeat(40), B = 'b'.repeat(40);
+  fs.writeFileSync(join(dir, 'gh'), `#!/usr/bin/env node
+const u = process.argv[3], m = JSON.parse(process.env.FAKE);
+const key = Object.keys(m).find((k) => u.includes(k));
+if (!key) process.exit(1);
+console.log(JSON.stringify(m[key]));
+`, { mode: 0o755 });
+  const run = (tree) => {
+    const f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }];
+    const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: 'main' } }, 'compare/': [{ files: f }],
+      [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b };
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e',
+      `import { samePrPatch } from ${JSON.stringify(new URL('../../.github/scripts/review-gate.mjs', import.meta.url).href)}; console.log(samePrPatch(7, '${B}', '${A}'));`],
+    { encoding: 'utf8', env: { ...process.env, REPO: 'o/r', FAKE: JSON.stringify(fake), PATH: `${dir}:${process.env.PATH}` } });
+    return out.trim() === 'true';
+  };
+  const ent = (mode, sha = 'c'.repeat(40)) => ({ tree: [{ path: 'x.sh', mode, type: 'blob', sha }] });
+  assert.equal(run({ a: ent('100644'), b: ent('100644') }), true);
+  assert.equal(run({ a: ent('100644'), b: ent('100755') }), false); // mode change
+  assert.equal(run({ a: ent('100644'), b: ent('120000') }), false); // symlink swap
+  assert.equal(run({ a: ent('100644'), b: { tree: [] } }), false); // deleted at head only
+  assert.equal(run({ a: ent('100644'), b: { ...ent('100644'), truncated: true } }), false);
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {
