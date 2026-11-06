@@ -93,6 +93,15 @@ class T(unittest.TestCase):
         self.commit({"docs/a.md": ""}, "rm")
         self.assertEqual(self.hits(), [])
 
+    def test_rewrites_declaration_parsing(self):
+        self.assertEqual(guard.declared("x\nRewrites: #4980 — keep the carry rule\n"), {"#4980"})
+        self.assertEqual(guard.declared("Rewrites: #1, #22 - both superseded"), {"#1", "#22"})
+        self.assertEqual(guard.declared("Rewrites: #4980"), set())  # no reason -> not accepted
+        self.assertEqual(guard.declared("see Rewrites: #5 — inline mention"), set())  # must start a line
+        self.assertEqual(guard.declared(None), set())
+        self.assertEqual(guard.declared("Rewrites: #4980 —\n\n## Rollback"), set())  # reason must be on the line
+        self.assertEqual(guard.declared("Rewrites: #4980\n- reason"), set())
+
 
 if __name__ == "__main__":
     unittest.main()
