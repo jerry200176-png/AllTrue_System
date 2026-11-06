@@ -200,6 +200,22 @@ describe('PaymentEntryModal — 補登收款 on a zero-fee course (in-app #511)'
   });
 });
 
+describe('PaymentEntryModal — 補登 with charge 0 but money owed (in-app #511)', () => {
+  it('keeps the normal 補登 path when an invoice is still outstanding', async () => {
+    global.fetch.mockResolvedValueOnce(ok({ report_id: 3, status: 'confirmed' }));
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row: { ...row, charge: 0, payable_status: 'invoiced', payable_amount: 1500, payable_outstanding: 1500 }, mode: 'legacy-backfill' } });
+    await w.setProps({ show: true });
+    await nextTick();
+    expect(w.find('[data-testid="pe-legacy-zero-hint"]').exists()).toBe(false);
+    await w.find('form').trigger('submit');
+    await tick();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 1500 });
+    expect(w.emitted('confirmed')).toHaveLength(1);
+    w.unmount();
+  });
+});
+
 describe('PaymentEntryModal — side sheet placement (#4659 step 3)', () => {
   it('placement="right" renders the same form inside the AtDialog sheet and still submits', async () => {
     global.fetch.mockResolvedValueOnce(ok({ report_id: 9, status: 'pending' }));

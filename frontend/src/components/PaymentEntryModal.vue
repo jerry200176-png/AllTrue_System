@@ -69,7 +69,7 @@
             <input type="checkbox" v-model="form.free_gift" data-testid="pe-free-gift" />
             這期是「{{ FREE_GIFT_LABEL }}」：登錄一張 NT$ 0 帳單（不是收款）
           </label>
-          <p v-if="isZeroCharge && legacyBackfill" class="pe-hint" data-testid="pe-legacy-zero-hint">{{ LEGACY_ZERO_FEE_HELP }}</p>
+          <p v-if="legacyNoObligation" class="pe-hint" data-testid="pe-legacy-zero-hint">{{ LEGACY_ZERO_FEE_HELP }}</p>
           <p v-if="isZeroCharge && !legacyBackfill" class="pe-hint">沒填費用不算免費。免費才勾，要收費請先到課程管理設定。</p>
         </div>
 
@@ -155,6 +155,9 @@ const form = reactive({
 const submitting = ref(false);
 const submitError = ref('');
 const isZeroCharge = computed(() => Number(props.row?.charge ?? 0) === 0);
+// Zero charge is not zero obligation: a zero Charge with a positive Rate still owes what the bill / collection period shows.
+const legacyNoObligation = computed(() => legacyBackfill.value && isZeroCharge.value
+  && Number(props.row?.payable_outstanding ?? props.row?.payable_amount ?? props.row?.estimated_amount ?? 0) <= 0);
 
 watch(() => props.show, (val) => {
   if (val && props.row) {
@@ -192,7 +195,7 @@ async function submit(andNext = false) {
   // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself; NT$0 needs the explicit 免費／贈送 mark.
   // in-app #511: 補登 cannot take NT$0 or 免費／贈送 (the server refuses both), so say what to do instead of asking for a hidden box.
   if (amount === 0 && legacyBackfill.value) {
-    submitError.value = LEGACY_ZERO_FEE_HELP;
+    submitError.value = legacyNoObligation.value ? LEGACY_ZERO_FEE_HELP : '金額要大於 0，請填實際收到的金額。';
     return;
   }
   if (amount === 0 && !form.free_gift) {
