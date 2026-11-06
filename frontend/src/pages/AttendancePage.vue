@@ -1087,6 +1087,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { withPoolNotice } from '../lib/sharedPoolNotice.js';
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 import { supabase } from '../supabase';
@@ -1170,7 +1171,7 @@ function switchTab(tab) {
 const teacherRecords  = ref([]);
 const teacherUnclosed = ref([]);
 const teacherLoading  = ref(false);
-const teacherDate     = ref(new Date().toISOString().slice(0, 10));
+const teacherDate     = ref(ymdInTaipei());
 
 // 當天每位老師一列（後端依課表重算，跟月出勤表同一套規則）；有課沒刷的老師也在裡面
 const teacherDays = ref([]);
@@ -1508,7 +1509,7 @@ let refreshTimer = null;
 
 const manualForm = ref({
   personKey: '',
-  date: new Date().toISOString().split('T')[0],
+  date: ymdInTaipei(),
   time: new Date().toTimeString().slice(0, 5),
   status: 'present',
   memo: ''
@@ -1523,7 +1524,7 @@ const dirTimeError = ref('');
 const dirForm = ref({
   studentId: '',
   studentClassId: '',
-  date: new Date().toISOString().split('T')[0],
+  date: ymdInTaipei(),
   startTime: (() => { const d = new Date(); return `${String(d.getHours()).padStart(2,'0')}:${d.getMinutes() < 30 ? '00' : '30'}`; })(),
   endTime: (() => { const d = new Date(); const h = d.getMinutes() < 30 ? d.getHours() : (d.getHours() + 1) % 24; return `${String(h).padStart(2,'0')}:${d.getMinutes() < 30 ? '30' : '00'}`; })(),
   status: 'present',
@@ -1643,9 +1644,7 @@ const localTodayYmd = () => {
 };
 
 const quickMinDate = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() - 14);
-  return d.toISOString().slice(0, 10);
+  return ymdInTaipei(new Date(Date.now() - 14 * 86400000));
 })();
 
 const quickForm = ref({
@@ -1831,8 +1830,7 @@ const fetchRecords = async () => {
         // today-6 … today regardless of when the server's "now" is evaluated.
         const end   = localTodayYmd();
         const start = (() => {
-          const d = new Date(); d.setDate(d.getDate() - 6);
-          return d.toISOString().slice(0, 10);
+          return ymdInTaipei(new Date(Date.now() - 6 * 86400000));
         })();
         params.set('start_date', start);
         params.set('end_date',   end);
