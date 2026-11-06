@@ -40,7 +40,7 @@
 
 | 自動化 |
 |--------|
-| 路徑含 `SmartCalendar`、`calendarOccurrenceMerge`、`ScheduleController`、`lib/sessionDates.js` 等 → **Frontend CI** 強制 `npm run test:calendar`（見 `ci.yml` vite-build job）。 |
+| 路徑含 `SmartCalendar`、`calendarOccurrenceMerge`、`ScheduleController`、`lib/sessionDates.js` 等 → **Frontend CI** 強制 `npm run test:calendar`（見 `ci.yml` vite_core job）。 |
 
 ---
 
