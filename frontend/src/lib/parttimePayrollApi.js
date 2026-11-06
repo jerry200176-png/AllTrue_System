@@ -130,3 +130,24 @@ export async function deleteTeacherPayrollRules({ branchId, teacherId, effective
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Delete failed');
   return res.json();
 }
+
+// #4971: manual 行政加給 (one per teacher per month, reason required)
+export async function saveAdminBonus({ branchId, teacherId, month, amount, reason }) {
+  const res = await fetch(`${API_BASE}/finance/parttime-payroll/admin-bonus`, {
+    method: 'PUT',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch_id: branchId, teacher_id: teacherId, month, amount, reason }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '儲存失敗');
+  return res.json();
+}
+
+export async function deleteAdminBonus({ branchId, teacherId, month }) {
+  const res = await fetch(`${API_BASE}/finance/parttime-payroll/admin-bonus`, {
+    method: 'DELETE',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch_id: branchId, teacher_id: teacherId, month }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '刪除失敗');
+  return res.json();
+}

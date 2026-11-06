@@ -492,6 +492,8 @@ Route::prefix('v1')->group(function () {
         Route::post('part-time-rate-cards', [PartTimeRateCardController::class, 'store'])->middleware('require_pin');
         Route::put('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'update'])->whereNumber('id')->middleware('require_pin');
         Route::delete('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'destroy'])->whereNumber('id')->middleware('require_pin');
+        Route::put('finance/parttime-payroll/admin-bonus', [\App\Http\Controllers\ParttimeAdminBonusController::class, 'upsert'])->middleware('require_pin');
+        Route::delete('finance/parttime-payroll/admin-bonus', [\App\Http\Controllers\ParttimeAdminBonusController::class, 'destroy'])->middleware('require_pin');
         Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport'])->middleware('require_pin');
         Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId')->middleware('require_pin');
         Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock'])->middleware('require_pin');

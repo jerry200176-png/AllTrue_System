@@ -1212,6 +1212,7 @@ class FinanceController extends Controller
         $rows = $lockedRun
             ? $this->buildParttimePayrollRowsFromSnapshot($lockedRun)
             : $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+        $rows = $this->withAdminBonus($rows, $branchId, $month);
 
         if ($request->filled('search')) {
             $q = mb_strtolower($request->input('search'));
@@ -1376,7 +1377,7 @@ class FinanceController extends Controller
             abort(422, "Too many rows ({$totalRows}). Max export is {$maxExport}. Please narrow your scope.");
         }
 
-        $teacherRows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollData($month, $campusIds, $ruleCtx), $branchId, $month);
         $rateMap  = $this->buildRateMap($allRecords, $ruleCtx);
         $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap, $ruleCtx);
 
@@ -1386,13 +1387,14 @@ class FinanceController extends Controller
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源']);
+            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
                 fputcsv($out, [
                     $t['teacher_name'], $t['total_hours'], $t['high_hours'],
                     $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'],
                     $t['total_salary'], $t['session_count'],
                     ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
+                    $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '',
                 ]);
             }
 
@@ -1827,6 +1829,38 @@ class FinanceController extends Controller
         return $lessons;
     }
 
+    /** #4971: add the manual 行政加給 as its own field and into total_salary (bonus-only teachers get a row). */
+    private function withAdminBonus(array $rows, ?int $branchId, string $month): array
+    {
+        if (!$branchId) {
+            return $rows;
+        }
+        $bonuses = \App\Models\ParttimePayrollAdminBonus::where('campus_id', $branchId)->where('month', $month)->get()->keyBy('teacher_id');
+        $names = $bonuses->isEmpty() ? [] : TeacherProfileDirectory::names();
+        $seen = [];
+        foreach ($rows as &$r) {
+            $b = $bonuses->get((int) $r['teacher_id']);
+            $r['admin_bonus'] = $b ? (int) $b->amount : 0;
+            $r['admin_bonus_reason'] = $b ? $b->reason : null;
+            $r['total_salary'] = (int) $r['total_salary'] + $r['admin_bonus'];
+            $seen[(int) $r['teacher_id']] = true;
+        }
+        unset($r);
+        foreach ($bonuses as $tid => $b) {
+            if (isset($seen[(int) $tid])) {
+                continue;
+            }
+            $rows[] = [
+                'teacher_id' => (int) $tid, 'teacher_name' => $names[(int) $tid] ?? 'Unknown',
+                'high_hours' => 0, 'junior_hours' => 0, 'elementary_hours' => 0, 'tutoring_hours' => 0,
+                'total_hours' => 0, 'total_salary' => (int) $b->amount, 'session_count' => 0,
+                'rule_source' => 'branch_default', 'admin_bonus' => (int) $b->amount, 'admin_bonus_reason' => $b->reason,
+            ];
+        }
+
+        return $rows;
+    }
+
     private function buildParttimePayrollRowsFromSnapshot(PayrollRun $run): array
     {
         $buckets = [];
@@ -1885,16 +1919,16 @@ class FinanceController extends Controller
 
     private function exportPayrollSnapshot(PayrollRun $run, string $branchName, string $month): StreamedResponse
     {
-        $teacherRows = $this->buildParttimePayrollRowsFromSnapshot($run);
+        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollRowsFromSnapshot($run), (int) $run->branch_id, $month);
         $lines = $run->lines->sortBy('id');
         $filename = "兼職薪資_{$branchName}_{$month}.csv";
 
         return response()->streamDownload(function () use ($teacherRows, $lines) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源']);
+            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
-                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
+                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設', $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '']);
             }
             fputcsv($out, []);
             fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);

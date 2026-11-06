@@ -1010,4 +1010,73 @@ class ParttimePayrollTest extends TestCase
     {
         return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
     }
+
+    // ── #4971 行政加給 ─────────────────────────────────────────
+    private function bonusUrl(): string
+    {
+        return '/api/v1/finance/parttime-payroll/admin-bonus';
+    }
+
+    public function test_admin_bonus_create_edit_delete_adds_to_total_and_audits(): void
+    {
+        $dir = $this->createDirector('dir-ab-1@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab1@test.com', '兼職加給');
+        $sc = $this->makeStudentClass($this->createStudent(1, '生'), $tid, 10, 'one_on_one');
+        $this->makeApprovedLR($sc, $tid, '2026-04-01', '16:00', '18:00');
+        $h = $this->authHeaders($dir['token']);
+        $body = ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 500, 'reason' => '行政支援'];
+
+        $this->withHeaders($h)->putJson($this->bonusUrl(), $body)->assertOk();
+        $t = $this->withHeaders($h)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1')->json('teachers.0');
+        $this->assertSame(1300, $t['total_salary']); // 800 + 500
+        $this->assertSame(500, $t['admin_bonus']);
+        $csv = $this->withHeaders($h)->get('/api/v1/finance/parttime-payroll/export?month=2026-04&branch_id=1')->streamedContent();
+        $this->assertStringContainsString('行政支援', $csv);
+
+        $this->withHeaders($h)->putJson($this->bonusUrl(), array_merge($body, ['amount' => 700]))->assertOk();
+        $this->assertSame(700, (int) DB::table('parttime_payroll_admin_bonuses')->value('amount'));
+        $this->assertSame(1, DB::table('parttime_payroll_admin_bonuses')->count());
+
+        $this->withHeaders($h)->deleteJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04'])->assertOk();
+        $this->assertSame(0, DB::table('parttime_payroll_admin_bonuses')->count());
+        $this->assertEqualsCanonicalizing(
+            ['payroll.parttime_admin_bonus.created', 'payroll.parttime_admin_bonus.updated', 'payroll.parttime_admin_bonus.deleted'],
+            DB::table('security_audit_events')->where('event_type', 'like', 'payroll.parttime_admin_bonus.%')->pluck('event_type')->all()
+        );
+    }
+
+    public function test_admin_bonus_other_campus_is_forbidden(): void
+    {
+        $dir = $this->createDirector('dir-ab-2@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(2, 'ab2@test.com', '他校');
+        $this->withHeaders($this->authHeaders($dir['token']))
+            ->putJson($this->bonusUrl(), ['branch_id' => 2, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 100, 'reason' => 'x'])
+            ->assertStatus(403);
+    }
+
+    public function test_admin_bonus_requires_reason_and_bounds(): void
+    {
+        $dir = $this->createDirector('dir-ab-3@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab3@test.com', '乙');
+        $h = $this->authHeaders($dir['token']);
+        $base = ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 100];
+        $this->withHeaders($h)->putJson($this->bonusUrl(), $base)->assertStatus(422);
+        $this->withHeaders($h)->putJson($this->bonusUrl(), $base + ['reason' => '  '])->assertStatus(422);
+        $this->withHeaders($h)->putJson($this->bonusUrl(), array_merge($base, ['reason' => 'x', 'amount' => 100001]))->assertStatus(422);
+        $this->assertSame(0, DB::table('parttime_payroll_admin_bonuses')->count());
+    }
+
+    public function test_admin_bonus_refused_when_month_locked(): void
+    {
+        $dir = $this->createDirector('dir-ab-4@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab4@test.com', '丙');
+        $h = $this->authHeaders($dir['token']);
+        $body = ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 300, 'reason' => '行政'];
+        $this->withHeaders($h)->putJson($this->bonusUrl(), $body)->assertOk();
+        PayrollMonthStatus::create(['branch_id' => 1, 'month' => '2026-04', 'status' => 'locked']);
+
+        $this->withHeaders($h)->putJson($this->bonusUrl(), array_merge($body, ['amount' => 900]))->assertStatus(422);
+        $this->withHeaders($h)->deleteJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04'])->assertStatus(422);
+        $this->assertSame(300, (int) DB::table('parttime_payroll_admin_bonuses')->value('amount'));
+    }
 }

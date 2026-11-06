@@ -205,6 +205,7 @@
             <span class="col-tutor hide-mobile level-pill tutor">{{ t.tutoring_hours }}</span>
             <span class="col-salary">
               <span class="salary-chip">NT$ {{ formatNum(t.total_salary) }}</span>
+              <span v-if="t.admin_bonus" class="override-tag">含行政加給 {{ formatNum(t.admin_bonus) }}</span>
             </span>
             <span class="col-count hide-mobile">
               <span class="count-badge">{{ t.session_count }}</span>
@@ -214,6 +215,15 @@
           <!-- Expanded session detail -->
           <transition name="expand-slide">
             <div v-if="expandedId === t.teacher_id" :id="`payroll-sessions-${t.teacher_id}`" class="session-detail">
+              <ParttimeAdminBonusField
+                :branch-id="props.branchId || summary.branch_id"
+                :teacher-id="t.teacher_id"
+                :month="selectedMonth"
+                :amount="t.admin_bonus || 0"
+                :reason="t.admin_bonus_reason || ''"
+                :locked="summary.lock_status === 'locked'"
+                @saved="loadData"
+              />
               <AtSkeleton v-if="sessionsLoading" :rows="3" />
               <AtEmpty v-else-if="sessions.length === 0" icon="inbox" title="本月無堂次紀錄" />
               <template v-else>
@@ -501,6 +511,7 @@ import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import ParttimeAdminBonusField from '../components/ParttimeAdminBonusField.vue';
 import {
   fetchPayrollSummary,
   fetchTeacherSessions,
