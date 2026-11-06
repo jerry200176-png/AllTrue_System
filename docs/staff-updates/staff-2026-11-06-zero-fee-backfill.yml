@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 免費課程補登收款可勾免費／贈送
-    summary: 費用是 0 的課按「補登收款」，現在看得到免費／贈送。
+    summary: 沒收費的課按「補登收款」，現在看得到免費／贈送。
     items:
       - category: fixed
         text: 以前這種課會跳出「請勾選免費／贈送」，卻找不到可勾的框。
