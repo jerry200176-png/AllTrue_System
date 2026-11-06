@@ -1106,6 +1106,9 @@ class ParttimePayrollTest extends TestCase
         ]);
         $this->withHeaders($h)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=2')->assertStatus(403);
         $this->withHeaders($h)->get('/api/v1/finance/parttime-payroll/export?month=2026-04&branch_id=2')->assertStatus(403);
+        $this->withHeaders($h)->getJson('/api/v1/finance/parttime-payroll/999/sessions?month=2026-04&branch_id=2')->assertStatus(403);
+        $this->withHeaders($h)->postJson('/api/v1/finance/parttime-payroll/lock', ['month' => '2026-04', 'branch_id' => 2])->assertStatus(403);
+        $this->assertSame(0, DB::table('payroll_month_status')->where('branch_id', 2)->count());
     }
 
     public function test_admin_bonus_reason_is_formula_safe_in_csv(): void

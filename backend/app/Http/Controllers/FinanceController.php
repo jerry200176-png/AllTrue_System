@@ -1282,6 +1282,9 @@ class FinanceController extends Controller
         $page       = max((int) $request->input('page', 1), 1);
 
         $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if ($branchId && !$this->branchInScope($request, $branchId)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
@@ -1431,6 +1434,9 @@ class FinanceController extends Controller
         $branchId = (int) $request->input('branch_id');
         if (!$month || !$branchId) {
             return response()->json(['error' => 'month and branch_id required'], 422);
+        }
+        if (!$this->branchInScope($request, $branchId)) {
+            return response()->json(['error' => 'Forbidden'], 403);
         }
 
         $row = PayrollMonthStatus::firstOrCreate(
