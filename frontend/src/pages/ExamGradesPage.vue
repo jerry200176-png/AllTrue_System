@@ -111,6 +111,25 @@
       </template>
     </AtDialog>
 
+    <AtDialog :open="!!reasonFor" title="更正已截止的成績" title-id="exam-reason-title" @close="reasonFor = null">
+      <label>更正原因（必填）<input v-model.trim="reasonText" maxlength="255" placeholder="例如：登錄時打錯" /></label>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" @click="reasonFor = null">取消</AtButton>
+        <AtButton shape="rect" variant="primary" :disabled="!reasonText" @click="submitScores(reasonFor, reasonText)">確定更正</AtButton>
+      </template>
+    </AtDialog>
+
+    <AtDialog :open="!!historyRows" :title="`修改紀錄：${historyName}`" title-id="exam-history-title" @close="historyRows = null">
+      <p v-if="!historyRows?.length" class="muted">沒有修改紀錄。</p>
+      <ul v-else class="exam-history">
+        <li v-for="h in historyRows" :key="h.id">
+          <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
+          <small class="muted">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
+        </li>
+      </ul>
+      <template #actions><AtButton shape="rect" variant="ghost" @click="historyRows = null">關閉</AtButton></template>
+    </AtDialog>
+
     <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" panel-class="exam-score-dialog" @close="selected = null">
       <AtSkeleton v-if="studentsLoading" rows="3" />
       <AtInlineAlert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></AtInlineAlert>
@@ -144,15 +163,17 @@
                 <small :class="{ 'exam-complete': row.is_complete }">{{ row.filled_subject_count }}/{{ row.required_subject_count }}</small>
               </td>
               <td v-for="subject in selected.subjects" :key="subject.id">
-                <input
-                  class="exam-score-input"
-                  type="number"
-                  min="0"
+                <ExamScoreCell
+                  :score="cellOf(row, subject.id).score"
+                  :is-absent="cellOf(row, subject.id).is_absent"
+                  :cleared="cellOf(row, subject.id).clear"
                   :max="subject.max_score"
-                  step="0.5"
-                  :disabled="!canEditScores"
-                  :value="scoreValue(row, subject.id)"
-                  @change="onScoreInput(row, subject.id, $event.target.value)"
+                  :editable="canEditScores"
+                  :edited="cellOf(row, subject.id).edited"
+                  :label="`${row.student_name} ${subject.name}`"
+                  @change="(v) => onCellChange(row, subject.id, v)"
+                  @clear="onCellClear(row, subject.id)"
+                  @history="openHistory(row)"
                 />
               </td>
               <td>
@@ -191,6 +212,8 @@ import { GRADES } from '../lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import SchoolExamPeriodsPanel from '../components/SchoolExamPeriodsPanel.vue';
 import { supabase } from '../supabase';
+import ExamScoreCell from '../components/exams/ExamScoreCell.vue';
+import { describeScore, examErrorMessage, historyActionLabel, loadScoreHistory, saveScores } from '../lib/examScoresApi';
 import { canEditExamRound, examRoundActionLabel, filterExamStudents } from '../lib/examScoreStudentFilter';
 
 const props = defineProps({
@@ -245,7 +268,10 @@ async function api(path, options = {}) {
     },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(Object.values(body.errors || {})[0]?.[0] || body.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const raw = Object.values(body.errors || {})[0]?.[0] || body.message || `HTTP ${res.status}`;
+    throw Object.assign(new Error(raw), { status: res.status, raw });
+  }
   return body;
 }
 
@@ -407,11 +433,6 @@ async function openRound(round) {
   try {
     const res = await api(`/exam-rounds/${round.id}/students`);
     students.value = res.data || [];
-    for (const row of students.value) {
-      for (const score of row.scores || []) {
-        draftScores[`${row.student_id}:${score.exam_round_subject_id}`] = score.score;
-      }
-    }
   } catch (e) {
     studentsError.value = e.message || '載入失敗';
     students.value = [];
@@ -420,46 +441,78 @@ async function openRound(round) {
   }
 }
 
-function scoreValue(row, subjectId) {
+function cellOf(row, subjectId) {
   const key = `${row.student_id}:${subjectId}`;
-  if (Object.prototype.hasOwnProperty.call(draftScores, key)) return draftScores[key];
-  const found = (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subjectId));
-  return found?.score ?? '';
+  if (draftScores[key]) return { edited: false, ...serverCell(row, subjectId), ...draftScores[key] };
+  return { clear: false, ...serverCell(row, subjectId) };
 }
 
-function onScoreInput(row, subjectId, raw) {
-  draftScores[`${row.student_id}:${subjectId}`] = raw === '' ? null : Number(raw);
+function serverCell(row, subjectId) {
+  const f = (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subjectId));
+  return { score: f?.score ?? null, is_absent: !!f?.is_absent, edited: !!f?.edited, clear: false };
 }
 
-async function saveStudent(row) {
+function onCellChange(row, subjectId, v) {
+  draftScores[`${row.student_id}:${subjectId}`] = { ...v, clear: false };
+}
+
+function onCellClear(row, subjectId) {
+  draftScores[`${row.student_id}:${subjectId}`] = { score: null, is_absent: false, clear: true };
+}
+
+const reasonFor = ref(null);
+const reasonText = ref('');
+const historyRows = ref(null);
+const historyName = ref('');
+
+function subjectName(id) {
+  return (selected.value?.subjects || []).find((s) => Number(s.id) === Number(id))?.name || '';
+}
+
+async function openHistory(row) {
   scoreError.value = '';
-  const scores = (selected.value.subjects || []).map((subject) => {
-    const key = `${row.student_id}:${subject.id}`;
-    const value = Object.prototype.hasOwnProperty.call(draftScores, key)
-      ? draftScores[key]
-      : (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subject.id))?.score;
-    if (value === '' || value == null || Number.isNaN(Number(value))) return null;
-    return {
+  try {
+    historyRows.value = await loadScoreHistory(api, selected.value.id, row.student_id);
+    historyName.value = row.student_name;
+  } catch (e) {
+    scoreError.value = examErrorMessage(e);
+  }
+}
+
+function saveStudent(row) {
+  scoreError.value = '';
+  if (!(selected.value.subjects || []).some((s) => draftScores[`${row.student_id}:${s.id}`])) {
+    scoreError.value = '沒有改動，請先修改分數';
+    return;
+  }
+  // A director correcting a closed round must give a reason (API 422 otherwise).
+  if (selected.value.status === 'closed') {
+    reasonText.value = '';
+    reasonFor.value = row;
+    return;
+  }
+  return submitScores(row, '');
+}
+
+async function submitScores(row, reason) {
+  const scores = [];
+  for (const subject of selected.value.subjects || []) {
+    const d = draftScores[`${row.student_id}:${subject.id}`];
+    if (!d) continue;
+    scores.push({
       student_id: row.student_id,
       exam_round_subject_id: subject.id,
-      score: Number(value),
-      is_absent: false,
-    };
-  }).filter(Boolean);
-
-  if (!scores.length) {
-    scoreError.value = '請至少填一科分數';
-    return;
+      ...(d.clear ? { clear: true } : { score: d.is_absent ? null : d.score, is_absent: d.is_absent }),
+    });
   }
   savingStudentId.value = row.student_id;
   try {
-    await api(`/exam-rounds/${selected.value.id}/scores`, {
-      method: 'POST',
-      body: JSON.stringify({ scores }),
-    });
+    await saveScores(api, selected.value.id, scores, reason);
+    reasonFor.value = null;
     await openRound(selected.value);
   } catch (e) {
-    scoreError.value = e.message || '儲存失敗';
+    reasonFor.value = null;
+    scoreError.value = examErrorMessage(e);
   } finally {
     savingStudentId.value = null;
   }
@@ -506,7 +559,8 @@ onMounted(loadRounds);
 .exam-score-table-wrap { overflow-x: auto; }
 .exam-score-table { width: 100%; border-collapse: collapse; }
 .exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
-.exam-score-input { width: 4.5rem; padding: 6px 8px; }
+.exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 16px; }
+.exam-history small { display: block; }
 .exam-complete { color: var(--success); display: block; }
 label { display: block; margin-bottom: 10px; }
 label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; }

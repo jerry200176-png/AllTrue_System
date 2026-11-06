@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-06-exam-score-correction
+    published_at: "2026-11-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 段考分數可更正
+    summary: 段考分數打錯可以清除或更正，並看修改紀錄
+    items:
+      - category: added
+        text: 登分時每科可勾缺考或按清除，改過的分數會出現「改過」，點開看紀錄。
+      - category: changed
+        text: 截止後老師不能改，畫面會寫「已截止，請找主任更正」；主任更正已關閉的段考要填原因。
+    source_refs:
+      - "changelog:2026-11-06:exam-score-correction"
