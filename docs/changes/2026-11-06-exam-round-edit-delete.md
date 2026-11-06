@@ -1,0 +1,3 @@
+## 2026-11-06 — feat(exam): 段考場次可編輯、可刪除、可復原 (#4970 E1)
+<!-- release-notes: staff_update=staff-2026-11-06-exam-round-edit-delete -->
+- New director-only `PATCH /exam-rounds/{id}` (title, dates, grades, subjects add/rename; a subject with scores cannot be removed), `DELETE /exam-rounds/{id}` (no scores: deleted; with scores: status `void` plus a required reason in the audit row) and `POST /exam-rounds/{id}/restore`. `GET /exam-rounds` hides `void` unless a director sends `include_void=1`; void rounds are not counted in the pending summary or the roster. 段考成績 rows get a ••• menu (編輯／刪除), a 「顯示已刪除」 toggle with 復原, and grade checkboxes replace the ClassID text box. No migration.
