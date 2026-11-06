@@ -88,7 +88,7 @@ final class MonthlyPeriodPaymentService
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
-            $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) ($amount['stored_total_amount'] ?? $amount['total_amount']);
+            $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) $amount['stored_total_amount'];
             // in-app #510: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
             $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
                 && ($amount['computed_total_amount'] ?? null) === 0 && $this->hasUpcomingScheduledLesson($sessions, $start, $end));
