@@ -635,6 +635,7 @@
 | POST | `api/v1/parent/sessions/{sessionId}/leave` | `ParentPortalController@requestLeave` | public |
 | POST | `api/v1/parent/switch-student` | `ParentPortalController@switchStudent` | public |
 | GET | `api/v1/parent/system-trust-summary` | `SystemTrustController@parentSummary` | public |
+| POST | `api/v1/parent/telegram-bind-code` | `TelegramBindCodeController@issue` | public |
 
 ## /api/v1/part-time-rate-cards
 

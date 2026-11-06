@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-telegram-bind-code
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 家長改用綁定碼連 Telegram
+    summary: 家長在家長入口取得綁定碼，傳給校內機器人即可連結。
+    items:
+      - category: improved
+        text: 不能再用學生姓名綁定；已綁定的 Telegram 不受影響。
+    source_refs:
+      - "changelog:2026-11-06:telegram-bind-code"
