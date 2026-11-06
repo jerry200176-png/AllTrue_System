@@ -131,6 +131,14 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     w.unmount();
   });
 
+  it('a zero-fee legacy-paid course opens 登記收款 (which has the 免費／贈送 box), not 補登 (in-app #511)', async () => {
+    const w = mountLedger({ courses: [course(11, { paid: true, charge: 0 })], invoices: [], props: { initialAction: 'legacy-backfill' } });
+    await flushPromises();
+    expect(w.getComponent(EntryStub).props('mode')).toBe('record');
+    expect(w.getComponent(EntryStub).props('row')).toMatchObject({ id: 11, charge: 0 });
+    w.unmount();
+  });
+
   it("initialAction='legacy-backfill' on an ordinary course just shows the ledger", async () => {
     const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'legacy-backfill' } });
     await flushPromises();
