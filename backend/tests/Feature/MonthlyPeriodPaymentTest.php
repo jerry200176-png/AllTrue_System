@@ -212,6 +212,70 @@ class MonthlyPeriodPaymentTest extends TestCase
     }
 
 
+    private function prepaidOctoberCourse(): array
+    {
+        $course = $this->course();
+        ClassSession::where('StudentClassID', $course->ID)->delete();
+        $course->update(['StartDate' => '2026-10-01', 'EndDate' => '2026-10-31']);
+        foreach (['2026-10-15', '2026-10-22'] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '23:00', 'EndTime' => '23:59', 'Status' => 'scheduled']);
+        }
+        return [$course->fresh(), $this->invoice($course, '2026-10', 1000)];
+    }
+
+    public function test_prepaid_current_month_with_no_lessons_held_is_not_displayed_as_a_discrepancy(): void // in-app #510
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course] = $this->prepaidOctoberCourse();
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $summary = $svc->batch(collect([$course]))[$course->ID];
+        $shown = $svc->forDisplay($summary);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($summary['periods'][0]['amount_discrepancy'], 'guards still see main behaviour');
+        $this->assertTrue($summary['review_required']);
+        $this->assertFalse($shown['periods'][0]['amount_discrepancy']);
+        $this->assertFalse($shown['review_required']);
+        $this->assertNotSame('review_required', $shown['payment_status']);
+    }
+
+    public function test_unpaid_running_month_bill_displays_the_stored_total_not_the_zero_lesson_total(): void // in-app #510
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse();
+        $invoice->payments()->delete();
+        $invoice->update(['TotalAmount' => 7200, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertFalse($shown['review_required']);
+        $this->assertSame(7200, $shown['periods'][0]['charge']);
+        $this->assertSame(7200, $shown['periods'][0]['outstanding_amount']);
+        $this->assertSame('unpaid', $shown['payment_status']);
+    }
+
+    public function test_all_cancelled_current_month_still_displays_the_discrepancy(): void // in-app #510 (Codex P2)
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course] = $this->prepaidOctoberCourse();
+        ClassSession::where('StudentClassID', $course->ID)->update(['Status' => 'cancelled']);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($shown['periods'][0]['amount_discrepancy']);
+        $this->assertTrue($shown['review_required']);
+    }
+
+    public function test_same_prepaid_month_is_displayed_as_a_discrepancy_after_the_period_ends(): void // in-app #510
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');
+        [$course] = $this->prepaidOctoberCourse();
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($shown['periods'][0]['amount_discrepancy']);
+        $this->assertTrue($shown['review_required']);
+    }
+
     public function test_review_reasons_explain_flag(): void
     {
         $svc = app(MonthlyPeriodPaymentService::class);
