@@ -26,7 +26,7 @@ function saved() { picked.value = ''; emit('saved'); }
     <label>新增行政加給（本月無授課的兼職老師）
       <select v-model="picked" data-testid="ab-add-select">
         <option value="">選擇老師</option>
-        <option v-for="t in options" :key="t.id" :value="Number(t.id)">{{ t.name || t.Name }}</option>
+        <option v-for="t in options" :key="t.id" :value="Number(t.id)">{{ t.username }}</option>
       </select>
     </label>
     <ParttimeAdminBonusField v-if="picked" :key="picked" :branch-id="branchId" :teacher-id="picked" :month="month" @saved="saved" />

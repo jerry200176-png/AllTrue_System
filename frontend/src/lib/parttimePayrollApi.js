@@ -152,9 +152,9 @@ export async function deleteAdminBonus({ branchId, teacherId, month }) {
   return res.json();
 }
 
-// #4971: part-time teachers of a campus (existing GET /teachers; filtered client-side)
+// #4971: every part-time teacher of exactly this campus (GET /teachers: per_page=all skips the 50-row page, strict_branch skips the other-campus fallback)
 export async function fetchPartTimeTeachers({ branchId }) {
-  const res = await fetch(`${API_BASE}/teachers?branch_id=${encodeURIComponent(branchId)}`, { headers: headers() });
+  const res = await fetch(`${API_BASE}/teachers?branch_id=${encodeURIComponent(branchId)}&role=teacher&per_page=all&strict_branch=1`, { headers: headers() });
   if (!res.ok) throw new Error('老師資料載入失敗');
   const data = await res.json();
   const list = Array.isArray(data) ? data : (data?.data || data?.teachers || []);
