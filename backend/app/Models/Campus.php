@@ -44,6 +44,8 @@ class Campus extends Model
         'TelegramToken',
         'TelegramChatID',
         'TelegramWebhookSecret',
+        'messaging_channel_token',
+        'messaging_channel_secret',
     ];
 
     protected $casts = [

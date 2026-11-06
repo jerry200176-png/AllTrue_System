@@ -11,7 +11,7 @@ class ModelCredentialHiddenTest extends TestCase
 {
     public function test_campus_credentials_are_not_serialized_but_stay_readable(): void
     {
-        $secrets = ['Client_Secret', 'Token', 'LineNotifyID', 'TelegramToken', 'TelegramChatID', 'TelegramWebhookSecret'];
+        $secrets = ['Client_Secret', 'Token', 'LineNotifyID', 'TelegramToken', 'TelegramChatID', 'TelegramWebhookSecret', 'messaging_channel_token', 'messaging_channel_secret'];
         $campus = (new Campus())->forceFill(array_fill_keys($secrets, 'sentinel-secret') + ['id' => 7, 'name' => 'X', 'Client_ID' => 'cid']);
 
         $json = $campus->toJson();
