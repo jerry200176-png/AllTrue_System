@@ -16,12 +16,28 @@ def job_block(source: str, name: str, next_name: str | None = None) -> str:
 class RequiredPhpChecksTest(unittest.TestCase):
     def test_phpunit_is_not_path_skipped(self):
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        phpunit = job_block(ci, "phpunit", "vite-build")
+        shard = job_block(ci, "phpunit_shard", "phpunit")
+        phpunit = job_block(ci, "phpunit", "vite_core")
 
+        # The required check is the aggregator: exact name, always runs, needs every shard.
         self.assertIn("name: PHPUnit Feature & Unit Tests", phpunit)
-        self.assertIn("runs-on: ubuntu-latest", phpunit)
+        self.assertIn("needs: phpunit_shard", phpunit)
+        self.assertIn("\n    if: always()", phpunit)
+        self.assertIn('[ "$SHARDS" = "success" ]', phpunit)
         self.assertNotIn("needs.changes.outputs", phpunit)
-        self.assertNotIn("\n    if:", phpunit)
+        self.assertNotIn("name: PHPUnit Feature & Unit Tests", shard)
+        self.assertIn("runs-on: ubuntu-latest", shard)
+        self.assertNotIn("needs.changes.outputs", shard)
+        self.assertNotIn("\n    if:", shard)
+
+    def test_vite_check_aggregates_core_and_playwright_shards(self):
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        vite = job_block(ci, "vite-build", "design-advisory")
+
+        self.assertIn("name: Vite Frontend Build", vite)
+        self.assertIn("needs: [changes, vite_core, ui_foundation_e2e]", vite)
+        self.assertIn("\n    if: always()", vite)
+        self.assertNotIn("name: Vite Frontend Build", job_block(ci, "vite_core", "ui_foundation_e2e"))
 
     def test_phpstan_is_not_path_skipped(self):
         workflow = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
