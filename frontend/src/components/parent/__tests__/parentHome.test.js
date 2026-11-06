@@ -28,8 +28,8 @@ describe('pickNextLesson', () => {
 describe('pickAmountDue', () => {
   it('sums unpaid invoices net of payments and picks the earliest due date', () => {
     const inv = [
-      { Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-11-10', payments: [] },
-      { Status: 'partial', TotalAmount: 3000, DueDate: '2026-11-05', payments: [{ Amount: 1000, Method: 'cash' }] },
+      { StudentClassID: 1, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-11-10', payments: [] },
+      { StudentClassID: 2, Status: 'partial', TotalAmount: 3000, DueDate: '2026-11-05', payments: [{ Amount: 1000, Method: 'cash' }] },
       { Status: 'paid', TotalAmount: 9999, payments: [{ Amount: 9999 }] },
     ];
     expect(pickAmountDue(inv, [])).toEqual({ amount: 9200, dueDateLabel: '11/5' });
@@ -40,13 +40,17 @@ describe('pickAmountDue', () => {
     expect(pickAmountDue([stale], [])).toMatchObject({ review: true });
     expect(pickAmountDue([{ ...stale, payments: [{ Amount: 10000 }] }], [])).toBeNull();
   });
-  it('an unbilled unpaid course (more alerts than open bills) is 確認中, never a short total', () => {
-    const bill = { Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-11-10', payments: [] };
-    expect(pickAmountDue([bill], [{ class_id: 1 }, { class_id: 2 }])).toMatchObject({ amount: null, review: true, dueDateLabel: '11/10' });
-    expect(pickAmountDue([bill], [{ class_id: 1 }])).toEqual({ amount: 7200, dueDateLabel: '11/10' });
+  it('an alerted course with no open bill (unbilled) is 確認中, matched by course, never a short total', () => {
+    const bill = (cls, amt) => ({ StudentClassID: cls, Status: 'unpaid', TotalAmount: amt, DueDate: '2026-11-10', payments: [] });
+    expect(pickAmountDue([bill(1, 7200)], [{ class_id: 1 }, { class_id: 2 }])).toMatchObject({ amount: null, review: true, dueDateLabel: '11/10' });
+    expect(pickAmountDue([bill(1, 7200)], [{ class_id: 1 }])).toEqual({ amount: 7200, dueDateLabel: '11/10' });
+    // two open bills on one course + an unbilled course: still 確認中 (reviewer case)
+    expect(pickAmountDue([bill(1, 3000), bill(1, 3000)], [{ class_id: 1 }, { class_id: 2 }])).toMatchObject({ amount: null, review: true });
+    // a stopped course's bill (no alert) + an unbilled course: still 確認中
+    expect(pickAmountDue([bill(3, 1000)], [{ class_id: 2 }])).toMatchObject({ amount: null, review: true });
   });
   it('falls back to unknown amount from payment alerts, and null when all paid', () => {
-    expect(pickAmountDue([], [{ class_id: 1 }])).toEqual({ amount: null, dueDateLabel: '', review: true });
+    expect(pickAmountDue([], [{ class_id: 1 }])).toEqual({ amount: null, dueDateLabel: '' });
     expect(pickAmountDue([{ Status: 'paid', TotalAmount: 5 }], [])).toBeNull();
     expect(pickAmountDue(undefined, undefined)).toBeNull();
   });

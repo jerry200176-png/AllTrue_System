@@ -47,16 +47,18 @@ export function pickAmountDue(invoices, paymentAlerts) {
   const total = (i) => Number(i.TotalAmount ?? i.total_amount) || 0;
   const staleSuspect = list.some((i) => isPaid(i) && Array.isArray(i.payments) && netPaid(i) < total(i));
   const open = list.filter((i) => !isPaid(i))
-    .map((i) => ({ due: Math.max(0, total(i) - Math.max(0, netPaid(i))), dueDate: ymd(i.DueDate) }))
+    .map((i) => ({ due: Math.max(0, total(i) - Math.max(0, netPaid(i))), dueDate: ymd(i.DueDate), classId: Number(i.StudentClassID ?? i.student_class_id) }))
     .filter((i) => i.due > 0);
   const dates = open.map((i) => i.dueDate).filter(Boolean).sort();
   const dueDateLabel = dates[0] ? md(dates[0]) : '';
-  // An unpaid course with no bill yet (resolver `unbilled`) still owes, but has no invoice amount here.
-  // More unpaid-course alerts than open bills means part of the total is unknown, so never show a short sum.
-  const alerts = Array.isArray(paymentAlerts) ? paymentAlerts.length : 0;
-  if (staleSuspect || alerts > open.length) return { amount: null, dueDateLabel, review: true };
+  // An unpaid course with no open bill (resolver `unbilled`) still owes, but has no invoice amount here.
+  // Matched by course: any alerted course without an open bill makes the total unknown, never a short sum.
+  const billed = new Set(open.map((i) => i.classId));
+  const unbilled = (Array.isArray(paymentAlerts) ? paymentAlerts : []).some((a) => !billed.has(Number(a?.class_id)));
+  // Nothing billed yet: owed but amount unknown (有課程待繳). Some billed, some not: 確認中 rather than a short sum.
+  if (staleSuspect || (unbilled && open.length)) return { amount: null, dueDateLabel, review: true };
   if (open.length) return { amount: open.reduce((sum, i) => sum + i.due, 0), dueDateLabel };
-  return Array.isArray(paymentAlerts) && paymentAlerts.length ? { amount: null, dueDateLabel: '' } : null;
+  return unbilled ? { amount: null, dueDateLabel: '' } : null;
 }
 
 /** 老師的新回饋: latest record with an unread teacher reply, else the latest record. */
