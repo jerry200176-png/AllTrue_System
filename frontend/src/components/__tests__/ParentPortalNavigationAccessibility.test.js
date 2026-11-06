@@ -17,7 +17,7 @@ describe('parent portal navigation accessibility contract', () => {
 
   it('exposes the primary tabs and their panels as a connected tablist', () => {
     expect(source).toMatch(/class="pp-tab-bar" role="tablist" aria-label="家長入口分頁"/);
-    for (const tab of ['learning', 'schedule', 'billing']) {
+    for (const tab of ['home', 'schedule', 'learning', 'billing']) {
       expect(source).toMatch(new RegExp(`id="parent-tab-${tab}"[^>]*type="button"[^>]*role="tab"`));
       expect(source).toMatch(new RegExp(`aria-controls="parent-panel-${tab}"`));
       expect(source).toMatch(new RegExp(`:tabindex="activeTab === '${tab}' \\? 0 : -1"`));
@@ -25,7 +25,19 @@ describe('parent portal navigation accessibility contract', () => {
     }
   });
 
+  it('orders the bottom tabs 首頁 | 課表 | 學習 | 繳費 with touch targets of at least 44px', () => {
+    const order = ['home', 'schedule', 'learning', 'billing'].map((t) => source.indexOf(`id="parent-tab-${t}"`));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect(source).toMatch(/\.pp-tab-bar \{\s*position: fixed;[^}]*bottom: 0/);
+    expect(source).toMatch(/\.pp-tab \{[^}]*min-height: 56px;[^}]*min-width: 44px/);
+    expect(source).toMatch(/\.pp-btn-logout \{[^}]*min-width: 44px; min-height: 44px/);
+    expect(source).toContain("const parentTabKeys = ['home', 'schedule', 'learning', 'billing'];");
+    expect(source).toContain("const activeTab = ref('home');");
+  });
+
   it('supports roving tab movement without changing the selected-data contract', () => {
+    expect(source).toMatch(/@keydown="onParentTabKeydown\(\$event, 'home'\)"/);
     expect(source).toMatch(/@keydown="onParentTabKeydown\(\$event, 'learning'\)"/);
     expect(source).toMatch(/\['ArrowRight', 'ArrowLeft', 'Home', 'End'\]/);
     expect(source).toMatch(/document\.getElementById\(`parent-tab-\$\{nextTab\}`\)\?\.focus\(\)/);
@@ -33,7 +45,7 @@ describe('parent portal navigation accessibility contract', () => {
   });
 
   it('keeps parent actions aligned with capability and recovery contracts', () => {
-    expect(source).toContain("if (status === 'all_pending') return '查看待繳帳務';");
+    expect(source).toContain('const parentHome = computed(() => {');
     expect(source).toContain(':disabled="!fbCanSubmit || !crossCampusActionsEnabled"');
     expect(source).toContain(':disabled="!crossCampusActionsEnabled"');
     expect(source).toContain(':aria-label="`${n} 顆星`"');
@@ -50,11 +62,16 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toContain("<span v-else class=\"pp-badge pp-badge-warning\">未繳費</span>");
   });
 
-  it('exposes the existing-data V1 home questions without adding a new data contract', () => {
-    for (const label of ['最近學了什麼', '本週重點', '老師建議／處理', '回家要做什麼', '下一步／目前待辦']) {
-      expect(source).toContain(label);
+  it('首頁 shows exactly 3 cards from the existing dashboard and none of the retired first-load cards', () => {
+    expect(source).toContain('<ParentHome :home="parentHome"');
+    for (const gone of ['parent-progress-hub', 'parent-home-v1-title', 'parent-attention-card', 'pp-parent-update', '本次學習重點', '需要留意', '進度中心']) {
+      expect(source).not.toContain(gone);
     }
-    expect(source).toContain('buildParentHomeSummary');
+    const home = readFileSync(resolve(here, '../parent/ParentHome.vue'), 'utf8');
+    expect(home.match(/data-guide="parent-home-(next-lesson|money|feedback)"/g)).toHaveLength(3);
+    expect(source).toContain('pickNextLesson');
+    expect(source).toContain('pickAmountDue');
+    expect(source).toContain('pickLatestFeedback');
   });
 
   it('makes learning records and their truthful empty state operable', () => {
@@ -67,9 +84,17 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toContain("@click=\"gotoParentTarget('schedule', 'learning_empty')\"");
   });
 
-  it('makes the attention-card feedback action visibly open a feedback editor', () => {
+  it('routes 首頁 buttons to the existing leave box, 繳費 and 學習', () => {
     expect(source).toContain('async function gotoParentTarget(target, source = \'hub_card\')');
-    expect(source).toContain("source === 'attention_feedback' && resolved === 'learning'");
-    expect(source).toContain("await jumpToFirstFeedbackSlot(source)");
+    expect(source).toContain("@pay=\"gotoParentTarget('billing', 'home_pay')\"");
+    expect(source).toContain("@learning=\"gotoParentTarget('learning', 'home_feedback')\"");
+    expect(source).toContain('openLeaveBox(session);');
+  });
+
+  it('keeps the ⚙ settings entry, logout and plain-language labels', () => {
+    expect(source).toContain('aria-label="設定"');
+    expect(source).toMatch(/id="parent-panel-settings"[^>]*aria-label="設定"/);
+    expect(source).toContain('@click="logout">登出</button>');
+    expect(source).toContain('const statusLabel = lessonStatusLabel;');
   });
 });

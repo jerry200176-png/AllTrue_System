@@ -1343,4 +1343,32 @@ test.describe('Visual regression @visual', () => {
       });
     }
   }
+  // #4986 step 1: 家長首頁 3 cards at 390px, mocked dashboard (fake data only).
+  test('parent-home @390', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem('parent_portal_token', 'e2e-parent-visual-token'));
+    await page.route('**/api/v1/**', (route) => {
+      const url = new URL(route.request().url());
+      const json = url.pathname.includes('/parent/dashboard') ? {
+        student: { id: 1, name: '測試學生甲', grade: '國二', campus_id: 1, campus_name: '測試分校', line_linked: false },
+        enrollments: [],
+        cross_campus_access: 'actions',
+        learning_records: [{ id: 1, Subject: '數學', SessionDate: '2026-09-12', Comment: '因式分解進步很多，回家複習講義。', parent_feedback: null }],
+        learning_records_meta: { total: 1, has_more: false },
+        attendance_history: [],
+        upcoming_sessions: [{ id: 11, SessionDate: '2026-09-18', StartTime: '15:00', EndTime: '16:00', Status: 'scheduled', Subject: '英文' }],
+        classes: [],
+        payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
+        invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
+        announcements: [],
+        assessment_progress: { items: [] },
+      } : { data: [] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
+    });
+    await page.goto('/pilot-mount.html?page=parent');
+    await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveScreenshot('parent-home-390.png', { fullPage: true });
+  });
 });
