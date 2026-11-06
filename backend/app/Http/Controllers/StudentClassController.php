@@ -2250,7 +2250,11 @@ class StudentClassController extends Controller
             $this->contractSchedule->reconcileWeekTimeFieldsFromSessions($studentClass);
         }
 
-        $monthlySessionSync = $this->contractSchedule->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
+        // in-app #512: a rebuild just planned exactly SessionCount lessons (sliced); topping up by date range here would
+        // add the period's extra weekday (4 bought, 5 Sundays). Every other edit (e.g. extending EndDate) still tops up.
+        $monthlySessionSync = !empty($sessionSync['rebuilt'])
+            ? ['created_sessions' => 0, 'reason' => 'rebuilt_to_session_count']
+            : $this->contractSchedule->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
         if (($monthlySessionSync['created_sessions'] ?? 0) > 0) {
             $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
         }
