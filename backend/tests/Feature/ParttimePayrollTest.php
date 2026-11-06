@@ -1079,4 +1079,27 @@ class ParttimePayrollTest extends TestCase
         $this->withHeaders($h)->deleteJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04'])->assertStatus(422);
         $this->assertSame(300, (int) DB::table('parttime_payroll_admin_bonuses')->value('amount'));
     }
+
+    public function test_admin_bonus_summary_and_export_reject_other_campus_branch_id(): void
+    {
+        $dir = $this->createDirector('dir-ab-5@test.com', [1]);
+        $h = $this->authHeaders($dir['token']);
+        DB::table('parttime_payroll_admin_bonuses')->insert([
+            'campus_id' => 2, 'teacher_id' => 999, 'month' => '2026-04', 'amount' => 500, 'reason' => 'x',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->withHeaders($h)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=2')->assertStatus(403);
+        $this->withHeaders($h)->get('/api/v1/finance/parttime-payroll/export?month=2026-04&branch_id=2')->assertStatus(403);
+    }
+
+    public function test_admin_bonus_reason_is_formula_safe_in_csv(): void
+    {
+        $dir = $this->createDirector('dir-ab-6@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab6@test.com', '丁');
+        $h = $this->authHeaders($dir['token']);
+        $this->withHeaders($h)->putJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 1, 'reason' => '=HYPERLINK("x")'])->assertOk();
+        $csv = $this->withHeaders($h)->get('/api/v1/finance/parttime-payroll/export?month=2026-04&branch_id=1')->streamedContent();
+        $this->assertStringContainsString("'=HYPERLINK", $csv);
+        $this->assertStringNotContainsString(',"=HYPERLINK', $csv);
+    }
 }

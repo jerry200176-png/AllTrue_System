@@ -1202,6 +1202,9 @@ class FinanceController extends Controller
 
         $campusIds = $this->getCampusIds($request);
         $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if ($branchId && !$this->branchInScope($request, $branchId)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
 
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
@@ -1357,6 +1360,9 @@ class FinanceController extends Controller
 
         $campusIds = $this->getCampusIds($request);
         $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if ($branchId && !$this->branchInScope($request, $branchId)) {
+            abort(403, 'Forbidden');
+        }
         $branchName = $branchId ? (DB::table('Campus')->where('id', $branchId)->value('name') ?? 'all') : 'all';
 
         $startDate = $month . '-01';
@@ -1394,7 +1400,7 @@ class FinanceController extends Controller
                     $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'],
                     $t['total_salary'], $t['session_count'],
                     ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
-                    $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '',
+                    $t['admin_bonus'] ?? 0, $this->csvSafe($t['admin_bonus_reason'] ?? ''),
                 ]);
             }
 
@@ -1829,6 +1835,18 @@ class FinanceController extends Controller
         return $lessons;
     }
 
+    private function branchInScope(Request $request, int $branchId): bool
+    {
+        return $request->attributes->get('auth_role') === 'super_admin'
+            || in_array($branchId, array_map('intval', $request->attributes->get('auth_campus_ids', [])), true);
+    }
+
+    /** Neutralise spreadsheet formulas in free-text cells. */
+    private function csvSafe(string $v): string
+    {
+        return preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v;
+    }
+
     /** #4971: add the manual 行政加給 as its own field and into total_salary (bonus-only teachers get a row). */
     private function withAdminBonus(array $rows, ?int $branchId, string $month): array
     {
@@ -1928,7 +1946,7 @@ class FinanceController extends Controller
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
             fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
-                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設', $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '']);
+                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設', $t['admin_bonus'] ?? 0, $this->csvSafe($t['admin_bonus_reason'] ?? '')]);
             }
             fputcsv($out, []);
             fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);

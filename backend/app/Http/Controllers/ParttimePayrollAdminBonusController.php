@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /** #4971 (in-app #508): one manual 行政加給 per part-time teacher per month. */
-class ParttimeAdminBonusController extends Controller
+class ParttimePayrollAdminBonusController extends Controller
 {
     /** PUT finance/parttime-payroll/admin-bonus — create or edit. */
     public function upsert(Request $request): JsonResponse
