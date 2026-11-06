@@ -474,6 +474,7 @@ jobs:
           LARAVEL_PARALLEL_TESTING=1 ./vendor/bin/paratest \
             --runner='\Illuminate\Testing\ParallelRunner' \
             --processes=4 \
+            --cache-directory=storage/framework/phpunit-cache \
             --coverage-text \
             --coverage-clover=storage/test-results/coverage.xml \
             --log-junit=storage/test-results/junit.xml
