@@ -854,6 +854,7 @@
 </template>
 
 <script setup>
+import { getActiveSpan, getRootSpan } from '@sentry/vue';
 import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { isDirectorRole } from './lib/roleCapabilities.js';
 import AtSkeleton from './components/design-system/AtSkeleton.vue';
@@ -3300,6 +3301,13 @@ async function mergeChatUnreadBadge() {
     badgeByType.value = next;
   }
 }
+
+// Per-page usage in Sentry: pages switch by ?app_page on one path, and Sentry's history hook starts the
+// navigation span before the URL changes, so name the active root span after the page once it has switched.
+watch(active, (p) => {
+  const span = getActiveSpan();
+  if (span) getRootSpan(span).updateName(`page:${p}`);
+}, { flush: 'post', immediate: true });
 
 watch(active, (p) => {
   if (p !== 'bugs') return;

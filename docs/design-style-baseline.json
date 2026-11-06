@@ -127,7 +127,6 @@
     "frontend/src/pages/SmartCalendar.vue": {"font_size":93,"border_radius":51,"box_shadow":15,"emoji":4,"native_dialog":29},
     "frontend/src/pages/StudentsList.vue": {"font_size":104,"border_radius":43,"box_shadow":3,"emoji":2,"native_dialog":69},
     "frontend/src/pages/SubjectSettingsPage.vue": {"font_size":8,"border_radius":3,"box_shadow":1,"native_dialog":1},
-    "frontend/src/pages/SubjectUnitsPage.vue": {"font_size":14,"border_radius":5,"box_shadow":1,"emoji":18},
     "frontend/src/pages/SubjectUnitsTimelinePage.vue": {"font_size":21,"border_radius":10,"box_shadow":1,"emoji":10},
     "frontend/src/pages/TeacherEligibilityPage.vue": {"font_size":16,"border_radius":11,"native_dialog":1},
     "frontend/src/pages/TeacherHomePage.vue": {"font_size":71,"border_radius":32,"box_shadow":2},

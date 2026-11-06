@@ -1,0 +1,3 @@
+## 2026-11-06 — fix(schedule): monthly courses never generate lessons outside their period (in-app #506, #4942)
+<!-- release-notes: staff_update=staff-2026-11-06-monthly-within-period -->
+- Root cause: changing the fixed weekday of a monthly (date-mode) course re-laid its not-yet-taught lessons with the count-mode cadence (`planRemapTargets`), which had no end bound, so a lesson could land after EndDate and then block the next month's renewal. `planRemapTargets` now takes the contract EndDate (date mode only; `syncFutureScheduledSessionTimes`, `planFutureSync` and the schedule guard pass it); rows that do not fit stay where they were. Count mode is unchanged. No schema or data change.

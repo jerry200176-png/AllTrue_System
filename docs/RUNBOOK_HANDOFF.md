@@ -20,7 +20,7 @@ Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的�
 - **issueOwnsReport / SourceRef**：`github_issue_url` 必須是 open 且非 duplicate 的 issue，且 owner 或 github-actions[bot] 的內文／留言含 `SourceRef … alltrue:bug_report:<id>`；auto-intake 鏡像被關成 duplicate 會失敗 → 改用 canonical issue。`backend/app/Operations/Inapp/InappReportResolveEvidence.php`
 - **fix 要連回 issue**：fix PR 標題或內文需有 `#<issue>` 或 `in-app #<bug>`（可編輯已 merge 的 PR body 補上）。
 - **smoke-after-deploy**：smoke run 必須在 deploy job 的 `completed_at` 之後才算數。
-- 完整流程：`docs/changes/2026-10-22-pop-inapp-resolve-after-deploy.md`、`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`、`docs/CHAT_BUG_SYSTEM.md`。
+- 完整流程：`docs/changes/2026-10-22-pop-inapp-resolve-after-deploy.md`、`docs/sop/DELIVERY_LIFECYCLE.md`、`docs/CHAT_BUG_SYSTEM.md`。
 
 ## 找東西
 問題 → 文件的對照在 `docs/INDEX.md` 的「Takeover recall」。

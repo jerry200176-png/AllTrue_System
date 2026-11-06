@@ -42,6 +42,7 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 | Question | Canonical answer |
 |----------|------------------|
 | 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |
+| 一件事從需求／回報到上線要過哪些關？ | [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)（九個階段、三條車道、守門角色、SLA；唯一出處） |
 | 現在的工程主線是什麼？ | [`architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) → 排課根治 [`architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076；**非**整包重構） |
 | 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
 | production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
@@ -75,7 +76,7 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 |---|---|
 | POP in-app 每日上限、何時重置 | `docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md`（Asia/Taipei 日） |
 | 為什麼 release train 停手 | `RUNBOOK_HANDOFF.md` 「Deploy / POP 常見坑」；`.github/workflows/deploy.yml` |
-| deploy 後如何 resolve in-app report | `docs/changes/2026-10-22-pop-inapp-resolve-after-deploy.md`、`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`、`docs/CHAT_BUG_SYSTEM.md` |
+| deploy 後如何 resolve in-app report | `docs/changes/2026-10-22-pop-inapp-resolve-after-deploy.md`、`docs/sop/DELIVERY_LIFECYCLE.md`、`docs/CHAT_BUG_SYSTEM.md` |
 | SourceRef／issueOwnsReport 失敗 | `backend/app/Operations/Inapp/InappReportResolveEvidence.php`、`docs/changes/2026-10-07-f14-ownership-rule.md` |
 | 某 issue/PR（如 #4455、#3868、#4623）現在卡在哪 | `RUNBOOK_HANDOFF.md` 「進行中」→ 該 issue 最新留言（`gh issue view <n>`） |
 | #4455 package ledger 修復 | `docs/incidents/RM-PACKAGE-LEDGER-NET-REPAIR-4455.md`、`docs/changes/*-4455.md` |
@@ -174,7 +175,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 1. `.cursor/rules/plan-as-prd-cross-functional.mdc` — PRD 14 節格式
 2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP（**§B0：修 bug 前必翻歷史 + 認領復發家族，降低復發率**）
 3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑（**§復發家族 F1–F6＝known-issues registry，改前先認領**）
-4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7；**各階段 workflow／觸發／cloud 能否自行完成** → [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 對照表；`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
+4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7；**各階段 workflow／觸發／cloud 能否自行完成** → [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表；`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
 5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
 6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills ＋ [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) 本地化（§taste-skill）；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
 7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)、[木柵高瑞樸 7/30 GHA containment](incidents/muzha-gaorui-2026-07-30-option1-execution-package.md)（[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)）

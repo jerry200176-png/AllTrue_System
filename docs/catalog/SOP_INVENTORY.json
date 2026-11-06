@@ -25,6 +25,7 @@
     {"document":"docs/security/IAM_ACCESS_REVIEW.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"},
     {"document":"docs/security/PII_DATA_INVENTORY.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"},
     {"document":"docs/security/PRODUCTION_AGENT_EXCEPTION_HERMES_2026-08.md","owner":"jerry (CEO)","review_cycle":"14 days","last_reviewed":"2026-08-09","next_review":"2026-08-23","last_drill_evidence_link":null,"review_status":"overdue"},
-    {"document":"docs/security/RUNBOOK_HOST_HARDENING_VERIFICATION.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"}
+    {"document":"docs/security/RUNBOOK_HOST_HARDENING_VERIFICATION.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/sop/DELIVERY_LIFECYCLE.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-11-06","next_review":"2027-02-06","last_drill_evidence_link":null,"review_status":"current"}
   ]
 }

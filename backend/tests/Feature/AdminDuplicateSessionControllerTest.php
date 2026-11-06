@@ -44,8 +44,10 @@ class AdminDuplicateSessionControllerTest extends TestCase
         [, $sameA, $sameB] = $this->seedDuplicatePair(studentId: 91013, campusId: $campus->id);
 
         // 91012: same package, different subjects → possibly an intended multi-subject plan.
-        DB::table('Subject')->insert(['id' => 81102, 'School_id' => 1, 'Grade_no' => 1, 'Subject_Name' => '英文', 'CampusID' => null]);
-        DB::table('StudentClass')->where('ID', $multiB)->update(['SubjectID' => 81102]);
+        // Auto id: TestCase seeds Subject rows with auto ids, and rolled-back explicit 81101 inserts leave
+        // AUTO_INCREMENT at 81102, so a hard-coded 81102 collides depending on test order (#4945).
+        $otherSubjectId = DB::table('Subject')->insertGetId(['School_id' => 1, 'Grade_no' => 1, 'Subject_Name' => '英文', 'CampusID' => null]);
+        DB::table('StudentClass')->where('ID', $multiB)->update(['SubjectID' => $otherSubjectId]);
         DB::table('StudentClass')->whereIn('ID', [$multiA, $multiB])->update(['PackageID' => $this->makePackage(91012, $campus->id)]);
         // 91013: same package, same subject → a real duplicate, must stay unlabelled.
         DB::table('StudentClass')->whereIn('ID', [$sameA, $sameB])->update(['PackageID' => $this->makePackage(91013, $campus->id)]);

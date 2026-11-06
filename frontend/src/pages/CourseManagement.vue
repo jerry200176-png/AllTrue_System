@@ -506,15 +506,19 @@
                             </button>
                           </div>
                           <div v-if="showCancelledSessions.has(c.id) && movedOrCancelledUnits(c).length > 0" class="dates-chip-grid cancelled-sessions-grid" style="margin-top:8px">
-                            <span
+                            <component
+                              :is="canRestoreCancelled(u) ? 'button' : 'span'"
                               v-for="u in movedOrCancelledUnits(c)"
                               :key="'cx-' + sessionRowKey(u)"
                               class="date-chip cancelled"
-                              :title="getSessionTooltip(c, (u.date || '').slice(0,10), u.id)"
+                              :type="canRestoreCancelled(u) ? 'button' : undefined"
+                              data-testid="cancelled-chip"
+                              :title="canRestoreCancelled(u) ? '復原這堂已取消的課' : getSessionTooltip(c, (u.date || '').slice(0,10), u.id)"
+                              @click="canRestoreCancelled(u) && openRestoreCancelled(u)"
                             >
                               <span class="chip-date">{{ formatSessionChipDate(u) }}</span>
                               <span class="chip-state">已取消</span>
-                            </span>
+                            </component>
                           </div>
                         </div>
                         <!-- Pending makeup schedules (issue #527) -->
@@ -815,7 +819,8 @@
       :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber" :get-session-number-map="getSessionNumberMap"
       :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
       @close="closeCourseManager" @update:tab="onCourseManagerTab" @action="onCourseManagerAction"
-      @open-session="onCourseManagerOpenSession" @move-lesson="onCourseManagerMoveLesson"
+      @open-session="onCourseManagerOpenSession" @move-lesson="onCourseManagerMoveLesson" @restore-cancelled="openRestoreCancelled"
+      :can-restore-cancelled="canRestoreCancelled"
       @create-day="(payload) => openCourseSessionCalendarCreate(courseManagerCourse, payload)"
       @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)" @toggle-notes="toggleSessionNotes"
     >
@@ -1285,6 +1290,8 @@
       @changed="reloadCoursesQuietly"
     />
 
+    <RestoreCancelledSessionDialog :unit="restoreCancelledUnit" @close="restoreCancelledUnit = null" @restored="onCancelledRestored" />
+
     <AtDialog
       :open="!!pauseConfirmTarget"
       :title="pauseConfirmIsResume ? '恢復課程？' : '暫停課程？'"
@@ -1400,6 +1407,8 @@ import ActionMenu from '../components/ActionMenu.vue';
 import { courseLessonCountLabel } from '../lib/courseLessonCountLabel.js';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
+import RestoreCancelledSessionDialog from '../components/course-management/RestoreCancelledSessionDialog.vue';
+import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
@@ -4359,6 +4368,13 @@ const formatMoney = (value) => {
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
 let quietRefreshNext = false; // set by the re-activation refetch: no loading flag, rows stay on screen
+const restoreCancelledUnit = ref(null);
+const canRestoreCancelled = (u) => isDirectorRole(props.userRole) && !!u?.id && isVisibleCancelledSession(u);
+const openRestoreCancelled = (u) => { restoreCancelledUnit.value = u; };
+const onCancelledRestored = async () => {
+  restoreCancelledUnit.value = null;
+  await reloadCoursesQuietly();
+};
 const reloadCoursesQuietly = () => { quietRefreshNext = true; return loadCourses(pagination.value.page); };
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
