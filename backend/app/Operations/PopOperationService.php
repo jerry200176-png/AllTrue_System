@@ -488,7 +488,8 @@ final class PopOperationService
     public function runApprovedLocally(?string $requestId = null, string $phase = 'execute'): array
     {
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || ($phase !== 'execute' && $requestId === null)) throw new RuntimeException('POP recovery requires one explicit request and valid phase.');
-        $lockName = 'alltrue:pop:executor';
+        // Named locks are server-global: scope by database so parallel test workers (one DB each) never collide.
+        $lockName = 'alltrue:pop:executor:' . DB::getDatabaseName();
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
             return ['ok' => true, 'status' => 'busy', 'processed' => 0];
@@ -526,7 +527,7 @@ final class PopOperationService
             return ['ok' => true, 'status' => 'idle', 'processed' => 0];
         }
 
-        $lockName = 'alltrue:pop:' . (string) $candidate->id;
+        $lockName = 'alltrue:pop:' . (string) $candidate->id . ':' . DB::getDatabaseName();
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
             return ['ok' => true, 'status' => 'busy', 'request_id' => (string) $candidate->id];

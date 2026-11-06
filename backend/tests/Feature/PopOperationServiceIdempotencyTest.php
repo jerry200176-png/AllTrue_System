@@ -288,7 +288,7 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         $connection = (string) config('database.default');
         config(['database.connections.pop_competitor' => config('database.connections.' . $connection)]);
         $competitor = DB::connection('pop_competitor');
-        $lock = 'alltrue:pop:' . $id;
+        $lock = 'alltrue:pop:' . $id . ':' . DB::getDatabaseName();
         self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired);
         try {
             $busy = $engine->runApprovedLocally($id);
@@ -333,7 +333,7 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         $engine = $this->localEngine($sha);
         config(['database.connections.pop_competitor' => config('database.connections.' . config('database.default'))]);
         $competitor = DB::connection('pop_competitor');
-        $lock = 'alltrue:pop:executor';
+        $lock = 'alltrue:pop:executor:' . DB::getDatabaseName();
         self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired);
         try {
             self::assertSame('busy', $engine->runApprovedLocally($first)['status']);

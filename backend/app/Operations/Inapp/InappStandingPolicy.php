@@ -149,7 +149,8 @@ final class InappStandingPolicy
         }
         // One lock for every policy decision (a superset of a per-operation/day lock): the daily cap is
         // counted and reserved by recordApproval()'s transaction while it is held.
-        $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', ['alltrue:pop:standing-policy']);
+        $lockName = 'alltrue:pop:standing-policy:' . DB::getDatabaseName(); // per-database: parallel test workers must not collide
+        $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) return ['status' => 'busy', 'approved' => [], 'denied' => []];
         $out = ['status' => 'ok', 'approved' => [], 'denied' => []];
         try {
@@ -166,7 +167,7 @@ final class InappStandingPolicy
                 $out[$reasons === [] ? 'approved' : 'denied'][] = (string) $request->id;
             }
         } finally {
-            DB::selectOne('SELECT RELEASE_LOCK(?) AS released', ['alltrue:pop:standing-policy']);
+            DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
         }
 
         return $out;
