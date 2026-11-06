@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Invoice;
 use App\Models\StudentClass;
-use Illuminate\Support\Carbon;
 
 /**
  * Read-only invoice amount projection used by every billing surface.
@@ -121,19 +120,13 @@ class InvoiceAmountReconciliationService
             // neither repriced nor a discrepancy (in-app #478).
             $multiCourse = ($invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get())
                 ->pluck('StudentClassID')->filter()->unique()->count() > 1;
-            $rawDiscrepancy = !$multiCourse && $billing['source'] === 'billable_sessions'
+            $amountDiscrepancy = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && $computedTotalAmount !== $storedTotalAmount
                 && !($invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: an evidenced full discount is NT$0 by decision, not a discrepancy
-            // in-app #510: while the period is still running and no lesson has been held, the lesson-based total is 0 only
-            // because every lesson is still scheduled; judge a prepaid bill once the period has ended (or lessons are held).
-            $periodRunning = $periodEnd >= Carbon::now('Asia/Taipei')->toDateString();
-            $deferred = $rawDiscrepancy && $periodRunning && $computedTotalAmount === 0;
-            $amountDiscrepancy = $rawDiscrepancy && !$deferred;
 
             $repriceable = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
-                && $netApplied === 0
-                && !$deferred; // a deferred bill keeps its fixed total, so collection and confirm expect the stored amount, not 0
+                && $netApplied === 0;
             if ($amountDiscrepancy && $repriceable) {
                 $totalAmount = $computedTotalAmount;
                 $amountSource = 'billable_sessions';
