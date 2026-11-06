@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, decodeEntities, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 
 const req = ['A', 'B'];
@@ -268,7 +268,7 @@ const OWNER = 'jerry200176-png';
 const codex = (cr, o = {}) => ({ user: { login: CODEX_LOGIN }, updated_at: '2026-10-21T05:00:00Z', body: `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: cr, security_review: { commit_sha: null, status: null } })} -->\n## Codex Review Summary`, ...o });
 const clean = (sha = H, o = {}) => ({ commit_sha: sha, has_any_findings: false, has_unresolved_findings: false, status: 'completed', ...o });
 const fallback = (sha, login = OWNER) => ({ user: { login }, body: `independent /code-review: no findings\n${reviewMarker(sha)}` });
-const gateOf = (comments) => reviewGate(comments, H, OWNER);
+const gateOf = (comments, body = 'Risk-Class: R1') => reviewGate(comments, H, OWNER, body);
 const decideWith = (comments) => decide(pr({ sha: H, review: gateOf(comments) }), req);
 
 test('review gate: green + 0 threads + Codex running -> wait review-pending', () => {
@@ -521,4 +521,21 @@ test('canonical merge policy and SOP describe the same final-head review gate', 
     assert.match(doc, /review-pending/, `${name} must describe pending review as a wait`);
     assert.match(doc, /approval continuity/i, `${name} must preserve existing scoped approvals`);
   }
+});
+
+test('review gate: R3 needs an owner security marker on the exact head; fail marker vetoes; unknown tier is R3', () => {
+  const owner = (b) => ({ user: { login: OWNER }, body: b });
+  const R3 = 'Risk-Class: R3\nAutonomy-Tier: T3';
+  const sec = (sha, v = 'pass') => owner(gateMarker('security-data-reviewer', sha, v));
+  assert.equal(gateOf([codex(clean())], R3).ok, false);
+  assert.match(gateOf([codex(clean())], R3).why, /security-data-reviewer/);
+  assert.equal(gateOf([codex(clean()), sec(H)], R3).ok, true);
+  assert.equal(gateOf([codex(clean()), sec(OLD)], R3).ok, false);
+  assert.equal(gateOf([codex(clean()), fallback(H)], R3).ok, true); // independent-review stays valid
+  assert.equal(gateOf([codex(clean()), sec(H), sec(H, 'fail')], R3).ok, false);
+  assert.equal(gateOf([codex(clean()), owner(gateMarker('qa-lead', H, 'fail'))]).ok, false); // any role, any lane
+  assert.equal(gateOf([codex(clean()), { user: { login: 'someone' }, body: gateMarker('qa-lead', H, 'fail') }]).ok, true); // non-owner ignored
+  assert.equal(gateOf([codex(clean()), sec(H)], R3).via, 'codex');
+  assert.equal(gateOf([codex(clean())], 'Risk-Class: R1').ok, true);
+  for (const b of ['', null, 'no declaration', 'Risk-Class: R9', 'Risk-Class: R1\nAutonomy-Tier: T3']) assert.equal(gateOf([codex(clean())], b).ok, false);
 });
