@@ -352,6 +352,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { formatDate as fmtDate } from '../lib/billingDocumentView.js';
 import { splitOwed } from '../lib/studentBillingRows.js';
@@ -872,7 +873,7 @@ const { submit: submitRenewal } = useMonthlyRenewal({
   form: ref({}), warnings: ref([]), previewRequestId: ref(0),
   isModalOpen: () => false, currentCourseId: () => null,
 });
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => ymdInTaipei();
 async function loadDrafts() {
   drafts.value = {};
   try {

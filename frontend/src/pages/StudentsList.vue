@@ -979,6 +979,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import { askConfirm } from '../composables/useConfirmDialog';
 import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, computed, nextTick } from 'vue';
@@ -1249,7 +1250,7 @@ const addSessionsSubmitting = ref(false);
 const addSessionsError = ref('');
 const addSessionCount = ref(8);
 const selectedCourse = ref(null);
-const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
+const addSessionStartDate = ref(ymdInTaipei());
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
@@ -2852,7 +2853,7 @@ const proceedOpenAddCourse = (student) => {
   selectedStudent.value = student;
   editingCourseId.value = null;
   editingCourseFromLaravel.value = false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymdInTaipei();
   courseForm.value = {
     subject: 'Math', teacher_id: '', class_type: 'one_on_one',
     rate_per_30min: 500, duration_hours: 2, payment_type: 'session',
@@ -3369,7 +3370,7 @@ const openAddSessionsForCourse = (course) => {
   selectedCourse.value = course;
   addSessionsError.value = '';
     addSessionCount.value = 8;
-  addSessionStartDate.value = new Date().toISOString().slice(0, 10);
+  addSessionStartDate.value = ymdInTaipei();
   tutoringEndDate.value = '';
   if (isTutoringCourse(course)) {
     const end = String(course?.end_date || course?.EndDate || '').slice(0, 10);

@@ -1,3 +1,4 @@
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed } from 'vue';
 import { resolveSessionIdForSubstitute } from '../../lib/classSessionPick.js';
 import { undoSubstitute } from '../../lib/substituteApi.js';
@@ -112,7 +113,7 @@ export function useCalendarSubstitute({
   };
 
   const openSubstituteModal = () => {
-    const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+    const exactDate = modalForm.value.action_date || ymdInTaipei();
     substituteForm.value = {
       student_id: modalForm.value.student_id,
       subject: modalForm.value.subject,
@@ -207,7 +208,7 @@ export function useCalendarSubstitute({
   });
 
   const openSubstituteV2Modal = () => {
-    const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+    const exactDate = modalForm.value.action_date || ymdInTaipei();
     const courseId = editingCourseId.value;
     let sessionId = null;
     let sessions = [];
