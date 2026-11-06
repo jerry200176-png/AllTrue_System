@@ -35,6 +35,7 @@ export default {
     overviewNeeds: { type: Array, default: () => [] },
     sessionUnits: { type: Array, default: () => [] },
     cancelledUnits: { type: Array, default: () => [] },
+    canRestoreCancelled: { type: Function, default: () => false },
     pendingMakeups: { type: Array, default: () => [] },
     calendarEnabled: { type: Boolean, default: false },
     createEnabled: { type: Boolean, default: false },
@@ -61,7 +62,7 @@ export default {
     // #4178: called with the course after close when the opener left the page (e.g. closed under 「進行中」).
     focusFallback: { type: Function, default: null },
   },
-  emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes', 'move-lesson'],
+  emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'restore-cancelled', 'toggle-notes', 'move-lesson'],
   setup(props, { emit }) {
     // Dialog focus: land on the title, keep Tab inside, give focus back to whatever opened the drawer (管理課程).
     const panelRef = ref(null);
@@ -369,6 +370,7 @@ export default {
             <div v-for="u in cancelledUnits" :key="'cx-'+sessionRowKey(u)" class="cmw__session-row is-cancelled">
               <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
               <span class="cmw__session-state">已取消</span>
+              <button v-if="canRestoreCancelled(u)" type="button" class="small" data-testid="drawer-restore-cancelled" @click="$emit('restore-cancelled', u)">復原</button>
             </div>
           </div>
           <div v-if="pendingMakeups.length" class="cmw__card">
