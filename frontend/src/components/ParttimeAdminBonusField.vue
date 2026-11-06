@@ -58,12 +58,12 @@ const remove = () => run(() => deleteAdminBonus(base()));
 
 <style scoped>
 .admin-bonus { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
-.ab-field { display: flex; flex-direction: column; font-size: 0.78rem; gap: 2px; }
-.ab-field input { padding: 6px 8px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; min-width: 0; width: 8rem; }
+.ab-field { display: flex; flex-direction: column; font-size: var(--ds-font-size-xs); gap: 2px; }
+.ab-field input { padding: 6px 8px; border: 1px solid var(--ds-hairline-input); border-radius: var(--ds-radius-sm); min-width: 0; width: 8rem; }
 .ab-reason { flex: 1 1 10rem; }
 .ab-reason input { width: 100%; }
-.ab-btn { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--ds-hairline-input); background: var(--ds-surface-0); min-height: 36px; }
+.ab-btn { padding: 7px 14px; border-radius: var(--ds-radius-sm); border: 1px solid var(--ds-hairline-input); background: var(--ds-surface-0); min-height: 36px; }
 .ab-del { color: var(--ds-danger-text); }
-.ab-note, .ab-err { font-size: 0.78rem; flex-basis: 100%; }
+.ab-note, .ab-err { font-size: var(--ds-font-size-xs); flex-basis: 100%; }
 .ab-err { color: var(--ds-danger-text); }
 </style>

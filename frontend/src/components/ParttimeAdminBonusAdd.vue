@@ -34,6 +34,6 @@ function saved() { picked.value = ''; emit('saved'); }
 </template>
 
 <style scoped>
-.ab-add { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; }
+.ab-add { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; font-size: var(--ds-font-size-sm); }
 .ab-add select { padding: 6px 8px; min-height: 36px; max-width: 100%; }
 </style>
