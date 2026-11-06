@@ -436,9 +436,8 @@ class ExamRoundController extends Controller
         }
         $studentId = (int) $request->input('student_id');
         if ($this->role($request) === 'teacher') {
-            $mine = $studentId > 0 && StudentClass::query()->where('StudentID', $studentId)
-                ->where('TeacherID', $this->userId($request))->exists();
-            if (!$mine) {
+            $own = $this->eligibleStudentRows($examRound, $this->userId($request))->pluck('student_id')->map(fn ($i) => (int) $i)->all();
+            if ($studentId <= 0 || !in_array($studentId, $own, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
         }
@@ -615,8 +614,9 @@ class ExamRoundController extends Controller
         if ($gradeIds === []) {
             return collect();
         }
-        // Roster stability: keep students who already have scores (Codex P1).
-        $scoredIds = ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
+        // Roster stability for directors only; a teacher is limited to students with their own active class.
+        $scoredIds = $teacherId !== null ? []
+            : ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
         $students = Student::query()
             ->where('CampusID', (int) $round->campus_id)
             ->where(function ($q) use ($gradeIds, $scoredIds) {

@@ -201,6 +201,24 @@ class ExamRoundApiTest extends TestCase
         ])->assertNotFound();
     }
 
+    public function test_teacher_cannot_write_or_read_history_for_another_teachers_or_stopped_students(): void
+    {
+        $c = $this->seedRound();
+        $sid = $c['subjects'][0]['id'];
+        $this->putScore($c, 'teacher', 0, 70)->assertOk();
+        $b = $this->makeStaff('T', Str::random(8) . '@example.com', $c['campus']);
+        $payload = fn (array $row) => ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid] + $row]];
+        $this->withAuth($b['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", $payload(['clear' => true]))->assertForbidden();
+        $this->withAuth($b['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", $payload(['score' => 1]))->assertForbidden();
+        $this->assertDatabaseHas('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid, 'score' => 70]);
+
+        // teacher whose only class for the student is stopped: no history
+        $stopped = $this->makeClass($c['student']->id, $b['user']->id, $c['campus']);
+        $stopped->Stop = 1;
+        $stopped->save();
+        $this->withAuth($b['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")->assertForbidden();
+    }
+
     public function test_teacher_after_deadline_gets_409_and_director_closed_correction_needs_reason(): void
     {
         $c = $this->seedRound();
