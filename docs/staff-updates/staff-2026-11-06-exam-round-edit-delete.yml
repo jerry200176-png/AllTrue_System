@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-06-exam-round-edit-delete
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 段考場次可編輯、可刪除
+    summary: 主任可改段考的日期、年級、科目，也能刪除或復原。
+    items:
+      - category: added
+        text: 場次右邊的「⋯」可編輯或刪除。已有成績的場次刪除時要寫原因，會先隱藏，可在「顯示已刪除」復原。
+      - category: improved
+        text: 開段考時，適用年級改成勾選，不用再打數字。
+    source_refs:
+      - "changelog:2026-11-06:exam-round-edit-delete"
