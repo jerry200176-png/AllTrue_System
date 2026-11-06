@@ -126,12 +126,26 @@ function prScope(n, head) {
 }
 
 // True only when old and head are commits of PR n and their compare(base...sha) file lists match on
-// filename/status/previous_filename/patch. A binary or oversized file has no patch: its blob sha stands in (treeEntries
-// below still compares every path's mode+blob). No patch and no sha, >=300 files or any API error -> false. Reads the API only.
+// filename/status/previous_filename/patch. A binary or oversized file has no patch: it is keyed by its base-side tree
+// entry (at the compare's merge base) plus its head blob, so a base that moved under it (e.g. main updated the same
+// PNG) still blocks the carry; treeEntries below compares every path's head mode+blob too. Missing sha, missing or
+// truncated merge-base tree, >=300 files or any API error -> false. Reads the API only.
 const diffKey = (sha, base) => {
-  const files = JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.files || []);
+  const pages = JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp'));
+  const files = pages.flatMap((p) => p.files || []);
   if (files.length >= 300 || files.some((f) => typeof f.patch !== 'string' && typeof f.sha !== 'string')) return null;
-  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, typeof f.patch === 'string' ? f.patch : `blob:${f.sha}`]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+  let baseTree = null;
+  const baseEntry = (path) => {
+    if (!baseTree) {
+      const mb = pages[0]?.merge_base_commit?.sha;
+      const t = mb && api(`git/trees/${mb}?recursive=1`);
+      if (!t || t.truncated || !Array.isArray(t.tree)) throw new Error('merge-base tree unavailable');
+      baseTree = new Map(t.tree.map((e) => [e.path, `${e.mode} ${e.type} ${e.sha}`]));
+    }
+    return baseTree.get(path) ?? 'absent';
+  };
+  const part = (f) => (typeof f.patch === 'string' ? f.patch : `blob:${baseEntry(f.previous_filename ?? f.filename)}->${f.sha}`);
+  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, part(f)]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
   return { key, paths: files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)) };
 };
 // patch text hides mode changes and file<->symlink swaps: compare tree entries (mode+blob, absent = deleted) of every PR path.

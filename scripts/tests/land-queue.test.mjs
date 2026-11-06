@@ -585,9 +585,11 @@ const key = Object.keys(m).find((k) => u.includes(k));
 if (!key) process.exit(1);
 console.log(JSON.stringify(m[key]));
 `, { mode: 0o755 });
+  const M1 = '1'.repeat(40), M2 = '2'.repeat(40);
   const run = (tree, f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }]) => {
-    const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: tree.base || 'main' } }, 'compare/': [{ files: f }],
-      [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b };
+    const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: tree.base || 'main' } },
+      [`compare/main...${A}`]: [{ files: f, merge_base_commit: { sha: M1 } }], [`compare/main...${B}`]: [{ files: f, merge_base_commit: { sha: M2 } }],
+      [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b, [`trees/${M1}`]: tree.m1 ?? { tree: [] }, [`trees/${M2}`]: tree.m2 ?? { tree: [] } };
     const out = execFileSync(process.execPath, ['--input-type=module', '-e',
       `import { samePrPatch } from ${JSON.stringify(new URL('../../.github/scripts/review-gate.mjs', import.meta.url).href)}; console.log(samePrPatch(7, '${B}', '${A}'));`],
     { encoding: 'utf8', env: { ...process.env, REPO: 'o/r', FAKE: JSON.stringify(fake), PATH: `${dir}:${process.env.PATH}` } });
@@ -605,6 +607,10 @@ console.log(JSON.stringify(m[key]));
   assert.equal(run({ a: ent('100644'), b: ent('100644') }, png), true);
   assert.equal(run({ a: ent('100644'), b: ent('100644', 'e'.repeat(40)) }, png), false); // content changed at head
   assert.equal(run({ a: ent('100644'), b: ent('100644') }, [{ filename: 'x.sh', status: 'modified' }]), false); // no patch, no sha
+  // main moved the same binary under the PR (the PR now reverts main's PNG): the base-side entry differs -> no carry.
+  assert.equal(run({ a: ent('100644'), b: ent('100644'), m1: ent('100644', '1'.repeat(40)), m2: ent('100644', '2'.repeat(40)) }, png), false);
+  assert.equal(run({ a: ent('100644'), b: ent('100644'), m1: ent('100644', '1'.repeat(40)), m2: ent('100644', '1'.repeat(40)) }, png), true);
+  assert.equal(run({ a: ent('100644'), b: ent('100644'), m2: { tree: [], truncated: true } }, png), false); // fail closed
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {
