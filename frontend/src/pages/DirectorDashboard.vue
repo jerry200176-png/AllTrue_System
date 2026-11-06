@@ -49,7 +49,7 @@
 
         <AtTabs
           :model-value="dashboardViewMode"
-          class="director-workbench-v2__nav"
+          class="director-workbench-v2__nav tw:[&_[role=tab]]:min-h-12 tw:[&_[role=tab]]:px-5 tw:[&_[role=tab]]:text-tpl-caption tw:[&_[role=tab]]:font-bold"
           label="總覽檢視模式"
           id-prefix="director-workbench"
           variant="segmented"
@@ -81,7 +81,7 @@
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
-              <Button class="tpl-btn-primary tw:mt-4 tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-tpl-body tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.98]" @click="goToAttendance">去點名</Button>
+              <Button class="tpl-btn-primary tw:mt-4 tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.98]" @click="goToAttendance">去點名</Button>
             </Card>
           </Motion>
 
@@ -102,7 +102,7 @@
             <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
               <strong>今日資料暫時無法載入</strong>
               <span>{{ dashboardPrimaryError }}</span>
-              <Button variant="secondary" class="tw:h-14" @click="refreshDashboard">再試一次</Button>
+              <Button variant="secondary" class="tw:h-14 tw:text-[length:var(--tpl-text-body)]" @click="refreshDashboard">再試一次</Button>
             </div>
             <div v-else-if="!dashboardPrimaryTasks.length" class="director-state">
               <strong>今天沒有需要主任處理的事</strong>
@@ -164,16 +164,17 @@
           </div>
 
           <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
-            <details v-if="operationsTrust?.decision_center" class="director-trust-note">
-              <summary title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
-                <span>課表正確度</span>
-                <strong :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
+            <details v-if="operationsTrust?.decision_center" class="director-trust-note tpl-card tw:rounded-3xl tw:px-5 tw:py-0 tw:text-tpl-body tw:shadow-tpl-card">
+              <summary class="tw:min-h-18 tw:gap-4 tw:px-0 tw:text-tpl-body tw:font-semibold tw:text-foreground" title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
+                <span class="tpl-tile tpl-g-teal tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tw:flex-1">課表正確度</span>
+                <strong class="director-num tw:text-tpl-body" :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
-              <p>{{ decisionCenter.headline }}</p>
+              <p class="tw:text-tpl-caption tw:text-tpl-secondary">{{ decisionCenter.headline }}</p>
               <div v-if="trustDecisions.length" ref="trustDecisionsEl" class="director-trust-note__list">
                 <article v-for="item in trustDecisions" :key="item.key" class="director-trust-note__item">
-                  <div><strong>{{ trustDecisionTitle(item) }}</strong><p>{{ item.why }}</p></div>
-                  <button type="button" class="text-action" @click="handleTrustDecision(item)">{{ item.action_label }}</button>
+                  <div><strong class="tw:text-tpl-body">{{ trustDecisionTitle(item) }}</strong><p class="tw:text-tpl-caption tw:text-tpl-secondary">{{ item.why }}</p></div>
+                  <button type="button" class="text-action tw:min-h-12 tw:text-tpl-caption" @click="handleTrustDecision(item)">{{ item.action_label }}</button>
                 </article>
               </div>
             </details>
@@ -366,7 +367,7 @@ import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import AtTabs from '../components/design-system/AtTabs.vue';
 import { Motion, MotionConfig } from 'motion-v';
-import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks } from 'lucide-vue-next';
+import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks, ShieldCheck } from 'lucide-vue-next';
 import { Card } from '@/components/ui/card';
 import { ActivityRing } from '@/components/ui/activity-ring';
 import { Sparkline } from '@/components/ui/sparkline';
@@ -3161,7 +3162,7 @@ onBeforeUnmount(() => {
 .director-top-risks__item::before { position: absolute; top: 14px; left: 10px; }
 .director-top-risks__item strong { color: var(--ds-ink); font-size: 13px; font-weight: 700; }
 .director-top-risks__item span { color: var(--ds-ink-mute); font-size: 12px; }
-.director-trust-note { border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
+.director-trust-note { border: 1px solid var(--ds-hairline); }
 .director-trust-note summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 2px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; cursor: pointer; list-style: none; }
 .director-trust-note summary::-webkit-details-marker { display: none; }
 .director-trust-note summary::after { content: '＋'; color: var(--ds-ink-mute); font-size: 15px; }
