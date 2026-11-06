@@ -23,10 +23,11 @@
               {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
             </span>
             <Button
-              class="director-workbench-v2__refresh"
               variant="outline"
               size="icon"
+              class="director-workbench-v2__refresh tw:size-11"
               aria-label="重新整理"
+              :aria-busy="dashboardLoading"
               :disabled="dashboardLoading"
               @click="refreshDashboard"
             >
@@ -49,7 +50,7 @@
         <section
           v-if="dashboardViewMode === 'focus'"
           id="director-workbench-panel-focus"
-          class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:lg:grid-cols-3 tw:gap-4"
+          class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:lg:grid-cols-3 tw:lg:grid-rows-[auto_auto_auto_1fr] tw:gap-4"
           role="tabpanel"
           aria-label="今天的主任工作"
           aria-labelledby="director-workbench-tab-focus"
@@ -74,8 +75,8 @@
                 <div class="tw:flex tw:min-h-40 tw:flex-col tw:justify-end" aria-label="今日各時段課程數" role="img" :aria-description="hourSummary">
                   <p v-if="!hourBars.length" class="tw:self-center tw:pb-10 tw:text-sm tw:text-foreground/70">今天沒有課程</p>
                   <div v-else class="tw:flex tw:h-36 tw:items-end tw:gap-2">
-                    <div v-for="bar in hourBars" :key="bar.hour" class="tw:flex-1 tw:text-center">
-                      <div class="tw:mx-auto tw:w-full tw:max-w-10 tw:rounded-xl" :class="bar.now ? 'tw:bg-foreground' : 'tw:bg-foreground/15'" :style="{ height: `${bar.pct}%`, minHeight: '8px' }"></div>
+                    <div v-for="bar in hourBars" :key="bar.hour" class="tw:flex tw:h-full tw:flex-1 tw:flex-col tw:justify-end tw:text-center">
+                      <div class="tw:mx-auto tw:w-full tw:max-w-10 tw:flex-none tw:rounded-xl" :class="bar.now ? 'tw:bg-foreground' : 'tw:bg-foreground/15'" :style="{ height: `calc((100% - 1.75rem) * ${bar.pct} / 100)`, minHeight: '8px' }"></div>
                       <p class="director-num tw:mt-2 tw:text-xs" :class="bar.now ? 'tw:font-semibold' : 'tw:text-foreground/70'">{{ bar.hour }}{{ bar.now ? ' 現在' : '' }}</p>
                     </div>
                   </div>
@@ -86,7 +87,7 @@
           </Motion>
 
           <!-- 今天要處理: existing task queue -->
-          <Motion as="section" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" :transition="{ delay: 0.16 }" class="director-workbench-v2__primary tw:lg:row-span-3" aria-labelledby="director-focus-title">
+          <Motion as="section" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" :transition="{ delay: 0.16 }" class="director-workbench-v2__primary tw:lg:row-span-4" aria-labelledby="director-focus-title">
             <Card class="tw:h-full tw:rounded-2xl tw:p-6">
               <header class="tw:flex tw:items-start tw:justify-between tw:gap-3">
                 <div>
@@ -152,9 +153,8 @@
                     </div>
                   </div>
                   <Button
-                    class="director-task__action"
                     :variant="index === 0 ? 'default' : 'secondary'"
-                    size="sm"
+                    class="director-task__action tw:h-11 tw:px-5"
                     @click="openDashboardTask(task)"
                   >
                     {{ task.actionLabel }}
@@ -187,7 +187,7 @@
               :data-testid="`kpi-${kpi.key}`"
               class="tw:transition-transform tw:motion-safe:hover:-translate-y-0.5"
             >
-              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-2xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" :aria-label="`${kpi.label} ${kpi.value} ${kpi.unit}，${kpi.sub}。${kpi.cta}`" @click="kpi.open()">
+              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-2xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
                 <Card class="tw:h-full tw:rounded-2xl tw:p-6" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:justify-between">
                     <p class="tw:font-medium">{{ kpi.label }}</p>
