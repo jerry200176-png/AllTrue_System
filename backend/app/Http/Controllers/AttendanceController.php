@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campus;
 use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use App\Support\AttendanceStatus;
 use App\Support\DeadlockRetry;
 use App\Models\PendingSwipe;
@@ -1055,6 +1056,16 @@ class AttendanceController extends Controller
                     $stillSignedIn = StudentSignIn::where('ClassSessionID', $signin->ClassSessionID)->whereNull('VoidedAt')->exists();
                     if ($session && (in_array($session->Status, ['attended', 'late', 'absent'], true)
                         || ($session->Status === 'completed' && $sessionReversed && ! $stillSignedIn))) {
+                        if ($session->Status === 'completed') {
+                            // Same cleanup as ClassSessionController::voidAttendanceArtifacts (attended-like -> scheduled): the
+                            // lesson did not happen, so its live evaluation (pending or approved) must not reach payroll.
+                            LearningRecord::where('ClassSessionID', $session->id)->active()->get()->each(function ($lr) use ($authUser, $voidReason) {
+                                $lr->VoidedAt = now();
+                                $lr->VoidedByUserID = $authUser?->id;
+                                $lr->VoidReason = $voidReason;
+                                $lr->save();
+                            });
+                        }
                         $session->Status = 'scheduled';
                         $session->save();
                         $classSessionReverted = true;

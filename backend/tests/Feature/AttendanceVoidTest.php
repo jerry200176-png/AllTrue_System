@@ -161,6 +161,23 @@ class AttendanceVoidTest extends TestCase
         $this->assertSame(0, (int) StudentClass::find($session->StudentClassID)->UsedSessions);
     }
 
+    public function test_void_of_completed_lesson_voids_its_pending_and_approved_learning_records(): void
+    {
+        [$token, $student] = $this->scaffold();
+        foreach (['pending', 'approved'] as $status) {
+            [$session, $signin] = $this->completedSessionWithSignIn($student, true);
+            $lr = \App\Models\LearningRecord::create([
+                'StudentClassID' => $session->StudentClassID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => '',
+                'Subject' => 'x', 'SessionDate' => '2026-11-01', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => $status,
+            ]);
+
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])->assertOk();
+
+            $this->assertNotNull($lr->fresh()->VoidedAt, "{$status} learning record is voided with the lesson");
+        }
+    }
+
     public function test_void_keeps_completed_session_when_the_sign_in_debited_nothing(): void
     {
         [$token, $student] = $this->scaffold();
