@@ -51,7 +51,10 @@ export function pickAmountDue(invoices, paymentAlerts) {
     .filter((i) => i.due > 0);
   const dates = open.map((i) => i.dueDate).filter(Boolean).sort();
   const dueDateLabel = dates[0] ? md(dates[0]) : '';
-  if (staleSuspect) return { amount: null, dueDateLabel, review: true };
+  // An unpaid course with no bill yet (resolver `unbilled`) still owes, but has no invoice amount here.
+  // More unpaid-course alerts than open bills means part of the total is unknown, so never show a short sum.
+  const alerts = Array.isArray(paymentAlerts) ? paymentAlerts.length : 0;
+  if (staleSuspect || alerts > open.length) return { amount: null, dueDateLabel, review: true };
   if (open.length) return { amount: open.reduce((sum, i) => sum + i.due, 0), dueDateLabel };
   return Array.isArray(paymentAlerts) && paymentAlerts.length ? { amount: null, dueDateLabel: '' } : null;
 }
