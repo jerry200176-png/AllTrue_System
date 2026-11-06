@@ -12,6 +12,7 @@ const uiFoundationTests = '(?:ui-foundation-pages|ui-foundation-a11y-axe|ui-foun
 export default defineConfig({
   testDir: './e2e',
   testMatch: new RegExp(`${trueFitFixture ? '(?:truefit-fixture-print|' : ''}${uiFoundationTests}${trueFitFixture ? ')' : ''}\\.spec\\.js$`),
+  grepInvert: /@visual/,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

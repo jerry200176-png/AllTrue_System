@@ -244,6 +244,35 @@ jobs:
               - 'frontend/e2e/fixtures/{dismissOverlays,latestGetJson}.js'
               - 'frontend/src/lib/{roleCapabilities,paymentStatus}.js'
 
+  # Visual regression (#4952). ADVISORY: not in the required-check ruleset (adding it needs a ruleset change by Jerry).
+  # Runs scripts/visual-docker.sh, which picks the mcr.microsoft.com/playwright image matching package-lock.
+  visual_regression:
+    name: Visual regression (advisory)
+    needs: changes
+    # Advisory: a red job here must not turn the CI workflow red (deploy.yml requires CI success).
+    continue-on-error: true
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Visual regression in Playwright image
+        run: |
+          bash scripts/visual-docker.sh || { echo "::error::Visual diff. If the change is intended, run 'npm run test:visual:update' in frontend/ (Docker) and commit frontend/e2e/__screenshots__; a reviewer must look at the PNG diff."; exit 1; }
+
+      - name: Upload visual diffs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: visual-regression-diffs
+          path: frontend/test-results-visual/
+          if-no-files-found: warn
+          retention-days: 14
+
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
     name: Golden scenarios report
