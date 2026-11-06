@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-billing-zero-bill-line
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心不再顯示 NT$0 帳單
+    summary: 不用繳費的合約不再顯示未繳、已收 NT$0。
+    items:
+      - category: fixed
+        text: 輔導課等不用繳費的合約，不再顯示 NT$0。其他金額全是零的帳單，改標「金額未填」。
+    source_refs:
+      - "changelog:2026-11-06:billing-zero-bill-line"
