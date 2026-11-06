@@ -481,7 +481,10 @@ namespace {
 
     def test_dump_exposes_safety_codes_over_reporter_comments(self):
         # L4 (#4965): the safety screen runs over title, description and the reporter's own comments; codes only.
-        self.assertIn('BugSafetyScreen::screen(', self.source)
+        self.assertIn('BugSafetyScreen::screenReport(', self.source)
+        # An older production backend has no class yet: the dump must not fail, and the report is marked unscreened.
+        self.assertIn('class_exists("', self.source)
+        self.assertIn('"reasons" => ["unscreened"]', self.source)
         self.assertIn('(int)$c->author_user_id === (int)$bug->reporter_user_id', self.source)
         self.assertIn('"safety" => $safety,', self.source)
         self.assertIn('"safety_reasons": [r for r in', self.source)

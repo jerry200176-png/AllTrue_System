@@ -126,34 +126,56 @@ class BugSafetyScreen
         ];
     }
 
+    private const PW_VERB = '(?:重設|重置|修改|更改|改掉|換掉|告訴我|給我|(?<![a-z])(?:reset|change|set|tell me|give me|show me)(?![a-z]))';
+    private const PW_WHO = '(?:別人|他人|其他人|他們|所有人|大家|管理員|某位?(?:使用者|用戶)|其他(?:學生|家長|老師|使用者|用戶)|(?<![a-z])(?:admin|administrators?|everyone|everybody|someone else|another user|other users|all users|other (?:students?|parents?|teachers?)|another (?:student|parent|teacher))(?![a-z]))';
+    private const PW_NOUN = '(?:密碼|(?<![a-z])passwords?(?![a-z]))';
+    private const PW_FORMS = '(?:' . self::PW_VERB . self::CL . self::PW_WHO . self::CL . self::PW_NOUN . '|' . self::PW_WHO . self::CL . self::PW_NOUN . self::CL . self::PW_VERB . ')';
+
+    /** A sentence with a symptom or hearsay marker describes a problem or relays what someone said; it is not a lead-less request. */
+    private const SYMPTOM = '時出現|後就|後會|就會|錯誤|出錯|壞掉|當機|崩潰|失敗|不能|無法|沒反應|老師說|他說|她說|家長說|學生說|聽說|據說|(?<![a-z])(?:crash(?:es|ed)?|errors?|fail(?:s|ed)?|broken|bug|exception|told me|said that|says)(?![a-z])|and the (?:page|app|screen)';
+
+    private static function withoutSymptomSentences(string $t): string
+    {
+        $parts = preg_split('/(?<=[。.!?！？;；\n])/u', $t) ?: [$t];
+
+        return implode('', array_filter($parts, fn (string $p): bool => preg_match('/' . self::SYMPTOM . '/iu', $p) !== 1));
+    }
+
     /** Restoring a wrongly deducted lesson count is a correction, not a money change: removed before matching. */
     private const RESTORE = '(?:還原|恢復|補回|復原|回復|(?<![a-z])restore)[^。.!?！？;；]{0,12}堂數?|堂數?[^。.!?！？;；]{0,6}(?:還原|恢復|補回|復原|回來|回去)|(?<![a-z])(?:wrongly|mistakenly|incorrectly|erroneously) deducted[^.!?;]{0,30}';
 
     /** @return array{flagged: bool, reasons: list<string>} reasons are codes from self::CODES only */
-    public static function screen(?string $title, ?string $description): array
+    public static function screen(?string $title, ?string $description, bool $capLength = true): array
     {
         $raw = trim((string) $title . "\n" . (string) $description);
-        if (mb_strlen($raw) > self::MAX_LEN) {
+        if ($capLength && mb_strlen($raw) > self::MAX_LEN) {
             return ['flagged' => true, 'reasons' => ['ai_instruction']];
         }
         $t = self::normalize($raw);
         $reasons = [];
         $lead = self::lead();
+        $leadless = self::withoutSymptomSentences($t);
         $noRestore = preg_replace('/' . self::RESTORE . '/iu', ' ', $t) ?? $t;
         foreach (self::requests() as $code => [$verb, $noun, $zhVerb, $enVerb]) {
             $text = $code === 'money_change' ? $noRestore : $t;
+            $ll = $code === 'money_change' ? self::withoutSymptomSentences($noRestore) : $leadless;
             if (self::match($lead . self::CL . '(?:' . $verb . self::CL . $noun . '|' . $noun . self::CL . $verb . ')', $text)
                 // Lead-less: clause-initial 把…X, or sentence-initial English imperative with a target.
-                || self::match('(?:^|[。！？!?\n，,；;]\s*)(?:把|將)' . self::CL . '(?:' . $noun . self::CL . '(?:' . $zhVerb . ')|(?:' . $zhVerb . ')' . self::CL . $noun . ')', $text)
-                || self::match(self::SENT . self::w($enVerb) . self::CL . $noun . self::CL . self::w('to|for') . '\s*(?:me|my|us|admin|zero|free|nt|\$|\d)', $text)
-                || ($code !== 'money_change' && self::match(self::SENT . self::w($enVerb) . '\s+' . self::w('me|us') . self::CL . $noun, $text))) {
+                || self::match('(?:^|[。！？!?\n，,；;]\s*)(?:把|將)' . self::CL . '(?:' . $noun . self::CL . '(?:' . $zhVerb . ')|(?:' . $zhVerb . ')' . self::CL . $noun . ')', $ll)
+                || self::match(self::SENT . self::w($enVerb) . self::CL . $noun . self::CL . self::w('to|for') . '\s*(?:me|my|us|admin|zero|free|nt|\$|\d)', $ll)
+                || ($code !== 'money_change' && self::match(self::SENT . self::w($enVerb) . '\s+' . self::w('me|us') . self::CL . $noun, $ll))) {
                 $reasons[] = $code;
             }
         }
         // Sentence-initial English disable/bypass is a request by itself.
         if (!in_array('disable_control', $reasons, true)
-            && self::match(self::SENT . self::w('disable|bypass|turn off|skip') . '\s+(?:the |all |this )?' . self::requests()['disable_control'][1], $t)) {
+            && self::match(self::SENT . self::w('disable|bypass|turn off|skip') . '\s+(?:the |all |this )?' . self::requests()['disable_control'][1], $leadless)) {
             $reasons[] = 'disable_control';
+        }
+        // Resetting or changing ANOTHER user's (or an admin's) password is access_change; one's own reset is support.
+        if (!in_array('access_change', $reasons, true)
+            && (self::match($lead . self::CL . self::PW_FORMS, $t) || self::match(self::SENT . self::PW_FORMS, $leadless))) {
+            $reasons[] = 'access_change';
         }
         if (self::match($lead . self::CL . '(?:' . self::OTHER_VERB . self::CL . self::OTHER_PERSON . self::CL . self::OTHER_DATA
                 . '|' . self::OTHER_PERSON . self::CL . self::OTHER_DATA . self::CL . self::OTHER_VERB . ')', $t)
@@ -166,6 +188,24 @@ class BugSafetyScreen
                 $reasons[] = 'ai_instruction';
                 break;
             }
+        }
+        $reasons = array_values(array_intersect(self::CODES, $reasons));
+
+        return ['flagged' => $reasons !== [], 'reasons' => $reasons];
+    }
+
+    /**
+     * Title+description (length rule applies) plus the reporter's later comments, each screened on its own with no length
+     * rule (a long thread is normal; each comment is cut at 5000 characters, the report limit, to bound the work).
+     *
+     * @param list<string> $comments
+     * @return array{flagged: bool, reasons: list<string>}
+     */
+    public static function screenReport(?string $title, ?string $description, array $comments = []): array
+    {
+        $reasons = self::screen($title, $description)['reasons'];
+        foreach ($comments as $body) {
+            $reasons = array_merge($reasons, self::screen('', mb_substr((string) $body, 0, 5000), false)['reasons']);
         }
         $reasons = array_values(array_intersect(self::CODES, $reasons));
 
