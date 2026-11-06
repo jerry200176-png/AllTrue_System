@@ -560,7 +560,7 @@ onMounted(loadRounds);
 .exam-score-table-wrap { overflow-x: auto; }
 .exam-score-table { width: 100%; border-collapse: collapse; }
 .exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
-.exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 16px; }
+.exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--ds-font-size-lg); }
 .exam-history small { display: block; }
 .exam-complete { color: var(--success); display: block; }
 label { display: block; margin-bottom: 10px; }

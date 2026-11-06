@@ -41,15 +41,15 @@ const emit = defineEmits(['change', 'clear', 'history']);
 
 <style scoped>
 .score-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 9rem; }
-.score-cell__input { width: 5rem; min-height: 44px; font-size: 16px; padding: 6px 8px; }
-.score-cell__absent { display: inline-flex; align-items: center; gap: 4px; margin: 0; min-height: 44px; font-size: 16px; }
+.score-cell__input { width: 5rem; min-height: 44px; font-size: var(--ds-font-size-lg); padding: 6px 8px; }
+.score-cell__absent { display: inline-flex; align-items: center; gap: 4px; margin: 0; min-height: 44px; font-size: var(--ds-font-size-lg); }
 .score-cell__absent input { width: 20px; height: 20px; margin: 0; display: inline; }
 .score-cell__btn, .score-cell__edited {
-  min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 16px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--ds-ink, #1a1a1a); background: transparent; color: var(--ds-ink, #1a1a1a);
+  min-height: 44px; min-width: 44px; padding: 0 12px; font-size: var(--ds-font-size-lg); border-radius: var(--ds-radius-pill); cursor: pointer;
+  border: 1px solid var(--ds-ink); background: transparent; color: var(--ds-ink);
 }
-.score-cell__edited { border-color: var(--accent, #b8892b); color: var(--accent, #8a6420); }
+.score-cell__edited { border-color: var(--ds-brand-amber); color: var(--ds-ink); }
 .score-cell__btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.score-cell__ro { margin: 0; font-size: 16px; display: grid; }
-.score-cell__ro small { font-size: 16px; color: var(--text-light); }
+.score-cell__ro { margin: 0; font-size: var(--ds-font-size-lg); display: grid; }
+.score-cell__ro small { font-size: var(--ds-font-size-lg); color: var(--text-light); }
 </style>
