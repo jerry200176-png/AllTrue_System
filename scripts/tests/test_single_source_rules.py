@@ -57,6 +57,11 @@ class T(unittest.TestCase):
                 self.assertEqual(self.check({"docs/X.md": "intro\n" + text}), [
                     f"docs/X.md:2: {rule} is defined here; only {OWNER_OF[rule]} may define it, link to it instead"])
 
+    def test_contradicting_size_wording_fails(self):
+        for text in ["G1 keeps Presubmit **≤700** hard gate (no self-exemption).", "（hard 700；", "建議：單一 PR ≤ 400 行"]:
+            with self.subTest(text=text):
+                self.assertTrue(any("pr-size-contradiction" in v for v in self.check({"docs/X.md": text})))
+
     def test_links_and_mentions_pass(self):
         for text in MENTIONS:
             with self.subTest(text=text):

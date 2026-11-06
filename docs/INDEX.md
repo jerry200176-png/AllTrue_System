@@ -237,7 +237,6 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **Deploy 執行** | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
 | **Rollback** | [`docs/RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) |
 | **CI** | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) · `docs/OPERATIONS_RUNBOOK.md` §B |
-| **CI minutes 耗盡時 offline merge** | [`docs/OFFLINE_MERGE_SOP.md`](OFFLINE_MERGE_SOP.md) |
 | **Branch protection 升級** | [`docs/BRANCH_PROTECTION_UPGRADE.md`](BRANCH_PROTECTION_UPGRADE.md) |
 | **Backup** | `docs/OPERATIONS_RUNBOOK.md` §P |
 | **完整 SOP** | `docs/OPERATIONS_RUNBOOK.md` |
@@ -367,7 +366,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
 | `docs/RULE_MIGRATION_COMPAT.md` | **Migration 向後相容守則**（Expand/Contract、down() 可逆性、PR 必填欄位）|
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
-| `docs/REF_GITHUB_RULESET_BASELINE.md` | GitHub repository ruleset（branch/tag protection）現況快照（#880）；漂移檢查見 `OPERATIONAL_CONSISTENCY_CHECK.md` Rule 8 |
+| `docs/REF_GITHUB_RULESET_BASELINE.md` | GitHub repository ruleset 以 live API 為準（無快照，#880）；漂移檢查見 `OPERATIONAL_CONSISTENCY_CHECK.md` Rule 8 |
 
 ### 維運 SOP
 | 檔案 | 一行說明 |

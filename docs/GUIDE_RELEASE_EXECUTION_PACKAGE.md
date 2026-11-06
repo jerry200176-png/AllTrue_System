@@ -1,6 +1,7 @@
 # Release Execution Package — 工程標準
 
 > **權威**：CEO Reliability Engineering Phase（2026-07-09）  
+> **Deploy 流程**：唯一出處 [`RUNBOOK_MERGE_TO_ACTIVATION.md`](RUNBOOK_MERGE_TO_ACTIVATION.md)；本檔只放執行套件（REP）範本。  
 > **用途**：任何 production 變更（deploy、migration、資料修復）在執行前，須提交本套件並取得單次核准。
 
 ---
@@ -9,7 +10,7 @@
 
 | 變更類型 | 需要 REP |
 |----------|----------|
-| PR merge → deploy.yml | ✅（deployable diff） |
+| PR merge → deploy.yml | ✅（deployable diff；流程見 [`RUNBOOK_MERGE_TO_ACTIVATION.md`](RUNBOOK_MERGE_TO_ACTIVATION.md)） |
 | Production migration | ✅ |
 | Production 資料修復 artisan | ✅ |
 | docs-only merge | ❌ |

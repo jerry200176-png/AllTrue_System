@@ -1,6 +1,6 @@
 # Company Constitution
 
-**Version:** 0.1.0
+**Version:** 0.1.1
 **Effective:** 2026-07-18  
 **Revised:** 2026-08-29 (Founder T0–T3 autonomy decision; overlay pin remains 0.1.0)
 **Owner:** Founder / CTO Agent  
@@ -18,10 +18,11 @@ Define non-negotiable decision order, safety floors, and success definitions so 
 3. **Fleet operator table** — `jerry200176-png/portfolio-ops` [`governance/AUTONOMY_POLICY.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) + [`docs/fleet-merge-policy.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/docs/fleet-merge-policy.md). Portfolio-ops is the control plane. Product overlays add required checks and domain P0; they **must not** add a Founder rubber-stamp.
 4. [`CONTROL_PLANE_CONTRACT.md`](../CONTROL_PLANE_CONTRACT.md) / [`CONTRADICTION_REGISTRY.md`](../CONTRADICTION_REGISTRY.md) (AllTrue **deploy** authority: `deploy.yml` on `main` only)
 5. Product overlay SOPs (AllTrue / sunrise-cafe)
-6. `AGENTS.md` → `CLAUDE.md` → `.cursorrules` / `.cursor/rules` (adapters)
-7. Chat / Plan / transcript (never canonical)
+6. `AGENTS.md` → `CLAUDE.md` (Claude Code adapter) → `.cursorrules` / `.cursor/rules` (Cursor adapter)
+7. Skills / Hooks (optional helpers)
+8. Chat / Plan / transcript / MemPalace recall (never canonical)
 
-If Claude or Cursor text says it “overrides everything,” **Constitution + fleet AUTONOMY_POLICY + Control Plane still win**.
+**Stricter rule wins:** when two rules at any level conflict, the stricter one applies unless a higher level explicitly relaxes it. Adapters cite this Constitution; they do not redefine it. If Claude or Cursor text says it “overrides everything,” **Constitution + fleet AUTONOMY_POLICY + Control Plane still win**.
 
 ## Products
 

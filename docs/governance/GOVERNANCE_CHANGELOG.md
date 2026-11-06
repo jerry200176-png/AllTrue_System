@@ -1,5 +1,9 @@
 # Governance changelog
 
+## 2026-11-07 — One owner doc per topic (#5015)
+
+- Editorial dedupe, no rule changed: `PRECEDENCE.md` folded into `COMPANY_CONSTITUTION.md` (v0.1.1; "stricter rule wins" stated once); land-queue, final-head-review and auto-delivery mechanics moved from `RISK_BASED_MERGE_POLICY.md` to `docs/sop/MERGE_SOP.md`; offline-merge docs and the ruleset snapshot deleted (live API is the source); PR-size wording points only to `FOUNDER_STANDING_DECISIONS.md`.
+
 ## 2026-10-22 — Prepare final-head review integrity (#4360 replacement)
 
 - One exact-head evidence rule is shared by land queue and native auto-merge; incomplete current-head Codex review cannot be overridden by owner provenance. Before-squash thread/review rechecks remain mandatory.

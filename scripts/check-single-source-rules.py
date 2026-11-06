@@ -29,6 +29,13 @@ RULES = [
      r"|^\s*[-*]\s+\**`?[RT][0-3]`?\**\s*[：:=]"),
 ]
 
+# Wording that contradicts the owner's logic/total split; forbidden everywhere, owner included.
+FORBIDDEN = [
+    ("pr-size-contradiction",
+     r"(?i)≤\s*700\W{0,4}hard|\bhard\W{1,3}700\b|no self-exemption"
+     r"|(?:建議|推薦|recommended)[^\n]{0,20}≤\s*400|≤\s*400\s*行[^\n]{0,6}(?:建議|推薦)"),
+]
+
 # Dated history, evidence and vendored text: they record what was true then, not the current rule.
 SKIP = (
     "docs/archive/", "docs/changes/", "docs/plans/", "docs/incidents/", "docs/audits/",
@@ -50,6 +57,13 @@ def find_violations(docs):
                 continue
             lines = sorted({text.count("\n", 0, m.start()) + 1 for m in rx.finditer(text)})
             out += [f"{path}:{n}: {rule} is defined here; only {owner} may define it, link to it instead" for n in lines]
+    for rule, pattern in FORBIDDEN:
+        rx = re.compile(pattern)
+        for path, text in sorted(docs.items()):
+            if path.startswith(SKIP):
+                continue
+            out += [f"{path}:{text.count(chr(10), 0, m.start()) + 1}: {rule}: contradicts {FSD}; link to it instead"
+                    for m in rx.finditer(text)]
     return out
 
 

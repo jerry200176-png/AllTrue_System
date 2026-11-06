@@ -6,7 +6,7 @@
 
 ## Error codes
 
-`GOV-BRANCH-001` branch · `GOV-PROV-001/002/003` provenance/markers · `GOV-GENERATED-001` drift · `GOV-SIZE-001` legacy ≤700 · `GOV-WORKFLOW-001` YAML · `GOV-BASE-001` stacked base · `GOV-SECRET-001` secrets.
+`GOV-BRANCH-001` branch · `GOV-PROV-001/002/003` provenance/markers · `GOV-GENERATED-001` drift · `GOV-SIZE-001` size · `GOV-WORKFLOW-001` YAML · `GOV-BASE-001` stacked base · `GOV-SECRET-001` secrets.
 
 Provenance `GOV-PROV-003` binds `manifest.branch` / `task_id` only when this PR's diff claims `.agent-session/manifest.json`. An inherited singleton from `main` is not a session claim.
 
@@ -17,7 +17,7 @@ Alias: `security`→`sec`. Rejected: `agent|ops|tmp|wip`.
 
 ## Size
 
-G1 keeps Presubmit **≤700** hard gate (no self-exemption). Stacked: `PR_BASE_SHA`. Risk-based reviewability = G2.
+Limits: defined only in [`FOUNDER_STANDING_DECISIONS.md`](FOUNDER_STANDING_DECISIONS.md) (presubmit CHECK 2). Stacked: `PR_BASE_SHA`. Risk-based reviewability = G2.
 
 ## 30d baseline (→2026-07-26)
 

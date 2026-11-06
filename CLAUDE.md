@@ -1,6 +1,6 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
-> 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
+> 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** （含 Decision precedence）。  
 > **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）；哪些按鈕可以不按，只以同檔 2026-10-28（二）之二為準（此處不摘要）。Pi SSH 只准唯讀（見 R6）。
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
@@ -108,13 +108,9 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 
 ---
 
-## Land queue (merge, don't race update-branch)
+## Land queue
 
-Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
-`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread (an unknown thread count never merges). Re-add `queue` after fixing.
-**Batching (only while the main ruleset's strict up-to-date policy is off):** the queue cuts `chore/land-queue-batch-<run>` from the main tip, merges up to 4 oldest eligible heads into it (a conflicting PR is left out with a comment), dispatches the required-check workflows on it, and squash-merges the members in order only when every required context is green and main has not moved. Red or timed out: members get a `batch-failed` comment and land one at a time. One serial merge per run; a head behind main is always updated first (`behindBy`), so strict off never merges an untested combination. Fork PRs never queue.
-GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
-**Final-head review:** green checks and zero threads still wait (`review-pending`, label retained) for the exact-head evidence in the [canonical merge policy](docs/governance/RISK_BASED_MERGE_POLICY.md#final-head-review-evidence). Serial and batch squashes re-read that evidence; a running/incomplete current-head Codex review cannot be overridden by owner fallback. Native auto-merge stays disabled until the Founder pins `review/final-head` after the default-branch gate has published checks. Existing approval continuity and T3 boundaries remain.
+See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics).
 
 ## 任務完成後的記錄原則
 
@@ -125,7 +121,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 
 ## Parallel agents
 
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
 - Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
