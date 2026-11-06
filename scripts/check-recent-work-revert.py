@@ -105,7 +105,7 @@ def find_hits(base, head, days, now=None):
 
 # A PR body line `Rewrites: #4980 — reason` (several PRs: `#1, #2`) accepts the hits blamed on those PRs.
 # The reason is required; hits with no PR number ("?", a direct push) can't be declared away.
-REWRITES = re.compile(r"^\s*Rewrites:\s*((?:#\d+[\s,]*)+?)\s*[—–-]+\s*\S", re.M)
+REWRITES = re.compile(r"^[ \t]*Rewrites:[ \t]*((?:#\d+[ \t,]*)+?)[ \t]*[—–-]+[ \t]*\S", re.M)  # one line only
 
 
 def declared(body):

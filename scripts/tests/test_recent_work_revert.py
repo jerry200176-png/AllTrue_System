@@ -99,6 +99,8 @@ class T(unittest.TestCase):
         self.assertEqual(guard.declared("Rewrites: #4980"), set())  # no reason -> not accepted
         self.assertEqual(guard.declared("see Rewrites: #5 — inline mention"), set())  # must start a line
         self.assertEqual(guard.declared(None), set())
+        self.assertEqual(guard.declared("Rewrites: #4980 —\n\n## Rollback"), set())  # reason must be on the line
+        self.assertEqual(guard.declared("Rewrites: #4980\n- reason"), set())
 
 
 if __name__ == "__main__":
