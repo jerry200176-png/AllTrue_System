@@ -244,7 +244,11 @@ class ContractSessionSchedule
 
         $slotsByWeekday = [];
         foreach ($slots as $s) {
-            $wd = (int) ($s['weekday'] ?? 0);
+            // #4994: legacy JS 0 = Sunday, same as buildSessionsFromWeeklySchedule; a missing weekday is still skipped.
+            if (!isset($s['weekday']) || $s['weekday'] === '') {
+                continue;
+            }
+            $wd = self::isoWeekday($s['weekday']);
             if ($wd < 1 || $wd > 7) {
                 continue;
             }
