@@ -35,7 +35,10 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE,
     integrations: [
-      Sentry.browserTracingIntegration(),
+      // Pages switch by ?app_page=<key> on one path, so name each span by its page key; Sentry then shows per-page use.
+      Sentry.browserTracingIntegration({
+        beforeStartSpan: (ctx) => ({ ...ctx, name: `page:${new URLSearchParams(window.location.search).get('app_page') || 'home'}` }),
+      }),
     ],
     tracesSampleRate: 0.1,
     // 過濾掉不重要的錯誤
