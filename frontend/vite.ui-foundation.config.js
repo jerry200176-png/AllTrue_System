@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
+import tailwindcss from '@tailwindcss/vite';
 
 /** Dev server only — mounts real Vue pilot pages for Playwright. Not used by production build. */
 export default defineConfig({

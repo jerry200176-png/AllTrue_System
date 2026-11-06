@@ -1,0 +1,3 @@
+## 2026-11-06 — feat(exam): correct 段考 scores (#4970 E2)
+<!-- release-notes: staff_update=staff-2026-11-06-exam-score-correction -->
+- `POST exam-rounds/{id}/scores` accepts `scores.*.clear: true` (deletes the score, audit `score_deleted`); a director correcting a closed round must send `reason` (422 otherwise). New `GET exam-rounds/{id}/history?student_id=` reads `exam_score_audit_logs` (campus-scoped; teachers only for their own students). `students` rows carry `edited`. 登分 grid uses new `ExamScoreCell` (number / 缺考 / 清除 / 改過 history, read-only after the deadline) and Chinese 409/422 messages. No migration.
