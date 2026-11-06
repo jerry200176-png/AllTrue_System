@@ -80,6 +80,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { computed, reactive, ref } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
@@ -98,7 +99,7 @@ const props = defineProps({
 });
 defineEmits(['close', 'done']);
 
-const today = new Date().toISOString().slice(0, 10);
+const today = ymdInTaipei();
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const period = (c) => [c.start_date, c.end_date].filter(Boolean).map(formatDate).join('–');
 

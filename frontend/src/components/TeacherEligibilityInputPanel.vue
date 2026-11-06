@@ -251,6 +251,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   approveTeacherEligibilityAdminAllowance,
@@ -298,7 +299,7 @@ const message = ref('');
 const editingKey = ref('');
 const inputRecords = reactive({ events: [], achievements: [], deductions: [], admin_allowances: [], cash_adjustments: [] });
 
-const today = new Date().toISOString().slice(0, 10);
+const today = ymdInTaipei();
 const eventForm = reactive({
   event_type: 'leave', event_date: props.start || today, teacher_id: '', hours: '', leave_type: '',
   holiday_leave_hours: '', makeup_completed: '', evidence: '',

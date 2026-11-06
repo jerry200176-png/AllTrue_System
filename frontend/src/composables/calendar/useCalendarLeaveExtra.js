@@ -1,3 +1,4 @@
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, watch } from 'vue';
 import { dayLabel, normalizeTimeTo30, computeEndTime } from '../../lib/calendarFormat.js';
 import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../../lib/leaveSuccessorShift.js';
@@ -42,7 +43,7 @@ export function useCalendarLeaveExtra({
   const closeLeaveModal = () => { if (!leaveSubmitting.value) showLeaveModal.value = false; };
   const openLeaveModal = () => {
     if (leaveSubmitting.value) return;
-    const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+    const exactDate = modalForm.value.action_date || ymdInTaipei();
     leaveForm.value = {
       student_id: modalForm.value.student_id,
       subject: modalForm.value.subject,
@@ -397,7 +398,7 @@ export function useCalendarLeaveExtra({
 
   const openExtraLesson = () => {
     if (extraSubmitting.value) return;
-    const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+    const exactDate = modalForm.value.action_date || ymdInTaipei();
     const start = normalizeTimeTo30(modalForm.value.start_time || '16:00');
     const dur = modalForm.value.duration_hours || 2;
     extraForm.value = {

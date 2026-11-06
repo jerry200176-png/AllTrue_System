@@ -48,6 +48,18 @@ export default [
     },
     rules: {
       'no-undef': 'error',
+      // #4991 P12: toISOString().slice(0, 10) is the UTC day, so "today" is
+      // yesterday before 08:00 Taipei. Use ymdInTaipei() from lib/sessionDates.js.
+      'no-restricted-syntax': ['error',
+        {
+          selector: "CallExpression[callee.property.name=/^(slice|substring|substr)$/][callee.object.callee.property.name='toISOString'][arguments.0.value=0]:matches([arguments.1.value=10],[arguments.1.value=7])",
+          message: 'toISOString().slice(0, 10) is the UTC date (yesterday before 08:00 Taipei). Use ymdInTaipei() from @/lib/sessionDates.js; if this really formats a UTC date, add an eslint-disable with a reason.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='split'][callee.object.callee.property.name='toISOString'][arguments.0.value='T']",
+          message: 'toISOString().split(\'T\') is the UTC date (yesterday before 08:00 Taipei). Use ymdInTaipei() from @/lib/sessionDates.js.',
+        },
+      ],
       // Undeclared emits hide a child's events from the unhandled-emit guard
       // (scripts/ci/check-unhandled-emits.mjs). 0 violations at enable time.
       'vue/require-explicit-emits': 'error',

@@ -524,6 +524,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, getBranchName as _getBranchName } from '../lib/useBranches';
@@ -1468,7 +1469,7 @@ function downloadBulkCredentialsCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `老師帳密_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `老師帳密_${ymdInTaipei()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

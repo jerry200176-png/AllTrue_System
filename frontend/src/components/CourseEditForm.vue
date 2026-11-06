@@ -312,6 +312,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
@@ -474,11 +475,8 @@ watch(
       const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
       const token = session?.access_token;
       if (!token) return;
-      const today = new Date();
-      const from = today.toISOString().slice(0, 10);
-      const toDate = new Date(today);
-      toDate.setDate(today.getDate() + 13);
-      const to = toDate.toISOString().slice(0, 10);
+      const from = ymdInTaipei();
+      const to = ymdInTaipei(new Date(Date.now() + 13 * 86400000));
       const resp = await trackedFetch(
         `/api/v1/class-sessions?teacher_id=${tid}&start=${from}&end=${to}&status=scheduled&per_page=200`,
         { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
