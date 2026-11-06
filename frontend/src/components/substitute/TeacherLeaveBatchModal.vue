@@ -157,6 +157,7 @@
 // TeacherLeaveBatchModal — 老師請假批次代課（PRD 9c058f19 FR-006~009）
 // 左右分欄（桌機）、手機 stepper；兩步驟：填資訊 → 確認指派；
 // 提供「全部指派同一老師」快速操作，也可逐堂微調；送出前二次確認。
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -178,8 +179,8 @@ const step1Error = ref('');
 const confirmingOpen = ref(false);
 
 const leaveTeacherId = ref(null);
-const dateStart = ref(new Date().toISOString().slice(0, 10));
-const dateEnd = ref(new Date().toISOString().slice(0, 10));
+const dateStart = ref(ymdInTaipei());
+const dateEnd = ref(ymdInTaipei());
 
 const sessions = ref([]);
 const assignments = ref([]); // parallel array, values = teacherId or null

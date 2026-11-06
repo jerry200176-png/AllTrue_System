@@ -558,7 +558,8 @@ describe('AccountingLedgerModal copy + hierarchy (spec B-PR1)', () => {
 
   it('titles the panel 「{姓名}的帳務」 and leads with 到今天未繳, same rule as the student list', async () => {
     const { buildStudentBillingRows } = await import('../../lib/studentBillingRows.js');
-    const today = new Date().toISOString().slice(0, 10);
+    const { ymdInTaipei } = await import('../../lib/sessionDates.js');
+    const today = ymdInTaipei();
     const past = '2020-01-01'; const future = '2099-01-01';
     const { w } = await mountLedger({
       student: { id: 1, name: '王小明' }, summary: { overpaid_total: 0 }, scope: {}, receipts: [], anomalies: [], courses: [{ id: 2, subject: '數學', paid: false }],

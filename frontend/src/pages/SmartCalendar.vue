@@ -554,6 +554,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import AtButton from '../components/design-system/AtButton.vue';
@@ -2228,7 +2229,7 @@ const loadCourseEvalRecords = async (courseId) => {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
     const json = await resp.json();
-    const items = (json.data || json || []).filter(r => r.session_date && r.session_date <= new Date().toISOString().slice(0, 10));
+    const items = (json.data || json || []).filter(r => r.session_date && r.session_date <= ymdInTaipei());
     courseEvalRecords.value = items;
   } catch (e) {
     courseEvalRecords.value = [];
