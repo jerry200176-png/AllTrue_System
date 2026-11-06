@@ -1058,6 +1058,10 @@ class AttendanceController extends Controller
                         $session->Status = 'scheduled';
                         $session->save();
                         $classSessionReverted = true;
+                        if ($signin->StudentClassID) {
+                            // The earlier recompute still counted this lesson as completed/attended.
+                            SessionDeductionService::recomputeCounters((int) $signin->StudentClassID);
+                        }
                     }
                 }
             });

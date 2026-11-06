@@ -1640,24 +1640,9 @@ class ContractSessionSchedule
             }
         }
 
-        // in-app #512: SessionCount is the planned lesson count (the rebuilds slice to it). Topping up must not
-        // plan a lesson past it just because the contract's date range holds one more weekday (4 bought, 5 Sundays).
-        $room = PHP_INT_MAX;
-        $planned = (int) ($studentClass->SessionCount ?? 0);
-        if ($planned > 0) {
-            $room = $planned - ClassSession::where('StudentClassID', (int) $studentClass->ID)
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])->count();
-            if ($room <= 0) {
-                return ['created_sessions' => 0, 'reason' => 'session_count_reached'];
-            }
-        }
-
         $created = 0;
         $now = Carbon::now();
         foreach ($proposedSessions as $session) {
-            if ($created >= $room) {
-                break;
-            }
             $sessionDate = self::normalizeDateString($session['SessionDate'] ?? null);
             $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
             $endTime = self::normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');

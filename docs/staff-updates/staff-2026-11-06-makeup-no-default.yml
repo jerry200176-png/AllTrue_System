@@ -11,6 +11,6 @@ updates:
       - category: fixed
         text: 以前待補點名預設是到班，按一下就會扣一堂；現在要先選到班、遲到、請假或缺席。
       - category: fixed
-        text: 月結課程不會再多排超過合約堂數的課；作廢已扣堂的點名後，該堂會回到未點名。
+        text: 修改開課日後不會多排一堂；作廢已扣堂的點名後，該堂會回到未點名。
     source_refs:
       - "changelog:2026-11-06:inapp-512-makeup-no-default"

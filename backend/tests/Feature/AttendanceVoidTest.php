@@ -158,6 +158,7 @@ class AttendanceVoidTest extends TestCase
             ->assertOk()->assertJson(['class_session_reverted' => true]);
 
         $this->assertSame('scheduled', $session->fresh()->Status);
+        $this->assertSame(0, (int) StudentClass::find($session->StudentClassID)->UsedSessions);
     }
 
     public function test_void_keeps_completed_session_when_the_sign_in_debited_nothing(): void
@@ -188,6 +189,11 @@ class AttendanceVoidTest extends TestCase
             'StudentID' => $student->id, 'StudentClassID' => $class->ID, 'ClassSessionID' => $session->id, 'SignInDT' => now()->toDateTimeString(),
             'Status' => 'present', 'CampusID' => 1, 'PersonType' => 'student', 'SessionDeducted' => $deducted, 'MDT' => now(),
         ]);
+
+        if ($deducted) {
+            \App\Services\SessionDeductionService::recomputeCounters((int) $class->ID);
+            $this->assertSame(1, (int) $class->fresh()->UsedSessions, 'precondition: the completed lesson counts as used');
+        }
 
         return [$session, $signin];
     }
