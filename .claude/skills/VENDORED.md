@@ -5,6 +5,7 @@
 | `grill-me` | [mattpocock/skills](https://github.com/mattpocock/skills) | `49dd158d1076134a641b33efb035946536778336` | `skills/productivity/grill-me/SKILL.md` | MIT (`LICENSE-mattpocock-skills`) |
 | `grilling` | [mattpocock/skills](https://github.com/mattpocock/skills) | `49dd158d1076134a641b33efb035946536778336` | `skills/productivity/grilling/SKILL.md` | MIT (`LICENSE-mattpocock-skills`) |
 | `impeccable` | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | `c3bb418ee38ee49a6b999b7752c1368f3123a2bd` | `.claude/skills/impeccable/` | Apache-2.0 (`impeccable/LICENSE`, `impeccable/NOTICE.md`) |
+| `web-design-guidelines` | [vercel-labs/web-interface-guidelines](https://github.com/vercel-labs/web-interface-guidelines) | `434b7f91364665f2f733b310ec54809bf8f37937` | `command.md` → `guidelines.md` | MIT (`web-design-guidelines/LICENSE`) |
 | `ui-ux-pro-max` | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | `b7d5353e0130feb8c5574ef1251f8a1db1873ccb` | `.claude/skills/ui-ux-pro-max/` | MIT (`ui-ux-pro-max/LICENSE`) |
 | `make-interfaces-feel-better` | [jakubkrehel/make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better) | `35545ea1512ad59fa463e6b1f95ca9c052981fe6` | `skills/make-interfaces-feel-better/` | MIT (`make-interfaces-feel-better/LICENSE`) |
 

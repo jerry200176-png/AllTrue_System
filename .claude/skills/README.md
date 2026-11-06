@@ -12,7 +12,7 @@ Each entry is a relative symlink. Edit the canonical file, not the link.
 | `alltrue-code-review`, `alltrue-debugging`, `alltrue-release`, `alltrue-security`, `alltrue-testing` | `.cursor/skills/<name>/` |
 | `security-audit`, `design-taste-frontend`, `redesign-existing-projects` | `.cursor/skills/<name>/` |
 
-`grill-me`, `grilling`, `impeccable`, `ui-ux-pro-max` and `make-interfaces-feel-better` are vendored here directly (see `VENDORED.md`).
+`grill-me`, `grilling`, `impeccable`, `ui-ux-pro-max`, `make-interfaces-feel-better` and `web-design-guidelines` are vendored here directly (see `VENDORED.md`).
 `agent-preflight` and `knowledge-graph-link` are not linked; they serve the retiring local WSL worktree flow.
 `scripts/ci/inapp-product-loop-entry.test.mjs` fails if a link is missing or points somewhere else.
 
