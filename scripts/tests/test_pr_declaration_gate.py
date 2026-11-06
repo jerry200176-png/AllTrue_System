@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+
 from scripts.governance.autonomy_gate import (
     _LOCAL_ONLY_E2E_SPECS,
     classify_activation_scope,
@@ -185,6 +187,50 @@ class ReadOnlyProbeTierTest(unittest.TestCase):
         patch = _wf_patch(*self.READ) + "\n" + _wf_patch("# x", path=other)
         self.assertEqual(classify_scope([WF, other], patch)["tier_name"], "T3")
         self.assertEqual(classify_scope([WF], "")["tier_name"], "T3")
+
+
+class RequiresSecurityTest(unittest.TestCase):
+    R3_FILE = {"filename": ".github/workflows/deploy.yml", "patch": "+x"}
+    DOC = {"filename": "docs/x.md", "patch": "+x"}
+
+    def check(self, body, files):
+        from scripts.governance.pr_requires_security import requires_security
+        return requires_security(body, files)
+
+    def test_body_r1_on_r3_path_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R1\nAutonomy-Tier: T1", [self.R3_FILE]))
+
+    def test_declared_r1_on_docs_passes(self):
+        self.assertFalse(self.check("Risk-Class: R0\nAutonomy-Tier: T0", [self.DOC]))
+
+    def test_declared_r3_or_missing_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R3\nAutonomy-Tier: T3", [self.DOC]))
+        self.assertTrue(self.check("no declaration", [self.DOC]))
+
+    def test_rename_missing_patch_and_cap_are_held(self):
+        body = "Risk-Class: R0\nAutonomy-Tier: T0"
+        self.assertTrue(self.check(body, [{"filename": "docs/y.md", "previous_filename": ".github/workflows/deploy.yml", "patch": "+x"}]))
+        self.assertTrue(self.check(body, [{"filename": "docs/x.md"}]))
+        self.assertTrue(self.check(body, [{"filename": "docs/x.md", "patch": None}]))
+        self.assertTrue(self.check(body, [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]))
+
+    def test_lone_cr_and_vt_count_as_line_breaks(self):
+        for sep in ("\r", "\x0b"):
+            self.assertTrue(self.check(f"Risk-Class: R0{sep}Risk-Class: R3\nAutonomy-Tier: T0", [self.DOC]))
+
+    def test_real_pr_template(self):
+        tpl = (ROOT / ".github/pull_request_template.md").read_text(encoding="utf-8")
+        fill = lambda r, t: tpl.replace("**Risk-Class:** R?", f"**Risk-Class:** {r}").replace("**Autonomy-Tier:** T?", f"**Autonomy-Tier:** {t}")
+        self.assertFalse(self.check(fill("R0", "T0"), [self.DOC]))
+        self.assertTrue(self.check(fill("R3", "T3"), [self.DOC]))
+        self.assertTrue(self.check(tpl, [self.DOC]))  # unfilled
+
+    def test_duplicate_declaration_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R0\nRisk-Class: R0\nAutonomy-Tier: T0", [self.DOC]))
+
+    def test_u2028_on_declaration_line_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R0\u2028Risk-Class: R3\nAutonomy-Tier: T0", [self.DOC]))
+        self.assertTrue(self.check("Risk-Class: R0\nAutonomy-Tier: T0 \u2029", [self.DOC]))
 
 
 if __name__ == "__main__":
