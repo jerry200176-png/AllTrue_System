@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-06-apple-style-look
+    published_at: "2026-11-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 系統畫面換新樣式
+    summary: 系統畫面換新樣式，按鈕更大更好按
+    items:
+      - category: improved
+        text: 卡片、按鈕、輸入框改成更圓潤、更乾淨的樣子；功能和資料都沒有變。
+    source_refs:
+      - "changelog:2026-11-06:ui-w0-apple-tokens"

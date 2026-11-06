@@ -22,7 +22,7 @@
 }
 
 :root {
-  --font-sans: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: -apple-system, 'SF Pro Text', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
   --font-ui: var(--font-sans);
 
   /* ============================================================
@@ -44,6 +44,11 @@
   --ds-cta-hover: #9A3412;
   --ds-cta-press: #7C2D12;
   --ds-on-cta: #ffffff;
+  /* Apple-style (W0, #4659): dark pill for the one primary button per card; --ds-cta stays the orange accent/active colour. */
+  --ds-action: #0d253d;
+  --ds-action-hover: #1b3a5c;
+  --ds-action-press: #06182a;
+  --ds-on-action: #ffffff;
   /* Text/icons on warm brand fills (amber/orange/wash) when you keep the fill light. */
   --ds-on-brand: #0d253d;
   --ds-brand-amber: #FFB300;
@@ -55,9 +60,9 @@
   --ds-ink-faint: #94a3b8; /* disabled / decorative meta only (below AA): never body text */
 
   --ds-canvas: #ffffff;
-  --ds-canvas-soft: #f6f9fc;
-  --ds-hairline: #e3e8ee;
-  --ds-hairline-input: #a8c3de;
+  --ds-canvas-soft: #f5f6f8;
+  --ds-hairline: #e6e8ec;
+  --ds-hairline-input: #c5cad3;
   --ds-success: #1a8245;
   --ds-success-wash: #e7f4ec;
   --ds-success-line: #86efac; /* soft border on --ds-success-wash */
@@ -74,8 +79,8 @@
   --ds-info: #C2410C; /* also used as text: AA 4.87:1 on --ds-info-wash, 5.18:1 on white */
   --ds-info-wash: #FFF8E1;
   --ds-focus-ring: rgba(245, 124, 0, 0.22);
-  --ds-shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
-  --ds-shadow-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
+  --ds-shadow-1: 0 1px 2px rgba(13, 37, 61, 0.04), 0 2px 8px rgba(13, 37, 61, 0.05);
+  --ds-shadow-2: 0 12px 32px rgba(13, 37, 61, 0.10), 0 2px 8px rgba(13, 37, 61, 0.05);
 
   /* ============================================================
      UI Foundation (ops surfaces) — Pajamas-led structure tokens.
@@ -107,9 +112,10 @@
   --ds-font-weight-bold: 700;
 
   /* Ops radius: max 3 levels (sm/md/lg). Pill reserved for brand/auth + rare chips. */
-  --ds-radius-sm: 4px;
-  --ds-radius-md: 6px;
-  --ds-radius-lg: 8px;
+  --ds-radius-sm: 8px;
+  --ds-radius-md: 12px;
+  --ds-radius-lg: 16px;
+  --ds-radius-card: 18px;
   --ds-radius-pill: 9999px;
 
   --ds-control-height-sm: 28px;
@@ -141,7 +147,7 @@
 
   --ds-surface-0: var(--ds-canvas-soft);
   --ds-surface-1: var(--ds-canvas);
-  --ds-surface-2: #eef2f6;
+  --ds-surface-2: #eef0f3;
   /* Compatibility aliases used by older ops surfaces; all resolve back to DS tokens. */
   --ds-surface: var(--ds-canvas);
   --ds-surface-subtle: var(--ds-surface-2);
@@ -196,7 +202,7 @@
   --danger-bg: var(--ds-danger-wash);
   --warning: var(--ds-warning);
   --warning-bg: var(--ds-warning-wash);
-  --radius: 12px;
+  --radius: 16px;
   --shadow: var(--ds-shadow-1);
   --shadow-hover: var(--ds-shadow-2);
   --transition: all 0.2s ease;
@@ -205,7 +211,7 @@
   --input-focus-bg: var(--ds-canvas);
   --modal-bg: var(--ds-canvas);
   --topbar-bg: var(--ds-canvas);
-  --topbar-border: #eef2f6;
+  --topbar-border: #eceef1;
 
   /* Porsche tokens — superseded, aliased to design system (see docs/RULE_DESIGN_SYSTEM.md). */
   --porsche-ink: var(--ds-ink);
@@ -236,6 +242,10 @@
   --ds-cta-hover: #FDBA74;
   --ds-cta-press: #F97316;
   --ds-on-cta: #0f172a;
+  --ds-action: #f1f5f9;
+  --ds-action-hover: #ffffff;
+  --ds-action-press: #cbd5e1;
+  --ds-on-action: #0f172a;
   --ds-on-brand: #0f172a;
   --ds-brand-amber: #FFCA28;
   --ds-brand-orange: #FFB74D;
