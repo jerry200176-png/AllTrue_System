@@ -67,7 +67,8 @@ class ParttimePayrollAdminBonusController extends Controller
             'teacher_id' => 'required|integer',
             'month' => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
         ]);
-        if ($err = $this->guard($request, $data)) {
+        // Removing an existing bonus stays allowed after the teacher becomes full-time or leaves the campus.
+        if ($err = $this->guard($request, $data, false)) {
             return $err;
         }
         $locked = DB::transaction(function () use ($data, $request) {
@@ -90,8 +91,8 @@ class ParttimePayrollAdminBonusController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Campus scope + self-pay + part-time teacher. Returns an error response or null. */
-    private function guard(Request $request, array $data): ?JsonResponse
+    /** Campus scope + self-pay, and (when entering) a part-time teacher of this campus. Returns an error response or null. */
+    private function guard(Request $request, array $data, bool $entering = true): ?JsonResponse
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $request->attributes->get('auth_campus_ids', []);
@@ -100,6 +101,9 @@ class ParttimePayrollAdminBonusController extends Controller
         }
         if ($blocked = SelfApprovalGuard::reject($request, (int) $data['teacher_id'])) {
             return $blocked;
+        }
+        if (!$entering) {
+            return null;
         }
         $teacher = DB::table('User')->where('id', $data['teacher_id'])->first();
         $inCampus = DB::table('UserCampus')->where('UserID', $data['teacher_id'])->where('CampusID', $data['branch_id'])->exists();

@@ -1045,6 +1045,22 @@ class ParttimePayrollTest extends TestCase
         );
     }
 
+    public function test_admin_bonus_can_still_be_removed_after_teacher_becomes_full_time(): void
+    {
+        $dir = $this->createDirector('dir-ab-9@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab9@test.com', '轉正職');
+        $h = $this->authHeaders($dir['token']);
+        $this->withHeaders($h)->putJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 500, 'reason' => '行政支援'])->assertOk();
+        DB::table('User')->where('id', $tid)->update(['employment_type' => 'full_time']);
+
+        // Entering a new bonus is refused, but the existing one can be removed.
+        $this->withHeaders($h)->putJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 600, 'reason' => 'x'])->assertStatus(422);
+        $this->withHeaders($h)->deleteJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04'])->assertOk();
+        $this->assertSame(0, DB::table('parttime_payroll_admin_bonuses')->count());
+        // Campus scope still applies to removal.
+        $this->withHeaders($h)->deleteJson($this->bonusUrl(), ['branch_id' => 2, 'teacher_id' => $tid, 'month' => '2026-04'])->assertStatus(403);
+    }
+
     public function test_admin_bonus_aggregate_view_adds_every_campus_in_scope(): void
     {
         $dir = $this->createDirector('dir-ab-8@test.com', [1, 2]);
