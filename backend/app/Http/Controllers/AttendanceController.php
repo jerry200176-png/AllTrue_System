@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campus;
 use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use App\Support\AttendanceStatus;
 use App\Support\DeadlockRetry;
 use App\Models\PendingSwipe;
@@ -1035,6 +1036,7 @@ class AttendanceController extends Controller
                 $signin->save();
 
                 // ② 若已扣堂，沖回堂數
+                $wasPaused = $signin->StudentClassID && (int) StudentClass::where('ID', $signin->StudentClassID)->value('Stop') === 1;
                 if ($signin->SessionDeducted && $signin->StudentClassID) {
                     SessionDeductionService::reverseForSession(
                         (int) $signin->StudentClassID,
@@ -1045,15 +1047,41 @@ class AttendanceController extends Controller
                     );
                     SessionDeductionService::recomputeCounters((int) $signin->StudentClassID);
                     $sessionReversed = true;
+                    if ($wasPaused) {
+                        // A manual pause survives the recompute (it resets Stop for a date-mode course).
+                        StudentClass::where('ID', $signin->StudentClassID)->update(['Stop' => 1]);
+                    }
                 }
 
                 // ③ 若 ClassSession 為出勤狀態，退回 scheduled
                 if ($signin->ClassSessionID) {
                     $session = ClassSession::find($signin->ClassSessionID);
-                    if ($session && in_array($session->Status, ['attended', 'late', 'absent'], true)) {
+                    // in-app #512: a lesson marked 'completed' (taught, no sign-in) that this sign-in debited has no
+                    // basis left once the debit is reversed. A 'completed' lesson nobody debited stays as it was.
+                    $stillSignedIn = StudentSignIn::where('ClassSessionID', $signin->ClassSessionID)->whereNull('VoidedAt')->exists();
+                    if ($session && (in_array($session->Status, ['attended', 'late', 'absent'], true)
+                        || ($session->Status === 'completed' && $sessionReversed && ! $stillSignedIn))) {
+                        if ($session->Status === 'completed') {
+                            // Same cleanup as ClassSessionController::voidAttendanceArtifacts (attended-like -> scheduled): the
+                            // lesson did not happen, so its live evaluation (pending or approved) must not reach payroll.
+                            LearningRecord::where('ClassSessionID', $session->id)->active()->get()->each(function ($lr) use ($authUser) {
+                                $lr->VoidedAt = now();
+                                $lr->VoidedByUserID = $authUser?->id;
+                                $lr->VoidReason = LearningRecordResurrectionPolicy::VOID_REASON_STATUS_ADJUST; // system reason, so re-marking restores it
+                                $lr->save();
+                            });
+                        }
+                        $revertedCompleted = $session->Status === 'completed';
                         $session->Status = 'scheduled';
                         $session->save();
                         $classSessionReverted = true;
+                        if ($revertedCompleted && $signin->StudentClassID) {
+                            // The earlier recompute still counted this debited lesson as completed. 
+                            SessionDeductionService::recomputeCounters((int) $signin->StudentClassID);
+                            if ($wasPaused) {
+                                StudentClass::where('ID', $signin->StudentClassID)->update(['Stop' => 1]);
+                            }
+                        }
                     }
                 }
             });
