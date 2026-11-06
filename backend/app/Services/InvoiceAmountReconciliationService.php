@@ -127,12 +127,14 @@ class InvoiceAmountReconciliationService
             // in-app #510: while the period is still running and no lesson has been held, the lesson-based total is 0 only
             // because every lesson is still scheduled; judge a prepaid bill once the period has ended (or lessons are held).
             $periodRunning = $periodEnd >= Carbon::now('Asia/Taipei')->toDateString();
-            $amountDiscrepancy = $rawDiscrepancy && !($periodRunning && $computedTotalAmount === 0);
+            $deferred = $rawDiscrepancy && $periodRunning && $computedTotalAmount === 0;
+            $amountDiscrepancy = $rawDiscrepancy && !$deferred;
 
             $repriceable = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
-                && $netApplied === 0;
-            if ($amountDiscrepancy && $repriceable) { // a bill is repriced to the lesson total only once judged (not while the month runs)
+                && $netApplied === 0
+                && !$deferred; // a deferred bill keeps its fixed total, so collection and confirm expect the stored amount, not 0
+            if ($amountDiscrepancy && $repriceable) {
                 $totalAmount = $computedTotalAmount;
                 $amountSource = 'billable_sessions';
             }

@@ -232,6 +232,20 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertFalse($summary['periods'][0]['amount_discrepancy']);
     }
 
+    public function test_unpaid_current_month_bill_keeps_its_stored_total_and_is_not_repriceable(): void // in-app #510 (Codex P2)
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse();
+        $invoice->payments()->delete();
+        $invoice->update(['PaidAmount' => 0, 'Status' => 'unpaid']);
+        $p = app(\App\Services\InvoiceAmountReconciliationService::class)->resolve($invoice->fresh(), $course);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertFalse($p['amount_discrepancy']);
+        $this->assertFalse($p['repriceable']);
+        $this->assertSame(1000, $p['total_amount']);
+        $this->assertSame(1000, $p['outstanding_amount']);
+    }
+
     public function test_same_prepaid_month_is_flagged_again_after_the_period_ends(): void // in-app #510
     {
         \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');
