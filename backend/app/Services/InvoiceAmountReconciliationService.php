@@ -126,7 +126,7 @@ class InvoiceAmountReconciliationService
                 && !($invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: an evidenced full discount is NT$0 by decision, not a discrepancy
             // in-app #510: while the period is still running and no lesson has been held, the lesson-based total is 0 only
             // because every lesson is still scheduled; judge a prepaid bill once the period has ended (or lessons are held).
-            $periodRunning = is_string($periodEnd) && $periodEnd >= Carbon::now('Asia/Taipei')->toDateString();
+            $periodRunning = $periodEnd >= Carbon::now('Asia/Taipei')->toDateString();
             $amountDiscrepancy = $rawDiscrepancy && !($periodRunning && $computedTotalAmount === 0);
 
             $repriceable = !$multiCourse && $billing['source'] === 'billable_sessions'
