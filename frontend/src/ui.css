@@ -5,6 +5,7 @@
  *   beat layered utilities; important utilities win over them.
  * - `source(none)` + @source: only classes used under components/ui are generated, so legacy class names
  *   (.flex, .border ...) are not hijacked. Widen @source when a page migrates to the template.
+ * - Variables are namespaced `--ui-*` because styles.css already owns --primary/--accent/--border/--bg (legacy meaning).
  * - Colors: every shadcn variable below references a --ds-* token in styles.css. Never copy hex here.
  */
 @import "tailwindcss/theme.css" layer(theme);
@@ -14,56 +15,56 @@
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
-  --background: var(--ds-canvas-soft);
-  --foreground: var(--ds-ink);
-  --card: var(--ds-canvas);
-  --card-foreground: var(--ds-ink);
-  --popover: var(--ds-canvas);
-  --popover-foreground: var(--ds-ink);
+  --ui-background: var(--ds-canvas-soft);
+  --ui-foreground: var(--ds-ink);
+  --ui-card: var(--ds-canvas);
+  --ui-card-foreground: var(--ds-ink);
+  --ui-popover: var(--ds-canvas);
+  --ui-popover-foreground: var(--ds-ink);
   /* primary = near-black ink (black pill button); brand orange is the accent */
-  --primary: var(--ds-ink);
-  --primary-foreground: var(--ds-canvas);
-  --secondary: var(--ds-canvas-soft);
-  --secondary-foreground: var(--ds-ink);
-  --muted: var(--ds-canvas-soft);
-  --muted-foreground: var(--ds-ink-mute);
-  --accent: var(--ds-primary-wash);
-  --accent-foreground: var(--ds-primary-text);
-  --destructive: var(--ds-danger);
-  --border: var(--ds-hairline);
-  --input: var(--ds-hairline-input);
-  --ring: var(--ds-primary);
-  --radius: 0.875rem;
+  --ui-primary: var(--ds-ink);
+  --ui-primary-foreground: var(--ds-canvas);
+  --ui-secondary: var(--ds-canvas-soft);
+  --ui-secondary-foreground: var(--ds-ink);
+  --ui-muted: var(--ds-canvas-soft);
+  --ui-muted-foreground: var(--ds-ink-mute);
+  --ui-accent: var(--ds-primary-wash);
+  --ui-accent-foreground: var(--ds-primary-text);
+  --ui-destructive: var(--ds-danger);
+  --ui-border: var(--ds-hairline);
+  --ui-input: var(--ds-hairline-input);
+  --ui-ring: var(--ds-primary);
+  --ui-radius: 0.875rem;
   /* hero card: warm peach -> cream, from the brand palette */
-  --hero-gradient: linear-gradient(135deg, color-mix(in srgb, var(--ds-primary-soft) 38%, var(--ds-canvas)) 0%, var(--ds-primary-wash) 100%);
+  --ui-hero-gradient: linear-gradient(135deg, color-mix(in srgb, var(--ds-primary-soft) 38%, var(--ds-canvas)) 0%, var(--ds-primary-wash) 100%);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+  --radius-sm: calc(var(--ui-radius) - 4px);
+  --radius-md: calc(var(--ui-radius) - 2px);
+  --radius-lg: var(--ui-radius);
+  --radius-xl: calc(var(--ui-radius) + 4px);
 }
 
 /* Without preflight `border` falls back to currentColor; set the default border color for ui components only. */
 [data-slot] {
-  border-color: var(--border);
+  border-color: var(--ui-border);
 }

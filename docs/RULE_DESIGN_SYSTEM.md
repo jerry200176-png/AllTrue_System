@@ -14,8 +14,8 @@ last_reviewed: 2026-11-06
 
 **每個新頁面、以及任何 agent 實質修改的頁面，一律使用 `components/ui`（shadcn-vue）與下列模板；未動到的頁面逐頁遷移，不一次全改。**
 
-- 模板：大標題 page header、bento 卡片格、大號 tabular 數字、黑色藥丸主按鈕（`--primary` = `--ds-ink`）、藥丸 tabs、柔陰影圓角卡片；每頁最多 **一張** hero 卡，使用 `--hero-gradient`（暖桃→奶油，由品牌色 token 組成）。
-- 色彩單一來源仍是 `styles.css` 的 `--ds-*`；shadcn 變數（`--background`、`--primary`、`--ring`…）定義於 `frontend/src/ui.css`，只引用 `--ds-*`，**不複製 hex**。品牌橘是 accent。
+- 模板：大標題 page header、bento 卡片格、大號 tabular 數字、黑色藥丸主按鈕（`--ui-primary` = `--ds-ink`）、藥丸 tabs、柔陰影圓角卡片；每頁最多 **一張** hero 卡，使用 `--ui-hero-gradient`（暖桃→奶油，由品牌色 token 組成）。
+- 色彩單一來源仍是 `styles.css` 的 `--ds-*`；shadcn 變數（`--ui-background`、`--ui-primary`、`--ui-ring`…，以 `--ui-` 前綴避免與 `styles.css` 既有 `--primary`/`--accent` 衝突）定義於 `frontend/src/ui.css`，只引用 `--ds-*`，**不複製 hex**。品牌橘是 accent。
 - 只有淺色主題；dark 之後再做（在 `ui.css` 加 `.dark` 區塊重新映射）。
 - 圖表用 shadcn-vue Chart（Unovis）、圖示用 `lucide-vue-next`，**頁面真的需要時才加**，不預先安裝。
 - Tailwind 以 `@tailwindcss/vite` 載入，**無 preflight**，且 utilities 只掃 `components/ui`（見 `ui.css` 註解）；頁面遷移時再擴大 `@source`。
@@ -38,7 +38,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - **品牌主色採 logo 的橘黃暖色（amber→orange，與登入頁一致）**，作為唯一主行動色，克制使用；
 - **金額／堂數／日期一律等寬數字（tabular）**，這是金流產品的隱性信任訊號；
 - 圓角藥丸按鈕、細邊框卡片、輕陰影；
-- 行銷頁那種彩色 gradient mesh **不採用於後台 ops 頁**；唯一例外是 §0 的 `--hero-gradient`（每頁至多一張 hero 卡）。
+- 行銷頁那種彩色 gradient mesh **不採用於後台 ops 頁**；唯一例外是 §0 的 `--ui-hero-gradient`（每頁至多一張 hero 卡）。
 
 ### 1.1 Brand / Auth 例外（登入首屏）
 
@@ -136,7 +136,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - 純黑 `#000` 內文（用 navy `--ds-ink`）。
 - 用 navy/indigo 等冷色當主 CTA（主 CTA 用 `--ds-cta` 暖色深橘）。
 - 白字疊在 `--ds-brand-gradient`／`--ds-primary`／`--ds-primary-soft` 當可讀 CTA（對比不足 AA）。
-- 行銷頁彩色 gradient mesh **灌進後台 ops／表格／儀表板**（Login / Auth 品牌首屏除外，見 §1.1；§0 的單張 `--hero-gradient` hero 卡除外）。
+- 行銷頁彩色 gradient mesh **灌進後台 ops／表格／儀表板**（Login / Auth 品牌首屏除外，見 §1.1；§0 的單張 `--ui-hero-gradient` hero 卡除外）。
 - 為 hex baseline 下降而刪除既有品牌氣氛（glass / mesh / motion），導致視覺變醜。
 - 一個元件超過兩個 accent 色。
 - 金額/數字不套 tabular。

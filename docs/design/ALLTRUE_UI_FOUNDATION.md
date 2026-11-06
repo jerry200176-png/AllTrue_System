@@ -113,13 +113,13 @@ The director dashboard is an operations workbench, not a marketing hero or a col
 - Low-frequency setup actions belong in their domain page, not in the daily work queue. For example, student import belongs in `StudentsList.vue`.
 - Desktop may use a two-zone grid. Mobile uses one column, keeps critical CTAs visible, and must not require horizontal scrolling to discover an action.
 - The default workbench view loads priority data. Trend, activity, teacher fill-rate, and monthly analysis data load only when the director opens the secondary view.
-- Dashboard decisions use AllTrue tokens, quiet elevation, semantic status text, visible focus rings, and reduced-motion behavior. Do not add glow, fake KPI heroes, or color-only status meaning. One `--hero-gradient` hero card per page is allowed by the template.
+- Dashboard decisions use AllTrue tokens, quiet elevation, semantic status text, visible focus rings, and reduced-motion behavior. Do not add glow, fake KPI heroes, or color-only status meaning. One `--ui-hero-gradient` hero card per page is allowed by the template.
 
 Dashboard acceptance targets are 390, 412, 768, 1280, and 1440 CSS pixels. At every target, the page must have no unintended horizontal overflow and the primary task CTA must remain reachable without opening a hidden menu.
 
 ## 7. AI Slop ban list
 
-- Purple/indigo AI gradients on ops pages (the brand `--hero-gradient`, at most one hero card per page, is allowed)
+- Purple/indigo AI gradients on ops pages (the brand `--ui-hero-gradient`, at most one hero card per page, is allowed)
 - Glassmorphism / glow borders on ops
 - Every block in a heavy card + shadow
 - Pill-everything beyond the template (the template uses pill primary buttons and pill tabs)
