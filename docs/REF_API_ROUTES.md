@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 544 api/* routes · generated 2026-11-06
+> Source: `php artisan route:list --json` · 550 api/* routes · generated 2026-11-06
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -356,6 +356,16 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | POST | `api/v1/enrollments` | `EnrollmentController@store` | role+campus |
+
+## /api/v1/exam-periods (5)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/exam-periods` | `SchoolExamPeriodController@index` | role+campus |
+| POST | `api/v1/exam-periods` | `SchoolExamPeriodController@store` | role+campus |
+| GET | `api/v1/exam-periods/schools` | `SchoolExamPeriodController@schools` | role+campus |
+| PATCH | `api/v1/exam-periods/{period}` | `SchoolExamPeriodController@update` | role+campus |
+| DELETE | `api/v1/exam-periods/{period}` | `SchoolExamPeriodController@destroy` | role+campus |
 
 ## /api/v1/exam-rounds (8)
 
@@ -827,7 +837,7 @@
 | PUT | `api/v1/student-identities/{groupId}/access` | `StudentIdentityController@access` | role+campus |
 | GET | `api/v1/student-identities/{groupId}/audit` | `StudentIdentityController@audit` | role+campus |
 
-## /api/v1/students (18)
+## /api/v1/students (19)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -842,6 +852,7 @@
 | GET | `api/v1/students/{student}/active-courses` | `StudentController@activeCourses` | role+campus |
 | POST | `api/v1/students/{student}/bind-card` | `StudentController@bindCard` | role+campus |
 | DELETE | `api/v1/students/{student}/bind-card` | `StudentController@unbindCard` | role+campus |
+| GET | `api/v1/students/{student}/exam-periods` | `SchoolExamPeriodController@forStudent` | role+campus |
 | GET | `api/v1/students/{student}/guardians` | `StudentGuardianController@index` | role+campus |
 | POST | `api/v1/students/{student}/guardians` | `StudentGuardianController@store` | role+campus |
 | PUT | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@update` | role+campus |

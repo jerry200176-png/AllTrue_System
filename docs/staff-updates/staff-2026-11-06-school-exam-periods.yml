@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-06-school-exam-periods
+    published_at: "2026-11-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 各校段考日期
+    summary: 段考成績頁新增「各校段考日期」，每校設一次。
+    items:
+      - category: added
+        text: 主任依學校填段考一、二、期末的日期，老師可查看。
+    source_refs:
+      - "changelog:2026-11-06:school-exam-periods"
