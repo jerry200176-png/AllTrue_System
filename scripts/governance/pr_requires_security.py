@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from scripts.governance.autonomy_gate import classify_scope, parse_declaration  # noqa: E402
+from scripts.governance.autonomy_gate import commit_effective_class  # noqa: E402
 
 _DECL_LINE = re.compile(r"(?i)^.*(?:Risk-Class|Autonomy-Tier).*$", re.M)
 
@@ -25,12 +25,10 @@ def requires_security(body: str, files: list[dict]) -> bool:
             return True
     if any(not x.isascii() or " " in x or " " in x for x in lines):
         return True
-    risk, tier = parse_declaration(body)
-    if risk is None or risk >= 3 or (tier or 0) >= 3:
-        return True
-    paths = [str(f.get("filename") or "") for f in files]
-    patch = "\n".join(f"diff --git a/{p} b/{p}\n{f.get('patch') or ''}" for p, f in zip(paths, files))
-    return int(classify_scope(paths, patch)["machine_minimum_tier"]) >= 3
+    # One classifier: renames (previous_filename), missing patch/filename, the file cap and an invalid
+    # declaration all come back None from commit_effective_class and count as R3.
+    tier = commit_effective_class(body, files)
+    return tier is None or tier >= 3
 
 
 if __name__ == "__main__":

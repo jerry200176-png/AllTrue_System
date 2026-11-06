@@ -93,18 +93,25 @@ const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 
 const api = (path, ...extra) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, ...extra) || 'null');
 
 // Declared tier (body) and path-derived minimum, via the one Python parser; any failure means R3.
-function prScope(n) {
+// Pure: 'lower' only when the head did not move while reading and the Python parser clears body + files.
+export function classifyScope(head, before, files, after) {
   try {
-    const body = api(`pulls/${n}`).body ?? '';
+    if (before?.head?.sha !== head || after?.head?.sha !== head) return 'r3';
+    return execFileSync('python3', [new URL('../../scripts/governance/pr_requires_security.py', import.meta.url).pathname], { input: JSON.stringify({ body: before.body ?? '', files }), encoding: 'utf8' }).trim();
+  } catch { return 'r3'; }
+}
+function prScope(n, head) {
+  try {
+    const before = api(`pulls/${n}`);
     const files = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/files?per_page=100`, '--paginate', '--slurp')).flat();
-    return execFileSync('python3', [new URL('../../scripts/governance/pr_requires_security.py', import.meta.url).pathname], { input: JSON.stringify({ body, files }), encoding: 'utf8' }).trim();
+    return classifyScope(head, before, files, api(`pulls/${n}`));
   } catch { return 'r3'; }
 }
 
 // Reads the PR's comments and evaluates the head; any read failure is unknown (never passes).
 export function readReview(n, head) {
   try {
-    const scope = prScope(n);
+    const scope = prScope(n, head);
     const comments = JSON.parse(gh('api', `/repos/${REPO}/issues/${n}/comments?per_page=100`, '--paginate', '--slurp')).flat();
     return reviewGate(comments, head, REPO.split('/')[0], scope);
   } catch (e) { return { ok: false, why: `PR comments unreadable (${e.message.split('\n')[0]})` }; }
@@ -135,6 +142,7 @@ function main() {
     if (pr.state !== 'open' || pr.base?.ref !== 'main') continue;
     const g = readReview(n, pr.head.sha);
     console.log(`#${n} ${pr.head.sha}: ${g.ok ? 'reviewed via ' + g.via : 'pending: ' + g.why}`);
+    if (api(`pulls/${n}`).head?.sha !== pr.head.sha) { console.log(`#${n}: head moved; skipping publish`); continue; }
     publish(pr.head.sha, g);
     if (!g.ok && pr.auto_merge && !required) {
       console.log(`#${n}: auto-merge disabled until ${REVIEW_CHECK} is a required check (use the queue label)`);

@@ -205,6 +205,13 @@ class RequiresSecurityTest(unittest.TestCase):
         self.assertTrue(self.check("Risk-Class: R3\nAutonomy-Tier: T3", [self.DOC]))
         self.assertTrue(self.check("no declaration", [self.DOC]))
 
+    def test_rename_missing_patch_and_cap_are_held(self):
+        body = "Risk-Class: R0\nAutonomy-Tier: T0"
+        self.assertTrue(self.check(body, [{"filename": "docs/y.md", "previous_filename": ".github/workflows/deploy.yml", "patch": "+x"}]))
+        self.assertTrue(self.check(body, [{"filename": "docs/x.md"}]))
+        self.assertTrue(self.check(body, [{"filename": "docs/x.md", "patch": None}]))
+        self.assertTrue(self.check(body, [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(3000)]))
+
     def test_duplicate_declaration_is_held(self):
         self.assertTrue(self.check("Risk-Class: R0\nRisk-Class: R0\nAutonomy-Tier: T0", [self.DOC]))
 

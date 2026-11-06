@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 
 const req = ['A', 'B'];
@@ -545,4 +545,16 @@ test('guardedSquash re-reads the review (PR body/tier included) at merge time an
   const did = guardedSquash(7, 'abc', () => 0, () => { reads++; return { ok: false, why: 'R3 needs a security-data-reviewer marker on abc' }; }, () => assert.fail('squashed'), () => {});
   assert.equal(did, false);
   assert.equal(reads, 1);
+});
+
+test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {
+  const pr = (sha = H, body = 'Risk-Class: R0\nAutonomy-Tier: T0') => ({ head: { sha }, body });
+  const doc = { filename: 'docs/x.md', patch: '+x' };
+  assert.equal(classifyScope(H, pr(), [doc], pr()), 'lower');
+  assert.equal(classifyScope(H, pr(), [doc], pr(OLD)), 'r3'); // head moved after reading files
+  assert.equal(classifyScope(H, pr(OLD), [doc], pr()), 'r3'); // body/files belong to another head
+  assert.equal(classifyScope(H, pr(), [{ filename: 'docs/y.md', previous_filename: '.github/workflows/deploy.yml', patch: '+x' }], pr()), 'r3'); // rename from R3 path
+  assert.equal(classifyScope(H, pr(), [{ filename: 'docs/x.md' }], pr()), 'r3'); // missing patch
+  assert.equal(classifyScope(H, pr(), Array.from({ length: 3000 }, (_, i) => ({ filename: `docs/${i}.md`, patch: '+x' })), pr()), 'r3'); // listing cap
+  assert.equal(classifyScope(H, pr(), [], pr()), 'r3');
 });
