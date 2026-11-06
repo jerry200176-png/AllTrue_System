@@ -33,7 +33,7 @@
         <p v-else-if="payLineText" class="contract__payline" data-testid="contract-last-payment">{{ payLineText }}</p>
         <!-- in-app #414 / #4155: contract Charge is not the bill total — show both, never reprice the bill -->
         <p v-if="contractCharge != null" class="contract__charge" data-testid="contract-charge">合約金額 {{ money(contractCharge) }}</p>
-        <p v-if="amounts && !followerPointer" class="contract__amounts" data-testid="contract-amounts">本合約帳單 應收 {{ money(amounts.due) }}・已收 {{ money(amounts.received) }}・未繳 {{ money(amounts.owed) }}</p>
+        <p v-if="amountsLine" class="contract__amounts" data-testid="contract-amounts">{{ amountsLine }}</p>
       </div>
       <p v-if="memberLine" class="contract__muted" data-testid="contract-package-members">{{ memberLine }}</p>
       <p v-if="!isMonthly && state === 'ready'" class="contract__left" data-testid="contract-left">剩 <strong>{{ upcomingCount }}</strong> 堂</p>
@@ -230,6 +230,16 @@ const contractCharge = computed(() => {
   if (raw == null || raw === '') return null;
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : null;
+});
+// in-app #500: a bill that is NT$0 all round is not a billing line. Tutoring / waived / full-discount cards already
+// say why in the rows around it; anything else gets one short reason instead of a bare 應收 0・已收 0・未繳 0.
+const amountsLine = computed(() => {
+  const a = props.amounts;
+  if (!a || followerPointer.value) return '';
+  if (!a.due && !a.received && !a.owed) {
+    return noObligation.value || waived.value || props.lastPayment?.fullDiscount ? '' : '金額未填';
+  }
+  return `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}・未繳 ${money(a.owed)}`;
 });
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (confirmed receipts, then non-void invoice payments; never "fixed" here).
