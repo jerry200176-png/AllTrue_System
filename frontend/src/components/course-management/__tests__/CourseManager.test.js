@@ -244,14 +244,28 @@ it('explains missing invoices, recorded cash, and boundary lessons before offeri
   expect(review.text()).toContain('4 堂沒有對應帳單服務期間');
   expect(review.text()).toContain('2 堂超出合約日期');
   expect(review.text()).toContain('尚無對應帳單');
-  // in-app #481: what to do, not a POP-only preview
-  expect(review.text()).toContain('怎麼處理');
-  expect(w.get('[data-testid="monthly-review-fixes"]').text()).toContain('打開「繳費明細」對照帳單期間和上課日期');
+  // in-app #510: no instruction block; only the real gap rows and the button remain
+  expect(review.text()).not.toContain('怎麼處理');
+  expect(w.find('[data-testid="monthly-review-fixes"]').exists()).toBe(false);
   expect(review.findAll('button').some(b => b.text() === '預覽分期更正')).toBe(false);
   await review.findAll('button').find(b => b.text() === '查看登錄帳單與收款').trigger('click');
   expect(w.emitted('action').at(-1)[0]).toEqual({ name: 'invoice' });
   await w.setProps({ tab: 'sessions' });
   expect(w.find('[data-testid="monthly-payment-periods"]').exists()).toBe(false);
+  w.unmount();
+});
+
+it('hides the 上課日期核對 table when no month has a gap, and never prints 已有帳單服務期間 (in-app #510)', async () => {
+  const w = mountCm({ tab: 'billing', course: { ...baseCourse(), monthly_payment: {
+    review_required: true, review_reasons: [], contract_start: '2026-07-27', contract_end: '2026-09-10', registered_paid_amount: 7500,
+    periods: [{ billing_period: '2026-09', source: 'invoice', payment_status: 'paid', outstanding_amount: 0 }],
+    session_review: [{ calendar_month: '2026-09', completed_sessions: 4, estimated_charge: 6000, uncovered_sessions: 0, outside_contract_sessions: 0, sessions: [] }],
+  } } });
+  const review = w.get('[data-testid="monthly-payment-periods"]');
+  expect(review.find('table[aria-label="依上課日期核對費用"]').exists()).toBe(false);
+  expect(review.text()).not.toContain('已有帳單服務期間');
+  expect(review.text()).not.toContain('怎麼處理');
+  expect(review.findAll('button').some(b => b.text() === '查看登錄帳單與收款')).toBe(true);
   w.unmount();
 });
 

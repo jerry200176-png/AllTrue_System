@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { trapTab } from '../../lib/focusTrap.js';
 import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
-import { monthlyPaymentLabel, periodPaymentLabel, reviewReasonFixes } from '../../lib/courseMoneyState.js';
+import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
 
@@ -99,7 +99,8 @@ export default {
     const dangerOpen = ref(false);
     const selectedPeriod = ref('');
     const monthlySummary = computed(() => props.course?.monthly_payment);
-    const reviewFixes = computed(() => reviewReasonFixes(monthlySummary.value?.review_reasons));
+    // in-app #510: list only the months with a real gap or out-of-contract lesson.
+    const gapMonths = computed(() => (monthlySummary.value?.session_review || []).filter((m) => m.uncovered_sessions || m.outside_contract_sessions));
     const selectedPayment = computed(() => monthlySummary.value?.periods?.find((p) => p.billing_period === (selectedPeriod.value || monthlySummary.value.billing_period)));
     const effectivePaymentLabel = computed(() => selectedPeriod.value && selectedPayment.value
       ? `${selectedPeriod.value} ${periodPaymentLabel(selectedPayment.value.payment_status)}`
@@ -155,7 +156,7 @@ export default {
     }
     return {
       panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
-      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, onMoveSession, monthlySummary, reviewFixes, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
+      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, onMoveSession, monthlySummary, gapMonths, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
 };
@@ -223,12 +224,6 @@ export default {
               <option v-for="period in monthlySummary.periods" :key="period.billing_period" :value="period.billing_period">{{ period.billing_period }}</option>
             </select>
           </label>
-          <!-- in-app #481: say what is wrong and what to do (same REVIEW_REASON_FIX as 帳務中心), not a POP-only preview. -->
-          <div v-if="monthlySummary.review_required" class="cmw__hint" role="status" data-testid="monthly-review-fixes">
-            <p>月結帳單與上課堂數不符。怎麼處理：</p>
-            <ul v-if="reviewFixes.length"><li v-for="fix in reviewFixes" :key="fix.code"><strong>{{ fix.label }}</strong>：{{ fix.text }}</li></ul>
-            <p v-else>按「查看登錄帳單與收款」對照帳單期間和上課日期；對不起來請聯絡總部。</p>
-          </div>
           <div class="cmw__period-table">
             <table>
               <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">帳單付款登錄</th><th scope="col">未收金額</th></tr></thead>
@@ -239,17 +234,17 @@ export default {
               </tr></tbody>
             </table>
           </div>
-          <template v-if="monthlySummary.session_review">
+          <template v-if="gapMonths.length">
             <p class="cmw__hint">系統登錄收款：{{ monthlySummary.registered_paid_amount == null ? '待核對' : `NT$ ${Number(monthlySummary.registered_paid_amount).toLocaleString()}` }}。此為帳務紀錄，實際收款與月份歸屬仍須核對。</p>
             <div class="cmw__period-table">
               <table aria-label="依上課日期核對費用">
                 <thead><tr><th scope="col">上課月份</th><th scope="col">已上課費用試算</th><th scope="col">需核對事項</th></tr></thead>
-                <tbody><tr v-for="month in monthlySummary.session_review" :key="month.calendar_month">
+                <tbody><tr v-for="month in gapMonths" :key="month.calendar_month">
                   <th scope="row">{{ month.calendar_month }}</th>
                   <td><details><summary>{{ month.completed_sessions }} 堂 · {{ month.estimated_charge == null ? '費率待核對' : `NT$ ${Number(month.estimated_charge).toLocaleString()}` }}</summary>
                     <ul><li v-for="session in month.sessions" :key="session.session_id">{{ session.date }} · {{ session.rate_unit === 'hour' ? '每小時' : '每堂' }} NT$ {{ Number(session.rate).toLocaleString() }} · 試算 {{ session.estimated_charge == null ? '待核對' : `NT$ ${Number(session.estimated_charge).toLocaleString()}` }}<template v-if="session.amendment_id">（依定價調整）</template></li></ul>
                   </details></td>
-                  <td><span v-if="month.uncovered_sessions">{{ month.uncovered_sessions }} 堂沒有對應帳單服務期間</span><span v-else>已有帳單服務期間</span><small v-if="month.outside_contract_sessions">{{ month.outside_contract_sessions }} 堂超出合約日期，需一併更正</small></td>
+                  <td><span v-if="month.uncovered_sessions">{{ month.uncovered_sessions }} 堂沒有對應帳單服務期間</span><small v-if="month.outside_contract_sessions">{{ month.outside_contract_sessions }} 堂超出合約日期，需一併更正</small></td>
                 </tr></tbody>
               </table>
             </div>
