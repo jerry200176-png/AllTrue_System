@@ -8,7 +8,7 @@
     </div>
     <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
     <p v-if="!loading && !schools.length" class="tw:text-sm tw:text-muted-foreground">還沒有填學校的學生。</p>
-    <Card v-for="s in schools" :key="s.school_name" class="sep-card tw:gap-3 tw:py-4">
+    <Card v-for="s in schools" :key="s.key" class="sep-card tw:gap-3 tw:py-4">
       <CardHeader class="tw:px-4">
         <CardTitle class="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-base">
           {{ s.school_name }}
@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -65,7 +65,7 @@ const error = ref('');
 const schools = ref([]);
 const saved = reactive({});
 const drafts = reactive({});
-const k = (s, seq) => `${s.school_name}|${seq}`;
+const k = (s, seq) => `${s.key}|${seq}`;
 
 function draft(s, seq) {
   return (drafts[k(s, seq)] ||= { id: null, start_date: '', end_date: '' });
@@ -91,6 +91,9 @@ async function api(path, options = {}) {
 async function load() {
   loading.value = true;
   error.value = '';
+  schools.value = [];
+  for (const key of Object.keys(drafts)) delete drafts[key];
+  for (const key of Object.keys(saved)) delete saved[key];
   const { year, semester } = termObj.value;
   try {
     const c = encodeURIComponent(props.branchId);
@@ -103,7 +106,7 @@ async function load() {
     for (const key of Object.keys(saved)) delete saved[key];
     for (const p of pe.data || []) {
       if (p.grade_ids) continue; // grade-scoped rows are edited via API only
-      const key = `${p.school_name}|${p.seq}`;
+      const key = `${p.school_key}|${p.seq}`;
       const row = { id: p.id, start_date: p.start_date, end_date: p.end_date };
       drafts[key] = { ...row };
       saved[key] = { ...row };
@@ -130,7 +133,7 @@ async function save(s, slot) {
         }),
       });
     d.id = res.data.id;
-    saved[k(s, slot.seq)] = { start_date: d.start_date, end_date: d.end_date };
+    saved[k(s, slot.seq)] = { start_date: body.start_date, end_date: body.end_date };
   } catch (e) {
     error.value = e.message || '儲存失敗';
   }
@@ -149,4 +152,5 @@ async function remove(s, slot) {
 }
 
 onMounted(load);
+watch(() => props.branchId, load);
 </script>

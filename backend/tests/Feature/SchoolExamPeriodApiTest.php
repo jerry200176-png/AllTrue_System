@@ -85,6 +85,7 @@ class SchoolExamPeriodApiTest extends TestCase
         $this->as($dir)->postJson('/api/v1/exam-periods', $this->payload($a, ['seq' => 4]))->assertStatus(422);
         $this->as($dir)->postJson('/api/v1/exam-periods', $this->payload($a, ['semester' => 3]))->assertStatus(422);
         $id = $this->as($dir)->postJson('/api/v1/exam-periods', $this->payload($a))->json('data.id');
+        $this->as($dir)->postJson('/api/v1/exam-periods', $this->payload($a, ['school_name' => '甲測試國民中學']))->assertStatus(422);
         $this->as($dir)->patchJson("/api/v1/exam-periods/$id", ['start_date' => '2026-12-01'])->assertStatus(422);
     }
 

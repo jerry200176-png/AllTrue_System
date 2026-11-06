@@ -13,7 +13,7 @@ function stub() {
   const fetchMock = vi.fn(async (input, options = {}) => {
     const url = String(input);
     const body = url.includes('/schools')
-      ? { data: [{ school_name: '甲測試國中', student_count: 3, variants: ['甲測試國中', '甲測試國民中學'] }] }
+      ? { data: [{ key: '甲測試國中', school_name: '甲測試國中', student_count: 3, variants: ['甲測試國中', '甲測試國民中學'] }] }
       : options.method === 'POST' ? { data: { id: 9 } } : { data: [] };
     return { ok: true, json: async () => body };
   });

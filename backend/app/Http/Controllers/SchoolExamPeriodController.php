@@ -25,18 +25,17 @@ class SchoolExamPeriodController extends Controller
         $groups = [];
         $rows = Student::query()->where('CampusID', $campusId)->where('enable', 1)
             ->whereNotNull('SchoolName')->where('SchoolName', '!=', '')
-            ->selectRaw('SchoolName as n, COUNT(*) as c')->groupBy('SchoolName')->get();
+            ->selectRaw('SchoolName as n, COUNT(*) as c')->groupBy('SchoolName')->toBase()->get();
         foreach ($rows as $row) {
             $raw = trim((string) $row->n);
             $key = $this->grouper->key($raw);
             if ($key === '') {
                 continue;
             }
-            $g = &$groups[$key];
-            $g['school_name'] = $g['school_name'] ?? $this->grouper->display($raw);
-            $g['student_count'] = ($g['student_count'] ?? 0) + (int) $row->c;
-            $g['variants'] = array_values(array_unique([...($g['variants'] ?? []), $raw]));
-            unset($g);
+            $g = $groups[$key] ?? ['key' => $key, 'school_name' => $this->grouper->display($raw), 'student_count' => 0, 'variants' => []];
+            $g['student_count'] += (int) $row->c;
+            $g['variants'][] = $raw;
+            $groups[$key] = $g;
         }
         $data = array_values($groups);
         usort($data, fn ($a, $b) => $b['student_count'] <=> $a['student_count']);
@@ -57,7 +56,10 @@ class SchoolExamPeriodController extends Controller
             }
         }
 
-        return response()->json(['data' => $q->orderBy('school_name')->orderBy('seq')->get()]);
+        $rows = $q->orderBy('school_name')->orderBy('seq')->get()
+            ->map(fn ($p) => $p->toArray() + ['school_key' => $this->grouper->key($p->school_name)]);
+
+        return response()->json(['data' => $rows]);
     }
 
     public function store(Request $request): JsonResponse
@@ -171,10 +173,15 @@ class SchoolExamPeriodController extends Controller
         return $d;
     }
 
+    /** Same campus/term/seq/grade scope and same school identity (spelling variants count as one). */
     private function duplicate(array $d, ?int $exceptId = null): bool
     {
-        return SchoolExamPeriod::query()->where($this->only($d, ['campus_id', 'school_name', 'academic_year', 'semester', 'seq', 'grade_key']))
-            ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))->exists();
+        $key = $this->grouper->key($d['school_name']);
+
+        return SchoolExamPeriod::query()
+            ->where($this->only($d, ['campus_id', 'academic_year', 'semester', 'seq', 'grade_key']))
+            ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
+            ->pluck('school_name')->contains(fn ($n) => $this->grouper->key($n) === $key);
     }
 
     private function only(array $d, array $keys): array
