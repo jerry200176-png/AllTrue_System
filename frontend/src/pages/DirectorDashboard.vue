@@ -13,7 +13,7 @@
         <header class="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:pb-2">
           <div>
             <p class="tw:text-sm tw:text-muted-foreground">{{ branchName }} · {{ todayDisplay }}</p>
-            <h1 class="tw:mt-1 tw:text-3xl sm:tw:text-4xl tw:font-semibold tw:tracking-tight">主任總覽</h1>
+            <h1 class="tw:mt-1 tw:text-3xl tw:sm:text-4xl tw:font-semibold tw:tracking-tight">主任總覽</h1>
           </div>
           <div class="tw:flex tw:items-center tw:gap-2">
             <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
@@ -49,26 +49,26 @@
         <section
           v-if="dashboardViewMode === 'focus'"
           id="director-workbench-panel-focus"
-          class="director-workbench-v2__focus tw:grid tw:grid-cols-1 lg:tw:grid-cols-3 tw:gap-4"
+          class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:lg:grid-cols-3 tw:gap-4"
           role="tabpanel"
           aria-label="今天的主任工作"
           aria-labelledby="director-workbench-tab-focus"
           tabindex="0"
         >
           <!-- Hero: today's lessons -->
-          <Motion as="div" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" class="lg:tw:col-span-2" data-testid="director-hero">
-            <Card class="tw:h-full tw:rounded-2xl tw:border-0 tw:p-6 sm:tw:p-7" style="background: var(--ui-hero-gradient)">
-              <div class="tw:grid tw:h-full tw:gap-6 sm:tw:grid-cols-2">
+          <Motion as="div" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" class="tw:lg:col-span-2" data-testid="director-hero">
+            <Card class="tw:h-full tw:rounded-2xl tw:border-0 tw:p-6 tw:sm:p-7" style="background: var(--ui-hero-gradient)">
+              <div class="tw:grid tw:h-full tw:gap-6 tw:sm:grid-cols-2">
                 <div class="tw:flex tw:flex-col">
                   <p class="tw:font-medium">今日課程</p>
-                  <p class="director-num tw:mt-3 tw:text-6xl sm:tw:text-7xl tw:font-semibold" data-testid="hero-total">
+                  <p class="director-num tw:mt-3 tw:text-6xl tw:sm:text-7xl tw:font-semibold" data-testid="hero-total">
                     <NumberTicker :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-3xl tw:align-top">堂</span>
                   </p>
                   <Progress class="tw:mt-5 tw:bg-foreground/10" :model-value="attendedCount" :max="Math.max(todaySchedules.length, 1)" aria-label="今日點名進度" />
                   <p class="tw:mt-2 tw:text-sm" data-testid="hero-marked">已點名 {{ attendedCount }} 堂・還有 {{ pendingAttendanceCount }} 堂未點名</p>
                   <div class="tw:mt-auto tw:flex tw:flex-wrap tw:gap-2 tw:pt-6">
                     <Button class="tw:h-11 tw:px-6" @click="goToAttendance">前往點名</Button>
-                    <Button class="tw:h-11 tw:px-6 tw:bg-white/80 tw:text-foreground hover:tw:bg-white" variant="secondary" @click="setDashboardViewMode('full')">看今日課表</Button>
+                    <Button class="tw:h-11 tw:px-6 tw:bg-white/80 tw:text-foreground tw:hover:bg-white" variant="secondary" @click="setDashboardViewMode('full')">看今日課表</Button>
                   </div>
                 </div>
                 <div class="tw:flex tw:min-h-40 tw:flex-col tw:justify-end" aria-label="今日各時段課程數" role="img" :aria-description="hourSummary">
@@ -86,14 +86,14 @@
           </Motion>
 
           <!-- 今天要處理: existing task queue -->
-          <Motion as="section" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" :transition="{ delay: 0.16 }" class="director-workbench-v2__primary lg:tw:row-span-3" aria-labelledby="director-focus-title">
+          <Motion as="section" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" :transition="{ delay: 0.16 }" class="director-workbench-v2__primary tw:lg:row-span-3" aria-labelledby="director-focus-title">
             <Card class="tw:h-full tw:rounded-2xl tw:p-6">
               <header class="tw:flex tw:items-start tw:justify-between tw:gap-3">
                 <div>
                   <h2 id="director-focus-title" class="tw:text-base tw:font-semibold">今天要處理的事</h2>
                   <p class="tw:mt-1 tw:text-xs tw:text-muted-foreground">只列出需要主任做決定或跟進的工作，依影響與期限排序。</p>
                 </div>
-                <span class="tw:rounded-full tw:bg-muted tw:px-3 tw:py-1 tw:text-xs">{{ dashboardPrimaryTasks.length }} 項</span>
+                <span class="tw:shrink-0 tw:whitespace-nowrap tw:rounded-full tw:bg-muted tw:px-3 tw:py-1 tw:text-xs">{{ dashboardPrimaryTasks.length }} 項</span>
               </header>
 
               <details v-if="!dashboardLoading && dashboardTopRisks.length" class="director-risk-disclosure">
@@ -185,9 +185,9 @@
               :animate="{ opacity: 1, y: 0 }"
               :transition="{ delay: 0.06 * (i + 1) }"
               :data-testid="`kpi-${kpi.key}`"
-              class="tw:transition-transform motion-safe:hover:tw:-translate-y-0.5"
+              class="tw:transition-transform tw:motion-safe:hover:-translate-y-0.5"
             >
-              <button type="button" class="tw:block tw:h-full tw:w-full tw:text-left" :aria-label="`${kpi.label} ${kpi.value} ${kpi.unit}，${kpi.sub}。${kpi.cta}`" @click="kpi.open()">
+              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-2xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" :aria-label="`${kpi.label} ${kpi.value} ${kpi.unit}，${kpi.sub}。${kpi.cta}`" @click="kpi.open()">
                 <Card class="tw:h-full tw:rounded-2xl tw:p-6" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:justify-between">
                     <p class="tw:font-medium">{{ kpi.label }}</p>
@@ -203,7 +203,7 @@
             </Motion>
           </div>
 
-          <aside class="director-workbench-v2__aside lg:tw:col-span-2" aria-label="課表正確度">
+          <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
             <details v-if="operationsTrust?.decision_center" class="director-trust-note">
               <summary title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
                 <span>課表正確度</span>
