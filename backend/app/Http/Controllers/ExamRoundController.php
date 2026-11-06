@@ -316,9 +316,6 @@ class ExamRoundController extends Controller
             'scores.*.notes' => ['nullable', 'string', 'max:255'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
-        if ($isDirector && $examRound->status === 'closed' && trim((string) ($payload['reason'] ?? '')) === '') {
-            throw ValidationException::withMessages(['reason' => ['更正已截止的段考成績需填寫原因']]);
-        }
         $subjectMap = $examRound->subjects()->get()->keyBy('id');
         if ($subjectMap->isEmpty()) {
             return response()->json(['message' => 'Round has no subjects'], 422);
@@ -375,6 +372,9 @@ class ExamRoundController extends Controller
             }
             if ($locked->status === 'void') {
                 abort(404);
+            }
+            if ($isDirector && $locked->status === 'closed' && trim((string) ($payload['reason'] ?? '')) === '') {
+                throw ValidationException::withMessages(['reason' => ['更正已截止的段考成績需填寫原因']]);
             }
             foreach ($normalized as $row) {
                 $record = ExamScore::query()
@@ -443,8 +443,11 @@ class ExamRoundController extends Controller
         }
         $rows = ExamScoreAuditLog::query()
             ->where('exam_round_id', $examRound->id)->where('campus_id', $examRound->campus_id)
-            ->where('action', 'like', 'score_%')->latest('id')->limit(500)->get()
-            ->filter(fn ($l) => $studentId <= 0 || (int) (($l->after ?? $l->before)['student_id'] ?? 0) === $studentId)
+            ->where('action', 'like', 'score_%')
+            ->when($studentId > 0, fn ($q) => $q->where(
+                fn ($w) => $w->where('after->student_id', $studentId)->orWhere('before->student_id', $studentId)
+            ))
+            ->latest('id')->limit(500)->get()
             ->map(fn ($l) => [
                 'id' => (int) $l->id, 'action' => $l->action, 'reason' => $l->reason,
                 'actor_user_id' => (int) $l->actor_user_id,

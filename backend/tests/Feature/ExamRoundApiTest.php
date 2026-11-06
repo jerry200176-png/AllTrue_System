@@ -219,6 +219,23 @@ class ExamRoundApiTest extends TestCase
         $this->withAuth($b['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")->assertForbidden();
     }
 
+    public function test_history_filters_by_student_before_limit(): void
+    {
+        $c = $this->seedRound();
+        $other = Student::create(['name' => '段考學生乙', 'CampusID' => $c['campus'], 'ClassID' => 3, 'enable' => 1, 'MDT' => now()]);
+        $this->makeClass($other->id, $c['teacher']['user']->id, $c['campus']);
+        $this->putScore($c, 'teacher', 0, 50)->assertOk();
+        $rows = [];
+        for ($i = 0; $i < 505; $i++) {
+            $rows[] = ['exam_round_id' => $c['round'], 'campus_id' => $c['campus'], 'actor_user_id' => 1, 'action' => 'score_updated',
+                'after' => json_encode(['student_id' => $other->id, 'exam_round_subject_id' => $c['subjects'][0]['id']]),
+                'created_at' => now(), 'updated_at' => now()];
+        }
+        \Illuminate\Support\Facades\DB::table('exam_score_audit_logs')->insert($rows);
+        $this->withAuth($c['director']['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")
+            ->assertOk()->assertJsonCount(1, 'data');
+    }
+
     public function test_teacher_after_deadline_gets_409_and_director_closed_correction_needs_reason(): void
     {
         $c = $this->seedRound();
