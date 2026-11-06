@@ -129,7 +129,8 @@ class ClassSessionMaterializationServiceTest extends TestCase
             $this->fail('Expected overlapping student session to be rejected.');
         } catch (SlotOccupiedException $exception) {
             $this->assertSame('student_slot_conflict', $exception->toResponseArray()['code']);
-            $this->assertStringContainsString('學生在此時段已有其他課程', $exception->getMessage());
+            // The blocker's subject name is optional (「X」 only when a Subject row joins), so match around it.
+            $this->assertMatchesRegularExpression('/學生在此時段已有其他(「[^」]+」)?課程/u', $exception->getMessage());
         }
     }
 
@@ -164,7 +165,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
         ]);
 
         $this->expectException(SlotOccupiedException::class);
-        $this->expectExceptionMessage('學生在此時段已有其他課程');
+        $this->expectExceptionMessageMatches('/學生在此時段已有其他(「[^」]+」)?課程/u');
         ClassSession::create([
             'StudentClassID' => $secondCourseId,
             'SessionDate' => '2099-09-12',
