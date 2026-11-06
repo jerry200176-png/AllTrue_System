@@ -206,6 +206,7 @@ This repo currently has **one** human maintainer (Jerry), who is not a universal
 
 - Fleet merge procedure: [portfolio-ops `docs/fleet-merge-policy.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/docs/fleet-merge-policy.md)  
 - [`docs/sop/MERGE_SOP.md`](../sop/MERGE_SOP.md)  
+- [`docs/sop/DELIVERY_LIFECYCLE.md`](../sop/DELIVERY_LIFECYCLE.md) — stages, lanes and gatekeepers per risk class (this policy stays the only tier definition)  
 - [`docs/governance/COMPANY_CONSTITUTION.md`](./COMPANY_CONSTITUTION.md)  
 - [`.github/pull_request_template.md`](../../.github/pull_request_template.md)  
 - Capability Registry / Evidence Contract  
