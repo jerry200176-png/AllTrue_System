@@ -70,3 +70,11 @@
 [data-slot] {
   border-color: var(--ui-border);
 }
+
+/* Without preflight a native <button> keeps the browser's background and outset border, so reset them for ui buttons only.
+   Utilities are !important, so every variant still sets its own background and border. */
+button[data-slot] {
+  background-color: transparent;
+  border-width: 0;
+  border-style: solid;
+}
