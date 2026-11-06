@@ -238,6 +238,21 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertNotSame('review_required', $shown['payment_status']);
     }
 
+    public function test_unpaid_running_month_bill_displays_the_stored_total_not_the_zero_lesson_total(): void // in-app #510
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse();
+        $invoice->payments()->delete();
+        $invoice->update(['TotalAmount' => 7200, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertFalse($shown['review_required']);
+        $this->assertSame(7200, $shown['periods'][0]['charge']);
+        $this->assertSame(7200, $shown['periods'][0]['outstanding_amount']);
+        $this->assertSame('unpaid', $shown['payment_status']);
+    }
+
     public function test_same_prepaid_month_is_displayed_as_a_discrepancy_after_the_period_ends(): void // in-app #510
     {
         \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');

@@ -88,6 +88,7 @@ final class MonthlyPeriodPaymentService
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
+            $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) ($amount['stored_total_amount'] ?? $amount['total_amount']);
             // in-app #510: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
             $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
                 && $end >= Carbon::now('Asia/Taipei')->toDateString() && ($amount['computed_total_amount'] ?? null) === 0);
@@ -185,7 +186,12 @@ final class MonthlyPeriodPaymentService
         $rows = $summary['periods'] ?? [];
         if (!collect($rows)->contains(fn ($p) => !empty($p['amount_deferred']))) return $summary;
         foreach ($rows as &$row) {
-            if (!empty($row['amount_deferred'])) $row['amount_discrepancy'] = false;
+            if (empty($row['amount_deferred'])) continue;
+            // A deferred bill may have been repriced to the (0) lesson total; show the stored bill, which is what is owed.
+            $row['amount_discrepancy'] = false;
+            $row['charge'] = $row['stored_charge'];
+            $row['payment_status'] = $row['paid_amount'] >= $row['charge'] ? 'paid' : ($row['paid_amount'] > 0 ? 'partial' : 'unpaid');
+            $row['outstanding_amount'] = max(0, $row['charge'] - $row['paid_amount']);
         }
         unset($row);
         $reasons = array_values(array_filter($summary['review_reasons'] ?? [], fn ($r) => $r !== 'amount_discrepancy'
@@ -197,6 +203,6 @@ final class MonthlyPeriodPaymentService
         return ['periods' => $rows, 'review_reasons' => $reasons, 'review_required' => $review,
             'payment_status' => $review ? 'review_required' : $selected['payment_status'],
             'billing_period' => $selected['billing_period'],
-            'attribution_ambiguous' => $review] + $summary;
+            'attribution_ambiguous' => $review || ($summary['attribution_ambiguous'] ?? false)] + $summary;
     }
 }
