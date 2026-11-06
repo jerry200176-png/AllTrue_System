@@ -88,6 +88,10 @@ final class MonthlyPeriodPaymentService
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
+            $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) $amount['stored_total_amount'];
+            // in-app #510: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
+            $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
+                && ($amount['computed_total_amount'] ?? null) === 0 && $this->hasUpcomingScheduledLesson($sessions, $start, $end));
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
             $existing['invoice_ids'][] = (int) $invoice->id;
@@ -168,5 +172,48 @@ final class MonthlyPeriodPaymentService
             'registered_paid_amount' => $invoices->isEmpty() ? null : (int) $invoices->sum(fn ($invoice) => $invoice->payments->isEmpty()
                 ? max(0, (int) $invoice->PaidAmount) : $this->amounts->resolve($invoice, $course)['net_applied']),
             'session_review' => $sessionReview];
+    }
+
+    /**
+     * in-app #510, DISPLAY ONLY (course list / course manager; never feed this to a money guard): a running period whose
+     * lesson total is 0 only because every lesson is still scheduled is not 需核對. batch() itself is unchanged.
+     *
+     * @param array<string, mixed> $summary one batch() entry
+     * @return array<string, mixed>
+     */
+    public function forDisplay(array $summary): array
+    {
+        $rows = $summary['periods'] ?? [];
+        if (!collect($rows)->contains(fn ($p) => !empty($p['amount_deferred']))) return $summary;
+        foreach ($rows as &$row) {
+            if (empty($row['amount_deferred'])) continue;
+            // A deferred bill may have been repriced to the (0) lesson total; show the stored bill, which is what is owed.
+            $row['amount_discrepancy'] = false;
+            $row['charge'] = $row['stored_charge'];
+            $row['payment_status'] = $row['paid_amount'] >= $row['charge'] ? 'paid' : ($row['paid_amount'] > 0 ? 'partial' : 'unpaid');
+            $row['outstanding_amount'] = max(0, $row['charge'] - $row['paid_amount']);
+        }
+        unset($row);
+        $reasons = array_values(array_filter($summary['review_reasons'] ?? [], fn ($r) => $r !== 'amount_discrepancy'
+            || collect($rows)->contains('amount_discrepancy', true)));
+        $review = $reasons !== [] || collect($rows)->contains('payment_status', 'unknown');
+        $selected = collect($rows)->first(fn ($row) => in_array($row['payment_status'], ['unpaid', 'partial'], true))
+            ?? collect($rows)->firstWhere('payment_status', 'unknown') ?? end($rows);
+
+        return ['periods' => $rows, 'review_reasons' => $reasons, 'review_required' => $review,
+            'payment_status' => $review ? 'review_required' : $selected['payment_status'],
+            'billing_period' => $selected['billing_period'],
+            'attribution_ambiguous' => $review || ($summary['attribution_ambiguous'] ?? false)] + $summary;
+    }
+
+    /** A running period only defers while a scheduled lesson (not cancelled/voided/held) is still to come inside it. */
+    private function hasUpcomingScheduledLesson(Collection $sessions, string $start, string $end): bool
+    {
+        $today = Carbon::now('Asia/Taipei')->toDateString();
+
+        return $end >= $today && $sessions->contains(function ($session) use ($start, $end, $today) {
+            $date = substr((string) $session->SessionDate, 0, 10);
+            return (string) $session->Status === 'scheduled' && $date >= max($start, $today) && $date <= $end;
+        });
     }
 }
