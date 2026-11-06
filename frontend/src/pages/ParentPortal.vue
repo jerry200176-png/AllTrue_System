@@ -989,6 +989,7 @@
               <small v-else>綁定 LINE 後才可開啟推播通知</small>
             </span>
           </label>
+          <ParentTelegramBind v-if="dashboard?.student?.telegram_bind_available" :token="token" />
         </div>
 
         </div>
@@ -1000,6 +1001,7 @@
 </template>
 
 <script setup>
+import ParentTelegramBind from '../components/ParentTelegramBind.vue';
 import { onMounted, ref, computed, reactive, nextTick, watch } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';

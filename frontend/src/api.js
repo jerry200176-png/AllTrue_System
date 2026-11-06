@@ -616,3 +616,11 @@ export async function getReconcileRows(token, page = 1, perPage = 200) {
   if (!res.ok) throw new Error(data?.message || '無法取得對帳明細');
   return { rows: Array.isArray(data?.data) ? data.data : [], meta: data?.meta || {} };
 }
+
+export async function createParentTelegramBindCode(token) {
+  const res = await fetch(`${API_BASE}/parent/telegram-bind-code`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  return readParentResponse(res, '無法取得綁定碼');
+}

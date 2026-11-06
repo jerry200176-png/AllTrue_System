@@ -163,6 +163,19 @@ class TelegramWebhookTest extends TestCase
         $this->postJson('/api/v1/parent/telegram-bind-code', [], ['Authorization' => 'Bearer nope'])->assertStatus(401);
     }
 
+    public function test_dashboard_exposes_only_a_boolean_when_telegram_is_configured(): void
+    {
+        $campus = $this->campusWithTelegram(['code' => 'tw_flag']);
+        [, $token] = $this->verifiedGuardian($campus);
+
+        $res = $this->getJson('/api/v1/parent/dashboard', ['Authorization' => 'Bearer ' . $token])->assertOk();
+        $this->assertTrue($res->json('student.telegram_bind_available'));
+        $this->assertStringNotContainsString('telegram-token', $res->getContent());
+
+        Campus::whereKey($campus->id)->update(['TelegramToken' => '']);
+        $this->assertFalse($this->getJson('/api/v1/parent/dashboard', ['Authorization' => 'Bearer ' . $token])->json('student.telegram_bind_available'));
+    }
+
     public function test_bind_attempts_are_rate_limited_per_chat(): void
     {
         $campus = $this->campusWithTelegram(['code' => 'tw_rate']);
