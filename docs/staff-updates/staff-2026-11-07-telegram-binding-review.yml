@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-telegram-binding-review
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: Telegram 綁定確認
+    summary: 在 LINE 通知設定查看並解除家長的 Telegram。
+    items:
+      - category: added
+        text: 新增「Telegram 綁定確認」，不認得的綁定可一鍵解除。
+    source_refs:
+      - "changelog:2026-11-07:telegram-binding-review"
