@@ -187,5 +187,31 @@ class ReadOnlyProbeTierTest(unittest.TestCase):
         self.assertEqual(classify_scope([WF], "")["tier_name"], "T3")
 
 
+class RequiresSecurityTest(unittest.TestCase):
+    R3_FILE = {"filename": ".github/workflows/deploy.yml", "patch": "+x"}
+    DOC = {"filename": "docs/x.md", "patch": "+x"}
+
+    def check(self, body, files):
+        from scripts.governance.pr_requires_security import requires_security
+        return requires_security(body, files)
+
+    def test_body_r1_on_r3_path_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R1\nAutonomy-Tier: T1", [self.R3_FILE]))
+
+    def test_declared_r1_on_docs_passes(self):
+        self.assertFalse(self.check("Risk-Class: R0\nAutonomy-Tier: T0", [self.DOC]))
+
+    def test_declared_r3_or_missing_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R3\nAutonomy-Tier: T3", [self.DOC]))
+        self.assertTrue(self.check("no declaration", [self.DOC]))
+
+    def test_duplicate_declaration_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R0\nRisk-Class: R0\nAutonomy-Tier: T0", [self.DOC]))
+
+    def test_u2028_on_declaration_line_is_held(self):
+        self.assertTrue(self.check("Risk-Class: R0\u2028Risk-Class: R3\nAutonomy-Tier: T0", [self.DOC]))
+        self.assertTrue(self.check("Risk-Class: R0\nAutonomy-Tier: T0 \u2029", [self.DOC]))
+
+
 if __name__ == "__main__":
     unittest.main()

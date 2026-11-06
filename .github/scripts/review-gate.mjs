@@ -8,7 +8,7 @@
 //      `<!-- independent-review:v1 sha=<head> verdict=pass -->`. Only the orchestrator's fresh-context reviewer
 //      agent writes it, after a /code-review run on that head. It is provenance evidence, NOT authentication:
 //      the owner account is shared with agents, so anything holding that token can write it.
-// R3/T3 (or an unknown tier: fail closed) additionally needs an owner `gate:security-data-reviewer:v1 sha=<head> verdict=pass`
+// R3/T3 (declared, or path-derived minimum; unknown/duplicate/odd declaration fails closed) additionally needs an owner `gate:security-data-reviewer:v1 sha=<head> verdict=pass`
 // marker or the independent-review marker above; any owner `gate:<role>:v1 sha=<head> verdict=fail` marker vetoes every lane.
 // Codex findings or an incomplete review on the head veto the fallback. Anything unknown or unparsable never passes.
 // Runs from the default branch only; never checks out or executes PR code.
@@ -25,21 +25,16 @@ export const decodeEntities = (s) => s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(quot|a
   (_, d, h, n) => (n ? NAMED[n.toLowerCase()] : String.fromCodePoint(parseInt(d ?? h, d ? 10 : 16))));
 
 export const gateMarker = (role, sha, verdict = 'pass') => `<!-- gate:${role}:v1 sha=${sha} verdict=${verdict} -->`;
-// Same patterns as scripts/governance/autonomy_gate.py _RISK_RE/_TIER_RE (the declaration parser).
-const RISK = /^\s*(?:[-*]\s*)?\*?\*?Risk-Class\*?\*?\s*:\s*\*?\*?\s*(R[0-3])\b/im;
-const TIER = /^\s*(?:[-*]\s*)?\*?\*?Autonomy-Tier\*?\*?\s*:\s*\*?\*?\s*(T[0-3])\b/im;
-const isR3 = (body) => { const r = RISK.exec(body || '')?.[1]; return !r || r === 'R3' || TIER.exec(body)?.[1] === 'T3'; };
-
 // comments: issue comments [{user:{login}, body, created_at, updated_at}] or null when unreadable.
 // Returns {ok: true, via} or {ok: false, why}.
-// body: the PR body (declared tier). R3/T3 or unparsable needs the security marker too.
-export function reviewGate(comments, head, owner, body) {
+// scope: 'lower' only when scripts/governance/pr_requires_security.py cleared the PR; anything else is treated as R3.
+export function reviewGate(comments, head, owner, scope) {
   const g = codexGate(comments, head, owner);
   if (!Array.isArray(comments) || !owner || !SHA40.test(head || '')) return g;
   const lower = owner.toLowerCase();
   const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
   if (mine.some((b) => b.includes(`:v1 sha=${head} verdict=fail -->`) && new RegExp(`<!-- gate:[a-z-]+:v1 sha=${head} verdict=fail -->`).test(b))) return { ok: false, why: `gate verdict=fail on ${head.slice(0, 7)}` };
-  if (!g.ok || !isR3(body)) return g;
+  if (!g.ok || scope === 'lower') return g;
   if (mine.some((b) => b.includes(gateMarker('security-data-reviewer', head)) || b.includes(reviewMarker(head)))) return g;
   return { ok: false, why: `R3 needs a security-data-reviewer marker on ${head.slice(0, 7)}` };
 }
@@ -97,12 +92,21 @@ const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
 const api = (path, ...extra) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, ...extra) || 'null');
 
+// Declared tier (body) and path-derived minimum, via the one Python parser; any failure means R3.
+function prScope(n) {
+  try {
+    const body = api(`pulls/${n}`).body ?? '';
+    const files = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/files?per_page=100`, '--paginate', '--slurp')).flat();
+    return execFileSync('python3', [new URL('../../scripts/governance/pr_requires_security.py', import.meta.url).pathname], { input: JSON.stringify({ body, files }), encoding: 'utf8' }).trim();
+  } catch { return 'r3'; }
+}
+
 // Reads the PR's comments and evaluates the head; any read failure is unknown (never passes).
 export function readReview(n, head) {
   try {
-    const body = api(`pulls/${n}`).body ?? '';
+    const scope = prScope(n);
     const comments = JSON.parse(gh('api', `/repos/${REPO}/issues/${n}/comments?per_page=100`, '--paginate', '--slurp')).flat();
-    return reviewGate(comments, head, REPO.split('/')[0], body);
+    return reviewGate(comments, head, REPO.split('/')[0], scope);
   } catch (e) { return { ok: false, why: `PR comments unreadable (${e.message.split('\n')[0]})` }; }
 }
 

@@ -268,7 +268,7 @@ const OWNER = 'jerry200176-png';
 const codex = (cr, o = {}) => ({ user: { login: CODEX_LOGIN }, updated_at: '2026-10-21T05:00:00Z', body: `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: cr, security_review: { commit_sha: null, status: null } })} -->\n## Codex Review Summary`, ...o });
 const clean = (sha = H, o = {}) => ({ commit_sha: sha, has_any_findings: false, has_unresolved_findings: false, status: 'completed', ...o });
 const fallback = (sha, login = OWNER) => ({ user: { login }, body: `independent /code-review: no findings\n${reviewMarker(sha)}` });
-const gateOf = (comments, body = 'Risk-Class: R1') => reviewGate(comments, H, OWNER, body);
+const gateOf = (comments, scope = 'lower') => reviewGate(comments, H, OWNER, scope);
 const decideWith = (comments) => decide(pr({ sha: H, review: gateOf(comments) }), req);
 
 test('review gate: green + 0 threads + Codex running -> wait review-pending', () => {
@@ -525,7 +525,7 @@ test('canonical merge policy and SOP describe the same final-head review gate', 
 
 test('review gate: R3 needs an owner security marker on the exact head; fail marker vetoes; unknown tier is R3', () => {
   const owner = (b) => ({ user: { login: OWNER }, body: b });
-  const R3 = 'Risk-Class: R3\nAutonomy-Tier: T3';
+  const R3 = 'r3';
   const sec = (sha, v = 'pass') => owner(gateMarker('security-data-reviewer', sha, v));
   assert.equal(gateOf([codex(clean())], R3).ok, false);
   assert.match(gateOf([codex(clean())], R3).why, /security-data-reviewer/);
@@ -536,6 +536,13 @@ test('review gate: R3 needs an owner security marker on the exact head; fail mar
   assert.equal(gateOf([codex(clean()), owner(gateMarker('qa-lead', H, 'fail'))]).ok, false); // any role, any lane
   assert.equal(gateOf([codex(clean()), { user: { login: 'someone' }, body: gateMarker('qa-lead', H, 'fail') }]).ok, true); // non-owner ignored
   assert.equal(gateOf([codex(clean()), sec(H)], R3).via, 'codex');
-  assert.equal(gateOf([codex(clean())], 'Risk-Class: R1').ok, true);
-  for (const b of ['', null, 'no declaration', 'Risk-Class: R9', 'Risk-Class: R1\nAutonomy-Tier: T3']) assert.equal(gateOf([codex(clean())], b).ok, false);
+  assert.equal(gateOf([codex(clean())], 'lower').ok, true);
+  for (const b of ['', null, 'r3', 'Risk-Class: R1']) assert.equal(gateOf([codex(clean())], b).ok, false); // only 'lower' passes
+});
+
+test('guardedSquash re-reads the review (PR body/tier included) at merge time and holds a held head', () => {
+  let reads = 0;
+  const did = guardedSquash(7, 'abc', () => 0, () => { reads++; return { ok: false, why: 'R3 needs a security-data-reviewer marker on abc' }; }, () => assert.fail('squashed'), () => {});
+  assert.equal(did, false);
+  assert.equal(reads, 1);
 });
