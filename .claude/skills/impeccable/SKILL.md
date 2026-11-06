@@ -92,6 +92,6 @@ After init writes PRODUCT.md, resume without rerunning `impeccable context`; ini
 - **Stack:** Vue 3 + shadcn-vue (`tw:` prefix) + Tailwind v4 tokens in `frontend/src/styles.css` / `ui.css`. Never React-only advice or a new colour system.
 - **Brand and type:** ink black #0B0B0C, gold #F7D917 / #F2C40F, amber #E9A51A, red only for danger. Minimum 16px body text, larger on director and parent home; touch targets >=44px.
 - **Rules:** single source is `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md`; progress tracker is #4989. Motion: see the Motion layer section there.
-- **Constraints:** no logic, money or permission change in a visual PR; <=700 logic lines.
+- **Constraints:** no logic, money or permission change in a visual PR; PR size limit per `docs/governance/FOUNDER_STANDING_DECISIONS.md`.
 - **Stripped for safety:** the `scripts/` engine (its launcher downloads a binary from GitHub at runtime) and the live-browser references (`live`, `generate`, `hooks`, `doctor`) are not vendored. Use the "Launcher unavailable" path: read PRODUCT.md / DESIGN.md directly, skip any `scripts/impeccable ...` step, and do critique/audit by reading code and screenshots.
 - **No specialist agents:** `impeccable-finish-reviewer` and `impeccable-documenter` are not vendored. In this repo, do the finish review and the documentation inline; this overrides upstream's "inline fallback not allowed". The per-page design QA step in the sequencing doc is the finish review.
