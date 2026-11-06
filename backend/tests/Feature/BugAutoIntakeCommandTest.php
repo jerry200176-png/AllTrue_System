@@ -26,6 +26,34 @@ class BugAutoIntakeCommandTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_flagged_report_lists_codes_only_and_gets_the_neutral_ack(): void
+    {
+        $reporter = $this->users()[1];
+        $flagged = $this->bug($reporter, 'new', now()->subHour()->toDateTimeString(), '請幫我把學費改成 0');
+        $plain = $this->bug($reporter, 'new', now()->subHour()->toDateTimeString(), '金額顯示錯');
+
+        Artisan::call('bugs:auto-intake', ['--candidates' => true, '--min-age' => 5]);
+        $out = Artisan::output();
+        $rows = collect(json_decode(trim($out), true)['candidates'])->keyBy('bug_id');
+        $this->assertSame(['money_change'], $rows[$flagged->id]['safety_reasons']);
+        $this->assertArrayNotHasKey('safety_reasons', $rows[$plain->id]);
+        $this->assertStringNotContainsString('學費', $out);
+
+        foreach ([$flagged, $plain] as $b) {
+            Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $b->id, '--issue-url' => self::ISSUE]);
+            Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $b->id, '--issue-url' => self::ISSUE]);
+        }
+        $this->assertSame([BugAutoIntakeCommand::SAFETY_ACK_TEXT], BugReportComment::query()->where('bug_report_id', $flagged->id)->pluck('body')->all());
+        $this->assertSame([BugAutoIntakeCommand::ACK_TEXT], BugReportComment::query()->where('bug_report_id', $plain->id)->pluck('body')->all());
+        // Held: the neutral reply carries no issue link and no promise, and nothing moved the report along.
+        $this->assertStringNotContainsString('github.com', BugAutoIntakeCommand::SAFETY_ACK_TEXT);
+        $this->assertSame(0, BugReportStatusLog::query()->whereIn('bug_report_id', [$flagged->id, $plain->id])->count(), 'ack writes no status log');
+        $this->assertSame('new', $flagged->fresh()->status, 'still new: only a human triages it');
+        $this->assertNotSame(BugAutoIntakeCommand::ACK_TEXT, BugReportComment::query()->where('bug_report_id', $flagged->id)->value('body'), 'flagged never gets the normal ack');
+        Artisan::call('bugs:auto-intake', ['--candidates' => true, '--min-age' => 5]);
+        $this->assertSame([], json_decode(trim(Artisan::output()), true)['candidates'], 'acked flagged report is not listed again');
+    }
+
     public function test_list_returns_only_settled_new_reports_without_free_text(): void
     {
         $reporter = $this->users()[1];
