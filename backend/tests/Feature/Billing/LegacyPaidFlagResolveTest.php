@@ -80,6 +80,24 @@ class LegacyPaidFlagResolveTest extends TestCase
         $this->clear($token, $this->legacyCourse(1, ['ClassType' => 'trial']))->assertStatus(422)->assertJsonPath('code', 'legacy_flag_trial_fee'); // #4339 trial fee by date
     }
 
+    /** in-app #511: the guidance for a NT$0 legacy-paid course ("nothing to back-fill; set the fee first") against the real refusals. */
+    public function test_zero_fee_legacy_paid_course_only_resolves_by_setting_the_fee(): void
+    {
+        $token = $this->token('A', [1]);
+        $course = $this->legacyCourse(1, ['Charge' => 0, 'Rate' => 0]);
+        // Every other step the 補登 form could suggest is refused by the server, with no write.
+        $this->backfill($token, $course)->assertStatus(422)->assertJsonPath('code', 'zero_fee_no_payment_obligation'); // already settled at NT\$0
+        $this->backfill($token, $course, ['amount' => 0])->assertStatus(422);
+        $this->clear($token, $course)->assertStatus(422)->assertJsonPath('code', 'zero_fee_no_payment_obligation');
+        $this->withHeaders($this->auth($token))->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID, 'payment_date' => '2026-10-01', 'payment_method' => 'cash', 'amount' => 0, 'free_gift' => true,
+        ])->assertStatus(422)->assertJsonPath('code', 'free_gift_course_has_fee');
+        $this->assertSame([0, 0, 1], [PaymentReport::count(), Payment::count(), (int) $course->fresh()->Paid]);
+        // The one path the form points to: set the fee in 課程管理, then 補登 works.
+        $course->update(['Charge' => 8800]);
+        $this->backfill($token, $course->fresh())->assertOk()->assertJsonPath('status', 'confirmed');
+    }
+
     public function test_backfill_pays_the_bill_the_director_chose_and_refuses_a_stale_or_foreign_one(): void // #4367
     {
         $token = $this->token('A', [1]);
