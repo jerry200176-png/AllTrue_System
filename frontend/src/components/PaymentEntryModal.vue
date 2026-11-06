@@ -100,6 +100,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, reactive, watch, computed, h } from 'vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { backfillLegacyPayment, recordPayment } from '../lib/paymentActions.js';
@@ -141,7 +142,7 @@ const emit = defineEmits(['close', 'confirmed', 'pending', 'conflict']);
 // Esc, backdrop, ×, 取消 and the page leaving all go through here: a save in flight is never abandoned (its result must reach the list).
 function requestClose() { if (!submitting.value) emit('close'); }
 
-const today = computed(() => new Date().toISOString().slice(0, 10));
+const today = computed(() => ymdInTaipei());
 
 const form = reactive({
   payment_date: '',

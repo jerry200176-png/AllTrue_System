@@ -16,6 +16,7 @@ function dateFrom(value) {
 }
 
 function formatDate(date) {
+  // eslint-disable-next-line no-restricted-syntax -- date is built with Date.UTC from a YMD string; formats a UTC calendar date
   return date.toISOString().slice(0, 10);
 }
 

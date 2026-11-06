@@ -1,3 +1,4 @@
+import { ymdInTaipei } from './sessionDates.js';
 import { isLegacyPaidFlagOnly } from './courseMoneyState.js';
 import { formatNewerCourseOverlapWarning } from './studentClassDisplay.js';
 
@@ -11,7 +12,7 @@ const OWING = new Set(['unpaid', 'partial', 'pending_reconciliation', 'monthly_d
 const PAID = new Set(['paid', 'renew_needed', 'monthly_due_soon']);
 
 const dayStart = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`);
-const todayYmd = () => new Date().toISOString().slice(0, 10);
+const todayYmd = () => ymdInTaipei();
 
 /** D8: a future due date is 'owed later'; no due date or due by today counts now. One rule for list and panel. */
 export const isDueLater = (dueDate, today = todayYmd()) => Boolean(dueDate) && dayStart(dueDate) > dayStart(today);
@@ -62,7 +63,7 @@ export const formatCoursePeriod = (start, end) => (start || end ? `${start ? Str
  * @param {Array} students  [{ id, name }] of the campus (may be empty)
  * @param {string} today    YYYY-MM-DD
  */
-export function buildStudentBillingRows(alertRows, students = [], today = new Date().toISOString().slice(0, 10)) {
+export function buildStudentBillingRows(alertRows, students = [], today = ymdInTaipei()) {
   const byStudent = new Map();
   const ensure = (id, name) => {
     if (!byStudent.has(id)) {
