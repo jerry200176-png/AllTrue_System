@@ -8,9 +8,20 @@
  * Used by SmartCalendar to reliably show only the N purchased sessions.
  */
 
+/** "Today" (or any instant) as YYYY-MM-DD in Taipei. Never use toISOString().slice(0, 10): that is the UTC day. */
+export function ymdInTaipei(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(date);
+}
+
+/** Last `days` Taipei days ending today, inclusive: { start, end } as YYYY-MM-DD. */
+export function recentDaysRangeTaipei(days, now = new Date()) {
+  return { start: ymdInTaipei(new Date(now.getTime() - (days - 1) * 86400000)), end: ymdInTaipei(now) };
+}
+
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
+  // eslint-disable-next-line no-restricted-syntax -- noon-anchored calendar-day arithmetic on a given date string, not "now"
   return d.toISOString().slice(0, 10);
 }
 
@@ -22,15 +33,15 @@ function dayOfWeek(dateStr) {
 }
 
 function getNextWeekdayYmd(targetDow, fromDateStr) {
-  const from = fromDateStr
-    ? new Date(fromDateStr + 'T12:00:00')
-    : new Date();
+  const from = new Date((fromDateStr || ymdInTaipei()) + 'T12:00:00');
   let d = new Date(from);
   for (let i = 0; i < 14; i++) {
     const dow = d.getDay() === 0 ? 7 : d.getDay();
+    // eslint-disable-next-line no-restricted-syntax -- noon-anchored calendar-day arithmetic on a given date string, not "now"
     if (dow === targetDow) return d.toISOString().slice(0, 10);
     d.setDate(d.getDate() + 1);
   }
+  // eslint-disable-next-line no-restricted-syntax -- noon-anchored calendar-day arithmetic on a given date string, not "now"
   return from.toISOString().slice(0, 10);
 }
 

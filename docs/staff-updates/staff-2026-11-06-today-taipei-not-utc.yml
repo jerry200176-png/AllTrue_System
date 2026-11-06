@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-today-taipei-not-utc
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 早上八點前的預設日期不再是昨天
+    summary: 早上八點前開收款、請假、調課，預設日期不再是昨天。
+    items:
+      - category: fixed
+        text: 台北早上八點前登記收款、請假、調課、代課時，日期預設改成當天，不會再跳成前一天。
+    source_refs:
+      - "changelog:2026-11-06:today-taipei-not-utc"
