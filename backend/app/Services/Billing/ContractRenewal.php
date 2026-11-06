@@ -377,6 +377,9 @@ final class ContractRenewal
             'billing' => $stateBilling,
             'schedule' => $schedule,
             'blockers' => $blockers,
+            // An adoption changes the old invoice, so a lesson newly attended after the preview must force a fresh preview.
+            'adoption' => ($adopt = collect($warnings)->firstWhere('code', 'adopt_outside_lesson'))
+                ? ['session_ids' => $adopt['adopted_session_ids'], 'source_new_charge' => $adopt['source_new_charge']] : null,
         ];
         $stateJson = json_encode($stateSource, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $stateHash = hash('sha256', $stateJson ?: '');

@@ -90,6 +90,17 @@ class MonthlyRenewAdoptTest extends TestCase
         $this->assertDatabaseHas('security_audit_events', ['event_type' => 'billing.monthly_renewal_adopt']);
     }
 
+    public function test_lesson_attended_after_preview_changes_the_preview_hash(): void
+    {
+        [$sc, , $session] = $this->fixture();
+        $session->update(['Status' => 'scheduled']);
+        $hash = fn () => $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$sc->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertOk()->json('state_hash');
+        $before = $hash();
+        $session->update(['Status' => 'attended']);
+        $this->assertNotSame($before, $hash(), 'adopting the lesson reduces the old invoice, so the confirmed preview must not still match');
+    }
+
     public function test_still_blocked_when_source_cannot_give_the_lesson_away(): void
     {
         [$sc, $invoice] = $this->fixture();
