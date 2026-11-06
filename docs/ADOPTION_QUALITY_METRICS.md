@@ -61,7 +61,7 @@ view:
 | `open_backlog.by_status` | Current actionable queue counts by open status |
 | `open_backlog.oldest_age_hours` | Oldest age per open status; `new` uses report time, while `triaged`/`in_progress` use the first `to_status=triaged` log |
 | `open_backlog.missing_triaged_at` | Rows whose triage history is missing; these are not assigned a guessed age |
-| `triage_sla.targets_hours` | P0 = 4h, P1 = 24h, P2 = 168h; `critical`/`high`/`medium` map to P0/P1/P2 and `low` is P3 without a target |
+| `triage_sla.targets_hours` | Per-priority triage targets in hours, as defined in [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) (nine stages, stage 2 SLA); `critical`/`high`/`medium` map to P0/P1/P2 and `low` is P3 without a target |
 | `triage_sla.open_breaches` | Open `new` rows whose report-to-triage clock exceeds the applicable target |
 
 This is a read-only current snapshot, not a status transition or automatic

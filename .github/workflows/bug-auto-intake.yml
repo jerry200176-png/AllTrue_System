@@ -5,6 +5,8 @@ name: Bug auto-intake (hourly)
 # for a human dispatch. Idempotent: an existing issue (matched by SourceRef) is
 # reused, and `bugs:auto-intake --ack` skips any report that is no longer `new`.
 # Each issue also gets an area:<family> label and an advisory cross-link (config/bug_families.php).
+# L4 safety screen (#4957): the backend flags sensitive or AI-directed report text (codes only, BugSafetyScreen). A flagged
+# issue gets the `safety:review` label and no family clustering; --ack answers it with the neutral reply. Nothing auto-acts on it.
 # Logs carry IDs only (public repo); report text never leaves production.
 on:
   schedule:
@@ -71,7 +73,7 @@ jobs:
           json="$(printf '%s\n' "$raw" | grep -m1 '^{"candidates"' || true)"
           [ -n "$json" ] || { echo "::error::bugs:auto-intake --candidates returned no JSON (command not deployed yet?)"; exit 1; }
           # Keep only the whitelisted ID fields before anything is printed or passed on.
-          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";"")), family: ((.family // "")|tostring|ascii_downcase|gsub("[^a-z-]";""))}]')"
+          json="$(printf '%s' "$json" | jq -c '[.candidates[] | {bug_id: (.bug_id|tonumber), campus_id: (.campus_id|tonumber), severity: (.severity|tostring|ascii_downcase|gsub("[^a-z]";"")), family: ((.family // "")|tostring|ascii_downcase|gsub("[^a-z-]";"")), safety: [(.safety_reasons // [])[] | tostring | ascii_downcase | gsub("[^a-z_]";"")]}]')"
           echo "json=$json" >> "$GITHUB_OUTPUT"
           echo "count=$(printf '%s' "$json" | jq 'length')" >> "$GITHUB_OUTPUT"
           echo "candidates: $(printf '%s' "$json" | jq -c '[.[].bug_id]')"
@@ -193,9 +195,11 @@ jobs:
             fi
             if [ -z "$url" ]; then
               if [ "$DRY_RUN" = "true" ]; then echo "would create issue for in-app #$id"; continue; fi
-              body="$(printf '%s\n\n%s\n%s\n%s\n\n%s' "$ref" \
+              safety_line=""
+              [ "$(jq '(.safety // []) | length' <<<"$row")" = 0 ] || safety_line="- Safety screen: HELD for human review (codes: $(jq -r '(.safety // []) | join(", ")' <<<"$row")). No automatic action."
+              body="$(printf '%s\n\n%s\n%s\n%s\n%s\n\n%s' "$ref" \
                 "- In-app ID: ${id}" "- Campus ID: $(jq -r '.campus_id' <<<"$row") (opaque) · severity $(jq -r '.severity' <<<"$row")" \
-                "- Opened by bug-auto-intake.yml. The ack job then posts the reporter acknowledgement (status stays new until Phase-A triages it)." \
+                "- Opened by bug-auto-intake.yml. The ack job then posts the reporter acknowledgement (status stays new until Phase-A triages it)." "$safety_line" \
                 "Auto-intake only: no root cause yet. Report text stays in production (read it via bug-detail-dump). Next: investigate, fix the cause, reply in plain language (see docs/CHAT_BUG_SYSTEM.md §3.6–3.7).")"
               url="$(gh issue create --title "[in-app #${id}][auto-intake] report" --body "$body")"
               [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "bad issue url"; exit 1; }
@@ -216,6 +220,15 @@ jobs:
             fi
             [[ "$url" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "bad issue url"; exit 1; }
             fam="$(jq -r '.family // ""' <<<"$row")"
+            if [ "$(jq '(.safety // []) | length' <<<"$row")" != 0 ]; then
+              # Fail closed: without the label the run stops and the report is retried (no ack goes out).
+              if [ "$DRY_RUN" != "true" ]; then
+                gh label list --limit 200 --json name -q '.[].name' | grep -qxF "safety:review" \
+                  || gh label create "safety:review" --description "In-app report held for human review (safety screen)" --color B60205
+                gh issue edit "$url" --add-label "safety:review"
+              fi
+              fam=""
+            fi
             if [ "$DRY_RUN" != "true" ] && [[ "$fam" =~ ^[a-z]+(-[a-z]+)*$ ]]; then
               cluster "$id" "$fam" "$url" || echo "::warning::family clustering failed for in-app #$id (advisory, intake continues)"
             fi

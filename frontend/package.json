@@ -57,6 +57,8 @@
     "test:unit:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui-foundation": "playwright test -c playwright.ui-foundation.config.js",
+    "test:visual": "bash ../scripts/visual-docker.sh",
+    "test:visual:update": "bash ../scripts/visual-docker.sh --update-snapshots",
     "test:safe-http-href": "node src/lib/safeHttpHref.test.js",
     "test:release-notes": "node ../scripts/lib/userFacingCopyGate.test.mjs && node src/lib/releaseNotes.test.js",
     "test:release-notes-coverage": "node ../scripts/check-release-notes-coverage.mjs --self-test && node ../scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD",

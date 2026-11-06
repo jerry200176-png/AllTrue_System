@@ -7,6 +7,7 @@ use App\Models\BugReportComment;
 use App\Models\User;
 use App\Services\BugFamily;
 use App\Services\BugReportService;
+use App\Services\BugSafetyScreen;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -20,6 +21,9 @@ use Illuminate\Support\Facades\DB;
 class BugAutoIntakeCommand extends Command
 {
     public const ACK_TEXT = '收到，我們正在查，查到原因會再回覆你。';
+
+    /** Flagged by BugSafetyScreen (#4957): promises nothing, says a person will confirm. */
+    public const SAFETY_ACK_TEXT = '收到，這個需求需要負責人確認後才會處理，我們會再回覆你。';
 
     public const REOPEN_WINDOW_DAYS = 14;
 
@@ -54,7 +58,7 @@ class BugAutoIntakeCommand extends Command
         $cutoff = now()->subMinutes(max(0, (int) $this->option('min-age')));
         $rows = BugReport::query()->where('status', 'new')->where('created_at', '<=', $cutoff)
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('bug_report_comments as c')
-                ->whereColumn('c.bug_report_id', 'bug_reports.id')->where('c.body', self::ACK_TEXT)
+                ->whereColumn('c.bug_report_id', 'bug_reports.id')->whereIn('c.body', [self::ACK_TEXT, self::SAFETY_ACK_TEXT])
                 ->where('c.author_user_id', $actor))
             ->orderBy('id')->limit($limit)
             ->get(['id', 'CampusID', 'severity', 'created_at', 'page_key', 'title', 'description'])
@@ -65,7 +69,7 @@ class BugAutoIntakeCommand extends Command
                 'created_at' => optional($b->created_at)->toIso8601String(),
                 // Family name only (config/bug_families.php); the text it was derived from never leaves production.
                 'family' => BugFamily::classify($b->page_key, $b->title . ' ' . $b->description),
-            ])->values()->all();
+            ] + self::safetyField($b))->values()->all();
         $latest = DB::table('bug_report_status_logs')->selectRaw('MAX(id) AS id')->groupBy('bug_report_id');
         $reopened = DB::table('bug_report_status_logs as l')->joinSub($latest, 'm', 'm.id', '=', 'l.id')
             ->join('bug_reports as b', 'b.id', '=', 'l.bug_report_id')
@@ -110,17 +114,33 @@ class BugAutoIntakeCommand extends Command
                 return ['bug_id' => $bugId, 'skipped' => 'status_' . $status];
             }
             // Only the automation's own ack counts (a reporter quoting the text must not suppress intake).
-            if (BugReportComment::query()->where('bug_report_id', $bugId)->where('body', self::ACK_TEXT)
+            if (BugReportComment::query()->where('bug_report_id', $bugId)->whereIn('body', [self::ACK_TEXT, self::SAFETY_ACK_TEXT])
                 ->where('author_user_id', $actor)->exists()) {
                 return ['bug_id' => $bugId, 'ack' => 'skipped', 'issue' => $issueUrl];
             }
-            BugReportService::addComment($bugId, $actor, self::ACK_TEXT, false);
+            // Recomputed here, not trusted from the workflow: a flagged report only ever gets the neutral reply.
+            $text = self::safety($locked)['flagged'] ? self::SAFETY_ACK_TEXT : self::ACK_TEXT;
+            BugReportService::addComment($bugId, $actor, $text, false);
             return ['bug_id' => $bugId, 'status' => $status, 'ack' => 'posted', 'issue' => $issueUrl];
         });
         $this->line(json_encode($result));
         return self::SUCCESS;
     }
 
+
+    /** @return array{flagged: bool, reasons: list<string>} */
+    private static function safety(BugReport $b): array
+    {
+        return BugSafetyScreen::screen($b->title, $b->description);
+    }
+
+    /** Codes only, and only when flagged, so unflagged output keeps its shape. */
+    private static function safetyField(BugReport $b): array
+    {
+        $s = self::safety($b);
+
+        return $s['flagged'] ? ['safety_reasons' => $s['reasons']] : [];
+    }
 
     /** The automation sender: the first super admin (type S). Also the ack marker's author. */
     private static function actorId(): int

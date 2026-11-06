@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-restore-cancelled-lesson
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理可直接復原已取消的課
+    summary: 在課程管理點已取消的課，即可檢查並復原。
+    items:
+      - category: improved
+        text: 在課程管理點「已取消」的課，系統先檢查能否安全復原，填原因後確認即可。不能復原會顯示原因。
+    source_refs:
+      - "changelog:2026-11-06:course-mgmt-restore-cancelled"

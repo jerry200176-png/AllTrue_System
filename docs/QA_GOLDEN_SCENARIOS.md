@@ -60,6 +60,13 @@
 
 ---
 
+## Visual regression（#4952）
+
+`npm run test:visual`（frontend/）在官方 Playwright Docker image 內對 8 個主要頁面（主任首頁、老師首頁、行事曆、點名、學習紀錄、學生、課程管理、帳務中心）× 1280／375 寬截圖，與 `frontend/e2e/__screenshots__/` 比對（fixtures 假資料、凍結時間、遮罩時鐘／頭像、`maxDiffPixelRatio` 1%）。CI job `Visual regression (advisory)` 為非必要檢查，失敗時下載 `visual-regression-diffs` artifact。
+
+- 基線**只在**刻意改 UI 時更新：`npm run test:visual:update`（必須用 Docker，勿用本機 Chromium），把新 PNG 一起 commit。
+- 未動到的頁面基線不得變；reviewer 必須實際看 PNG diff 確認是預期改動，不可只因 CI 綠就核准。
+
 ## 擴充方式
 
 1. 新坑寫入 `AI_REGRESSION_LESSONS.md`。  
