@@ -684,7 +684,7 @@ const evalSpark = computed(() => sevenDayEvalCounts(pendingEvaluations.value, lo
 const kpiCards = computed(() => [
   {
     key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', grad: 'tpl-g-red', icon: Wallet,
-    sub: owed.value.waiting ? `${owed.value.overdue} 筆已過期、${owed.value.waiting} 筆待確認` : `${owed.value.overdue} 筆已過期`,
+    sub: owed.value.waiting ? `${owed.value.unpaid} 筆未繳、${owed.value.waiting} 筆待確認` : `${owed.value.unpaid} 筆未繳`,
     definition: '未繳、月結逾期，以及家長已回報待確認入帳的筆數。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: owed.value.intent }),
   },
@@ -1228,6 +1228,7 @@ const loadData = async ({ quiet = false } = {}) => {
           payment_status: c.payment_status || null,
           amount_pending_confirmation: c.amount_pending_confirmation === true,
           days_until_settlement: c.days_until_settlement ?? null,
+          renewed_by_newer_course: c.renewed_by_newer_course === true,
           due_date: c.due_date ?? null,
           settlement_day: c.settlement_day ?? null,
           schedule_mode: c.schedule_mode ?? 'count',

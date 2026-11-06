@@ -13,9 +13,12 @@ const alerts = [
 
 describe('directorHomeCards', () => {
   it('owed uses payment_status: unpaid monthly is owed, paid renewals are not', () => {
-    expect(owedCard(alerts)).toEqual({ overdue: 3, waiting: 2, total: 5, intent: 'unpaid' });
+    expect(owedCard(alerts)).toEqual({ unpaid: 3, waiting: 2, total: 5, intent: 'unpaid' });
     expect(renewalCount(alerts)).toBe(2);
     expect(owedCard([])).toMatchObject({ total: 0 });
+  });
+  it('a contract already renewed by a newer course is not counted as 快上完', () => {
+    expect(renewalCount([...alerts, { alert_type: 'low_sessions', payment_status: 'paid', renewed_by_newer_course: true }])).toBe(2);
   });
   it('routes to the filter of the biggest group, amount_review stays distinct', () => {
     expect(owedCard([{ alert_type: 'unpaid', payment_status: 'amount_review' }]).intent).toBe('amount_review');

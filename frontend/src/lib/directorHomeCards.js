@@ -3,7 +3,9 @@
 // an unpaid/partial monthly invoice is owed money, not a renewal.
 const OWED = new Set(['unpaid', 'partial', 'pending_report', 'amount_review', 'pending_reconciliation']);
 const isOwed = (s) => (s?.payment_status ? OWED.has(s.payment_status) : s?.alert_type === 'unpaid');
-const isRenewal = (s) => !isOwed(s) && (s?.alert_type === 'low_sessions' || s?.alert_type === 'monthly_due_soon');
+// A contract already renewed by a newer purchased course is not a renewal to chase (same rule as billRows.js).
+const isRenewal = (s) => !isOwed(s) && s?.renewed_by_newer_course !== true
+  && (s?.alert_type === 'low_sessions' || s?.alert_type === 'monthly_due_soon');
 
 // Owed today from /alerts/tuition rows. `intent` = the 帳務中心 filter of the biggest group
 // (unpaid -> todo, pending_report -> confirm, amount_review -> review: LIST_FILTER_FOR_TAB).
@@ -11,9 +13,10 @@ export function owedCard(alerts = []) {
   const owed = alerts.filter(isOwed);
   const confirm = owed.filter((s) => s.payment_status === 'pending_report').length;
   const review = owed.filter((s) => s.payment_status === 'amount_review').length;
-  const overdue = owed.length - confirm - review;
-  const intent = [['unpaid', overdue], ['pending_report', confirm], ['amount_review', review]].sort((a, b) => b[1] - a[1])[0][0];
-  return { overdue, waiting: confirm + review, total: owed.length, intent };
+  // Unpaid, not "overdue": a monthly invoice due in the next few days is unpaid but not yet late.
+  const unpaid = owed.length - confirm - review;
+  const intent = [['unpaid', unpaid], ['pending_report', confirm], ['amount_review', review]].sort((a, b) => b[1] - a[1])[0][0];
+  return { unpaid, waiting: confirm + review, total: owed.length, intent };
 }
 
 export const renewalCount = (alerts = []) => alerts.filter(isRenewal).length;
