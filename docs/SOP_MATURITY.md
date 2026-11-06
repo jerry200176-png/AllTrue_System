@@ -6,6 +6,7 @@
 
 > 目的：讓任何 AI（Claude Code / Cursor）能快速了解我們的工程 SOP 對標大廠到哪、還缺什麼，並在 usage 上限或換手時無縫接續。
 > 本文件被 `CLAUDE.md` 的「On-demand 快查」引用，交接前請先讀 `docs/RUNBOOK_HANDOFF.md`。
+> 現行的端到端交付流程（九個階段、車道、守門人、閉環）只在 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)；本檔只放大廠對標 roadmap。
 
 ---
 

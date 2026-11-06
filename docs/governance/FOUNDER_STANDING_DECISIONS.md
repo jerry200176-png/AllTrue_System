@@ -67,7 +67,7 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 使用者在本次交接明確批准：只將 **同一把既有 `DUMP_ARTIFACT_KEY`** 由自己的 Personal vault，以 **direct environment-variable** 類型綁定至 **AllTrue_System 專用受控雲端環境**，用於既有授權範圍的唯讀 artifact 解密。這是下方 2026-10-14（三）第 2 條低風險 token 限制的**具名例外**，不放寬其他正式密碼、token 或專案的限制；`ALLTRUE_TRIAGE_TOKEN` 的唯讀路徑及 proxy 注入條件仍不變。
 
 - 直接變數的金鑰 bytes 會對該受控環境中的程序可讀；這是本次接受的保管邊界，**不是**不可讀的網路代理 secret。不得印出、列舉環境、放入 argv、log、chat、GitHub 或交給不受信任的 PR 程序。
-- 實際 destination identity、`observations_current` 與該 secret binding 狀態須核對；僅 `ready` 才能宣稱 readiness。scope 經 metadata／既有 marker 確認後，可在 telemetry 為 unknown 時做不輸出金鑰的受限解密診斷，實際結果與 telemetry 分開記錄；未知不得當成功或推定變數不存在。遵循 [Cloud decryption custody](../sop/BUG_INTAKE_TO_PRODUCTION.md#cloud-decryption-custody) 的完整性、私密目錄、安全 tar、scope／schema／freshness 及全新 session 驗收。
+- 實際 destination identity、`observations_current` 與該 secret binding 狀態須核對；僅 `ready` 才能宣稱 readiness。scope 經 metadata／既有 marker 確認後，可在 telemetry 為 unknown 時做不輸出金鑰的受限解密診斷，實際結果與 telemetry 分開記錄；未知不得當成功或推定變數不存在。遵循 [Cloud decryption custody](../sop/DELIVERY_LIFECYCLE.md#cloud-decryption-custody) 的完整性、私密目錄、安全 tar、scope／schema／freshness 及全新 session 驗收。
 - 本機原始金鑰維持 mode 600，直到成功驗證及保有受控 recovery copy 才能退役；不輪替 producer 金鑰，不從 GitHub 匯出 secret。驗收只公開 PASS／FAIL，私有案件與 artifact 參照不公開。
 - 同時批准在 #4277 修正這項窄範圍 custody 及所有仍生效的衝突指示，通過 exact-head CI、獨立審查與既有正常 queue 後合併；不再重問相同遷移方向。這不授權部署、schema、啟用功能、正式財務寫入、POP approval 或 in-app resolved／reporter-verify。
 
@@ -201,7 +201,7 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 1. **T0–T2**：Agent 依既有政策（`RISK_BASED_MERGE_POLICY.md`、本檔 2026-10-12 各條）自主開發、審查、合併與交付，不逐項請示。範圍不明或超出本檔授權時仍須提出。
 2. **預先批准的正式寫入（allowlist，只授權不放寬）**：只限下列 in-app 回報狀態與公開回覆，且各項須其執行路徑已依第 3 條合併後才生效：
    - (a) Phase A：in-app 回報 `new`→`triaged`＋符合 `CHAT_BUG_SYSTEM.md` §3.8 的公開回覆（必含 GitHub issue URL）。
-   - (b) Phase C：**確實已修復且部署驗證通過**（版本＋health＋受影響路徑 smoke，見 `docs/sop/BUG_INTAKE_TO_PRODUCTION.md` Deployment evidence gate）的回報 → `resolved`＋公開回覆。
+   - (b) Phase C：**確實已修復且部署驗證通過**（版本＋health＋受影響路徑 smoke，見 `docs/sop/DELIVERY_LIFECYCLE.md` Deployment evidence gate）的回報 → `resolved`＋公開回覆。
    - (c) 14 天逾時結案：只限符合既有等待確認規則的回報，**等待天數固定為 14 天**（`--auto`／`AUTO_DAYS = 14`），不得使用手動路徑的 7 天預設或任何少於 14 天的值；**仍有問題的案件不得關閉**。
    其他一律不在此列：資料修復、migration、credential、新增資料存取、權限／安全邊界變更，仍逐案問 Founder。
 3. **#3943／#3955 執行路徑**：必須改走既定的正式授權執行器（ADR-POP-008：Pi 本機 `pop:execute-approved`），**不得保留 GitHub runner → SSH 的寫入例外**。依 `docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md`，#3943／#3955 本身關閉不合併，可重用部分移植到 ADR-POP-015 的後繼實作 PR；本條的自行合併授權適用於這些後繼實作 PR（`RISK_BASED_MERGE_POLICY.md` §Founder standing exception 的第二條預先批准路徑）。後繼實作 PR 須為每條受影響的權限／寫入路徑（含跨校區與空 scope 必須 fail closed）新增或更新聚焦回歸測試並在 exact head CI 執行，且完成獨立審查、最新 head CI 全綠、無未處理 P0／P1、**本 PR 引入的回歸不論嚴重度一律修正**、所有 review thread 皆回覆並 resolve（即 2026-10-12 第 4 條完整 review 規則）後，Agent 可自行合併，不必再取得同一個 GO。

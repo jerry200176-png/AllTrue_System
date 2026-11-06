@@ -4,7 +4,7 @@ This is the read-only inventory for [#894](https://github.com/jerry200176-png/Al
 
 ## Scope and meaning
 
-- The inventory covers every committed `docs/**/*.md` file that currently declares `review_cycle` metadata (23 records, including lifecycle-managed plans and RFCs).
+- The inventory covers every committed `docs/**/*.md` file that currently declares `review_cycle` metadata (24 records, including lifecycle-managed plans and RFCs).
 - `next_review` is calculated from the declared cycle. `null` means the document is reviewed on demand or at the next Founder review, not that it is exempt.
 - `last_drill_evidence_link: null` is an explicit evidence gap; it does not claim that a drill happened.
 - `review_status` is a triage field as of the inventory date: `current`, `overdue`, or `not_scheduled`. The inventory is a registry, not a decision or execution authority.

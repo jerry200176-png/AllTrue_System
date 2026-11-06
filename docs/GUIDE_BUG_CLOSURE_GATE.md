@@ -1,7 +1,7 @@
 # GUIDE — Bug 關閉閘門（Closure Gate）
 
 > **角色**：Reliability / QA / AI Agent 在宣告 bug「完成」前的強制檢查清單  
-> **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）；各階段 workflow／觸發／cloud 可否自行完成 → [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 對照表  
+> **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）；各階段 workflow／觸發／cloud 可否自行完成 → [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表  
 > **衝突時**：P0 規則（`.cursorrules`）> 本指南 > 一般工程習慣
 
 ---

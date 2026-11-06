@@ -115,25 +115,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 
 ### Workflow Risk Tiers
 
-大廠 workflow 的重點不是所有任務都變重，而是讓風險決定流程重量：
-
-| Tier | 範圍 | 必要流程 |
-|---|---|---|
-| T0 Docs-only | README、FAQ、INDEX、Runbook、規則文件，且不碰 `.github/**` / `scripts/**` | docs batch → `git diff --check` → PR；避免 deployable diff |
-| T1 Low-risk code | 單一 UI 顯示、純 helper、無資料寫入、無權限邊界 | 小 PR → 對應測試/build → REVIEW |
-| T2 Product workflow | 前後端契約、排課、出缺勤、評量、跨分校查詢 | PLAN/ARCH → DEV → TEST → INT → REVIEW |
-| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據。合併條件見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21 第 2(a) 條；正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
-
-**Definition of Ready（進 DEV 前）**
-- 已定義 product intent、architecture boundary、API/DB/data ownership、錯誤處理、多校區隔離。
-- 已判斷 Tier、是否需要 SEC/OPS/DBA、是否能平行。
-- 已列出不可碰的檔案/邏輯與必讀文件。
-
-**Definition of Done（回報完成前）**
-- PR CI 狀態明確；docs-only 要確認未混入 deployable diff。
-- 有使用者可驗收的測試或 smoke test 清單。
-- 新規則、事故、技術債、架構決策已寫回正確文件。
-- 每個 milestone（PR merge、deploy、Founder 決定）後，coordinator 更新 `docs/RUNBOOK_HANDOFF.md`（日期＋SHA、刪除已完成項）；超過 7 天未更新會在 SessionStart 顯示 STALE。
+大廠 workflow 的重點不是所有任務都變重，而是讓風險決定流程重量。各級定義只看 [`docs/governance/RISK_BASED_MERGE_POLICY.md`](docs/governance/RISK_BASED_MERGE_POLICY.md) §Risk classes；各級要走的車道、九個階段、Definition of Ready（階段 4）與 Definition of Done（階段 9）只看 [`docs/sop/DELIVERY_LIFECYCLE.md`](docs/sop/DELIVERY_LIFECYCLE.md)；Founder 何時要決定或按，只看 `FOUNDER_STANDING_DECISIONS.md`（此處都不摘要）。
 
 **Stop-the-line 條件**
 - 發現可能寫 production DB、繞過 auth、暴露 token/PII、直接 push `main`、force push、或在 Pi production 跑測試。
@@ -157,7 +139,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
-- Presubmit size: 700 logic lines (tests, docs, generated and baseline excluded) and 1500 lines in all; split, don't stack.
+- Presubmit size limits: defined only in [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）item 3 (presubmit CHECK 2); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
 - Codex review threads must be replied to and resolved, or they block merge.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
