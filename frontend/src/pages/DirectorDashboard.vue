@@ -777,12 +777,6 @@ const DASHBOARD_SUMMARY_DEFINITIONS = Object.freeze({
   workflowDaily: '今天需要主任處理並完成的營運工作總數，例如請假案件、補課登記。',
 });
 
-const workflowDailySummary = computed(() => ({
-  due_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.due_total || 0),
-  done_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.done_total || 0),
-  breached_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.breached_total || 0),
-}));
-
 const bugSlaSummary = computed(() => adoptionWeeklyMetrics.value?.bug_sla || null);
 
 const oldestBugAgeLabel = computed(() => {
