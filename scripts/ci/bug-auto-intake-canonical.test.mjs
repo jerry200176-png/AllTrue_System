@@ -29,6 +29,8 @@ if (a[0] === 'issue' && a[1] === 'list') {
   const i = issues.find(x=>x.number===n); if (!i) process.exit(1); console.log(JSON.stringify(i));
 } else if (a[0] === 'issue' && a[1] === 'create') {
   fs.writeFileSync(p+'/created','1'); console.log('https://github.com/owner/repo/issues/9000');
+} else if (a[0] === 'label' || (a[0] === 'issue' && a[1] === 'edit')) {
+  if (a[1] === 'list') console.log('');
 } else if (a[0] === 'issue' && ['reopen','close'].includes(a[1])) {
   if (cfg.writeError) process.exit(1);
 } else process.exit(2);
@@ -36,7 +38,7 @@ if (a[0] === 'issue' && a[1] === 'list') {
     writeFileSync(join(dir, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     const result = spawnSync('bash', ['-c', script], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`,
       TEST_DIR: dir, GITHUB_OUTPUT: join(dir, 'output'), GITHUB_REPOSITORY_OWNER: 'owner', GITHUB_REPOSITORY: repo, GH_REPO: repo,
-      CANDIDATES: JSON.stringify([{ bug_id: 416, campus_id: 1, severity: 'medium', family: '' }]), DRY_RUN: opts.dry ? 'true' : 'false' } });
+      CANDIDATES: JSON.stringify([{ bug_id: 416, campus_id: 1, severity: 'medium', family: '', safety: opts.safety || [] }]), DRY_RUN: opts.dry ? 'true' : 'false' } });
     let output = '', calls = [];
     try { output = readFileSync(join(dir, 'output'), 'utf8'); } catch {}
     try { calls = readFileSync(join(dir, 'calls'), 'utf8').trim().split('\n').map(JSON.parse); } catch {}
@@ -49,6 +51,15 @@ let r = run([duplicate, issue(4195)]);
 assert.equal(r.status, 0, r.stderr);
 assert.match(r.output, /issues\/4195/);
 assert.equal(writes(r, 'reopen').length, 0, 'consolidated duplicate stays closed');
+// L4 safety screen (#4957): a flagged report gets the label (created if missing) and the body shows codes only.
+r = run([], { safety: ['money_change'] });
+assert.equal(r.status, 0, r.stderr);
+assert.ok(r.calls.some((a) => a[0] === 'label' && a[1] === 'create' && a[2] === 'safety:review'), 'label created if missing');
+assert.ok(r.calls.some((a) => a[0] === 'issue' && a[1] === 'edit' && a.includes('safety:review')), 'issue labelled');
+assert.ok(!r.calls.some((a) => a.some((x) => x.includes('area:'))), 'flagged report is not clustered');
+assert.match(r.calls.find((a) => a[1] === 'create').join(' '), /HELD for human review \(codes: money_change\)/);
+r = run([], { safety: [] });
+assert.ok(!r.calls.some((a) => a.includes('safety:review')), 'unflagged report is untouched');
 // Exact report ownership and trusted consolidation, including shared-issue comment refs.
 const marker = (target) => `<!-- intake-canonical:alltrue:bug_report:416:${target} -->`;
 const comment = (body, who = 'owner') => ({ body, author: { login: who } });

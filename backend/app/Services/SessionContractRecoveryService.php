@@ -140,7 +140,7 @@ final class SessionContractRecoveryService
         }
         return $evidence;
     }
-    private function moveEvidence(int $sessionId, int $targetClassId, bool $restoreVoided): void
+    public function moveEvidence(int $sessionId, int $targetClassId, bool $restoreVoided): void
     {
         $records = LearningRecord::query()
             ->where('ClassSessionID', $sessionId)

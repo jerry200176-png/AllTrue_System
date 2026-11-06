@@ -15,7 +15,7 @@ Applies to: `~DEFAULT_BRANCH` (main). `enforcement: active`. `bypass_actors: []`
 
 ## `release-tag-protection` (id `20577363`, target: tag)
 
-Applies to: `refs/tags/v*` (the CalVer release tag pattern used by `release.yml`). `enforcement: active`. `bypass_actors: []`.
+Applies to: `refs/tags/v*` (the CalVer release tag pattern used by `release-publish.yml`). `enforcement: active`. `bypass_actors: []`.
 
 | Rule | Setting |
 |---|---|

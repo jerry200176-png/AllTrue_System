@@ -6,6 +6,9 @@ last_reviewed: 2026-08-01
 
 # 主任總覽視覺研究與決策紀錄
 
+> **Superseded 2026-11-06 (#4659):** 本文件「不使用 hero、漸層、glow」的結論已被 Founder 的 shadcn-vue 模板決策取代：每頁允許一張 `--ui-hero-gradient` hero 卡、bento 卡片格、藥丸按鈕／tabs。
+> 現行規則見 [`RULE_DESIGN_SYSTEM.md`](../RULE_DESIGN_SYSTEM.md) §0 與 [`ALLTRUE_UI_FOUNDATION.md`](./ALLTRUE_UI_FOUNDATION.md)；以下保留為歷史紀錄。
+
 這份紀錄補上本次 dashboard 重做缺少的證據鏈：參考 repo 必須實際 checkout、閱讀元件／規則，再把決策落回 AllTrue 現有 token 與真實工作流程。它不是新的設計系統；品牌與 token 仍以 [`RULE_DESIGN_SYSTEM.md`](../RULE_DESIGN_SYSTEM.md) 和 [`ALLTRUE_UI_FOUNDATION.md`](./ALLTRUE_UI_FOUNDATION.md) 為準。
 
 ## Design read

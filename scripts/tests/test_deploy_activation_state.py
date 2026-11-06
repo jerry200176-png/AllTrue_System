@@ -1293,9 +1293,6 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         Listing both identities (and locking them here) prevents a silent
         rename disconnect. Does not change acceptance assertions or gates.
         """
-        acceptance = (WORKFLOW.parent / "calendar-course-acceptance.yml").read_text(
-            encoding="utf-8"
-        )
         name_line = re.search(r"^name:\s*(.+)$", self.workflow, re.M)
         self.assertIsNotNone(name_line)
         self.assertEqual(name_line.group(1).strip().strip("'\""), "Deploy to Pi")
@@ -1303,14 +1300,17 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             "run-name: ${{ inputs.phase == 'release-train' && 'Release train' || 'Deploy to Pi' }}",
             self.workflow,
         )
-        wr_start = acceptance.index("\n  workflow_run:")
-        wr_block = acceptance[wr_start : acceptance.index("\npermissions:", wr_start)]
-        for identity in ("Deploy to Pi", "Release train"):
-            self.assertRegex(
-                wr_block,
-                rf"(?m)^(?:\s+-\s+{re.escape(identity)}\s*$|\s+workflows:.*['\"]{re.escape(identity)}['\"])",
-                msg=f"calendar-course-acceptance workflow_run must list {identity!r}",
-            )
+        # Every production-deploy listener must list both identities (release-publish too, or trains never publish).
+        for listener in ("calendar-course-acceptance.yml", "release-publish.yml"):
+            text = (WORKFLOW.parent / listener).read_text(encoding="utf-8")
+            wr_start = text.index("\n  workflow_run:")
+            wr_block = text[wr_start : text.index("\npermissions:", wr_start)]
+            for identity in ("Deploy to Pi", "Release train"):
+                self.assertRegex(
+                    wr_block,
+                    rf"(?m)^(?:\s+-\s+{re.escape(identity)}\s*$|\s+workflows:.*['\"]{re.escape(identity)}['\"])",
+                    msg=f"{listener} workflow_run must list {identity!r}",
+                )
 
     def test_manual_activation_is_existing_workflow_dispatch_and_environment_gate(self):
         self.assertIn("repository_dispatch:", self.workflow)

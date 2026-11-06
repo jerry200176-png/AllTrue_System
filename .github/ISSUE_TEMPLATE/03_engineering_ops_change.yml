@@ -1,0 +1,26 @@
+name: Engineering / ops change
+description: Feature, fix, refactor, tech debt, or ops/reliability work (Pi, deploy, backups, monitoring).
+title: "[chore] "
+labels: ["source:engineering", "status:triage"]
+body:
+  - type: textarea
+    id: goal
+    attributes: {label: Goal and background}
+    validations: {required: true}
+  - type: textarea
+    id: scope
+    attributes: {label: Scope (in / out)}
+    validations: {required: true}
+  - type: textarea
+    id: acceptance
+    attributes: {label: Acceptance criteria, value: "- [ ] "}
+    validations: {required: true}
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk class (highest that applies)
+      options: ["R0 - docs / no production behavior", "R1 - low-risk reversible", "R2 - reversible domain change", "R3 - data repair / money / security boundary"]
+    validations: {required: true}
+  - type: textarea
+    id: rollback
+    attributes: {label: Rollback plan}

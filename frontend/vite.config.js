@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { execSync } from 'child_process';
 
@@ -33,6 +34,7 @@ export default defineConfig({
   cacheDir: './.vite_cache',
   resolve: {
     alias: {
+      '@': path.resolve(__dirname, 'src'),
       'laravel-echo': path.resolve(__dirname, 'vendor-modules/laravel-echo'),
       'pusher-js': path.resolve(__dirname, 'vendor-modules/pusher-js'),
     },
@@ -42,6 +44,7 @@ export default defineConfig({
   },
   plugins: [
     vue(),
+    tailwindcss(),
     {
       name: 'emit-version-json',
       generateBundle() {
