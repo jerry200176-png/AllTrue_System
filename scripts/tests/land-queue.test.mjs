@@ -516,12 +516,12 @@ test('review gate refreshes withdrawn evidence through the deleted issue-comment
   assert.deepEqual(types?.sort(), ['created', 'deleted', 'edited']);
 });
 
-test('canonical merge policy and SOP describe the same final-head review gate', () => {
+test('merge SOP is the one owner of the final-head review gate; policy keeps approval continuity', () => {
   const policy = fs.readFileSync(new URL('../../docs/governance/RISK_BASED_MERGE_POLICY.md', import.meta.url), 'utf8');
   const sop = fs.readFileSync(new URL('../../docs/sop/MERGE_SOP.md', import.meta.url), 'utf8');
+  assert.ok(sop.includes(REVIEW_CHECK), 'SOP must identify the gate native auto-merge waits on');
+  assert.match(sop, /review-pending/, 'SOP must describe pending review as a wait');
   for (const [name, doc] of [['policy', policy], ['SOP', sop]]) {
-    assert.ok(doc.includes(REVIEW_CHECK), `${name} must identify the gate native auto-merge waits on`);
-    assert.match(doc, /review-pending/, `${name} must describe pending review as a wait`);
     assert.match(doc, /approval continuity/i, `${name} must preserve existing scoped approvals`);
   }
 });
