@@ -1136,13 +1136,15 @@ class ContractSessionSchedule
      * @param  \Illuminate\Support\Collection<int, ClassSession>  $unlockedSorted
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
      * @param  string|null  $contractStartDate  The course start date, when known.
+     * @param  string|null  $contractEndDate  Date-mode (monthly) courses only: no row is moved past it.
      */
     public function remapFutureScheduledSessionsToContract(
         $unlockedSorted,
         array $slots,
         int $durationMinutes,
         array $skipOccupiedTargetKeys = [],
-        ?string $contractStartDate = null
+        ?string $contractStartDate = null,
+        ?string $contractEndDate = null
     ): int
     {
         if ($unlockedSorted->count() <= 0) {
@@ -1154,7 +1156,7 @@ class ContractSessionSchedule
             'start' => (string) $session->StartTime,
             'end' => (string) $session->EndTime,
         ])->values()->all();
-        $targets = self::planRemapTargets($rows, $slots, $durationMinutes, $skipOccupiedTargetKeys, $contractStartDate);
+        $targets = self::planRemapTargets($rows, $slots, $durationMinutes, $skipOccupiedTargetKeys, $contractStartDate, $contractEndDate);
 
         // Collect only the rows whose slot actually changes.
         $reflowIds = [];
@@ -1321,7 +1323,7 @@ class ContractSessionSchedule
      * @param  array<string, true>  $skipOccupiedTargetKeys  'Y-m-d|H:i' held by staying rows
      * @return array<int, array{date:string, start:string, end:string}> only rows whose slot changes
      */
-    public static function planRemapTargets(array $unlockedSorted, array $slots, int $durationMinutes, array $skipOccupiedTargetKeys = [], ?string $contractStartDate = null): array
+    public static function planRemapTargets(array $unlockedSorted, array $slots, int $durationMinutes, array $skipOccupiedTargetKeys = [], ?string $contractStartDate = null, ?string $contractEndDate = null): array
     {
         $k = count($unlockedSorted);
         if ($k <= 0) {
@@ -1354,6 +1356,10 @@ class ContractSessionSchedule
             $start = self::normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
             if (!$date || isset($skipOccupiedTargetKeys["{$date}|" . substr($start, 0, 5)])) {
                 continue;
+            }
+            // A monthly contract is bounded by EndDate: rows that do not fit stay where they are (in-app #506).
+            if ($contractEndDate !== null && $date > $contractEndDate) {
+                break;
             }
             $proposed[] = $candidate;
             if (count($proposed) >= $k) {
@@ -1392,7 +1398,7 @@ class ContractSessionSchedule
      * @param  array<int, true>  $lockedIds
      * @return array{adopted: array<int, true>, remap: bool, unlocked: array<int, true>, skip_keys: array<string, true>, moves: array<int, array{date:string, start:string, end:string}>}
      */
-    public static function planFutureSync(iterable $sessions, array $slots, int $durationMinutes, array $lockedIds, ?string $contractStartDate): array
+    public static function planFutureSync(iterable $sessions, array $slots, int $durationMinutes, array $lockedIds, ?string $contractStartDate, ?string $contractEndDate = null): array
     {
         $daySlotsByDow = array_map(fn ($daySlots) => array_map(function ($slot) {
             $start = self::normalizeSessionTime($slot['time'], '16:00:00');
@@ -1446,7 +1452,7 @@ class ContractSessionSchedule
             'remap' => true,
             'unlocked' => $unlocked,
             'skip_keys' => $skipKeys,
-            'moves' => self::planRemapTargets($unlockedRows, $slots, $durationMinutes, $skipKeys, $contractStartDate),
+            'moves' => self::planRemapTargets($unlockedRows, $slots, $durationMinutes, $skipKeys, $contractStartDate, $contractEndDate),
         ];
     }
 
@@ -1493,11 +1499,11 @@ class ContractSessionSchedule
             $durationMinutes
         ) {
         $sessions = self::futureScheduledSessions($studentClassId);
-        $contractStartDate = self::normalizeDateString(
-            DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
-        );
+        $contract = DB::table('StudentClass')->where('ID', $studentClassId)->first(['StartDate', 'EndDate', 'ScheduleMode']);
+        $contractStartDate = self::normalizeDateString($contract->StartDate ?? null);
+        $contractEndDate = ($contract->ScheduleMode ?? null) === 'date' ? self::normalizeDateString($contract->EndDate ?? null) : null;
         // One plan, shared with ScheduleGuardService so the course-edit guard predicts exactly this.
-        $plan = self::planFutureSync($sessions, $slots, $durationMinutes, self::lockedClassSessionIds($studentClassId), $contractStartDate);
+        $plan = self::planFutureSync($sessions, $slots, $durationMinutes, self::lockedClassSessionIds($studentClassId), $contractStartDate, $contractEndDate);
         $sessionsById = $sessions->keyBy(fn ($s) => (int) $s->id);
         // Safe adoption / regularization: an exception now exactly on a contract slot joins the regular contract.
         foreach (array_keys($plan['adopted']) as $id) {
@@ -1512,7 +1518,8 @@ class ContractSessionSchedule
                 $slots,
                 $durationMinutes,
                 $plan['skip_keys'],
-                $contractStartDate
+                $contractStartDate,
+                $contractEndDate
             );
         }
 

@@ -69,7 +69,8 @@ class ScheduleGuardService
                 $sync['slots'],
                 max(30, (int) ($sync['duration'] ?? 120)),
                 $lockedOwn,
-                $startDate
+                $startDate,
+                $endDate
             );
             $remapMoves = $plan['remap'] ? $plan['moves'] : null;
         }
