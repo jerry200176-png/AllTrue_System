@@ -1,0 +1,3 @@
+## 2026-11-06 — feat(parent): 首頁 shows 3 things, bottom tabs, plain-language labels (#4986 step 1)
+<!-- release-notes: staff_update=staff-2026-11-06-parent-home-3-cards -->
+- Parent portal shell: bottom tabs 首頁 | 課表 | 學習 | 繳費, a ⚙ settings view (LINE binding, notifications, logout), and a 首頁 of exactly 3 cards (下一堂課 with 請假, 要繳的錢, 老師的新回饋) built from the existing `GET parent/dashboard`. New `parentLabels.js` is the one plain-language map (到／請假／缺課／已排課／已取消, 未繳／已繳／不用繳); unknown codes show a neutral label. Removed the 進度中心 hub, 本次學習重點, 需要留意 and release teaser from first load. No backend change. Teacher name on 下一堂課 is shown only when the API sends it (it does not yet).

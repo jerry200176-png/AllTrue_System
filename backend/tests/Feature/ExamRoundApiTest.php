@@ -171,6 +171,99 @@ class ExamRoundApiTest extends TestCase
         $this->assertDatabaseHas('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $s[0]['id']]);
     }
 
+    public function test_clear_deletes_score_and_audits_and_history_is_scoped(): void
+    {
+        $c = $this->seedRound();
+        $sid = $c['subjects'][0]['id'];
+        $this->putScore($c, 'teacher', 0, 55)->assertOk();
+        $clear = fn ($who) => $this->withAuth($c[$who]['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", [
+            'scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid, 'clear' => true]],
+        ]);
+        $clear('teacher')->assertOk()->assertJsonPath('data.0.cleared', true);
+        $this->assertDatabaseMissing('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid]);
+        $this->assertDatabaseHas('exam_score_audit_logs', ['exam_round_id' => $c['round'], 'action' => 'score_deleted']);
+        $this->putScore($c, 'teacher', 0, 85)->assertOk();
+
+        $url = "/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}";
+        $this->withAuth($c['teacher']['token'])->getJson($url)->assertOk()->assertJsonCount(3, 'data')
+            ->assertJsonPath('data.1.action', 'score_deleted');
+        $this->withAuth($c['director']['token'])->getJson($url)->assertOk()->assertJsonCount(3, 'data');
+        $this->withAuth($c['director']['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id=999999")
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        // same-campus teacher without that student, and a teacher from another campus
+        $mate = $this->makeStaff('T', Str::random(8) . '@example.com', $c['campus']);
+        $this->withAuth($mate['token'])->getJson($url)->assertForbidden();
+        $out = $this->makeStaff('T', Str::random(8) . '@example.com', (int) CampusFactory::new()->create(['name' => '他校 ' . Str::random(5)])->id);
+        $this->withAuth($out['token'])->getJson($url)->assertNotFound();
+        $this->withAuth($out['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", [
+            'scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid, 'clear' => true]],
+        ])->assertNotFound();
+    }
+
+    public function test_teacher_cannot_write_or_read_history_for_another_teachers_or_stopped_students(): void
+    {
+        $c = $this->seedRound();
+        $sid = $c['subjects'][0]['id'];
+        $this->putScore($c, 'teacher', 0, 70)->assertOk();
+        $b = $this->makeStaff('T', Str::random(8) . '@example.com', $c['campus']);
+        $payload = fn (array $row) => ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid] + $row]];
+        $this->withAuth($b['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", $payload(['clear' => true]))->assertForbidden();
+        $this->withAuth($b['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", $payload(['score' => 1]))->assertForbidden();
+        $this->assertDatabaseHas('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid, 'score' => 70]);
+
+        // teacher whose only class for the student is stopped: no history
+        $stopped = $this->makeClass($c['student']->id, $b['user']->id, $c['campus']);
+        $stopped->Stop = 1;
+        $stopped->save();
+        $this->withAuth($b['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")->assertForbidden();
+    }
+
+    public function test_director_can_reenter_after_clearing_last_score_of_inactive_student(): void
+    {
+        $c = $this->seedRound();
+        $this->putScore($c, 'teacher', 0, 50)->assertOk();
+        $c['student']->update(['enable' => 0]);
+        $this->withAuth($c['director']['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", [
+            'scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $c['subjects'][0]['id'], 'clear' => true]],
+        ])->assertOk();
+        $this->putScore($c, 'director', 0, 60)->assertOk();
+    }
+
+    public function test_history_filters_by_student_before_limit(): void
+    {
+        $c = $this->seedRound();
+        $other = Student::create(['name' => '段考學生乙', 'CampusID' => $c['campus'], 'ClassID' => 3, 'enable' => 1, 'MDT' => now()]);
+        $this->makeClass($other->id, $c['teacher']['user']->id, $c['campus']);
+        $this->putScore($c, 'teacher', 0, 50)->assertOk();
+        $rows = [];
+        for ($i = 0; $i < 505; $i++) {
+            $rows[] = ['exam_round_id' => $c['round'], 'campus_id' => $c['campus'], 'actor_user_id' => 1, 'action' => 'score_updated',
+                'after' => json_encode(['student_id' => $other->id, 'exam_round_subject_id' => $c['subjects'][0]['id']]),
+                'created_at' => now(), 'updated_at' => now()];
+        }
+        \Illuminate\Support\Facades\DB::table('exam_score_audit_logs')->insert($rows);
+        $this->withAuth($c['director']['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")
+            ->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    public function test_teacher_after_deadline_gets_409_and_director_closed_correction_needs_reason(): void
+    {
+        $c = $this->seedRound();
+        $sid = $c['subjects'][0]['id'];
+        $this->putScore($c, 'teacher', 0, 60)->assertOk();
+        \Illuminate\Support\Facades\DB::table('exam_rounds')->where('id', $c['round'])->update(['entry_deadline' => now()->subDays(2)->toDateString()]);
+        $this->putScore($c, 'teacher', 0, 61)->assertStatus(409);
+        $this->putScore($c, 'director', 0, 62)->assertOk();
+
+        $this->withAuth($c['director']['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/close")->assertOk();
+        $this->putScore($c, 'director', 0, 63)->assertStatus(422)->assertJsonPath('errors.reason.0', '更正已截止的段考成績需填寫原因');
+        $this->withAuth($c['director']['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", [
+            'scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid, 'clear' => true]], 'reason' => '打錯',
+        ])->assertOk();
+        $this->assertDatabaseHas('exam_score_audit_logs', ['exam_round_id' => $c['round'], 'action' => 'score_deleted', 'reason' => '打錯']);
+    }
+
     /** @return array{token:string,user:User} */
     private function makeStaff(string $type, string $login, int $campus): array
     {

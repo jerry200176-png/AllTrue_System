@@ -809,6 +809,7 @@ Route::prefix('v1')->group(function () {
         Route::get('exam-rounds', [ExamRoundController::class, 'index']);
         Route::get('exam-rounds/{examRound}', [ExamRoundController::class, 'show'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/students', [ExamRoundController::class, 'students'])->whereNumber('examRound');
+        Route::get('exam-rounds/{examRound}/history', [ExamRoundController::class, 'history'])->whereNumber('examRound');
         Route::get('exam-periods/schools', [SchoolExamPeriodController::class, 'schools']);
         Route::get('exam-periods', [SchoolExamPeriodController::class, 'index']);
         Route::get('students/{student}/exam-periods', [SchoolExamPeriodController::class, 'forStudent'])->whereNumber('student');
