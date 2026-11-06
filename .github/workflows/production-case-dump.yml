@@ -2340,7 +2340,7 @@ jobs:
             $report = !$billingStudentNumbers ? $db::table('bug_reports')->where('id', 466)->where('CampusID', 9)->first(['title', 'description']) : null;
             $text = $report ? ((string) $report->title . ' ' . (string) $report->description) : '';
             $sids = $billingStudentNumbers
-              ? $db::table('Student')->where('id', $targetStudentId)->where('CampusID', 9)->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
+              ? $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
               : $db::table('Student')->where('CampusID', 9)->get(['id', 'name'])
               ->filter(fn ($s) => mb_strlen(trim((string) $s->name)) >= 2 && $text !== '' && mb_strpos($text, trim((string) $s->name)) !== false)
               ->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
