@@ -451,7 +451,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs-integrity.yml` | PR / 每週一 | **required**：文件連結完整性、INDEX 導航與核心文件存在性檢查 |
 | **`Deploy to Pi` (`deploy.yml`)** | merge `main`（deployable diff） | → [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
 | `rollback-readiness.yml` | 排程 / 手動 | 非破壞性 rollback 就緒度（#733） |
-| `release-publish.yml` | `Deploy to Pi` 的 `Deploy to Production` 成功 | CalVer `vYYYY.MM.DD.N` tag + GitHub Release，說明來自 `release-drafter.yml`（見 `OPERATIONS_RUNBOOK.md §X`）|
+| `release-publish.yml` | `Deploy to Pi` 的 `Deploy to Production` 成功 | CalVer `vYYYY.MM.DD.N` tag + GitHub Release，說明由 GitHub 內建產生（`.github/release.yml`）（見 `OPERATIONS_RUNBOOK.md §X`）|
 | `ui-smoke.yml` | 每週 / 手動 | Playwright UI 煙霧測試（需 `SMOKE_*` secrets，否則 skip）|
 | `dependency-review.yml` | 每次 PR | 供應鏈（選用 GHAS 升級路徑）；需 `ENABLE_DEPENDENCY_REVIEW=true`，未開僅 notice |
 | `osv-scanner.yml` | 每週一 / 手動 | **OSS 供應鏈深掃**：OSV-Scanner 掃 lockfiles（不需 GHAS）；控制矩陣見 `OPERATIONS_RUNBOOK.md §R1c` |

@@ -1,7 +1,7 @@
 name: Add to project
 
 # New issues and PRs land in user project 1 (AllTrue Engineering Roadmap).
-# Needs a PAT secret PROJECT_TOKEN (classic: project + repo scope); skips when unset.
+# Needs a PAT secret PROJECT_TOKEN (scope: project); skips when unset.
 on:
   issues:
     types: [opened]

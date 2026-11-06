@@ -1293,7 +1293,7 @@ on:
 
 `/.github/workflows/release-publish.yml`：`deploy.yml`（`Deploy to Pi`）的 `Deploy to Production` job 成功時，每次發布一則 Release：
 1. tag 為當天 `vYYYY.MM.DD.N`（同日 N 遞增）。
-2. 說明用 `release-drafter.yml` 起草的草稿（上一則 Release 之後合併的 PR，依 `type:` 標籤分類）。
+2. 說明由 `gh release create --generate-notes --notes-start-tag <上一則 v* Release>` 產生，分類見 `.github/release.yml`（`type:` 標籤）；同一 SHA 已有 Release 時不重複發布。N 以 Asia/Taipei 日期計。
 3. 部署被略過（stand-down）或失敗時不發布。
 
 舊的 `release.yml`（CHANGELOG 合併即打 tag）已移除；Release 只有這一個來源。
@@ -1301,7 +1301,7 @@ on:
 ### X2. 為什麼是 CalVer 不是 SemVer
 
 本系統是**持續部署的內部應用**，不是被他人依賴的 library/API，沒有 major/minor/patch 的相容性語意。
-CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判斷版號級別，是這類部署系統的業界常見選擇（Ubuntu / pip / JetBrains 等）。SemVer 留給「對外 API 契約」場景。
+CalVer（`vYYYY.MM.DD.N`，一次 production 部署一個）無需人工判斷版號級別，是這類部署系統的業界常見選擇（Ubuntu / pip / JetBrains 等）。SemVer 留給「對外 API 契約」場景。
 
 ### X3. version.json ↔ Release tag 對照
 
@@ -1310,7 +1310,7 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 | `backend/public/version.json` | 前端 build 時間戳（Vite `deploy.yml`）| **只在前端有重 build 時** |
 | `backend/public/deployment.json` | 實際啟用的 backend SHA、frontend build SHA、部署時間 | 每次 deploy／rollback |
 | Git tag `vYYYY.MM.DD[.N]` | 該次 production 部署 | 部署成功時 |
-| GitHub Release | tag + release-drafter 分類說明 | 同上 |
+| GitHub Release | tag + GitHub 產生的分類說明 | 同上 |
 
 排查「線上是哪一版」：先看 `deployment.json.backend_sha` 確認 backend runtime，再看 `deployment.json.frontend_build_sha`／`version.json.build_sha` 確認前端 bundle；backend-only deploy 不更新 `version.json`，不得以 frontend hash 代替 backend identity。
 
@@ -1318,7 +1318,7 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 
 - 本工作流**不碰 `deploy.yml`**（事故 A 教訓），唯一副作用是建立 tag/Release（由 `workflow_run` 觸發）。
 - tag push 不會觸發 `branches:[main]` 的 push workflow（不成迴圈）。
-- 回滾：刪除誤建 tag/Release 為純中繼資料操作（`git push --delete origin <tag>` + `gh release delete <tag>`），不影響 production。
+- 誤建的 Release 可 `gh release delete <tag>`（保留 tag）；`v*` tag 受 ruleset 保護，不得刪除或移動（見 `REF_GITHUB_RULESET_BASELINE.md`）。更正以新 Release 為準，不影響 production。
 
 ---
 

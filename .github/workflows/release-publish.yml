@@ -1,6 +1,6 @@
 name: Publish production release
 
-# Publishes the drafted notes as a GitHub Release tagged vYYYY.MM.DD.N (CalVer; the only release stream, release.yml was retired), only when
+# Publishes GitHub-generated notes (.github/release.yml categories) as a GitHub Release tagged vYYYY.MM.DD.N (CalVer; the only release stream), only when
 # deploy.yml's "Deploy to Production" job succeeded (a green "Deploy to Pi" run can
 # also be a stand-down that deployed nothing).
 on:
@@ -10,6 +10,10 @@ on:
     branches: [main]
 
 permissions: {}
+
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -34,16 +38,23 @@ jobs:
             echo "No successful production deploy job in run ${RUN_ID}; nothing to publish."
             exit 0
           fi
-          day="$(date -u +%Y%m%d)"
-          n=1
-          while gh api "/repos/${REPO}/git/ref/tags/v${day:0:4}.${day:4:2}.${day:6:2}.${n}" >/dev/null 2>&1; do n=$((n + 1)); done
-          tag="v${day:0:4}.${day:4:2}.${day:6:2}.${n}"
-          # Reuse the drafter's notes when a draft exists; else generate from merged PRs.
-          draft="$(gh api "/repos/${REPO}/releases?per_page=30" --jq '[.[] | select(.draft)][0].id // empty')"
-          if [[ -n "$draft" ]]; then
-            gh api -X PATCH "/repos/${REPO}/releases/${draft}" -f tag_name="$tag" -f target_commitish="$SHA" \
-              -f name="$tag" -F draft=false -F prerelease=false >/dev/null
-          else
-            gh release create "$tag" --repo "$REPO" --target "$SHA" --title "$tag" --generate-notes
+          # Idempotent: a release already tagged at this SHA covers re-runs and same-SHA redeploys.
+          existing=0
+          while read -r t; do
+            [[ -z "$t" ]] && continue
+            tsha="$(gh api "/repos/${REPO}/commits/${t}" --jq .sha 2>/dev/null || true)"
+            [[ "$tsha" == "$SHA" ]] && existing=1
+          done < <(gh api "/repos/${REPO}/releases?per_page=100" --jq '.[].tag_name')
+          if [[ "$existing" -eq 1 ]]; then
+            echo "A release already points at ${SHA}; nothing to do."
+            exit 0
           fi
-          echo "Published ${tag} at ${SHA}"
+          prev="$(gh api "/repos/${REPO}/releases?per_page=100" --jq '[.[] | select(.draft == false and (.tag_name | startswith("v")))][0].tag_name // empty')"
+          day="$(TZ=Asia/Taipei date +%Y.%m.%d)"
+          n=1
+          while gh api "/repos/${REPO}/git/ref/tags/v${day}.${n}" >/dev/null 2>&1; do n=$((n + 1)); done
+          tag="v${day}.${n}"
+          args=(--repo "$REPO" --target "$SHA" --title "$tag" --generate-notes)
+          [[ -n "$prev" ]] && args+=(--notes-start-tag "$prev")
+          gh release create "$tag" "${args[@]}"
+          echo "Published ${tag} at ${SHA} (notes since ${prev:-start})"
