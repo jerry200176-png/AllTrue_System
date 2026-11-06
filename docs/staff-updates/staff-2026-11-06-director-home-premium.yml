@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-director-home-premium
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 主任總覽首頁改版
+    summary: 主任首頁字變大、更好讀，可自己調字大小。
+    items:
+      - category: improved
+        text: 今天分頁字放大、對比加深，整張卡都能點；右上角可調字大小。
+    source_refs:
+      - "changelog:2026-11-06:director-home-premium"
