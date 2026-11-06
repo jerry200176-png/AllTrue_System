@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Operations\PopLockName;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -288,7 +289,7 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         $connection = (string) config('database.default');
         config(['database.connections.pop_competitor' => config('database.connections.' . $connection)]);
         $competitor = DB::connection('pop_competitor');
-        $lock = 'alltrue:pop:' . $id . ':' . hash('crc32b', DB::getDatabaseName());
+        $lock = PopLockName::for('alltrue:pop:' . $id);
         self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired);
         try {
             $busy = $engine->runApprovedLocally($id);
@@ -333,7 +334,7 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         $engine = $this->localEngine($sha);
         config(['database.connections.pop_competitor' => config('database.connections.' . config('database.default'))]);
         $competitor = DB::connection('pop_competitor');
-        $lock = 'alltrue:pop:executor:' . hash('crc32b', DB::getDatabaseName());
+        $lock = PopLockName::for('alltrue:pop:executor');
         self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired);
         try {
             self::assertSame('busy', $engine->runApprovedLocally($first)['status']);
