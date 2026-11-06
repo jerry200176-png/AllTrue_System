@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
+use App\Models\StudentClass;
 use App\Models\Student;
 use App\Models\StudentSignIn;
 use App\Models\User;
@@ -144,7 +146,100 @@ class AttendanceVoidTest extends TestCase
         $res->assertNotFound();
     }
 
+    // ── in-app #512: voiding the sign-in that debited a 'completed' lesson hands it back to 待補點名 as scheduled ──
+
+    public function test_void_reverts_completed_session_when_this_sign_in_debited_it(): void
+    {
+        [$token, $student] = $this->scaffold();
+        [$session, $signin] = $this->completedSessionWithSignIn($student, true);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])
+            ->assertOk()->assertJson(['class_session_reverted' => true]);
+
+        $this->assertSame('scheduled', $session->fresh()->Status);
+        $this->assertSame(0, (int) StudentClass::find($session->StudentClassID)->UsedSessions);
+    }
+
+    public function test_void_of_completed_lesson_voids_its_pending_and_approved_learning_records(): void
+    {
+        [$token, $student] = $this->scaffold();
+        foreach (['pending', 'approved'] as $status) {
+            [$session, $signin] = $this->completedSessionWithSignIn($student, true);
+            $lr = \App\Models\LearningRecord::create([
+                'StudentClassID' => $session->StudentClassID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => '',
+                'Subject' => 'x', 'SessionDate' => '2026-11-01', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => $status,
+            ]);
+
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])->assertOk();
+
+            $this->assertNotNull($lr->fresh()->VoidedAt, "{$status} learning record is voided with the lesson");
+            $this->assertSame(\App\Services\LearningRecordResurrectionPolicy::VOID_REASON_STATUS_ADJUST, $lr->fresh()->VoidReason);
+
+            // StudentSingIn.ClassSessionID is unique even for voided rows (existing limit, not this change): free it so the re-mark can insert.
+            \Illuminate\Support\Facades\DB::table('StudentSingIn')->where('id', $signin->id)->update(['ClassSessionID' => null]);
+            // Re-marking 到班 must work and bring the evaluation back (a director's free text would 500/409 here).
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->postJson('/api/v1/attendance', [
+                    'StudentID' => $student->id, 'StudentClassID' => $session->StudentClassID, 'ClassSessionID' => $session->id,
+                    'TeacherID' => 99, 'Status' => 'present',
+                ])->assertStatus(201);
+            $this->assertNull($lr->fresh()->VoidedAt, "{$status} learning record is restored by the re-mark");
+        }
+    }
+
+    public function test_void_on_a_paused_course_keeps_it_paused(): void
+    {
+        [$token, $student] = $this->scaffold();
+        foreach (['attended', 'completed'] as $status) {
+            [$session, $signin] = $this->completedSessionWithSignIn($student, true);
+            $session->update(['Status' => $status]);
+            StudentClass::where('ID', $session->StudentClassID)->update(['Stop' => 1]);
+
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])->assertOk();
+
+            $this->assertSame(1, (int) StudentClass::find($session->StudentClassID)->Stop, "{$status}: paused stays paused");
+        }
+    }
+
+    public function test_void_keeps_completed_session_when_the_sign_in_debited_nothing(): void
+    {
+        [$token, $student] = $this->scaffold();
+        [$session, $signin] = $this->completedSessionWithSignIn($student, false);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])
+            ->assertOk()->assertJson(['class_session_reverted' => false]);
+
+        $this->assertSame('completed', $session->fresh()->Status);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private function completedSessionWithSignIn(Student $student, bool $deducted): array
+    {
+        $class = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 1,
+            'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30', 'TotalHours' => 8, 'Charge' => 0, 'Paid' => 0, 'Rate' => 500,
+            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionDuration' => 120, 'ClassType' => 'one_on_one',
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $class->ID, 'SessionDate' => '2026-11-01', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'completed',
+        ]);
+        $signin = StudentSignIn::create([
+            'StudentID' => $student->id, 'StudentClassID' => $class->ID, 'ClassSessionID' => $session->id, 'SignInDT' => now()->toDateTimeString(),
+            'Status' => 'present', 'CampusID' => 1, 'PersonType' => 'student', 'SessionDeducted' => $deducted, 'MDT' => now(),
+        ]);
+
+        if ($deducted) {
+            \App\Services\SessionDeductionService::recomputeCounters((int) $class->ID);
+            $this->assertSame(1, (int) $class->fresh()->UsedSessions, 'precondition: the completed lesson counts as used');
+        }
+
+        return [$session, $signin];
+    }
 
     private function scaffold(): array
     {
