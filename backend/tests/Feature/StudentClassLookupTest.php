@@ -138,7 +138,7 @@ final class StudentClassLookupTest extends TestCase
         $this->assertEquals($before, ['StudentClass' => DB::table('StudentClass')->get()->all(), 'Student' => DB::table('Student')->get()->all(), 'Invoice' => DB::table('Invoice')->count()]);
         $row = DB::table('security_audit_events')->where('event_type', 'student_class_lookup.read')->first();
         $this->assertSame(1, DB::table('security_audit_events')->count());
-        $this->assertSame([SecurityAuditEvent::ref('user', $admin->id), SecurityAuditEvent::ref('student_class_batch', "{$course->ID},424242"), 'success'], [$row->actor_ref, $row->subject_ref, $row->outcome]);
+        $this->assertSame([SecurityAuditEvent::ref('user', $admin->id), SecurityAuditEvent::ref('student_class_batch', implode(',', collect([$course->ID, 424242])->sort()->all())), 'success'], [$row->actor_ref, $row->subject_ref, $row->outcome]);
         $this->assertSame(2, json_decode($row->metadata, true)['row_count']);
         $this->assertStringNotContainsString('Synthetic', json_encode($row));
     }
