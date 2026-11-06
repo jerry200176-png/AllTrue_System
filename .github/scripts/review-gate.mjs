@@ -97,8 +97,8 @@ const api = (path, ...extra) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, .
 export function classifyScope(head, before, files, after) {
   try {
     if (before?.head?.sha !== head || after?.head?.sha !== head) return 'r3';
-    return execFileSync('python3', [new URL('../../scripts/governance/pr_requires_security.py', import.meta.url).pathname], { input: JSON.stringify({ body: before.body ?? '', files }), encoding: 'utf8' }).trim();
-  } catch { return 'r3'; }
+    return execFileSync('python3', [new URL('../../scripts/governance/pr_requires_security.py', import.meta.url).pathname], { input: JSON.stringify({ body: before.body ?? '', files }), encoding: 'utf8', timeout: 10000 }).trim();
+  } catch { return 'r3'; } // incl. spawn timeout
 }
 function prScope(n, head) {
   try {

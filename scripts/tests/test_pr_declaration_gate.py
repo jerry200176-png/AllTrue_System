@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+
 from scripts.governance.autonomy_gate import (
     _LOCAL_ONLY_E2E_SPECS,
     classify_activation_scope,
@@ -210,7 +212,18 @@ class RequiresSecurityTest(unittest.TestCase):
         self.assertTrue(self.check(body, [{"filename": "docs/y.md", "previous_filename": ".github/workflows/deploy.yml", "patch": "+x"}]))
         self.assertTrue(self.check(body, [{"filename": "docs/x.md"}]))
         self.assertTrue(self.check(body, [{"filename": "docs/x.md", "patch": None}]))
-        self.assertTrue(self.check(body, [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(3000)]))
+        self.assertTrue(self.check(body, [{"filename": f"docs/{i}.md", "patch": "+x"} for i in range(300)]))
+
+    def test_lone_cr_and_vt_count_as_line_breaks(self):
+        for sep in ("\r", "\x0b"):
+            self.assertTrue(self.check(f"Risk-Class: R0{sep}Risk-Class: R3\nAutonomy-Tier: T0", [self.DOC]))
+
+    def test_real_pr_template(self):
+        tpl = (ROOT / ".github/pull_request_template.md").read_text(encoding="utf-8")
+        fill = lambda r, t: tpl.replace("**Risk-Class:** R?", f"**Risk-Class:** {r}").replace("**Autonomy-Tier:** T?", f"**Autonomy-Tier:** {t}")
+        self.assertFalse(self.check(fill("R0", "T0"), [self.DOC]))
+        self.assertTrue(self.check(fill("R3", "T3"), [self.DOC]))
+        self.assertTrue(self.check(tpl, [self.DOC]))  # unfilled
 
     def test_duplicate_declaration_is_held(self):
         self.assertTrue(self.check("Risk-Class: R0\nRisk-Class: R0\nAutonomy-Tier: T0", [self.DOC]))

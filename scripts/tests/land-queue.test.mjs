@@ -555,6 +555,6 @@ test('classifyScope: lower only with a stable head and complete, non-R3 evidence
   assert.equal(classifyScope(H, pr(OLD), [doc], pr()), 'r3'); // body/files belong to another head
   assert.equal(classifyScope(H, pr(), [{ filename: 'docs/y.md', previous_filename: '.github/workflows/deploy.yml', patch: '+x' }], pr()), 'r3'); // rename from R3 path
   assert.equal(classifyScope(H, pr(), [{ filename: 'docs/x.md' }], pr()), 'r3'); // missing patch
-  assert.equal(classifyScope(H, pr(), Array.from({ length: 3000 }, (_, i) => ({ filename: `docs/${i}.md`, patch: '+x' })), pr()), 'r3'); // listing cap
+  assert.equal(classifyScope(H, pr(), Array.from({ length: 300 }, (_, i) => ({ filename: `docs/${i}.md`, patch: '+x' })), pr()), 'r3'); // 300-file cap
   assert.equal(classifyScope(H, pr(), [], pr()), 'r3');
 });
