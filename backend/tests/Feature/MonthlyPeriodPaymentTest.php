@@ -253,6 +253,18 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertSame('unpaid', $shown['payment_status']);
     }
 
+    public function test_all_cancelled_current_month_still_displays_the_discrepancy(): void // in-app #510 (Codex P2)
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course] = $this->prepaidOctoberCourse();
+        ClassSession::where('StudentClassID', $course->ID)->update(['Status' => 'cancelled']);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($shown['periods'][0]['amount_discrepancy']);
+        $this->assertTrue($shown['review_required']);
+    }
+
     public function test_same_prepaid_month_is_displayed_as_a_discrepancy_after_the_period_ends(): void // in-app #510
     {
         \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');

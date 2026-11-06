@@ -91,7 +91,7 @@ final class MonthlyPeriodPaymentService
             $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) ($amount['stored_total_amount'] ?? $amount['total_amount']);
             // in-app #510: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
             $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
-                && $end >= Carbon::now('Asia/Taipei')->toDateString() && ($amount['computed_total_amount'] ?? null) === 0);
+                && ($amount['computed_total_amount'] ?? null) === 0 && $this->hasUpcomingScheduledLesson($sessions, $start, $end));
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
             $existing['invoice_ids'][] = (int) $invoice->id;
@@ -204,5 +204,16 @@ final class MonthlyPeriodPaymentService
             'payment_status' => $review ? 'review_required' : $selected['payment_status'],
             'billing_period' => $selected['billing_period'],
             'attribution_ambiguous' => $review || ($summary['attribution_ambiguous'] ?? false)] + $summary;
+    }
+
+    /** A running period only defers while a scheduled lesson (not cancelled/voided/held) is still to come inside it. */
+    private function hasUpcomingScheduledLesson(Collection $sessions, string $start, string $end): bool
+    {
+        $today = Carbon::now('Asia/Taipei')->toDateString();
+
+        return $end >= $today && $sessions->contains(function ($session) use ($start, $end, $today) {
+            $date = substr((string) $session->SessionDate, 0, 10);
+            return (string) $session->Status === 'scheduled' && $date >= max($start, $today) && $date <= $end;
+        });
     }
 }
