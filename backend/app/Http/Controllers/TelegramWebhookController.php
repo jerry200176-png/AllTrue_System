@@ -3,19 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\Campus;
-use App\Models\Student;
+use App\Services\ParentBinding\TelegramBindCodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 class TelegramWebhookController extends Controller
 {
     public const BINDING_TRUST_VERIFIED_GUARDIAN = 'verified_guardian';
 
-    /** #1139 activation gate: binds by student name today, NOT by a verified guardian (pinned by TelegramWebhookSecurityTest). */
+    /** #1139 activation gate: the one-time code from a verified guardian link is the only bind path (pinned by TelegramWebhookSecurityTest). */
     public function bindingTrust(): string
     {
-        return 'student_name';
+        return self::BINDING_TRUST_VERIFIED_GUARDIAN;
     }
 
     public function handle(Request $request, string $code)
@@ -76,30 +77,24 @@ class TelegramWebhookController extends Controller
             }
         };
 
-        if ($recvText === '' || strcasecmp($recvText, '/start') === 0) {
-            $campusName = $campus->name ?? '本校';
-            $sendMessage($chatId, "歡迎使用 {$campusName} 通知綁定。\n請輸入學生「姓名」以綁定此 Telegram（與系統學生姓名需一致）。");
+        // #1139: `/start <code>` is the only bind path; names are never trusted.
+        if (!preg_match('/^\/start(?:@\w+)?\s+([A-Za-z0-9_-]{6,32})$/', $recvText, $m)) {
+            $sendMessage($chatId, "請從家長入口取得「Telegram 綁定碼」，再傳送「/start 綁定碼」給本機器人（不接受學生姓名）。");
             return response('ok', 200);
         }
 
-        $matches = Student::query()
-            ->where('name', $recvText)
-            ->where('enable', 1)
-            ->where('CampusID', $campus->id)
-            ->get();
-
-        if ($matches->isEmpty()) {
-            $sendMessage($chatId, '查無此學生：' . $recvText);
+        // 10 attempts / 10 min per chat so a code cannot be guessed.
+        if (!RateLimiter::attempt('tg-bind:' . $campus->id . ':' . $chatId, 10, static fn () => true, 600)) {
+            $sendMessage($chatId, '嘗試次數過多，請 10 分鐘後再試。');
             return response('ok', 200);
         }
 
-        if ($matches->count() > 1) {
-            $sendMessage($chatId, '校內有多位同名學生，請洽櫃台協助綁定。');
+        $student = app(TelegramBindCodeService::class)->redeem($m[1], (int) $campus->id);
+        if (!$student) {
+            $sendMessage($chatId, '綁定碼無效或已過期，請回到家長入口重新取得。');
             return response('ok', 200);
         }
-
-        /** @var Student $student */
-        $student = $matches->first();
+        $recvText = (string) $student->name;
         $t0 = (string) ($student->TelegramID ?? '');
         $t1s = $student->TelegramID1 === null ? '' : (string) $student->TelegramID1;
         $t2s = $student->TelegramID2 === null ? '' : (string) $student->TelegramID2;

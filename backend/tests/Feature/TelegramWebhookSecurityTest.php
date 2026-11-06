@@ -116,7 +116,7 @@ class TelegramWebhookSecurityTest extends TestCase
             ->withArgs(fn ($m, $ctx = []) => !str_contains($m . json_encode($ctx), 'bot-token-123'))->atLeast()->once();
     }
 
-    /** #1139: rotate-webhook-secret activates only for 'verified_guardian'; that claim must match the bind behavior. */
+    /** #1139: rotate-webhook-secret activates only for 'verified_guardian'; the name path must really be gone. */
     public function test_binding_trust_declaration_matches_bind_behavior(): void
     {
         Http::fake(['https://api.telegram.org/*' => Http::response(['ok' => true], 200)]);
@@ -124,11 +124,12 @@ class TelegramWebhookSecurityTest extends TestCase
         $student = Student::create([
             'name' => '無監護人綁定生', 'CampusID' => $campus->id, 'ClassID' => 1, 'enable' => 1,
             'MDT' => now(), 'Notify_Token' => '', 'TelegramID' => '',
-        ]); // no StudentGuardian row: the sender is not a verified guardian
+        ]);
 
         $this->postTelegramWebhook($campus->code, $this->update('888', '無監護人綁定生'), 'webhook-secret-xyz')->assertOk();
+        $this->postTelegramWebhook($campus->code, $this->update('888', '/start 無監護人綁定生'), 'webhook-secret-xyz')->assertOk();
 
-        $claimsVerified = app(TelegramWebhookController::class)->bindingTrust() === TelegramWebhookController::BINDING_TRUST_VERIFIED_GUARDIAN;
-        $this->assertSame(!$claimsVerified, $student->fresh()->TelegramID === '888');
+        $this->assertSame(TelegramWebhookController::BINDING_TRUST_VERIFIED_GUARDIAN, app(TelegramWebhookController::class)->bindingTrust());
+        $this->assertSame('', $student->fresh()->TelegramID);
     }
 }

@@ -1,3 +1,4 @@
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
@@ -187,10 +188,8 @@ export function useRescheduleAndMakeup({
     showMakeupSlotsModal.value = true;
     availableMakeupSlots.value = [];
 
-    const now = new Date();
-    now.setHours(12, 0, 0, 0);
-    const startDate = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
-    const endDate = new Date(now.getTime() + makeupDateRange.value * 86400000).toISOString().slice(0, 10);
+    const startDate = ymdInTaipei(new Date(Date.now() + 86400000));
+    const endDate = ymdInTaipei(new Date(Date.now() + makeupDateRange.value * 86400000));
 
     let teacherCourses = [];
     let schedExceptions = [];
@@ -264,6 +263,7 @@ export function useRescheduleAndMakeup({
     const dEnd = new Date(endDate + 'T12:00:00');
     let cursor = new Date(startDate + 'T12:00:00');
     while (cursor <= dEnd) {
+      // eslint-disable-next-line no-restricted-syntax -- cursor is a noon-anchored calendar-day walker, not "now"
       const ymd = cursor.toISOString().slice(0, 10);
       const dow = cursor.getDay() === 0 ? 7 : cursor.getDay();
       for (const c of teacherCourses) {
@@ -292,6 +292,7 @@ export function useRescheduleAndMakeup({
 
     cursor = new Date(startDate + 'T12:00:00');
     while (cursor <= dEnd) {
+      // eslint-disable-next-line no-restricted-syntax -- cursor is a noon-anchored calendar-day walker, not "now"
       const ymd = cursor.toISOString().slice(0, 10);
       const dow = cursor.getDay() === 0 ? 7 : cursor.getDay();
       const occ = occMap[ymd] || {};

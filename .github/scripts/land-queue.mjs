@@ -119,7 +119,7 @@ export function decide(pr, required) {
   return { action: 'wait' };
 }
 
-// Batch: up to BATCH_MAX oldest eligible PRs tested together on a branch cut from the main tip.
+// Batch: up to BATCH_MAX oldest eligible PRs (one is enough) tested together on a branch cut from the main tip.
 // cands: [{n, serial}] in queue order, already eligible. A PR whose batch went red is serial-only
 // (until re-queued); if the oldest candidate is serial-only it goes first, alone, no batch.
 export const BATCH_MAX = 4;
@@ -139,7 +139,17 @@ export function isBatchBase(commit, parentTree) {
 export function planBatch(cands) {
   const batch = [];
   for (const c of cands) { if (c.serial || batch.length === BATCH_MAX) break; batch.push(c); }
-  return batch.length >= 2 ? batch : [];
+  return batch;
+}
+// Batching on: a batchable PR is tested merged onto the main tip (a batch of one is fine), so being behind main
+// costs nothing, while updating its branch would restart its CI and void the review on its head (the bors /
+// GitHub merge queue model: test the merge, never rewrite the PR). Only serial-only PRs update and merge serially.
+// A head that already contains main was tested as-is, so it still merges serially with no extra CI run.
+export const isBehind = (pr) => pr.behindBy > 0 || pr.mergeStateStatus === 'BEHIND';
+export function serialDecision(pr, required, batchable) {
+  if (!batchable || !isBehind(pr)) return decide(pr, required);
+  const d = decide(neutral(pr), required);
+  return d.action === 'merge' ? { action: 'wait', reason: 'batch-next' } : d;
 }
 
 // Members live in the batch's first-parent merge commits: "land-queue batch member #N <sha>".
@@ -389,7 +399,7 @@ function startBatch(queue, required) {
   }
   for (const c of cands) c.serial = batchSerial(c.pr, c.serial); // adds the intentional-revert rule
   const batch = planBatch(cands);
-  if (!batch.length) return false;
+  if (!batch.length || (batch.length === 1 && !isBehind(batch[0].pr))) return false; // up to date: serial merge, no extra CI
   const base = mainTip();
   const name = `${BATCH_PREFIX}${process.env.GITHUB_RUN_ID || Date.now()}`;
   // Cut from an empty child of main, not main itself: the merges API fast-forwards when a head descends
@@ -429,9 +439,9 @@ function processQueue() {
     if (open.length ? stepBatch(open[0].ref.replace('refs/heads/', ''), open[0].object.sha, queue, required) : false) return;
     if (startBatch(queue, required)) return;
   }
-  for (const { number: n } of queue) {
+  for (const { number: n, labeledAt } of queue) {
     const pr = load(n);
-    const d = decide(pr, required);
+    const d = serialDecision(pr, required, !strict && !batchSerial(pr, serialOnly(n, labeledAt)));
     console.log(`#${n} ${pr.mergeStateStatus} -> ${d.action}${d.reason ? ' (' + d.reason + ')' : ''}`);
     if (d.action === 'update') {
       try {

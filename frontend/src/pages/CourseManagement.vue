@@ -1355,6 +1355,7 @@
 
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -1520,6 +1521,7 @@ function dayOfWeekFromDate(ymd) {
 }
 function toYmd(date) {
   if (!date) return '';
+  // eslint-disable-next-line no-restricted-syntax -- offset-shifted so UTC fields equal the browser-local calendar day of a picked Date, not "now"
   return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 10);
 }
 function addDays(ymd, days) {
@@ -2694,7 +2696,7 @@ function courseManagerRemainingLabel(c) {
   return purchased != null ? `剩餘 ${rem ?? '—'} / ${purchased} 堂` : `剩餘 ${rem ?? '—'} 堂`;
 }
 function courseManagerNextSessionLabel(c) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymdInTaipei();
   const next = (primarySessionUnits(c) || []).find((u) => String(u.date || '').slice(0, 10) >= today);
   return next ? formatSessionChipDate(next) : '';
 }

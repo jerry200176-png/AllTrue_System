@@ -1100,6 +1100,7 @@ class ParentPortalController extends Controller
         } catch (\Exception $e) {}
 
         $campusName = null;
+        $campus = null;
         try {
             $campus = $this->portalCampuses()->find($student->CampusID);
             $campusName = $campus ? $campus->getAttribute('name') : null;
@@ -1161,6 +1162,8 @@ class ParentPortalController extends Controller
                 'campus_name' => $campusName,
                 'campus_id'   => (int) ($student->CampusID ?? 0),
                 'line_linked' => StudentLineBinding::where('student_id', $student->id)->verified()->exists(),
+                // #1139: boolean only, never the token.
+                'telegram_bind_available' => $campus !== null && trim((string) $campus->TelegramToken) !== '' && trim((string) $campus->TelegramWebhookSecret) !== '',
                 'identity_group_id' => $crossCampusEnabled ? (int) $identityGroup->id : null,
             ],
             'identity_group_id' => $crossCampusEnabled ? (int) $identityGroup->id : null,

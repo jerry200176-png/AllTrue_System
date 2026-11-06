@@ -103,13 +103,27 @@ def find_hits(base, head, days, now=None):
     return hits
 
 
+# A PR body line `Rewrites: #4980 — reason` (several PRs: `#1, #2`) accepts the hits blamed on those PRs.
+# The reason is required; hits with no PR number ("?", a direct push) can't be declared away.
+REWRITES = re.compile(r"^[ \t]*Rewrites:[ \t]*((?:#\d+[ \t,]*)+?)[ \t]*[—–-]+[ \t]*\S", re.M)  # one line only
+
+
+def declared(body):
+    return {f"#{n}" for m in REWRITES.finditer(body or "") for n in re.findall(r"#(\d+)", m[1])}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="origin/main")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--days", type=int, default=7)
+    ap.add_argument("--body-file", help="PR body; `Rewrites: #N — reason` lines accept hits from #N")
     a = ap.parse_args()
     hits = find_hits(a.base, a.head, a.days)
+    ok = declared(open(a.body_file, encoding="utf-8").read()) if a.body_file else set()
+    if ok and hits:
+        print(f"declared rewrites accepted: {' '.join(sorted({h[3] for h in hits if h[3] in ok}))}")
+        hits = [h for h in hits if h[3] not in ok]
     if not hits:
         print(f"OK: no lines merged in the last {a.days} days are removed by this PR")
         return 0
@@ -119,7 +133,7 @@ def main():
     if len(hits) > MAX_ROWS:
         print(f"... and {len(hits) - MAX_ROWS} more")
     print(f"\n{len(hits)} line(s): this PR removes code merged recently by another PR - "
-          "rebuild from current main, or add label `intentional-revert` with a reason in the PR body")
+          "rebuild from current main, or add a PR body line `Rewrites: #N — reason` for each PR listed")
     return 1
 
 
