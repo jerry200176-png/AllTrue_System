@@ -260,7 +260,7 @@ jobs:
 
       - name: Visual regression in Playwright image
         run: |
-          scripts/visual-docker.sh || { echo "::error::Visual diff. If the change is intended, run 'npm run test:visual:update' in frontend/ (Docker) and commit frontend/e2e/__screenshots__; a reviewer must look at the PNG diff."; exit 1; }
+          bash scripts/visual-docker.sh || { echo "::error::Visual diff. If the change is intended, run 'npm run test:visual:update' in frontend/ (Docker) and commit frontend/e2e/__screenshots__; a reviewer must look at the PNG diff."; exit 1; }
 
       - name: Upload visual diffs
         if: failure()
