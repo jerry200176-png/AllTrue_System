@@ -1,10 +1,26 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-10-23
+last_reviewed: 2026-11-06
 ---
 
 # AllTrue Design System
+
+> **Template decision 2026-11-06 (#4659, Founder)：shadcn-vue（MIT；Reka UI + Tailwind v4）是 AllTrue 永久的元件模板。**
+> 新 UI 一律用 `frontend/src/components/ui/`（shadcn-vue）＋本文件 token；`At*`（`components/design-system`）為 **legacy**，隨頁面逐頁遷移退場。
+> 本文件較早段落中「ops 頁不用 gradient／hero／pill-everything」等限制，凡與下方 §0 衝突者，以 §0 為準。
+
+## 0. 模板規則（binding）
+
+**每個新頁面、以及任何 agent 實質修改的頁面，一律使用 `components/ui`（shadcn-vue）與下列模板；未動到的頁面逐頁遷移，不一次全改。**
+
+- 模板：大標題 page header、bento 卡片格、大號 tabular 數字、黑色藥丸主按鈕（`--ui-primary` = `--ds-ink`）、藥丸 tabs、柔陰影圓角卡片；每頁最多 **一張** hero 卡，使用 `--ui-hero-gradient`（暖桃→奶油，由品牌色 token 組成）。
+- 色彩單一來源仍是 `styles.css` 的 `--ds-*`；shadcn 變數（`--ui-background`、`--ui-primary`、`--ui-ring`…，以 `--ui-` 前綴避免與 `styles.css` 既有 `--primary`/`--accent` 衝突）定義於 `frontend/src/ui.css`，只引用 `--ds-*`，**不複製 hex**。品牌橘是 accent。
+- 只有淺色主題；dark 之後再做（在 `ui.css` 加 `.dark` 區塊重新映射）。
+- 圖表用 shadcn-vue Chart（Unovis）、圖示用 `lucide-vue-next`，**頁面真的需要時才加**，不預先安裝。
+- Tailwind utilities 一律帶 **`tw:` 前綴**（`tw:grid`、`tw:flex`、`tw:hover:bg-accent`），避免與 `styles.css` 既有全域 class（`.grid`、`.card`、`.badge`、`.hidden`…）衝突；legacy CSS 退場後才移除前綴。`cn()` 已設定前綴。
+- Tailwind 以 `@tailwindcss/vite` 載入，**無 preflight**，且 utilities 只掃 `components/ui`（見 `ui.css` 註解）；頁面遷移時再擴大 `@source`。
+- 新增元件：`npx shadcn-vue@latest add <name>`（`components.json` 已設 `typescript: false`），並釘死版本。
 
 > **單一真相來源（Single Source of Truth）。** 所有前端頁面、元件、新功能 UI 一律照本文件生成，確保介面統一協調。
 > 取代 `docs/archive/PORSCHE_VISUAL_SYSTEM.md`（已 superseded，移入 archive）。
@@ -23,7 +39,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - **品牌主色採 logo 的橘黃暖色（amber→orange，與登入頁一致）**，作為唯一主行動色，克制使用；
 - **金額／堂數／日期一律等寬數字（tabular）**，這是金流產品的隱性信任訊號；
 - 圓角藥丸按鈕、細邊框卡片、輕陰影；
-- 行銷頁那種彩色 gradient mesh **不採用於後台 ops 頁**（Stripe 官網行銷用；表格／儀表板不需要）。
+- 行銷頁那種彩色 gradient mesh **不採用於後台 ops 頁**；唯一例外是 §0 的 `--ui-hero-gradient`（每頁至多一張 hero 卡）。
 
 ### 1.1 Brand / Auth 例外（登入首屏）
 
@@ -41,7 +57,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 3. **navy 取代黑**：所有內文用 `--ds-ink`（#0d253d），不用純黑 #000。
 4. **色彩克制**：黑/白/灰/navy 撐起整頁；橘黃是行動/品牌，semantic 顏色只表達狀態。
 5. **金額必 tabular**：任何金額、堂數、人數、百分比用 `font-variant-numeric: tabular-nums`，避免跳動。
-6. **品牌一致勝於單頁花俏**：新頁面重用既有 hero / metric / panel / row / badge / button 語言，不自創。
+6. **品牌一致勝於單頁花俏**：新頁面用 `components/ui` 模板（§0），不自創。
 
 ## 3. Color Tokens（色票，定義於 `frontend/src/styles.css`）
 
@@ -105,7 +121,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | 元件 | 規格 |
 |---|---|
-| **Button / Primary** | 藥丸；底 `--ds-cta`，字 `--ds-on-cta`（AA ≥4.5:1）；hover→`--ds-cta-hover`，press→`--ds-cta-press`。一區塊一顆。**禁止**白字疊 `--ds-brand-gradient`／`--ds-primary-soft`。 |
+| **Button / Primary** | （legacy `At*`；新 UI 用 `components/ui` Button＝黑色 `--ds-ink` 藥丸，見 §0）藥丸；底 `--ds-cta`，字 `--ds-on-cta`（AA ≥4.5:1）；hover→`--ds-cta-hover`，press→`--ds-cta-press`。一區塊一顆。**禁止**白字疊 `--ds-brand-gradient`／`--ds-primary-soft`。 |
 | **Button / Secondary** | 藥丸；白底、`--ds-primary-text` 字（AA）與 `--ds-primary` 1px 邊。 |
 | **Button / Ghost** | 透明底、`--ds-ink` 字、`--ds-hairline` 邊。 |
 | **Button / Danger** | 藥丸；底 `--ds-danger`，字白。 |
@@ -121,7 +137,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - 純黑 `#000` 內文（用 navy `--ds-ink`）。
 - 用 navy/indigo 等冷色當主 CTA（主 CTA 用 `--ds-cta` 暖色深橘）。
 - 白字疊在 `--ds-brand-gradient`／`--ds-primary`／`--ds-primary-soft` 當可讀 CTA（對比不足 AA）。
-- 行銷頁彩色 gradient mesh **灌進後台 ops／表格／儀表板**（Login / Auth 品牌首屏除外，見 §1.1）。
+- 行銷頁彩色 gradient mesh **灌進後台 ops／表格／儀表板**（Login / Auth 品牌首屏除外，見 §1.1；§0 的單張 `--ui-hero-gradient` hero 卡除外）。
 - 為 hex baseline 下降而刪除既有品牌氣氛（glass / mesh / motion），導致視覺變醜。
 - 一個元件超過兩個 accent 色。
 - 金額/數字不套 tabular。

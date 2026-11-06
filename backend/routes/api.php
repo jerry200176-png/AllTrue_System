@@ -70,6 +70,7 @@ use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\ExamRoundController;
+use App\Http\Controllers\SchoolExamPeriodController;
 use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
@@ -492,6 +493,8 @@ Route::prefix('v1')->group(function () {
         Route::post('part-time-rate-cards', [PartTimeRateCardController::class, 'store'])->middleware('require_pin');
         Route::put('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'update'])->whereNumber('id')->middleware('require_pin');
         Route::delete('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'destroy'])->whereNumber('id')->middleware('require_pin');
+        Route::put('finance/parttime-payroll/admin-bonus', [\App\Http\Controllers\ParttimePayrollAdminBonusController::class, 'upsert'])->middleware('require_pin');
+        Route::delete('finance/parttime-payroll/admin-bonus', [\App\Http\Controllers\ParttimePayrollAdminBonusController::class, 'destroy'])->middleware('require_pin');
         Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport'])->middleware('require_pin');
         Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId')->middleware('require_pin');
         Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock'])->middleware('require_pin');
@@ -806,6 +809,9 @@ Route::prefix('v1')->group(function () {
         Route::get('exam-rounds', [ExamRoundController::class, 'index']);
         Route::get('exam-rounds/{examRound}', [ExamRoundController::class, 'show'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/students', [ExamRoundController::class, 'students'])->whereNumber('examRound');
+        Route::get('exam-periods/schools', [SchoolExamPeriodController::class, 'schools']);
+        Route::get('exam-periods', [SchoolExamPeriodController::class, 'index']);
+        Route::get('students/{student}/exam-periods', [SchoolExamPeriodController::class, 'forStudent'])->whereNumber('student');
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
@@ -831,6 +837,9 @@ Route::prefix('v1')->group(function () {
         Route::post('assessment-attempts/{assessmentAttempt}/review', [AssessmentController::class, 'reviewAttempt'])->whereNumber('assessmentAttempt');
 
         Route::post('exam-rounds', [ExamRoundController::class, 'store']);
+        Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
+        Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
+        Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');
         Route::post('exam-rounds/{examRound}/publish', [ExamRoundController::class, 'publish'])->whereNumber('examRound');
         Route::post('exam-rounds/{examRound}/close', [ExamRoundController::class, 'close'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/progress', [ExamRoundController::class, 'progress'])->whereNumber('examRound');

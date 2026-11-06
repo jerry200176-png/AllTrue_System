@@ -1,41 +1,34 @@
 # UI Foundation — migration sequencing
 
-Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) and [`UI_AUDIT_2026-07-26.md`](UI_AUDIT_2026-07-26.md).
+Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) (look and rules) and [`UI_AUDIT_2026-07-26.md`](UI_AUDIT_2026-07-26.md). Decision: #4659 (shadcn-vue template, Apple-style look). This is the single order; the older At*-pilot wave tables are retired.
 
-## Completed / in flight
+## Order
 
-| Order | Surface | PR | Scope |
-|---|---|---|---|
-| 0 | Tokens + inbox-used `At*` | PR A (inbox pilot) | Structure/states only |
-| 1 | 主任收件匣 | PR A | Underline tabs, header, filters, skeleton/empty/alert/badge |
-| 2 | 學生列表 | PR B (this) | Header/meta, filter bar, icon buttons, empty, denser table chrome |
-| 3 | 主任總覽儀表板 | Workbench redesign | Action-first hierarchy, responsive task queue, lazy secondary analysis |
+| # | Step | Status |
+|---|---|---|
+| 1 | PR-0 template foundation (shadcn-vue on `--ds-*`) | done, #4951 |
+| 2 | 主任首頁 (next) | #4949 |
+| 3 | 課程管理 | #4918 |
+| 4 | App shell (sidebar, top bar, mobile tabs) | planned |
+| 5 | 老師首頁 | planned |
+| 6 | 帳務中心 v3 | planned |
+| 7 | Remaining pages, one PR each | planned |
+| P | Parent track #4986 | step 1 #4987; steps 2-6 planned |
 
-## Next waves (no business logic)
+The Apple-style look is delivered per page, not by changing global tokens; global `--ds-*` values stay until the last pages migrate. Every migrated page uses `components/ui` plus the `ParentHome.vue` pattern (small label over big value, one dark primary pill). `At*` components are not restyled; they retire as pages move.
 
-### Director dashboard workbench
+## Constraints that outlive the waves
 
-This is a structure and interaction redesign. It must preserve the existing API, permission, billing, leave, attendance, and approval contracts.
-
-- Primary view: compact header → director task queue → today snapshot.
-- Secondary view: schedule, payment alerts, leave inbox, evaluation review, discrepancy status, notifications, adoption history, fill-rate, and monthly statistics.
-- Remove duplicate counts and low-frequency import actions from the primary view.
-- Priority data loads first; secondary analysis data loads on demand.
-- The parent-leave task must land on the existing director decision UI with its primary action visible on mobile.
-
-| Wave | Surfaces | Allowed | Forbidden |
-|---|---|---|---|
-| 1 | TeachersList → CourseManagement chrome | Header/toolbar/filter/`shape=rect` | Schedule/charge/leave logic |
-| 2 | Billing / Tuition tables | Density, toolbar placement, status text+tone | Payment rules, `Paid`/invoice OR logic |
-| 3 | Attendance list chrome | Empty/loading/filter consistency | RFID / deduction paths |
-| — | SmartCalendar | Read-only visual defer | Any occurrence merge / G-007 paths |
+- SmartCalendar: visual change only, no occurrence merge / G-007 paths.
+- Billing / tuition: no payment, `Paid` or invoice logic changes.
+- Attendance: no RFID / deduction path changes.
+- Director home keeps its work-queue structure: priority data first, secondary analysis on demand, no duplicate counts, primary CTA visible at 390.
 
 ## Definition of done per page
 
-1. Uses foundation tokens + only needed `At*` (no unused primitives).
+1. Uses `components/ui` + foundation tokens (no new literals, no unused primitives).
 2. Unit/a11y coverage for new controls.
-3. Real Vue Playwright evidence at 390 / 768 / 1440 (mocked API).
+3. Real Vue Playwright evidence at 390 / 768 / 1440 (mocked API), plus `toHaveScreenshot` baselines at 1280 and 390 (`npm run test:visual:update`, reviewer looks at the PNG diff).
 4. Fixtures stay out of `public/` / `dist_build`.
 5. No API / DB / permission / billing logic changes.
-
-For the dashboard workbench, also require: no unintended horizontal overflow at 390/412/768/1280/1440, visible primary CTAs at the two mobile widths, and a production read-only smoke walk after deploy.
+6. No unintended horizontal overflow at 390/412/768/1280/1440; primary CTA visible at the two mobile widths; for the director home, a production read-only smoke walk after deploy.

@@ -76,6 +76,8 @@ last_reviewed: 2026-11-06
 
 規格寫在 issue 裡：問題、證據、對標（大公司做法或開源實作；研究順序見 `AGENTS.md` §Agent Orchestration SOP）、驗收條件、不做的範圍、上線與回滾方式、要問 Founder 的問題（一次問完，每題最多 2 個選項＋推薦；怎麼開 `needs-founder` issue 見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）第 5 條）。
 
+動到金額、堂數或排課（`area:billing`／`area:calendar`／`area:attendance`）的工作，規格另附〈對標表〉，每列：做法或工具｜來源（官方文件、實際產品行為、開源原始碼＋鎖定版本）｜授權｜防的復發家族（`AI_REGRESSION_LESSONS.md` §復發家族）｜採用方式（函式庫／只抄設計／不採用＋理由）。沒有對標表不給 `gate:pm`。AGPL 與授權不明的專案只能當參考。現行採用清單與順序見 #4991（排課與帳務）、#4989（UI）。
+
 ### 階段 4：就緒（Definition of Ready）
 
 進開發前全部要成立：
@@ -85,11 +87,13 @@ last_reviewed: 2026-11-06
 - 已判斷風險等級、要不要 SEC／OPS／DBA、能不能平行。
 - 已列出不可碰的檔案／邏輯與必讀文件。
 - 每一層的測試計畫（後端、前端、e2e、視覺、手動 smoke）與大小估計；拆成每個都在 presubmit 行數上限內的 PR，不疊 PR。
+- 動到金額、堂數、排課產生或改期的 PR（R3，或 `area:billing`／`area:calendar` 的 R2）：測試計畫列出要守的不變式（例：產生堂數 ≤ 購買堂數；自動產生的堂次不早於台北今天；各畫面金額＝resolver；同一堂不重複扣），並至少一個性質測試（後端 eris、前端 fast-check），固定 seed；失敗時把縮小後的反例貼進 PR。
+- 新增相依套件：寫鎖定版本、授權、最近一次 release 日期，以及與現行 PHP／Laravel／Pi 的相容性（`composer why-not`／`npm view` 結果）；同功能已有套件就不加。
 
 ### 階段 5：開發
 
 - 依 [`WORKTREE_POLICY.md`](../governance/WORKTREE_POLICY.md) 從最新 `origin/main` 開 branch；開工前跑 `node scripts/pr-overlap.mjs`。
-- bug 先寫會失敗的回歸測試，再改程式（見〈閉環〉每個 bug 一個回歸測試）。
+- bug 先寫會失敗的回歸測試，再改程式（見〈閉環〉每個 bug 一個回歸測試）；屬於〈復發家族〉的 bug，回歸測試寫成該家族性質測試的新 property 或 seed，不只寫單一例子。
 - 使用者看得到的變更：`docs/changes/` fragment 與版本更新卡（[`GUIDE_STAFF_UPDATES.md`](../GUIDE_STAFF_UPDATES.md)）。
 - PR 內文：`pr_declaration.py` 產生的宣告、Rollback 行、`Release-Impact`；in-app 對應的 issue 一律寫 `Refs`。
 
@@ -97,6 +101,7 @@ last_reviewed: 2026-11-06
 
 - Codex review 最終 head；P0／P1 必修、P2 修一輪，規則見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 第 4 條；每個 thread 回覆並 resolve。
 - 嚴格車道（R3）另由新 context 的 `security-data-reviewer` 獨立審查。
+- `qa-lead` 對階段 4 不變式範圍的 PR 確認性質測試存在且在 CI 跑；Infection（後端）／Stryker（前端）對變更行的 advisory 結果附在 PR，不擋合併。
 - 有 UI：`product-designer` 看視覺差異（自動視覺回歸是**目標（L6，#4952）**）。
 - 全過後加 `queue`（[`MERGE_SOP.md`](MERGE_SOP.md)）。
 
@@ -129,16 +134,16 @@ last_reviewed: 2026-11-06
 | 角色 | 守的階段 | 看什麼 | 模型 |
 |---|---|---|---|
 | `triage-lead` 分診／客服 | 2、9 | 重現、去重、分級、安全篩檢、公開回覆白話（`CHAT_BUG_SYSTEM.md` §3.8） | Sonnet |
-| `product-manager` 產品 | 3 | 問題、證據、對標、驗收條件、範圍、上線與回滾、Founder 問題批次 | Sonnet |
+| `product-manager` 產品 | 3 | 問題、證據、對標（金額／堂數／排課要對標表）、驗收條件、範圍、上線與回滾、Founder 問題批次 | Sonnet |
 | `product-designer` 設計 | 3、6（有 UI） | [`RULE_DESIGN_SYSTEM.md`](../RULE_DESIGN_SYSTEM.md)、視覺差異、手機版、無障礙 | Sonnet |
 | `tech-lead` 技術 | 4、6 | 根因、架構邊界、PR 拆分、最終 head review | Sonnet；Codex review 可算 |
 | `security-data-reviewer` 資安與資料 | 6（R3） | 權限、分校隔離、個資、金流與堂數、資料修復；對抗式審查 | Opus |
-| `qa-lead` 品質 | 4、6、8 | 各層測試計畫、回歸測試、視覺差異、smoke | Sonnet |
+| `qa-lead` 品質 | 4、6、8 | 各層測試計畫、回歸測試、不變式與性質測試、mutation 結果、視覺差異、smoke | Sonnet |
 | `release-manager` 發布 | 7 | 這班有哪些 PR、go／no-go 摘要、需要時請 Founder 按 | Sonnet |
 | `sre` 維運 | 8 | health、smoke、`deployment.json` SHA、真實資料、Sentry 24 小時 | Sonnet |
 
 - 協調 session 用**全新 context** 跑每個角色，只給該關需要的輸入（issue、PR diff、證據連結），不給實作者的推理過程。守門人不能是實作者自己的 session。
-- 每個角色的定義檔 `.claude/agents/<role>.md`（清單、輸入、判定格式）是**目標（L5）**；在那之前，協調 session 用上表的「看什麼」當清單。
+- 每個角色的定義檔在 [`.claude/agents/`](../../.claude/agents/)（清單、輸入、判定格式）。R3 PR 在 land queue 需要 `gate:security-data-reviewer` 通過標記（規則：`RISK_BASED_MERGE_POLICY.md#final-head-review-evidence`）。An R3 marker carries across an update-branch only when the PR's own diff is byte-identical.
 
 ## 關卡標記
 
@@ -178,7 +183,7 @@ in-app 回報是外來輸入。分診時遇到下列任何一種，標 `safety:r
 | 頻率 | 內容 | 現況 |
 |---|---|---|
 | 每週 | 各階段 SLA 超時、不穩定的測試、未結 P1 清單、Founder 待決清單（一次一則） | `bug-sla-weekly-report.yml`（in-app 週報 issue，含分診 SLA）與 `dora-metrics.yml`（Actions 摘要）已在跑；其餘是**目標（L7）** |
-| 每月 | DORA 四指標（lead time、部署頻率、變更失敗率、MTTR；#872）、依 `test-gap:` 層統計的漏網缺陷、重開率、in-app 回報者確認率 | **目標（L7）** |
+| 每月 | DORA 四指標（lead time、部署頻率、變更失敗率、MTTR；#872）、依 `test-gap:` 層統計的漏網缺陷、重開率、in-app 回報者確認率；依復發家族統計 in-app bug，任一家族連兩個月 ≥ 3 件就開 issue 指定一個對標工具或設計（回到階段 1） | **目標（L7）** |
 | 每次事故 | 不究責的事後檢討（postmortem，範本 #873），行動項目開成 issue | 事故當下的決策與處理走 `INCIDENT_RUNTIME_LOOP.md` |
 | 每個 in-app bug | 修復 PR 一定附回歸測試 | R1 起本來就要求（`RISK_BASED_MERGE_POLICY.md`）；`missing-tests-warn.yml` 現在只提醒，對 `type:bug` R1+ 改成擋下是**目標（L6）** |
 

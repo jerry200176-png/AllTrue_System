@@ -1,13 +1,25 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-10-13
+last_reviewed: 2026-11-06
 ---
 
 # AllTrue UI Foundation
 
 > Ops / product surfaces only. Brand / Auth (`Login.vue`) still follow [`docs/RULE_DESIGN_SYSTEM.md`](../RULE_DESIGN_SYSTEM.md) §1.1.
 > Color SSOT remains `--ds-*` in `frontend/src/styles.css` + RULE. This file defines **structure, density, primitives, and migration**.
+
+> **Template decision 2026-11-06 (#4659):** new UI uses `frontend/src/components/ui` (shadcn-vue; Reka UI + Tailwind v4) plus the `--ds-*` tokens, per `RULE_DESIGN_SYSTEM.md` section 0. The `At*` components in `components/design-system` are **legacy** and retire page by page as pages migrate. Where the rules below (principle 4, section 6.1, section 7) conflict with the template (hero gradient, pill tabs/buttons, bento cards), the template wins. Tailwind utilities in `components/ui` use the `tw:` prefix (`tw:grid`, `tw:flex`) until the legacy global CSS is retired, so they cannot collide with legacy classes such as `.grid` or `.card`. The density, accessibility and responsive rules still apply.
+
+## Apple 風格 (template look, #4659)
+
+Founder 2026-11-06: every page, staff and parent, gets the look of the parent 首頁 (#4987). Reference screenshot: `frontend/e2e/__screenshots__/parent-home-390.png` (lands with #4987); pattern: `frontend/src/components/parent/ParentHome.vue`.
+
+- **Delivered per page**, when the page moves onto `components/ui`, not by changing global tokens or restyling `At*`. Global `--ds-*` values in `frontend/src/styles.css` stay until the last pages migrate, so unmigrated pages stay consistent.
+- Look: white rounded cards (radius 16-20), hairline border, soft shadow, light-gray canvas; small gray label over a large bold value; one dark primary pill per card, light-gray secondary pills; 44px touch targets; generous spacing; brand orange only as accent/active colour.
+- Font stack: `-apple-system, "SF Pro Text", "PingFang TC", "Noto Sans TC"`.
+- Migrated pages use `components/ui` with `--ds-*` tokens, never new literals. This section overrides the older "Radius low-medium / Elevation minimal" dials for migrated pages.
+- Migration order and definition of done: [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](UI_FOUNDATION_MIGRATION_SEQUENCING.md).
 
 ## Authority map
 
@@ -25,7 +37,7 @@ Page-specific work may add a brief or audit entry, but must link back to these s
 1. Professional, quiet, reliable — built for administrative scanning, not demos.
 2. High information density with clear hierarchy (title → meta → filters → data → actions).
 3. One primary action per region; semantic color only for status.
-4. Progressive adoption — no Big Bang library swap.
+4. Progressive adoption — shadcn-vue is the permanent template, migrated page by page; no Big Bang rewrite.
 5. Accessibility is part of the foundation (focus-visible, keyboard, non-color cues).
 6. Beautiful through proportion, typography, spacing, and restraint — never through AI-looking decoration or generic template effects.
 
@@ -76,7 +88,7 @@ Brand amber/orange stays AllTrue — **not** GitLab purple or Carbon blue.
 
 ## 6. Primitive inventory
 
-Existing + foundation set under `frontend/src/components/design-system/`:
+**Legacy** `At*` set under `frontend/src/components/design-system/` (new UI uses `frontend/src/components/ui`; these retire page by page):
 
 | Component | Role |
 |---|---|
@@ -111,19 +123,19 @@ The director dashboard is an operations workbench, not a marketing hero or a col
 - Low-frequency setup actions belong in their domain page, not in the daily work queue. For example, student import belongs in `StudentsList.vue`.
 - Desktop may use a two-zone grid. Mobile uses one column, keeps critical CTAs visible, and must not require horizontal scrolling to discover an action.
 - The default workbench view loads priority data. Trend, activity, teacher fill-rate, and monthly analysis data load only when the director opens the secondary view.
-- Dashboard decisions use AllTrue tokens, quiet elevation, semantic status text, visible focus rings, and reduced-motion behavior. Do not add gradients, glow, decorative KPI heroes, or color-only status meaning.
+- Dashboard decisions use AllTrue tokens, quiet elevation, semantic status text, visible focus rings, and reduced-motion behavior. Do not add glow, fake KPI heroes, or color-only status meaning. One `--ui-hero-gradient` hero card per page is allowed by the template.
 
 Dashboard acceptance targets are 390, 412, 768, 1280, and 1440 CSS pixels. At every target, the page must have no unintended horizontal overflow and the primary task CTA must remain reachable without opening a hidden menu.
 
 ## 7. AI Slop ban list
 
-- Purple/indigo AI gradients on ops pages
+- Purple/indigo AI gradients on ops pages (the brand `--ui-hero-gradient`, at most one hero card per page, is allowed)
 - Glassmorphism / glow borders on ops
 - Every block in a heavy card + shadow
-- Pill-everything (tabs, filters, every badge)
+- Pill-everything beyond the template (the template uses pill primary buttons and pill tabs)
 - Giant centered empty-state icon heroes
 - Emoji as product icons
-- Fake KPI / “歡迎回來” dashboard heroes
+- Fake KPI / “歡迎回來” dashboard heroes (a real-data hero card per the template is fine)
 - Decorative illustration noise
 - >1 primary CTA per region
 - Color-only status meaning
@@ -162,7 +174,7 @@ Rollback: revert the stacked PR; page-scoped + additive primitives. See audit ta
 | AllTrue RULE DS | `docs/RULE_DESIGN_SYSTEM.md` | Project | Brand color + auth exceptions |
 | Founder-star references | `.cursor/rules/frontend-brand-taste.mdc` | Reference index | `taste-skill` / `impeccable` for anti-slop taste, `awesome-design-md` for design-document discipline, shadcn/Radix and Carbon/Fluent/Primer for accessible product patterns; no code or visual skin copied |
 
-**Decision:** Do not vendor `@gitlab/ui` or `@carbon/vue` in this pilot — implement AllTrue-owned `At*` primitives on existing Vue 3 + CSS tokens (zero new runtime UI dependency).
+**Decision (superseded 2026-11-06, #4659):** the pilot built AllTrue-owned `At*` primitives and did not vendor `@gitlab/ui` or `@carbon/vue`. The permanent template is now shadcn-vue in `components/ui`; `@gitlab/ui` and `@carbon/vue` remain not vendored.
 
 ## 11. Style ratchet (only-down guards)
 

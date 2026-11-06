@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, decodeEntities, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
+import os from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const req = ['A', 'B'];
 const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
@@ -268,7 +271,7 @@ const OWNER = 'jerry200176-png';
 const codex = (cr, o = {}) => ({ user: { login: CODEX_LOGIN }, updated_at: '2026-10-21T05:00:00Z', body: `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: cr, security_review: { commit_sha: null, status: null } })} -->\n## Codex Review Summary`, ...o });
 const clean = (sha = H, o = {}) => ({ commit_sha: sha, has_any_findings: false, has_unresolved_findings: false, status: 'completed', ...o });
 const fallback = (sha, login = OWNER) => ({ user: { login }, body: `independent /code-review: no findings\n${reviewMarker(sha)}` });
-const gateOf = (comments) => reviewGate(comments, H, OWNER);
+const gateOf = (comments, scope = 'lower') => reviewGate(comments, H, OWNER, scope);
 const decideWith = (comments) => decide(pr({ sha: H, review: gateOf(comments) }), req);
 
 test('review gate: green + 0 threads + Codex running -> wait review-pending', () => {
@@ -521,4 +524,93 @@ test('canonical merge policy and SOP describe the same final-head review gate', 
     assert.match(doc, /review-pending/, `${name} must describe pending review as a wait`);
     assert.match(doc, /approval continuity/i, `${name} must preserve existing scoped approvals`);
   }
+});
+
+test('review gate: R3 needs an owner security marker on the exact head; fail marker vetoes; unknown tier is R3', () => {
+  const owner = (b) => ({ user: { login: OWNER }, body: b });
+  const R3 = 'r3';
+  const sec = (sha, v = 'pass') => owner(gateMarker('security-data-reviewer', sha, v));
+  assert.equal(gateOf([codex(clean())], R3).ok, false);
+  assert.match(gateOf([codex(clean())], R3).why, /security-data-reviewer/);
+  assert.equal(gateOf([codex(clean()), sec(H)], R3).ok, true);
+  assert.equal(gateOf([codex(clean()), sec(OLD)], R3).ok, false);
+  assert.equal(gateOf([codex(clean()), fallback(H)], R3).ok, true); // independent-review stays valid
+  assert.equal(gateOf([codex(clean()), sec(H), sec(H, 'fail')], R3).ok, false);
+  assert.equal(gateOf([codex(clean()), owner(gateMarker('qa-lead', H, 'fail'))]).ok, false); // any role, any lane
+  assert.equal(gateOf([codex(clean()), { user: { login: 'someone' }, body: gateMarker('qa-lead', H, 'fail') }]).ok, true); // non-owner ignored
+  assert.equal(gateOf([codex(clean()), sec(H)], R3).via, 'codex');
+  assert.equal(gateOf([codex(clean())], 'lower').ok, true);
+  for (const b of ['', null, 'r3', 'Risk-Class: R1']) assert.equal(gateOf([codex(clean())], b).ok, false); // only 'lower' passes
+});
+
+test('guardedSquash re-reads the review (PR body/tier included) at merge time and holds a held head', () => {
+  let reads = 0;
+  const did = guardedSquash(7, 'abc', () => 0, () => { reads++; return { ok: false, why: 'R3 needs a security-data-reviewer marker on abc' }; }, () => assert.fail('squashed'), () => {});
+  assert.equal(did, false);
+  assert.equal(reads, 1);
+});
+
+test('review gate: R3 marker carries across update-branch only when samePatch', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const sec = (sha, v = 'pass') => owner(gateMarker('security-data-reviewer', sha, v));
+  const R3 = (cs, same) => reviewGate(cs, H, OWNER, 'r3', same);
+  const seenShas = [];
+  assert.deepEqual(R3([codex(clean()), sec(OLD)], (s) => { seenShas.push(s); return true; }), { ok: true, via: `r3-carried:${OLD.slice(0, 7)}` });
+  assert.deepEqual(seenShas, [OLD]);
+  assert.equal(R3([codex(clean()), sec(OLD)], () => false).ok, false); // patch differs / missing patch / sha not in PR -> samePatch false
+  assert.equal(R3([codex(clean()), sec(OLD)]).ok, false); // default dependency fails closed
+  assert.equal(R3([codex(clean()), sec(OLD), sec(H, 'fail')], () => true).ok, false); // fail on head vetoes
+  assert.equal(R3([codex(clean()), sec(OLD, 'fail'), sec(OLD)], () => true).ok, false); // earlier fail on the carried sha
+  assert.equal(R3([codex(clean()), owner(`${gateMarker('qa-lead', OLD, 'fail')}\n${gateMarker('security-data-reviewer', OLD)}`)], () => true).ok, false); // fail in the same comment
+  assert.equal(R3([codex(clean()), sec(OLD), owner('FAIL: found a hole, verdict=fail')], () => true).ok, false); // later unmarked fail
+  assert.equal(R3([codex(clean()), sec(OLD), owner(`<!-- independent-review:v1 sha=${'c'.repeat(40)} verdict=fail -->`)], () => true).ok, false);
+  assert.equal(R3([codex(clean()), sec(OLD), owner(`<!-- independent-review:v1 sha=${H} verdict=fail -->`)], () => true).ok, false); // fail on head
+  assert.equal(reviewGate([codex(clean()), owner(`<!-- independent-review:v1 sha=${H} verdict=fail -->`)], H, OWNER, 'lower').ok, false);
+  assert.equal(R3([codex(clean()), sec(OLD), sec('c'.repeat(40), 'fail')], () => true).ok, false); // newer fail vetoes
+  assert.equal(R3([codex(clean()), sec('c'.repeat(40), 'fail'), sec(OLD)], () => true).ok, true); // older fail does not
+  assert.equal(R3([codex(clean()), { user: { login: 'someone' }, body: gateMarker('security-data-reviewer', OLD) }], () => true).ok, false); // non-owner
+  assert.equal(R3([codex(clean()), owner(reviewMarker(OLD))], () => true).via, `r3-carried:${OLD.slice(0, 7)}`);
+  assert.equal(R3([codex(clean(OLD))], () => true).ok, false); // Codex gating unchanged
+  assert.equal(reviewGate([codex(clean())], H, OWNER, 'lower', () => assert.fail('called')).via, 'codex'); // lower unaffected
+});
+
+test('samePrPatch: identical patch needs identical tree mode/blob; truncated tree fails closed', () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), 'fakegh-'));
+  const A = 'a'.repeat(40), B = 'b'.repeat(40);
+  fs.writeFileSync(join(dir, 'gh'), `#!/usr/bin/env node
+const u = process.argv[3], m = JSON.parse(process.env.FAKE);
+if (u.endsWith('/o/r/')) process.exit(1); // real GitHub 404s the trailing slash
+if (u.endsWith('/o/r')) { console.log(JSON.stringify({ default_branch: 'main' })); process.exit(0); }
+const key = Object.keys(m).find((k) => u.includes(k));
+if (!key) process.exit(1);
+console.log(JSON.stringify(m[key]));
+`, { mode: 0o755 });
+  const run = (tree) => {
+    const f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }];
+    const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: tree.base || 'main' } }, 'compare/': [{ files: f }],
+      [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b };
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e',
+      `import { samePrPatch } from ${JSON.stringify(new URL('../../.github/scripts/review-gate.mjs', import.meta.url).href)}; console.log(samePrPatch(7, '${B}', '${A}'));`],
+    { encoding: 'utf8', env: { ...process.env, REPO: 'o/r', FAKE: JSON.stringify(fake), PATH: `${dir}:${process.env.PATH}` } });
+    return out.trim() === 'true';
+  };
+  const ent = (mode, sha = 'c'.repeat(40)) => ({ tree: [{ path: 'x.sh', mode, type: 'blob', sha }] });
+  assert.equal(run({ a: ent('100644'), b: ent('100644') }), true);
+  assert.equal(run({ a: ent('100644'), b: ent('100644'), base: 'evil' }), false); // retargeted base never carries
+  assert.equal(run({ a: ent('100644'), b: ent('100755') }), false); // mode change
+  assert.equal(run({ a: ent('100644'), b: ent('120000') }), false); // symlink swap
+  assert.equal(run({ a: ent('100644'), b: { tree: [] } }), false); // deleted at head only
+  assert.equal(run({ a: ent('100644'), b: { ...ent('100644'), truncated: true } }), false);
+});
+
+test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {
+  const pr = (sha = H, body = 'Risk-Class: R0\nAutonomy-Tier: T0') => ({ head: { sha }, body });
+  const doc = { filename: 'docs/x.md', patch: '+x' };
+  assert.equal(classifyScope(H, pr(), [doc], pr()), 'lower');
+  assert.equal(classifyScope(H, pr(), [doc], pr(OLD)), 'r3'); // head moved after reading files
+  assert.equal(classifyScope(H, pr(OLD), [doc], pr()), 'r3'); // body/files belong to another head
+  assert.equal(classifyScope(H, pr(), [{ filename: 'docs/y.md', previous_filename: '.github/workflows/deploy.yml', patch: '+x' }], pr()), 'r3'); // rename from R3 path
+  assert.equal(classifyScope(H, pr(), [{ filename: 'docs/x.md' }], pr()), 'r3'); // missing patch
+  assert.equal(classifyScope(H, pr(), Array.from({ length: 300 }, (_, i) => ({ filename: `docs/${i}.md`, patch: '+x' })), pr()), 'r3'); // 300-file cap
+  assert.equal(classifyScope(H, pr(), [], pr()), 'r3');
 });
