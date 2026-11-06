@@ -1087,7 +1087,7 @@
 </template>
 
 <script setup>
-import { ymdInTaipei } from '@/lib/sessionDates.js';
+import { ymdInTaipei, recentDaysRangeTaipei } from '@/lib/sessionDates.js';
 import { withPoolNotice } from '../lib/sharedPoolNotice.js';
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 import { supabase } from '../supabase';
@@ -1242,7 +1242,7 @@ function showTeacherToast(text) {
 }
 
 // ── 月報匯出 refs ──
-const exportMonthRef    = ref(new Date().toISOString().slice(0, 7));
+const exportMonthRef    = ref(ymdInTaipei().slice(0, 7));
 const exportMonthLoading = ref(false);
 
 async function exportTeacherMonthly() {
@@ -1638,10 +1638,7 @@ const halfHourLater = () => {
   return `${String(next).padStart(2,'0')}:00`;
 };
 
-const localTodayYmd = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+const localTodayYmd = () => ymdInTaipei();
 
 const quickMinDate = (() => {
   return ymdInTaipei(new Date(Date.now() - 14 * 86400000));
@@ -1828,10 +1825,7 @@ const fetchRecords = async () => {
       } else {
         // 'week' mode: send explicit start/end so the backend window is fixed to
         // today-6 … today regardless of when the server's "now" is evaluated.
-        const end   = localTodayYmd();
-        const start = (() => {
-          return ymdInTaipei(new Date(Date.now() - 6 * 86400000));
-        })();
+        const { start, end } = recentDaysRangeTaipei(7);
         params.set('start_date', start);
         params.set('end_date',   end);
       }

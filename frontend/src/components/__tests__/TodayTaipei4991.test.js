@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
-import { ymdInTaipei } from '../../lib/sessionDates.js';
+import { ymdInTaipei, recentDaysRangeTaipei } from '../../lib/sessionDates.js';
 import { useCalendarLeaveExtra } from '../../composables/calendar/useCalendarLeaveExtra.js';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
 
@@ -37,5 +37,10 @@ describe('"today" is the Taipei day, not the UTC day (#4991 P12)', () => {
     });
     openLeaveModal();
     expect(leaveForm.value.schedule_date).toBe('2026-11-07');
+  });
+
+  it('recent 7 days range is Taipei on both ends (11-01..11-07)', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(NOW));
+    expect(recentDaysRangeTaipei(7)).toEqual({ start: '2026-11-01', end: '2026-11-07' });
   });
 });

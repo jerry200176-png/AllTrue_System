@@ -52,7 +52,7 @@ export default [
       // yesterday before 08:00 Taipei. Use ymdInTaipei() from lib/sessionDates.js.
       'no-restricted-syntax': ['error',
         {
-          selector: "CallExpression[callee.property.name=/^(slice|substring|substr)$/][callee.object.callee.property.name='toISOString'][arguments.0.value=0][arguments.1.value=10]",
+          selector: "CallExpression[callee.property.name=/^(slice|substring|substr)$/][callee.object.callee.property.name='toISOString'][arguments.0.value=0]:matches([arguments.1.value=10],[arguments.1.value=7])",
           message: 'toISOString().slice(0, 10) is the UTC date (yesterday before 08:00 Taipei). Use ymdInTaipei() from @/lib/sessionDates.js; if this really formats a UTC date, add an eslint-disable with a reason.',
         },
         {

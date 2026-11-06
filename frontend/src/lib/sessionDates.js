@@ -13,6 +13,11 @@ export function ymdInTaipei(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(date);
 }
 
+/** Last `days` Taipei days ending today, inclusive: { start, end } as YYYY-MM-DD. */
+export function recentDaysRangeTaipei(days, now = new Date()) {
+  return { start: ymdInTaipei(new Date(now.getTime() - (days - 1) * 86400000)), end: ymdInTaipei(now) };
+}
+
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
