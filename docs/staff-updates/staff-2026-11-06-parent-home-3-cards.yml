@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-06-parent-home-3-cards
+    published_at: "2026-11-06"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 家長頁首頁改版
+    summary: 家長首頁只剩三張卡，下方改成四個分頁。
+    items:
+      - category: improved
+        text: 家長首頁只看下一堂課、要繳的錢、老師的新回饋。狀態改用白話。
+    source_refs:
+      - "changelog:2026-11-06:parent-home-3-cards"
