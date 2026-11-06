@@ -5,7 +5,11 @@ name: Publish production release
 # also be a stand-down that deployed nothing).
 on:
   workflow_run:
-    workflows: ["Deploy to Pi"]
+    # deploy.yml's run-name makes Founder-approved trains report as "Release train"; list both identities
+    # (as calendar-course-acceptance.yml does), or train deploys never publish a release.
+    workflows:
+      - Deploy to Pi
+      - Release train
     types: [completed]
     branches: [main]
 
