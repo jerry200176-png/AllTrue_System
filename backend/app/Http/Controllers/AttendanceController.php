@@ -1059,10 +1059,10 @@ class AttendanceController extends Controller
                         if ($session->Status === 'completed') {
                             // Same cleanup as ClassSessionController::voidAttendanceArtifacts (attended-like -> scheduled): the
                             // lesson did not happen, so its live evaluation (pending or approved) must not reach payroll.
-                            LearningRecord::where('ClassSessionID', $session->id)->active()->get()->each(function ($lr) use ($authUser, $voidReason) {
+                            LearningRecord::where('ClassSessionID', $session->id)->active()->get()->each(function ($lr) use ($authUser) {
                                 $lr->VoidedAt = now();
                                 $lr->VoidedByUserID = $authUser?->id;
-                                $lr->VoidReason = $voidReason;
+                                $lr->VoidReason = LearningRecordResurrectionPolicy::VOID_REASON_STATUS_ADJUST; // system reason, so re-marking restores it
                                 $lr->save();
                             });
                         }

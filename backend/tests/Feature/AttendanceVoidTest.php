@@ -175,6 +175,17 @@ class AttendanceVoidTest extends TestCase
                 ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])->assertOk();
 
             $this->assertNotNull($lr->fresh()->VoidedAt, "{$status} learning record is voided with the lesson");
+            $this->assertSame(\App\Services\LearningRecordResurrectionPolicy::VOID_REASON_STATUS_ADJUST, $lr->fresh()->VoidReason);
+
+            // StudentSingIn.ClassSessionID is unique even for voided rows (existing limit, not this change): free it so the re-mark can insert.
+            \Illuminate\Support\Facades\DB::table('StudentSingIn')->where('id', $signin->id)->update(['ClassSessionID' => null]);
+            // Re-marking 到班 must work and bring the evaluation back (a director's free text would 500/409 here).
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->postJson('/api/v1/attendance', [
+                    'StudentID' => $student->id, 'StudentClassID' => $session->StudentClassID, 'ClassSessionID' => $session->id,
+                    'TeacherID' => 99, 'Status' => 'present',
+                ])->assertStatus(201);
+            $this->assertNull($lr->fresh()->VoidedAt, "{$status} learning record is restored by the re-mark");
         }
     }
 
