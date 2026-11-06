@@ -11,6 +11,16 @@ last_reviewed: 2026-11-06
 
 > **Template decision 2026-11-06 (#4659):** new UI uses `frontend/src/components/ui` (shadcn-vue; Reka UI + Tailwind v4) plus the `--ds-*` tokens, per `RULE_DESIGN_SYSTEM.md` section 0. The `At*` components in `components/design-system` are **legacy** and retire page by page as pages migrate. Where the rules below (principle 4, section 6.1, section 7) conflict with the template (hero gradient, pill tabs/buttons, bento cards), the template wins. Tailwind utilities in `components/ui` use the `tw:` prefix (`tw:grid`, `tw:flex`) until the legacy global CSS is retired, so they cannot collide with legacy classes such as `.grid` or `.card`. The density, accessibility and responsive rules still apply.
 
+## Apple 風格 (template look, #4659)
+
+Founder 2026-11-06: every page, staff and parent, gets the look of the parent 首頁 (#4987). Reference screenshot: `frontend/e2e/__screenshots__/parent-home-390.png` (lands with #4987); pattern: `frontend/src/components/parent/ParentHome.vue`.
+
+- **Delivered per page**, when the page moves onto `components/ui`, not by changing global tokens or restyling `At*`. Global `--ds-*` values in `frontend/src/styles.css` stay until the last pages migrate, so unmigrated pages stay consistent.
+- Look: white rounded cards (radius 16-20), hairline border, soft shadow, light-gray canvas; small gray label over a large bold value; one dark primary pill per card, light-gray secondary pills; 44px touch targets; generous spacing; brand orange only as accent/active colour.
+- Font stack: `-apple-system, "SF Pro Text", "PingFang TC", "Noto Sans TC"`.
+- Migrated pages use `components/ui` with `--ds-*` tokens, never new literals. This section overrides the older "Radius low-medium / Elevation minimal" dials for migrated pages.
+- Migration order and definition of done: [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](UI_FOUNDATION_MIGRATION_SEQUENCING.md).
+
 ## Authority map
 
 For product and operations pages, use the documents in this order:
