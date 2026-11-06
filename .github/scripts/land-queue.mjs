@@ -102,10 +102,11 @@ export function decide(pr, required) {
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) {
-    // Only cancelled (runner starvation, concurrency): rerun those workflow runs once per head instead of dropping (#4700).
+    // Failed or cancelled: rerun those workflow runs once per head before dropping (#4700). A flaky test or a starved
+    // runner passes on the retry; a real failure fails again and is rejected by the executor's once-per-head marker.
     const latest = latestRuns(pr.rollup);
-    const runs = failed.map((n) => String(latest.get(n)?.conclusion).toUpperCase() === 'CANCELLED' && latest.get(n)?.checkSuite?.workflowRun?.databaseId);
-    if (runs.every(Boolean)) return { action: 'rerun', reason: 'rerun-cancelled', runs: [...new Set(runs)], text: `required checks were cancelled, not failed (${failed.join(', ')}); rerunning them once on this head. The label stays.` };
+    const runs = failed.map((n) => latest.get(n)?.checkSuite?.workflowRun?.databaseId);
+    if (runs.every(Boolean)) return { action: 'rerun', reason: 'rerun-once', runs: [...new Set(runs)], text: `required checks failed or were cancelled (${failed.join(', ')}); rerunning them once on this head. The label stays.` };
     return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
   }
   const allGreen = Object.values(states).every((s) => s === 'pass');
@@ -446,9 +447,9 @@ function processQueue() {
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     if (d.action === 'rerun') {
       // Once per workflow run per head: each accepted rerun leaves its own marker (a refused request stays eligible);
-      // a run cancelled again after its rerun rejects.
+      // a run that fails or is cancelled again after its rerun rejects.
       const key = (id) => `${pr.sha}:${id}`;
-      if (d.runs.some((id) => seen(n, marker(d.reason, key(id))))) { reject(n, pr.sha, { reason: 'checks', text: `required checks were cancelled again after one rerun on this head. Rerun them and re-add \`queue\`` }); continue; }
+      if (d.runs.some((id) => seen(n, marker(d.reason, key(id))))) { reject(n, pr.sha, { reason: 'checks', text: `required checks failed again after one rerun on this head. Fix and re-add \`queue\`` }); continue; }
       for (const id of d.runs) {
         try { gh('api', '-X', 'POST', `/repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`); } catch (e) { console.log(`#${n} rerun ${id}: ${e.message}`); continue; }
         note(n, key(id), d.reason, `${d.text} (run ${id})`);
