@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-parttime-admin-bonus
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 兼職薪資可加「行政加給」
+    summary: 兼職薪資每位老師可手動加一筆行政加給，要填原因。
+    items:
+      - category: added
+        text: 展開老師後填金額和原因，會加進該月薪資，匯出 CSV 也有。鎖帳後不能改。
+    source_refs:
+      - "changelog:2026-11-06:parttime-admin-bonus"
