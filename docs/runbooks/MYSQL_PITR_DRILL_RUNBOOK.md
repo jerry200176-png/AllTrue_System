@@ -24,9 +24,16 @@ In `/etc/mysql/mysql.conf.d/mysqld.cnf` (or the drill host's equivalent):
 server-id = 1
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_format = ROW
-binlog_expire_logs_seconds = 604800   ; 7-day retention — matches the
-                                        ; pre-enable checklist's 3-7 day range
+# 7-day retention — matches the pre-enable checklist's 3-7 day range.
+# (Own line: inline `;` comments are not valid in option files.)
+binlog_expire_logs_seconds = 604800
 ```
+
+Production runs MariaDB (the disposable CI drill and this log use 10.11). On
+MariaDB the client tools are `mariadb`, `mariadb-dump`, `mariadb-binlog`
+(`mysql*` names remain as aliases). The binlog directory defaults to the
+datadir (`/var/lib/mysql/` in the Docker image) unless `log_bin` sets a path;
+substitute that path wherever step 4 reads `/var/log/mysql/`.
 
 ```bash
 sudo systemctl restart mysql
@@ -35,6 +42,12 @@ mysql -u root -p -e "SHOW BINARY LOGS;"
 ```
 
 ## 2. Take a full backup (the PITR baseline)
+
+The production backup scripts (`scripts/nightly-backup.sh`,
+`scripts/sixhour-backup.sh`) run `mysqldump --single-transaction --quick
+--no-tablespaces` **without** `--master-data=2`, so their dumps carry no binlog
+anchor and cannot seed a replay. Before PITR is enabled they must add
+`--master-data=2` (MariaDB: `--master-data=2` still works in `mariadb-dump`).
 
 ```bash
 TS=$(date '+%Y-%m-%d_%H%M%S')
@@ -54,6 +67,8 @@ zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO"
 
 ```bash
 mysql -u root -p AllTrue_staging -e "INSERT INTO ClassSession (...) VALUES (...);"
+# `--stop-datetime` has 1-second granularity: keep >=1s between the last
+# wanted write, TARGET_TIME and the destructive write (the sleeps below).
 # Ask the drill server for its own wall clock so client/server timezone
 # differences cannot move the recovery point across the destructive event.
 TARGET_TIME=$(mysql -u root -p -Nse \
@@ -84,6 +99,9 @@ BINLOG_FILE=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
 BINLOG_POS=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
   | sed -n "s/.*MASTER_LOG_POS=\([0-9]*\).*/\1/p")
 
+# Do NOT add --database=${DRILL_DB} here: the filter matches the *original*
+# (source) name, so every event is skipped and the replay silently applies
+# nothing (drill 2026-11-06: baseline-only rows came back, exit status 0).
 mysqlbinlog --rewrite-db="${SOURCE_DB}->${DRILL_DB}" \
   --start-position="$BINLOG_POS" \
   --stop-datetime="$TARGET_TIME" \
@@ -92,6 +110,11 @@ mysqlbinlog --rewrite-db="${SOURCE_DB}->${DRILL_DB}" \
 ```
 
 ## 5. Verify
+
+A replay that applied nothing exits 0, so always prove the post-baseline writes
+arrived: compare row counts and `CHECKSUM TABLE` of the drill DB against the
+expected pre-incident state, and check the bad write is absent (e.g. the
+deleted rows are present again).
 
 ```bash
 mysql -u root -p AllTrue_pitr_drill -e \
@@ -104,7 +127,8 @@ Row-count sanity against the pre-incident baseline, same pattern as
 
 ```bash
 mysql -u root -p AllTrue_pitr_drill -e \
-  "SELECT COUNT(*) FROM ClassSession; SELECT COUNT(*) FROM StudentClass; SELECT COUNT(*) FROM Invoice;"
+  "SELECT COUNT(*) FROM ClassSession; SELECT COUNT(*) FROM StudentClass; SELECT COUNT(*) FROM Invoice;
+   CHECKSUM TABLE ClassSession, StudentClass, Invoice;"
 ```
 
 ## 6. Rollback / cleanup
@@ -129,6 +153,37 @@ Record every real drill run here (append, do not overwrite):
 | Date | Baseline backup | Target recovery time | Binlog file:pos | Result | Notes |
 |---|---|---|---|---|---|
 | 2026-09-03 | disposable local MariaDB 10.11 synthetic baseline (removed after run) | 2026-09-03 19:28:01 (drill server time) | `mysql-bin.000001:694` | PASS | `PitrMarker` insert restored; post-target delete absent; `--rewrite-db` used for the drill database; temporary datadir/socket removed. Staging/Pi drill remains pending. |
+
+## Drill log 2026-11-06
+
+- **Engine**: disposable Docker `mariadb:10.11` (10.11.19), `--log-bin
+  --binlog-format=ROW`; same engine family as production. Synthetic rows only;
+  no production or remote host contacted. Container and volume removed after
+  the run.
+- **Data**: `Student` (20), `ClassSession` (50), `payment_records` (30), all
+  fake.
+- **Steps**: seed -> full dump (`--single-transaction --quick --no-tablespaces
+  --routines --triggers --master-data=2`, the nightly flags plus the anchor) ->
+  5 more writes (insert x3, update, insert) -> record T -> `DELETE FROM
+  payment_records` + 2 more writes -> restore dump into new scratch DB ->
+  `mariadb-binlog --rewrite-db --start-position --stop-datetime=T` replay.
+- **Timings**: server ready 6.7s (29s on first image pull); seed 0.2s; dump
+  0.1s; writes + bad delete 4.7s (includes two deliberate 2s sleeps); baseline
+  restore 0.4s; binlog replay 0.1s; verify 0.2s. Total restore path under 1s
+  at this size; real timing scales with dump size and binlog volume.
+- **Result**: PASS. Restored counts Student 21 / ClassSession 51 /
+  payment_records 31. Every pre-T write present (inserts and the UPDATE),
+  the bad delete and both post-delete writes absent. Source DB afterwards held
+  22 / 51 / 1, with different checksums for Student and payment_records.
+- **Found**: (1) adding `--database=<drill db>` next to `--rewrite-db` replays
+  nothing silently (step 4 note). (2) Inline `;` comments in the cnf snippet
+  are invalid. (3) Production dumps lack `--master-data=2` (step 2 note).
+  (4) Binlog path is the datadir by default.
+- **Production still lacks** (per `docs/OPERATIONS_RUNBOOK.md` §P, binlog
+  deferred): `log_bin` enabled with `binlog_format=ROW` and retention; binlog
+  disk and offsite-sync capacity for 3-7 days; backup scripts emitting the
+  `--master-data=2` anchor; a staging/Pi drill (this was a local container
+  only); and a Founder decision to enable it.
 
 ## Refs
 
