@@ -63,6 +63,20 @@ class MonthlySessionsStayInPeriodTest extends TestCase
         }
     }
 
+    public function test_removing_a_weekday_never_moves_a_row_onto_a_row_that_stays(): void
+    {
+        $id = $this->course('date');
+        \App\Models\ClassSession::where('StudentClassID', $id)->delete();
+        foreach (['2026-10-14', '2026-10-15', '2026-10-21', '2026-10-22', '2026-10-28', '2026-10-29'] as $d) {
+            ClassSession::create(['StudentClassID' => $id, 'SessionDate' => $d, 'StartTime' => '17:00:00', 'EndTime' => '19:00:00', 'Status' => 'scheduled', 'IsContractException' => 0]);
+        }
+        app(ContractSessionSchedule::class)->syncFutureScheduledSessionTimes($id, [['weekday' => 4, 'time' => '17:00', 'duration_minutes' => 120]], 120);
+        $dates = $this->dates($id);
+        $this->assertCount(6, $dates);
+        $this->assertSame($dates, array_values(array_unique($dates)));
+        $this->assertLessThanOrEqual('2026-10-31', end($dates));
+    }
+
     public function test_count_mode_remap_is_unchanged(): void
     {
         $id = $this->course('count');

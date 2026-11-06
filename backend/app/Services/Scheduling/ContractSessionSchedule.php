@@ -1348,6 +1348,8 @@ class ContractSessionSchedule
         // retained locked row (e.g. Wed+Thu -> Wed). That is not a new
         // booking conflict. Generate enough cadence candidates to skip the
         // retained occurrence and place the row on the next valid occurrence.
+        do {
+        $retained = 0;
         $candidateCount = $k + count($skipOccupiedTargetKeys);
         $candidateSessions = self::buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
         $proposed = [];
@@ -1366,6 +1368,17 @@ class ContractSessionSchedule
                 break;
             }
         }
+        // Rows the end date leaves in place keep their slot: no earlier row may be moved onto it.
+        if ($contractEndDate !== null && count($proposed) < $k) {
+            foreach (array_slice(array_values($unlockedSorted), count($proposed)) as $stay) {
+                $key = ($stay['date'] ?? '') . '|' . substr((string) ($stay['start'] ?? ''), 0, 5);
+                if (!isset($skipOccupiedTargetKeys[$key])) {
+                    $skipOccupiedTargetKeys[$key] = true;
+                    $retained++;
+                }
+            }
+        }
+        } while ($retained > 0);
 
         $targets = [];
         foreach (array_values($unlockedSorted) as $i => $row) {
