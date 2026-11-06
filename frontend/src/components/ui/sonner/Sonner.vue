@@ -9,6 +9,7 @@ import {
 } from "@lucide/vue";
 import { cn } from "@/lib/utils";
 import { Toaster as Sonner } from "vue-sonner";
+import "vue-sonner/style.css";
 
 const props = defineProps({
   id: { type: String, required: false },
