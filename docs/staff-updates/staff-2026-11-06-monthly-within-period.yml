@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-monthly-within-period
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 月結改上課星期不會排到期間之外
+    summary: 月結課改星期後，新排的課不會超過合約結束日。
+    items:
+      - category: fixed
+        text: 改月結課的上課星期時，課只會排在合約期間內，下個月續約不會再被期間外的課卡住。
+    source_refs:
+      - "changelog:2026-11-06:monthly-sessions-within-period"
