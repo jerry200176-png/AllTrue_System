@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * UI ratchet (#4989): a .vue file may import design-system/At* only if it is listed in
- * scripts/ui-legacy-pages.json, and the list may only shrink (compared with origin/main when available).
+ * scripts/ui-legacy-pages.json. Deterministic, so it runs in `npm run build`.
+ * `--vs-base <ref>` (presubmit only) also requires the list not to grow versus that ref; it fails closed
+ * if the ref cannot be resolved. A ref that lacks the list file (the introducing PR) skips the grow check.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -34,18 +36,30 @@ export function checkRatchet({ files, list, baseList }) {
   return errors;
 }
 
-function baseList() {
+function baseList(ref) {
   try {
-    return JSON.parse(execFileSync('git', ['show', `origin/main:${LIST}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+    execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: ROOT, stdio: 'ignore' });
   } catch {
-    return null; // not on origin/main yet (first PR) or no origin: skip the grow check
+    console.error(`ui ratchet: cannot resolve base ref ${ref} (fail closed)`);
+    process.exit(1);
+  }
+  try {
+    return JSON.parse(execFileSync('git', ['show', `${ref}:${LIST}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+  } catch {
+    return null; // list not on base yet (introducing PR)
   }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const i = process.argv.indexOf('--vs-base');
+  const ref = i > -1 ? process.argv[i + 1] : null;
+  if (i > -1 && !ref) {
+    console.error('ui ratchet: --vs-base needs a ref');
+    process.exit(1);
+  }
   const src = path.join(ROOT, 'frontend/src');
   const files = Object.fromEntries(walkVue(src).map((p) => [path.relative(path.join(ROOT, 'frontend'), p).split(path.sep).join('/'), fs.readFileSync(p, 'utf8')]));
-  const errors = checkRatchet({ files, list: JSON.parse(fs.readFileSync(path.join(ROOT, LIST), 'utf8')), baseList: baseList() });
+  const errors = checkRatchet({ files, list: JSON.parse(fs.readFileSync(path.join(ROOT, LIST), 'utf8')), baseList: ref ? baseList(ref) : null });
   if (errors.length) {
     console.error(errors.join('\n'));
     process.exit(1);

@@ -39,10 +39,10 @@ const props = defineProps({
   <Sonner
     :class="cn('tw:toaster tw:group', props.class)"
     :style="{
-      '--normal-bg': 'var(--popover)',
-      '--normal-text': 'var(--popover-foreground)',
-      '--normal-border': 'var(--border)',
-      '--border-radius': 'var(--radius)',
+      '--normal-bg': 'var(--ui-popover)',
+      '--normal-text': 'var(--ui-popover-foreground)',
+      '--normal-border': 'var(--ui-border)',
+      '--border-radius': 'var(--ui-radius)',
     }"
     v-bind="props"
   >
