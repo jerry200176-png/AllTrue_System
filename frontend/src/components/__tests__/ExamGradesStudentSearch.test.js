@@ -78,7 +78,7 @@ describe('In-App #420: 段考成績 student search and director entry label', ()
       const input = rows[0].querySelector('.exam-score-input');
       input.value = '88';
       input.dispatchEvent(new Event('change'));
-      rows[0].querySelector('button').click();
+      [...rows[0].querySelectorAll('button')].find((b) => b.textContent.trim() === '儲存').click();
       await flushPromises();
 
       const post = fetchMock.mock.calls.find(([, o]) => o?.method === 'POST');
