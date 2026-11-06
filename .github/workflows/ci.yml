@@ -471,6 +471,10 @@ jobs:
           python3 - <<'PYEOF'
           import os, pathlib, re
           files = sorted(str(p) for d in ("tests/Unit", "tests/Feature") for p in pathlib.Path(d).rglob("*Test.php"))
+          # ponytail: the three ~4 min concurrency files go first so round-robin puts one per shard; re-measure if shards drift.
+          heavy = [f"tests/Feature/{n}Test.php" for n in ("Billing/AgreedFeeConcurrency", "Billing/InvoiceCorrectionReissue", "InvoiceVoidSerialization")]
+          assert all(h in files for h in heavy), heavy
+          files = heavy + [f for f in files if f not in heavy]
           mine = files[int(os.environ["SHARD"]) - 1::3]
           suite = "<testsuites><testsuite name=\"Shard\">" + "".join(f"<file>./{f}</file>" for f in mine) + "</testsuite></testsuites>"
           xml = re.sub(r"<testsuites>.*?</testsuites>", lambda _: suite, open("phpunit.xml").read(), flags=re.S)
