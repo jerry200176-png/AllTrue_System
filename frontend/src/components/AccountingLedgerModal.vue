@@ -922,9 +922,6 @@ function openEntry(course, mode = 'record') {
     initialActionNote.value = LEGACY_CONFIRMED_REPORT_HELP;
     return;
   }
-  const charge = mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge;
-  // in-app #511: the server refuses 補登 at NT$0 and with 免費／贈送, so a zero-fee course goes through 登記收款, which has the box.
-  if (mode === 'legacy-backfill' && Number(charge ?? 0) === 0) mode = 'record';
   entryMode.value = mode;
   // Oldest open invoice first (PRD v2 D18); no invoice yet → amount left for the director.
   const oldest = oldestOpenInvoice(course.id);
@@ -932,7 +929,7 @@ function openEntry(course, mode = 'record') {
   const collect = oldest ? null : course.collection_period;
   entryRow.value = {
     id: course.id,
-    charge,
+    charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,

@@ -4,10 +4,10 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 免費課程補登收款可勾免費／贈送
-    summary: 沒收費的課按「補登收款」，現在看得到免費／贈送。
+    title: 沒收費課程補登收款說明
+    summary: 沒收費的課按「補登收款」，會直接說明下一步怎麼做。
     items:
       - category: fixed
-        text: 以前這種課會跳出「請勾選免費／贈送」，卻找不到可勾的框。
+        text: 以前會要你勾選免費／贈送，但畫面上沒有那個框；現在改成寫清楚該怎麼處理。
     source_refs:
       - "changelog:2026-11-06:inapp-511-zero-fee-backfill"

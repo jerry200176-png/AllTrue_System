@@ -184,6 +184,21 @@ describe('PaymentEntryModal — monthly month by month (in-app #432)', () => {
   });
 });
 
+describe('PaymentEntryModal — 補登收款 on a zero-fee course (in-app #511)', () => {
+  it('explains the next step up front and on submit, with no hidden-box error and no request', async () => {
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row: { ...row, charge: 0, payable_status: 'unbilled', payable_amount: null, payable_outstanding: null }, mode: 'legacy-backfill' } });
+    await w.setProps({ show: true });
+    await nextTick();
+    expect(w.find('[data-testid="pe-legacy-zero-hint"]').text()).toContain('其實沒收，改成未繳');
+    await w.find('form').trigger('submit');
+    await tick();
+    expect(w.text()).toContain('沒有款項可補登');
+    expect(w.text()).not.toContain('請勾選');
+    expect(global.fetch).not.toHaveBeenCalled();
+    w.unmount();
+  });
+});
+
 describe('PaymentEntryModal — side sheet placement (#4659 step 3)', () => {
   it('placement="right" renders the same form inside the AtDialog sheet and still submits', async () => {
     global.fetch.mockResolvedValueOnce(ok({ report_id: 9, status: 'pending' }));
