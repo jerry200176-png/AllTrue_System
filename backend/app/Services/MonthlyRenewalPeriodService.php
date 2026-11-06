@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
+use App\Models\StudentClassPricingAmendment;
 use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ final class MonthlyRenewalPeriodService
                 if ($oldEnd) $query->whereDate('SessionDate', '>', $oldEnd);
                 if ($course->getAttribute('StartDate')) $query->orWhereDate('SessionDate', '<', Carbon::parse($course->getAttribute('StartDate'))->toDateString());
                 if (!$oldEnd && !$course->getAttribute('StartDate')) $query->whereRaw('1 = 0');
-            })->get(['id', 'SessionDate'])->map(fn ($r) => ['id' => (int) $r->id, 'date' => Carbon::parse($r->SessionDate)->toDateString()]);
+            })->get(['id', 'SessionDate', 'StartTime'])->map(fn ($r) => ['id' => (int) $r->id, 'date' => Carbon::parse($r->SessionDate)->toDateString(), 'start' => substr((string) $r->StartTime, 0, 5)]);
         // A month already billed by a catch-up (same student + subject, non-void invoice for that billing_period)
         // is not a blocker: the lessons stay on this contract but their money lives on the catch-up invoice.
         $months = $rows->map(fn ($r) => substr($r['date'], 0, 7))->unique()->values()->all();
@@ -38,7 +39,7 @@ final class MonthlyRenewalPeriodService
         $open = $rows->reject(fn ($r) => $billedMonths->contains(substr($r['date'], 0, 7)));
         // in-app #506: a lesson the old month wrongly holds past its end, but inside the new period, moves to the new contract.
         $inNew = $open->filter(fn ($r) => $oldEnd && $end && $r['date'] > $oldEnd && $r['date'] <= $end);
-        $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course, $inNew->count());
+        $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course, $inNew, $oldEnd, $end);
         $blockers = [];
         if ($reason === null) $open = $open->reject(fn ($r) => $inNew->contains('id', $r['id']));
         if ($open->count()) $blockers[] = ['code' => 'monthly_completed_sessions_outside_contract',
@@ -50,30 +51,39 @@ final class MonthlyRenewalPeriodService
     }
 
     /** Null when the unpaid source can give lessons away; 'paid' (no extra blocker) or an adopt_* code otherwise. */
-    private function adoptionBlocker(StudentClass $c, int $n): ?string
+    private function adoptionBlocker(StudentClass $c, $rows, string $oldEnd, string $end): ?string
     {
+        $n = $rows->count();
         $invoices = Invoice::query()->notVoided()->where('StudentClassID', $c->getKey())->get();
         $inv = $invoices->first();
-        if ((int) ($c->Paid ?? 0) !== 0 || (float) ($c->Pay ?? 0) > 0 || $invoices->contains(fn ($i) => (float) $i->PaidAmount > 0 || $i->payments()->exists())) return 'paid';
+        if ((int) ($c->Paid ?? 0) !== 0 || (float) ($c->Pay ?? 0) > 0 || $invoices->contains(fn ($i) => (float) $i->PaidAmount > 0 || $i->payments()->exists())
+            || DB::table('payment_reports')->where('StudentClassID', $c->getKey())->where('status', '<>', 'rejected')->exists()) return 'paid';
+        if (StudentClassPricingAmendment::query()->where('student_class_id', $c->getKey())->whereNull('voided_at')->exists()) return 'adopt_source_discounted';
         if (strtolower(trim((string) ($c->rate_unit ?? 'session'))) !== 'session' || (float) $c->Rate <= 0) return 'adopt_requires_session_rate';
         if ((int) $c->Charge !== (int) round((float) $c->Rate * (int) $c->SessionCount)) return 'adopt_source_discounted';
         if ($invoices->count() !== 1 || $inv->Status === 'paid' || (int) $inv->TotalAmount !== (int) $c->Charge || InvoiceItem::where('InvoiceID', $inv->id)->count() !== 1) return 'adopt_source_invoice_ambiguous';
+        // The new period only bills its weekly timetable, so an adopted lesson must sit on one of those slots.
+        $slots = ContractSessionSchedule::buildSessionsFromWeeklySchedule((int) $c->getKey(), Carbon::parse($oldEnd)->addDay()->toDateString(), $end,
+            ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), max(30, (int) ($c->SessionDuration ?? 120)));
+        $keys = array_map(fn ($x) => substr((string) $x['SessionDate'], 0, 10) . '|' . substr((string) $x['StartTime'], 0, 5), $slots);
+        if ($rows->contains(fn ($r) => !in_array($r['date'] . '|' . $r['start'], $keys, true))) return 'adopt_off_timetable';
         $delta = (int) round((float) $c->Rate * $n);
         if ($n >= (int) $c->SessionCount || $delta >= (int) $c->Charge || $delta >= (int) $inv->TotalAmount || $delta >= (int) InvoiceItem::where('InvoiceID', $inv->id)->value('Amount')) return 'adopt_exceeds_source';
         return null;
     }
 
     /** Moves the adopted lessons (with their evidence) to the new course and takes their price off the source month. @return list<int> */
-    public function adopt(StudentClass $source, StudentClass $target, array $ids, int $actorId): array
+    public function adopt(StudentClass $source, StudentClass $target, array $ids, int $actorId, string $end): array
     {
         if ($ids === []) return [];
         $n = count($ids);
+        $rows = ClassSession::whereIn('id', $ids)->get(['id', 'SessionDate', 'StartTime'])->map(fn ($r) => ['id' => (int) $r->id, 'date' => Carbon::parse($r->SessionDate)->toDateString(), 'start' => substr((string) $r->StartTime, 0, 5)]);
         $source = StudentClass::query()->where('ID', $source->getKey())->lockForUpdate()->firstOrFail();
         $invoice = Invoice::query()->notVoided()->where('StudentClassID', $source->getKey())->lockForUpdate()->firstOrFail();
         $item = InvoiceItem::where('InvoiceID', $invoice->id)->lockForUpdate()->get();
         $delta = (int) round((float) $source->Rate * $n);
         $oldCharge = (int) $source->Charge;
-        if ($item->count() !== 1 || $this->adoptionBlocker($source, $n) !== null || $oldCharge - $delta <= 0 || (int) $source->SessionCount - $n <= 0
+        if ($item->count() !== 1 || $this->adoptionBlocker($source, $rows, Carbon::parse($source->EndDate)->toDateString(), $end) !== null || $oldCharge - $delta <= 0 || (int) $source->SessionCount - $n <= 0
             || (int) $invoice->TotalAmount - $delta <= 0 || (int) $item[0]->Amount - $delta <= 0) throw new \RuntimeException('monthly_adopt_state_changed');
         foreach ($ids as $id) {
             ClassSession::where('id', $id)->update(['StudentClassID' => $target->getKey()]);

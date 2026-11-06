@@ -134,4 +134,22 @@ class MonthlyRenewAdoptTest extends TestCase
         $this->assertSame(1800, (int) $invoice->fresh()->TotalAmount);
         $this->assertSame($sc->ID, (int) ClassSession::sole()->StudentClassID);
     }
+
+    public function test_blocked_off_timetable_pending_report_or_pricing_amendment(): void
+    {
+        $preview = fn ($c) => $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$c->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30']);
+
+        [$sat] = $this->fixture(['week' => 6]);
+        $preview($sat)->assertJsonPath('blockers.1.code', 'adopt_off_timetable');
+
+        [$reported, $inv] = $this->fixture();
+        \Illuminate\Support\Facades\DB::table('payment_reports')->insert(['StudentID' => $reported->StudentID, 'StudentClassID' => $reported->ID, 'InvoiceID' => $inv->id, 'reported_by_name' => 'x',
+            'payment_date' => '2026-10-20', 'reported_amount' => 9000, 'status' => 'pending', 'report_token_hash' => 'h', 'token_expires_at' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->renew($reported, 422)->assertJsonPath('code', 'monthly_completed_sessions_outside_contract');
+        $this->assertSame(1, StudentClass::where('StudentID', $reported->StudentID)->count());
+
+        [$amended] = $this->fixture();
+        \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $amended->ID, 'effective_from' => '2026-11-01', 'rate' => 2000, 'rate_unit' => 'session', 'source_reference' => 'x', 'reason' => 'x', 'created_at' => now()]);
+        $preview($amended)->assertJsonPath('blockers.1.code', 'adopt_source_discounted');
+    }
 }

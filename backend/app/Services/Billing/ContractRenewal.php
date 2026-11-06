@@ -1235,7 +1235,7 @@ final class ContractRenewal
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
             $newCourse->refresh();
-            $adopted = app(MonthlyRenewalPeriodService::class)->adopt($studentClass, $newCourse, $periodReview['adoptable'], $actorId);
+            $adopted = app(MonthlyRenewalPeriodService::class)->adopt($studentClass, $newCourse, $periodReview['adoptable'], $actorId, $newEndDate);
 
             // Close and cancel the old period before materializing the new
             // period. A legacy source course may contain future rows beyond
