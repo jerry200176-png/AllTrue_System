@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 541 api/* routes · generated 2026-11-04
+> Source: `php artisan route:list --json` · 542 api/* routes · generated 2026-11-06
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -825,7 +825,7 @@
 | PUT | `api/v1/student-identities/{groupId}/access` | `StudentIdentityController@access` | role+campus |
 | GET | `api/v1/student-identities/{groupId}/audit` | `StudentIdentityController@audit` | role+campus |
 
-## /api/v1/students (17)
+## /api/v1/students (18)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -844,6 +844,7 @@
 | POST | `api/v1/students/{student}/guardians` | `StudentGuardianController@store` | role+campus |
 | PUT | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@update` | role+campus |
 | DELETE | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@destroy` | role+campus |
+| GET | `api/v1/students/{student}/learning-timeline` | `LearningRecordStudentTimelineController@show` | role+campus |
 | GET | `api/v1/students/{student}/line-bindings` | `StudentController@lineBindings` | role+campus |
 | DELETE | `api/v1/students/{student}/line-bindings/{binding}` | `StudentController@removeLineBinding` | role+campus |
 
