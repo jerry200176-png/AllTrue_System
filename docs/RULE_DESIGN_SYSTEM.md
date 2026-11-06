@@ -18,6 +18,7 @@ last_reviewed: 2026-11-06
 - 色彩單一來源仍是 `styles.css` 的 `--ds-*`；shadcn 變數（`--ui-background`、`--ui-primary`、`--ui-ring`…，以 `--ui-` 前綴避免與 `styles.css` 既有 `--primary`/`--accent` 衝突）定義於 `frontend/src/ui.css`，只引用 `--ds-*`，**不複製 hex**。品牌橘是 accent。
 - 只有淺色主題；dark 之後再做（在 `ui.css` 加 `.dark` 區塊重新映射）。
 - 圖表用 shadcn-vue Chart（Unovis）、圖示用 `lucide-vue-next`，**頁面真的需要時才加**，不預先安裝。
+- Tailwind utilities 一律帶 **`tw:` 前綴**（`tw:grid`、`tw:flex`、`tw:hover:bg-accent`），避免與 `styles.css` 既有全域 class（`.grid`、`.card`、`.badge`、`.hidden`…）衝突；legacy CSS 退場後才移除前綴。`cn()` 已設定前綴。
 - Tailwind 以 `@tailwindcss/vite` 載入，**無 preflight**，且 utilities 只掃 `components/ui`（見 `ui.css` 註解）；頁面遷移時再擴大 `@source`。
 - 新增元件：`npx shadcn-vue@latest add <name>`（`components.json` 已設 `typescript: false`），並釘死版本。
 

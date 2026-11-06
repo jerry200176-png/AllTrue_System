@@ -1,6 +1,8 @@
 /* shadcn-vue template layer (components/ui). Docs: docs/design/ALLTRUE_UI_FOUNDATION.md
  *
  * - NO preflight: only theme + utilities are imported, so the global reset can't restyle legacy pages.
+ * - `prefix(tw)` (on the theme import): utilities are `tw:grid`, `tw:flex` ... so they never collide with legacy global classes (.grid, .card, .badge, .hidden).
+ *   Drop the prefix only after the legacy CSS is retired.
  * - `important`: styles.css has unlayered resets (`* { margin:0; padding:0 }`, `button { ... }`) that would
  *   beat layered utilities; important utilities win over them.
  * - `source(none)` + @source: only classes used under components/ui are generated, so legacy class names
@@ -8,8 +10,8 @@
  * - Variables are namespaced `--ui-*` because styles.css already owns --primary/--accent/--border/--bg (legacy meaning).
  * - Colors: every shadcn variable below references a --ds-* token in styles.css. Never copy hex here.
  */
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities) important source(none);
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw) important source(none);
 @import "tw-animate-css";
 @source "./components/ui";
 

@@ -9,7 +9,7 @@ last_reviewed: 2026-11-06
 > Ops / product surfaces only. Brand / Auth (`Login.vue`) still follow [`docs/RULE_DESIGN_SYSTEM.md`](../RULE_DESIGN_SYSTEM.md) §1.1.
 > Color SSOT remains `--ds-*` in `frontend/src/styles.css` + RULE. This file defines **structure, density, primitives, and migration**.
 
-> **Template decision 2026-11-06 (#4659):** new UI uses `frontend/src/components/ui` (shadcn-vue; Reka UI + Tailwind v4) plus the `--ds-*` tokens, per `RULE_DESIGN_SYSTEM.md` section 0. The `At*` components in `components/design-system` are **legacy** and retire page by page as pages migrate. Where the rules below (principle 4, section 6.1, section 7) conflict with the template (hero gradient, pill tabs/buttons, bento cards), the template wins. The density, accessibility and responsive rules still apply.
+> **Template decision 2026-11-06 (#4659):** new UI uses `frontend/src/components/ui` (shadcn-vue; Reka UI + Tailwind v4) plus the `--ds-*` tokens, per `RULE_DESIGN_SYSTEM.md` section 0. The `At*` components in `components/design-system` are **legacy** and retire page by page as pages migrate. Where the rules below (principle 4, section 6.1, section 7) conflict with the template (hero gradient, pill tabs/buttons, bento cards), the template wins. Tailwind utilities in `components/ui` use the `tw:` prefix (`tw:grid`, `tw:flex`) until the legacy global CSS is retired, so they cannot collide with legacy classes such as `.grid` or `.card`. The density, accessibility and responsive rules still apply.
 
 ## Authority map
 
