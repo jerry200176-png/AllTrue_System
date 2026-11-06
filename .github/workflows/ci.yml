@@ -249,6 +249,8 @@ jobs:
   visual_regression:
     name: Visual regression (advisory)
     needs: changes
+    # Advisory: a red job here must not turn the CI workflow red (deploy.yml requires CI success).
+    continue-on-error: true
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20

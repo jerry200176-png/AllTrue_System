@@ -1338,7 +1338,7 @@ test.describe('Visual regression @visual', () => {
         await page.waitForLoadState('networkidle');
         await expect(page).toHaveScreenshot(`${name}-${vp.name}.png`, {
           fullPage: true,
-          mask: [page.locator('[class*="clock"], [class*="avatar"], time')],
+          mask: [page.locator('[class*="avatar"], time')],
         });
       });
     }
