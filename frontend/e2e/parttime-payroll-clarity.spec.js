@@ -62,6 +62,8 @@ const sessions = {
 
 async function installMock(page) {
   await page.addInitScript(() => { window.__parttimePayrollRetryAllowed = false; });
+  // #4979: the 行政加給 add row loads the campus part-time teacher list (GET /teachers).
+  await page.route('**/api/v1/teachers**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route('**/api/v1/finance/parttime-payroll**', async (route) => {
     const request = route.request();
     const url = request.url();
