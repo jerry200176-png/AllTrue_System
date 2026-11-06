@@ -103,6 +103,9 @@ describe('ContractCard', () => {
     await flushPromises();
     expect(plain.find('[data-testid="contract-amounts"]').text()).toBe('金額未填');
     expect(plain.text()).not.toContain('NT$ 0');
+    const gift = mount(ContractCard, { props: { focused: true, course: { id: 9, free_gift_settled: true }, amounts: zero } });
+    await flushPromises();
+    expect(gift.find('[data-testid="contract-amounts"]').exists()).toBe(false);
   });
 
   // in-app #414 / #4155: contract Charge vs stored bill total — labels must not call the bill 「應繳」alone

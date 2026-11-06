@@ -237,7 +237,7 @@ const amountsLine = computed(() => {
   const a = props.amounts;
   if (!a || followerPointer.value) return '';
   if (!a.due && !a.received && !a.owed) {
-    return noObligation.value || waived.value || props.lastPayment?.fullDiscount ? '' : '金額未填';
+    return noObligation.value || waived.value || props.lastPayment?.fullDiscount || props.course.free_gift_settled === true || props.course.full_discount_settled === true ? '' : '金額未填';
   }
   return `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}・未繳 ${money(a.owed)}`;
 });
