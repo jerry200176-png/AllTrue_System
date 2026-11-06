@@ -17,10 +17,8 @@ fi
 php backend/artisan route:list --json > /tmp/ref-routes.json
 python3 - <<'PY'
 import collections
-import datetime
 import json
 import os
-import re
 import sys
 
 routes = json.load(open('/tmp/ref-routes.json'))
@@ -76,7 +74,9 @@ lines = [
     '# REF — API Routes',
     '',
     '> **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`',
-    f'> Source: `php artisan route:list --json` · {len(api)} api/* routes · generated {datetime.date.today().isoformat()}',
+    # No totals or dates: they made every route PR rewrite the same lines, so two route PRs went stale or conflicted
+    # after either merged. Without them, PRs adding routes in different places merge cleanly.
+    '> Source: `php artisan route:list --json` (api/* routes)',
     '>',
     '> Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,',
     '> `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.',
@@ -86,7 +86,7 @@ lines = [
     '',
 ]
 for prefix, rs in groups.items():
-    lines.append(f'## /{prefix} ({len(rs)})')
+    lines.append(f'## /{prefix}')
     lines.append('')
     lines.append('| Method | URI | Action | Auth |')
     lines.append('|--------|-----|--------|------|')
@@ -104,11 +104,7 @@ output_path = 'docs/REF_API_ROUTES.md'
 
 if os.environ.get('REF_API_ROUTES_CHECK') == '1':
     existing = open(output_path, encoding='utf-8').read()
-    # The generated date is useful in the committed reference but should not
-    # make a later CI check fail when the route set is unchanged.
-    date_line = re.compile(r'(generated )\d{4}-\d{2}-\d{2}')
-    normalize = lambda value: date_line.sub(r'\1DATE', value)
-    if normalize(existing) != normalize(generated):
+    if existing != generated:
         print('REF_API_ROUTES.md is stale; run bash scripts/generate-ref-api-routes.sh', file=sys.stderr)
         sys.exit(1)
     print(f"REF_API_ROUTES.md is up to date ({len(api)} routes, {len(groups)} groups)")
