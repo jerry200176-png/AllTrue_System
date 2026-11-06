@@ -20,24 +20,17 @@ class RotateTelegramWebhookSecretTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
+    /** The real controller now reports verified_guardian, so the #1139 gate passes without any override. */
+    public function test_activation_gate_passes_with_the_real_controller(): void
     {
-        parent::setUp();
-        // Rotation tests run against a webhook that trusts only verified guardian bindings (Founder 2026-10-13 gate).
-        $this->app->bind(TelegramWebhookController::class, fn () => new class extends TelegramWebhookController {
-            public function bindingTrust(): string { return self::BINDING_TRUST_VERIFIED_GUARDIAN; }
-        });
-    }
-
-    public function test_activation_is_refused_while_webhook_binds_unverified_senders(): void
-    {
-        unset($this->app[TelegramWebhookController::class]); // the real controller: binds by student name today
-        $this->campus15(['code' => 'rotateunverified', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => null]);
-        Http::fake();
-        $this->assertSame(1, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
-        $this->assertStringContainsString('Activation refused', Artisan::output());
-        Http::assertNothingSent();
-        $this->assertNull(DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
+        $this->campus15(['code' => 'rotategate', 'TelegramToken' => 'bot-token', 'TelegramWebhookSecret' => null]);
+        Http::fake([
+            '*setWebhook' => Http::response(['ok' => true], 200),
+            '*getWebhookInfo' => Http::response(['ok' => true, 'result' => ['url' => rtrim(config('app.url'), '/') . '/api/v1/telegram/webhook/rotategate']], 200),
+        ]);
+        $this->assertSame(0, Artisan::call('telegram:rotate-webhook-secret', ['campus' => '15']));
+        $this->assertStringNotContainsString('Activation refused', Artisan::output());
+        $this->assertNotEmpty(DB::table('Campus')->where('id', 15)->value('TelegramWebhookSecret'));
     }
 
     /** Campus 15 may be pre-seeded by migrations; reuse the row when present. */
@@ -48,7 +41,7 @@ class RotateTelegramWebhookSecretTest extends TestCase
         return $c->refresh();
     }
 
-    /** Verified guardian binding (setUp) -> activation proceeds. */
+    /** Verified guardian binding -> activation proceeds. */
     public function test_rotate_registers_with_telegram_and_saves_secret_on_success(): void
     {
         $campus = $this->campus15(['code' => 'rotatebranch', 'TelegramToken' => 'bot-token']);
