@@ -1,3 +1,4 @@
+import { ymdInTaipei } from './sessionDates.js';
 import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_HELP, LEGACY_FLAG_UNVERIFIED_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL } from './courseMoneyState.js';
 import { formatCoursePeriod, isDueLater, isPendingConfirmation, owedItems, pendingReviewAmount, splitOwed } from './studentBillingRows.js';
 import { formatNewerCourseOverlapWarning } from './studentClassDisplay.js';
@@ -55,7 +56,7 @@ function warningsOf(r) {
  * @param {Array} alertRows rows from GET /alerts/tuition
  * @param {string} today    YYYY-MM-DD
  */
-export function billRows(alertRows, today = new Date().toISOString().slice(0, 10)) {
+export function billRows(alertRows, today = ymdInTaipei()) {
   const seen = new Set();
   const out = (alertRows || []).map((r, i) => {
     const items = owedItems(r);

@@ -84,6 +84,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
@@ -102,9 +103,7 @@ const mode = ref('months');
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 
 const minDate = computed(() => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return ymdInTaipei(new Date(Date.now() + 86400000));
 });
 
 const computedEndDate = computed(() => {

@@ -1,4 +1,5 @@
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { fetchCalendarCoursesAndSchedulesParallel, fetchCalendarStudentClassesApi, fetchCalendarSchedulesApi } from '../../lib/calendarCourseLoad';
@@ -17,7 +18,7 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 const period = ref('week');
 const orientation = ref('landscape');
-const currentDate = ref(props.initialDate || new Date().toISOString().slice(0, 10));
+const currentDate = ref(props.initialDate || ymdInTaipei());
 const loading = ref(false);
 const error = ref('');
 const allRows = ref([]);
