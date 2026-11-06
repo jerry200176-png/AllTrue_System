@@ -45,6 +45,13 @@ Release-Impact: user-visible
 - [ ] chore — 文件 / 設定 / 維護
 - [ ] td — 技術債清償
 
+## Lane & gates
+<!-- Lane follows the R-tier (docs/sop/DELIVERY_LIFECYCLE.md): R0 = fast, R1/R2 = standard, R3 = rigorous. Informational; the parsed sections above are unchanged. -->
+- **Lane**: fast / standard / rigorous
+- **Test plan by layer**: unit ☐ integration ☐ e2e ☐ visual ☐ (write `n/a` with a reason)
+- **Visual diff reviewed**: yes / n/a (no UI change)
+- **Gate markers expected**: <!-- e.g. tech-lead, qa-lead; R3 adds security-data-reviewer -->
+
 ## Test Plan
 <!-- 列出驗收步驟；PHPUnit / 前端測試由 CI 跑，有手動場景再寫 -->
 - [ ] 

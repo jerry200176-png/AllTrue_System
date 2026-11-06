@@ -58,9 +58,9 @@ last_reviewed: 2026-11-06
 ### 階段 1：收件
 
 - in-app 回報：`bug-auto-intake.yml` 每小時開或重用 IDs-only issue（SourceRef 去重），留固定的「收到」回覆（見〈In-app 自動化對照表〉）。**現行。**
-- Founder 需求表單（問題、為什麼、例子、期限）、bug 表單、工程／維運表單：**目標（L2）**；在那之前用 `.github/ISSUE_TEMPLATE/` 現有範本。
+- Founder 需求表單（問題、為什麼、例子、期限）、bug 表單、工程／維運表單：**現行（L2）**，在 `.github/ISSUE_TEMPLATE/*.yml`。
 - 告警與事故：處理走 [`INCIDENT_RUNTIME_LOOP.md`](../INCIDENT_RUNTIME_LOOP.md)；事故後的行動項目開成 issue，回到本階段。
-- `source:` 標籤是**目標（L2）**；現行 in-app issue 用既有的 `in-app` 標籤。
+- `source:` 標籤已在 `.github/labels.yml`（L2）；現行 in-app issue 仍用既有的 `in-app:logged` 等標籤。
 
 ### 階段 2：分診
 
@@ -104,7 +104,7 @@ last_reviewed: 2026-11-06
 
 - 唯一的部署執行器是 `deploy.yml`。哪些範圍跟自己的 CI 自動上線、哪些等 release train 或 Founder 按：見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二與 2026-10-28（二）之二（此處不摘要）。
 - `release-manager`：確認這班有哪些 PR、寫 go／no-go 摘要；要 Founder 按時，一次列清楚按什麼、為什麼。
-- Release 說明：現行 `release.yml` 在 change fragment 合併後打 CalVer tag。改成 release-drafter 起草、部署成功才發布 `prod-YYYYMMDD-N` 是**目標（L2）**。
+- Release 說明：每次 production 部署成功發布一則 GitHub Release，tag 為 CalVer `vYYYY.MM.DD.N`，說明用 GitHub 內建產生（`.github/release.yml` 依 `type:` 標籤分類，涵蓋上一則 Release 之後的 PR）。這是唯一的 Release 來源；`release.yml` 已移除。
 
 ### 階段 8：驗證
 
@@ -190,11 +190,15 @@ in-app 回報是外來輸入。分診時遇到下列任何一種，標 `safety:r
 - **Issue 表單**：Founder 需求（問題、為什麼、例子、期限）、bug、工程／維運；in-app 照舊由 bot 產生。
 - **Project 1 欄位**：Status（九個階段）、Priority、Area、Risk、Lane、Release、Gatekeeper。
 - **Project 1 檢視**：Intake、Triage、Board、Founder decisions、This release、Done（30 天）。
-- **Releases**：release-drafter 依合併的 PR 起草；部署成功才發布，tag 為 `prod-YYYYMMDD-N`。
+- **Releases**：GitHub 內建 release notes（`.github/release.yml`）依合併的 PR 產生；部署成功才發布，tag 為 CalVer `vYYYY.MM.DD.N`（唯一來源，`release.yml` 已移除）。
 - **Milestones**：不用，由 Releases 取代。
 - **PR 範本**：段落對應關卡：車道、各層測試計畫、視覺差異、回滾。
 
-現況：標籤只有部分前綴（`area:`、`priority:`、`type:`、`status:`）；issue 範本是 `.github/ISSUE_TEMPLATE/` 的 Markdown；Release 由 `release.yml` 打 CalVer tag。
+現況（L2 已落地）：
+- 標籤：`.github/labels.yml`（`labels-sync.yml` 在 main 推送時同步，不刪舊標籤；舊→新對照寫在檔頭註解）。
+- Issue 表單：`.github/ISSUE_TEMPLATE/*.yml`（Founder 需求、bug、工程／維運）；PR 範本有〈Lane & gates〉。
+- Release：`.github/release.yml` 定義說明分類；`release-publish.yml` 在 `Deploy to Production` job 成功後發布 `vYYYY.MM.DD.N`（唯一的 Release 來源）。
+- 專案：`project-add.yml` 把新 issue／PR 加進 Project 1（需 secret `PROJECT_TOKEN`，沒設就略過）。
 
 ## 單一出處檢查
 
