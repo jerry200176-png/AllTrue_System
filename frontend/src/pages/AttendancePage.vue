@@ -861,6 +861,7 @@
               <td>{{ s.teacher_name || '—' }}</td>
               <td>
                 <select v-model="makeupMarkStatus[s.class_session_id]" class="att-status-select" :aria-label="`${s.student_name || ''} 補登點名狀態`.trim()">
+                  <option value="" disabled>請選擇</option>
                   <option value="present">到班</option>
                   <option value="late">遲到</option>
                   <option v-if="s.session_status === 'scheduled'" value="leave">請假</option>
@@ -871,7 +872,7 @@
                 <button
                   class="primary small"
                   type="button"
-                  :disabled="makeupMarkSubmitting[s.class_session_id]"
+                  :disabled="makeupMarkSubmitting[s.class_session_id] || !makeupMarkStatus[s.class_session_id]"
                   @click="submitMakeupMark(s)"
                 >
                   {{ makeupMarkSubmitting[s.class_session_id] ? '送出中…' : '補登' }}
@@ -2108,7 +2109,7 @@ const fetchMakeupSessions = async (page = 1) => {
       makeupTotal.value = json.total ?? makeupSessions.value.length;
       makeupHasMore.value = json.current_page < json.last_page;
       const next = {};
-      makeupSessions.value.forEach(r => { next[r.class_session_id] = makeupMarkStatus.value[r.class_session_id] || 'present'; });
+      makeupSessions.value.forEach(r => { next[r.class_session_id] = makeupMarkStatus.value[r.class_session_id] || ''; });
       makeupMarkStatus.value = next;
     } else if (res.status === 403) {
       makeupMsg.value = '無此分校的存取權限';
@@ -2129,7 +2130,8 @@ const fetchMakeupSessions = async (page = 1) => {
 
 const submitMakeupMark = async (s) => {
   makeupMsg.value = '';
-  const status = makeupMarkStatus.value[s.class_session_id] ?? 'present';
+  const status = makeupMarkStatus.value[s.class_session_id];
+  if (!status) { makeupMsg.value = '請先選擇點名狀態'; makeupMsgType.value = 'error'; return; }
   makeupMarkSubmitting.value = { ...makeupMarkSubmitting.value, [s.class_session_id]: true };
   try {
     const token = await getToken();

@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
+use App\Models\StudentClass;
 use App\Models\Student;
 use App\Models\StudentSignIn;
 use App\Models\User;
@@ -144,7 +146,51 @@ class AttendanceVoidTest extends TestCase
         $res->assertNotFound();
     }
 
+    // ── in-app #512: voiding the sign-in that debited a 'completed' lesson hands it back to 待補點名 as scheduled ──
+
+    public function test_void_reverts_completed_session_when_this_sign_in_debited_it(): void
+    {
+        [$token, $student] = $this->scaffold();
+        [$session, $signin] = $this->completedSessionWithSignIn($student, true);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])
+            ->assertOk()->assertJson(['class_session_reverted' => true]);
+
+        $this->assertSame('scheduled', $session->fresh()->Status);
+    }
+
+    public function test_void_keeps_completed_session_when_the_sign_in_debited_nothing(): void
+    {
+        [$token, $student] = $this->scaffold();
+        [$session, $signin] = $this->completedSessionWithSignIn($student, false);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])
+            ->assertOk()->assertJson(['class_session_reverted' => false]);
+
+        $this->assertSame('completed', $session->fresh()->Status);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private function completedSessionWithSignIn(Student $student, bool $deducted): array
+    {
+        $class = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 1,
+            'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30', 'TotalHours' => 8, 'Charge' => 0, 'Paid' => 0, 'Rate' => 500,
+            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionDuration' => 120, 'ClassType' => 'one_on_one',
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $class->ID, 'SessionDate' => '2026-11-01', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'completed',
+        ]);
+        $signin = StudentSignIn::create([
+            'StudentID' => $student->id, 'StudentClassID' => $class->ID, 'ClassSessionID' => $session->id, 'SignInDT' => now()->toDateTimeString(),
+            'Status' => 'present', 'CampusID' => 1, 'PersonType' => 'student', 'SessionDeducted' => $deducted, 'MDT' => now(),
+        ]);
+
+        return [$session, $signin];
+    }
 
     private function scaffold(): array
     {

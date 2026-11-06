@@ -1050,7 +1050,11 @@ class AttendanceController extends Controller
                 // ③ 若 ClassSession 為出勤狀態，退回 scheduled
                 if ($signin->ClassSessionID) {
                     $session = ClassSession::find($signin->ClassSessionID);
-                    if ($session && in_array($session->Status, ['attended', 'late', 'absent'], true)) {
+                    // in-app #512: a lesson marked 'completed' (taught, no sign-in) that this sign-in debited has no
+                    // basis left once the debit is reversed. A 'completed' lesson nobody debited stays as it was.
+                    $stillSignedIn = StudentSignIn::where('ClassSessionID', $signin->ClassSessionID)->whereNull('VoidedAt')->exists();
+                    if ($session && (in_array($session->Status, ['attended', 'late', 'absent'], true)
+                        || ($session->Status === 'completed' && $sessionReversed && ! $stillSignedIn))) {
                         $session->Status = 'scheduled';
                         $session->save();
                         $classSessionReverted = true;
