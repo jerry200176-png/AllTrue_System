@@ -1,0 +1,49 @@
+name: Publish production release
+
+# Publishes the drafted notes as a GitHub Release tagged prod-YYYYMMDD-N, only when
+# deploy.yml's "Deploy to Production" job succeeded (a green "Deploy to Pi" run can
+# also be a stand-down that deployed nothing).
+on:
+  workflow_run:
+    workflows: ["Deploy to Pi"]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Tag and publish
+        run: |
+          set -euo pipefail
+          deployed="$(gh api "/repos/${REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name == "Deploy to Production" and .conclusion == "success")] | length')"
+          if [[ "$deployed" -lt 1 ]]; then
+            echo "No successful production deploy job in run ${RUN_ID}; nothing to publish."
+            exit 0
+          fi
+          day="$(date -u +%Y%m%d)"
+          n=1
+          while gh api "/repos/${REPO}/git/ref/tags/prod-${day}-${n}" >/dev/null 2>&1; do n=$((n + 1)); done
+          tag="prod-${day}-${n}"
+          # Reuse the drafter's notes when a draft exists; else generate from merged PRs.
+          draft="$(gh api "/repos/${REPO}/releases?per_page=30" --jq '[.[] | select(.draft)][0].id // empty')"
+          if [[ -n "$draft" ]]; then
+            gh api -X PATCH "/repos/${REPO}/releases/${draft}" -f tag_name="$tag" -f target_commitish="$SHA" \
+              -f name="$tag" -F draft=false -F prerelease=false >/dev/null
+          else
+            gh release create "$tag" --repo "$REPO" --target "$SHA" --title "$tag" --generate-notes
+          fi
+          echo "Published ${tag} at ${SHA}"

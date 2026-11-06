@@ -1,0 +1,27 @@
+name: Add to project
+
+# New issues and PRs land in user project 1 (AllTrue Engineering Roadmap).
+# Needs a PAT secret PROJECT_TOKEN (classic: project + repo scope); skips when unset.
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAS_TOKEN: ${{ secrets.PROJECT_TOKEN != '' }}
+    steps:
+      - name: Skip notice
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::PROJECT_TOKEN not set; skipping add-to-project"
+      - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+        if: env.HAS_TOKEN == 'true'
+        with:
+          project-url: https://github.com/users/jerry200176-png/projects/1
+          github-token: ${{ secrets.PROJECT_TOKEN }}

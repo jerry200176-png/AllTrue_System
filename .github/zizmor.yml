@@ -21,6 +21,11 @@ rules:
       - deploy.yml
       # workflow_run on "Deploy to Pi" for main only; contents: read.
       - calendar-course-acceptance.yml
+      # workflow_run on "Deploy to Pi" for main only; no checkout, reads job conclusions
+      # via the API and creates a tag/release with github.token.
+      - release-publish.yml
+      # pull_request_target only to add the PR to a project; no checkout, no PR code run.
+      - project-add.yml
   github-env:
     ignore:
       # Writes a base64 smoke session token we generated, not user input.

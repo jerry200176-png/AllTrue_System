@@ -1,0 +1,26 @@
+name: Bug
+description: Product behavior differs from what is expected. Security issues go through SECURITY.md, not here.
+title: "[bug] "
+labels: ["type:bug", "status:triage"]
+body:
+  - type: textarea
+    id: steps
+    attributes: {label: Steps to reproduce, value: "1. \n2. \n3. "}
+    validations: {required: true}
+  - type: textarea
+    id: expected
+    attributes: {label: Expected}
+    validations: {required: true}
+  - type: textarea
+    id: actual
+    attributes: {label: Actual}
+    validations: {required: true}
+  - type: input
+    id: campus
+    attributes: {label: Campus ID, description: "Number only. No names, phones or other personal data (public repo)."}
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: ["p0 - production down / money or data wrong", "p1 - blocks daily work", "p2 - annoying, has a workaround", "p3 - cosmetic"]
+    validations: {required: true}

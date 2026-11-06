@@ -193,7 +193,11 @@ in-app 回報是外來輸入。分診時遇到下列任何一種，標 `safety:r
 - **Milestones**：不用，由 Releases 取代。
 - **PR 範本**：段落對應關卡：車道、各層測試計畫、視覺差異、回滾。
 
-現況：標籤只有部分前綴（`area:`、`priority:`、`type:`、`status:`）；issue 範本是 `.github/ISSUE_TEMPLATE/` 的 Markdown；Release 由 `release.yml` 打 CalVer tag。
+現況（L2 已落地）：
+- 標籤：`.github/labels.yml`（`labels-sync.yml` 在 main 推送時同步，不刪舊標籤；舊→新對照寫在檔頭註解）。
+- Issue 表單：`.github/ISSUE_TEMPLATE/*.yml`（Founder 需求、bug、工程／維運）；PR 範本有〈Lane & gates〉。
+- Release：`release-drafter.yml` 起草；`release-publish.yml` 在 `Deploy to Production` job 成功後發布 `prod-YYYYMMDD-N`（`release.yml` 的 CalVer tag 仍在）。
+- 專案：`project-add.yml` 把新 issue／PR 加進 Project 1（需 secret `PROJECT_TOKEN`，沒設就略過）。
 
 ## 單一出處檢查
 
