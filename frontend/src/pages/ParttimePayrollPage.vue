@@ -156,7 +156,7 @@
       />
 
       <ParttimeAdminBonusAdd
-        v-if="!loading && !error && summary.lock_status !== 'locked'"
+        v-if="!loading && !error && summary.lock_status !== 'locked' && !searchQ"
         :key="`${selectedMonth}-${props.branchId}`"
         :branch-id="props.branchId || summary.branch_id"
         :month="selectedMonth"
