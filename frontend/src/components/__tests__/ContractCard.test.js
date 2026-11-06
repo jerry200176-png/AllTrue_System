@@ -91,6 +91,23 @@ describe('ContractCard', () => {
     expect(w2.find('[data-testid="contract-amounts"]').exists()).toBe(false);
   });
 
+  // in-app #500: an all-NT$0 bill is not a billing line (a bare 應收 0・已收 0・未繳 0 read as a missing amount)
+  it('shows no NT$0 bill line for tutoring, and one short label for any other all-zero bill', async () => {
+    authedFetch.mockResolvedValue(respond(COVERAGE));
+    const zero = { due: 0, received: 0, owed: 0 };
+    const tutoring = mount(ContractCard, { props: { focused: true, course: { id: 9, no_payment_obligation: true }, amounts: zero } });
+    await flushPromises();
+    expect(tutoring.find('[data-testid="contract-amounts"]').exists()).toBe(false);
+    expect(tutoring.text()).toContain('輔導課不用繳費');
+    const plain = mount(ContractCard, { props: { focused: true, course: { id: 9 }, amounts: zero } });
+    await flushPromises();
+    expect(plain.find('[data-testid="contract-amounts"]').text()).toBe('金額未填');
+    expect(plain.text()).not.toContain('NT$ 0');
+    const gift = mount(ContractCard, { props: { focused: true, course: { id: 9, free_gift_settled: true }, amounts: zero } });
+    await flushPromises();
+    expect(gift.find('[data-testid="contract-amounts"]').exists()).toBe(false);
+  });
+
   // in-app #414 / #4155: contract Charge vs stored bill total — labels must not call the bill 「應繳」alone
   it('shows 合約金額 apart from 本合約帳單 when Charge differs from bill due', async () => {
     authedFetch.mockResolvedValue(respond(COVERAGE));
