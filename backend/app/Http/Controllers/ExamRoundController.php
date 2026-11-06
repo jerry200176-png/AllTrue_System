@@ -253,7 +253,14 @@ class ExamRoundController extends Controller
         $scores = ExamScore::query()->where('exam_round_id', $examRound->id)
             ->whereIn('student_id', $eligible->pluck('student_id')->all() ?: [0])
             ->get()->groupBy('student_id');
-        $data = $eligible->map(function ($row) use ($scores, $subjectIds) {
+        $edited = [];
+        ExamScoreAuditLog::query()->where('exam_round_id', $examRound->id)
+            ->whereIn('action', ['score_updated', 'score_corrected', 'score_deleted'])
+            ->get(['before', 'after'])->each(function ($l) use (&$edited) {
+                $v = $l->after ?? $l->before;
+                $edited[(int) ($v['student_id'] ?? 0) . ':' . (int) ($v['exam_round_subject_id'] ?? 0)] = true;
+            });
+        $data = $eligible->map(function ($row) use ($scores, $subjectIds, $edited) {
             $bySubject = collect($scores->get($row['student_id'], []))->keyBy('exam_round_subject_id');
             $filled = 0;
             $scorePayload = [];
@@ -267,6 +274,7 @@ class ExamRoundController extends Controller
                     'score' => $s && $s->score !== null ? (float) $s->score : null,
                     'is_absent' => $s ? (bool) $s->is_absent : false,
                     'notes' => $s->notes ?? null,
+                    'edited' => isset($edited[$row['student_id'] . ':' . $sid]),
                 ];
             }
             return [
@@ -304,6 +312,7 @@ class ExamRoundController extends Controller
             'scores.*.exam_round_subject_id' => ['required', 'integer', 'min:1'],
             'scores.*.score' => ['nullable', 'numeric', 'min:0'],
             'scores.*.is_absent' => ['sometimes', 'boolean'],
+            'scores.*.clear' => ['sometimes', 'boolean'],
             'scores.*.notes' => ['nullable', 'string', 'max:255'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
@@ -326,6 +335,10 @@ class ExamRoundController extends Controller
             $subject = $subjectMap->get($subjectId);
             if (!$subject) {
                 throw ValidationException::withMessages(['scores' => ['Unknown subject for this round']]);
+            }
+            if (!empty($row['clear'])) {
+                $normalized[] = ['student_id' => $studentId, 'exam_round_subject_id' => $subjectId, 'clear' => true];
+                continue;
             }
             $isAbsent = (bool) ($row['is_absent'] ?? false);
             $score = array_key_exists('score', $row) ? $row['score'] : null;
@@ -360,19 +373,37 @@ class ExamRoundController extends Controller
             if ($locked->status === 'void') {
                 abort(404);
             }
+            if ($isDirector && $locked->status === 'closed' && trim((string) ($payload['reason'] ?? '')) === '') {
+                throw ValidationException::withMessages(['reason' => ['更正已截止的段考成績需填寫原因']]);
+            }
             foreach ($normalized as $row) {
                 $record = ExamScore::query()
                     ->where('exam_round_id', $locked->id)
                     ->where('student_id', $row['student_id'])
                     ->where('exam_round_subject_id', $row['exam_round_subject_id'])
                     ->lockForUpdate()->first();
+                if (!empty($row['clear'])) {
+                    if ($record) {
+                        $this->audit($request, $locked, (int) $record->id, 'score_deleted',
+                            $record->only(['score', 'is_absent', 'notes', 'student_id', 'exam_round_subject_id']),
+                            null, $payload['reason'] ?? null);
+                        $record->delete();
+                    }
+                    $saved[] = [
+                        'exam_round_id' => (int) $locked->id, 'exam_round_subject_id' => $row['exam_round_subject_id'],
+                        'student_id' => $row['student_id'], 'score' => null, 'is_absent' => false, 'notes' => null,
+                        'cleared' => true,
+                    ];
+                    continue;
+                }
                 if (!$record) {
                     $record = new ExamScore([
                         'exam_round_id' => $locked->id, 'student_id' => $row['student_id'],
                         'exam_round_subject_id' => $row['exam_round_subject_id'],
                     ]);
                 }
-                $before = $record->exists ? $record->only(['score', 'is_absent', 'notes']) : null;
+                $before = $record->exists
+                    ? $record->only(['score', 'is_absent', 'notes', 'student_id', 'exam_round_subject_id']) : null;
                 $record->fill([
                     'score' => $row['score'], 'is_absent' => $row['is_absent'], 'notes' => $row['notes'],
                     'recorded_by_user_id' => $this->userId($request), 'recorded_at' => now(),
@@ -396,6 +427,34 @@ class ExamRoundController extends Controller
             }
         });
         return response()->json(['data' => $saved]);
+    }
+    /** Score change history for one round, optionally one student (teachers: own students only). */
+    public function history(Request $request, ExamRound $examRound)
+    {
+        if (!$this->canAccessRound($request, $examRound) || $examRound->status === 'void') {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $studentId = (int) $request->input('student_id');
+        if ($this->role($request) === 'teacher') {
+            $own = $this->eligibleStudentRows($examRound, $this->userId($request))->pluck('student_id')->map(fn ($i) => (int) $i)->all();
+            if ($studentId <= 0 || !in_array($studentId, $own, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+        $rows = ExamScoreAuditLog::query()
+            ->where('exam_round_id', $examRound->id)->where('campus_id', $examRound->campus_id)
+            ->where('action', 'like', 'score_%')
+            ->when($studentId > 0, fn ($q) => $q->where(
+                fn ($w) => $w->where('after->student_id', $studentId)->orWhere('before->student_id', $studentId)
+            ))
+            ->latest('id')->limit(500)->get()
+            ->map(fn ($l) => [
+                'id' => (int) $l->id, 'action' => $l->action, 'reason' => $l->reason,
+                'actor_user_id' => (int) $l->actor_user_id,
+                'exam_round_subject_id' => (int) (($l->after ?? $l->before)['exam_round_subject_id'] ?? 0),
+                'before' => $l->before, 'after' => $l->after, 'created_at' => optional($l->created_at)->toIso8601String(),
+            ])->values();
+        return response()->json(['data' => $rows]);
     }
     public function progress(Request $request, ExamRound $examRound)
     {
@@ -558,8 +617,17 @@ class ExamRoundController extends Controller
         if ($gradeIds === []) {
             return collect();
         }
-        // Roster stability: keep students who already have scores (Codex P1).
-        $scoredIds = ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
+        // Roster stability for directors only; a teacher is limited to students with their own active class.
+        $scoredIds = [];
+        if ($teacherId === null) {
+            $scoredIds = ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
+            // A cleared score leaves an audit row, so the student stays on the director roster for re-entry.
+            ExamScoreAuditLog::query()->where('exam_round_id', $round->id)->where('action', 'score_deleted')
+                ->get(['before'])->each(function ($l) use (&$scoredIds) {
+                    $scoredIds[] = (int) ($l->before['student_id'] ?? 0);
+                });
+            $scoredIds = array_values(array_unique(array_filter($scoredIds)));
+        }
         $students = Student::query()
             ->where('CampusID', (int) $round->campus_id)
             ->where(function ($q) use ($gradeIds, $scoredIds) {

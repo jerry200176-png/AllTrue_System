@@ -27,6 +27,7 @@ localStorage.setItem('notifications_sound_enabled', '0');
 const [{ createApp, h }, styles] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'),
 ]);
 
 const pageModules = {
