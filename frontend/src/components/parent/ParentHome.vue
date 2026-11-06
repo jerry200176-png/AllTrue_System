@@ -36,8 +36,8 @@ const money = (n) => Number(n).toLocaleString('en-US');
         <p class="tw:text-xs tw:text-muted-foreground">要繳的錢</p>
         <template v-if="home.due">
           <div class="tw:flex tw:items-center tw:justify-between tw:gap-2">
-            <p class="tw:text-xl tw:font-bold">{{ home.due.amount == null ? '有課程待繳' : `$${money(home.due.amount)}` }}</p>
-            <Badge variant="outline">{{ moneyStatusLabel('unpaid') }}</Badge>
+            <p class="tw:text-xl tw:font-bold">{{ home.due.review ? '帳務確認中' : home.due.amount == null ? '有課程待繳' : `$${money(home.due.amount)}` }}</p>
+            <Badge variant="outline">{{ moneyStatusLabel(home.due.review ? 'review_required' : 'unpaid') }}</Badge>
           </div>
           <p v-if="home.due.dueDateLabel" class="tw:text-xs tw:text-muted-foreground">{{ home.due.dueDateLabel }} 前</p>
           <Button class="tw:mt-3 tw:h-11 tw:w-full" @click="$emit('pay')">怎麼繳費</Button>

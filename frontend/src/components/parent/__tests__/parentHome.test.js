@@ -12,10 +12,14 @@ describe('pickNextLesson', () => {
     expect(r).toMatchObject({ dateLabel: '11/8', weekday: '日', time: '15:00', subject: '英文', daysLeft: 2, canLeave: true });
     expect(r.session.id).toBe(2);
   });
+  it('skips an already-started lesson and picks the next one', () => {
+    const r = pickNextLesson([sess({ id: 1, SessionDate: '2026-11-06', is_past_or_started: true }), sess({ id: 2, SessionDate: '2026-11-06', StartTime: '20:00' })], '2026-11-06');
+    expect(r.session.id).toBe(2);
+  });
   it('is null when nothing is upcoming, and hides leave when started or read-only', () => {
     expect(pickNextLesson([], '2026-11-06')).toBeNull();
     expect(pickNextLesson([sess({ SessionDate: '2026-11-01' })], '2026-11-06')).toBeNull();
-    expect(pickNextLesson([sess({ is_past_or_started: true })], '2026-11-08').canLeave).toBe(false);
+    expect(pickNextLesson([sess({ is_past_or_started: true })], '2026-11-08')).toBeNull();
     expect(pickNextLesson([sess()], '2026-11-06', { actionsEnabled: false }).canLeave).toBe(false);
     expect(pickNextLesson([sess({ Status: 'leave_requested' })], '2026-11-06').leaveRequested).toBe(true);
   });
@@ -26,9 +30,15 @@ describe('pickAmountDue', () => {
     const inv = [
       { Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-11-10', payments: [] },
       { Status: 'partial', TotalAmount: 3000, DueDate: '2026-11-05', payments: [{ Amount: 1000, Method: 'cash' }] },
-      { Status: 'paid', TotalAmount: 9999, payments: [] },
+      { Status: 'paid', TotalAmount: 9999, payments: [{ Amount: 9999 }] },
     ];
     expect(pickAmountDue(inv, [])).toEqual({ amount: 9200, dueDateLabel: '11/5' });
+  });
+  it('stale-paid invoice with short payments is 確認中, never a lower amount or 都繳清了', () => {
+    const stale = { Status: 'paid', TotalAmount: 10000, payments: [{ Amount: 4000, Method: 'cash' }] };
+    expect(pickAmountDue([stale, { Status: 'unpaid', TotalAmount: 2000, payments: [] }], [])).toMatchObject({ amount: null, review: true });
+    expect(pickAmountDue([stale], [])).toMatchObject({ review: true });
+    expect(pickAmountDue([{ ...stale, payments: [{ Amount: 10000 }] }], [])).toBeNull();
   });
   it('falls back to unknown amount from payment alerts, and null when all paid', () => {
     expect(pickAmountDue([], [{ class_id: 1 }])).toEqual({ amount: null, dueDateLabel: '' });

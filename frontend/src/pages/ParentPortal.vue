@@ -823,6 +823,13 @@
           </label>
         </div>
 
+        <div v-if="parentReleaseNotes.length" class="pp-card" data-guide="parent-updates">
+          <h3>與您有關的更新</h3>
+          <div v-for="note in parentReleaseNotes" :key="note.id">
+            <strong>{{ note.title }}</strong>
+            <p class="pp-hint">{{ note.summary }}</p>
+          </div>
+        </div>
         <div class="pp-card">
           <button type="button" class="pp-btn pp-btn-ghost" style="width:100%;min-height:44px;" @click="logout">登出</button>
         </div>
@@ -858,6 +865,7 @@
 import { onMounted, ref, computed, reactive, nextTick, watch } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
+import { notesForRole } from '../lib/releaseNotes';
 import ParentHome from '../components/parent/ParentHome.vue';
 import { pickNextLesson, pickAmountDue, pickLatestFeedback } from '../lib/parentHome';
 import { lessonStatusLabel, courseTypeLabel, moneyStatusLabel, outOfLessonsLabel } from '../lib/parentLabels';
@@ -946,6 +954,7 @@ async function openAttendanceTimeline() {
   document.getElementById('pp-attendance-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 const activeTab = ref('home');
+const parentReleaseNotes = computed(() => notesForRole('parent'));
 const parentTabKeys = ['home', 'schedule', 'learning', 'billing'];
 const leaveSessionId = ref(null);
 const leaveReason = ref('');

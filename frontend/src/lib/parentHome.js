@@ -13,6 +13,7 @@ export function pickNextLesson(sessions, today, { actionsEnabled = true } = {}) 
   const s = (Array.isArray(sessions) ? sessions : []).find((x) => (
     ['scheduled', 'rescheduled', 'leave_requested'].includes(String(x?.Status || '').toLowerCase())
     && ymd(x?.SessionDate) >= today
+    && x?.is_past_or_started !== true
   ));
   if (!s) return null;
   const date = ymd(s.SessionDate);
@@ -36,16 +37,22 @@ const netPaid = (inv) => (inv.payments || []).reduce((sum, p) => {
   return sum + (String(p?.Method || '') === 'void' ? -Math.abs(a) : a);
 }, 0);
 
-/** 要繳的錢: unpaid invoices summed; falls back to "has unpaid courses, amount unknown". */
+/**
+ * 要繳的錢: unpaid invoices summed. A stored-"paid" invoice whose Payment rows fall short may still owe
+ * (backend Invoice::mayOweSql, #3781); this card does not re-derive that rule, it shows `review: true` (確認中).
+ */
 export function pickAmountDue(invoices, paymentAlerts) {
-  const open = (Array.isArray(invoices) ? invoices : [])
-    .filter((i) => String(i?.Status ?? i?.status ?? '').toLowerCase() !== 'paid')
-    .map((i) => ({ due: Math.max(0, (Number(i.TotalAmount ?? i.total_amount) || 0) - Math.max(0, netPaid(i))), dueDate: ymd(i.DueDate) }))
+  const list = Array.isArray(invoices) ? invoices : [];
+  const isPaid = (i) => String(i?.Status ?? i?.status ?? '').toLowerCase() === 'paid';
+  const total = (i) => Number(i.TotalAmount ?? i.total_amount) || 0;
+  const staleSuspect = list.some((i) => isPaid(i) && Array.isArray(i.payments) && netPaid(i) < total(i));
+  const open = list.filter((i) => !isPaid(i))
+    .map((i) => ({ due: Math.max(0, total(i) - Math.max(0, netPaid(i))), dueDate: ymd(i.DueDate) }))
     .filter((i) => i.due > 0);
-  if (open.length) {
-    const dates = open.map((i) => i.dueDate).filter(Boolean).sort();
-    return { amount: open.reduce((s, i) => s + i.due, 0), dueDateLabel: dates[0] ? md(dates[0]) : '' };
-  }
+  const dates = open.map((i) => i.dueDate).filter(Boolean).sort();
+  const dueDateLabel = dates[0] ? md(dates[0]) : '';
+  if (staleSuspect) return { amount: null, dueDateLabel, review: true };
+  if (open.length) return { amount: open.reduce((sum, i) => sum + i.due, 0), dueDateLabel };
   return Array.isArray(paymentAlerts) && paymentAlerts.length ? { amount: null, dueDateLabel: '' } : null;
 }
 
