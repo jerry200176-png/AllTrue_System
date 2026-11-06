@@ -108,7 +108,7 @@ for (const viewport of VIEWPORTS) {
     page.on('pageerror', (error) => errors.push(String(error)));
 
     const tuitionProbe = await login(page);
-    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
 
     const layout = await page.evaluate(() => ({

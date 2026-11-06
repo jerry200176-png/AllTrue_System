@@ -889,7 +889,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
       await openPilot(page, { pageName: 'director', mode: 'normal', viewport: vp });
 
-      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
       const layout = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -1132,19 +1132,20 @@ test.describe('UI foundation — real Vue page evidence', () => {
   ]) {
     test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
       await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
-      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
-      const riskDisclosure = page.locator('.director-risk-disclosure');
-      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
-      await riskDisclosure.locator('summary').click();
-      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
+      await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('button', { name: /家長請假/ })).toBeVisible();
       const ctas = page.locator('.director-task__action');
       expect(await ctas.count()).toBeGreaterThan(0);
       await expect(ctas.first()).toBeVisible();
       fs.mkdirSync(outDir, { recursive: true });
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-focus-${vp.name}.png`) });
-      const leaveTask = page.getByRole('button', { name: '開始處理', exact: true });
+      const leaveTask = page.getByRole('button', { name: /家長請假/ });
       await leaveTask.click();
       await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
+      const riskDisclosure = page.locator('.director-risk-disclosure');
+      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
+      await riskDisclosure.locator('summary').click();
+      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
     });
@@ -1157,7 +1158,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
   // later redesign introduced director-workbench-v2; it never renders.)
   test('director 完整營運 cards show empty state with zero counts', async ({ page }) => {
     await openPilot(page, { pageName: 'director', mode: 'empty', viewport: { width: 1440, height: 900 } });
-    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('tab', { name: '完整營運', exact: true }).click();
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
 
@@ -1173,7 +1174,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
   test('director 完整營運 cards show counts and rows with data', async ({ page }) => {
     await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: { width: 1440, height: 900 } });
-    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('tab', { name: '完整營運', exact: true }).click();
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
 

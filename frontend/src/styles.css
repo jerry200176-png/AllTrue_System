@@ -58,6 +58,13 @@
   --ds-canvas-soft: #f6f9fc;
   --ds-hairline: #e3e8ee;
   --ds-hairline-input: #a8c3de;
+  /* template accent hues (gradient icon tiles, primary button, ring) */
+  --ds-blue: #0a66d6;
+  --ds-blue-light: #4aa3ff;
+  --ds-purple: #6b3fd1;
+  --ds-purple-light: #a78bfa;
+  --ds-teal: #0a8fa3;
+  --ds-teal-light: #5ad8e6;
   --ds-success: #1a8245;
   --ds-success-wash: #e7f4ec;
   --ds-success-line: #86efac; /* soft border on --ds-success-wash */

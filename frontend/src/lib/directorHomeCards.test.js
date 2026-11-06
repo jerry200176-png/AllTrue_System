@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { owedCard, renewalCount, oldestEvaluationAge, hourBuckets } from './directorHomeCards.js';
+import { owedCard, renewalCount, oldestEvaluationAge } from './directorHomeCards.js';
 
 const alerts = [
   { alert_type: 'unpaid', payment_status: 'unpaid' },
@@ -23,13 +23,21 @@ describe('directorHomeCards', () => {
     expect(oldestEvaluationAge([{}], '2026-11-06')).toBeNull();
     expect(oldestEvaluationAge([], '2026-11-06')).toBeNull();
   });
-  it('buckets lessons by hour and counts unmarked', () => {
-    const rows = [
-      { start_time: '14:00', status: 'scheduled' },
-      { start_time: '14:30', status: 'completed' },
-      { start_time: '09:00', status: 'scheduled' },
-      { start_time: null, status: 'scheduled' },
-    ];
-    expect(hourBuckets(rows)).toEqual([{ hour: 9, count: 1, open: 1 }, { hour: 14, count: 2, open: 1 }]);
+});
+
+import { plainTaskTitle } from './directorHomeCards.js';
+describe('plain task rows', () => {
+  it('maps ids to plain titles and keeps unknown titles', () => {
+    expect(plainTaskTitle({ id: 'parent-leave', title: '家長請假待主任處理' })).toBe('家長請假');
+    expect(plainTaskTitle({ id: 'adoption-1', title: '營運待辦' })).toBe('營運待辦');
+  });
+});
+
+import { sevenDayEvalCounts } from './directorHomeCards.js';
+describe('sevenDayEvalCounts', () => {
+  it('buckets by lesson day, oldest first, null when empty/out of range', () => {
+    expect(sevenDayEvalCounts([{ SessionDate: '2026-11-06' }, { SessionDate: '2026-11-06' }, { session_date: '2026-11-00' }, { SessionDate: '2026-10-31' }], '2026-11-06')).toEqual([1, 0, 0, 0, 0, 0, 2]);
+    expect(sevenDayEvalCounts([{ SessionDate: '2026-10-01' }], '2026-11-06')).toBeNull();
+    expect(sevenDayEvalCounts([], '2026-11-06')).toBeNull();
   });
 });

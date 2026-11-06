@@ -9,29 +9,40 @@
     </template>
 
     <template v-else>
-      <main class="director-workbench-v2" aria-label="主任總覽">
-        <header class="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:pb-2">
+      <main class="director-workbench-v2 tpl-mesh" aria-label="主任總覽">
+        <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:-mx-4 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-4 tw:py-3">
           <div>
-            <p class="tw:text-sm tw:text-muted-foreground">{{ branchName }} · {{ todayDisplay }}</p>
-            <h1 class="tw:mt-1 tw:text-3xl tw:sm:text-4xl tw:font-semibold tw:tracking-tight">主任總覽</h1>
+            <h1 class="tw:text-tpl-page tw:font-extrabold tw:tracking-tight">今天</h1>
+            <p class="director-workbench-v2__updated tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary" role="status">
+              {{ branchName }}・{{ todayDisplay }}・{{ dashboardLoading ? '更新中…' : `更新 ${dashboardLastUpdated || '--:--'}` }}
+            </p>
           </div>
           <div class="tw:flex tw:items-center tw:gap-2">
             <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
               <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
             </span>
-            <span class="director-workbench-v2__updated tw:rounded-full tw:bg-muted tw:px-3 tw:py-1 tw:text-xs tw:text-muted-foreground" role="status">
-              {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
-            </span>
+            <div role="radiogroup" aria-label="字的大小" class="tw:flex tw:rounded-full tw:border tw:border-border tw:bg-card tw:p-1" data-testid="text-scale">
+              <button
+                v-for="step in textScaleSteps"
+                :key="step.key"
+                type="button"
+                role="radio"
+                :aria-checked="textScale === step.key"
+                class="tw:h-11 tw:min-w-12 tw:cursor-pointer tw:rounded-full tw:border-0 tw:px-2 tw:text-tpl-caption tw:font-bold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
+                :class="textScale === step.key ? 'tw:bg-primary tw:text-primary-foreground' : 'tw:bg-transparent tw:text-tpl-secondary'"
+                @click="setTextScale(step.key)"
+              >{{ step.label }}</button>
+            </div>
             <Button
+              class="director-workbench-v2__refresh tw:size-11"
               variant="outline"
               size="icon"
-              class="director-workbench-v2__refresh tw:size-11"
               aria-label="重新整理"
               :aria-busy="dashboardLoading"
               :disabled="dashboardLoading"
               @click="refreshDashboard"
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" :class="{ 'tw:animate-spin': dashboardLoading }"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" :class="{ 'tw:animate-spin': dashboardLoading }"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
             </Button>
           </div>
         </header>
@@ -50,154 +61,103 @@
         <section
           v-if="dashboardViewMode === 'focus'"
           id="director-workbench-panel-focus"
-          class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:lg:grid-cols-3 tw:lg:grid-rows-[auto_auto_auto_1fr] tw:gap-4"
+          class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:gap-4 tw:text-tpl-body tw:lg:grid-cols-[1.1fr_1fr] tw:lg:grid-rows-[auto_1fr]"
           role="tabpanel"
           aria-label="今天的主任工作"
           aria-labelledby="director-workbench-tab-focus"
           tabindex="0"
         >
-          <!-- Hero: today's lessons -->
-          <Motion as="div" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" class="tw:lg:col-span-2" data-testid="director-hero">
-            <Card class="tw:h-full tw:rounded-2xl tw:border-0 tw:p-6 tw:sm:p-7" style="background: var(--ui-hero-gradient)">
-              <div class="tw:grid tw:h-full tw:gap-6 tw:sm:grid-cols-2">
-                <div class="tw:flex tw:flex-col">
-                  <p class="tw:font-medium">今日課程</p>
-                  <p class="director-num tw:mt-3 tw:text-6xl tw:sm:text-7xl tw:font-semibold" data-testid="hero-total">
-                    <NumberTicker :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-3xl tw:align-top">堂</span>
-                  </p>
-                  <Progress class="tw:mt-5 tw:bg-foreground/10" :model-value="attendedCount" :max="Math.max(todaySchedules.length, 1)" aria-label="今日點名進度" />
-                  <p class="tw:mt-2 tw:text-sm" data-testid="hero-marked">已點名 {{ attendedCount }} 堂・還有 {{ pendingAttendanceCount }} 堂未點名</p>
-                  <div class="tw:mt-auto tw:flex tw:flex-wrap tw:gap-2 tw:pt-6">
-                    <Button class="tw:h-11 tw:px-6" @click="goToAttendance">前往點名</Button>
-                    <Button class="tw:h-11 tw:px-6 tw:bg-white/80 tw:text-foreground tw:hover:bg-white" variant="secondary" @click="setDashboardViewMode('full')">看今日課表</Button>
-                  </div>
-                </div>
-                <div class="tw:flex tw:min-h-40 tw:flex-col tw:justify-end" aria-label="今日各時段課程數" role="img" :aria-description="hourSummary">
-                  <p v-if="!hourBars.length" class="tw:self-center tw:pb-10 tw:text-sm tw:text-foreground/70">今天沒有課程</p>
-                  <div v-else class="tw:flex tw:h-36 tw:items-end tw:gap-2">
-                    <div v-for="bar in hourBars" :key="bar.hour" class="tw:flex tw:h-full tw:flex-1 tw:flex-col tw:justify-end tw:text-center">
-                      <div class="tw:mx-auto tw:w-full tw:max-w-10 tw:flex-none tw:rounded-xl" :class="bar.now ? 'tw:bg-foreground' : 'tw:bg-foreground/15'" :style="{ height: `calc((100% - 1.75rem) * ${bar.pct} / 100)`, minHeight: '8px' }"></div>
-                      <p class="director-num tw:mt-2 tw:text-xs" :class="bar.now ? 'tw:font-semibold' : 'tw:text-foreground/70'">{{ bar.hour }}{{ bar.now ? ' 現在' : '' }}</p>
-                    </div>
-                  </div>
-                </div>
+          <!-- 今天的課 -->
+          <Motion as="div" :initial="enterFrom" :animate="enterTo" class="tw:lg:col-start-1" data-testid="director-hero">
+            <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card">
+              <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body tw:font-bold">
+                <span class="tpl-tile tpl-g-blue tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                今天的課
               </div>
-              <p class="tw:text-xs tw:text-foreground/60">更新 {{ dashboardLastUpdated || '--:--' }}</p>
-            </Card>
-          </Motion>
-
-          <!-- 今天要處理: existing task queue -->
-          <Motion as="section" :initial="{ opacity: 0, y: 10 }" :animate="{ opacity: 1, y: 0 }" :transition="{ delay: 0.16 }" class="director-workbench-v2__primary tw:lg:row-span-4" aria-labelledby="director-focus-title">
-            <Card class="tw:h-full tw:rounded-2xl tw:p-6">
-              <header class="tw:flex tw:items-start tw:justify-between tw:gap-3">
+              <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
+                <ActivityRing :done="attendedCount" :total="todaySchedules.length" :label="`${todaySchedules.length} 堂已點名 ${attendedCount} 堂`" />
                 <div>
-                  <h2 id="director-focus-title" class="tw:text-base tw:font-semibold">今天要處理的事</h2>
-                  <p class="tw:mt-1 tw:text-xs tw:text-muted-foreground">只列出需要主任做決定或跟進的工作，依影響與期限排序。</p>
-                </div>
-                <span class="tw:shrink-0 tw:whitespace-nowrap tw:rounded-full tw:bg-muted tw:px-3 tw:py-1 tw:text-xs">{{ dashboardPrimaryTasks.length }} 項</span>
-              </header>
-
-              <details v-if="!dashboardLoading && dashboardTopRisks.length" class="director-risk-disclosure">
-                <summary>
-                  <span>查看為什麼這些工作排在前面</span>
-                  <strong>{{ dashboardTopRisks.length }} 項高優先</strong>
-                </summary>
-                <section class="director-top-risks" aria-labelledby="director-top-risks-title">
-                  <h3 id="director-top-risks-title">排序依據</h3>
-                  <ol>
-                    <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
-                      <strong>{{ risk.title }}</strong>
-                      <span>{{ risk.summary }}</span>
-                    </li>
-                  </ol>
-                </section>
-              </details>
-
-              <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
-                <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
-                  <span class="director-skeleton__index"></span>
-                  <span class="director-skeleton__body">
-                    <span class="director-skeleton__title"></span>
-                    <span class="director-skeleton__copy"></span>
-                    <span class="director-skeleton__meta"></span>
-                  </span>
-                  <span class="director-skeleton__action"></span>
+                  <p class="director-num tw:text-tpl-num tw:font-extrabold" data-testid="hero-total"><NumberTicker :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
+                  <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
-              <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
-                <strong>今日資料暫時無法載入</strong>
-                <span>{{ dashboardPrimaryError }}</span>
-                <Button variant="secondary" @click="refreshDashboard">再試一次</Button>
-              </div>
-              <div v-else-if="!dashboardPrimaryTasks.length" class="director-state">
-                <strong>今天沒有需要主任處理的事</strong>
-                <span>課務與待辦都已經有明確狀態。</span>
-              </div>
-              <ol v-else class="director-task-list tw:flex tw:flex-col tw:gap-2">
-                <li
-                  v-for="(task, index) in dashboardPrimaryTasks"
-                  :key="task.id"
-                  class="director-task tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:rounded-2xl tw:bg-muted tw:p-3"
-                  :class="`director-task--${task.severity}`"
-                >
-                  <span class="director-task__index tw:text-xs tw:text-muted-foreground" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
-                  <div class="director-task__body tw:min-w-0 tw:flex-1">
-                    <div class="director-task__title-row tw:flex tw:items-center tw:gap-2">
-                      <h3 class="tw:text-sm tw:font-medium">{{ task.title }}</h3>
-                      <strong v-if="task.count" class="director-task__count director-num tw:text-xl tw:font-semibold">{{ task.count }}</strong>
-                    </div>
-                    <p class="tw:text-xs tw:text-muted-foreground">{{ task.summary }}</p>
-                    <div class="director-task__meta tw:mt-1 tw:flex tw:gap-3 tw:text-xs tw:text-muted-foreground">
-                      <span>{{ task.owner }}</span>
-                      <span>{{ task.dueAt }}</span>
-                    </div>
-                  </div>
-                  <Button
-                    :variant="index === 0 ? 'default' : 'secondary'"
-                    class="director-task__action tw:h-11 tw:px-5"
-                    @click="openDashboardTask(task)"
-                  >
-                    {{ task.actionLabel }}
-                  </Button>
-                </li>
-              </ol>
-
-              <button
-                v-if="dashboardAdditionalTaskCount"
-                type="button"
-                class="director-workbench-v2__more"
-                @click="setDashboardViewMode('full')"
-              >
-                查看其他 {{ dashboardAdditionalTaskCount }} 項營運工作
-              </button>
-              <p class="tw:text-xs tw:text-muted-foreground">今日工作量 {{ workflowDailySummary.done_total }}/{{ workflowDailySummary.due_total }} 件完成・更新 {{ dashboardLastUpdated || '--:--' }}</p>
+              <Button class="tpl-btn-primary tw:mt-4 tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-tpl-body tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.98]" @click="goToAttendance">去點名</Button>
             </Card>
           </Motion>
 
-          <!-- KPI cards: every number is a link to its list -->
-          <div class="tw:contents" data-guide="director-summary">
+          <!-- 今天要處理: existing task queue as a grouped list -->
+          <Motion as="section" :initial="enterFrom" :animate="enterTo" :transition="{ delay: 0.1 }" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
+            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-extrabold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
+            <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
+              <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
+                <span class="director-skeleton__index"></span>
+                <span class="director-skeleton__body">
+                  <span class="director-skeleton__title"></span>
+                  <span class="director-skeleton__copy"></span>
+                  <span class="director-skeleton__meta"></span>
+                </span>
+                <span class="director-skeleton__action"></span>
+              </div>
+            </div>
+            <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
+              <strong>今日資料暫時無法載入</strong>
+              <span>{{ dashboardPrimaryError }}</span>
+              <Button variant="secondary" class="tw:h-14" @click="refreshDashboard">再試一次</Button>
+            </div>
+            <div v-else-if="!dashboardPrimaryTasks.length" class="director-state">
+              <strong>今天沒有需要主任處理的事</strong>
+              <span>課務與待辦都已經有明確狀態。</span>
+            </div>
+            <ol v-else class="director-task-list tpl-card tw:m-0 tw:list-none tw:overflow-hidden tw:rounded-3xl tw:p-0 tw:shadow-tpl-card">
+              <li
+                v-for="task in dashboardPrimaryTasks"
+                :key="task.id"
+                class="director-task tw:relative tw:m-0 tw:block tw:border-0 tw:p-0 tw:hover:bg-transparent tw:hover:shadow-none tw:[&+&]:before:absolute tw:[&+&]:before:inset-x-0 tw:[&+&]:before:left-[4.5rem] tw:[&+&]:before:top-0 tw:[&+&]:before:border-t tw:[&+&]:before:border-border"
+                :class="`director-task--${task.severity}`"
+              >
+                <button
+                  type="button"
+                  class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
+                  @click="openDashboardTask(task)"
+                >
+                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                  <span class="tw:flex-1">{{ plainTaskTitle(task) }}</span>
+                  <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-extrabold">{{ task.count }}</span>
+                  <ChevronRight :size="24" :stroke-width="2.4" class="tw:text-tpl-secondary" aria-hidden="true" />
+                </button>
+              </li>
+            </ol>
+            <button
+              v-if="dashboardAdditionalTaskCount"
+              type="button"
+              class="director-workbench-v2__more"
+              @click="setDashboardViewMode('full')"
+            >
+              查看其他 {{ dashboardAdditionalTaskCount }} 項營運工作
+            </button>
+          </Motion>
+
+          <!-- KPI cards: the whole card is a link to its list -->
+          <div class="tw:grid tw:grid-cols-2 tw:gap-4 tw:lg:col-start-1 tw:lg:self-start" data-guide="director-summary">
             <h2 class="tw:sr-only">今日摘要</h2>
             <Motion
               v-for="(kpi, i) in kpiCards"
               :key="kpi.key"
               as="div"
-              :initial="{ opacity: 0, y: 10 }"
-              :animate="{ opacity: 1, y: 0 }"
-              :transition="{ delay: 0.06 * (i + 1) }"
+              :initial="enterFrom"
+              :animate="enterTo"
+              :transition="{ delay: 0.14 + 0.06 * i }"
               :data-testid="`kpi-${kpi.key}`"
-              class="tw:transition-transform tw:motion-safe:hover:-translate-y-0.5"
             >
-              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-2xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
-                <Card class="tw:h-full tw:rounded-2xl tw:p-6" :title="kpi.definition">
-                  <div class="tw:flex tw:items-center tw:justify-between">
-                    <p class="tw:font-medium">{{ kpi.label }}</p>
-                    <span class="tw:text-sm tw:text-muted-foreground">{{ kpi.cta }}</span>
+              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
+                <Card class="tpl-card tw:h-full tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card" :title="kpi.definition">
+                  <div class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-body tw:font-bold">
+                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                    {{ kpi.label }}
                   </div>
-                  <p class="director-num tw:text-5xl tw:font-semibold"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-lg tw:font-medium tw:text-muted-foreground">{{ kpi.unit }}</span></p>
-                  <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-3 tw:text-sm tw:text-muted-foreground">
-                    <span>{{ kpi.sub }}</span>
-                    <span class="tw:text-xs">更新 {{ dashboardLastUpdated || '--:--' }}</span>
-                  </div>
+                  <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-extrabold"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
+                  <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary">{{ kpi.sub }}</p>
+                  <Sparkline v-if="kpi.spark" :values="kpi.spark" :tone="kpi.tone" :label="kpi.sparkLabel" />
                 </Card>
               </button>
             </Motion>
@@ -232,6 +192,22 @@
             <div><h2 id="director-full-title">完整營運</h2><p>需要查完整課表、案件、帳務與分析時，再從這裡展開。</p></div>
             <span v-if="secondaryLoading" class="director-workbench-v2__updated" role="status">載入營運資料中…</span>
           </header>
+
+          <details v-if="!dashboardLoading && dashboardTopRisks.length" class="director-risk-disclosure">
+            <summary>
+              <span>查看為什麼這些工作排在前面</span>
+              <strong>{{ dashboardTopRisks.length }} 項高優先</strong>
+            </summary>
+            <section class="director-top-risks" aria-labelledby="director-top-risks-title">
+              <h3 id="director-top-risks-title">排序依據</h3>
+              <ol>
+                <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
+                  <strong>{{ risk.title }}</strong>
+                  <span>{{ risk.summary }}</span>
+                </li>
+              </ol>
+            </section>
+          </details>
 
           <details class="director-secondary-tools" @toggle="secondaryToolsOpen = $event.currentTarget.open">
             <summary>
@@ -390,11 +366,14 @@ import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import AtTabs from '../components/design-system/AtTabs.vue';
 import { Motion, MotionConfig } from 'motion-v';
+import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks } from 'lucide-vue-next';
 import { Card } from '@/components/ui/card';
+import { ActivityRing } from '@/components/ui/activity-ring';
+import { Sparkline } from '@/components/ui/sparkline';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { NumberTicker } from '@/components/ui/number-ticker';
-import { owedCard, renewalCount, oldestEvaluationAge, hourBuckets } from '../lib/directorHomeCards.js';
+import { owedCard, renewalCount, oldestEvaluationAge, plainTaskTitle, sevenDayEvalCounts } from '../lib/directorHomeCards.js';
+import { useTextScale } from '../composables/useTextScale.js';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
@@ -675,37 +654,43 @@ const attendedCount = computed(() =>
 );
 
 // Bento cards (#4949 Phase A): presentation of values already loaded above; no new fetches.
-const nowHour = new Date().getHours();
-const hourBars = computed(() => {
-  const buckets = hourBuckets(todaySchedules.value);
-  const max = Math.max(1, ...buckets.map((b) => b.count));
-  return buckets.map((b) => ({ ...b, pct: Math.round((b.count / max) * 100), now: b.hour === nowHour }));
-});
-const hourSummary = computed(() => hourBars.value.map((b) => `${b.hour} 點 ${b.count} 堂`).join('，'));
+const { steps: textScaleSteps, current: textScale, setScale: setTextScale } = useTextScale();
 const owed = computed(() => owedCard(lowBalanceStudents.value));
 const oldestEvalDays = computed(() => oldestEvaluationAge(pendingEvaluations.value, localTodayYmd()));
+// Card enter: blur-fade, staggered by the caller; off under prefers-reduced-motion.
+const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+const enterFrom = prefersReducedMotion ? false : { opacity: 0, y: 10, filter: 'blur(6px)' };
+const enterTo = { opacity: 1, y: 0, filter: 'blur(0px)' };
+const TASK_LOOK = {
+  attendance: [Clock, 'tpl-g-blue'], makeup: [RotateCcw, 'tpl-g-blue'], 'parent-leave': [UserRound, 'tpl-g-teal'],
+  'schedule-discrepancy': [CalendarDays, 'tpl-g-orange'], tuition: [Wallet, 'tpl-g-red'], evaluations: [ClipboardCheck, 'tpl-g-purple'],
+  inbox: [Bell, 'tpl-g-green'], 'duplicate-review': [Copy, 'tpl-g-orange'], 'parent-feedback': [MessageCircle, 'tpl-g-teal'],
+};
+const taskIcon = (task) => (TASK_LOOK[task.id] || [ListChecks])[0];
+const taskGrad = (task) => (TASK_LOOK[task.id] || [null, 'tpl-g-blue'])[1];
+const evalSpark = computed(() => sevenDayEvalCounts(pendingEvaluations.value, localTodayYmd()));
 const kpiCards = computed(() => [
   {
-    key: 'owed', label: '今日待收', value: owed.value.total, unit: '筆',
-    sub: `逾期 ${owed.value.overdue} 筆・待確認 ${owed.value.waiting} 筆`, cta: '帳務中心',
+    key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', tone: 'danger', grad: 'tpl-g-red', icon: Wallet,
+    sub: owed.value.waiting ? `${owed.value.overdue} 筆已過期、${owed.value.waiting} 筆待確認` : `${owed.value.overdue} 筆已過期`,
     definition: '未繳、月結逾期，以及家長已回報待確認入帳的筆數。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: owed.value.intent }),
   },
   {
-    key: 'renewal', label: '續課提醒', value: renewalCount(lowBalanceStudents.value), unit: '筆',
-    sub: '堂數將用完或月結將到期', cta: '查看',
+    key: 'renewal', label: '快上完', value: renewalCount(lowBalanceStudents.value), unit: '筆', tone: 'warning', grad: 'tpl-g-orange', icon: RefreshCw,
+    sub: '要提醒續課',
     definition: '已繳費但堂數快用完，或月結即將到繳費日的課程。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: 'renewal' }),
   },
   {
-    key: 'evals', label: '待審評量', value: pendingEvaluationsTotal.value, unit: '份',
-    sub: oldestEvalDays.value == null ? '需要確認的紀錄' : (oldestEvalDays.value === 0 ? '最早的是今天' : `最早 ${oldestEvalDays.value} 天前`), cta: '查看',
+    key: 'evals', label: '評量要審', value: pendingEvaluationsTotal.value, unit: '份', tone: 'purple', grad: 'tpl-g-purple', icon: ClipboardCheck, spark: evalSpark.value, sparkLabel: '近 7 天上課日的待審評量數',
+    sub: oldestEvalDays.value == null ? '點開看' : (oldestEvalDays.value === 0 ? '最久的是今天' : `最久等 ${oldestEvalDays.value} 天`),
     definition: DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations,
     open: () => emit('navigate', { target: 'learning' }),
   },
   {
-    key: 'notifications', label: '未讀通知', value: unreadNotificationCount.value, unit: '則',
-    sub: notificationSummary.value[0]?.title || '通知中心待查看', cta: '查看',
+    key: 'notifications', label: '新通知', value: unreadNotificationCount.value, unit: '則', tone: 'success', grad: 'tpl-g-green', icon: Bell,
+    sub: '點開看',
     definition: DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications,
     open: goToNotifications,
   },

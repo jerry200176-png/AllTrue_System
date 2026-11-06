@@ -1,3 +1,3 @@
 ## 2026-11-06 — feat(ui): director home on the premium template (#4949, #4989)
 <!-- release-notes: staff_update=staff-2026-11-06-director-home-premium -->
-- 主任總覽「今天」改成 bento 版面：今日課程大卡（已點名／未點名、各時段長條圖、前往點名）、今日待收、續課提醒、待審評量（含最早幾天前）、未讀通知，每張卡都連到對應清單並顯示更新時間；今天要處理的事維持原有排序與按鈕。Bug SLA 與營運信任面板仍在「完整營運」。只改呈現，資料與計算不變。新增 motion-v 與 Inspira UI NumberTicker（MIT）。
+- 主任總覽「今天」改成大字版：19px 內文、深色對比字、毛玻璃頂欄、漸層圖示、點名進度環；今天的課、要收的錢、快上完、評量要審、新通知整張卡可點；今天要處理改成整列可點的清單；右上角 A／A+／A++ 可調字大小（記在本機）。只改呈現，資料與計算不變；「查看為什麼這些工作排在前面」移到完整營運。新增 motion-v、lucide-vue-next（MIT）與 Inspira NumberTicker，動畫在「減少動態」時關閉。

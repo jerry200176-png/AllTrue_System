@@ -23,16 +23,29 @@ export function oldestEvaluationAge(evaluations = [], todayYmd) {
   return Math.max(0, Math.round((Date.parse(`${todayYmd}T00:00:00Z`) - Date.parse(`${days[0]}T00:00:00Z`)) / 864e5));
 }
 
-// Lessons per start hour; `open` = not yet marked (status 'scheduled', same rule as pendingAttendanceCount).
-export function hourBuckets(schedules = []) {
-  const map = new Map();
-  for (const s of schedules) {
-    const h = Number(String(s?.start_time || '').slice(0, 2));
-    if (!Number.isFinite(h) || !s?.start_time) continue;
-    const b = map.get(h) || { hour: h, count: 0, open: 0 };
-    b.count += 1;
-    if (s.status === 'scheduled') b.open += 1;
-    map.set(h, b);
+// Plain-word row titles for the 今天要處理 list; unknown ids keep their own title.
+const PLAIN_TITLES = Object.freeze({
+  attendance: '沒點名的課',
+  'parent-leave': '家長請假',
+  tuition: '催繳與續課',
+  makeup: '補點名要補登',
+  'schedule-discrepancy': '老師回報課表不對',
+  'duplicate-review': '重疊的課要審',
+  evaluations: '評量要審',
+  'parent-feedback': '家長新回饋',
+  inbox: '新通知',
+});
+export const plainTaskTitle = (task) => PLAIN_TITLES[task?.id] || task?.title || '待辦';
+
+// Pending evaluations per lesson day for the last 7 days (oldest first), from the already-loaded list. Null when nothing falls in range.
+export function sevenDayEvalCounts(evaluations = [], todayYmd) {
+  if (!todayYmd) return null;
+  const base = Date.parse(`${todayYmd}T00:00:00Z`);
+  const counts = Array(7).fill(0);
+  for (const e of evaluations) {
+    const d = String(e?.SessionDate || e?.session_date || '').slice(0, 10);
+    const back = Math.round((base - Date.parse(`${d}T00:00:00Z`)) / 864e5);
+    if (Number.isFinite(back) && back >= 0 && back < 7) counts[6 - back] += 1;
   }
-  return [...map.values()].sort((a, b) => a.hour - b.hour);
+  return counts.some((n) => n > 0) ? counts : null;
 }
