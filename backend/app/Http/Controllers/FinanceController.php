@@ -1215,7 +1215,7 @@ class FinanceController extends Controller
         $rows = $lockedRun
             ? $this->buildParttimePayrollRowsFromSnapshot($lockedRun)
             : $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
-        $rows = $this->withAdminBonus($rows, $branchId, $month);
+        $rows = $this->withAdminBonus($rows, $lockedRun ? [(int) $lockedRun->branch_id] : $campusIds, $month);
 
         if ($request->filled('search')) {
             $q = mb_strtolower($request->input('search'));
@@ -1383,7 +1383,7 @@ class FinanceController extends Controller
             abort(422, "Too many rows ({$totalRows}). Max export is {$maxExport}. Please narrow your scope.");
         }
 
-        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollData($month, $campusIds, $ruleCtx), $branchId, $month);
+        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollData($month, $campusIds, $ruleCtx), $campusIds, $month);
         $rateMap  = $this->buildRateMap($allRecords, $ruleCtx);
         $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap, $ruleCtx);
 
@@ -1851,12 +1851,13 @@ class FinanceController extends Controller
     }
 
     /** #4971: add the manual 行政加給 as its own field and into total_salary (bonus-only teachers get a row). */
-    private function withAdminBonus(array $rows, ?int $branchId, string $month): array
+    /** Same campus scope as the attendance rows ([] = every campus, as parttimeBaseQuery); a teacher's bonuses across campuses add up. */
+    private function withAdminBonus(array $rows, array $campusIds, string $month): array
     {
-        if (!$branchId) {
-            return $rows;
-        }
-        $bonuses = \App\Models\ParttimePayrollAdminBonus::where('campus_id', $branchId)->where('month', $month)->get()->keyBy('teacher_id');
+        $bonuses = \App\Models\ParttimePayrollAdminBonus::where('month', $month)
+            ->when(!empty($campusIds), fn ($q) => $q->whereIn('campus_id', $campusIds))
+            ->orderBy('campus_id')->get()->groupBy('teacher_id')
+            ->map(fn ($g) => (object) ['amount' => (int) $g->sum('amount'), 'reason' => $g->pluck('reason')->implode('；')]);
         $names = $bonuses->isEmpty() ? [] : TeacherProfileDirectory::names();
         $seen = [];
         foreach ($rows as &$r) {
@@ -1940,7 +1941,7 @@ class FinanceController extends Controller
 
     private function exportPayrollSnapshot(PayrollRun $run, string $branchName, string $month): StreamedResponse
     {
-        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollRowsFromSnapshot($run), (int) $run->branch_id, $month);
+        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollRowsFromSnapshot($run), [(int) $run->branch_id], $month);
         $lines = $run->lines->sortBy('id');
         $filename = "兼職薪資_{$branchName}_{$month}.csv";
 

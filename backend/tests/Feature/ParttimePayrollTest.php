@@ -1045,6 +1045,22 @@ class ParttimePayrollTest extends TestCase
         );
     }
 
+    public function test_admin_bonus_aggregate_view_adds_every_campus_in_scope(): void
+    {
+        $dir = $this->createDirector('dir-ab-8@test.com', [1, 2]);
+        $tid = $this->createPartTimeTeacher(1, 'ab8@test.com', '兩校');
+        $only = $this->createPartTimeTeacher(2, 'ab8b@test.com', '只有加給');
+        $sc = $this->makeStudentClass($this->createStudent(1, '生'), $tid, 10, 'one_on_one');
+        $this->makeApprovedLR($sc, $tid, '2026-04-01', '16:00', '18:00');
+        foreach ([[1, $tid, 300], [2, $tid, 200], [2, $only, 400]] as [$campus, $teacher, $amount]) {
+            \App\Models\ParttimePayrollAdminBonus::create(['campus_id' => $campus, 'teacher_id' => $teacher, 'month' => '2026-04', 'amount' => $amount, 'reason' => "r{$campus}", 'created_by' => 1]);
+        }
+        $rows = collect($this->withHeaders($this->authHeaders($dir['token']))->getJson('/api/v1/finance/parttime-payroll?month=2026-04')->assertOk()->json('teachers'))->keyBy('teacher_id');
+        $this->assertSame(500, $rows[$tid]['admin_bonus']);
+        $this->assertSame(1300, $rows[$tid]['total_salary']); // 800 + 300 + 200
+        $this->assertSame(400, $rows[$only]['total_salary']);
+    }
+
     public function test_admin_bonus_other_campus_is_forbidden(): void
     {
         $dir = $this->createDirector('dir-ab-2@test.com', [1]);
