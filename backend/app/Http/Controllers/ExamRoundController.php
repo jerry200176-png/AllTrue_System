@@ -24,6 +24,8 @@ class ExamRoundController extends Controller
         $query = ExamRound::query()->with('subjects')->where('campus_id', $campusId);
         if ($this->role($request) === 'teacher') {
             $query->whereIn('status', ['published', 'closed']);
+        } elseif (!($this->isDirector($request) && $request->boolean('include_void'))) {
+            $query->where('status', '!=', 'void');
         }
         $perPage = max(1, min((int) $request->input('per_page', 50), 100));
         $rows = $query->latest('exam_date')->latest('id')->paginate($perPage);
@@ -96,6 +98,139 @@ class ExamRoundController extends Controller
         }
         return response()->json(['data' => $this->serializeRound($examRound->load('subjects'))]);
     }
+    public function update(Request $request, ExamRound $examRound)
+    {
+        if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $data = $request->validate([
+            'title' => ['sometimes', 'required', 'string', 'max:120'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'exam_date' => ['sometimes', 'nullable', 'date'],
+            'entry_deadline' => ['sometimes', 'nullable', 'date'],
+            'grade_ids' => ['sometimes', 'required', 'array', 'min:1'],
+            'grade_ids.*' => ['integer', 'min:1'],
+            'subjects' => ['sometimes', 'array', 'min:1', 'max:20'],
+            'subjects.*.id' => ['nullable', 'integer', 'min:1'],
+            'subjects.*.name' => ['required_with:subjects', 'string', 'max:40'],
+            'subjects.*.sort_order' => ['nullable', 'integer', 'min:0'],
+            'subjects.*.max_score' => ['nullable', 'numeric', 'min:1', 'max:1000'],
+        ]);
+        $after = DB::transaction(function () use ($request, $examRound, $data) {
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->first();
+            if ($locked === null) {
+                abort(404);
+            }
+            if ($locked->status === 'void') {
+                abort(response()->json(['message' => '此段考已刪除，請先復原'], 409));
+            }
+            $before = $this->serializeRound($locked);
+            $attrs = array_intersect_key($data, array_flip(['title', 'description', 'exam_date', 'entry_deadline']));
+            if (isset($data['grade_ids'])) {
+                $attrs['grade_ids'] = array_values(array_map('intval', $data['grade_ids']));
+            }
+            $locked->update($attrs);
+            if (isset($data['subjects'])) {
+                $this->syncSubjects($locked, $data['subjects']);
+            }
+            $serialized = $this->serializeRound($locked->fresh('subjects'));
+            $this->audit($request, $locked, null, 'round_updated', $before, $serialized);
+            return $serialized;
+        });
+        return response()->json(['data' => $after]);
+    }
+    public function destroy(Request $request, ExamRound $examRound)
+    {
+        if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $data = $request->validate(['reason' => ['nullable', 'string', 'max:255']]);
+        $reason = trim((string) ($data['reason'] ?? ''));
+        $result = DB::transaction(function () use ($request, $examRound, $reason) {
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->first();
+            if ($locked === null || $locked->status === 'void') {
+                abort(404);
+            }
+            $before = $this->serializeRound($locked);
+            if (!ExamScore::query()->where('exam_round_id', $locked->id)->exists()) {
+                $this->audit($request, $locked, null, 'round_deleted', $before, null);
+                ExamRoundSubject::query()->where('exam_round_id', $locked->id)->delete();
+                $locked->delete();
+                return ['deleted' => true];
+            }
+            if ($reason === '') {
+                throw ValidationException::withMessages(['reason' => ['此段考已有成績，刪除需填寫原因']]);
+            }
+            $locked->update(['status' => 'void']);
+            $after = $this->serializeRound($locked->fresh('subjects'));
+            $this->audit($request, $locked, null, 'round_voided', $before, $after, $reason);
+            return ['deleted' => false, 'data' => $after];
+        });
+        return response()->json($result);
+    }
+    public function restore(Request $request, ExamRound $examRound)
+    {
+        if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $after = DB::transaction(function () use ($request, $examRound) {
+            $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->first();
+            if ($locked === null) {
+                abort(404);
+            }
+            if ($locked->status !== 'void') {
+                abort(response()->json(['message' => '此段考不是已刪除狀態'], 409));
+            }
+            $voided = ExamScoreAuditLog::query()->where('exam_round_id', $locked->id)
+                ->where('action', 'round_voided')->latest('id')->first();
+            $previous = (string) ($voided?->before['status'] ?? 'draft');
+            $before = $this->serializeRound($locked);
+            $locked->update(['status' => $previous]);
+            $serialized = $this->serializeRound($locked->fresh('subjects'));
+            $this->audit($request, $locked, null, 'round_restored', $before, $serialized);
+            return $serialized;
+        });
+        return response()->json(['data' => $after]);
+    }
+    /** Add / rename / drop subjects; a subject that already has scores cannot be dropped. */
+    private function syncSubjects(ExamRound $round, array $incoming): void
+    {
+        $existing = $round->subjects()->get()->keyBy('id');
+        $keep = [];
+        foreach ($incoming as $i => $row) {
+            $name = mb_substr(trim((string) ($row['name'] ?? '')), 0, 40);
+            if ($name === '') {
+                throw ValidationException::withMessages(['subjects' => ['科目名稱不可空白']]);
+            }
+            $attrs = ['name' => $name, 'sort_order' => (int) ($row['sort_order'] ?? $i)];
+            $subject = isset($row['id']) ? $existing->get((int) $row['id']) : null;
+            if (isset($row['id']) && $subject === null) {
+                throw ValidationException::withMessages(['subjects' => ['找不到要修改的科目']]);
+            }
+            if ($subject) {
+                if (isset($row['max_score'])) {
+                    $attrs['max_score'] = (float) $row['max_score'];
+                    $over = ExamScore::query()->where('exam_round_subject_id', $subject->id)
+                        ->where('score', '>', $attrs['max_score'])->exists();
+                    if ($over) {
+                        throw ValidationException::withMessages(['subjects' => ["「{$subject->name}」已有超過新滿分的成績"]]);
+                    }
+                }
+                $subject->update($attrs);
+                $keep[] = $subject->id;
+            } else {
+                $keep[] = ExamRoundSubject::create($attrs + [
+                    'exam_round_id' => $round->id, 'max_score' => (float) ($row['max_score'] ?? 100),
+                ])->id;
+            }
+        }
+        foreach ($existing->except($keep) as $gone) {
+            if (ExamScore::query()->where('exam_round_subject_id', $gone->id)->exists()) {
+                throw ValidationException::withMessages(['subjects' => ["「{$gone->name}」已有成績，不能移除"]]);
+            }
+            $gone->delete();
+        }
+    }
     public function publish(Request $request, ExamRound $examRound)
     {
         return $this->lifecycle($request, $examRound, 'publish');
@@ -107,6 +242,9 @@ class ExamRoundController extends Controller
     public function students(Request $request, ExamRound $examRound)
     {
         if (!$this->canAccessRound($request, $examRound)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($examRound->status === 'void') {
             return response()->json(['message' => 'Not found'], 404);
         }
         $teacherId = $this->role($request) === 'teacher' ? $this->userId($request) : null;
@@ -147,6 +285,9 @@ class ExamRoundController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
         $isDirector = $this->isDirector($request);
+        if ($examRound->status === 'void') {
+            return response()->json(['message' => 'Not found'], 404);
+        }
         if (!$isDirector && $examRound->status !== 'published') {
             return response()->json(['message' => 'Round is not open for entry'], 409);
         }
@@ -215,6 +356,9 @@ class ExamRoundController extends Controller
             }
             if ($isDirector && $locked->status === 'draft') {
                 abort(response()->json(['message' => 'Publish the round before entering scores'], 409));
+            }
+            if ($locked->status === 'void') {
+                abort(404);
             }
             foreach ($normalized as $row) {
                 $record = ExamScore::query()
@@ -352,6 +496,9 @@ class ExamRoundController extends Controller
         if (!$this->isDirector($request) || !$this->campusAllowed($request, (int) $examRound->campus_id)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+        if ($examRound->status === 'void') {
+            return response()->json(['message' => '此段考已刪除，請先復原'], 409);
+        }
         if ($action === 'publish') {
             if ($examRound->subjects()->count() < 1) {
                 return response()->json(['message' => 'At least one subject is required'], 422);
@@ -374,6 +521,9 @@ class ExamRoundController extends Controller
             $locked = ExamRound::query()->whereKey($examRound->id)->lockForUpdate()->first();
             if ($locked === null) {
                 abort(404);
+            }
+            if ($locked->status === 'void') {
+                abort(response()->json(['message' => '此段考已刪除，請先復原'], 409));
             }
             if ($action === 'publish') {
                 if ($locked->status === 'published') {
