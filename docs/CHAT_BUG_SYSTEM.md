@@ -75,7 +75,7 @@ last_reviewed: 2026-08-23
 ### 3.6 ⛔ AI 處理 in-app bug 回報的 SOP（2026-05-17 起，違反 = 重複問使用者）
 
 > 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
-> 下列 SQL／附件是**要看的內容**；取得管道走 `bug-queue-dump`／`bug-detail-dump`（各階段 workflow、觸發方式與 cloud 能否自行完成，見 [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭的對照表）。
+> 下列 SQL／附件是**要看的內容**；取得管道走 `bug-queue-dump`／`bug-detail-dump`（各階段 workflow、觸發方式與 cloud 能否自行完成，見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表）。
 
 ```
 1. 一定要先撈 attachments：
@@ -105,7 +105,7 @@ last_reviewed: 2026-08-23
 
 ### 3.7 In-app Bug 完整生命週期（分診 → 修 code → 回寫系統）
 
-**權威流程**：本節 + §3.6。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用 `.cursor/rules/bug-fix-plan.mdc` 的根因、測試、CI 與 review 要求。
+**權威流程**：本節 + §3.6，只管 in-app 狀態與回寫；從收件到結案的九個階段、車道與關卡見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用 `.cursor/rules/bug-fix-plan.mdc` 的根因、測試、CI 與 review 要求。
 
 **口訣**：**開 GitHub issue 時回系統一次；merge 上線後一定要再回系統一次**。不能只關 GitHub。
 
@@ -119,7 +119,7 @@ last_reviewed: 2026-08-23
 | `resolved` | `in_progress`, `closed` |
 | `closed` | `in_progress` |
 
-- **回報者驗收**（2026-05-16 起）：in-app `resolved` → `closed` 由回報者 `POST /api/v1/bugs/{id}/reporter-verify` 或逾時流程完成，Agent 不代按。這**不**擋 GitHub issue 關閉（Founder 2026-10-12 ③，見 SOP 對照表）。
+- **回報者驗收**（2026-05-16 起）：in-app `resolved` → `closed` 由回報者 `POST /api/v1/bugs/{id}/reporter-verify` 或逾時流程完成，Agent 不代按。這**不**擋 GitHub issue 關閉（Founder 2026-10-12 ③，見 DELIVERY_LIFECYCLE 自動化對照表）。
 - **內部備註**（`is_internal_note=1`）：不驅動回報者未讀紅點；分診給工程師用，不要當成給老師的回覆。
 - **產品閉環投影**（2026-09-18 起，無 schema migration）：`GET /bugs/{id}` 回傳 `product_loop`（語意階段／定性／GitHub 連結／production SHA／shipped）。定性與工程連結寫入 status_log 標記 `[product_disposition]`；`resolved` 且具 SHA 時同步 append-only `bug_report_evidence`。合併 PR **不算** shipped；需 production SHA 證據。
 
@@ -152,19 +152,21 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 #### Phase B — 修復（改 `backend/`／`frontend/`）
 
+開 branch、測試、CI、review、merge、部署與上線驗證走 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 階段 4–8；下表只列 in-app 回報另外要做的事。
+
 | 步驟 | 動作 |
 |------|------|
 | B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
-| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才依 [WORKTREE_POLICY](governance/WORKTREE_POLICY.md) 在雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才進 task worktree）→ regression RED → 改 code → focused tests／review／CI → PR。 |
+| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。 |
 | B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線後由 Phase-C 自動關，F14） |
-| B4 | merge → `deploy.yml` → 核對 deployed SHA、`GET /api/v1/health`／`deployment.json`（前端有改再查 `version.json`）→ 驗證原回報角色、分校與使用者路徑。 |
+| B4 | 上線驗證（DELIVERY_LIFECYCLE 階段 8）要用原回報的角色、分校與使用者路徑。 |
 
 #### Phase C — 上線後回寫 in-app（與 B4 綁定）
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／SOP 對照表）。**目前可跑**：`bug-followup-comment.yml`（僅改用詞、不改狀態）。ADR 規劃的 Pi-local `inapp-report-resolve-after-deploy` 尚未 catalog，不得當成已可執行 |
-| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 SOP 對照表），不等回報者 |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／DELIVERY_LIFECYCLE 自動化對照表）。**目前可跑**：`bug-followup-comment.yml`（僅改用詞、不改狀態）。ADR 規劃的 Pi-local `inapp-report-resolve-after-deploy` 尚未 catalog，不得當成已可執行 |
+| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 DELIVERY_LIFECYCLE 自動化對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
 
@@ -199,7 +201,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；上線後 Phase-C 自動關 issue（F14） |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 回報者驗收或逾時 → `closed` |
 
-**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/BUG_INTAKE_TO_PRODUCTION.md`](sop/BUG_INTAKE_TO_PRODUCTION.md) 開頭對照表（含每日 14 天自動逾時；`governance/EVIDENCE_CONTRACT.md` 的 7 日／不排程描述是人工 `--days` 路徑，待更新）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
+**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表（含每日 14 天自動逾時；`governance/EVIDENCE_CONTRACT.md` 的 7 日／不排程描述是人工 `--days` 路徑，待更新）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 

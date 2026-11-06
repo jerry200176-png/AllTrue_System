@@ -12,6 +12,7 @@
     "php": "^8.2"
   },
   "require-dev": {
+    "brianium/paratest": "^7",
     "fakerphp/faker": "^1.24",
     "infection/infection": "^0.32.6",
     "larastan/larastan": "^3.0",
