@@ -547,6 +547,24 @@ test('guardedSquash re-reads the review (PR body/tier included) at merge time an
   assert.equal(reads, 1);
 });
 
+test('review gate: R3 marker carries across update-branch only when samePatch', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const sec = (sha, v = 'pass') => owner(gateMarker('security-data-reviewer', sha, v));
+  const R3 = (cs, same) => reviewGate(cs, H, OWNER, 'r3', same);
+  const seenShas = [];
+  assert.deepEqual(R3([codex(clean()), sec(OLD)], (s) => { seenShas.push(s); return true; }), { ok: true, via: `r3-carried:${OLD.slice(0, 7)}` });
+  assert.deepEqual(seenShas, [OLD]);
+  assert.equal(R3([codex(clean()), sec(OLD)], () => false).ok, false); // patch differs / missing patch / sha not in PR -> samePatch false
+  assert.equal(R3([codex(clean()), sec(OLD)]).ok, false); // default dependency fails closed
+  assert.equal(R3([codex(clean()), sec(OLD), sec(H, 'fail')], () => true).ok, false); // fail on head vetoes
+  assert.equal(R3([codex(clean()), sec(OLD), sec('c'.repeat(40), 'fail')], () => true).ok, false); // newer fail vetoes
+  assert.equal(R3([codex(clean()), sec('c'.repeat(40), 'fail'), sec(OLD)], () => true).ok, true); // older fail does not
+  assert.equal(R3([codex(clean()), { user: { login: 'someone' }, body: gateMarker('security-data-reviewer', OLD) }], () => true).ok, false); // non-owner
+  assert.equal(R3([codex(clean()), owner(reviewMarker(OLD))], () => true).via, `r3-carried:${OLD.slice(0, 7)}`);
+  assert.equal(R3([codex(clean(OLD))], () => true).ok, false); // Codex gating unchanged
+  assert.equal(reviewGate([codex(clean())], H, OWNER, 'lower', () => assert.fail('called')).via, 'codex'); // lower unaffected
+});
+
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {
   const pr = (sha = H, body = 'Risk-Class: R0\nAutonomy-Tier: T0') => ({ head: { sha }, body });
   const doc = { filename: 'docs/x.md', patch: '+x' };
