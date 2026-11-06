@@ -585,8 +585,7 @@ const key = Object.keys(m).find((k) => u.includes(k));
 if (!key) process.exit(1);
 console.log(JSON.stringify(m[key]));
 `, { mode: 0o755 });
-  const run = (tree) => {
-    const f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }];
+  const run = (tree, f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }]) => {
     const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: tree.base || 'main' } }, 'compare/': [{ files: f }],
       [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b };
     const out = execFileSync(process.execPath, ['--input-type=module', '-e',
@@ -601,6 +600,11 @@ console.log(JSON.stringify(m[key]));
   assert.equal(run({ a: ent('100644'), b: ent('120000') }), false); // symlink swap
   assert.equal(run({ a: ent('100644'), b: { tree: [] } }), false); // deleted at head only
   assert.equal(run({ a: ent('100644'), b: { ...ent('100644'), truncated: true } }), false);
+  // A binary file (e.g. a visual baseline PNG) has no patch: its blob sha stands in, and the tree check still applies.
+  const png = [{ filename: 'x.sh', status: 'modified', sha: 'c'.repeat(40) }];
+  assert.equal(run({ a: ent('100644'), b: ent('100644') }, png), true);
+  assert.equal(run({ a: ent('100644'), b: ent('100644', 'e'.repeat(40)) }, png), false); // content changed at head
+  assert.equal(run({ a: ent('100644'), b: ent('100644') }, [{ filename: 'x.sh', status: 'modified' }]), false); // no patch, no sha
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {

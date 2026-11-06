@@ -126,11 +126,12 @@ function prScope(n, head) {
 }
 
 // True only when old and head are commits of PR n and their compare(base...sha) file lists match on
-// filename/status/previous_filename/patch. Missing patch, >=300 files or any API error -> false. Reads the API only.
+// filename/status/previous_filename/patch. A binary or oversized file has no patch: its blob sha stands in (treeEntries
+// below still compares every path's mode+blob). No patch and no sha, >=300 files or any API error -> false. Reads the API only.
 const diffKey = (sha, base) => {
   const files = JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.files || []);
-  if (files.length >= 300 || files.some((f) => typeof f.patch !== 'string')) return null;
-  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, f.patch]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+  if (files.length >= 300 || files.some((f) => typeof f.patch !== 'string' && typeof f.sha !== 'string')) return null;
+  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, typeof f.patch === 'string' ? f.patch : `blob:${f.sha}`]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
   return { key, paths: files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)) };
 };
 // patch text hides mode changes and file<->symlink swaps: compare tree entries (mode+blob, absent = deleted) of every PR path.
