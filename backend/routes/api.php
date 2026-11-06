@@ -837,6 +837,9 @@ Route::prefix('v1')->group(function () {
         Route::post('assessment-attempts/{assessmentAttempt}/review', [AssessmentController::class, 'reviewAttempt'])->whereNumber('assessmentAttempt');
 
         Route::post('exam-rounds', [ExamRoundController::class, 'store']);
+        Route::patch('exam-rounds/{examRound}', [ExamRoundController::class, 'update'])->whereNumber('examRound');
+        Route::delete('exam-rounds/{examRound}', [ExamRoundController::class, 'destroy'])->whereNumber('examRound');
+        Route::post('exam-rounds/{examRound}/restore', [ExamRoundController::class, 'restore'])->whereNumber('examRound');
         Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
         Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
         Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');
