@@ -201,48 +201,12 @@ jobs:
               - 'frontend/**'
             ci_config:
               - '.github/workflows/**'
+            # Every frontend change runs the whole UI foundation suite (~5-6 min). The old hand-written page list
+            # missed ParttimePayroll*, so #4979 merged with a broken payroll spec and main went red (fixed by #4999).
             ui_foundation:
-              - 'frontend/src/components/design-system/**'
-              - 'frontend/src/pages/NotificationsCenter.vue'
-              - 'frontend/src/pages/DirectorAccountsPage.vue'
-              - 'frontend/e2e/director-accounts-clarity.spec.js'
-              - 'frontend/src/pages/StudentsList.vue'
-              # axe gate dependency (Dependabot bumps of @axe-core/playwright)
-              - 'frontend/package.json'
-              - 'frontend/package-lock.json'
-              # pages scanned by e2e/ui-foundation-a11y-axe.spec.js
-              - 'frontend/src/pages/TeacherHomePage.vue'
-              - 'frontend/src/pages/AdmissionInquiriesPage.vue'
-              - 'frontend/src/pages/SmartCalendar.vue'
-              - 'frontend/src/pages/ChatPage.vue'
-              - 'frontend/src/pages/ParentPortal.vue'
-              - 'frontend/src/pages/AttendancePage.vue'
-              - 'frontend/src/pages/ProfileCenterPage.vue'
-              - 'frontend/src/styles.css'
-              - 'frontend/e2e/fixtures/ui-foundation/**'
-              - 'frontend/e2e/ui-foundation-*.spec.js'
-              - 'frontend/playwright.ui-foundation.config.js'
-              - 'frontend/vite.ui-foundation.config.js'
-              - 'scripts/check-no-public-ui-fixtures.sh'
-              - 'frontend/src/pages/TeacherEligibilityPage.vue'
-              - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
-              - 'frontend/e2e/teacher-eligibility-playwright.config.js'
-              # 科目設定 (subject-settings-clarity.spec.js runs in the ui-foundation suite)
-              - 'frontend/src/pages/SubjectSettingsPage.vue'
-              - 'frontend/e2e/subject-settings-clarity.spec.js'
-              # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
-              - 'frontend/e2e/tuition-*-clarity.spec.js'
-              - 'frontend/src/{pages/TuitionCollectionPage.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
+              - 'frontend/**'
               - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
-              # #4180: sidebar search / hub tabs (ui-foundation-sidebar-navigation.spec.js) and the 課程查找 payment
-              # entry (ui-foundation-course-payment-entry.spec.js), incl. the helpers the production acceptance shares
-              - 'frontend/src/App.vue'
-              - 'frontend/src/lib/navigationRegistry.js'
-              - 'frontend/e2e/fixtures/openPageFromSidebarSearch.js'
-              - 'frontend/src/pages/CourseManagement.vue'
-              - 'frontend/e2e/fixtures/coursePaymentEntry.js'
-              - 'frontend/e2e/fixtures/{dismissOverlays,latestGetJson}.js'
-              - 'frontend/src/lib/{roleCapabilities,paymentStatus}.js'
+              - 'scripts/check-no-public-ui-fixtures.sh'
 
   # Visual regression (#4952). ADVISORY: not in the required-check ruleset (adding it needs a ruleset change by Jerry).
   # Runs scripts/visual-docker.sh, which picks the mcr.microsoft.com/playwright image matching package-lock.
