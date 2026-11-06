@@ -71,10 +71,10 @@ final class MonthlyRenewalPeriodService
             ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), max(30, (int) ($c->SessionDuration ?? 120)));
         $keys = array_map(fn ($x) => substr((string) $x['SessionDate'], 0, 10) . '|' . substr((string) $x['StartTime'], 0, 5), $slots);
         if ($rows->contains(fn ($r) => !in_array($r['date'] . '|' . $r['start'], $keys, true))) return 'adopt_off_timetable';
-        // The old price must already count the lessons that stay: its remaining count equals its own timetable slots.
-        $own = count(ContractSessionSchedule::buildSessionsFromWeeklySchedule((int) $c->getKey(), Carbon::parse($c->StartDate)->toDateString(), $oldEnd,
-            ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), max(30, (int) ($c->SessionDuration ?? 120))));
-        if ((int) $c->SessionCount - $n !== $own) return 'adopt_not_priced_in_source';
+        // The old price must already count every lesson that stays: its held lessons plus the adopted ones equal its SessionCount.
+        $held = ClassSession::where('StudentClassID', $c->getKey())->whereDate('SessionDate', '>=', Carbon::parse($c->StartDate)->toDateString())
+            ->whereDate('SessionDate', '<=', $oldEnd)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '<>', 'cancelled'))->count();
+        if ($held + $n !== (int) $c->SessionCount) return 'adopt_not_priced_in_source';
         return null;
     }
 

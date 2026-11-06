@@ -52,6 +52,9 @@ class MonthlyRenewAdoptTest extends TestCase
         $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-10-01', 'DueDate' => '2026-10-31',
             'TotalAmount' => 9000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
         InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $sc->ID, 'Description' => '月結費用', 'Amount' => 9000]);
+        foreach (['2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25'] as $d) {
+            ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => $d, 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'attended', 'TeacherID' => 99]);
+        }
         $session = ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-11-01', 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'attended', 'TeacherID' => 99]);
         $signIn = StudentSignIn::create(['StudentClassID' => $sc->ID, 'StudentID' => $student->id, 'ClassSessionID' => $session->id, 'SessionDeducted' => true, 'SignInDT' => '2026-11-01 17:00:00']);
         SessionDeductionLedger::create(['student_class_id' => $sc->ID, 'class_session_id' => $session->id, 'event_type' => 'deduct', 'source' => 'attendance']);
@@ -132,7 +135,7 @@ class MonthlyRenewAdoptTest extends TestCase
         $this->assertSame(1, StudentClass::count());
         $this->assertSame([1800, 1], [(int) $sc->fresh()->Charge, (int) $sc->fresh()->SessionCount]);
         $this->assertSame(1800, (int) $invoice->fresh()->TotalAmount);
-        $this->assertSame($sc->ID, (int) ClassSession::sole()->StudentClassID);
+        $this->assertSame($sc->ID, (int) ClassSession::whereDate('SessionDate', '2026-11-01')->sole()->StudentClassID);
     }
 
     public function test_blocked_off_timetable_pending_report_or_pricing_amendment(): void
@@ -159,9 +162,6 @@ class MonthlyRenewAdoptTest extends TestCase
         [$sc, $inv, $stray] = $this->fixture(['Charge' => 7200, 'SessionCount' => 4]);
         $inv->update(['TotalAmount' => 7200]);
         InvoiceItem::where('InvoiceID', $inv->id)->update(['Amount' => 7200]);
-        foreach (['2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25'] as $d) {
-            ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => $d, 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'attended', 'TeacherID' => 99]);
-        }
         $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$sc->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
             ->assertJsonPath('blockers.1.code', 'adopt_not_priced_in_source');
         $this->renew($sc, 422);
@@ -169,6 +169,12 @@ class MonthlyRenewAdoptTest extends TestCase
         $this->assertSame([7200, 4], [(int) $sc->fresh()->Charge, (int) $sc->fresh()->SessionCount]);
         $this->assertSame(7200, (int) $inv->fresh()->TotalAmount);
         $this->assertSame($sc->ID, (int) $stray->fresh()->StudentClassID);
+
+        // Reviewer variant: billed 5 for 4 Sundays plus an extra Wednesday, and a stray 11-01.
+        [$extra] = $this->fixture();
+        ClassSession::create(['StudentClassID' => $extra->ID, 'SessionDate' => '2026-10-14', 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'attended', 'TeacherID' => 99]);
+        $this->renew($extra, 422);
+        $this->assertSame([9000, 5], [(int) $extra->fresh()->Charge, (int) $extra->fresh()->SessionCount]);
 
         [$pkg] = $this->fixture(['PackageID' => 5]);
         $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$pkg->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
