@@ -1,17 +1,22 @@
 // Presentation-only mapping for the director home bento (#4949 Phase A). Inputs are the values the page already loads.
-const WAITING = new Set(['pending_report', 'amount_review']);
-const isWaiting = (s) => WAITING.has(s?.payment_status);
-const isRenewal = (s) => s?.alert_type === 'low_sessions'
-  || (s?.alert_type === 'monthly_due_soon' && !(Number(s.days_until_settlement) < 0));
+// Classify by the alert's own payment_status (server: ContractMoneyState::alertStatus), not alert_type alone:
+// an unpaid/partial monthly invoice is owed money, not a renewal.
+const OWED = new Set(['unpaid', 'partial', 'pending_report', 'amount_review', 'pending_reconciliation']);
+const isOwed = (s) => (s?.payment_status ? OWED.has(s.payment_status) : s?.alert_type === 'unpaid');
+const isRenewal = (s) => !isOwed(s) && (s?.alert_type === 'low_sessions' || s?.alert_type === 'monthly_due_soon');
 
-// Owed today = overdue (unpaid / monthly past due) + waiting for confirmation, from /alerts/tuition rows.
+// Owed today from /alerts/tuition rows. `intent` = the 帳務中心 filter of the biggest group
+// (unpaid -> todo, pending_report -> confirm, amount_review -> review: LIST_FILTER_FOR_TAB).
 export function owedCard(alerts = []) {
-  const waiting = alerts.filter(isWaiting).length;
-  const overdue = alerts.filter((s) => !isWaiting(s) && !isRenewal(s)).length;
-  return { overdue, waiting, total: overdue + waiting, intent: overdue ? 'unpaid' : 'pending_report' };
+  const owed = alerts.filter(isOwed);
+  const confirm = owed.filter((s) => s.payment_status === 'pending_report').length;
+  const review = owed.filter((s) => s.payment_status === 'amount_review').length;
+  const overdue = owed.length - confirm - review;
+  const intent = [['unpaid', overdue], ['pending_report', confirm], ['amount_review', review]].sort((a, b) => b[1] - a[1])[0][0];
+  return { overdue, waiting: confirm + review, total: owed.length, intent };
 }
 
-export const renewalCount = (alerts = []) => alerts.filter((s) => !isWaiting(s) && isRenewal(s)).length;
+export const renewalCount = (alerts = []) => alerts.filter(isRenewal).length;
 
 // Oldest pending evaluation, in whole days before `todayYmd` (null when nothing is dated).
 export function oldestEvaluationAge(evaluations = [], todayYmd) {

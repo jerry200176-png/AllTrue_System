@@ -10,3 +10,4 @@ Add a component: `npx shadcn-vue@latest add <name>`, then pin any new dependency
 
 - `number-ticker/` is adapted from [Inspira UI](https://github.com/unovue/inspira-ui) `NumberTicker` (MIT, Copyright (c) 2024-2026 rahulv.dev): plain JS, `tw:` prefix, count-up through `motion-v`, reduced-motion safe. The MIT header is kept in the file.
 - `motion-v` (MIT, pinned in `package.json`) drives the count-up and the card enter on pages that use it.
+- `lucide-vue-next` (icons used by template pages) is ISC licensed, pinned in `package.json`.

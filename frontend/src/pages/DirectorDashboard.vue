@@ -80,8 +80,8 @@
               <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
                 <ActivityRing :done="attendedCount" :total="todaySchedules.length" :label="`${todaySchedules.length} 堂已點名 ${attendedCount} 堂`" />
                 <div>
-                  <p class="director-num tw:text-tpl-num tw:font-extrabold" data-testid="hero-total"><NumberTicker :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
-                  <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
+                  <p class="director-num tw:text-tpl-num tw:font-extrabold" data-testid="hero-total"><template v-if="heroLoading"><span aria-hidden="true">—</span><span class="tw:sr-only">載入中</span></template><NumberTicker v-else :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
+                  <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ heroLoading ? '載入中…' : pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
               <Button class="tpl-btn-primary tw:mt-4 tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.98]" @click="goToAttendance">去點名</Button>
@@ -673,6 +673,13 @@ const TASK_LOOK = {
 };
 const taskIcon = (task) => (TASK_LOOK[task.id] || [ListChecks])[0];
 const taskGrad = (task) => (TASK_LOOK[task.id] || [null, 'tpl-g-ink'])[1];
+// Only the newest 100 are loaded (the API has no ascending sort), so past 100 the age is labelled as a subset.
+const evalAgeLabel = computed(() => {
+  if (oldestEvalDays.value == null) return '點開看';
+  const prefix = pendingEvaluationsTotal.value > pendingEvaluations.value.length ? '最近 100 筆中最久' : '最久';
+  return oldestEvalDays.value === 0 ? `${prefix}是今天` : `${prefix}等 ${oldestEvalDays.value} 天`;
+});
+const heroLoading = computed(() => dashboardLoading.value && !todaySchedules.value.length);
 const evalSpark = computed(() => sevenDayEvalCounts(pendingEvaluations.value, localTodayYmd()));
 const kpiCards = computed(() => [
   {
@@ -689,7 +696,7 @@ const kpiCards = computed(() => [
   },
   {
     key: 'evals', label: '評量要審', value: pendingEvaluationsTotal.value, unit: '份', tone: 'bronze', grad: 'tpl-g-gold', icon: ClipboardCheck, spark: evalSpark.value, sparkLabel: '近 7 天上課日的待審評量數',
-    sub: oldestEvalDays.value == null ? '點開看' : (oldestEvalDays.value === 0 ? '最久的是今天' : `最久等 ${oldestEvalDays.value} 天`),
+    sub: evalAgeLabel.value,
     definition: DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations,
     open: () => emit('navigate', { target: 'learning' }),
   },

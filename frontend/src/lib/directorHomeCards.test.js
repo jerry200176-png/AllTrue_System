@@ -6,17 +6,20 @@ const alerts = [
   { alert_type: 'unpaid', payment_status: 'partial' },
   { alert_type: 'unpaid', payment_status: 'pending_report' },
   { alert_type: 'unpaid', payment_status: 'amount_review' },
-  { alert_type: 'monthly_due_soon', days_until_settlement: -2 },
-  { alert_type: 'monthly_due_soon', days_until_settlement: 3 },
-  { alert_type: 'low_sessions' },
+  { alert_type: 'monthly_due_soon', payment_status: 'unpaid', days_until_settlement: 0 },
+  { alert_type: 'monthly_due_soon', payment_status: 'paid', days_until_settlement: 3 },
+  { alert_type: 'low_sessions', payment_status: 'paid' },
 ];
 
 describe('directorHomeCards', () => {
-  it('splits owed into overdue and waiting; renewal rows are not owed', () => {
+  it('owed uses payment_status: unpaid monthly is owed, paid renewals are not', () => {
     expect(owedCard(alerts)).toEqual({ overdue: 3, waiting: 2, total: 5, intent: 'unpaid' });
-    expect(owedCard([{ alert_type: 'unpaid', payment_status: 'pending_report' }]).intent).toBe('pending_report');
     expect(renewalCount(alerts)).toBe(2);
     expect(owedCard([])).toMatchObject({ total: 0 });
+  });
+  it('routes to the filter of the biggest group, amount_review stays distinct', () => {
+    expect(owedCard([{ alert_type: 'unpaid', payment_status: 'amount_review' }]).intent).toBe('amount_review');
+    expect(owedCard([{ alert_type: 'unpaid', payment_status: 'pending_report' }]).intent).toBe('pending_report');
   });
   it('oldest evaluation age in days, null without dates', () => {
     expect(oldestEvaluationAge([{ SessionDate: '2026-11-03' }, { session_date: '2026-11-05' }], '2026-11-06')).toBe(3);
