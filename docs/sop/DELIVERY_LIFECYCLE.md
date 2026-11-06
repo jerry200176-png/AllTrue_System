@@ -138,7 +138,7 @@ last_reviewed: 2026-11-06
 | `sre` 維運 | 8 | health、smoke、`deployment.json` SHA、真實資料、Sentry 24 小時 | Sonnet |
 
 - 協調 session 用**全新 context** 跑每個角色，只給該關需要的輸入（issue、PR diff、證據連結），不給實作者的推理過程。守門人不能是實作者自己的 session。
-- 每個角色的定義檔 `.claude/agents/<role>.md`（清單、輸入、判定格式）是**目標（L5）**；在那之前，協調 session 用上表的「看什麼」當清單。
+- 每個角色的定義檔在 [`.claude/agents/`](../../.claude/agents/)（清單、輸入、判定格式）。R3 PR 在 land queue 需要 `gate:security-data-reviewer` 通過標記（規則：`RISK_BASED_MERGE_POLICY.md#final-head-review-evidence`）。
 
 ## 關卡標記
 

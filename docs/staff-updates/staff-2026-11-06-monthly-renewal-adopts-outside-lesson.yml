@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-monthly-renewal-adopts-outside-lesson
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 月結續報可帶走多算的課
+    summary: 上月多算到下月的已上課，續報時會移到新合約。
+    items:
+      - category: fixed
+        text: 舊月未付款時，續報會把那一天的課和費用一起移到新合約，預覽會先顯示舊月新金額。
+    source_refs:
+      - "changelog:2026-11-06:monthly-renewal-adopts-outside-lesson"

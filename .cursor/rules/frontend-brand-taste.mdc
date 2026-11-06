@@ -41,7 +41,7 @@ Brand/Auth PR checklist：before/after 截圖（桌面+手機）→ 保留 mesh/
 | `Leonxlnx/taste-skill` | 反 slop；先 brief；VARIANCE/MOTION/DENSITY |
 | `pbakaus/impeccable` | brand vs product 分流；critique 再 ship |
 | `VoltAgent/awesome-design-md` | 真品牌 DESIGN.md，禁 AI 紫漸層模板 |
-| `shadcn-ui/ui` + `radix-ui/primitives` | 可及性與品質，不是「扁平才專業」 |
+| `shadcn-ui/ui` + `radix-ui/primitives` | 可及性與品質；**2026-11-06 起 shadcn-vue 是 AllTrue 永久元件模板**（`frontend/src/components/ui`，見 `docs/RULE_DESIGN_SYSTEM.md` §0） |
 | `carbon` / `fluentui` / `primer` | **Ops** denser 語言，勿拿去換 Login 皮 |
 | `vue-vben-admin` / `filament` | 營運後台密度 |
 | `pacifio/ui` | 高密度多表面；Login 勿做成空卡片 |
