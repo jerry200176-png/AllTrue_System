@@ -635,7 +635,7 @@ class StudentClassController extends Controller
             $class->setAttribute('paid_at', $directPaidAt);
             $class->setAttribute('last_paid_at', $invoicePaidAt ?? $directPaidAt);
             if (!$isTutoringCourse && isset($monthlyPayments[(int) $class->ID])) {
-                $monthlyPayment = $monthlyPayments[(int) $class->ID];
+                $monthlyPayment = app(\App\Services\MonthlyPeriodPaymentService::class)->forDisplay($monthlyPayments[(int) $class->ID]); // in-app #510: display only
                 // #4798: a director's 已核對 (resolver verdict) settles the period summary too, so course management agrees.
                 if (!empty($courseStatuses[(int) $class->ID]['review_checked'])) {
                     $monthlyPayment = ['review_required' => false, 'review_checked' => true, 'payment_status' => 'paid'] + $monthlyPayment;
