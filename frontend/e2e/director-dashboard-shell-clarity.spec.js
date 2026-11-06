@@ -148,10 +148,10 @@ for (const viewport of VIEWPORTS) {
     page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
     await openPilot(page, { viewport });
 
-    await expect(page.getByRole('heading', { name: '主任總覽', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '重新整理', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('button', { name: '開始處理', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /家長請假/ }).first()).toBeVisible();
 
     const controls = await page.locator('.director-workbench-v2 button:visible').evaluateAll((buttons) => buttons.map((button) => {
       const rect = button.getBoundingClientRect();
@@ -165,7 +165,7 @@ for (const viewport of VIEWPORTS) {
     }));
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
 
-    await page.getByRole('button', { name: '開始處理', exact: true }).first().click();
+    await page.getByRole('button', { name: /家長請假/ }).first().click();
     await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
     await page.getByRole('tab', { name: '完整營運', exact: true }).click();
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
@@ -220,7 +220,7 @@ for (const viewport of [VIEWPORTS[0], VIEWPORTS[4]]) {
         await page.goto('/pilot-mount.html?page=app&mode=payment-navigation');
         await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
       }
-      await expect(page.getByRole('heading', { name: '主任總覽', exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible({ timeout: 10_000 });
       await page.getByRole('tab', { name: '完整營運', exact: true }).click();
       const paymentRow = page.locator('#payments-sec .director-payment-row').filter({ hasText: navigationCase.student });
       await expect(paymentRow).toBeVisible();

@@ -15,9 +15,35 @@
 @import "tw-animate-css";
 @source "./components/ui";
 @source "./components/parent";
+@source "./pages/DirectorDashboard.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
+  /* Large-type scale for template pages (elder-friendly, Apple Health style). rem-based; useTextScale sets --tpl-scale (1 / 1.15 / 1.3). */
+  --tpl-scale: 1;
+  --tpl-text-caption: calc(1.0625rem * var(--tpl-scale));
+  --tpl-text-body: calc(1.1875rem * var(--tpl-scale));
+  --tpl-text-list: calc(1.375rem * var(--tpl-scale));
+  --tpl-text-unit: calc(1.5rem * var(--tpl-scale));
+  --tpl-text-page: calc(2.125rem * var(--tpl-scale));
+  --tpl-text-num-sm: calc(3rem * var(--tpl-scale));
+  --tpl-text-num: calc(3.5rem * var(--tpl-scale));
+  --tpl-control-height: 3.5rem;
+  /* premium layer: gradient icon tiles, glass, shadow, glow (reuse on every template page) */
+  --tpl-g-ink: linear-gradient(145deg, var(--ds-brand-ink-2), var(--ds-brand-ink));
+  --tpl-g-ink2: linear-gradient(145deg, var(--ds-brand-ink-2), var(--ds-brand-ink-3));
+  --tpl-g-sun: linear-gradient(145deg, var(--ds-brand-sun-light), var(--ds-brand-gold));
+  --tpl-g-gold: linear-gradient(145deg, var(--ds-brand-gold-light), var(--ds-brand-gold-deep));
+  --tpl-g-amber: linear-gradient(145deg, var(--ds-brand-amber-light), var(--ds-brand-amber));
+  --tpl-g-red: linear-gradient(145deg, var(--ds-brand-red-light), var(--ds-brand-red));
+  --tpl-g-btn: linear-gradient(180deg, #2b2b2e, var(--ds-brand-ink));
+  --tpl-glass-bg: color-mix(in srgb, var(--ds-canvas) 86%, transparent);
+  --tpl-bar-bg: color-mix(in srgb, var(--ds-canvas-soft) 55%, transparent);
+  --tpl-line: color-mix(in srgb, var(--ds-ink) 14%, transparent);
+  --tpl-shadow-card: 0 1px 1px color-mix(in srgb, var(--ds-ink) 5%, transparent), 0 10px 30px -12px color-mix(in srgb, var(--ds-ink) 22%, transparent);
+  --tpl-shadow-tile: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 4px 10px -4px rgb(0 0 0 / 0.35);
+  --tpl-shadow-glow: 0 10px 24px -10px color-mix(in srgb, var(--ds-brand-amber) 45%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--ds-brand-gold) 35%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.3);
+  --tpl-row-height: 4.5rem;
   --ui-background: var(--ds-canvas-soft);
   --ui-foreground: var(--ds-ink);
   --ui-card: var(--ds-canvas);
@@ -43,6 +69,24 @@
 }
 
 @theme inline {
+  --shadow-tpl-card: var(--tpl-shadow-card);
+  --shadow-tpl-tile: var(--tpl-shadow-tile);
+  --shadow-tpl-glow: var(--tpl-shadow-glow);
+  --text-tpl-caption: var(--tpl-text-caption);
+  --text-tpl-caption--line-height: 1.4;
+  --text-tpl-body: var(--tpl-text-body);
+  --text-tpl-body--line-height: 1.5;
+  --text-tpl-list: var(--tpl-text-list);
+  --text-tpl-list--line-height: 1.3;
+  --text-tpl-unit: var(--tpl-text-unit);
+  --text-tpl-page: var(--tpl-text-page);
+  --text-tpl-page--line-height: 1.15;
+  --text-tpl-num-sm: var(--tpl-text-num-sm);
+  --text-tpl-num-sm--line-height: 1.05;
+  --text-tpl-num: var(--tpl-text-num);
+  --text-tpl-num--line-height: 1.05;
+  /* secondary text: dark gray, AA on white and on the soft canvas */
+  --color-tpl-secondary: var(--ds-ink-secondary);
   --color-background: var(--ui-background);
   --color-foreground: var(--ui-foreground);
   --color-card: var(--ui-card);
@@ -79,3 +123,21 @@ button[data-slot] {
   border-width: 0;
   border-style: solid;
 }
+
+/* ---- premium layer classes (template pages) ---- */
+.tpl-glass { background: var(--tpl-glass-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.tpl-card { background: var(--tpl-glass-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--tpl-line); }
+.tpl-bar { background: var(--tpl-bar-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid var(--tpl-line); }
+.tpl-tile { display: grid; place-items: center; flex: none; width: 2.5rem; height: 2.5rem; color: white; }
+.tpl-g-ink { background: var(--tpl-g-ink); color: var(--ds-brand-gold); } .tpl-g-ink2 { background: var(--tpl-g-ink2); color: var(--ds-brand-gold); }
+.tpl-g-sun { background: var(--tpl-g-sun); color: var(--ds-brand-glyph); } .tpl-g-gold { background: var(--tpl-g-gold); color: var(--ds-brand-glyph); }
+.tpl-g-amber { background: var(--tpl-g-amber); color: var(--ds-brand-glyph); } .tpl-g-red { background: var(--tpl-g-red); color: white; }
+.tpl-btn-primary { position: relative; overflow: hidden; background: var(--tpl-g-btn); color: white; }
+.tpl-btn-primary::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(110deg, transparent 35%, color-mix(in srgb, var(--ds-brand-gold) 45%, transparent) 50%, transparent 65%); }
+.tpl-mesh { position: relative; isolation: isolate; }
+.tpl-mesh::before { content: ""; position: absolute; inset: -2rem -1rem auto; height: 26rem; z-index: -1; pointer-events: none; filter: blur(40px); opacity: 0.4;
+  background: radial-gradient(40% 60% at 15% 30%, var(--ds-brand-sun), transparent 70%), radial-gradient(35% 55% at 55% 10%, var(--ds-brand-amber-light), transparent 70%), radial-gradient(35% 55% at 90% 30%, var(--ds-primary-wash), transparent 70%); }
+@media (prefers-reduced-motion: no-preference) {
+  .tpl-btn-primary::after { animation: tpl-shine 3.2s ease-in-out infinite 1s; }
+}
+@keyframes tpl-shine { to { transform: translateX(100%); } }
