@@ -38,7 +38,7 @@ final class MonthlyRenewalPeriodService
         $open = $rows->reject(fn ($r) => $billedMonths->contains(substr($r['date'], 0, 7)));
         // in-app #506: a lesson the old month wrongly holds past its end, but inside the new period, moves to the new contract.
         $inNew = $open->filter(fn ($r) => $oldEnd && $end && $r['date'] > $oldEnd && $r['date'] <= $end);
-        $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course);
+        $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course, $inNew->count());
         $blockers = [];
         if ($reason === null) $open = $open->reject(fn ($r) => $inNew->contains('id', $r['id']));
         if ($open->count()) $blockers[] = ['code' => 'monthly_completed_sessions_outside_contract',
@@ -50,7 +50,7 @@ final class MonthlyRenewalPeriodService
     }
 
     /** Null when the unpaid source can give lessons away; 'paid' (no extra blocker) or an adopt_* code otherwise. */
-    private function adoptionBlocker(StudentClass $c): ?string
+    private function adoptionBlocker(StudentClass $c, int $n): ?string
     {
         $invoices = Invoice::query()->notVoided()->where('StudentClassID', $c->getKey())->get();
         $inv = $invoices->first();
@@ -58,6 +58,8 @@ final class MonthlyRenewalPeriodService
         if (strtolower(trim((string) ($c->rate_unit ?? 'session'))) !== 'session' || (float) $c->Rate <= 0) return 'adopt_requires_session_rate';
         if ((int) $c->Charge !== (int) round((float) $c->Rate * (int) $c->SessionCount)) return 'adopt_source_discounted';
         if ($invoices->count() !== 1 || $inv->Status === 'paid' || (int) $inv->TotalAmount !== (int) $c->Charge || InvoiceItem::where('InvoiceID', $inv->id)->count() !== 1) return 'adopt_source_invoice_ambiguous';
+        $delta = (int) round((float) $c->Rate * $n);
+        if ($n >= (int) $c->SessionCount || $delta >= (int) $c->Charge || $delta >= (int) $inv->TotalAmount || $delta >= (int) InvoiceItem::where('InvoiceID', $inv->id)->value('Amount')) return 'adopt_exceeds_source';
         return null;
     }
 
@@ -66,15 +68,19 @@ final class MonthlyRenewalPeriodService
     {
         if ($ids === []) return [];
         $n = count($ids);
+        $source = StudentClass::query()->where('ID', $source->getKey())->lockForUpdate()->firstOrFail();
+        $invoice = Invoice::query()->notVoided()->where('StudentClassID', $source->getKey())->lockForUpdate()->firstOrFail();
+        $item = InvoiceItem::where('InvoiceID', $invoice->id)->lockForUpdate()->get();
         $delta = (int) round((float) $source->Rate * $n);
         $oldCharge = (int) $source->Charge;
+        if ($item->count() !== 1 || $this->adoptionBlocker($source, $n) !== null || $oldCharge - $delta <= 0 || (int) $source->SessionCount - $n <= 0
+            || (int) $invoice->TotalAmount - $delta <= 0 || (int) $item[0]->Amount - $delta <= 0) throw new \RuntimeException('monthly_adopt_state_changed');
         foreach ($ids as $id) {
             ClassSession::where('id', $id)->update(['StudentClassID' => $target->getKey()]);
             app(SessionContractRecoveryService::class)->moveEvidence($id, (int) $target->getKey(), false);
             DB::table('session_deduction_ledger')->where('class_session_id', $id)->where('student_class_id', $source->getKey())->update(['student_class_id' => $target->getKey()]);
         }
         $source->forceFill(['Charge' => $oldCharge - $delta, 'SessionCount' => (int) $source->SessionCount - $n])->save();
-        $invoice = Invoice::query()->notVoided()->where('StudentClassID', $source->getKey())->firstOrFail();
         $invoice->update(['TotalAmount' => (int) $invoice->TotalAmount - $delta]);
         InvoiceItem::where('InvoiceID', $invoice->id)->decrement('Amount', $delta);
         SessionDeductionService::recomputeCounters((int) $source->getKey());

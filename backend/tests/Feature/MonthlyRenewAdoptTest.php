@@ -120,4 +120,18 @@ class MonthlyRenewAdoptTest extends TestCase
         $session->update(['SessionDate' => '2026-12-06']);
         $this->renew($sc, 422)->assertJsonPath('code', 'monthly_completed_sessions_outside_contract');
     }
+
+    public function test_adoption_must_leave_the_source_a_lesson(): void
+    {
+        [$sc, $invoice] = $this->fixture(['SessionCount' => 1, 'Charge' => 1800]);
+        $invoice->update(['TotalAmount' => 1800]);
+        InvoiceItem::where('InvoiceID', $invoice->id)->update(['Amount' => 1800]);
+        $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$sc->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertJsonPath('blockers.1.code', 'adopt_exceeds_source');
+        $this->renew($sc, 422);
+        $this->assertSame(1, StudentClass::count());
+        $this->assertSame([1800, 1], [(int) $sc->fresh()->Charge, (int) $sc->fresh()->SessionCount]);
+        $this->assertSame(1800, (int) $invoice->fresh()->TotalAmount);
+        $this->assertSame($sc->ID, (int) ClassSession::sole()->StudentClassID);
+    }
 }
