@@ -128,14 +128,14 @@ const isDisabled = computed(() => props.disabled || props.loading);
 
 /* Primary: AA CTA fill (≥4.5:1 with --ds-on-cta); not brand amber gradient */
 .at-btn--primary {
-  background: var(--ds-action);
-  color: var(--ds-on-action);
+  background: var(--ds-cta);
+  color: var(--ds-on-cta);
 }
 .at-btn--primary:hover:not(:disabled) {
-  background: var(--ds-action-hover);
+  background: var(--ds-cta-hover);
 }
 .at-btn--primary:active:not(:disabled) {
-  background: var(--ds-action-press);
+  background: var(--ds-cta-press);
 }
 
 /* Secondary: 白底 + 主色字與邊框 */

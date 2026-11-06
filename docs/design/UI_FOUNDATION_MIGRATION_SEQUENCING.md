@@ -7,16 +7,15 @@ Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) (look and ru
 | # | Step | Status |
 |---|---|---|
 | 1 | PR-0 template foundation (shadcn-vue on `--ds-*`) | done, #4951 |
-| 2 | Template look: Apple-style token values in `styles.css` | this PR (W0) |
-| 3 | 主任首頁 | #4949 |
-| 4 | 課程管理 | #4918 |
-| 5 | App shell (sidebar, top bar, mobile tabs) | planned |
-| 6 | 老師首頁 | planned |
-| 7 | 帳務中心 v3 | planned |
-| 8 | Remaining pages, one PR each | planned |
+| 2 | 主任首頁 (next) | #4949 |
+| 3 | 課程管理 | #4918 |
+| 4 | App shell (sidebar, top bar, mobile tabs) | planned |
+| 5 | 老師首頁 | planned |
+| 6 | 帳務中心 v3 | planned |
+| 7 | Remaining pages, one PR each | planned |
 | P | Parent track #4986 | step 1 #4987; steps 2-6 planned |
 
-Every migrated page uses `components/ui` plus the `ParentHome.vue` pattern (small label over big value, one dark primary pill). `At*` components are not restyled; they retire as pages move.
+The Apple-style look is delivered per page, not by changing global tokens; global `--ds-*` values stay until the last pages migrate. Every migrated page uses `components/ui` plus the `ParentHome.vue` pattern (small label over big value, one dark primary pill). `At*` components are not restyled; they retire as pages move.
 
 ## Constraints that outlive the waves
 
