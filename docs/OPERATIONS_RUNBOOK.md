@@ -966,6 +966,8 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 
 **Decision**：目前先 **defer**（不在當前維運窗口直接啟用 production binlog）。
 
+**Update 2026-11-07（Founder 決定啟用）**：drill 已 PASS（#881、#5009），所以正式機改為啟用 binlog（ROW、保留 7 天）。Founder 在 Pi 上自己跑 `sudo bash /home/admin/scripts/pi-enable-binlog.sh`：先 dry run，安靜時段再加 `--apply`；要撤回用 `--rollback`。之後 nightly/sixhour 備份會自動寫入 binlog 位置（`--master-data=2`）。還原步驟見 [`runbooks/MYSQL_PITR_DRILL_RUNBOOK.md`](runbooks/MYSQL_PITR_DRILL_RUNBOOK.md)，一律還原到 scratch DB，不直接覆蓋 `AllTrue`。binlog 目前只存在本機，異地同步是後續工作。以下是 2026-05-09 的原始紀錄。
+
 **Why defer now**
 - 現行快照備份鏈（nightly + sixhour + Drive + manifest + restore drill）健康，已覆蓋大部分事故恢復需求。
 - 啟用 binlog 會引入額外磁碟/rotation/offsite 同步與 restore 操作複雜度；若未先完成 drill SOP，可能把恢復流程風險前置到 production。
