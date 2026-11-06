@@ -155,6 +155,15 @@
         description="該分校本月尚無兼職老師授課資料。"
       />
 
+      <ParttimeAdminBonusAdd
+        v-if="!loading && !error && summary.lock_status !== 'locked'"
+        :key="`${selectedMonth}-${props.branchId}`"
+        :branch-id="props.branchId || summary.branch_id"
+        :month="selectedMonth"
+        :existing-ids="teachers.map((t) => Number(t.teacher_id))"
+        @saved="loadData"
+      />
+
       <!-- Teacher Table -->
       <div v-if="!loading && !error && teachers.length > 0" class="teacher-table">
         <div class="table-header">
@@ -511,6 +520,7 @@ import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import ParttimeAdminBonusAdd from '../components/ParttimeAdminBonusAdd.vue';
 import ParttimeAdminBonusField from '../components/ParttimeAdminBonusField.vue';
 import {
   fetchPayrollSummary,

@@ -1073,7 +1073,7 @@ class ParttimePayrollTest extends TestCase
         $h = $this->authHeaders($dir['token']);
         $body = ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 300, 'reason' => '行政'];
         $this->withHeaders($h)->putJson($this->bonusUrl(), $body)->assertOk();
-        PayrollMonthStatus::create(['branch_id' => 1, 'month' => '2026-04', 'status' => 'locked']);
+        PayrollMonthStatus::updateOrCreate(['branch_id' => 1, 'month' => '2026-04'], ['status' => 'locked']);
 
         $this->withHeaders($h)->putJson($this->bonusUrl(), array_merge($body, ['amount' => 900]))->assertStatus(422);
         $this->withHeaders($h)->deleteJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04'])->assertStatus(422);
@@ -1113,5 +1113,36 @@ class ParttimePayrollTest extends TestCase
         $this->assertStringContainsString("'=SUM(A1)", $csv);
         $this->assertStringContainsString("'@cmd", $csv);
         $this->assertDoesNotMatchRegularExpression('/(^|,)"?[=@]/m', $csv);
+    }
+
+    public function test_admin_bonus_cannot_be_set_for_oneself(): void
+    {
+        $dir = $this->createDirector('dir-ab-7@test.com', [1]);
+        $h = $this->authHeaders($dir['token']);
+        $b = ['branch_id' => 1, 'teacher_id' => $dir['user_id'], 'month' => '2026-04'];
+        $this->withHeaders($h)->putJson($this->bonusUrl(), $b + ['amount' => 100, 'reason' => 'x'])
+            ->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
+        $this->withHeaders($h)->deleteJson($this->bonusUrl(), $b)->assertStatus(422);
+        $this->assertSame(0, DB::table('parttime_payroll_admin_bonuses')->count());
+    }
+
+    public function test_admin_bonus_write_rolls_back_when_audit_fails(): void
+    {
+        $dir = $this->createDirector('dir-ab-8@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab8@test.com', '戊');
+        DB::listen(function ($q) {
+            if (str_contains($q->sql, 'security_audit_events') && str_starts_with(strtolower($q->sql), 'insert')) {
+                throw new \RuntimeException('audit down');
+            }
+        });
+        $this->withoutExceptionHandling();
+        try {
+            $this->withHeaders($this->authHeaders($dir['token']))
+                ->putJson($this->bonusUrl(), ['branch_id' => 1, 'teacher_id' => $tid, 'month' => '2026-04', 'amount' => 100, 'reason' => 'x']);
+            $this->fail('expected audit failure to propagate');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('audit down', $e->getMessage());
+        }
+        $this->assertSame(0, DB::table('parttime_payroll_admin_bonuses')->count());
     }
 }

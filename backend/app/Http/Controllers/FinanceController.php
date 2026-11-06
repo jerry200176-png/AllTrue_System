@@ -1458,6 +1458,8 @@ class FinanceController extends Controller
         }
 
         DB::transaction(function () use ($row, $branchId, $month, $userId, $campusIds) {
+            // Serialise with admin-bonus writes (same month-status row lock).
+            PayrollMonthStatus::whereKey($row->id)->lockForUpdate()->first();
             $currentRule = PayrollBranchRule::latestForBranch($branchId);
             $asOfDate    = date('Y-m-t', strtotime($month . '-01'));
             $teacherMap  = PayrollTeacherBranchRule::latestMapForBranch($branchId, $asOfDate);

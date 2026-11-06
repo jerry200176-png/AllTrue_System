@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ParttimePayrollAdminBonus;
 use App\Models\PayrollMonthStatus;
 use App\Models\SecurityAuditEvent;
+use App\Support\SelfApprovalGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,18 +32,29 @@ class ParttimePayrollAdminBonusController extends Controller
         }
 
         $uid = $this->userId($request);
-        $row = ParttimePayrollAdminBonus::where('campus_id', $data['branch_id'])
-            ->where('teacher_id', $data['teacher_id'])->where('month', $data['month'])->first();
-        $old = $row?->amount;
-        if ($row) {
-            $row->update(['amount' => $data['amount'], 'reason' => $data['reason'], 'updated_by' => $uid]);
-        } else {
-            $row = ParttimePayrollAdminBonus::create([
-                'campus_id' => $data['branch_id'], 'teacher_id' => $data['teacher_id'], 'month' => $data['month'],
-                'amount' => $data['amount'], 'reason' => $data['reason'], 'created_by' => $uid, 'updated_by' => $uid,
-            ]);
+        $row = null;
+        $locked = DB::transaction(function () use ($data, $uid, &$row) {
+            if ($this->monthLocked($data)) {
+                return true;
+            }
+            $row = ParttimePayrollAdminBonus::where('campus_id', $data['branch_id'])
+                ->where('teacher_id', $data['teacher_id'])->where('month', $data['month'])->lockForUpdate()->first();
+            $old = $row?->amount;
+            if ($row) {
+                $row->update(['amount' => $data['amount'], 'reason' => $data['reason'], 'updated_by' => $uid]);
+            } else {
+                $row = ParttimePayrollAdminBonus::create([
+                    'campus_id' => $data['branch_id'], 'teacher_id' => $data['teacher_id'], 'month' => $data['month'],
+                    'amount' => $data['amount'], 'reason' => $data['reason'], 'created_by' => $uid, 'updated_by' => $uid,
+                ]);
+            }
+            $this->audit($old === null ? 'created' : 'updated', $data, $uid, $old);
+
+            return false;
+        });
+        if ($locked) {
+            return $this->lockedResponse();
         }
-        $this->audit($old === null ? 'created' : 'updated', $data, $uid, $old);
 
         return response()->json(['ok' => true, 'admin_bonus' => $row->amount, 'admin_bonus_reason' => $row->reason]);
     }
@@ -58,18 +70,27 @@ class ParttimePayrollAdminBonusController extends Controller
         if ($err = $this->guard($request, $data)) {
             return $err;
         }
-        $row = ParttimePayrollAdminBonus::where('campus_id', $data['branch_id'])
-            ->where('teacher_id', $data['teacher_id'])->where('month', $data['month'])->first();
-        if ($row) {
-            $row->delete();
-            $data['reason'] = $row->reason;
-            $this->audit('deleted', $data, $this->userId($request), $row->amount);
+        $locked = DB::transaction(function () use ($data, $request) {
+            if ($this->monthLocked($data)) {
+                return true;
+            }
+            $row = ParttimePayrollAdminBonus::where('campus_id', $data['branch_id'])
+                ->where('teacher_id', $data['teacher_id'])->where('month', $data['month'])->lockForUpdate()->first();
+            if ($row) {
+                $row->delete();
+                $this->audit('deleted', $data + ['reason' => $row->reason], $this->userId($request), $row->amount);
+            }
+
+            return false;
+        });
+        if ($locked) {
+            return $this->lockedResponse();
         }
 
         return response()->json(['ok' => true]);
     }
 
-    /** Campus scope + part-time teacher + month-lock. Returns an error response or null. */
+    /** Campus scope + self-pay + part-time teacher. Returns an error response or null. */
     private function guard(Request $request, array $data): ?JsonResponse
     {
         $role = $request->attributes->get('auth_role');
@@ -77,17 +98,32 @@ class ParttimePayrollAdminBonusController extends Controller
         if ($role !== 'super_admin' && !in_array((int) $data['branch_id'], array_map('intval', $campusIds), true)) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
+        if ($blocked = SelfApprovalGuard::reject($request, (int) $data['teacher_id'])) {
+            return $blocked;
+        }
         $teacher = DB::table('User')->where('id', $data['teacher_id'])->first();
         $inCampus = DB::table('UserCampus')->where('UserID', $data['teacher_id'])->where('CampusID', $data['branch_id'])->exists();
         if (!$teacher || ($teacher->employment_type ?? 'full_time') !== 'part_time' || !$inCampus) {
             return response()->json(['error' => '只能替本分校的兼職老師登錄行政加給'], 422);
         }
-        $status = PayrollMonthStatus::where('branch_id', $data['branch_id'])->where('month', $data['month'])->value('status');
-        if (in_array($status, ['locked', 'finalized'], true)) {
-            return response()->json(['error' => '本月兼職薪資已鎖定，無法異動行政加給；如需修改請先請超級管理員重新開啟'], 422);
-        }
-
         return null;
+    }
+
+    /** Take the month-status row lock (same row parttimePayrollLock() locks) and re-check; call inside a transaction. */
+    private function monthLocked(array $data): bool
+    {
+        $row = PayrollMonthStatus::firstOrCreate(
+            ['branch_id' => $data['branch_id'], 'month' => $data['month']],
+            ['status' => 'draft']
+        );
+        $status = PayrollMonthStatus::whereKey($row->id)->lockForUpdate()->value('status');
+
+        return in_array($status, ['locked', 'finalized'], true);
+    }
+
+    private function lockedResponse(): JsonResponse
+    {
+        return response()->json(['error' => '本月兼職薪資已鎖定，無法異動行政加給；如需修改請先請超級管理員重新開啟'], 422);
     }
 
     private function userId(Request $request): ?int

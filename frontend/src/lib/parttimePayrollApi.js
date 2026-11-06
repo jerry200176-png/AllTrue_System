@@ -151,3 +151,12 @@ export async function deleteAdminBonus({ branchId, teacherId, month }) {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '刪除失敗');
   return res.json();
 }
+
+// #4971: part-time teachers of a campus (existing GET /teachers; filtered client-side)
+export async function fetchPartTimeTeachers({ branchId }) {
+  const res = await fetch(`${API_BASE}/teachers?branch_id=${encodeURIComponent(branchId)}`, { headers: headers() });
+  if (!res.ok) throw new Error('老師資料載入失敗');
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : (data?.data || data?.teachers || []);
+  return list.filter((t) => t.employment_type === 'part_time');
+}
