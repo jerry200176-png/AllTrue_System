@@ -14,7 +14,7 @@ it.each(['one_on_three', null])('retains the stored trial target %s when opening
   const dependencies = {
     courses: { value: [base] }, modalForm, editingCourseId: ref(), editingActionDate: ref(),
     editingException: ref(), sessionRecovery: ref(), moveContract: ref(), conflictWarning: ref(), showModal: ref(),
-    findSessionRowForCell: () => null, makeSessionRecovery: () => ({}), makeMoveContract: () => ({}),
+    findSessionRowForCell: () => null, resetSessionRecovery: vi.fn(), makeMoveContract: () => ({}),
     normalizeTimeTo30: value => value, computeEndTime: () => '18:00',
     syncRatePer2hFromModel: vi.fn(), loadSessionRecovery: vi.fn(), loadCourseEvalRecords: vi.fn(),
   };
