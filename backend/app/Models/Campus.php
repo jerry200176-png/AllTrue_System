@@ -35,6 +35,17 @@ class Campus extends Model
         'is_test',
     ];
 
+    // Credentials never leave the server through model serialization (a course response eager-loads
+    // room.campus). Server code still reads them as properties; admin screens use presence flags.
+    protected $hidden = [
+        'Client_Secret',
+        'Token',
+        'LineNotifyID',
+        'TelegramToken',
+        'TelegramChatID',
+        'TelegramWebhookSecret',
+    ];
+
     protected $casts = [
         'is_test' => 'boolean',
     ];
