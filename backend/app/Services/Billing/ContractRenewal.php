@@ -1236,6 +1236,7 @@ final class ContractRenewal
             $newCourse->initializePricingSnapshot($discountSnapshot);
             $newCourse->refresh();
             $adopted = app(MonthlyRenewalPeriodService::class)->adopt($studentClass, $newCourse, $periodReview['adoptable'], $actorId, $newEndDate);
+            $studentClass->refresh(); // recomputeCounters may have changed the source's Stop
 
             // Close and cancel the old period before materializing the new
             // period. A legacy source course may contain future rows beyond

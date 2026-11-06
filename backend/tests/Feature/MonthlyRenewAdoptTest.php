@@ -194,4 +194,23 @@ class MonthlyRenewAdoptTest extends TestCase
         $rows = collect([['id' => 1, 'date' => '2026-11-01', 'start' => '17:00']]);
         $this->assertSame('adopt_not_priced_in_source', $m->invoke(app(\App\Services\MonthlyRenewalPeriodService::class), $sc, $rows, '2026-10-31', '2026-11-30'));
     }
+
+    public function test_substitute_lesson_is_not_adopted_and_paused_source_stays_closed(): void
+    {
+        [$sub, , $session] = $this->fixture();
+        \Illuminate\Support\Facades\DB::table('schedules')->insert(['student_id' => $sub->StudentID, 'teacher_id' => 7, 'day_of_week' => 7, 'start_time' => '17:00', 'end_time' => '19:00',
+            'branch_id' => 1, 'schedule_date' => '2026-11-01', 'student_course_id' => $sub->ID, 'created_at' => now(), 'updated_at' => now()]);
+        $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$sub->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertJsonPath('blockers.1.code', 'adopt_has_substitute');
+        $this->renew($sub, 422);
+
+        [$other, , $s2, $signIn] = $this->fixture();
+        $signIn->update(['TeacherID' => 7]);
+        $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$other->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertJsonPath('blockers.1.code', 'adopt_has_substitute');
+
+        [$paused] = $this->fixture(['Stop' => 1]);
+        $this->renew($paused, 201);
+        $this->assertSame(1, (int) $paused->fresh()->Stop);
+    }
 }

@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\StudentClassPricingAmendment;
 use App\Services\Scheduling\ContractSessionSchedule;
 use Carbon\Carbon;
@@ -54,6 +55,9 @@ final class MonthlyRenewalPeriodService
     private function adoptionBlocker(StudentClass $c, $rows, string $oldEnd, string $end): ?string
     {
         $n = $rows->count();
+        // A substitute's schedules row (or a sign-in by another teacher) stays on the source course, so the lesson cannot move yet.
+        $subs = DB::table('schedules')->where('student_course_id', $c->getKey())->where(fn ($q) => $rows->each(fn ($r) => $q->orWhere(fn ($w) => $w->whereDate('schedule_date', $r['date'])->where('start_time', 'like', $r['start'] . '%'))))->exists();
+        if ($subs || StudentSignIn::whereIn('ClassSessionID', $rows->pluck('id'))->whereNotNull('TeacherID')->where('TeacherID', '<>', (int) $c->TeacherID)->exists()) return 'adopt_has_substitute';
         $invoices = Invoice::query()->notVoided()->where('StudentClassID', $c->getKey())->get();
         $inv = $invoices->first();
         if ((int) ($c->Paid ?? 0) !== 0 || (float) ($c->Pay ?? 0) > 0 || $invoices->contains(fn ($i) => (float) $i->PaidAmount > 0 || $i->payments()->exists())
