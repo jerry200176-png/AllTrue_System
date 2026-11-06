@@ -154,6 +154,30 @@ class TelegramWebhookTest extends TestCase
         $this->assertSame('', $student->fresh()->TelegramID);
     }
 
+    public function test_concurrent_second_redeem_sees_the_code_consumed(): void
+    {
+        $campus = $this->campusWithTelegram(['code' => 'tw_race']);
+        [$student, $token] = $this->verifiedGuardian($campus);
+        $code = $this->issueCode($token);
+        $svc = app(\App\Services\ParentBinding\TelegramBindCodeService::class);
+
+        $this->assertSame($student->id, $svc->redeem($code, $campus->id)?->id);
+        $this->assertNull($svc->redeem($code, $campus->id));
+    }
+
+    public function test_code_is_dead_after_the_guardian_on_the_link_is_replaced(): void
+    {
+        $campus = $this->campusWithTelegram(['code' => 'tw_swap']);
+        [$student, $token] = $this->verifiedGuardian($campus);
+        $code = $this->issueCode($token);
+        $other = Guardian::create(['display_name' => '新監護人', 'phone' => '0912000222', 'phone_normalized' => '0912000222']);
+        StudentGuardian::query()->update(['guardian_id' => $other->id]);
+
+        $this->say('tw_swap', 777, "/start {$code}");
+
+        $this->assertSame('', $student->fresh()->TelegramID);
+    }
+
     public function test_code_is_not_issued_without_a_verified_guardian_link(): void
     {
         $campus = $this->campusWithTelegram(['code' => 'tw_noissue']);

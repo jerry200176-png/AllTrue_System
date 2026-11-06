@@ -36,7 +36,7 @@ final class TelegramBindCodeService
         }
 
         $code = bin2hex(random_bytes(5));
-        Cache::put(self::key($code), ['link' => $link->id, 'student' => $student->id, 'campus' => (int) $student->CampusID], now()->addMinutes(self::TTL_MINUTES));
+        Cache::put(self::key($code), ['link' => $link->id, 'guardian' => $guardian->id, 'student' => $student->id, 'campus' => (int) $student->CampusID], now()->addMinutes(self::TTL_MINUTES));
 
         return ['code' => $code, 'expires_in' => self::TTL_MINUTES * 60];
     }
@@ -44,15 +44,15 @@ final class TelegramBindCodeService
     /** Consumes the code (single use, even on a failed re-check) and returns the student only if the link is still valid for this campus. */
     public function redeem(string $code, int $campusId): ?Student
     {
-        // ponytail: pull() is get+forget, not atomic across processes; a Cache::lock if double-redeem ever matters.
-        $p = Cache::pull(self::key($code));
+        // Atomic consume: the lock serialises concurrent redeems so only one sees the payload.
+        $p = Cache::lock(self::key($code) . ':lock', 5)->block(5, fn () => Cache::pull(self::key($code)));
         if (!is_array($p) || (int) $p['campus'] !== $campusId) {
             return null;
         }
         $student = Student::where('id', $p['student'])->where('enable', 1)->where('CampusID', $campusId)->first();
         $link = StudentGuardian::activeAccess()->find($p['link']);
 
-        return ($student && $link && (int) $link->student_id === $student->id && $this->linkMatches($link, $student)) ? $student : null;
+        return ($student && $link && (int) $link->student_id === $student->id && (int) $link->guardian_id === (int) $p['guardian'] && $this->linkMatches($link, $student)) ? $student : null;
     }
 
     private function linkMatches(StudentGuardian $link, Student $student): bool
