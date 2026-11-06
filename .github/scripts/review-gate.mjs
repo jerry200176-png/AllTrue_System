@@ -106,7 +106,8 @@ function codexGate(comments, head, owner) {
 
 const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
-const api = (path, ...extra) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, ...extra) || 'null');
+// GitHub 404s `/repos/o/r/` (trailing slash), so the repo itself is `/repos/o/r`.
+const api = (path, ...extra) => JSON.parse(gh('api', path ? `/repos/${REPO}/${path}` : `/repos/${REPO}`, ...extra) || 'null');
 
 // Declared tier (body) and path-derived minimum, via the one Python parser; any failure means R3.
 // Pure: 'lower' only when the head did not move while reading and the Python parser clears body + files.

@@ -579,7 +579,8 @@ test('samePrPatch: identical patch needs identical tree mode/blob; truncated tre
   const A = 'a'.repeat(40), B = 'b'.repeat(40);
   fs.writeFileSync(join(dir, 'gh'), `#!/usr/bin/env node
 const u = process.argv[3], m = JSON.parse(process.env.FAKE);
-if (u.endsWith('/o/r/')) { console.log(JSON.stringify({ default_branch: 'main' })); process.exit(0); }
+if (u.endsWith('/o/r/')) process.exit(1); // real GitHub 404s the trailing slash
+if (u.endsWith('/o/r')) { console.log(JSON.stringify({ default_branch: 'main' })); process.exit(0); }
 const key = Object.keys(m).find((k) => u.includes(k));
 if (!key) process.exit(1);
 console.log(JSON.stringify(m[key]));
