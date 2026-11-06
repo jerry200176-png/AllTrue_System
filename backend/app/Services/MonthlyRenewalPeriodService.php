@@ -72,6 +72,7 @@ final class MonthlyRenewalPeriodService
         $keys = array_map(fn ($x) => substr((string) $x['SessionDate'], 0, 10) . '|' . substr((string) $x['StartTime'], 0, 5), $slots);
         if ($rows->contains(fn ($r) => !in_array($r['date'] . '|' . $r['start'], $keys, true))) return 'adopt_off_timetable';
         // The old price must already count every lesson that stays: its held lessons plus the adopted ones equal its SessionCount.
+        if (!$c->StartDate) return 'adopt_not_priced_in_source';
         $held = ClassSession::where('StudentClassID', $c->getKey())->whereDate('SessionDate', '>=', Carbon::parse($c->StartDate)->toDateString())
             ->whereDate('SessionDate', '<=', $oldEnd)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '<>', 'cancelled'))->count();
         if ($held + $n !== (int) $c->SessionCount) return 'adopt_not_priced_in_source';

@@ -185,4 +185,13 @@ class MonthlyRenewAdoptTest extends TestCase
         $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$other->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
             ->assertJsonPath('blockers.1.code', 'adopt_source_invoice_ambiguous');
     }
+
+    public function test_missing_start_date_is_never_priced(): void
+    {
+        [$sc] = $this->fixture();
+        $sc->StartDate = null;
+        $m = new \ReflectionMethod(\App\Services\MonthlyRenewalPeriodService::class, 'adoptionBlocker');
+        $rows = collect([['id' => 1, 'date' => '2026-11-01', 'start' => '17:00']]);
+        $this->assertSame('adopt_not_priced_in_source', $m->invoke(app(\App\Services\MonthlyRenewalPeriodService::class), $sc, $rows, '2026-10-31', '2026-11-30'));
+    }
 }
