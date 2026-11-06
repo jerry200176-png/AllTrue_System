@@ -227,6 +227,10 @@ final class ContractRenewal
             $blockers = array_merge($blockers, $periodReview['blockers']);
             $billingPeriod = $periodReview['billing_period'];
             $dueDate = $periodReview['due_date'];
+            if ($periodReview['adoptable']) {
+                $adoptCharge = (int) $studentClass->Charge - (int) round((float) $studentClass->Rate * count($periodReview['adoptable']));
+                $warnings[] = ['code' => 'adopt_outside_lesson', 'message' => '合約之外已上的課會一起移到新合約，舊期帳單改為 $' . number_format($adoptCharge) . '。', 'adopted_session_ids' => $periodReview['adoptable'], 'source_new_charge' => $adoptCharge];
+            }
             $previewRate = (float) ($studentClass->Rate ?? 0);
             $previewRateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
             if (!in_array($previewRateUnit, ['session', 'hour'], true)) {
@@ -373,6 +377,9 @@ final class ContractRenewal
             'billing' => $stateBilling,
             'schedule' => $schedule,
             'blockers' => $blockers,
+            // An adoption changes the old invoice, so a lesson newly attended after the preview must force a fresh preview.
+            'adoption' => ($adopt = collect($warnings)->firstWhere('code', 'adopt_outside_lesson'))
+                ? ['session_ids' => $adopt['adopted_session_ids'], 'source_new_charge' => $adopt['source_new_charge']] : null,
         ];
         $stateJson = json_encode($stateSource, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $stateHash = hash('sha256', $stateJson ?: '');
@@ -1231,6 +1238,8 @@ final class ContractRenewal
             $newCourse = $this->createCourseRecord($newPayload);
             $newCourse->initializePricingSnapshot($discountSnapshot);
             $newCourse->refresh();
+            $adopted = app(MonthlyRenewalPeriodService::class)->adopt($studentClass, $newCourse, $periodReview['adoptable'], $actorId, $newEndDate);
+            $studentClass->refresh(); // recomputeCounters may have changed the source's Stop
 
             // Close and cancel the old period before materializing the new
             // period. A legacy source course may contain future rows beyond
@@ -1276,6 +1285,7 @@ final class ContractRenewal
                 'source_closed' => true,
                 'cancelled_source_sessions' => $cancelled,
                 'session_sync' => $sessionSync,
+                'adopted_session_ids' => $adopted,
                 'source_course' => [
                     'id' => (int) $studentClass->ID,
                     'start_date' => ContractSessionSchedule::normalizeDateString($studentClass->StartDate),
