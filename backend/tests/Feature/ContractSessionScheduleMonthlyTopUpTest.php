@@ -48,6 +48,20 @@ class ContractSessionScheduleMonthlyTopUpTest extends TestCase
         $this->assertSame(3, ClassSession::where('StudentClassID', $course->ID)->count());
     }
 
+    public function test_extending_end_date_still_tops_up_beyond_session_count(): void
+    {
+        // in-app #512 regression: renewMonthly stores a positive SessionCount; an EndDate-only extension must still plan the new weeks.
+        Carbon::setTestNow('2026-11-06 10:00:00');
+        $course = $this->course(['StartDate' => '2026-11-01', 'EndDate' => '2026-12-31', 'week' => 7, 'time' => '15:00:00', 'SessionCount' => 5]);
+        foreach (['2026-11-01', '2026-11-08', '2026-11-15', '2026-11-22', '2026-11-29'] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00:00', 'EndTime' => '16:00:00', 'Status' => $date < '2026-11-06' ? 'completed' : 'scheduled']);
+        }
+
+        $res = app(ContractSessionSchedule::class)->ensureMonthlyFutureScheduledSessions($course);
+
+        $this->assertSame(4, $res['created_sessions']); // Dec 6, 13, 20, 27
+    }
+
     public function test_skips_non_monthly_and_stopped_courses(): void
     {
         Carbon::setTestNow('2026-09-10 08:00:00');
