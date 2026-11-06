@@ -954,7 +954,7 @@ class FinanceController extends Controller
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
             // FR-003: Added 課程狀態 column to distinguish active vs stopped courses.
-            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態', '收款狀態', '本月未收金額']);
+            $this->putCsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態', '收款狀態', '本月未收金額']);
             foreach ($allRows as $c) {
                 $rate = $this->resolveRate($c);
                 $sessions = (int) $c->monthly_session_count;
@@ -962,7 +962,7 @@ class FinanceController extends Controller
                     'one_on_one' => '一對一', 'one_on_two' => '一對二',
                     'one_on_three' => '一對三', 'tutoring' => '輔導', 'trial' => '試聽',
                 ];
-                fputcsv($out, [
+                $this->putCsv($out, [
                     $c->student->name ?? 'Unknown',
                     $c->displaySubjectName(),
                     $c->teacher->Name ?? 'Unknown',
@@ -1393,23 +1393,23 @@ class FinanceController extends Controller
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
+            $this->putCsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
-                fputcsv($out, [
+                $this->putCsv($out, [
                     $t['teacher_name'], $t['total_hours'], $t['high_hours'],
                     $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'],
                     $t['total_salary'], $t['session_count'],
                     ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
-                    $t['admin_bonus'] ?? 0, $this->csvSafe($t['admin_bonus_reason'] ?? ''),
+                    $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '',
                 ]);
             }
 
-            fputcsv($out, []);
-            fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
+            $this->putCsv($out, []);
+            $this->putCsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
 
             foreach ($allRecords->sortBy('id') as $r) {
                 $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
-                fputcsv($out, [
+                $this->putCsv($out, [
                     $row['session_date'], $row['teacher_name'] ?? '', $row['student_name'],
                     $row['subject'], $row['level_label'], $row['class_type'],
                     $row['hours'], $row['base_rate'], $row['headcount_bonus'],
@@ -1842,9 +1842,10 @@ class FinanceController extends Controller
     }
 
     /** Neutralise spreadsheet formulas in free-text cells. */
-    private function csvSafe(string $v): string
+    /** Every exported cell is user-entered somewhere: a text cell starting with = + - @ tab or CR gets a leading ' so spreadsheets never run it. */
+    private function putCsv($out, array $row): void
     {
-        return preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v;
+        fputcsv($out, array_map(fn ($v) => is_string($v) && !is_numeric($v) && preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v, $row));
     }
 
     /** #4971: add the manual 行政加給 as its own field and into total_salary (bonus-only teachers get a row). */
@@ -1944,15 +1945,15 @@ class FinanceController extends Controller
         return response()->streamDownload(function () use ($teacherRows, $lines) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
+            $this->putCsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
-                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設', $t['admin_bonus'] ?? 0, $this->csvSafe($t['admin_bonus_reason'] ?? '')]);
+                $this->putCsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設', $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '']);
             }
-            fputcsv($out, []);
-            fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
+            $this->putCsv($out, []);
+            $this->putCsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
             foreach ($lines as $line) {
                 $row = $line->payload ?: [];
-                fputcsv($out, [$row['session_date'] ?? '', $row['teacher_name'] ?? '', $row['student_name'] ?? '', $row['subject'] ?? '', $row['level_label'] ?? '', $row['class_type'] ?? '', $row['hours'] ?? 0, $row['base_rate'] ?? 0, $row['headcount_bonus'] ?? 0, $row['concurrency_bonus_amount'] ?? 0, $row['effective_rate'] ?? 0, $row['session_salary'] ?? 0, ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
+                $this->putCsv($out, [$row['session_date'] ?? '', $row['teacher_name'] ?? '', $row['student_name'] ?? '', $row['subject'] ?? '', $row['level_label'] ?? '', $row['class_type'] ?? '', $row['hours'] ?? 0, $row['base_rate'] ?? 0, $row['headcount_bonus'] ?? 0, $row['concurrency_bonus_amount'] ?? 0, $row['effective_rate'] ?? 0, $row['session_salary'] ?? 0, ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -2837,9 +2838,9 @@ class FinanceController extends Controller
             $callback = function () use ($rows) {
                 $out = fopen('php://output', 'w');
                 fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-                fputcsv($out, ['日期', '科目代碼', '科目名稱', '借方', '貸方', '摘要', '學生']);
+                $this->putCsv($out, ['日期', '科目代碼', '科目名稱', '借方', '貸方', '摘要', '學生']);
                 foreach ($rows as $row) {
-                    fputcsv($out, [
+                    $this->putCsv($out, [
                         $row['date'], $row['account_code'], $row['account_name'],
                         $row['debit'] ?: '', $row['credit'] ?: '',
                         $row['memo'], $row['student'],

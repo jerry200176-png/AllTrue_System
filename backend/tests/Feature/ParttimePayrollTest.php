@@ -1102,4 +1102,16 @@ class ParttimePayrollTest extends TestCase
         $this->assertStringContainsString("'=HYPERLINK", $csv);
         $this->assertStringNotContainsString(',"=HYPERLINK', $csv);
     }
+
+    public function test_every_text_cell_in_the_payroll_csv_is_formula_safe(): void
+    {
+        $dir = $this->createDirector('dir-ab-7@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ab7@test.com', '=SUM(A1)');
+        $sc = $this->makeStudentClass($this->createStudent(1, '@cmd'), $tid, 9, 'one_on_one');
+        $this->makeApprovedLR($sc, $tid, '2026-04-10', '17:00', '19:00');
+        $csv = $this->withHeaders($this->authHeaders($dir['token']))->get('/api/v1/finance/parttime-payroll/export?month=2026-04&branch_id=1')->streamedContent();
+        $this->assertStringContainsString("'=SUM(A1)", $csv);
+        $this->assertStringContainsString("'@cmd", $csv);
+        $this->assertDoesNotMatchRegularExpression('/(^|,)"?[=@]/m', $csv);
+    }
 }
