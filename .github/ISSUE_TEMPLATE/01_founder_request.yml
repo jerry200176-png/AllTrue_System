@@ -1,0 +1,23 @@
+name: Founder request
+description: A need or idea from the Founder (problem first, not solution).
+title: "[request] "
+labels: ["source:founder", "status:intake"]
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Problem, description: "What is hard or broken today?"}
+    validations: {required: true}
+  - type: textarea
+    id: why
+    attributes: {label: Why it matters}
+    validations: {required: true}
+  - type: textarea
+    id: example
+    attributes: {label: Example or screenshot, description: "Campus ID only. No student or parent names, phone numbers or screenshots with personal data (public repo)."}
+  - type: input
+    id: users
+    attributes: {label: Who uses it, placeholder: "e.g. directors, teachers, parents"}
+    validations: {required: true}
+  - type: input
+    id: deadline
+    attributes: {label: Deadline, placeholder: "date, or none"}
