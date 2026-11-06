@@ -227,11 +227,7 @@ Billing／minutes 恢復後用上述補跑即可；結果以 **workflow log** �
 | CI Budget | 是否 docs-only？是否混入 deployable diff？ | 拆出 docs batch 或改成小 PR |
 | Memory | 完成後要寫回哪裡？ | PR 說明列出 CHANGELOG / TECH_DEBT / AI_REGRESSION / SYSTEM_TECH_GUIDE |
 
-**Tier 對應**
-- T0：docs-only / 規則文字 / README 展示。只跑 docs 檢查，不混 `backend/**`、`frontend/**`、`scripts/**`、`.github/**`。
-- T1：低風險單點程式碼。小 PR、局部測試或 build。
-- T2：跨模組產品流程。需要 PLAN/ARCH、artifact handoff、Integration Owner。
-- T3：安全、資料、部署、備份、權限、高風險金流/堂數。必須加 SEC/OPS/DBA，使用者批准後才做。
+**Tier 對應**：各級定義只看 [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) §Risk classes；各級要走的車道與關卡見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)。
 
 **Post-merge learning loop**
 1. Merge 後確認 CI/deploy/health 或 docs-only skip 結果。

@@ -30,7 +30,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 
 ## In-app Bug 回報（Claude／Cursor 必讀）
 
-處理「系統上 bug 回報」時，唯一長文 SOP：[`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**。
+處理「系統上 bug 回報」時，唯一長文 SOP：[`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**。從收件到結案的九個階段、車道與關卡（所有需求共用）：[`docs/sop/DELIVERY_LIFECYCLE.md`](docs/sop/DELIVERY_LIFECYCLE.md)。
 
 | 階段 | 要做什麼 |
 |------|----------|
@@ -134,7 +134,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 - Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
-- Presubmit size: 700 logic lines (tests, docs, generated and baseline excluded) and 1500 lines in all; split, don't stack.
+- Presubmit size limits: defined only in [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）item 3 (presubmit CHECK 2); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
 - Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (AGENTS.md §PR review; `docs/governance/FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
@@ -145,6 +145,7 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 | 需要什麼 | 去哪讀 |
 |---|---|
 | **換手前先讀的交接狀態（SessionStart 會自動印出）** | `docs/RUNBOOK_HANDOFF.md`；SOP 對標大廠 roadmap 見 `docs/SOP_MATURITY.md` |
+| 交付流程（需求／回報 → 上線 → 結案；車道、守門人、SLA） | `docs/sop/DELIVERY_LIFECYCLE.md` |
 | 完整工作流程 + 角色規格 + SOP | `.cursorrules` |
 | P0 紅線速查 + OPS checklist | `.cursor/rules/p0-gate.mdc` |
 | API 路由 / DB schema / Gotchas | `.cursorrules` 或 `alltrue-system.mdc` |
