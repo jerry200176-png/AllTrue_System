@@ -11,11 +11,14 @@
     <template v-else>
       <main class="director-workbench-v2 tpl-mesh" aria-label="主任總覽">
         <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:-mx-4 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-4 tw:py-3">
-          <div>
+          <div class="tw:flex tw:items-center tw:gap-3.5">
+            <img :src="logoUrl" alt="台北全真一對一" width="52" height="52" class="tw:size-13 tw:shrink-0 tw:rounded-full tw:bg-white tw:object-contain tw:shadow-md" />
+            <div>
             <h1 class="tw:text-tpl-page tw:font-extrabold tw:tracking-tight">今天</h1>
             <p class="director-workbench-v2__updated tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary" role="status">
               {{ branchName }}・{{ todayDisplay }}・{{ dashboardLoading ? '更新中…' : `更新 ${dashboardLastUpdated || '--:--'}` }}
             </p>
+            </div>
           </div>
           <div class="tw:flex tw:items-center tw:gap-2">
             <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
@@ -71,7 +74,7 @@
           <Motion as="div" :initial="enterFrom" :animate="enterTo" class="tw:lg:col-start-1" data-testid="director-hero">
             <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card">
               <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body tw:font-bold">
-                <span class="tpl-tile tpl-g-blue tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
                 今天的課
               </div>
               <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
@@ -166,7 +169,7 @@
           <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
             <details v-if="operationsTrust?.decision_center" class="director-trust-note tpl-card tw:rounded-3xl tw:px-5 tw:py-0 tw:text-tpl-body tw:shadow-tpl-card">
               <summary class="tw:min-h-18 tw:gap-4 tw:px-0 tw:text-tpl-body tw:font-semibold tw:text-foreground" title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
-                <span class="tpl-tile tpl-g-teal tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-ink2 tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
                 <span class="tw:flex-1">課表正確度</span>
                 <strong class="director-num tw:text-tpl-body" :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
@@ -367,6 +370,7 @@ import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import AtTabs from '../components/design-system/AtTabs.vue';
 import { Motion, MotionConfig } from 'motion-v';
+import logoUrl from '../assets/logo.png';
 import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks, ShieldCheck } from 'lucide-vue-next';
 import { Card } from '@/components/ui/card';
 import { ActivityRing } from '@/components/ui/activity-ring';
@@ -663,34 +667,34 @@ const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?
 const enterFrom = prefersReducedMotion ? false : { opacity: 0, y: 10, filter: 'blur(6px)' };
 const enterTo = { opacity: 1, y: 0, filter: 'blur(0px)' };
 const TASK_LOOK = {
-  attendance: [Clock, 'tpl-g-blue'], makeup: [RotateCcw, 'tpl-g-blue'], 'parent-leave': [UserRound, 'tpl-g-teal'],
-  'schedule-discrepancy': [CalendarDays, 'tpl-g-orange'], tuition: [Wallet, 'tpl-g-red'], evaluations: [ClipboardCheck, 'tpl-g-purple'],
-  inbox: [Bell, 'tpl-g-green'], 'duplicate-review': [Copy, 'tpl-g-orange'], 'parent-feedback': [MessageCircle, 'tpl-g-teal'],
+  attendance: [Clock, 'tpl-g-ink'], makeup: [RotateCcw, 'tpl-g-ink'], 'parent-leave': [UserRound, 'tpl-g-ink2'],
+  'schedule-discrepancy': [CalendarDays, 'tpl-g-sun'], tuition: [Wallet, 'tpl-g-red'], evaluations: [ClipboardCheck, 'tpl-g-gold'],
+  inbox: [Bell, 'tpl-g-amber'], 'duplicate-review': [Copy, 'tpl-g-sun'], 'parent-feedback': [MessageCircle, 'tpl-g-ink2'],
 };
 const taskIcon = (task) => (TASK_LOOK[task.id] || [ListChecks])[0];
-const taskGrad = (task) => (TASK_LOOK[task.id] || [null, 'tpl-g-blue'])[1];
+const taskGrad = (task) => (TASK_LOOK[task.id] || [null, 'tpl-g-ink'])[1];
 const evalSpark = computed(() => sevenDayEvalCounts(pendingEvaluations.value, localTodayYmd()));
 const kpiCards = computed(() => [
   {
-    key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', tone: 'danger', grad: 'tpl-g-red', icon: Wallet,
+    key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', grad: 'tpl-g-red', icon: Wallet,
     sub: owed.value.waiting ? `${owed.value.overdue} 筆已過期、${owed.value.waiting} 筆待確認` : `${owed.value.overdue} 筆已過期`,
     definition: '未繳、月結逾期，以及家長已回報待確認入帳的筆數。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: owed.value.intent }),
   },
   {
-    key: 'renewal', label: '快上完', value: renewalCount(lowBalanceStudents.value), unit: '筆', tone: 'warning', grad: 'tpl-g-orange', icon: RefreshCw,
+    key: 'renewal', label: '快上完', value: renewalCount(lowBalanceStudents.value), unit: '筆', grad: 'tpl-g-sun', icon: RefreshCw,
     sub: '要提醒續課',
     definition: '已繳費但堂數快用完，或月結即將到繳費日的課程。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: 'renewal' }),
   },
   {
-    key: 'evals', label: '評量要審', value: pendingEvaluationsTotal.value, unit: '份', tone: 'purple', grad: 'tpl-g-purple', icon: ClipboardCheck, spark: evalSpark.value, sparkLabel: '近 7 天上課日的待審評量數',
+    key: 'evals', label: '評量要審', value: pendingEvaluationsTotal.value, unit: '份', tone: 'bronze', grad: 'tpl-g-gold', icon: ClipboardCheck, spark: evalSpark.value, sparkLabel: '近 7 天上課日的待審評量數',
     sub: oldestEvalDays.value == null ? '點開看' : (oldestEvalDays.value === 0 ? '最久的是今天' : `最久等 ${oldestEvalDays.value} 天`),
     definition: DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations,
     open: () => emit('navigate', { target: 'learning' }),
   },
   {
-    key: 'notifications', label: '新通知', value: unreadNotificationCount.value, unit: '則', tone: 'success', grad: 'tpl-g-green', icon: Bell,
+    key: 'notifications', label: '新通知', value: unreadNotificationCount.value, unit: '則', grad: 'tpl-g-amber', icon: Bell,
     sub: '點開看',
     definition: DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications,
     open: goToNotifications,

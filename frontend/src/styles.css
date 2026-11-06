@@ -58,13 +58,21 @@
   --ds-canvas-soft: #f6f9fc;
   --ds-hairline: #e3e8ee;
   --ds-hairline-input: #a8c3de;
-  /* template accent hues (gradient icon tiles, primary button, ring) */
-  --ds-blue: #0a66d6;
-  --ds-blue-light: #4aa3ff;
-  --ds-purple: #6b3fd1;
-  --ds-purple-light: #a78bfa;
-  --ds-teal: #0a8fa3;
-  --ds-teal-light: #5ad8e6;
+  /* brand hues from the 台北全真一對一 logo: ink calligraphy + gold rings (template tiles, primary button, ring) */
+  --ds-brand-ink: #0b0b0c;
+  --ds-brand-ink-2: #3a3a3c;
+  --ds-brand-ink-3: #1c1c1e;
+  --ds-brand-sun: #f7d917;
+  --ds-brand-sun-light: #ffe36e;
+  --ds-brand-gold: #f2c40f;
+  --ds-brand-gold-light: #f7c04a;
+  --ds-brand-gold-deep: #d98c0a;
+  --ds-brand-amber: #e9a51a;
+  --ds-brand-amber-light: #ffd76a;
+  --ds-brand-bronze: #b07a08;
+  --ds-brand-glyph: #1a1206;
+  --ds-brand-red: #c8102e;
+  --ds-brand-red-light: #ff7a6b;
   --ds-success: #1a8245;
   --ds-success-wash: #e7f4ec;
   --ds-success-line: #86efac; /* soft border on --ds-success-wash */

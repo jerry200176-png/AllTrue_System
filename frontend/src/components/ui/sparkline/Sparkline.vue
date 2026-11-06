@@ -4,7 +4,7 @@ import { computed, useId } from "vue";
 
 const props = defineProps({
   values: { type: Array, default: () => [] },
-  tone: { type: String, default: "primary" }, // ds token family: primary | danger | warning | success
+  tone: { type: String, default: "amber" }, // brand hue: amber | bronze | gold
   label: { type: String, default: "" },
 });
 const id = `spark-${useId()}`;
@@ -15,7 +15,7 @@ const pts = computed(() => {
 });
 const line = computed(() => pts.value.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" "));
 const area = computed(() => `${line.value} L100 40 L0 40Z`);
-const color = computed(() => `var(--ds-${props.tone}-text, var(--ds-${props.tone}))`);
+const color = computed(() => `var(--ds-brand-${props.tone})`);
 </script>
 
 <template>
