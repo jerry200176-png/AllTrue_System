@@ -365,10 +365,10 @@
           </fieldset>
 
           <fieldset class="rules-fieldset" disabled>
-            <legend>人數加成（已停用）</legend>
+            <legend>人數加成（併堂加給）</legend>
             <p class="rules-hint">
               <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:-1px">info</span>
-              人數加成已改為依實際同時段學生數自動計算（併堂加給），此欄位不影響薪資
+              同時段每多一位學生，時薪加 {{ ruleForm.headcount_bonus }} 元（依實際人數自動計算；這裡不能修改）
             </p>
           </fieldset>
 
@@ -464,10 +464,10 @@
           </fieldset>
 
           <fieldset class="rules-fieldset" disabled>
-            <legend>人數加成（已停用）</legend>
+            <legend>人數加成（併堂加給）</legend>
             <p class="rules-hint">
               <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:-1px">info</span>
-              人數加成已改為依實際同時段學生數自動計算（併堂加給），此欄位不影響薪資
+              同時段每多一位學生，時薪加 {{ trForm.headcount_bonus }} 元（依實際人數自動計算；這裡不能修改）
             </p>
           </fieldset>
 
