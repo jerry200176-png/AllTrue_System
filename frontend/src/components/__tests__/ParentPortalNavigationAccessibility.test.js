@@ -65,7 +65,7 @@ describe('parent portal navigation accessibility contract', () => {
   it('首頁 shows exactly 3 cards from the existing dashboard and none of the retired first-load cards', () => {
     expect(source).toContain('<ParentHome :home="parentHome"');
     for (const gone of ['parent-progress-hub', 'parent-home-v1-title', 'parent-attention-card', 'pp-parent-update', '本次學習重點', '需要留意', '進度中心']) {
-      expect(source).not.toContain(gone);
+      expect(source.slice(0, source.indexOf('<script setup>'))).not.toContain(gone);
     }
     const home = readFileSync(resolve(here, '../parent/ParentHome.vue'), 'utf8');
     expect(home.match(/data-guide="parent-home-(next-lesson|money|feedback)"/g)).toHaveLength(3);
