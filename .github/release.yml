@@ -1,0 +1,15 @@
+# Native GitHub generated release notes (used by release-publish.yml --generate-notes).
+changelog:
+  categories:
+    - title: Features
+      labels: ["type:feature"]
+    - title: Fixes
+      labels: ["type:bug"]
+    - title: Security
+      labels: ["type:security", "area:security"]
+    - title: Design
+      labels: ["type:design"]
+    - title: Maintenance
+      labels: ["type:chore", "type:tech-debt", "type:docs"]
+    - title: Other changes
+      labels: ["*"]

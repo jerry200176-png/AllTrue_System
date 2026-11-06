@@ -1,0 +1,344 @@
+# Labels as code (L2 of #4953). Synced to GitHub by .github/workflows/labels-sync.yml
+# (EndBug/label-sync) on push to main. delete-other-labels is false: legacy labels stay.
+#
+# Legacy -> new mapping (legacy labels are NOT deleted or renamed here; no `aliases`):
+#   kind:usability, kind:old-habit -> type:feature / type:bug (by triage), source:inapp
+#   bug                            -> type:bug          enhancement -> type:feature
+#   documentation                  -> type:docs         security    -> type:security
+#   needs-triage                   -> status:triage     ready-for-agent -> status:ready
+#   needs-founder                  -> status:needs-decision (+ source:founder)
+#   hold                           -> status:blocked    high-priority -> priority:p1
+#   platform, ops, ci-enforcement  -> area:ops / area:ci
+#   in-app:logged, lifecycle:frozen, stale, ops-hygiene -> kept (bot/process state)
+# Labels read by workflows or scripts (never remove): queue, release-note-none,
+# intentional-revert, review-pending, batch-failed, phpstan-baseline-growth,
+# htaccess-reviewed, risk-ack-no-test, in-app:logged, lifecycle:frozen, stale,
+# and area:<family> created by bug-auto-intake.yml.
+
+# --- type ---
+
+- name: "type:bug"
+  color: "7057ff"
+  description: "Something is broken"
+
+- name: "type:feature"
+  color: "7057ff"
+  description: "New capability"
+
+- name: "type:chore"
+  color: "7057ff"
+  description: "Maintenance, no behavior change"
+
+- name: "type:docs"
+  color: "7057ff"
+  description: "Documentation only"
+
+- name: "type:security"
+  color: "7057ff"
+  description: "Security-relevant change or report"
+
+- name: "type:epic"
+  color: "7057ff"
+  description: "Epic or umbrella issue"
+
+- name: "type:tech-debt"
+  color: "bfdadc"
+  description: "Technical debt or maturity gap"
+
+- name: "type:design"
+  color: "c2e0c6"
+  description: "設計品質與互動細節"
+
+# --- area (existing; auto-intake adds area:<family>) ---
+
+- name: "area:ops"
+  color: "5319e7"
+  description: "Operations, deployment, reliability, and runbooks"
+
+- name: "area:ci"
+  color: "1d76db"
+  description: "CI/CD and GitHub Actions"
+
+- name: "area:security"
+  color: "b60205"
+  description: "Security hardening and access control"
+
+- name: "area:backups"
+  color: "0e8a16"
+  description: "Backup, restore, and disaster recovery"
+
+- name: "area:db"
+  color: "006b75"
+  description: "Database, migrations, and recovery"
+
+- name: "area:docs"
+  color: "0075ca"
+  description: "Documentation and AI memory"
+
+- name: "area:attendance"
+  color: "fbca04"
+  description: "Attendance and class session workflows"
+
+- name: "area:import"
+  color: "c5def5"
+  description: "CSV/XLSX imports"
+
+- name: "area:parent-portal"
+  color: "bfd4f2"
+  description: "Parent portal and parent-facing UI"
+
+- name: "area:billing"
+  color: "fbca04"
+  description: "Billing, invoices, and payment display"
+
+- name: "area:engagement"
+  color: "5319e7"
+  description: "Gamification, XP, ranks, badges"
+
+- name: "area:finance"
+  color: "006b75"
+  description: "Accounting, billing, AR, exports"
+
+- name: "area:testing"
+  color: "1d76db"
+  description: "Automated tests: unit/component/E2E"
+
+- name: "area:review"
+  color: "5319e7"
+  description: "Code review process & gates"
+
+- name: "area:ui"
+  color: "1f6feb"
+  description: "UI/UX、視覺、可讀性、元件一致性"
+
+- name: "area:learning-records"
+  color: "ededed"
+  description: "Area: learning-records"
+
+- name: "area:calendar"
+  color: "c5def5"
+  description: "In-app report family (auto-intake)"
+
+# --- priority ---
+
+- name: "priority:p0"
+  color: "b60205"
+  description: "Immediate blocker or production safety issue"
+
+- name: "priority:p1"
+  color: "d93f0b"
+  description: "High priority follow-up"
+
+- name: "priority:p2"
+  color: "fbca04"
+  description: "Medium priority improvement"
+
+- name: "priority:p3"
+  color: "c5def5"
+  description: "Low priority / nice-to-have"
+
+# --- status (lifecycle stages + side states) ---
+
+- name: "status:intake"
+  color: "0e8a16"
+  description: "Lifecycle: intake"
+
+- name: "status:triage"
+  color: "0e8a16"
+  description: "Lifecycle: triage"
+
+- name: "status:shape"
+  color: "0e8a16"
+  description: "Lifecycle: shape"
+
+- name: "status:ready"
+  color: "0e8a16"
+  description: "Ready to pick up"
+
+- name: "status:in-progress"
+  color: "0e8a16"
+  description: "Lifecycle: in-progress"
+
+- name: "status:review"
+  color: "0e8a16"
+  description: "Lifecycle: review"
+
+- name: "status:release"
+  color: "0e8a16"
+  description: "Lifecycle: release"
+
+- name: "status:verify"
+  color: "0e8a16"
+  description: "Lifecycle: verify"
+
+- name: "status:done"
+  color: "0e8a16"
+  description: "Lifecycle: done"
+
+- name: "status:blocked"
+  color: "d73a4a"
+  description: "Blocked by external dependency or prerequisite"
+
+- name: "status:needs-decision"
+  color: "d876e3"
+  description: "Waiting for product decision"
+
+# --- risk ---
+
+- name: "risk:r0"
+  color: "e99695"
+  description: "Docs / no production behavior"
+
+- name: "risk:r1"
+  color: "e99695"
+  description: "Low-risk reversible"
+
+- name: "risk:r2"
+  color: "e99695"
+  description: "Reversible domain change"
+
+- name: "risk:r3"
+  color: "e99695"
+  description: "Data / money / security boundary; Founder gate"
+
+# --- source ---
+
+- name: "source:founder"
+  color: "bfdadc"
+  description: "Origin: founder"
+
+- name: "source:inapp"
+  color: "bfdadc"
+  description: "Origin: inapp"
+
+- name: "source:engineering"
+  color: "bfdadc"
+  description: "Origin: engineering"
+
+- name: "source:alert"
+  color: "bfdadc"
+  description: "Origin: alert"
+
+# --- gate (one per gatekeeper role) ---
+
+- name: "gate:triage-lead"
+  color: "c2e0c6"
+  description: "Gatekeeper: triage-lead"
+
+- name: "gate:product-manager"
+  color: "c2e0c6"
+  description: "Gatekeeper: product-manager"
+
+- name: "gate:product-designer"
+  color: "c2e0c6"
+  description: "Gatekeeper: product-designer"
+
+- name: "gate:tech-lead"
+  color: "c2e0c6"
+  description: "Gatekeeper: tech-lead"
+
+- name: "gate:security-data-reviewer"
+  color: "c2e0c6"
+  description: "Gatekeeper: security-data-reviewer"
+
+- name: "gate:qa-lead"
+  color: "c2e0c6"
+  description: "Gatekeeper: qa-lead"
+
+- name: "gate:release-manager"
+  color: "c2e0c6"
+  description: "Gatekeeper: release-manager"
+
+- name: "gate:sre"
+  color: "c2e0c6"
+  description: "Gatekeeper: sre"
+
+# --- safety ---
+
+- name: "safety:review"
+  color: "b60205"
+  description: "In-app report needs safety screening before action"
+
+# --- test-gap ---
+
+- name: "test-gap:unit"
+  color: "fef2c0"
+  description: "Missing test layer: unit"
+
+- name: "test-gap:integration"
+  color: "fef2c0"
+  description: "Missing test layer: integration"
+
+- name: "test-gap:e2e"
+  color: "fef2c0"
+  description: "Missing test layer: e2e"
+
+- name: "test-gap:visual"
+  color: "fef2c0"
+  description: "Missing test layer: visual"
+
+- name: "test-gap:none"
+  color: "fef2c0"
+  description: "Missing test layer: none"
+
+# --- kept: read by workflows/scripts or bot state ---
+
+- name: "queue"
+  color: "0e8a16"
+  description: "land-queue: merge when green"
+
+- name: "release-note-none"
+  color: "c5def5"
+  description: "CHECK 4A: silent ship on a UI/API change is intended, no staff card (reason in PR body)"
+
+- name: "intentional-revert"
+  color: "d93f0b"
+  description: "revert guard bypass: deliberate removal of recently merged lines (reason in PR body)"
+
+- name: "review-pending"
+  color: "ededed"
+  description: "Legacy/process label (see mapping above)"
+
+- name: "batch-failed"
+  color: "ededed"
+  description: "Legacy/process label (see mapping above)"
+
+- name: "phpstan-baseline-growth"
+  color: "ededed"
+  description: "Legacy/process label (see mapping above)"
+
+- name: "htaccess-reviewed"
+  color: "0e8a16"
+  description: "Reviewed backend/public/.htaccess security/cache changes"
+
+- name: "risk-ack-no-test"
+  color: "d93f0b"
+  description: "High-risk gate override: justification required in PR body"
+
+- name: "in-app:logged"
+  color: "c2e0c6"
+  description: "F12: in-app suggestion closed as logged; this issue is the backlog"
+
+- name: "lifecycle:frozen"
+  color: "bfd4f2"
+  description: "Valid long-term work; reviewed, not stale (k8s lifecycle/frozen)"
+
+- name: "stale"
+  color: "ededed"
+  description: "Pull request inactive for 14 days"
+
+- name: "ops-hygiene"
+  color: "5319e7"
+  description: "Repository hygiene reports and queue alarms"
+
+- name: "hold"
+  color: "ededed"
+  description: "Legacy/process label (see mapping above)"
+
+- name: "needs-founder"
+  color: "ededed"
+  description: "Legacy/process label (see mapping above)"
+
+- name: "platform"
+  color: "1d76db"
+  description: "Platform engineering"
