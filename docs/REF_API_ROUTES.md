@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 542 api/* routes · generated 2026-11-06
+> Source: `php artisan route:list --json` · 545 api/* routes · generated 2026-11-06
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -357,16 +357,19 @@
 |--------|-----|--------|------|
 | POST | `api/v1/enrollments` | `EnrollmentController@store` | role+campus |
 
-## /api/v1/exam-rounds (8)
+## /api/v1/exam-rounds (11)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/exam-rounds` | `ExamRoundController@index` | role+campus |
 | POST | `api/v1/exam-rounds` | `ExamRoundController@store` | role+campus |
 | GET | `api/v1/exam-rounds/{examRound}` | `ExamRoundController@show` | role+campus |
+| PATCH | `api/v1/exam-rounds/{examRound}` | `ExamRoundController@update` | role+campus |
+| DELETE | `api/v1/exam-rounds/{examRound}` | `ExamRoundController@destroy` | role+campus |
 | POST | `api/v1/exam-rounds/{examRound}/close` | `ExamRoundController@close` | role+campus |
 | GET | `api/v1/exam-rounds/{examRound}/progress` | `ExamRoundController@progress` | role+campus |
 | POST | `api/v1/exam-rounds/{examRound}/publish` | `ExamRoundController@publish` | role+campus |
+| POST | `api/v1/exam-rounds/{examRound}/restore` | `ExamRoundController@restore` | role+campus |
 | POST | `api/v1/exam-rounds/{examRound}/scores` | `ExamRoundController@upsertScores` | role+campus |
 | GET | `api/v1/exam-rounds/{examRound}/students` | `ExamRoundController@students` | role+campus |
 
