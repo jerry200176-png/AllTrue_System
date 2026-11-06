@@ -8,6 +8,8 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -59,6 +61,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve merge queue context
+        if: ${{ github.event_name == 'merge_group' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: bash scripts/ci/merge-group-context.sh
 
       # ─────────────────────────────────────────────
       # CHECK 1：Branch 命名規範
@@ -69,11 +78,11 @@ jobs:
         run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
 
       - name: "[CHECK 0b] Machine risk/tier declaration"
-        if: ${{ (github.event_name == 'pull_request' && !github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && inputs.pr_number != '') }}
+        if: ${{ (github.event_name == 'pull_request' && !github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && inputs.pr_number != '') || github.event_name == 'merge_group' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || env.MG_PR_NUMBER }}
         run: |
           set -euo pipefail
           tmpdir="$(mktemp -d)"
@@ -87,11 +96,11 @@ jobs:
       # PHPStan baseline is shrink-only: parallel PRs appending to it conflict.
       # Escape hatch: PR label `phpstan-baseline-growth` (labels are read live, so add it then re-run).
       - name: "[CHECK 0c] PHPStan baseline may only shrink"
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || env.MG_PR_NUMBER }}
         run: |
           set -euo pipefail
           python3 scripts/check-phpstan-baseline-shrink.py --self-test
@@ -111,7 +120,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || env.MG_PR_NUMBER }}
         run: |
           set -euo pipefail
           python3 scripts/tests/test_recent_work_revert.py
@@ -128,7 +137,7 @@ jobs:
         env:
           # workflow_dispatch has no head_ref (pull_request-only); fall back
           # to the ref actually being run so a manual run checks its own name.
-          BRANCH: ${{ github.head_ref || github.ref_name }}
+          BRANCH: ${{ github.head_ref || env.MG_BRANCH || github.ref_name }}
         run: |
           # Canonical policy: scripts/ci/branch-policy.mjs (shared with npm run ci:preflight)
           node --input-type=module <<'EOF'
@@ -159,7 +168,7 @@ jobs:
       - name: "[CHECK 2] PR size check (≤ 700 logic lines; tests/docs ≤ 1500 total)"
         if: ${{ env.LQ_BATCH != 'true' }}
         env:
-          GITHUB_HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          GITHUB_HEAD_REF: ${{ github.head_ref || env.MG_BRANCH || github.ref_name }}
         run: |
           BRANCH="${GITHUB_HEAD_REF}"
           # docs 整併分支（chore/docs-*）：CHANGELOG 滾動歸檔與 archive 屬「機械搬移」，
@@ -309,7 +318,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || env.MG_PR_NUMBER }}
         run: |
           set -euo pipefail
           node scripts/check-release-notes-coverage.mjs --self-test
@@ -326,7 +335,7 @@ jobs:
         if: ${{ env.LQ_BATCH != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number || env.MG_PR_NUMBER }}
         run: |
           set -euo pipefail
           BODY_FILE="$RUNNER_TEMP/pull-request-body.md"

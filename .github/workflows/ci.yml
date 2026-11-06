@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -47,6 +49,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve merge queue context
+        if: ${{ github.event_name == 'merge_group' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: bash scripts/ci/merge-group-context.sh
 
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -80,8 +89,8 @@ jobs:
 
       - name: Run control plane lint
         env:
-          PR_TITLE: ${{ github.event.pull_request.title || '' }}
-          CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title, '[contract-change]') && '1' || '' }}
+          PR_TITLE: ${{ github.event.pull_request.title || env.MG_PR_TITLE || '' }}
+          CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title || env.MG_PR_TITLE, '[contract-change]') && '1' || '' }}
         run: |
           node scripts/control-plane-lint.mjs
           node scripts/ci-cost-guard.mjs
@@ -278,7 +287,7 @@ jobs:
     name: Golden scenarios report
     needs: changes
     # land-queue batch branches are dispatched without pr_number (no PR) but must still produce this required context.
-    if: github.event_name == 'pull_request' || inputs.pr_number != '' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/chore/land-queue-batch-'))
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || inputs.pr_number != '' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/chore/land-queue-batch-'))
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -302,7 +311,7 @@ jobs:
         run: git fetch origin main --depth=128 || true
       - name: Path → § traceability report
         env:
-          GOLDEN_BASE_REF: origin/main
+          GOLDEN_BASE_REF: ${{ github.event.merge_group.base_sha || 'origin/main' }}
           GOLDEN_HEAD_REF: HEAD
         run: |
           chmod +x .github/scripts/golden-ci-report.sh

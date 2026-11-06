@@ -1,6 +1,7 @@
 """Required PHP checks must execute instead of being path-skipped."""
 
 from pathlib import Path
+import subprocess
 import unittest
 
 
@@ -31,6 +32,30 @@ class RequiredPhpChecksTest(unittest.TestCase):
         self.assertIn("runs-on: ubuntu-latest", phpstan)
         self.assertNotIn("needs.changes.outputs", phpstan)
         self.assertNotIn("\n    if:", phpstan)
+
+
+class MergeGroupTriggerTest(unittest.TestCase):
+    """Native merge queue only reports required checks from workflows that trigger on merge_group."""
+
+    REQUIRED_WORKFLOWS = ["presubmit", "codeql", "ci", "docs-integrity", "secret-scan"]
+
+    def test_required_workflows_trigger_on_merge_group(self):
+        for name in self.REQUIRED_WORKFLOWS:
+            source = (ROOT / f".github/workflows/{name}.yml").read_text(encoding="utf-8")
+            self.assertIn("\n  merge_group:\n    types: [checks_requested]\n", source, name)
+
+    def test_merge_group_head_ref_to_pr_number(self):
+        script = ROOT / "scripts/ci/merge-group-context.sh"
+        sha = "0123456789abcdef0123456789abcdef01234567"
+
+        def parse(ref):
+            return subprocess.run(["bash", str(script), "--parse", ref], capture_output=True, text=True)
+
+        for ref in (f"refs/heads/gh-readonly-queue/main/pr-4978-{sha}", f"gh-readonly-queue/main/pr-4978-{sha}"):
+            result = parse(ref)
+            self.assertEqual((result.returncode, result.stdout.strip()), (0, "4978"), ref)
+        for ref in ("refs/heads/main", f"refs/heads/gh-readonly-queue/main/pr-x-{sha}", "gh-readonly-queue/main/pr-1-abc"):
+            self.assertNotEqual(parse(ref).returncode, 0, ref)
 
 
 if __name__ == "__main__":
