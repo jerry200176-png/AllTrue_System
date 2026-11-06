@@ -3,6 +3,7 @@ import { createApp } from 'vue';
 import * as Sentry from '@sentry/vue';
 import App from './App.vue';
 import './styles.css';
+import './ui.css';
 import { installFetchRecorder, installUiRecorder } from './lib/recentApiFailures';
 
 installFetchRecorder();
