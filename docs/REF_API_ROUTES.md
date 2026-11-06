@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 553 api/* routes · generated 2026-11-06
+> Source: `php artisan route:list --json` · 554 api/* routes · generated 2026-11-06
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -614,7 +614,7 @@
 | GET | `api/v1/parent-feedback/{id}/replies` | `ParentFeedbackController@replies` | role+campus |
 | POST | `api/v1/parent-feedback/{id}/reply` | `ParentFeedbackController@reply` | role+campus |
 
-## /api/v1/parent (16)
+## /api/v1/parent (17)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -634,6 +634,7 @@
 | POST | `api/v1/parent/sessions/{sessionId}/leave` | `ParentPortalController@requestLeave` | public |
 | POST | `api/v1/parent/switch-student` | `ParentPortalController@switchStudent` | public |
 | GET | `api/v1/parent/system-trust-summary` | `SystemTrustController@parentSummary` | public |
+| POST | `api/v1/parent/telegram-bind-code` | `TelegramBindCodeController@issue` | public |
 
 ## /api/v1/part-time-rate-cards (4)
 

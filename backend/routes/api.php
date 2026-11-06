@@ -35,6 +35,7 @@ use App\Http\Controllers\TempRfidController;
 use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
+use App\Http\Controllers\TelegramBindCodeController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ActionInboxController;
@@ -898,6 +899,8 @@ Route::prefix('v1')->group(function () {
 
     // PRD-B: rate-limit parent login to mitigate credential stuffing (5 attempts/10min per IP).
     Route::post('parent/login', [ParentPortalController::class, 'login'])
+        ->middleware('throttle:5,10');
+    Route::post('parent/telegram-bind-code', [TelegramBindCodeController::class, 'issue'])
         ->middleware('throttle:5,10');
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
