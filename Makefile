@@ -24,6 +24,8 @@ overlay-pin:
 
 instruction-invariants:
 	bash scripts/governance/check-instruction-invariants.sh
+	python3 scripts/tests/test_single_source_rules.py
+	python3 scripts/check-single-source-rules.py
 
 governance-health:
 	bash scripts/radars/governance-health.sh

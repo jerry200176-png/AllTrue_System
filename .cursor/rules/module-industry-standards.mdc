@@ -12,17 +12,8 @@ alwaysApply: false
 
 ## PR 大小限制（Industry Standard: ≤ 400 行）
 
-```
-✅ 合格：單一 PR 改動 ≤ 400 行（不含 migration/test seed 純資料）
-⚠️ 警告：400–700 行 → 說明為何無法拆分（寫在 PR description）
-❌ 拒絕：> 700 行 → 拆成多個 PR，每個 PR 對應一個可獨立測試的功能
-```
-
-### 如何計算
-```bash
-git diff main...HEAD --stat | tail -1
-# 看 insertions + deletions 總和
-```
+- 建議：單一 PR ≤ 400 行（好審、好回滾）；超過時在 PR description 說明為何無法拆分。
+- 硬上限（算哪些行、上限多少）只以 [`FOUNDER_STANDING_DECISIONS.md`](../../docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）第 3 條為準，由 `presubmit.yml` CHECK 2 執行；實際行數看該 step 的 log。超過就拆成多個 PR，每個 PR 對應一個可獨立測試的功能，不疊 PR。
 
 ### 例外：死碼／技術債刪除（純刪除為主）
 700 行上限的本意是限制「新邏輯的審查負擔」，用同一把尺量純刪除並不合理——刪掉已證明打不到

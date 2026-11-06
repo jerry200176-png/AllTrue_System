@@ -629,6 +629,7 @@ import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
 import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
+import { useSessionRecovery } from '../composables/useSessionRecovery.js';
 import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
 import { trackedFetch } from '../lib/loadingBar';
 
@@ -2180,7 +2181,7 @@ const onCourseClick = (course, fullDateStr) => {
   editingActionDate.value = fullDateStr || '';
   editingException.value = course.is_exception ? course : null;
   const clickedSession = findSessionRowForCell(course, fullDateStr);
-  sessionRecovery.value = makeSessionRecovery();
+  resetSessionRecovery();
   moveContract.value = makeMoveContract();
   conflictWarning.value = '';
   const start = normalizeTimeTo30(course.start_time || '16:00');
@@ -2385,11 +2386,7 @@ const cancelMakeupClass = async () => {
 // ===== Cancel single session (取消本堂) =====
 
 const cancelState = ref({ show: false, loading: false });
-const makeSessionRecovery = (loading = false) => ({
-  loading, available: false, audit_id: null, previous_status: '',
-  previousStatusLabel: '', reason: '主任誤取消', submitting: false,
-});
-const sessionRecovery = ref(makeSessionRecovery());
+const { recovery: sessionRecovery, reset: resetSessionRecovery, load: loadSessionRecovery, restore: restoreSessionById } = useSessionRecovery();
 
 const cancelTargetSession = computed(() => {
   if (!editingCourseId.value) return null;
@@ -2497,33 +2494,6 @@ const doConfirmCancelSession = async () => {
   }
 };
 
-const loadSessionRecovery = async (sessionId) => {
-  sessionRecovery.value = makeSessionRecovery(true);
-  if (!sessionId) {
-    sessionRecovery.value.loading = false;
-    return;
-  }
-  try {
-    const token = await getToken();
-    const res = await trackedFetch('/api/v1/class-sessions/' + sessionId + '/recovery', {
-      headers: token ? { Authorization: 'Bearer ' + token } : {},
-    });
-    const data = await res.json();
-    const labels = {
-      scheduled: '排程中', attended: '已上課', completed: '已完成',
-      late: '遲到', absent: '缺席', leave: '請假',
-    };
-    sessionRecovery.value = {
-      ...sessionRecovery.value,
-      ...data,
-      previousStatusLabel: labels[data.previous_status] || data.previous_status || '',
-      loading: false,
-    };
-  } catch (e) {
-    sessionRecovery.value.loading = false;
-  }
-};
-
 // ===== 改到其他合約（主任／超級管理員；同學生同科目，含已結束合約）=====
 const makeMoveContract = () => ({
   open: false, loading: false, targets: [], targetId: '', reason: '', submitting: false,
@@ -2589,34 +2559,17 @@ const restoreCancelledSession = async () => {
   const recovery = sessionRecovery.value;
   if (!row?.id || !recovery.available || recovery.submitting || !recovery.reason?.trim()) return;
   if (!confirm('確定復原這堂課到取消前狀態？系統會同步評量／點名與堂數。')) return;
-  recovery.submitting = true;
   try {
-    const token = await getToken();
-    const res = await trackedFetch('/api/v1/class-sessions/' + row.id + '/restore', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + token,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        expected_audit_id: recovery.audit_id,
-        reason: recovery.reason.trim(),
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+    const data = await restoreSessionById(row.id);
     const rows = sessionDatesByCourseId.value[String(editingCourseId.value)];
     const index = Array.isArray(rows)
       ? rows.findIndex((item) => Number(item.id) === Number(row.id))
       : -1;
-    if (index >= 0) rows[index] = { ...rows[index], ...(data.session || {}) };
-    sessionRecovery.value = { ...sessionRecovery.value, available: false, submitting: false };
+    if (index >= 0) rows[index] = { ...rows[index], ...(data?.session || {}) };
     showModal.value = false;
     await loadCourses();
-    alert(data.message || '已復原');
+    alert(data?.message || '已復原');
   } catch (e) {
-    recovery.submitting = false;
     alert(e.message || '復原失敗，請重新整理後再試');
   }
 };
@@ -2776,7 +2729,7 @@ watch(
 watch(showModal, (v) => {
   if (!v) {
     cancelState.value = { show: false, loading: false };
-    sessionRecovery.value = makeSessionRecovery();
+    resetSessionRecovery();
     moveContract.value = makeMoveContract();
   }
 });

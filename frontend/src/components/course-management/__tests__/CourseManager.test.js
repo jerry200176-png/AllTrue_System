@@ -96,6 +96,24 @@ function mountCm(extra = {}) {
   })
 }
 
+describe('CourseManager cancelled-lesson restore', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('emits restore-cancelled only for units the page allows', async () => {
+    const w = mountCm({
+      tab: 'sessions', showCancelled: true,
+      cancelledUnits: [{ id: 11, date: '2026-09-02', status: 'cancelled' }, { id: 12, date: '2026-09-09', status: 'rescheduled' }],
+      canRestoreCancelled: (u) => u.status === 'cancelled',
+    })
+    await flushPromises()
+    const btns = w.findAll('[data-testid="drawer-restore-cancelled"]')
+    expect(btns).toHaveLength(1)
+    await btns[0].trigger('click')
+    expect(w.emitted('restore-cancelled')[0][0].id).toBe(11)
+    w.unmount()
+  })
+})
+
 describe('CourseManager polish', () => {
   afterEach(() => {
     document.body.innerHTML = ''

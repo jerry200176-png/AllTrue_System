@@ -30,12 +30,12 @@ claim. A failed health or smoke check invokes the existing rollback behavior.
 
 ## Tier behavior
 
-| Tier | Merge eligibility | Auto-deploy | Activation path |
-|---|---|---|---|
-| T0/R0 | Required checks and docs gates | No-op for docs-only changes | None |
-| T1/R1 | Required checks, regression test, review, rollback evidence | Yes, with matching declaration and no protected production side effect | `workflow_run` |
-| T2/R2 | Exact-target successful CI, rollback readiness, and reversible non-protected scope | Yes when all deterministic gates pass | `workflow_run` auto path |
-| T3/R3 | Prepared with protected-action evidence; no autonomous protected execution | No | Founder-controlled activation / mutation boundary |
+Merge eligibility per tier is defined only in
+[`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md#risk-classes).
+Which ranges deploy on their own CI and which wait for a Founder click is defined
+only in [`governance/FOUNDER_STANDING_DECISIONS.md`](governance/FOUNDER_STANDING_DECISIONS.md)
+2026-10-21（二）之二 and 2026-10-28（二）之二 (not summarized here). Docs-only
+changes are a deploy no-op.
 
 The authoritative classifiers are in `scripts/governance/autonomy_gate.py`.
 The deploy workflow classifies the full production-manifest SHA range. Tests,
