@@ -14,7 +14,7 @@ Tool-neutral canonical governance for the portfolio. Product specifics live in o
 | [RISK_BASED_MERGE_POLICY.md](./RISK_BASED_MERGE_POLICY.md) | R0–R3 **risk** classes; merge *capability* is fleet AUTONOMY_POLICY |
 | [FOUNDER_STANDING_DECISIONS.md](./FOUNDER_STANDING_DECISIONS.md) | Founder standing decisions (single repo definition; AGENTS/CLAUDE only link here) |
 | [../sop/AGENT_PREFLIGHT.md](../sop/AGENT_PREFLIGHT.md) | Mandatory start checklist |
-| [../sop/BUG_INTAKE_TO_PRODUCTION.md](../sop/BUG_INTAKE_TO_PRODUCTION.md) | Bug path wrapper |
+| [../sop/DELIVERY_LIFECYCLE.md](../sop/DELIVERY_LIFECYCLE.md) | End-to-end delivery lifecycle (intake → production → done) |
 | [../sop/AGENT_HANDOFF.md](../sop/AGENT_HANDOFF.md) | Session handoff template |
 | [../knowledge/KNOWLEDGE_GRAPH.md](../knowledge/KNOWLEDGE_GRAPH.md) | Issue→PR→Lesson stub |
 | [../knowledge/ENGINEERING_LESSONS.md](../knowledge/ENGINEERING_LESSONS.md) | Org memory index |

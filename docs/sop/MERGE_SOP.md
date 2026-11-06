@@ -13,12 +13,7 @@
 
 ## Before merge
 
-| Class | Checklist |
-|-------|-----------|
-| R0/T0 | Required checks and docs/link checks; no production behavior change |
-| R1/T1 | Required CI, regression test, review, and rollback one-liner |
-| R2/T2 | Exact-target required CI, rollback readiness, risk/production-verification checklist, and resolved bot/reviewer threads |
-| R3/T3 | Evidence package, dry-run/recovery plan, and Repair Manifest where applicable; stop before protected execution or activation for Founder approval |
+Each class's merge requirements are defined only in [`RISK_BASED_MERGE_POLICY.md`](../governance/RISK_BASED_MERGE_POLICY.md#risk-classes) (not restated here); the lane and gates per class are in [`DELIVERY_LIFECYCLE.md`](DELIVERY_LIFECYCLE.md).
 
 All classes also need the exact final-head review evidence described in the canonical policy: a completed clean Codex summary, or an actual independent review recorded by the exact owner for the full head when Codex has not reviewed it. Current-head running/incomplete review or findings cannot be overridden by fallback. Missing evidence is `review-pending`, not merge clearance.
 
@@ -40,9 +35,7 @@ Apply [approval continuity](../governance/RISK_BASED_MERGE_POLICY.md#approval-co
 
 ## After merge
 
-1. Confirm deploy / Actions if deployable.  
-2. For product bugs: public in-app reply + Evidence Contract before `resolved`.  
-3. Update Knowledge Graph / Lessons when high-risk.
+Follow [`DELIVERY_LIFECYCLE.md`](DELIVERY_LIFECYCLE.md) stages 7–9 (release → verify → done). For high-risk changes also update the Knowledge Graph / Lessons.
 
 ## Do not
 
