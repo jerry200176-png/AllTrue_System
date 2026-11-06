@@ -141,7 +141,7 @@ class SchoolExamPeriodController extends Controller
         $req = $full ? 'required' : 'sometimes';
 
         return $request->validate([
-            'campus_id' => [$req, 'integer', 'min:1'],
+            'campus_id' => $full ? ['required', 'integer', 'min:1'] : ['prohibited'],
             'school_name' => [$req, 'string', 'max:64'],
             'academic_year' => [$req, 'integer', 'between:100,200'],
             'semester' => [$req, Rule::in([1, 2])],

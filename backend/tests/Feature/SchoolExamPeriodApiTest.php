@@ -71,6 +71,8 @@ class SchoolExamPeriodApiTest extends TestCase
 
         $this->as($dir)->patchJson("/api/v1/exam-periods/$id", ['end_date' => '2026-10-25'])
             ->assertOk()->assertJsonPath('data.end_date', '2026-10-25');
+        $this->as($dir)->patchJson("/api/v1/exam-periods/$id", ['campus_id' => $b])->assertStatus(422);
+        $this->assertDatabaseHas('school_exam_periods', ['id' => $id, 'campus_id' => $a]);
         $this->as($dir)->deleteJson("/api/v1/exam-periods/$id")->assertOk();
         $this->assertDatabaseMissing('school_exam_periods', ['id' => $id]);
     }
