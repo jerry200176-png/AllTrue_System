@@ -52,6 +52,9 @@ class Student extends Model
         'status',
     ];
 
+    // Legacy LINE Notify credential: never serialized into API responses.
+    protected $hidden = ['Notify_Token'];
+
     public $timestamps = false;
 
     protected static function booted(): void
