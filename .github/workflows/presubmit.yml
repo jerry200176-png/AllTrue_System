@@ -103,6 +103,15 @@ jobs:
           git show "$(git merge-base origin/main HEAD):backend/phpstan-baseline.neon" > "$base_file"
           python3 scripts/check-phpstan-baseline-shrink.py "$base_file" backend/phpstan-baseline.neon
 
+      # UI ratchet (#4989): scripts/ui-legacy-pages.json may only shrink. Kept out of `npm run build`
+      # (deploy/rollback build against a moving main). Fails closed if the base cannot be resolved.
+      - name: "[CHECK 0c2] UI legacy-page list only shrinks"
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          node --test scripts/check-ui-ratchet.test.mjs
+          node scripts/check-ui-ratchet.mjs --vs-base "$(git merge-base origin/main HEAD)"
+
       # Stale-copy guard: a PR may not delete lines another PR merged to main in the last 7 days.
       # Escape hatch: PR label `intentional-revert` (+ reason in body). Labels are read live, but
       # presubmit does not re-trigger on label events: add the label, then re-run this job.
