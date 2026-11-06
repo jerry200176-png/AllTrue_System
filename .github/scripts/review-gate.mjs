@@ -28,14 +28,30 @@ export const gateMarker = (role, sha, verdict = 'pass') => `<!-- gate:${role}:v1
 // comments: issue comments [{user:{login}, body, created_at, updated_at}] or null when unreadable.
 // Returns {ok: true, via} or {ok: false, why}.
 // scope: 'lower' only when scripts/governance/pr_requires_security.py cleared the PR; anything else is treated as R3.
-export function reviewGate(comments, head, owner, scope) {
+// samePatch(oldSha) => true only when the PR's own diff at oldSha is byte-identical to head's (I/O layer; fails closed).
+export function reviewGate(comments, head, owner, scope, samePatch = () => false) {
   const g = codexGate(comments, head, owner);
   if (!Array.isArray(comments) || !owner || !SHA40.test(head || '')) return g;
   const lower = owner.toLowerCase();
   const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
-  if (mine.some((b) => b.includes(`:v1 sha=${head} verdict=fail -->`) && new RegExp(`<!-- gate:[a-z-]+:v1 sha=${head} verdict=fail -->`).test(b))) return { ok: false, why: `gate verdict=fail on ${head.slice(0, 7)}` };
+  const r3Pass = (b, sha) => b.includes(gateMarker('security-data-reviewer', sha)) || b.includes(reviewMarker(sha));
+  const failOf = (sha) => new RegExp(`<!-- (?:gate:[a-z-]+|independent-review):v1 sha=${sha} verdict=fail -->`);
+  if (mine.some((b) => failOf(head).test(b))) return { ok: false, why: `gate verdict=fail on ${head.slice(0, 7)}` };
   if (!g.ok || scope === 'lower') return g;
-  if (mine.some((b) => b.includes(gateMarker('security-data-reviewer', head)) || b.includes(reviewMarker(head)))) return g;
+  if (mine.some((b) => r3Pass(b, head))) return g;
+  // Gerrit TRIVIAL_REBASE: an earlier R3 pass carries over an update-branch only when the PR's own diff is byte-identical.
+  // Newest first; any fail marker (any role) in a later owner comment than the pass vetoes that candidate.
+  const seen = new Set();
+  for (let i = mine.length - 1; i >= 0; i--) {
+    for (const m of mine[i].matchAll(/sha=([0-9a-f]{40}) verdict=pass -->/g)) {
+      const old = m[1];
+      if (old === head || seen.has(old) || !r3Pass(mine[i], old)) continue;
+      seen.add(old);
+      if (mine.some((b) => failOf(old).test(b))) continue;
+      if (mine.slice(i + 1).some((b) => b.includes('verdict=fail'))) continue; // any later owner FAIL, marker or not
+      if (samePatch(old)) return { ok: true, via: `r3-carried:${old.slice(0, 7)}` };
+    }
+  }
   return { ok: false, why: `R3 needs a security-data-reviewer marker on ${head.slice(0, 7)}` };
 }
 
@@ -90,7 +106,8 @@ function codexGate(comments, head, owner) {
 
 const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
-const api = (path, ...extra) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, ...extra) || 'null');
+// GitHub 404s `/repos/o/r/` (trailing slash), so the repo itself is `/repos/o/r`.
+const api = (path, ...extra) => JSON.parse(gh('api', path ? `/repos/${REPO}/${path}` : `/repos/${REPO}`, ...extra) || 'null');
 
 // Declared tier (body) and path-derived minimum, via the one Python parser; any failure means R3.
 // Pure: 'lower' only when the head did not move while reading and the Python parser clears body + files.
@@ -108,12 +125,41 @@ function prScope(n, head) {
   } catch { return 'r3'; }
 }
 
+// True only when old and head are commits of PR n and their compare(base...sha) file lists match on
+// filename/status/previous_filename/patch. Missing patch, >=300 files or any API error -> false. Reads the API only.
+const diffKey = (sha, base) => {
+  const files = JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.files || []);
+  if (files.length >= 300 || files.some((f) => typeof f.patch !== 'string')) return null;
+  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, f.patch]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+  return { key, paths: files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)) };
+};
+// patch text hides mode changes and file<->symlink swaps: compare tree entries (mode+blob, absent = deleted) of every PR path.
+const treeEntries = (sha, paths) => {
+  const t = api(`git/trees/${sha}?recursive=1`);
+  if (t.truncated || !Array.isArray(t.tree)) return null;
+  const by = new Map(t.tree.map((e) => [e.path, `${e.mode} ${e.type} ${e.sha}`]));
+  return paths.map((p) => by.get(p) ?? 'absent');
+};
+export function samePrPatch(n, head, old) {
+  try {
+    const shas = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/commits?per_page=100`, '--paginate', '--slurp')).flat().map((c) => c.sha);
+    // Fixed default branch, never the PR's live (retargetable) base; a PR not based on it never carries.
+    const base = api('').default_branch;
+    if (!base || api(`pulls/${n}`).base?.ref !== base || !shas.includes(old) || !shas.includes(head)) return false;
+    const a = diffKey(old, base);
+    const b = a && diffKey(head, base);
+    if (!a || !b || a.key !== b.key) return false;
+    const x = treeEntries(old, a.paths), y = treeEntries(head, a.paths);
+    return x !== null && y !== null && JSON.stringify(x) === JSON.stringify(y);
+  } catch { return false; }
+}
+
 // Reads the PR's comments and evaluates the head; any read failure is unknown (never passes).
 export function readReview(n, head) {
   try {
     const scope = prScope(n, head);
     const comments = JSON.parse(gh('api', `/repos/${REPO}/issues/${n}/comments?per_page=100`, '--paginate', '--slurp')).flat();
-    return reviewGate(comments, head, REPO.split('/')[0], scope);
+    return reviewGate(comments, head, REPO.split('/')[0], scope, (old) => samePrPatch(n, head, old));
   } catch (e) { return { ok: false, why: `PR comments unreadable (${e.message.split('\n')[0]})` }; }
 }
 
