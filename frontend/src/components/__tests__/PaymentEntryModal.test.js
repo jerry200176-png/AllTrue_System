@@ -189,11 +189,12 @@ describe('PaymentEntryModal — 補登收款 on a zero-fee course (in-app #511)'
     const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row: { ...row, charge: 0, payable_status: 'unbilled', payable_amount: null, payable_outstanding: null }, mode: 'legacy-backfill' } });
     await w.setProps({ show: true });
     await nextTick();
-    expect(w.find('[data-testid="pe-legacy-zero-hint"]').text()).toContain('其實沒收，改成未繳');
+    expect(w.find('[data-testid="pe-legacy-zero-hint"]').text()).toContain('無須繳費');
     await w.find('form').trigger('submit');
     await tick();
-    expect(w.text()).toContain('沒有款項可補登');
+    expect(w.text()).toContain('不需要補登收款');
     expect(w.text()).not.toContain('請勾選');
+    expect(w.text()).not.toContain('改成未繳」'); // that action is refused for a zero-fee course (legacy_flag_zero_fee)
     expect(global.fetch).not.toHaveBeenCalled();
     w.unmount();
   });

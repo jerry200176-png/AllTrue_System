@@ -123,7 +123,7 @@ const PlainShell = (p, { slots, emit }) => (p.open
   : null);
 PlainShell.props = ['open', 'placement', 'title', 'panelClass'];
 PlainShell.emits = ['close'];
-const LEGACY_ZERO_FEE_HELP = '這門課費用是 0，沒有款項可補登。若確實免費，請先按「其實沒收，改成未繳」，再用「登記收款」勾選免費／贈送；若有收過錢，請先到課程管理設定費用。';
+const LEGACY_ZERO_FEE_HELP = '這門課費用是 0，無須繳費，不需要補登收款，也不需要改成未繳。若這門課其實要收費，請先到課程管理設定費用，再回來補登。';
 const legacyBackfill = computed(() => props.mode === 'legacy-backfill');
 const formTitle = computed(() => (legacyBackfill.value ? '補登收款' : '登記收款'));
 // One key per opened form, kept across failed submits: a retry after a lost response replays instead of paying twice.
