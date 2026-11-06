@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-06-month-not-ended
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 本月還沒結束不再顯示需核對
+    summary: 預繳的當月還沒上課，不會再被標成需核對。
+    items:
+      - category: fixed
+        text: 月底前、還沒上課的預繳帳單不再誤報「需核對」；月底後照舊檢查。
+      - category: improved
+        text: 課程管理的月結區少了一長串說明，只列真的有落差的月份。
+    source_refs:
+      - "changelog:2026-11-06:inapp-510-month-recon"

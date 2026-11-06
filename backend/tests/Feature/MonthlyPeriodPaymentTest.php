@@ -212,6 +212,35 @@ class MonthlyPeriodPaymentTest extends TestCase
     }
 
 
+    private function prepaidOctoberCourse(): array
+    {
+        $course = $this->course();
+        ClassSession::where('StudentClassID', $course->ID)->delete();
+        $course->update(['StartDate' => '2026-10-01', 'EndDate' => '2026-10-31']);
+        foreach (['2026-10-15', '2026-10-22'] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '23:00', 'EndTime' => '23:59', 'Status' => 'scheduled']);
+        }
+        return [$course->fresh(), $this->invoice($course, '2026-10', 1000)];
+    }
+
+    public function test_prepaid_current_month_with_no_lessons_held_is_not_a_discrepancy(): void // in-app #510
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
+        [$course] = $this->prepaidOctoberCourse();
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertFalse($summary['periods'][0]['amount_discrepancy']);
+    }
+
+    public function test_same_prepaid_month_is_flagged_again_after_the_period_ends(): void // in-app #510
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');
+        [$course] = $this->prepaidOctoberCourse();
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($summary['periods'][0]['amount_discrepancy']);
+    }
+
     public function test_review_reasons_explain_flag(): void
     {
         $svc = app(MonthlyPeriodPaymentService::class);

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Invoice;
 use App\Models\StudentClass;
+use Illuminate\Support\Carbon;
 
 /**
  * Read-only invoice amount projection used by every billing surface.
@@ -120,14 +121,18 @@ class InvoiceAmountReconciliationService
             // neither repriced nor a discrepancy (in-app #478).
             $multiCourse = ($invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get())
                 ->pluck('StudentClassID')->filter()->unique()->count() > 1;
-            $amountDiscrepancy = !$multiCourse && $billing['source'] === 'billable_sessions'
+            $rawDiscrepancy = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && $computedTotalAmount !== $storedTotalAmount
                 && !($invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: an evidenced full discount is NT$0 by decision, not a discrepancy
+            // in-app #510: while the period is still running and no lesson has been held, the lesson-based total is 0 only
+            // because every lesson is still scheduled; judge a prepaid bill once the period has ended (or lessons are held).
+            $periodRunning = is_string($periodEnd) && $periodEnd >= Carbon::now('Asia/Taipei')->toDateString();
+            $amountDiscrepancy = $rawDiscrepancy && !($periodRunning && $computedTotalAmount === 0);
 
             $repriceable = !$multiCourse && $billing['source'] === 'billable_sessions'
                 && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
                 && $netApplied === 0;
-            if ($amountDiscrepancy && $repriceable) {
+            if ($amountDiscrepancy && $repriceable) { // a bill is repriced to the lesson total only once judged (not while the month runs)
                 $totalAmount = $computedTotalAmount;
                 $amountSource = 'billable_sessions';
             }
