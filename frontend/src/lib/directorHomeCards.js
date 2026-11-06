@@ -1,25 +1,24 @@
 // Presentation-only mapping for the director home bento (#4949 Phase A). Inputs are the values the page already loads.
-// Classify by the alert's own payment_status (server: ContractMoneyState::alertStatus), not alert_type alone:
-// an unpaid/partial monthly invoice is owed money, not a renewal.
-const OWED = new Set(['unpaid', 'partial', 'pending_report', 'amount_review', 'pending_reconciliation']);
-const isOwed = (s) => (s?.payment_status ? OWED.has(s.payment_status) : s?.alert_type === 'unpaid');
-// A contract already renewed by a newer purchased course is not a renewal to chase (same rule as billRows.js).
-const isRenewal = (s) => !isOwed(s) && s?.renewed_by_newer_course !== true
-  && (s?.alert_type === 'low_sessions' || s?.alert_type === 'monthly_due_soon');
+import { billRows } from './billRows.js';
 
-// Owed today from /alerts/tuition rows. `intent` = the 帳務中心 filter of the biggest group
-// (unpaid -> todo, pending_report -> confirm, amount_review -> review: LIST_FILTER_FOR_TAB).
-export function owedCard(alerts = []) {
-  const owed = alerts.filter(isOwed);
-  const confirm = owed.filter((s) => s.payment_status === 'pending_report').length;
-  const review = owed.filter((s) => s.payment_status === 'amount_review').length;
-  // Unpaid, not "overdue": a monthly invoice due in the next few days is unpaid but not yet late.
-  const unpaid = owed.length - confirm - review;
+// Classify with the 帳務中心's own billRows() kinds, so every count lands in the list its card opens
+// (BillList filters: owing/todo, confirm, review, issue). Input = raw /alerts/tuition rows.
+const kinds = (alertRows) => billRows(alertRows || []);
+
+// `intent` = the 帳務中心 filter of the biggest group (unpaid -> todo, pending_report -> confirm, amount_review -> review).
+export function owedCard(alertRows = []) {
+  const rows = kinds(alertRows);
+  const n = (k) => rows.filter((r) => r.kind === k).length;
+  const unpaid = n('owing');
+  const confirm = n('confirm');
+  const review = n('review');
   const intent = [['unpaid', unpaid], ['pending_report', confirm], ['amount_review', review]].sort((a, b) => b[1] - a[1])[0][0];
-  return { unpaid, waiting: confirm + review, total: owed.length, intent };
+  return { unpaid, waiting: confirm + review, total: unpaid + confirm + review, intent };
 }
 
-export const renewalCount = (alerts = []) => alerts.filter(isRenewal).length;
+// 快上完 = the renew rows of the `issue` filter it opens (not 要開帳單, which shares that filter).
+const RENEW = new Set(['renew_needed', 'monthly_due_soon']);
+export const renewalCount = (alertRows = []) => kinds(alertRows).filter((r) => r.kind === 'issue' && RENEW.has(r.src?.payment_status)).length;
 
 // Oldest pending evaluation, in whole days before `todayYmd` (null when nothing is dated).
 export function oldestEvaluationAge(evaluations = [], todayYmd) {

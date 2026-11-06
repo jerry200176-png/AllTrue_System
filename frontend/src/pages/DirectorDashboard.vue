@@ -433,6 +433,7 @@ const pendingEvaluations = ref([]);
 const pendingEvaluationsTotal = ref(0);
 const operationsTrust = ref(null);
 const lowBalanceStudents = ref([]);
+const tuitionAlertRows = ref([]); // raw /alerts/tuition rows: the home cards classify them with billRows()
 const unreadNotificationCount = ref(0);
 const notificationSummary = ref([]);
 const showAllPayments = ref(false);
@@ -660,7 +661,7 @@ const attendedCount = computed(() =>
 
 // Bento cards (#4949 Phase A): presentation of values already loaded above; no new fetches.
 const { steps: textScaleSteps, current: textScale, setScale: setTextScale } = useTextScale();
-const owed = computed(() => owedCard(lowBalanceStudents.value));
+const owed = computed(() => owedCard(tuitionAlertRows.value));
 const oldestEvalDays = computed(() => oldestEvaluationAge(pendingEvaluations.value, localTodayYmd()));
 // Card enter: blur-fade, staggered by the caller; off under prefers-reduced-motion.
 const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
@@ -689,7 +690,7 @@ const kpiCards = computed(() => [
     open: () => emit('navigate', { target: 'tuition-collect', intent: owed.value.intent }),
   },
   {
-    key: 'renewal', label: '快上完', value: renewalCount(lowBalanceStudents.value), unit: '筆', grad: 'tpl-g-sun', icon: RefreshCw,
+    key: 'renewal', label: '快上完', value: renewalCount(tuitionAlertRows.value), unit: '筆', grad: 'tpl-g-sun', icon: RefreshCw,
     sub: '要提醒續課',
     definition: '已繳費但堂數快用完，或月結即將到繳費日的課程。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: 'renewal' }),
@@ -1215,6 +1216,7 @@ const loadData = async ({ quiet = false } = {}) => {
       const alertsJson = await alertsResp.json();
       const alertList = Array.isArray(alertsJson) ? alertsJson : (alertsJson.low_balance || []);
       // 不再在前端二次過濾：帳務中心顯示 API 全量，主任總覽必須同筆數（API 已依 branch_id 過濾）。
+      tuitionAlertRows.value = alertList;
       lowBalanceStudents.value = alertList
         .map(c => ({
           id: c.id || c.class_id,
@@ -1228,7 +1230,6 @@ const loadData = async ({ quiet = false } = {}) => {
           payment_status: c.payment_status || null,
           amount_pending_confirmation: c.amount_pending_confirmation === true,
           days_until_settlement: c.days_until_settlement ?? null,
-          renewed_by_newer_course: c.renewed_by_newer_course === true,
           due_date: c.due_date ?? null,
           settlement_day: c.settlement_day ?? null,
           schedule_mode: c.schedule_mode ?? 'count',
