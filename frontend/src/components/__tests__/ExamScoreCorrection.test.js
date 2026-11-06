@@ -93,9 +93,12 @@ describe('page: enter wrong score, clear, re-enter', () => {
         input.value = text;
         input.dispatchEvent(new Event('input'));
         await flushPromises();
+        expect(order('exam-reason-title')).toBeGreaterThan(order('exam-score-title'));
         [...body.querySelectorAll('button')].find((b) => b.textContent.trim() === '確定更正').click();
         await flushPromises();
       };
+      // secondary dialogs must come after the score dialog in the DOM so they stack on top
+      const order = (id) => [...body.querySelectorAll('[role=dialog]')].findIndex((d) => d.querySelector(`#${id}`) || d.getAttribute('aria-labelledby') === id);
       const input = () => body.querySelector('.exam-score-table .exam-score-input');
       const clearBtn = () => body.querySelector('.exam-score-table .score-cell__btn');
 

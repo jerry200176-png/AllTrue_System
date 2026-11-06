@@ -111,25 +111,6 @@
       </template>
     </AtDialog>
 
-    <AtDialog :open="!!reasonFor" title="更正已截止的成績" title-id="exam-reason-title" @close="reasonFor = null">
-      <label>更正原因（必填）<input v-model.trim="reasonText" maxlength="255" placeholder="例如：登錄時打錯" /></label>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" @click="reasonFor = null">取消</AtButton>
-        <AtButton shape="rect" variant="primary" :disabled="!reasonText" @click="submitScores(reasonFor, reasonText)">確定更正</AtButton>
-      </template>
-    </AtDialog>
-
-    <AtDialog :open="!!historyRows" :title="`修改紀錄：${historyName}`" title-id="exam-history-title" @close="historyRows = null">
-      <p v-if="!historyRows?.length" class="muted">沒有修改紀錄。</p>
-      <ul v-else class="exam-history">
-        <li v-for="h in historyRows" :key="h.id">
-          <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
-          <small class="muted">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
-        </li>
-      </ul>
-      <template #actions><AtButton shape="rect" variant="ghost" @click="historyRows = null">關閉</AtButton></template>
-    </AtDialog>
-
     <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" panel-class="exam-score-dialog" @close="selected = null">
       <AtSkeleton v-if="studentsLoading" rows="3" />
       <AtInlineAlert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></AtInlineAlert>
@@ -195,6 +176,25 @@
       <template #actions>
         <AtButton shape="rect" variant="ghost" @click="selected = null">關閉</AtButton>
       </template>
+    </AtDialog>
+
+    <AtDialog :open="!!reasonFor" title="更正已截止的成績" title-id="exam-reason-title" @close="reasonFor = null">
+      <label>更正原因（必填）<input v-model.trim="reasonText" maxlength="255" placeholder="例如：登錄時打錯" /></label>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" @click="reasonFor = null">取消</AtButton>
+        <AtButton shape="rect" variant="primary" :disabled="!reasonText" @click="submitScores(reasonFor, reasonText)">確定更正</AtButton>
+      </template>
+    </AtDialog>
+
+    <AtDialog :open="!!historyRows" :title="`修改紀錄：${historyName}`" title-id="exam-history-title" @close="historyRows = null">
+      <p v-if="!historyRows?.length" class="muted">沒有修改紀錄。</p>
+      <ul v-else class="exam-history">
+        <li v-for="h in historyRows" :key="h.id">
+          <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
+          <small class="muted">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
+        </li>
+      </ul>
+      <template #actions><AtButton shape="rect" variant="ghost" @click="historyRows = null">關閉</AtButton></template>
     </AtDialog>
   </section>
 </template>

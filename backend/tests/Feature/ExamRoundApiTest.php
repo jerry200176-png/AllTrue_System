@@ -219,6 +219,17 @@ class ExamRoundApiTest extends TestCase
         $this->withAuth($b['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")->assertForbidden();
     }
 
+    public function test_director_can_reenter_after_clearing_last_score_of_inactive_student(): void
+    {
+        $c = $this->seedRound();
+        $this->putScore($c, 'teacher', 0, 50)->assertOk();
+        $c['student']->update(['enable' => 0]);
+        $this->withAuth($c['director']['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/scores", [
+            'scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $c['subjects'][0]['id'], 'clear' => true]],
+        ])->assertOk();
+        $this->putScore($c, 'director', 0, 60)->assertOk();
+    }
+
     public function test_history_filters_by_student_before_limit(): void
     {
         $c = $this->seedRound();

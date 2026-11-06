@@ -618,8 +618,16 @@ class ExamRoundController extends Controller
             return collect();
         }
         // Roster stability for directors only; a teacher is limited to students with their own active class.
-        $scoredIds = $teacherId !== null ? []
-            : ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
+        $scoredIds = [];
+        if ($teacherId === null) {
+            $scoredIds = ExamScore::query()->where('exam_round_id', $round->id)->distinct()->pluck('student_id')->all();
+            // A cleared score leaves an audit row, so the student stays on the director roster for re-entry.
+            ExamScoreAuditLog::query()->where('exam_round_id', $round->id)->where('action', 'score_deleted')
+                ->get(['before'])->each(function ($l) use (&$scoredIds) {
+                    $scoredIds[] = (int) ($l->before['student_id'] ?? 0);
+                });
+            $scoredIds = array_values(array_unique(array_filter($scoredIds)));
+        }
         $students = Student::query()
             ->where('CampusID', (int) $round->campus_id)
             ->where(function ($q) use ($gradeIds, $scoredIds) {
