@@ -45,7 +45,6 @@ rules:
       # These jobs push branches/tags/issues with the checkout credentials.
       - branch-hygiene.yml
       - open-followup-issues.yml
-      - release.yml
       # Fetches a recovery SHA outside main's history; keep auth for that fetch.
       - security-1124-restore-recovered-uploads.yml
       # Production deploy workflow: deferred to a dedicated reviewed change.

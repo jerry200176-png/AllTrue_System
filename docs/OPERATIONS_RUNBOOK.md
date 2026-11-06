@@ -1291,13 +1291,12 @@ on:
 
 ### X1. 機制
 
-`/.github/workflows/release.yml`：當 **`docs/CHANGELOG.md` 變更被合併進 `main`** 時自動：
-1. 取出 CHANGELOG「最新一節」（`.github/scripts/changelog-latest.sh`）。
-2. 由節標題日期算 tag `vYYYY.MM.DD`；同日多次合併 → `.2` / `.3` 遞增。
-3. 建立 annotated git tag + push。
-4. `gh release create` 以該節內容當 release notes。
+`/.github/workflows/release-publish.yml`：`deploy.yml`（`Deploy to Pi`）的 `Deploy to Production` job 成功時，每次發布一則 Release：
+1. tag 為當天 `vYYYY.MM.DD.N`（同日 N 遞增）。
+2. 說明用 `release-drafter.yml` 起草的草稿（上一則 Release 之後合併的 PR，依 `type:` 標籤分類）。
+3. 部署被略過（stand-down）或失敗時不發布。
 
-可手動觸發：`gh workflow run release.yml --ref main`。
+舊的 `release.yml`（CHANGELOG 合併即打 tag）已移除；Release 只有這一個來源。
 
 ### X2. 為什麼是 CalVer 不是 SemVer
 
@@ -1310,14 +1309,14 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 |---|---|---|
 | `backend/public/version.json` | 前端 build 時間戳（Vite `deploy.yml`）| **只在前端有重 build 時** |
 | `backend/public/deployment.json` | 實際啟用的 backend SHA、frontend build SHA、部署時間 | 每次 deploy／rollback |
-| Git tag `vYYYY.MM.DD[.N]` | 該次 notable merge（CHANGELOG 有變更）| CHANGELOG 變更合併進 main 時 |
-| GitHub Release | tag + CHANGELOG 該節全文 | 同上 |
+| Git tag `vYYYY.MM.DD[.N]` | 該次 production 部署 | 部署成功時 |
+| GitHub Release | tag + release-drafter 分類說明 | 同上 |
 
 排查「線上是哪一版」：先看 `deployment.json.backend_sha` 確認 backend runtime，再看 `deployment.json.frontend_build_sha`／`version.json.build_sha` 確認前端 bundle；backend-only deploy 不更新 `version.json`，不得以 frontend hash 代替 backend identity。
 
 ### X4. 注意
 
-- 本工作流**不碰 `deploy.yml`**（事故 A 教訓），唯一副作用是建立 tag/Release。
+- 本工作流**不碰 `deploy.yml`**（事故 A 教訓），唯一副作用是建立 tag/Release（由 `workflow_run` 觸發）。
 - tag push 不會觸發 `branches:[main]` 的 push workflow（不成迴圈）。
 - 回滾：刪除誤建 tag/Release 為純中繼資料操作（`git push --delete origin <tag>` + `gh release delete <tag>`），不影響 production。
 

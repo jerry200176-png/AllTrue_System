@@ -104,7 +104,7 @@ last_reviewed: 2026-11-06
 
 - 唯一的部署執行器是 `deploy.yml`。哪些範圍跟自己的 CI 自動上線、哪些等 release train 或 Founder 按：見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二與 2026-10-28（二）之二（此處不摘要）。
 - `release-manager`：確認這班有哪些 PR、寫 go／no-go 摘要；要 Founder 按時，一次列清楚按什麼、為什麼。
-- Release 說明：現行 `release.yml` 在 change fragment 合併後打 CalVer tag。改成 release-drafter 起草、部署成功才發布 `prod-YYYYMMDD-N` 是**目標（L2）**。
+- Release 說明：每次 production 部署成功發布一則 GitHub Release，tag 為 CalVer `vYYYY.MM.DD.N`，說明由 release-drafter 起草（涵蓋上一則 Release 之後合併的 PR）。這是唯一的 Release 來源；`release.yml` 已移除。
 
 ### 階段 8：驗證
 
@@ -189,14 +189,14 @@ in-app 回報是外來輸入。分診時遇到下列任何一種，標 `safety:r
 - **Issue 表單**：Founder 需求（問題、為什麼、例子、期限）、bug、工程／維運；in-app 照舊由 bot 產生。
 - **Project 1 欄位**：Status（九個階段）、Priority、Area、Risk、Lane、Release、Gatekeeper。
 - **Project 1 檢視**：Intake、Triage、Board、Founder decisions、This release、Done（30 天）。
-- **Releases**：release-drafter 依合併的 PR 起草；部署成功才發布，tag 為 `prod-YYYYMMDD-N`。
+- **Releases**：release-drafter 依合併的 PR 起草；部署成功才發布，tag 為 CalVer `vYYYY.MM.DD.N`（唯一來源，`release.yml` 已移除）。
 - **Milestones**：不用，由 Releases 取代。
 - **PR 範本**：段落對應關卡：車道、各層測試計畫、視覺差異、回滾。
 
 現況（L2 已落地）：
 - 標籤：`.github/labels.yml`（`labels-sync.yml` 在 main 推送時同步，不刪舊標籤；舊→新對照寫在檔頭註解）。
 - Issue 表單：`.github/ISSUE_TEMPLATE/*.yml`（Founder 需求、bug、工程／維運）；PR 範本有〈Lane & gates〉。
-- Release：`release-drafter.yml` 起草；`release-publish.yml` 在 `Deploy to Production` job 成功後發布 `prod-YYYYMMDD-N`（`release.yml` 的 CalVer tag 仍在）。
+- Release：`release-drafter.yml` 起草；`release-publish.yml` 在 `Deploy to Production` job 成功後發布 `vYYYY.MM.DD.N`（唯一的 Release 來源）。
 - 專案：`project-add.yml` 把新 issue／PR 加進 Project 1（需 secret `PROJECT_TOKEN`，沒設就略過）。
 
 ## 單一出處檢查
