@@ -45,7 +45,11 @@ class BugAutoIntakeCommandTest extends TestCase
         }
         $this->assertSame([BugAutoIntakeCommand::SAFETY_ACK_TEXT], BugReportComment::query()->where('bug_report_id', $flagged->id)->pluck('body')->all());
         $this->assertSame([BugAutoIntakeCommand::ACK_TEXT], BugReportComment::query()->where('bug_report_id', $plain->id)->pluck('body')->all());
-        $this->assertSame('new', $flagged->fresh()->status, 'held: no triage, no status change');
+        // Held: the neutral reply carries no issue link and no promise, and nothing moved the report along.
+        $this->assertStringNotContainsString('github.com', BugAutoIntakeCommand::SAFETY_ACK_TEXT);
+        $this->assertSame(0, BugReportStatusLog::query()->whereIn('bug_report_id', [$flagged->id, $plain->id])->count(), 'ack writes no status log');
+        $this->assertSame('new', $flagged->fresh()->status, 'still new: only a human triages it');
+        $this->assertNotSame(BugAutoIntakeCommand::ACK_TEXT, BugReportComment::query()->where('bug_report_id', $flagged->id)->value('body'), 'flagged never gets the normal ack');
         Artisan::call('bugs:auto-intake', ['--candidates' => true, '--min-age' => 5]);
         $this->assertSame([], json_decode(trim(Artisan::output()), true)['candidates'], 'acked flagged report is not listed again');
     }

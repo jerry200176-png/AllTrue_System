@@ -479,5 +479,13 @@ namespace {
         for write in ('->insert(', '->update(', '->delete(', '->save(', '->create('):
             self.assertNotIn(write, block)
 
+    def test_dump_exposes_safety_codes_over_reporter_comments(self):
+        # L4 (#4965): the safety screen runs over title, description and the reporter's own comments; codes only.
+        self.assertIn('BugSafetyScreen::screen(', self.source)
+        self.assertIn('(int)$c->author_user_id === (int)$bug->reporter_user_id', self.source)
+        self.assertIn('"safety" => $safety,', self.source)
+        self.assertIn('"safety_reasons": [r for r in', self.source)
+
+
 if __name__ == "__main__":
     unittest.main()

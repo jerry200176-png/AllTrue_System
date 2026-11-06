@@ -170,6 +170,12 @@ jobs:
             if (mb_strlen($body) > 1500) $body = mb_substr($body, 0, 1500)."…";
             $cmtOut[] = ["id"=>(int)$c->id,"author"=>(int)$c->author_user_id,"internal"=>(bool)$c->is_internal_note,"body"=>$body,"at"=>$c->created_at];
           }}
+          // L4 safety screen (#4957/#4965): codes only, over the title, description and the reporter's own comments.
+          $reporterText = [];
+          foreach ($comments as $c) {{
+            if ((int)$c->author_user_id === (int)$bug->reporter_user_id) $reporterText[] = (string)$c->body;
+          }}
+          $safety = \\App\\Services\\BugSafetyScreen::screen((string)($bug->title ?? ""), (string)($bug->description ?? "")."\\n".implode("\\n", $reporterText));
           // Probes are opt-in and allowlisted by bug id. Never attach a fixed
           // historical case to an unrelated report: inapplicable probes emit
           // metadata only and cannot make the dump decision-grade.
@@ -1995,6 +2001,7 @@ jobs:
             ],
             "attachments" => $atts,
             "comments" => $cmtOut,
+            "safety" => $safety,
             "status_logs" => $logs,
             "reporter_history" => $reporterHistory,
             "reporter_history_total" => (int)$reporterHistoryTotal,
@@ -2083,6 +2090,7 @@ jobs:
           Path("out/summary.json").write_text(json.dumps({
             "ok": obj.get("ok"), "requested_bug_id": obj.get("requested_bug_id"),
             **{k: bug.get(k) for k in ("id", "status", "severity", "campus_id", "page_key", "reporter_user_id", "created_at", "updated_at")},
+            "safety_reasons": [r for r in ((obj.get("safety") or {}).get("reasons") or []) if r in ("money_change", "access_change", "other_person_data", "disable_control", "ai_instruction")],
             "counts": {k: len(obj.get(k) or []) for k in ("attachments", "comments", "status_logs", "reporter_history")},
             "decision_grade": (obj.get("diagnostics") or {}).get("decision_grade"),
             "probe_433_failure_stage": failure_stage if failure_stage in safe_stages else None,
