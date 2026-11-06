@@ -183,7 +183,7 @@ jobs:
           # Vendored agent skills are reviewed as reference artifacts, not production logic.
           # Keep their files in the PR for content/security review, but do not let a long
           # Markdown skill document fail the logical-change size gate.
-          EXTRA_EXCLUDE=(':!.cursor/skills/**')
+          EXTRA_EXCLUDE=(':!.cursor/skills/**' ':!.claude/skills/**')
           if echo "$BRANCH" | grep -qE '^chore/docs-'; then
             EXTRA_EXCLUDE+=(':!docs/CHANGELOG.md' ':!docs/archive/**')
           fi

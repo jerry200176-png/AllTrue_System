@@ -48,7 +48,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - **允許**（且應保留）：暖橘品牌漸層／輕 mesh、glassmorphism 卡片、克制入場 motion。
 - **Token 化**＝色值進 `--ds-*`；**不是**拆掉氣氛換成扁平後台框。
 - **禁止**：以 hex KPI、「去 AI 化」、或本文件 §7「禁 mesh」字面理由，未獲 Founder 視覺 GO 就重寫 Login look。
-- 反例：PR #1386（Agent 拆光 → Founder 退回 #1412）。正向參考：Founder star 的 `taste-skill` / `impeccable` / `awesome-design-md` / shadcn / Carbon（ops）等（見 `.cursor/rules/frontend-brand-taste.mdc`）。
+- 反例：PR #1386（Agent 拆光 → Founder 退回 #1412）。正向參考與每頁 design QA 步驟、動態規則：見 `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md`（技能已 vendor 於 `.claude/skills/`；另見 `.cursor/rules/frontend-brand-taste.mdc`）。
 
 ## 2. Design Principles（設計原則）
 
