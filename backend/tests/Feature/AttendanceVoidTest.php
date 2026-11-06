@@ -189,6 +189,21 @@ class AttendanceVoidTest extends TestCase
         }
     }
 
+    public function test_void_on_a_paused_course_keeps_it_paused(): void
+    {
+        [$token, $student] = $this->scaffold();
+        foreach (['attended', 'completed'] as $status) {
+            [$session, $signin] = $this->completedSessionWithSignIn($student, true);
+            $session->update(['Status' => $status]);
+            StudentClass::where('ID', $session->StudentClassID)->update(['Stop' => 1]);
+
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->deleteJson("/api/v1/attendance/{$signin->id}", ['void_reason' => '誤登'])->assertOk();
+
+            $this->assertSame(1, (int) StudentClass::find($session->StudentClassID)->Stop, "{$status}: paused stays paused");
+        }
+    }
+
     public function test_void_keeps_completed_session_when_the_sign_in_debited_nothing(): void
     {
         [$token, $student] = $this->scaffold();

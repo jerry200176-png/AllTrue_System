@@ -1036,6 +1036,7 @@ class AttendanceController extends Controller
                 $signin->save();
 
                 // ② 若已扣堂，沖回堂數
+                $wasPaused = $signin->StudentClassID && (int) StudentClass::where('ID', $signin->StudentClassID)->value('Stop') === 1;
                 if ($signin->SessionDeducted && $signin->StudentClassID) {
                     SessionDeductionService::reverseForSession(
                         (int) $signin->StudentClassID,
@@ -1046,6 +1047,10 @@ class AttendanceController extends Controller
                     );
                     SessionDeductionService::recomputeCounters((int) $signin->StudentClassID);
                     $sessionReversed = true;
+                    if ($wasPaused) {
+                        // A manual pause survives the recompute (it resets Stop for a date-mode course).
+                        StudentClass::where('ID', $signin->StudentClassID)->update(['Stop' => 1]);
+                    }
                 }
 
                 // ③ 若 ClassSession 為出勤狀態，退回 scheduled
@@ -1066,12 +1071,16 @@ class AttendanceController extends Controller
                                 $lr->save();
                             });
                         }
+                        $revertedCompleted = $session->Status === 'completed';
                         $session->Status = 'scheduled';
                         $session->save();
                         $classSessionReverted = true;
-                        if ($signin->StudentClassID) {
-                            // The earlier recompute still counted this lesson as completed/attended.
+                        if ($revertedCompleted && $signin->StudentClassID) {
+                            // The earlier recompute still counted this debited lesson as completed. 
                             SessionDeductionService::recomputeCounters((int) $signin->StudentClassID);
+                            if ($wasPaused) {
+                                StudentClass::where('ID', $signin->StudentClassID)->update(['Stop' => 1]);
+                            }
                         }
                     }
                 }
