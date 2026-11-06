@@ -31,4 +31,15 @@ describe('components/ui (shadcn-vue)', () => {
   it('cn() resolves conflicting utilities', () => {
     expect(cn('tw:p-2', 'tw:p-4')).toBe('tw:p-4');
   });
+
+  it('every utility in ui/ sources carries the tw: prefix (unprefixed ones are never generated)', () => {
+    const sources = import.meta.glob('../**/*.{vue,js}', { query: '?raw', import: 'default', eager: true });
+    const bad = [];
+    for (const [file, src] of Object.entries(sources)) {
+      for (const [, lit] of src.matchAll(/cn\(\s*[`'"]([^`'"]+)[`'"]/g)) {
+        for (const c of lit.split(/\s+/).filter(Boolean)) if (!c.startsWith('tw:')) bad.push(`${file}: ${c}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
 });
