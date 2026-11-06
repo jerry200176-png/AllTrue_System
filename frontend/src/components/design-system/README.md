@@ -4,7 +4,7 @@
 規格來源：[`docs/RULE_DESIGN_SYSTEM.md`](../../../../docs/RULE_DESIGN_SYSTEM.md)。
 文案規範：[`docs/GUIDE_UI_COPY.md`](../../../../docs/GUIDE_UI_COPY.md)。
 
-> 漸進遷移：新頁面/新區塊一律用這些元件；既有頁面在各自的 page issue（#691–#700）逐步替換，不要求一次全改。
+> **Legacy（2026-11-06, #4659）**：新 UI 改用 `src/components/ui`（shadcn-vue）與 `RULE_DESIGN_SYSTEM.md` §0；`At*` 隨頁面遷移逐頁退場，不再新增 `At*` 元件。
 
 ---
 

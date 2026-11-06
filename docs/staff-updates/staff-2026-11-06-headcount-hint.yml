@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-headcount-hint
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 人數加成說明改正
+    summary: 薪資設定裡的人數加成說明，現在寫明會影響時薪。
+    items:
+      - category: fixed
+        text: 以前寫「不影響薪資」是錯的；同時段每多一位學生，時薪會加這個金額。
+    source_refs:
+      - "changelog:2026-11-06:inapp-509-headcount-hint"
