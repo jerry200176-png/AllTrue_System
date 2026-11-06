@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 542 api/* routes · generated 2026-11-06
+> Source: `php artisan route:list --json` · 544 api/* routes · generated 2026-11-06
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -402,7 +402,7 @@
 | POST | `api/v1/fee-payouts` | `FeeLedgerController@storePayout` | role+campus |
 | POST | `api/v1/fee-payouts/{id}/void` | `FeeLedgerController@voidPayout` | role+campus |
 
-## /api/v1/finance (56)
+## /api/v1/finance (58)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -414,6 +414,8 @@
 | GET | `api/v1/finance/gl-export` | `FinanceController@glExport` | role+campus |
 | GET | `api/v1/finance/outstanding` | `FinanceController@outstanding` | role+campus |
 | GET | `api/v1/finance/parttime-payroll` | `FinanceController@parttimePayroll` | role+campus+pin |
+| PUT | `api/v1/finance/parttime-payroll/admin-bonus` | `ParttimePayrollAdminBonusController@upsert` | role+campus+pin |
+| DELETE | `api/v1/finance/parttime-payroll/admin-bonus` | `ParttimePayrollAdminBonusController@destroy` | role+campus+pin |
 | GET | `api/v1/finance/parttime-payroll/export` | `FinanceController@parttimePayrollExport` | role+campus+pin |
 | POST | `api/v1/finance/parttime-payroll/lock` | `FinanceController@parttimePayrollLock` | role+campus+pin |
 | POST | `api/v1/finance/parttime-payroll/reopen` | `FinanceController@parttimePayrollReopen` | role+campus+pin |
