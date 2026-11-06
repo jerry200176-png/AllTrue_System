@@ -152,4 +152,31 @@ class MonthlyRenewAdoptTest extends TestCase
         \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $amended->ID, 'effective_from' => '2026-11-01', 'rate' => 2000, 'rate_unit' => 'session', 'source_reference' => 'x', 'reason' => 'x', 'created_at' => now()]);
         $preview($amended)->assertJsonPath('blockers.1.code', 'adopt_source_discounted');
     }
+
+    public function test_blocked_when_source_never_priced_the_stray_lesson_or_is_a_package(): void
+    {
+        // Probe shape: 4 October Sundays billed 4 x 1800 plus an unpriced attended 11-01.
+        [$sc, $inv, $stray] = $this->fixture(['Charge' => 7200, 'SessionCount' => 4]);
+        $inv->update(['TotalAmount' => 7200]);
+        InvoiceItem::where('InvoiceID', $inv->id)->update(['Amount' => 7200]);
+        foreach (['2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25'] as $d) {
+            ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => $d, 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'attended', 'TeacherID' => 99]);
+        }
+        $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$sc->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertJsonPath('blockers.1.code', 'adopt_not_priced_in_source');
+        $this->renew($sc, 422);
+        $this->assertSame(1, StudentClass::count());
+        $this->assertSame([7200, 4], [(int) $sc->fresh()->Charge, (int) $sc->fresh()->SessionCount]);
+        $this->assertSame(7200, (int) $inv->fresh()->TotalAmount);
+        $this->assertSame($sc->ID, (int) $stray->fresh()->StudentClassID);
+
+        [$pkg] = $this->fixture(['PackageID' => 5]);
+        $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$pkg->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertJsonPath('blockers.1.code', 'adopt_package_course');
+
+        [$other, $inv3] = $this->fixture();
+        InvoiceItem::where('InvoiceID', $inv3->id)->update(['StudentClassID' => 999999]);
+        $this->withHeaders($this->headers)->postJson("/api/v1/student-classes/{$other->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertJsonPath('blockers.1.code', 'adopt_source_invoice_ambiguous');
+    }
 }

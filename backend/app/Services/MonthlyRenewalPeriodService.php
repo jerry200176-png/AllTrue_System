@@ -61,14 +61,20 @@ final class MonthlyRenewalPeriodService
         if (StudentClassPricingAmendment::query()->where('student_class_id', $c->getKey())->whereNull('voided_at')->exists()) return 'adopt_source_discounted';
         if (strtolower(trim((string) ($c->rate_unit ?? 'session'))) !== 'session' || (float) $c->Rate <= 0) return 'adopt_requires_session_rate';
         if ((int) $c->Charge !== (int) round((float) $c->Rate * (int) $c->SessionCount)) return 'adopt_source_discounted';
-        if ($invoices->count() !== 1 || $inv->Status === 'paid' || (int) $inv->TotalAmount !== (int) $c->Charge || InvoiceItem::where('InvoiceID', $inv->id)->count() !== 1) return 'adopt_source_invoice_ambiguous';
+        if ((int) ($c->PackageID ?? 0) > 0) return 'adopt_package_course';
+        if ($invoices->count() !== 1 || $inv->Status === 'paid' || (int) $inv->TotalAmount !== (int) $c->Charge || InvoiceItem::where('InvoiceID', $inv->id)->count() !== 1
+            || InvoiceItem::where('InvoiceID', $inv->id)->whereNotNull('StudentClassID')->where('StudentClassID', '<>', $c->getKey())->exists()) return 'adopt_source_invoice_ambiguous';
+        $delta = (int) round((float) $c->Rate * $n);
+        if ($n >= (int) $c->SessionCount || $delta >= (int) $c->Charge || $delta >= (int) $inv->TotalAmount || $delta >= (int) InvoiceItem::where('InvoiceID', $inv->id)->value('Amount')) return 'adopt_exceeds_source';
         // The new period only bills its weekly timetable, so an adopted lesson must sit on one of those slots.
         $slots = ContractSessionSchedule::buildSessionsFromWeeklySchedule((int) $c->getKey(), Carbon::parse($oldEnd)->addDay()->toDateString(), $end,
             ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), max(30, (int) ($c->SessionDuration ?? 120)));
         $keys = array_map(fn ($x) => substr((string) $x['SessionDate'], 0, 10) . '|' . substr((string) $x['StartTime'], 0, 5), $slots);
         if ($rows->contains(fn ($r) => !in_array($r['date'] . '|' . $r['start'], $keys, true))) return 'adopt_off_timetable';
-        $delta = (int) round((float) $c->Rate * $n);
-        if ($n >= (int) $c->SessionCount || $delta >= (int) $c->Charge || $delta >= (int) $inv->TotalAmount || $delta >= (int) InvoiceItem::where('InvoiceID', $inv->id)->value('Amount')) return 'adopt_exceeds_source';
+        // The old price must already count the lessons that stay: its remaining count equals its own timetable slots.
+        $own = count(ContractSessionSchedule::buildSessionsFromWeeklySchedule((int) $c->getKey(), Carbon::parse($c->StartDate)->toDateString(), $oldEnd,
+            ContractSessionSchedule::resolveScheduleSlotsForRebuild($c), max(30, (int) ($c->SessionDuration ?? 120))));
+        if ((int) $c->SessionCount - $n !== $own) return 'adopt_not_priced_in_source';
         return null;
     }
 
@@ -84,9 +90,9 @@ final class MonthlyRenewalPeriodService
         $delta = (int) round((float) $source->Rate * $n);
         $oldCharge = (int) $source->Charge;
         if ($item->count() !== 1 || $this->adoptionBlocker($source, $rows, Carbon::parse($source->EndDate)->toDateString(), $end) !== null || $oldCharge - $delta <= 0 || (int) $source->SessionCount - $n <= 0
-            || (int) $invoice->TotalAmount - $delta <= 0 || (int) $item[0]->Amount - $delta <= 0) throw new \RuntimeException('monthly_adopt_state_changed');
+            || (int) $invoice->TotalAmount - $delta <= 0 || (int) $item[0]->Amount - $delta <= 0) abort(409, 'monthly_adopt_state_changed');
         foreach ($ids as $id) {
-            ClassSession::where('id', $id)->update(['StudentClassID' => $target->getKey()]);
+            if (ClassSession::where('id', $id)->where('StudentClassID', $source->getKey())->whereIn('Status', ['attended', 'completed', 'late'])->update(['StudentClassID' => $target->getKey()]) !== 1) abort(409, 'monthly_adopt_state_changed');
             app(SessionContractRecoveryService::class)->moveEvidence($id, (int) $target->getKey(), false);
             DB::table('session_deduction_ledger')->where('class_session_id', $id)->where('student_class_id', $source->getKey())->update(['student_class_id' => $target->getKey()]);
         }
