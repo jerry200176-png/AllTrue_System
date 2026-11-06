@@ -88,7 +88,9 @@ async function api(path, options = {}) {
   return body;
 }
 
+let loadSeq = 0;
 async function load() {
+  const my = ++loadSeq;
   loading.value = true;
   error.value = '';
   schools.value = [];
@@ -101,6 +103,7 @@ async function load() {
       api(`/exam-periods/schools?campus_id=${c}`),
       api(`/exam-periods?campus_id=${c}&academic_year=${year}&semester=${semester}`),
     ]);
+    if (my !== loadSeq) return; // a newer campus/term load superseded this one
     schools.value = sc.data || [];
     for (const key of Object.keys(drafts)) delete drafts[key];
     for (const key of Object.keys(saved)) delete saved[key];
@@ -112,9 +115,9 @@ async function load() {
       saved[key] = { ...row };
     }
   } catch (e) {
-    error.value = e.message || '載入失敗';
+    if (my === loadSeq) error.value = e.message || '載入失敗';
   } finally {
-    loading.value = false;
+    if (my === loadSeq) loading.value = false;
   }
 }
 
