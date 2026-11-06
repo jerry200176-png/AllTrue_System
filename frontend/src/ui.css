@@ -14,6 +14,7 @@
 @import "tailwindcss/utilities.css" layer(utilities) prefix(tw) important source(none);
 @import "tw-animate-css";
 @source "./components/ui";
+@source "./pages/DirectorDashboard.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-director-home-premium
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 主任總覽首頁改版
+    summary: 主任首頁改成卡片版面，數字可點進清單。
+    items:
+      - category: improved
+        text: 今天分頁改成大卡片：今日課程與點名進度、待收、續課、待審評量、未讀通知，點數字就進清單。
+    source_refs:
+      - "changelog:2026-11-06:director-home-premium"
