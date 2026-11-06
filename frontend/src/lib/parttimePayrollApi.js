@@ -130,3 +130,33 @@ export async function deleteTeacherPayrollRules({ branchId, teacherId, effective
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Delete failed');
   return res.json();
 }
+
+// #4971: manual 行政加給 (one per teacher per month, reason required)
+export async function saveAdminBonus({ branchId, teacherId, month, amount, reason }) {
+  const res = await fetch(`${API_BASE}/finance/parttime-payroll/admin-bonus`, {
+    method: 'PUT',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch_id: branchId, teacher_id: teacherId, month, amount, reason }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '儲存失敗');
+  return res.json();
+}
+
+export async function deleteAdminBonus({ branchId, teacherId, month }) {
+  const res = await fetch(`${API_BASE}/finance/parttime-payroll/admin-bonus`, {
+    method: 'DELETE',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch_id: branchId, teacher_id: teacherId, month }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '刪除失敗');
+  return res.json();
+}
+
+// #4971: every part-time teacher of exactly this campus (GET /teachers: per_page=all skips the 50-row page, strict_branch skips the other-campus fallback)
+export async function fetchPartTimeTeachers({ branchId }) {
+  const res = await fetch(`${API_BASE}/teachers?branch_id=${encodeURIComponent(branchId)}&role=teacher&per_page=all&strict_branch=1`, { headers: headers() });
+  if (!res.ok) throw new Error('老師資料載入失敗');
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : (data?.data || data?.teachers || []);
+  return list.filter((t) => t.employment_type === 'part_time');
+}
