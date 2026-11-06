@@ -616,6 +616,7 @@ Route::prefix('v1')->group(function () {
         Route::get('students', [StudentController::class, 'index']);
         Route::get('students/{student}', [StudentController::class, 'show']);
         Route::get('students/{student}/active-courses', [StudentController::class, 'activeCourses']);
+        Route::get('students/{student}/learning-timeline', [\App\Http\Controllers\LearningRecordStudentTimelineController::class, 'show'])->whereNumber('student');
         Route::get('profiles', [ProfileController::class, 'index']);
         // Alias: /api/v1/teachers → profiles filtered to type=T
         Route::get('teachers', function (\Illuminate\Http\Request $req) {

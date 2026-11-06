@@ -207,6 +207,7 @@
                   <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
                 </button>
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
+                <AtIconButton icon="timeline" label="學習歷程" @click="timelineStudent = student" />
                 <AtRowMenu>
                   <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteStudent(student)">刪除學生</AtButton>
                 </AtRowMenu>
@@ -948,6 +949,13 @@
       </div>
     </div>
 
+    <StudentLearningTimeline
+      :show="!!timelineStudent"
+      :student-id="timelineStudent?.id"
+      :student-name="timelineStudent?.name || ''"
+      @close="timelineStudent = null"
+    />
+
     <IdentityLinkModal
       :show="showIdentityModal"
       v-model:query="identityQuery"
@@ -1020,6 +1028,7 @@ import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import AtNumberStepper from '../components/design-system/AtNumberStepper.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import IdentityLinkModal from '../components/students/IdentityLinkModal.vue';
+import StudentLearningTimeline from '../components/students/StudentLearningTimeline.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {
   buildForceOverrideFields,
@@ -1106,6 +1115,7 @@ const showHistoricalCourses = ref(false);
 const importInput = ref(null);
 
 // Cross-campus identity bridge (director/super_admin API; no auto-merge).
+const timelineStudent = ref(null); // #4928: student whose read-only 學習歷程 is open
 const showIdentityModal = ref(false);
 const identityQuery = ref('');
 const identityStudents = ref([]);
