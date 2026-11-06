@@ -117,4 +117,31 @@ describe('page: enter wrong score, clear, re-enter', () => {
       wrapper.unmount();
     }
   });
+
+  it('a typed-then-erased cell in another subject is skipped, not sent as a blank score', async () => {
+    const subjects = [{ id: 11, name: '國文', max_score: 100 }, { id: 12, name: '英文', max_score: 100 }];
+    const rounds = [{ id: 3, title: '段考三', status: 'published', subjects }];
+    const rows = [{ student_id: 502, student_name: '合成乙', filled_subject_count: 0, required_subject_count: 2, scores: [] }];
+    const fetchMock = vi.fn(async (input) => ({
+      ok: true,
+      json: async () => (String(input).includes('/students') ? { data: rows } : String(input).includes('/scores') ? { data: [] } : { data: rounds }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(ExamGradesPage, { props: { branchId: 1, userRole: 'director' }, attachTo: document.body });
+    try {
+      await flushPromises();
+      await wrapper.findAll('.exam-round-card__actions button').find((b) => /登分/.test(b.text())).trigger('click');
+      await flushPromises();
+      const [a, b] = document.body.querySelectorAll('.exam-score-table .exam-score-input');
+      a.value = '80'; a.dispatchEvent(new Event('change'));
+      b.value = '7'; b.dispatchEvent(new Event('change'));
+      b.value = ''; b.dispatchEvent(new Event('change'));
+      [...document.body.querySelectorAll('.exam-score-table tbody button')].find((x) => x.textContent.trim() === '儲存').click();
+      await flushPromises();
+      const posts = fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
+      expect(posts[0].scores).toEqual([{ student_id: 502, exam_round_subject_id: 11, score: 80, is_absent: false }]);
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });

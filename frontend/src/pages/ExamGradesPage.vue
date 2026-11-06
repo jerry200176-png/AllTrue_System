@@ -498,7 +498,8 @@ async function submitScores(row, reason) {
   const scores = [];
   for (const subject of selected.value.subjects || []) {
     const d = draftScores[`${row.student_id}:${subject.id}`];
-    if (!d) continue;
+    // A typed-then-erased (or ticked-then-unticked 缺考) cell is no entry: skip it, as before E2; only 清除 deletes.
+    if (!d || (!d.clear && !d.is_absent && (d.score === null || d.score === undefined || d.score === ''))) continue;
     scores.push({
       student_id: row.student_id,
       exam_round_subject_id: subject.id,
