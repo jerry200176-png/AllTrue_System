@@ -1,0 +1,71 @@
+<script setup>
+import {
+  CircleCheckIcon,
+  InfoIcon,
+  Loader2Icon,
+  OctagonXIcon,
+  TriangleAlertIcon,
+  XIcon,
+} from "@lucide/vue";
+import { cn } from "@/lib/utils";
+import { Toaster as Sonner } from "vue-sonner";
+import "vue-sonner/style.css";
+
+const props = defineProps({
+  id: { type: String, required: false },
+  invert: { type: Boolean, required: false },
+  theme: { type: String, required: false },
+  position: { type: String, required: false },
+  closeButtonPosition: { type: String, required: false },
+  hotkey: { type: Array, required: false },
+  richColors: { type: Boolean, required: false },
+  expand: { type: Boolean, required: false },
+  duration: { type: Number, required: false },
+  gap: { type: Number, required: false },
+  visibleToasts: { type: Number, required: false },
+  closeButton: { type: Boolean, required: false },
+  toastOptions: { type: Object, required: false },
+  class: { type: String, required: false },
+  style: { type: Object, required: false },
+  offset: { type: [Object, String, Number], required: false },
+  mobileOffset: { type: [Object, String, Number], required: false },
+  dir: { type: String, required: false },
+  swipeDirections: { type: Array, required: false },
+  icons: { type: Object, required: false },
+  containerAriaLabel: { type: String, required: false },
+});
+</script>
+
+<template>
+  <Sonner
+    :class="cn('tw:toaster tw:group', props.class)"
+    :style="{
+      '--normal-bg': 'var(--ui-popover)',
+      '--normal-text': 'var(--ui-popover-foreground)',
+      '--normal-border': 'var(--ui-border)',
+      '--border-radius': 'var(--ui-radius)',
+    }"
+    v-bind="props"
+  >
+    <template #success-icon>
+      <CircleCheckIcon class="tw:size-4" />
+    </template>
+    <template #info-icon>
+      <InfoIcon class="tw:size-4" />
+    </template>
+    <template #warning-icon>
+      <TriangleAlertIcon class="tw:size-4" />
+    </template>
+    <template #error-icon>
+      <OctagonXIcon class="tw:size-4" />
+    </template>
+    <template #loading-icon>
+      <div>
+        <Loader2Icon class="tw:size-4 tw:animate-spin" />
+      </div>
+    </template>
+    <template #close-icon>
+      <XIcon class="tw:size-4" />
+    </template>
+  </Sonner>
+</template>
