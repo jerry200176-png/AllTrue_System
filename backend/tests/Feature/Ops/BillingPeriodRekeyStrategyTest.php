@@ -153,4 +153,18 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $back = $s->rollback($r2['snapshot'], ['operation_id' => 'req-4']);
         $this->assertSame([1], $back['skipped_ids'] ?? []);
     }
+
+    public function test_a_partial_rollback_can_be_retried_to_completion(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $first = $s->plan($this->params('all'));
+        $result = $s->execute($s->plan($this->params('all', $first['digest'])), ['operation_id' => 'req-5']);
+        $this->cycle(300, 1, 1, '2026-04-01', '2026-04-28', '2026-04', ['2026-04-07']); // holds April for student 1 -> invoice 1 cannot go back
+        $one = $s->rollback($result['snapshot'], ['operation_id' => 'req-5']);
+        $this->assertSame([1], $one['skipped_ids']);
+        DB::table('Invoice')->where('id', 201)->update(['Status' => 'void']);
+        $two = $s->rollback($result['snapshot'], ['operation_id' => 'req-5']);
+        $this->assertSame([true, []], [$two['ok'], $two['skipped_ids']], 'rows restored by the first pass are recognised, the freed one restores');
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+    }
 }

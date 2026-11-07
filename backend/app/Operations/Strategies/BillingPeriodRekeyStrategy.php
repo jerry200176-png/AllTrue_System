@@ -112,6 +112,11 @@ final class BillingPeriodRekeyStrategy
                     $inv = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
                     $added = $r['tag_added'] ?? true;
                     $tag = ' [' . self::TAG . ':' . $r['from'] . ']';
+                    if ($inv && $inv->billing_period === $r['from'] && (!$added || !str_contains((string) $inv->Note, trim($tag)))) {
+                        unset($pending[$i]); // restored by an earlier (partial) rollback: a retry must still be able to finish
+                        $progress = true;
+                        continue;
+                    }
                     $ours = $inv && $inv->billing_period === $r['to'] && strtolower((string) $inv->Status) !== 'void'
                         && str_contains((string) $inv->Note, $added ? trim($tag) : '[' . self::TAG . ':');
                     if ($ours) {
