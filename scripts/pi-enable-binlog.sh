@@ -15,9 +15,6 @@ die() { say "STOP: $*"; exit 1; }
 [ "$(id -u)" = 0 ] || die "run with sudo"
 command -v mariadb >/dev/null || die "mariadb client not found"
 q() { mariadb -N -B -e "$1"; }   # root via unix socket
-datadir="$(q 'SELECT @@datadir')"
-free_mb=$(df -Pm "$datadir" | awk 'NR==2{print $4}')
-say "MariaDB $(q 'SELECT VERSION()') | log_bin=$(q 'SELECT @@log_bin') | datadir=$datadir | free=${free_mb} MB"
 
 restart_and_wait() {   # 0 = MariaDB answers again within 60 s
   systemctl restart mariadb || return 1
@@ -29,6 +26,19 @@ undo_and_stop() {   # any --apply failure: take the config out again and bring M
   restart_and_wait || die "$1; config removed but MariaDB is still down: run 'systemctl status mariadb' and 'journalctl -u mariadb -n 50'"
   die "$1; config removed, MariaDB is back without binlog"
 }
+
+# Rollback first: it must work even when MariaDB cannot start with the new config.
+if [ "$MODE" = --rollback ]; then
+  rm -f "$DST"
+  restart_and_wait || die "config removed but MariaDB did not come back: run 'systemctl status mariadb' and 'journalctl -u mariadb -n 50'"
+  say "binlog log_bin=$(q 'SELECT @@log_bin') (0 = off). Old binlog files stay in $(q 'SELECT @@datadir') until removed by hand."
+  exit 0
+fi
+
+q 'SELECT 1' >/dev/null 2>&1 || die "MariaDB is not answering; nothing changed (if a failed --apply left it down: sudo bash $0 --rollback)"
+datadir="$(q 'SELECT @@datadir')"
+free_mb=$(df -Pm "$datadir" | awk 'NR==2{print $4}')
+say "MariaDB $(q 'SELECT VERSION()') | log_bin=$(q 'SELECT @@log_bin') | datadir=$datadir | free=${free_mb} MB"
 
 case "$MODE" in
   "")
@@ -47,11 +57,6 @@ case "$MODE" in
     q 'SHOW BINARY LOGS' | tail -1
     curl -fsS -o /dev/null https://daan.lifenet.com.tw/api/v1/health && say "app health OK" || say "WARN: app health check failed; run --rollback if the site is down"
     say "DONE. The next sixhour backup records the binlog position automatically."
-    ;;
-  --rollback)
-    rm -f "$DST"
-    restart_and_wait || die "MariaDB did not come back: run 'systemctl status mariadb'"
-    say "binlog log_bin=$(q 'SELECT @@log_bin') (0 = off). Old binlog files stay in $datadir until removed by hand."
     ;;
   *) die "unknown option: $MODE" ;;
 esac
