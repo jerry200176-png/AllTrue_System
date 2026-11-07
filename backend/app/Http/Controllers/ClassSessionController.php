@@ -1023,7 +1023,10 @@ class ClassSessionController extends Controller
 
         // A valid recurring slot at the requested time is its own occurrence (e.g. a moved-in lesson
         // lands on a contract weekday at another time): do not let the exception override it.
-        if ($requestedStart && $this->resolveProjectedMonthlySlot(
+        // Same-day reschedules (materializable without the cross-date rule) still own the contract time.
+        if ($requestedStart
+            && $schedules->every(fn (Schedule $sc): bool => !$this->isMaterializableScheduledException($sc, $sessionDate))
+            && $this->resolveProjectedMonthlySlot(
             $studentClass,
             (int) Carbon::parse($sessionDate)->dayOfWeekIso,
             $requestedStart

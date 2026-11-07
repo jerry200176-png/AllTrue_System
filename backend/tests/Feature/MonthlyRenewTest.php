@@ -877,6 +877,35 @@ class MonthlyRenewTest extends TestCase
             ->assertJsonPath('session.end_time', '22:00');
     }
 
+    public function test_same_day_reschedule_on_contract_weekday_still_resolves_moved_time(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-same-day-moved@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'SessionCount' => 0, 'RemainingSessions' => 0, 'week' => 3, 'time' => '10:00:00', 'SessionDuration' => 120,
+        ]);
+        $anchor = Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 3, 'start_time' => '10:00', 'end_time' => '12:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-08', 'status' => 'rescheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 3, 'start_time' => '14:30', 'end_time' => '16:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-08', 'status' => 'scheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $anchor->id,
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID, 'session_date' => '2026-04-08',
+                'start_time' => '10:00', 'branch_id' => 1,
+            ])->assertOk()
+            ->assertJsonPath('session.start_time', '14:30');
+    }
+
     public function test_materializing_projected_session_rejects_inactive_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-materialize-inactive@example.com');
