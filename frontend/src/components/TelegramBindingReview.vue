@@ -9,27 +9,24 @@
         <tr><th>學生</th><th>Telegram 名稱</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="r in rows" :key="`${r.student_id}-${r.slot}`">
+        <tr v-for="r in rows" :key="r.key">
           <td>{{ r.student_name }}</td>
           <td>{{ r.telegram_name || '無法取得' }}</td>
-          <td><AtButton shape="rect" size="sm" variant="ghost" data-testid="tg-unbind" @click="pending = r">解除</AtButton></td>
+          <td v-if="pending && pending.key === r.key" class="tbr-confirm">
+            確定解除？
+            <Button size="sm" variant="destructive" data-testid="tg-confirm" @click="unbind">解除</Button>
+            <Button size="sm" variant="ghost" data-testid="tg-cancel" @click="pending = null">取消</Button>
+          </td>
+          <td v-else><Button size="sm" variant="ghost" data-testid="tg-unbind" @click="pending = r">解除</Button></td>
         </tr>
       </tbody>
     </table>
-    <AtDialog :open="!!pending" size="sm" title="解除 Telegram 綁定" initial-focus="[data-testid='tg-cancel']" @close="pending = null">
-      <p v-if="pending">確定解除 {{ pending.student_name }} 的這個 Telegram？解除後該聊天室不再收到通知。</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" data-testid="tg-cancel" @click="pending = null">取消</AtButton>
-        <AtButton shape="rect" variant="danger" data-testid="tg-confirm" @click="unbind">解除</AtButton>
-      </template>
-    </AtDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import AtButton from './design-system/AtButton.vue';
-import AtDialog from './design-system/AtDialog.vue';
+import { Button } from './ui/button';
 import { supabase } from '../supabase';
 
 const props = defineProps({ branchId: { type: Number, default: null } });
@@ -39,7 +36,7 @@ const error = ref('');
 const pending = ref(null);
 
 const rows = computed(() => data.value.flatMap((s) => s.bindings.map((b) => ({
-  student_id: s.student_id, student_name: s.student_name, slot: b.slot, telegram_name: b.telegram_name,
+  key: `${s.student_id}-${b.slot}`, student_id: s.student_id, student_name: s.student_name, slot: b.slot, telegram_name: b.telegram_name,
 }))));
 
 async function call(path, opts = {}) {

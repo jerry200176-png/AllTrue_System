@@ -26,13 +26,21 @@ class TelegramBindingReviewController extends Controller
             ->where(fn ($q) => $q->where('TelegramID', '!=', '')->orWhere('TelegramID1', '!=', '')->orWhere('TelegramID2', '!=', ''))
             ->orderBy('id')->get(['id', 'name', 'TelegramID', 'TelegramID1', 'TelegramID2']);
 
+        $chats = [];
+        foreach ($rows as $s) {
+            foreach (self::SLOTS as $col) {
+                $chats[] = trim((string) $s->{$col});
+            }
+        }
+        $names = $this->chatNames($campus->id, $token, array_values(array_filter($chats, fn ($c) => $c !== '')));
+
         $data = [];
         foreach ($rows as $s) {
             $bindings = [];
             foreach (self::SLOTS as $slot => $col) {
                 $chat = trim((string) $s->{$col});
                 if ($chat !== '') {
-                    $bindings[] = ['slot' => $slot, 'telegram_name' => $this->chatName($campus->id, $token, $chat)];
+                    $bindings[] = ['slot' => $slot, 'telegram_name' => $names[$chat] ?? null];
                 }
             }
             if ($bindings) {
@@ -54,8 +62,9 @@ class TelegramBindingReviewController extends Controller
         if (!$student) {
             return response()->json(['message' => 'Student not found'], 404);
         }
-        $col = self::SLOTS[$in['slot']];
-        $student->{$col} = $in['slot'] === 0 ? '' : null; // same empty values the webhook reads
+        $slot = (int) $in['slot'];
+        $col = self::SLOTS[$slot];
+        $student->{$col} = $slot === 0 ? '' : null; // same empty values the webhook reads
         $student->MDT = now();
         $student->save();
         StudentIdentityAuditLog::query()->create([
@@ -63,7 +72,7 @@ class TelegramBindingReviewController extends Controller
             'campus_id' => $campus->id,
             'actor_user_id' => $request->attributes->get('auth_user')?->id,
             'action' => 'telegram_unbind',
-            'metadata' => ['slot' => $in['slot']],
+            'metadata' => ['slot' => $slot],
         ]);
 
         return response()->json(['ok' => true]);
@@ -83,28 +92,37 @@ class TelegramBindingReviewController extends Controller
         return Campus::query()->find($id) ?? response()->json(['message' => 'Campus not found'], 404);
     }
 
-    /** Best effort: null on any failure. ponytail: serial calls, add Http::pool if a campus has many chats. */
-    private function chatName(int $campusId, string $token, string $chat): ?string
+    /** Best effort, null on any failure. Uncached chats are fetched concurrently (one 3 s window, not 3 s each). */
+    private function chatNames(int $campusId, string $token, array $chats): array
     {
-        if ($token === '') {
-            return null;
+        if ($token === '' || !$chats) {
+            return [];
         }
-        $key = "tg-chat-name:{$campusId}:{$chat}";
-        $hit = Cache::get($key);
-        if ($hit !== null) {
-            return $hit === '' ? null : $hit;
+        $out = [];
+        $miss = [];
+        foreach (array_unique($chats) as $chat) {
+            $hit = Cache::get("tg-chat-name:{$campusId}:{$chat}");
+            $hit === null ? $miss[] = $chat : $out[$chat] = $hit;
         }
-        $name = '';
-        try {
-            $r = Http::timeout(3)->get("https://api.telegram.org/bot{$token}/getChat", ['chat_id' => $chat]);
-            $c = $r->successful() ? ($r->json('result') ?? []) : [];
-            $name = trim((string) ($c['title'] ?? trim(($c['first_name'] ?? '') . ' ' . ($c['last_name'] ?? ''))));
-            $name = $name !== '' ? $name : (isset($c['username']) ? '@' . $c['username'] : '');
-        } catch (\Throwable) {
-            // token-bearing exception text is never logged
+        if ($miss) {
+            try {
+                $res = Http::pool(fn ($pool) => array_map(
+                    fn ($chat) => $pool->as((string) $chat)->timeout(3)->get("https://api.telegram.org/bot{$token}/getChat", ['chat_id' => $chat]),
+                    $miss,
+                ));
+            } catch (\Throwable) {
+                $res = []; // token-bearing exception text is never logged
+            }
+            foreach ($miss as $chat) {
+                $r = $res[$chat] ?? null;
+                $c = $r instanceof \Illuminate\Http\Client\Response && $r->successful() ? ($r->json('result') ?? []) : [];
+                $name = trim((string) ($c['title'] ?? trim(($c['first_name'] ?? '') . ' ' . ($c['last_name'] ?? ''))));
+                $name = $name !== '' ? $name : (isset($c['username']) ? '@' . $c['username'] : '');
+                Cache::put("tg-chat-name:{$campusId}:{$chat}", $name, $name === '' ? now()->addMinutes(10) : now()->addDay());
+                $out[$chat] = $name;
+            }
         }
-        Cache::put($key, $name, $name === '' ? now()->addMinutes(10) : now()->addDay());
 
-        return $name === '' ? null : $name;
+        return array_map(fn ($n) => $n === '' ? null : $n, $out);
     }
 }
