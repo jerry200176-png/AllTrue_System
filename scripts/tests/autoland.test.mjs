@@ -43,5 +43,5 @@ test('workflow: least privilege, default-branch checkout, no deployment or appro
   for (const ev of ['pull_request_target:', 'issue_comment:', 'pull_request_review:', 'check_suite:', 'schedule:', 'workflow_dispatch:']) assert.ok(wf.includes(`  ${ev}`), ev);
   assert.match(wf, /cron: "\*\/10 \* \* \* \*"/);
   const js = fs.readFileSync(new URL('../../.github/scripts/autoland.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(js, /'merge'|--squash|deployments|\/approve/); // label only
+  assert.doesNotMatch(js, /gh\('pr', 'merge'|--squash|deployments|\/approve/); // label only
 });
