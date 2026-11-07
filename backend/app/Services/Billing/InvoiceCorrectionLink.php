@@ -70,8 +70,7 @@ final class InvoiceCorrectionLink
     /** Staff-facing number, same format as the accounting ledger (INV-YYYYMM-000123). */
     private static function invoiceNo(Invoice $invoice): string
     {
-        return 'INV-' . (preg_replace('/[^0-9]/', '', (string) ($invoice->billing_period ?: substr((string) $invoice->IssueDate, 0, 7))) ?: 'LEGACY')
-            . '-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT);
+        return InvoiceNumber::for($invoice);
     }
     /** Free text going into a tag: no brackets, separators or markers, so it cannot fake a tag or the operator. */
     public static function cleanReason(string $reason): string

@@ -10,11 +10,11 @@
       <div class="pe-info">
         <span class="pe-info-item"><strong>學生</strong>{{ row?.student_name }}</span>
         <span class="pe-info-item"><strong>科目</strong>{{ row?.subject }}</span>
-        <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}</span>
+        <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}<small v-if="periodRange" class="pe-period-range">（{{ periodRange }}）</small></span>
         <span v-if="row?.payable_status !== 'unbilled'" class="pe-info-item"><strong>{{ row?.payable_status === 'invoiced' ? '帳單應繳' : '應繳' }}</strong>NT$ {{ Number(row?.payable_amount ?? 0).toLocaleString('zh-TW') }}</span>
         <span v-else class="pe-info-item pe-info-item--pending"><strong>應繳</strong>還沒開帳單</span>
         <span v-if="row?.estimated_amount != null" class="pe-info-item pe-info-item--muted"><strong>估算</strong>NT$ {{ Number(row.estimated_amount).toLocaleString('zh-TW') }}</span>
-        <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ row.billing_period }}</span>
+        <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ periodRange || row.billing_period }}</span>
       </div>
 
       <form @submit.prevent="submit">
@@ -125,6 +125,7 @@ const PlainShell = (p, { slots, emit }) => (p.open
 PlainShell.props = ['open', 'placement', 'title', 'panelClass'];
 PlainShell.emits = ['close'];
 const LEGACY_ZERO_FEE_HELP = '這門課費用是 0，無須繳費，不需要補登收款，也不需要改成未繳。若這門課其實要收費，請先到課程管理設定費用，再回來補登。';
+const periodRange = computed(() => (props.row?.billing_period_start && props.row?.billing_period_end ? `${props.row.billing_period_start.replaceAll("-", "/")}–${props.row.billing_period_end.replaceAll("-", "/")}` : ""));
 const legacyBackfill = computed(() => props.mode === 'legacy-backfill');
 const formTitle = computed(() => (legacyBackfill.value ? '補登收款' : '登記收款'));
 // One key per opened form, kept across failed submits: a retry after a lost response replays instead of paying twice.

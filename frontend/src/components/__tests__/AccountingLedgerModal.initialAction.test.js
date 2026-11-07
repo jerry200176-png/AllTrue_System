@@ -44,6 +44,14 @@ describe('學生帳務 · 右側收款面板 (sheetEntry, #4659 step 3)', () => 
     w.unmount();
   });
 
+  it('passes the bill\'s cycle range to the entry form (in-app #514)', async () => {
+    const bill = { ...inv(1, 11), billing_period: '2026-05', period_start: '2026-04-29', period_end: '2026-05-27' };
+    const w = mountLedger({ courses: [course(11)], invoices: [bill], props: { initialAction: 'record', sheetEntry: true } });
+    await flushPromises();
+    expect(w.getComponent(EntryStub).props('row')).toMatchObject({ billing_period: '2026-05', billing_period_start: '2026-04-29', billing_period_end: '2026-05-27' });
+    w.unmount();
+  });
+
   it('cancelling the sheet closes everything', async () => {
     const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
     await flushPromises();

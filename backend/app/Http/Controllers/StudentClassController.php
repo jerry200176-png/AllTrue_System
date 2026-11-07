@@ -3545,7 +3545,7 @@ class StudentClassController extends Controller
                     ->orderBy('id');
             }])
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
-            ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
+            ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status', 'Note']);
 
         $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
         $restatedPaymentIds = \App\Services\Billing\PaymentReversalRestatement::recordedDispositionIds($payments);
@@ -3613,7 +3613,7 @@ class StudentClassController extends Controller
 
                 return [
                     'id'             => (int) $inv->id,
-                    'invoice_no'     => 'INV-' . preg_replace('/[^0-9]/', '', (string) ($inv->billing_period ?: substr((string) $inv->IssueDate, 0, 7))) . '-' . str_pad((string) $inv->id, 6, '0', STR_PAD_LEFT),
+                    'invoice_no'     => \App\Services\Billing\InvoiceNumber::for($inv),
                     'course_ref'     => 'COURSE-' . str_pad((string) $inv->StudentClassID, 6, '0', STR_PAD_LEFT),
                     'billing_period' => $inv->billing_period,
                     'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,

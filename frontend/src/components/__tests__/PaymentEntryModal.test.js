@@ -245,4 +245,11 @@ describe('PaymentEntryModal — side sheet placement (#4659 step 3)', () => {
     expect(w.emitted('close')).toBeUndefined();
     w.unmount();
   });
+
+  it('shows the cycle range next to the billing period (in-app #514)', async () => {
+    const w = mount(PaymentEntryModal, { props: { show: false, row: { ...row, billing_period: '2026-05', billing_period_start: '2026-04-29', billing_period_end: '2026-05-27' } } });
+    await w.setProps({ show: true }); await nextTick();
+    expect(w.text()).toContain('2026-05（2026/04/29–2026/05/27）');
+    expect(w.text()).toContain('帳務期間2026/04/29–2026/05/27');
+  });
 });

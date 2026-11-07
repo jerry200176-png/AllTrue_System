@@ -100,18 +100,14 @@ class MonthlyBillingService
     /**
      * #4765: the outside dates only when no countable lesson lies inside the contract dates: then billing prices the
      * contract's month from the stored Charge. A makeup taught after the end beside lessons inside stays collectable.
-     * A lesson whose month a catch-up already billed (MonthlyRenewalPeriodService::inspect rule) is settled, so it neither blocks nor counts.
+     * A lesson a live bill's own item range already covers (BillingPeriod::datesCoveredByBills) is settled, so it neither blocks nor counts.
      *
      * @return list<string>
      */
     public function lessonsOnlyOutsideContract(Model $course): array
     {
         $outside = $this->taughtLessonsOutsideContract($course);
-        $billed = $outside === [] ? [] : DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
-            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->whereIn('inv.billing_period', array_values(array_unique(array_map(fn (string $d) => substr($d, 0, 7), $outside))))
-            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))->pluck('inv.billing_period')->all();
-        $covered = array_values(array_filter($outside, fn (string $d) => in_array(substr($d, 0, 7), $billed, true)));
+        $covered = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $outside);
         $open = array_values(array_diff($outside, $covered));
         $rest = $this->countableLessonDates($course)->reject(fn (string $d) => in_array($d, $covered, true));
 
@@ -369,8 +365,8 @@ class MonthlyBillingService
             $anchor = Carbon::today();
         }
 
-        // A prepaid next-period invoice is labelled with the month its service
-        // starts in (e.g. 8/30–9/28 → 2026-08); its own service range, when
+        // A cycle invoice is labelled with the month of its first lesson (in-app #514,
+        // e.g. 8/30–9/28 with September lessons → 2026-09); its own service range, when
         // known, is the window instead of the calendar month (#3445).
         $hasServiceRange = $serviceStart !== null && $serviceEnd !== null;
         $periodStart = $hasServiceRange
