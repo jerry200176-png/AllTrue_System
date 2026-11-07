@@ -40,22 +40,25 @@ final class BillingPeriod
 
     /**
      * Label for a cycle about to be billed. A month this student+subject already carries a live bill for moves on to
-     * the next lesson month of the cycle, so no month is billed twice.
+     * the next lesson month of the cycle, else the cycle start month, else (all taken) the first lesson month.
      */
     public static function forCycle(StudentClass $course, string $start, string $end): string
     {
-        $months = self::scheduledMonths($course, $start, $end) ?: [substr($start, 0, 7)];
+        $lessonMonths = self::scheduledMonths($course, $start, $end);
+        $months = $lessonMonths ?: [substr($start, 0, 7)];
+        // every lesson month already billed (e.g. by a catch-up): fall back to the cycle start month, today's label, before sharing a month
+        $candidates = array_values(array_unique([...$months, substr($start, 0, 7)]));
         $taken = DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
             ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->whereIn('inv.billing_period', $months)
+            ->whereIn('inv.billing_period', $candidates)
             ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))->pluck('inv.billing_period')->all();
-        foreach ($months as $month) {
+        foreach ($candidates as $month) {
             if (!in_array($month, $taken, true)) {
                 return $month;
             }
         }
 
-        return $months[0];
+        return $months[0]; // all taken: share the first lesson month, as catch-up plus renewal bills already do
     }
 
     /**
