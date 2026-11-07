@@ -45,6 +45,23 @@ it('shows separate invoice periods and never labels September paid by August', a
   wrapper.unmount();
 });
 
+it('in-app #518: a real amount mismatch says what to do in one sentence and one button that opens the invoice', async () => {
+  const mp = (flag) => ({ contract_start: '2026-08-01', contract_end: '2026-09-30', review_required: flag, periods: [
+    { billing_period: '2026-09', payment_status: 'unpaid', period_start: '2026-09-01', period_end: '2026-09-30', outstanding_amount: 4000, amount_discrepancy: flag },
+  ] });
+  const wrapper = mountCm({ isMonthlyMode: true, course: { ...baseCourse(), payment_type: 'monthly', monthly_payment: mp(true) } });
+  const box = wrapper.get('[data-testid="period-amount-mismatch"]');
+  expect(box.text()).toContain('帳單金額和已上堂數算的不同，請到帳單更正。');
+  expect(box.findAll('button')).toHaveLength(1);
+  expect(wrapper.text()).not.toContain('需核對約定');
+  await wrapper.get('[data-testid="period-fix-invoice"]').trigger('click');
+  expect(wrapper.emitted('action').at(-1)[0]).toEqual({ name: 'invoice' });
+  wrapper.unmount();
+  const ok = mountCm({ isMonthlyMode: true, course: { ...baseCourse(), payment_type: 'monthly', monthly_payment: mp(false) } });
+  expect(ok.find('[data-testid="period-amount-mismatch"]').exists()).toBe(false);
+  ok.unmount();
+});
+
 function mountCm(extra = {}) {
   return mount(CourseManager, {
     props: {

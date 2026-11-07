@@ -13,6 +13,9 @@
 // Codex findings or an incomplete review on the head veto the fallback. Anything unknown or unparsable never passes.
 // Runs from the default branch only; never checks out or executes PR code.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 export const REVIEW_CHECK = 'review/final-head';
 export const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
@@ -24,38 +27,44 @@ const NAMED = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" };
 export const decodeEntities = (s) => s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(quot|amp|lt|gt|apos));/gi,
   (_, d, h, n) => (n ? NAMED[n.toLowerCase()] : String.fromCodePoint(parseInt(d ?? h, d ? 10 : 16))));
 
+const failOf = (sha) => new RegExp(`<!-- (?:gate:[a-z-]+|independent-review):v1 sha=${sha} verdict=fail -->`);
+// Gerrit copyCondition changekind:TRIVIAL_REBASE. mine = owner comment bodies, oldest first. Newest pass marker
+// (per `pass(body, sha)`) on an earlier head whose samePatch(old) holds, or null. Any fail marker on that sha, or any
+// later owner FAIL, vetoes the candidate; a throwing samePatch means no carry.
+function carried(mine, head, pass, samePatch) {
+  const seen = new Set();
+  for (let i = mine.length - 1; i >= 0; i--) {
+    for (const m of mine[i].matchAll(/sha=([0-9a-f]{40}) verdict=pass -->/g)) {
+      const old = m[1];
+      if (old === head || seen.has(old) || !pass(mine[i], old)) continue;
+      seen.add(old);
+      if (mine.some((b) => failOf(old).test(b)) || mine.slice(i + 1).some((b) => b.includes('verdict=fail'))) continue;
+      try { if (samePatch(old)) return old; } catch { /* fail closed */ }
+    }
+  }
+  return null;
+}
+
 export const gateMarker = (role, sha, verdict = 'pass') => `<!-- gate:${role}:v1 sha=${sha} verdict=${verdict} -->`;
 // comments: issue comments [{user:{login}, body, created_at, updated_at}] or null when unreadable.
 // Returns {ok: true, via} or {ok: false, why}.
 // scope: 'lower' only when scripts/governance/pr_requires_security.py cleared the PR; anything else is treated as R3.
 // samePatch(oldSha) => true only when the PR's own diff at oldSha is byte-identical to head's (I/O layer; fails closed).
 export function reviewGate(comments, head, owner, scope, samePatch = () => false) {
-  const g = codexGate(comments, head, owner);
+  const g = codexGate(comments, head, owner, samePatch);
   if (!Array.isArray(comments) || !owner || !SHA40.test(head || '')) return g;
   const lower = owner.toLowerCase();
   const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
   const r3Pass = (b, sha) => b.includes(gateMarker('security-data-reviewer', sha)) || b.includes(reviewMarker(sha));
-  const failOf = (sha) => new RegExp(`<!-- (?:gate:[a-z-]+|independent-review):v1 sha=${sha} verdict=fail -->`);
   if (mine.some((b) => failOf(head).test(b))) return { ok: false, why: `gate verdict=fail on ${head.slice(0, 7)}` };
   if (!g.ok || scope === 'lower') return g;
   if (mine.some((b) => r3Pass(b, head))) return g;
-  // Gerrit TRIVIAL_REBASE: an earlier R3 pass carries over an update-branch only when the PR's own diff is byte-identical.
-  // Newest first; any fail marker (any role) in a later owner comment than the pass vetoes that candidate.
-  const seen = new Set();
-  for (let i = mine.length - 1; i >= 0; i--) {
-    for (const m of mine[i].matchAll(/sha=([0-9a-f]{40}) verdict=pass -->/g)) {
-      const old = m[1];
-      if (old === head || seen.has(old) || !r3Pass(mine[i], old)) continue;
-      seen.add(old);
-      if (mine.some((b) => failOf(old).test(b))) continue;
-      if (mine.slice(i + 1).some((b) => b.includes('verdict=fail'))) continue; // any later owner FAIL, marker or not
-      if (samePatch(old)) return { ok: true, via: `r3-carried:${old.slice(0, 7)}` };
-    }
-  }
+  const old = carried(mine, head, r3Pass, samePatch);
+  if (old) return { ok: true, via: `r3-carried:${old.slice(0, 7)}` };
   return { ok: false, why: `R3 needs a security-data-reviewer marker on ${head.slice(0, 7)}` };
 }
 
-function codexGate(comments, head, owner) {
+function codexGate(comments, head, owner, samePatch = () => false) {
   if (!SHA40.test(head || '')) return { ok: false, why: 'PR head SHA unknown' };
   if (!Array.isArray(comments) || !owner) return { ok: false, why: 'PR comments unreadable' };
   const short = head.slice(0, 7);
@@ -98,8 +107,26 @@ function codexGate(comments, head, owner) {
   // A fallback is for absent/limited review capacity, not an override of an active
   // review. Otherwise the same head could merge before its pending findings arrive.
   if (onHead) return { ok: false, why: `Codex review ${cr.status ?? 'unknown'} on ${short}` };
+  // Anything but an exact `false` findings flag on ANY record vetoes (null, missing or non-boolean fail closed), including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
+  // comment for the head but keeps the old findings flag).
+  const codexVeto = records.some((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
+    && !['completed', 'failed'].includes(r.cr.status)));
+  // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since,
+  // unless any Codex record vetoes (this also covers tied or ambiguous records: one of them has a non-false flag).
+  // Codex keeps one sticky comment, so findings on an intermediate head can already be overwritten; samePatch
+  // (trivialRebase) also vetoes on any Codex PR review of a commit added after the old head.
+  const stale = cr && !codexVeto && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
+  // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
+  // later) blocks the Codex carry, same as carried() does for markers.
+  const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
+  try { if (stale && !failed && samePatch(cr.commit_sha)) return { ok: true, via: `codex-carried:${cr.commit_sha.slice(0, 7)}` }; } catch { /* fail closed */ }
   const lower = owner.toLowerCase();
-  if (comments.some((c) => c?.user?.login?.toLowerCase() === lower && (c.body || '').includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
+  const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
+  if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
+  // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
+  // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
+  const old = codexVeto ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
+  if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
   return { ok: false, why: onHead ? `Codex review ${cr.status ?? 'unknown'} on ${short}` : `Codex last reviewed ${String(cr.commit_sha).slice(0, 7)}, not head ${short}` };
 }
@@ -125,47 +152,87 @@ function prScope(n, head) {
   } catch { return 'r3'; }
 }
 
-// True only when old and head are commits of PR n and their compare(base...sha) file lists match on
-// filename/status/previous_filename/patch. A binary or oversized file has no patch: it is keyed by its base-side tree
-// entry (at the compare's merge base) plus its head blob, so a base that moved under it (e.g. main updated the same
-// PNG) still blocks the carry; treeEntries below compares every path's head mode+blob too. Missing sha, missing or
-// truncated merge-base tree, >=300 files or any API error -> false. Reads the API only.
-const diffKey = (sha, base) => {
-  const pages = JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp'));
-  const files = pages.flatMap((p) => p.files || []);
-  if (files.length >= 300 || files.some((f) => typeof f.patch !== 'string' && typeof f.sha !== 'string')) return null;
-  let baseTree = null;
-  const baseEntry = (path) => {
-    if (!baseTree) {
-      const mb = pages[0]?.merge_base_commit?.sha;
-      const t = mb && api(`git/trees/${mb}?recursive=1`);
-      if (!t || t.truncated || !Array.isArray(t.tree)) throw new Error('merge-base tree unavailable');
-      baseTree = new Map(t.tree.map((e) => [e.path, `${e.mode} ${e.type} ${e.sha}`]));
-    }
-    return baseTree.get(path) ?? 'absent';
-  };
-  const part = (f) => (typeof f.patch === 'string' ? f.patch : `blob:${baseEntry(f.previous_filename ?? f.filename)}->${f.sha}`);
-  const key = JSON.stringify(files.map((f) => [f.filename, f.status, f.previous_filename ?? null, part(f)]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
-  return { key, paths: files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)) };
-};
-// patch text hides mode changes and file<->symlink swaps: compare tree entries (mode+blob, absent = deleted) of every PR path.
-const treeEntries = (sha, paths) => {
-  const t = api(`git/trees/${sha}?recursive=1`);
-  if (t.truncated || !Array.isArray(t.tree)) return null;
-  const by = new Map(t.tree.map((e) => [e.path, `${e.mode} ${e.type} ${e.sha}`]));
-  return paths.map((p) => by.get(p) ?? 'absent');
-};
-export function samePrPatch(n, head, old) {
+// --- TRIVIAL_REBASE core (pure; unit-tested) ---
+// `git patch-id --verbatim` (whitespace counts) of a plain diff, or null when it cannot be computed (never throws).
+export function patchId(diff) {
   try {
-    const shas = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/commits?per_page=100`, '--paginate', '--slurp')).flat().map((c) => c.sha);
-    // Fixed default branch, never the PR's live (retargetable) base; a PR not based on it never carries.
-    const base = api('').default_branch;
-    if (!base || api(`pulls/${n}`).base?.ref !== base || !shas.includes(old) || !shas.includes(head)) return false;
-    const a = diffKey(old, base);
-    const b = a && diffKey(head, base);
-    if (!a || !b || a.key !== b.key) return false;
-    const x = treeEntries(old, a.paths), y = treeEntries(head, a.paths);
-    return x !== null && y !== null && JSON.stringify(x) === JSON.stringify(y);
+    if (!diff || /^(Binary files |GIT binary patch)/m.test(diff)) return null; // blobs are not hashed by patch-id
+    return execFileSync('git', ['patch-id', '--verbatim'], { input: diff, encoding: 'utf8' }).split(' ')[0] || null;
+  } catch { return null; }
+}
+// --verbatim patch-id pins whitespace, every +/- line and the mode/rename lines; hunk line numbers (which main shifts) are free.
+export const sameDiff = (a, b) => {
+  const x = patchId(a), y = patchId(b);
+  return x !== null && x === y;
+};
+// commits: compare(base...sha).commits of old and head, [{sha, parents:[{sha}]}]. True only when head contains old and
+// every commit added since is a merge whose other parent is on main (outside the PR's own commit set).
+export function onlyMainMerged(oldCommits, headCommits) {
+  const own = new Set(headCommits.map((c) => c.sha));
+  const before = new Set(oldCommits.map((c) => c.sha));
+  if (![...before].every((sha) => own.has(sha))) return false; // old is not an ancestor of head
+  return headCommits.filter((c) => !before.has(c.sha)).every((c) => c.parents?.length === 2 && c.parents.filter((p) => own.has(p.sha)).length === 1);
+}
+
+// Commits added since old, or null when the carry must not happen. reviews: pulls/N/reviews. Codex keeps ONE sticky
+// state comment, so a late clean review of A overwrites B's findings; the durable trace is one PR review per commit_id.
+// Any Codex PR review on a commit added after old therefore vetoes the carry. Unreadable reviews (not an array) = null.
+export function carryChecks(oldCommits, headCommits, reviews) {
+  if (!Array.isArray(reviews) || !onlyMainMerged(oldCommits, headCommits)) return null;
+  const before = new Set(oldCommits.map((c) => c.sha));
+  const added = headCommits.map((c) => c.sha).filter((sha) => !before.has(sha));
+  return reviews.some((r) => r?.user?.login === CODEX_LOGIN && added.includes(r.commit_id)) ? null : added;
+}
+// TRIVIAL_REBASE proper: merge commit m must be the AUTOMATIC merge of its two parents (second parent on main), i.e.
+// `git merge-tree --write-tree p1 p2` is conflict-free and yields exactly m's tree. A hand-edited or conflict-resolved
+// merge (even one that keeps the same patch-id) is not. git: (...args) => stdout, throws on non-zero exit.
+export function automaticMerge(git, m, main = 'origin/main') {
+  try {
+    const parents = git('rev-list', '--parents', '-n', '1', m).trim().split(' ').slice(1);
+    if (parents.length !== 2) return false;
+    git('merge-base', '--is-ancestor', parents[1], main);
+    return git('merge-tree', '--write-tree', parents[0], parents[1]).split('\n')[0].trim() === git('rev-parse', `${m}^{tree}`).trim();
+  } catch { return false; }
+}
+// Blobless throwaway bare repo with main and the PR head fetched (fetch only: nothing from the PR is checked out or run).
+// exec(args) runs git with those args (injectable for tests). Caller removes dir.
+export function carryRepo(n, base, repo = REPO, exec = (a) => execFileSync('git', a, { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] })) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trivial-rebase-'));
+  const git = (...a) => exec(['-C', dir, ...a]);
+  try {
+    git('init', '--bare', '-q');
+    git('config', 'credential.helper', '!gh auth git-credential'); // GH_TOKEN for the fetch and the lazy blob fetches
+    git('fetch', '--no-tags', '--filter=blob:none', `https://github.com/${repo}.git`, `refs/heads/${base}:refs/remotes/origin/${base}`, `refs/pull/${n}/head:refs/pull/${n}/head`);
+  } catch (e) { fs.rmSync(dir, { recursive: true, force: true }); throw e; }
+  return { git, dir };
+}
+
+// Runs fn(git) against a fresh carry repo and always removes it (also when fn or the fetch throws).
+export function withCarryRepo(n, base, fn, open = carryRepo) {
+  const repo = open(n, base);
+  try { return fn(repo.git); } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+}
+
+// Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
+// (verbatim patch-id) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
+// io = { gh, open } are injectable for tests (default: the gh CLI and carryRepo).
+export function trivialRebase(n, head, old, io = {}) {
+  const run = io.gh || gh;
+  const get = (path, ...extra) => run('api', `/repos/${REPO}${path}`, ...extra);
+  const json = (path, ...extra) => JSON.parse(get(path, ...extra) || 'null');
+  const pages = (path) => JSON.parse(get(path, '--paginate', '--slurp'));
+  try {
+    const base = json('').default_branch;
+    if (!base || json(`/pulls/${n}`).base?.ref !== base) return false;
+    const commits = (sha) => pages(`/compare/${encodeURIComponent(base)}...${sha}?per_page=100`).flatMap((p) => p.commits || []);
+    const prShas = pages(`/pulls/${n}/commits?per_page=100`).flat().map((c) => c.sha);
+    const oldC = commits(old), headC = commits(head);
+    const reviews = pages(`/pulls/${n}/reviews?per_page=100`).flat();
+    const added = prShas.includes(old) && prShas.includes(head) ? carryChecks(oldC, headC, reviews) : null;
+    if (!added) return false;
+    if (added.length && !withCarryRepo(n, base, (git) => added.every((sha) => automaticMerge(git, sha, `origin/${base}`)), io.open)) return false;
+    const diff = (sha) => get(`/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
+    return sameDiff(diff(old), diff(head));
   } catch { return false; }
 }
 
@@ -174,7 +241,7 @@ export function readReview(n, head) {
   try {
     const scope = prScope(n, head);
     const comments = JSON.parse(gh('api', `/repos/${REPO}/issues/${n}/comments?per_page=100`, '--paginate', '--slurp')).flat();
-    return reviewGate(comments, head, REPO.split('/')[0], scope, (old) => samePrPatch(n, head, old));
+    return reviewGate(comments, head, REPO.split('/')[0], scope, (old) => trivialRebase(n, head, old));
   } catch (e) { return { ok: false, why: `PR comments unreadable (${e.message.split('\n')[0]})` }; }
 }
 

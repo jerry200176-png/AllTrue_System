@@ -1,17 +1,15 @@
 <template>
   <div class="course-page at-page">
-    <AtPageHeader
-      title="課程查找"
-      description="查找課程、編輯月結日期與新增堂次，都在這一頁完成。"
-      icon="menu_book"
-      data-guide="course-mgmt-header"
-    >
-      <template #meta>
-        <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
-        <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
-      </template>
-      <template #help>
-        <AtHelpDisclosure label="先看懂這一頁">
+    <header class="tw:mb-4 tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4" data-guide="course-mgmt-header">
+      <div class="tw:min-w-0 tw:flex-1">
+        <h2 class="tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight">課程查找</h2>
+        <p class="tw:mt-1 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary">查找課程、編輯月結日期、新增堂次。</p>
+        <p class="tw:mt-1 tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary">
+          <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
+          <span v-if="pagination.lastPage > 1"> · 第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
+        </p>
+        <details class="tw:mt-2" data-testid="course-help">
+          <summary class="tw:inline-flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-2 tw:text-[length:var(--tpl-text-body)] tw:font-semibold"><Info :size="22" aria-hidden="true" />先看懂這一頁</summary>
           <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
           <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
             <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
@@ -28,11 +26,11 @@
               <span class="course-lens-metric__hint">{{ metric.hint }}</span>
             </article>
           </div>
-        </AtHelpDisclosure>
-      </template>
-      <template #actions>
-        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
-        <AtButton class="course-lens-nav-action" shape="rect" variant="ghost" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
+        </details>
+      </div>
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <Button type="button" variant="secondary" class="course-lens-add-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="course-header-goto-students-create" @click="emit('navigate', 'students')"><UserPlus :size="22" aria-hidden="true" />到學生管理新增課程</Button>
+        <Button type="button" variant="ghost" class="course-lens-nav-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" @click="emit('navigate', 'students')"><UserSearch :size="22" aria-hidden="true" />前往學生管理</Button>
         <details class="course-tools-menu">
           <summary class="btn-soft course-tools-menu__summary">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
@@ -49,8 +47,8 @@
             </button>
           </div>
         </details>
-      </template>
-    </AtPageHeader>
+      </div>
+    </header>
 
     <div class="card course-header-card">
 
@@ -173,7 +171,7 @@
 
     <!-- Course Table -->
     <div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">
-      <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
+      <Alert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></Alert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
           <div class="course-skeleton-header"></div>
@@ -825,8 +823,8 @@
       @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)" @toggle-notes="toggleSessionNotes"
     >
       <template #settings>
-        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
-        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
+        <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></Alert>
+        <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></Alert>
         <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
@@ -859,12 +857,12 @@
     <div v-if="showEditModal && !courseManagerOpen" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
-        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+        <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
           <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
-        </AtInlineAlert>
-        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+        </Alert>
+        <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
           <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
-        </AtInlineAlert>
+        </Alert>
         <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro">
@@ -978,7 +976,7 @@
         <div class="billing-correction-warning">
           僅適用於尚未收款的按堂課程。先檢視新舊堂數、金額及受影響未來堂次，再確認送出；已上課紀錄不會被刪除。
         </div>
-        <AtInlineAlert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正" style="margin-bottom: 12px;">
+        <Alert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正" style="margin-bottom: 12px;">
           <p style="margin: 0;">堂數：{{ billingCorrectionPreview.old_session_count }} → {{ billingCorrectionPreview.new_session_count }}；費用：${{ Number(billingCorrectionPreview.old_charge).toLocaleString() }} → ${{ Number(billingCorrectionPreview.new_charge).toLocaleString() }}。</p>
           <p v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" style="margin: 6px 0 0;">確認後會取消下列超額的未來預排；系統不會補回舊堂數。</p>
           <ul v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" class="billing-correction-affected-sessions" aria-label="確認後將取消的未來堂次">
@@ -986,8 +984,8 @@
               <time :datetime="`${session.session_date}T${session.start_time}`">{{ formatBillingCorrectionSessionLabel({ sessionDate: session.session_date, startTime: session.start_time, endTime: session.end_time }) }}</time>
             </li>
           </ul>
-        </AtInlineAlert>
-        <AtInlineAlert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
+        </Alert>
+        <Alert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
           <p style="margin: 0;">{{ billingCorrectionBlocked.message }}</p>
           <p v-if="billingCorrectionBlocked.hint" style="margin: 6px 0 0;">{{ billingCorrectionBlocked.hint }}</p>
           <ul
@@ -1007,7 +1005,7 @@
           >
             前往行事曆處理
           </button>
-        </AtInlineAlert>
+        </Alert>
         <label class="form-label">更正後購買堂數
           <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" class="form-input" />
         </label>
@@ -1292,63 +1290,59 @@
 
     <RestoreCancelledSessionDialog :unit="restoreCancelledUnit" @close="restoreCancelledUnit = null" @restored="onCancelledRestored" />
 
-    <AtDialog
-      :open="!!pauseConfirmTarget"
-      :title="pauseConfirmIsResume ? '恢復課程？' : '暫停課程？'"
-      title-id="pause-confirm-title"
-      size="sm"
-      initial-focus="[data-initial-focus]"
-      :close-on-backdrop="!pauseConfirmSubmitting"
-      @close="!pauseConfirmSubmitting && (pauseConfirmTarget = null)"
-    >
-      <template v-if="pauseConfirmTarget">
-        <p class="modal-desc">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
-        <div class="pause-impact-card">
-          <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
-          <ul>
-            <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
-          </ul>
-          <label v-if="!pauseConfirmIsResume" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
-            <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
-            <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
-          </label>
-          <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
-            如果是誤結案，寫下原因才能恢復（會留紀錄）
-            <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
-          </label>
-        </div>
-      </template>
-      <template #actions>
-        <button class="ghost" data-initial-focus :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
-        <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
-          {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '恢復課程' : '暫停課程') }}
-        </button>
-      </template>
-    </AtDialog>
+    <Dialog :open="!!pauseConfirmTarget" @update:open="(v) => { if (!v && !pauseConfirmSubmitting) pauseConfirmTarget = null; }">
+      <DialogContent class="tw:sm:max-w-sm" @interact-outside="(e) => pauseConfirmSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); pauseCancelBtn?.$el?.focus(); }">
+        <DialogHeader>
+          <DialogTitle id="pause-confirm-title">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</DialogTitle>
+          <DialogDescription class="tw:sr-only">確認後會立即更新課程狀態</DialogDescription>
+        </DialogHeader>
+  <template v-if="pauseConfirmTarget">
+          <p class="modal-desc">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
+          <div class="pause-impact-card">
+            <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
+            <ul>
+              <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
+            </ul>
+            <label v-if="!pauseConfirmIsResume" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
+              <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
+              <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
+            </label>
+            <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
+              如果是誤結案，寫下原因才能恢復（會留紀錄）
+              <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
+            </label>
+          </div>
+        </template>
+        <DialogFooter>
+          <Button ref="pauseCancelBtn" type="button" variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</Button>
+          <Button type="button" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+            {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '恢復課程' : '暫停課程') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Delete Confirm Modal (FR-013) -->
-    <AtDialog
-      :open="!!confirmDeleteTarget"
-      :title="`刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？`"
-      title-id="delete-course-title"
-      size="sm"
-      initial-focus="[data-initial-focus]"
-      :close-on-backdrop="!deleteCourseSubmitting"
-      @close="!deleteCourseSubmitting && (confirmDeleteTarget = null)"
-    >
-      <template v-if="confirmDeleteTarget">
-        <p class="modal-desc">
-          {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
-        </p>
-        <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
-      </template>
-      <template #actions>
-        <button class="ghost" data-initial-focus :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
-        <button class="danger" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
-          {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
-        </button>
-      </template>
-    </AtDialog>
+    <Dialog :open="!!confirmDeleteTarget" @update:open="(v) => { if (!v && !deleteCourseSubmitting) confirmDeleteTarget = null; }">
+      <DialogContent class="tw:sm:max-w-sm" @interact-outside="(e) => deleteCourseSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); deleteCancelBtn?.$el?.focus(); }">
+        <DialogHeader>
+          <DialogTitle id="delete-course-title">{{ `刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？` }}</DialogTitle>
+          <DialogDescription class="tw:sr-only">刪除後無法復原</DialogDescription>
+        </DialogHeader>
+  <template v-if="confirmDeleteTarget">
+          <p class="modal-desc">
+            {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
+          </p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
+        </template>
+        <DialogFooter>
+          <Button ref="deleteCancelBtn" type="button" variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</Button>
+          <Button type="button" variant="destructive" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
+            {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <ConfirmDialogHost />
   </div>
 </template>
@@ -1357,9 +1351,9 @@
 // Autonomous delivery canary: no runtime behavior change.
 import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Info, UserPlus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
@@ -1407,13 +1401,12 @@ import { lessonPickerKey, useCourseRowActions } from '../composables/course-mana
 import ActionMenu from '../components/ActionMenu.vue';
 import { courseLessonCountLabel } from '../lib/courseLessonCountLabel.js';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
-import AtDialog from '../components/design-system/AtDialog.vue';
 import RestoreCancelledSessionDialog from '../components/course-management/RestoreCancelledSessionDialog.vue';
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
+import { Alert } from '@/components/ui/alert';
 import PackageConversionPreviewModal from '../components/course-management/PackageConversionPreviewModal.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
@@ -2740,6 +2733,8 @@ async function leaveCourseManagerSettings() {
 }
 // #4178: a drawer close that removed its own opener (course closed under 「進行中」) lands on the student's group, else the list.
 const courseTableCard = ref(null);
+const pauseCancelBtn = ref(null);
+const deleteCancelBtn = ref(null);
 function focusCourseListAfterDrawerClose(course) {
   const sid = course?.student_id ?? course?.StudentID;
   const toggle = sid != null && sid !== '' ? document.getElementById(studentGroupToggleId(`sid:${sid}`)) : null;

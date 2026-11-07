@@ -23,6 +23,7 @@
       <section v-if="activeTab === 'profile'" id="profile-panel-profile" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-profile" tabindex="0">
         <h3>基本資料</h3>
         <div class="muted">更新姓名、登入帳號、手機與個人頭像。</div>
+        <div class="profile-textsize" data-testid="profile-text-size"><strong>字級</strong><TextSizeToggle /></div>
 
         <div class="profile-layout">
           <div class="avatar-panel">
@@ -361,6 +362,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import TextSizeToggle from '../components/TextSizeToggle.vue';
 import AtSubmitButton from '../components/design-system/AtSubmitButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
@@ -897,6 +899,7 @@ onMounted(loadData);
   font-size: 13px;
 }
 
+.profile-textsize { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-3); margin: var(--ds-space-3) 0; }
 .profile-tabs {
   display: flex;
   gap: 0;

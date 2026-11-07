@@ -59,7 +59,7 @@ describe('operations quick-start UX contract', () => {
     const billing = pageSource('TuitionCollectionPage.vue');
     const calendar = pageSource('SmartCalendar.vue');
 
-    expect(course).toContain('<AtHelpDisclosure label="先看懂這一頁">');
+    expect(course).toContain('data-testid="course-help"');
     expect(course).toContain('class="course-stats-disclosure"');
     expect(billing).not.toContain('帳務處理流程'); // F-5: the step guidance went with the queue table
     expect(calendar).toContain('class="calendar-process-disclosure"');

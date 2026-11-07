@@ -832,6 +832,24 @@ test.describe('No horizontal overflow (director home, Login)', () => {
   }
 });
 
+// In-app #518 review: a confirm opened over the course drawer must stack above it and be clickable.
+test('course drawer: a confirm dialog is topmost and clickable @drawer-confirm', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/pilot-mount.html?page=course-manager&mode=confirm');
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await expect(page.locator('[data-testid="course-manager"]')).toBeVisible();
+  const confirm = page.getByRole('dialog', { name: '暫停課程？' });
+  await expect(confirm).toBeVisible();
+  const cancel = page.locator('[data-testid="confirm-cancel"]');
+  const topmost = await cancel.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === el || el.contains(hit));
+  });
+  expect(topmost).toBe(true);
+  await cancel.click({ timeout: 3000 });
+});
+
 // Visual regression (#4952). Tagged @visual: skipped by playwright.ui-foundation.config.js,
 // run only by playwright.visual.config.js inside the pinned Playwright Docker image (npm run test:visual).
 test.describe('Visual regression @visual', () => {
@@ -862,7 +880,7 @@ test.describe('Visual regression @visual', () => {
   }
   // #4918: 課程管理 drawer (overview, 月曆, 帳務) from fixture props, no API.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
-    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-billing', 'billing']]) {
+    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-settings', 'settings'], ['course-manager-billing', 'billing']]) {
       test(`${name} @${vp.name}`, async ({ page }) => {
         await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
         await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -901,5 +919,35 @@ test.describe('Visual regression @visual', () => {
     await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
     await page.waitForLoadState('networkidle');
     await expect(page).toHaveScreenshot('parent-home-390.png', { fullPage: true });
+  });
+
+  // 字級 大: same page with the large size saved (標準 is parent-home-390).
+  // #4986 3 cards at 390px, mocked dashboard (fake data only).
+  test('parent-home-large @390', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => { localStorage.setItem('parent_portal_token', 'e2e-parent-visual-token'); localStorage.setItem('alltrue_text_size', 'large'); });
+    await page.route('**/api/v1/**', (route) => {
+      const url = new URL(route.request().url());
+      const json = url.pathname.includes('/parent/dashboard') ? {
+        student: { id: 1, name: '測試學生甲', grade: '國二', campus_id: 1, campus_name: '測試分校', line_linked: false },
+        enrollments: [],
+        cross_campus_access: 'actions',
+        learning_records: [{ id: 1, Subject: '數學', SessionDate: '2026-09-12', Comment: '因式分解進步很多，回家複習講義。', parent_feedback: null }],
+        learning_records_meta: { total: 1, has_more: false },
+        attendance_history: [],
+        upcoming_sessions: [{ id: 11, SessionDate: '2026-09-18', StartTime: '15:00', EndTime: '16:00', Status: 'scheduled', Subject: '英文' }],
+        classes: [],
+        payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
+        invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
+        announcements: [],
+        assessment_progress: { items: [] },
+      } : { data: [] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
+    });
+    await page.goto('/pilot-mount.html?page=parent');
+    await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveScreenshot('parent-home-large-390.png', { fullPage: true });
   });
 });

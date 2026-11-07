@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-billing-period-rekey
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 舊月結帳單期別改看上課月份
+    summary: 過去跨月的月結帳單，期別會改成上課所在的月份。
+    items:
+      - category: fixed
+        text: 過去從月底開始的月結帳單，核准後期別會改成上課所在的月份；金額、繳費狀態與帳單編號都不變。
+    source_refs:
+      - "changelog:2026-11-07:pop-billing-period-rekey"
