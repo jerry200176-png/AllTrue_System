@@ -244,6 +244,23 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     w.unmount();
   });
 
+  // in-app #521: money of the student's other courses must not read as money for the unbilled course.
+  it('labels each receipt with its course and lists other courses\' receipts last under their own heading', async () => {
+    const mixed = [
+      { report_id: 20, student_class_id: 12, status: 'confirmed', amount: 3000, payment_date: '2026-09-02' },
+      { report_id: 21, student_class_id: 11, status: 'confirmed', amount: 4400, payment_date: '2026-10-02' },
+    ];
+    const w = mountLedger({ courses: [course(11, { start_date: '2026-09-01' }), course(12)], invoices: [inv(1, 11)], receipts: mixed }, { studentClassId: 11 });
+    await flushPromises();
+    await unfold(w, 'receipts');
+    const order = w.findAll('[data-testid^="ledger-receipt-course-"]').map((e) => e.attributes('data-testid'));
+    expect(order).toEqual(['ledger-receipt-course-21', 'ledger-receipt-course-20']);
+    expect(w.get('[data-testid="ledger-receipt-course-21"]').text()).toBe('科目11（2026-09-01 開始）');
+    expect(w.get('[data-testid="ledger-receipt-course-20"]').text()).toBe('科目12');
+    expect(w.findAll('[data-testid="ledger-foreign-receipts"]')).toHaveLength(1);
+    w.unmount();
+  });
+
   // Moved from the old queue-table doc-entry test (#3894): opening a slip or a receipt only ever reads.
   it('opening 繳費單 and 查看收據 sends no write request', async () => {
     const w = mountLedger({ courses: [course(12)], invoices: [inv(1, 12)], receipts });

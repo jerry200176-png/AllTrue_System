@@ -261,8 +261,11 @@
             <h4><button type="button" class="ledger-fold" :aria-expanded="fold.rcpt" :aria-controls="fold.rcpt ? 'ledger-sec-receipts' : undefined" data-testid="ledger-fold-receipts" @click="fold.rcpt = !fold.rcpt">收款紀錄（{{ payload.receipts?.length || 0 }}）<span aria-hidden="true">{{ fold.rcpt ? '▾' : '▸' }}</span></button></h4>
             <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收款紀錄。</div>
             <div v-else-if="fold.rcpt && shownReceipts.length" id="ledger-sec-receipts" class="ledger-receipts ledger-receipts--compact">
-              <div v-for="r in shownReceipts" :key="r.report_id" class="ledger-receipt">
+              <template v-for="r in shownReceipts" :key="r.report_id">
+              <p v-if="r.report_id === firstForeignReceiptId" class="ledger-muted ledger-receipts__other" data-testid="ledger-foreign-receipts">其他課程的收款（不算在這門課）</p>
+              <div class="ledger-receipt">
                 <strong>{{ formatCurrency(r.amount) }}</strong>
+                <small class="ledger-receipt__course" :data-testid="`ledger-receipt-course-${r.report_id}`">{{ receiptCourseLabel(r) }}</small>
                 <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
@@ -298,6 +301,7 @@
                   @toggle-all="toggleCoverageAll(`rcpt-${r.report_id}`)"
                 />
               </div>
+              </template>
             </div>
             <button
               v-if="fold.rcpt && otherReceipts.length"
@@ -359,6 +363,7 @@ import { splitOwed } from '../lib/studentBillingRows.js';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import {
   formatAccountingLedgerInvoiceLabel,
+  formatLedgerCourseLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
   ledgerReceiptHelp,
@@ -694,7 +699,20 @@ const ledgerExceptions = computed(() => {
 // Default list = money that counts (已收 / 待核對入帳); rejected, voided and 0 元 rows sit under 其他紀錄.
 const isMainReceipt = (r) => ['confirmed', 'pending'].includes(r.status) && Number(r.amount || 0) > 0;
 const otherReceipts = computed(() => (payload.value?.receipts || []).filter((r) => !isMainReceipt(r)));
-const shownReceipts = computed(() => [...(payload.value?.receipts || []).filter(isMainReceipt), ...(showOtherReceipts.value ? otherReceipts.value : [])]);
+// in-app #521: when the panel is about one course, receipts of the student's other courses come last, under their own heading.
+const receiptScopeId = computed(() => (props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0)));
+const isForeignReceipt = (r) => receiptScopeId.value > 0 && Number(r.student_class_id) !== receiptScopeId.value;
+const shownReceipts = computed(() => {
+  const list = [...(payload.value?.receipts || []).filter(isMainReceipt), ...(showOtherReceipts.value ? otherReceipts.value : [])];
+  return [...list.filter((r) => !isForeignReceipt(r)), ...list.filter(isForeignReceipt)];
+});
+const firstForeignReceiptId = computed(() => shownReceipts.value.find(isForeignReceipt)?.report_id ?? null);
+// Which course a receipt belongs to: subject plus the contract's start date (display only).
+function receiptCourseLabel(r) {
+  const c = (payload.value?.courses || []).find((x) => Number(x.id) === Number(r.student_class_id));
+  if (!c) return formatLedgerCourseLabel(r);
+  return `${c.subject || '課程'}${c.start_date ? `（${c.start_date} 開始）` : ''}`;
+}
 const panelTitle = computed(() => (payload.value?.student?.name ? `${payload.value.student.name}的帳務` : '學生帳務'));
 const owedSplit = computed(() => splitOwed((payload.value?.invoices || [])
   .filter((inv) => inv.status !== 'void')
@@ -1277,6 +1295,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--ds-ink-mute)}
 
 .ledger-receipts{display:grid;gap:8px}
+.ledger-receipts__other{margin:6px 0 0;font-weight:600}
 .ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-border);border-radius:10px}
 .ledger-receipt .ledger-more,.ledger-receipt .billing-notes{margin-top:0}
 .ledger-receipt .ledger-receipt-toggle,.ledger-receipt :deep(.billing-notes__toggle){font-size:13px}
