@@ -36,6 +36,7 @@ use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
 use App\Http\Controllers\TelegramBindCodeController;
+use App\Http\Controllers\TelegramBindingReviewController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ActionInboxController;
@@ -948,6 +949,8 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
+        Route::get('telegram/bindings', [TelegramBindingReviewController::class, 'index']);
+        Route::post('telegram/bindings/unbind', [TelegramBindingReviewController::class, 'unbind']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
         Route::get('line/notify-settings', [LineWebhookController::class, 'notifySettings']);
         Route::put('line/notify-settings', [LineWebhookController::class, 'saveNotifySettings']);

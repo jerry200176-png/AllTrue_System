@@ -954,6 +954,8 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| GET | `api/v1/telegram/bindings` | `TelegramBindingReviewController@index` | role+campus |
+| POST | `api/v1/telegram/bindings/unbind` | `TelegramBindingReviewController@unbind` | role+campus |
 | POST | `api/v1/telegram/webhook/{code}` | `TelegramWebhookController@handle` | public |
 
 ## /api/v1/temp-rfid
