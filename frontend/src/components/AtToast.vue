@@ -57,7 +57,7 @@ function runAction(t) {
      AttendancePage.vue) — a toast fired while a dialog is open must never render
      behind that dialog's backdrop. See in-app bug report re: contract-lock error
      toast appearing dimmed/unreadable behind an open confirm dialog. */
-  z-index: 20000;
+  z-index: var(--ds-z-toast);
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { h, nextTick, ref } from 'vue';
 import axe from 'axe-core';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { ConfirmDialog, FormDialog, DetailSheet, ActionMenu } from '..';
 
 beforeAll(() => {
@@ -155,5 +157,28 @@ describe('ActionMenu', () => {
     expect(q('[role=dialog]')).toBeNull();
     w.unmount();
     phone(false);
+  });
+});
+
+describe('overlay stacking (DetailSheet + ConfirmDialog)', () => {
+  const css = readFileSync(resolve(__dirname, '../../../styles.css'), 'utf8');
+  const z = (n) => Number(css.match(new RegExp(`--ds-z-${n}:\\s*(\\d+)`))[1]);
+  const layer = (el) => Number(z(el.className.match(/var\(--ds-z-(\w+)\)/)[1]));
+
+  it('a confirm opened over an open sheet is the higher layer and its buttons still work', async () => {
+    const onConfirm = vi.fn();
+    const w = mount({
+      components: { DetailSheet, ConfirmDialog },
+      setup: () => ({ onConfirm }),
+      template: '<div><DetailSheet :open="true" title="學生資料"><p>內容</p></DetailSheet><ConfirmDialog :open="true" title="封存？" description="封存後可復原。" confirm-label="封存" @confirm="onConfirm" /></div>',
+    }, { attachTo: document.body });
+    await tick();
+    const sheet = q('[role=dialog]');
+    const confirm = q('[role=alertdialog]');
+    expect(layer(confirm)).toBeGreaterThan(layer(sheet));
+    expect(confirm.style.pointerEvents).not.toBe('none');
+    [...confirm.querySelectorAll('button')].find((b) => b.textContent.trim() === '封存').click();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    w.unmount();
   });
 });
