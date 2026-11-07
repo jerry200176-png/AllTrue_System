@@ -28,14 +28,14 @@ final class BillingPeriod
         return substr($first ?? $cycleStart, 0, 7);
     }
 
-    /** Distinct lesson months of a cycle that is not yet scheduled, from the course's weekly slots, ascending. */
-    public static function scheduledMonths(StudentClass $course, string $start, string $end): array
+    /** Dates of a cycle that is not yet scheduled, from the course's weekly slots, ascending. */
+    public static function scheduledDates(StudentClass $course, string $start, string $end): array
     {
         $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($course);
         $built = $slots ? ContractSessionSchedule::buildSessionsFromWeeklySchedule(
             (int) $course->getKey(), $start, $end, $slots, max(30, (int) ($course->getAttribute('SessionDuration') ?? 120))) : [];
 
-        return collect($built)->map(fn ($s) => substr((string) $s['SessionDate'], 0, 7))->unique()->sort()->values()->all();
+        return collect($built)->map(fn ($s) => substr((string) $s['SessionDate'], 0, 10))->unique()->sort()->values()->all();
     }
 
     /**
@@ -44,8 +44,9 @@ final class BillingPeriod
      */
     public static function forCycle(StudentClass $course, string $start, string $end): string
     {
-        $lessonMonths = self::scheduledMonths($course, $start, $end);
-        $months = $lessonMonths ?: [substr($start, 0, 7)];
+        $dates = self::scheduledDates($course, $start, $end);
+        $first = self::pick($dates, $start); // the rule itself: first lesson month, else the start month
+        $months = array_values(array_unique([$first, ...array_map(fn ($d) => substr($d, 0, 7), $dates)]));
         // every lesson month already billed (e.g. by a catch-up): fall back to the cycle start month, today's label, before sharing a month
         $candidates = array_values(array_unique([...$months, substr($start, 0, 7)]));
         $taken = DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
@@ -63,8 +64,7 @@ final class BillingPeriod
 
     /**
      * Of $dates (Y-m-d lessons of this student+subject), those a live bill already covers: one of its dated items owned by one of this student+subject's
-     * contracts holds the date (the same ownership rule as MonthlyBillingService::serviceRangeForCourse, single-unowned-item fallback
-     * included; item ranges are not merged, so a gap stays uncovered), or, when the bill has no dated item at all, its billing_period month does. The label alone never covers a
+     * contracts holds the date (MonthlyBillingService::serviceRangeForCourse ownership, but a lone item only while it has no owner; item ranges are not merged, so a gap stays uncovered), or, when the bill has no dated item at all, its billing_period month does. The label alone never covers a
      * date outside a bill's own range, and another subject's item on a shared bill never covers this subject's lesson.
      *
      * @param list<string> $dates @return list<string>
@@ -86,7 +86,9 @@ final class BillingPeriod
             foreach ($mine as $classId) {
                 // MonthlyBillingService::serviceRangeForCourse ownership: items linked to the contract, else the lone unowned item
                 $linked = $bounded->filter(fn ($i) => (int) ($i->StudentClassID ?? 0) === $classId);
-                foreach ($linked->isNotEmpty() ? $linked : ($inv->items->count() === 1 ? $bounded : collect()) as $i) {
+                foreach ($linked->isNotEmpty() ? $linked : ($inv->items->count() === 1
+                    ? $bounded->filter(fn ($i) => !(int) ($i->StudentClassID ?? 0)) // a lone item counts only while unowned: another subject's never covers
+                    : collect()) as $i) {
                     $spans[] = [substr((string) $i->PeriodStart, 0, 10), substr((string) $i->PeriodEnd, 0, 10)];
                     $found = true;
                 }

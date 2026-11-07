@@ -162,7 +162,8 @@ final class MonthlyAccountingCorrectionService
             $reason = '登錄金額更正 '.$reference.'；依據 '.$split['payment_evidence_reference'].'；actor '.$actor;
             $replacement = $this->replaceReceipt($report, $invoice, $data['actual_received_amount'], $reason);
             $source->forceFill(['StartDate' => $split['source_start'], 'EndDate' => $split['target_end'], 'Charge' => $split['source_charge'], 'Paid' => 1, 'PayDate' => $report->getAttribute('payment_date')->toDateString()])->save();
-            $invoice->forceFill(['billing_period' => substr($split['source_start'], 0, 7), 'DueDate' => $split['source_end'],
+            \App\Services\Billing\InvoiceNumber::rekey($invoice, substr($split['source_start'], 0, 7));
+            $invoice->forceFill(['DueDate' => $split['source_end'],
                 'TotalAmount' => $split['source_charge'], 'PaidAmount' => $data['actual_received_amount'], 'Status' => 'paid', 'reconciled_at' => now(), 'reconciled_by' => null])->save();
             $item = $this->item($invoice, $source, $split['source_start'], $split['source_end'], (int) $split['source_charge']);
             $targetInvoice = null;
@@ -171,7 +172,8 @@ final class MonthlyAccountingCorrectionService
                 $existingTarget->forceFill(['StartDate' => $split['target_start'], 'EndDate' => $split['target_end'], 'Charge' => $split['target_charge']])->save();
                 $targetInvoice = Invoice::query()->findOrFail($data['expected_target']['invoice_id']);
                 if (!$targetInvoice instanceof Invoice) throw new \RuntimeException('Target invoice unavailable');
-                $targetInvoice->forceFill(['TotalAmount' => $split['target_charge'], 'DueDate' => $split['target_end'], 'billing_period' => substr($split['target_start'], 0, 7)])->save();
+                \App\Services\Billing\InvoiceNumber::rekey($targetInvoice, substr($split['target_start'], 0, 7));
+                $targetInvoice->forceFill(['TotalAmount' => $split['target_charge'], 'DueDate' => $split['target_end']])->save();
                 $this->targetItem($targetInvoice, $existingTarget, $split);
             }
             $splitPlan = $this->split->preview($source, $split, true);

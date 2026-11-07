@@ -28,8 +28,8 @@ final class MonthlyRenewalPeriodService
                 if ($course->getAttribute('StartDate')) $query->orWhereDate('SessionDate', '<', Carbon::parse($course->getAttribute('StartDate'))->toDateString());
                 if (!$oldEnd && !$course->getAttribute('StartDate')) $query->whereRaw('1 = 0');
             })->get(['id', 'SessionDate', 'StartTime'])->map(fn ($r) => ['id' => (int) $r->id, 'date' => Carbon::parse($r->SessionDate)->toDateString(), 'start' => substr((string) $r->StartTime, 0, 5)]);
-        // A month already billed by a catch-up (same student + subject, non-void invoice for that billing_period)
-        // is not a blocker: the lessons stay on this contract but their money lives on the catch-up invoice.
+        // A lesson a live bill of the same student + subject already covers (its item range; the label month only for a bill with
+        // no dated item) is not a blocker: the lesson stays on this contract but its money lives on that bill.
         $billed = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $rows->pluck('date')->all());
         $open = $rows->reject(fn ($r) => in_array($r['date'], $billed, true));
         // in-app #506: a lesson the old month wrongly holds past its end, but inside the new period, moves to the new contract.

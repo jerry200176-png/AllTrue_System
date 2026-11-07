@@ -22,4 +22,34 @@ final class InvoiceNumber
 
         return 'INV-' . ($digits ?: 'LEGACY') . '-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT);
     }
+
+    /** The Note as people may see it: the number tag is bookkeeping, never shown or exported. */
+    public static function visibleNote(?string $note): string
+    {
+        return trim(preg_replace('/\s*\[' . self::TAG . ':\d{4}-\d{2}\]/', '', (string) $note) ?? '');
+    }
+
+    /**
+     * The Note with the original-period tag added (a bill that already carries one keeps its first, original tag), or null when the
+     * 255-character column has no room. The one place that freezes an issued number before its billing_period changes.
+     */
+    public static function withTag(string $note, string $period): ?string
+    {
+        if (preg_match('/\[' . self::TAG . ':\d{4}-\d{2}\]/', $note)) {
+            return $note;
+        }
+        $tagged = trim($note . ' [' . self::TAG . ':' . $period . ']');
+
+        return mb_strlen($tagged) > 255 ? null : $tagged;
+    }
+
+    /** Freeze the number on the bill's current period, then set the new one (caller saves). */
+    public static function rekey(Invoice $invoice, string $newPeriod): void
+    {
+        $old = (string) $invoice->billing_period;
+        if ($old !== '' && $old !== $newPeriod && preg_match('/^\d{4}-\d{2}$/', $old)) {
+            $invoice->Note = self::withTag((string) $invoice->Note, $old) ?? $invoice->Note;
+        }
+        $invoice->billing_period = $newPeriod;
+    }
 }

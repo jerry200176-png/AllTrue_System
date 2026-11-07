@@ -902,7 +902,7 @@ class AccountingController extends Controller
 
         return $items->count() !== 1
             || (int) $items->first()->Amount !== (int) $invoice->TotalAmount
-            || trim((string) ($invoice->Note ?? '')) !== ''
+            || \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note) !== ''
             || $invoice->zero_amount_reason !== null;
     }
 
@@ -1187,7 +1187,7 @@ class AccountingController extends Controller
             ->groupBy('subject_id');
 
         return $invoices->map(function (Invoice $invoice) use ($notes) {
-            $legacy = trim((string) ($invoice->Note ?? ''));
+            $legacy = \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note);
             $entries = $notes->get((int) $invoice->id, collect())->map(fn (BillingNote $note) => [
                 'id' => (int) $note->id,
                 'body' => $note->body,

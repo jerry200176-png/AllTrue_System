@@ -275,6 +275,24 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         }
     }
 
+    /** in-app #514: range 08-15 ~ 09-14 labelled 09 with lessons in BOTH months counts once, 6000, in September (not 12000 across both). */
+    public function test_cross_month_invoice_with_lessons_in_both_months_counts_once_in_its_label_month(): void
+    {
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-15', 'EndDate' => '2026-09-14'];
+        $c = $this->course([['2026-09', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-08-17', '2026-08-24', '2026-09-07', '2026-09-14']);
+        \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
+        \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $c->ID,
+            'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-14']);
+        $total = 0;
+        foreach ([8 => 0, 9 => 6000] as $m => $due) {
+            $res = $this->fetchReport("&month={$m}")->assertOk();
+            $row = collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
+            $this->assertSame(['paid', $due], [$row['pay_status'], (int) $row['due_amount']], "month {$m}");
+            $total += (int) $res->json('summary.total_due');
+        }
+        $this->assertSame(6000, $total, 'counted once across the two months');
+    }
+
     /** #4727(b): a multi-item cross-month invoice is ambiguous for the period engine => never paid. */
     public function test_ambiguous_multi_item_cross_month_invoice_is_review(): void
     {
