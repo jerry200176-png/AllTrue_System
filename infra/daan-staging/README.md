@@ -89,9 +89,10 @@ Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` instal
 ```bash
 ~/bin/cloudflared tunnel login                      # Founder opens the printed URL and picks the zone
 ~/bin/cloudflared tunnel create alltrue-staging
-~/bin/cloudflared tunnel route dns alltrue-staging <staging-hostname>
-# ~/.cloudflared/config.yml: ingress: [{hostname: <staging-hostname>, service: http://127.0.0.1:18080}, {service: http_status:404}]
-~/bin/cloudflared tunnel run alltrue-staging        # run as a user service
+# DNS route only AFTER the Cloudflare Access application exists (never public without Access):
+~/bin/cloudflared tunnel route dns alltrue-staging alltrue-staging.lifenet.com.tw
+# ~/.cloudflared/config.yml: ingress: [{hostname: alltrue-staging.lifenet.com.tw, service: http://127.0.0.1:18080}, {service: http_status:404}]
+~/bin/cloudflared tunnel run alltrue-staging        # user service: systemd/alltrue-staging-tunnel.service
 ```
 
 Then in the Cloudflare dashboard add an Access application on that hostname with two policies: Allow the Founder's email, and Service Auth for the preview Pages Function's service token (the token is created by the Founder; it is stored only in Cloudflare and the Pages project, never here).
