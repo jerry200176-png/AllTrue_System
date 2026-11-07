@@ -107,14 +107,18 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   // A fallback is for absent/limited review capacity, not an override of an active
   // review. Otherwise the same head could merge before its pending findings arrive.
   if (onHead) return { ok: false, why: `Codex review ${cr.status ?? 'unknown'} on ${short}` };
-  // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since.
-  // Same per-SHA ambiguity rule as the current head: equal-timestamp records of that SHA must agree.
+  // Anything but an exact `false` findings flag on ANY record vetoes (null, missing or non-boolean fail closed), including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
+  // comment for the head but keeps the old findings flag).
+  const codexVeto = records.some((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
+    && !['completed', 'failed'].includes(r.cr.status)));
+  // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since,
+  // unless any Codex record (also an intermediate head's) vetoes. Same per-SHA ambiguity rule as the current head: equal-timestamp records of that SHA must agree.
   const ambiguous = cr && records.some((r) => r.cr.commit_sha === cr.commit_sha && r.at === records[0].at
     && (r.cr.status !== cr.status || r.cr.has_unresolved_findings !== cr.has_unresolved_findings));
   // Records tied at the newest timestamp must agree whatever their SHA; sort order never decides a carry.
   const tie = records.some((r) => r.at === records[0].at && (r.cr.status !== records[0].cr.status
     || r.cr.has_unresolved_findings !== records[0].cr.has_unresolved_findings));
-  const stale = cr && !ambiguous && !tie && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
+  const stale = cr && !ambiguous && !tie && !codexVeto && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
   // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
   // later) blocks the Codex carry, same as carried() does for markers.
   const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
@@ -124,10 +128,6 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
   // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
   // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
-  // Anything but an exact `false` findings flag on ANY record vetoes (null, missing or non-boolean fail closed), including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
-  // comment for the head but keeps the old findings flag).
-  const codexVeto = records.some((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
-    && !['completed', 'failed'].includes(r.cr.status)));
   const old = codexVeto || tie ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
   if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };

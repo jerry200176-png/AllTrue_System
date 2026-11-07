@@ -693,6 +693,18 @@ test('TRIVIAL_REBASE: a null, missing or non-boolean findings flag vetoes the ma
   }
 });
 
+test('TRIVIAL_REBASE: findings on an intermediate head B veto the Codex carry of a delayed clean review of A', () => {
+  const A = 'a1'.repeat(20), B = 'b2'.repeat(20);
+  const at = (t, sha, o = {}) => codex(clean(sha, o), { updated_at: t });
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    // B (findings) reviewed first; the clean review of its predecessor A lands later; main is then merged into B -> H.
+    assert.equal(G([at('2026-10-21T05:00:00Z', B, { has_unresolved_findings: true }), at('2026-10-21T05:05:00Z', A)]).ok, false);
+    assert.equal(G([at('2026-10-21T05:05:00Z', A), at('2026-10-21T05:00:00Z', B, { has_unresolved_findings: true })]).ok, false);
+    if (scope === 'lower') assert.equal(G([at('2026-10-21T05:05:00Z', A)]).ok, true); // A alone still carries
+  }
+});
+
 test('withCarryRepo removes the temp repo when the check passes, fails or throws', () => {
   const mk = () => { const dir = fs.mkdtempSync(join(os.tmpdir(), 'wcr-')); return { git: () => '', dir }; };
   for (const fn of [() => true, () => false, () => { throw new Error('boom'); }]) {
