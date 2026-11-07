@@ -19,6 +19,12 @@ class BillExportController extends Controller
 {
     public const CAP = 2000;
 
+    /** Spreadsheet formula injection: a text cell starting with = + - @ (or tab/CR) gets a leading quote. */
+    public static function safeCell(mixed $v): mixed
+    {
+        return is_string($v) && preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v;
+    }
+
     public function export(Request $request, AlertController $alerts)
     {
         if (count((array) $request->input('rows')) > self::CAP) {
@@ -53,10 +59,10 @@ class BillExportController extends Controller
             if (!$src) {
                 continue; // gone since the list loaded
             }
-            $out[] = [
+            $out[] = array_map([self::class, 'safeCell'], [
                 $src['student_name'] ?? '', $src['subject'] ?? '', $want['period'] ?? '', $want['status'] ?? '', $want['due'] ?? '',
                 $src['payable_amount'] ?? '', (int) ($src['paid_amount'] ?? 0), (int) ($want['owed'] ?? 0),
-            ];
+            ]);
         }
         if (!$out) {
             return response()->json(['message' => '清單已更新，請重新整理後再匯出。'], 404);

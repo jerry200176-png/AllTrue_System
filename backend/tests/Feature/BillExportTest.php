@@ -78,6 +78,14 @@ class BillExportTest extends TestCase
         $this->assertStringNotContainsString('顯示', (string) $row->metadata);
     }
 
+    public function test_formula_looking_text_is_escaped(): void
+    {
+        $this->assertSame("'=HYPERLINK(1)", BillExportController::safeCell('=HYPERLINK(1)'));
+        $this->assertSame("'-1", BillExportController::safeCell('-1'));
+        $this->assertSame('王小明', BillExportController::safeCell('王小明'));
+        $this->assertSame(5000, BillExportController::safeCell(5000));
+    }
+
     public function test_a_row_of_another_campus_is_never_exported(): void
     {
         $other = $this->owing('他校丙', 2);
