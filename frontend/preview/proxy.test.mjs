@@ -2,11 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest } from '../functions/api/[[path]].js';
-
 const env = { PREVIEW_API_ORIGIN: 'https://stg.example', PREVIEW_API_GATE_COOKIE: 'gate-v', PREVIEW_DEMO_DIRECTOR_PASSWORD: 'pw-d' };
 const call = (path, init, e = env) => onRequest({ request: new Request(`https://pr.example${path}`, init), env: e });
 const withFetch = async (fn) => { const seen = []; const real = globalThis.fetch; globalThis.fetch = async (u, i) => { seen.push({ url: String(u), headers: i.headers, body: i.body }); return new Response(JSON.stringify({ data: { session: { access_token: 't' } }, token: 'tok' }), { status: 200 }); }; try { await fn(seen); } finally { globalThis.fetch = real; } };
-
 test('unset origin => mocks mode, nothing proxied', async () => {
   assert.deepEqual(await (await call('/api/preview-config', {}, {})).json(), { proxy: false });
   assert.equal((await call('/api/v1/me', {}, {})).status, 503);

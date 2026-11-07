@@ -6,7 +6,6 @@
 // If PREVIEW_API_ORIGIN is unset the preview runs on in-browser mocks instead.
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const DEMO_ACCOUNT = { director: 'demo-director', teacher: 'demo-teacher' }; // seeded by infra/daan-staging/seed-demo.php
-
 function upstream(env, path, init = {}) {
   const origin = new URL(env.PREVIEW_API_ORIGIN);
   const target = new URL(path, origin);
@@ -17,12 +16,10 @@ function upstream(env, path, init = {}) {
   headers.set('Cookie', `alltrue_staging_gate=${env.PREVIEW_API_GATE_COOKIE || ''}`);
   return fetch(target, { ...init, headers, redirect: 'manual' });
 }
-
 export async function onRequest({ request, env }) {
   const url = new URL(request.url);
   if (url.pathname === '/api/preview-config') return json({ proxy: Boolean(env.PREVIEW_API_ORIGIN) });
   if (!env.PREVIEW_API_ORIGIN) return json({ message: 'preview: no staging configured' }, 503);
-
   if (url.pathname === '/api/preview-demo-login' && request.method === 'POST') {
     const { role } = await request.json().catch(() => ({}));
     const jsonHeaders = { 'Content-Type': 'application/json', Accept: 'application/json' };
@@ -38,7 +35,6 @@ export async function onRequest({ request, env }) {
     const j = res && res.ok ? await res.json().catch(() => null) : null;
     return j?.data?.session ? json({ session: j.data.session }) : json({ message: 'demo login unavailable' }, 502);
   }
-
   if (!url.pathname.startsWith('/api/v1/')) return json({ message: 'not found' }, 404);
   // Read-only proxy: the preview is reachable by anyone with the URL, so it must never write to staging.
   if (!['GET', 'HEAD'].includes(request.method)) return new Response(JSON.stringify({ message: 'preview is read-only' }), { status: 405, headers: { 'Content-Type': 'application/json', Allow: 'GET, HEAD' } });

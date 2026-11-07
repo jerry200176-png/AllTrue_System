@@ -2,22 +2,18 @@
 # (frontend/functions/api) when PREVIEW_API_ORIGIN is set on the Pages project, else in-browser mocks.
 # Informational only: not a required check, no relation to the land queue.
 name: ui-preview
-
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - "frontend/**"
       - ".github/workflows/ui-preview.yml"
-
 permissions:
   contents: read
   pull-requests: write
-
 concurrency:
   group: ui-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
 jobs:
   preview:
     # Forks get no secrets.
@@ -58,11 +54,8 @@ jobs:
           PREVIEW_DEMO_PARENT_PHONE: ${{ secrets.PREVIEW_DEMO_PARENT_PHONE }}
         run: |
           set -euo pipefail
-          # Branch deployments (pr-<n>) use the Pages *preview* environment, which `pages secret put`
-          # cannot target, so write its env vars through the Pages API. Values come from the
-          # environment (never argv/echo) and are sent as secret_text.
-          # Unset/missing values are sent as null, which deletes them from the project, so removing
-          # the GitHub secret/variable restores the mock fallback. Staging needs both origin and cookie.
+          # Branch deploys use the Pages preview env, which `pages secret put` cannot target: write it via the API (values from env, masked, never echoed).
+          # Unset values go as null (deletes them), so removing a GitHub secret/variable restores mocks.
           [ -n "$PREVIEW_API_ORIGIN" ] && [ -n "$PREVIEW_API_GATE_COOKIE" ] || { PREVIEW_API_ORIGIN=; PREVIEW_API_GATE_COOKIE=; PREVIEW_DEMO_DIRECTOR_PASSWORD=; PREVIEW_DEMO_TEACHER_PASSWORD=; PREVIEW_DEMO_PARENT_STUDENT_ID=; PREVIEW_DEMO_PARENT_PHONE=; }
           export PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE
           for k in PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE; do

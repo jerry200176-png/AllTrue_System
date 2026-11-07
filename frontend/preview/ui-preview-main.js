@@ -1,15 +1,11 @@
 // PR preview entry: boots the real app (src/main.js) exactly as production would.
-// Data source: staging via the same-origin Pages Function when configured, otherwise
-// in-browser fail-closed mocks. Either way nothing leaves for a third-party host.
+// Data: staging via the Pages Function if configured, else fail-closed in-browser mocks.
 import { previewResponse, sessionFor } from './previewApi.js';
-
 window.__ALLTRUE_UI_PREVIEW__ = true;
 const nativeFetch = window.fetch.bind(window);
 const stub = (why) => new Response(JSON.stringify({ message: `preview: ${why}` }), { status: 503, headers: { 'Content-Type': 'application/json' } });
-
 const cfg = await nativeFetch('/api/preview-config').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
 const proxied = cfg.proxy === true;
-
 window.fetch = async (input, init = {}) => {
   const req = new Request(input, init);
   const url = new URL(req.url, location.href);
@@ -22,8 +18,6 @@ window.fetch = async (input, init = {}) => {
 window.XMLHttpRequest = class { open() { throw new Error('preview: XHR blocked'); } };
 navigator.sendBeacon = () => false;
 for (const n of ['WebSocket', 'EventSource']) window[n] = class { constructor() { throw new Error(`preview: ${n} blocked`); } };
-
-// ?demo=director|teacher|parent: one-tap login, then clean URL so logout returns to Login.
 const demo = new URLSearchParams(location.search).get('demo');
 if (demo) {
   localStorage.removeItem('alltrue_session');
@@ -41,14 +35,10 @@ if (demo) {
   }
   history.replaceState(null, '', ok && demo === 'parent' ? '/?parent=1' : '/');
 }
-
-// Small fixed pill so nobody mistakes this for production.
 const pill = document.createElement('div');
 pill.textContent = '預覽・假資料';
 pill.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;padding:2px 8px;border-radius:999px;background:#E65100;color:#fff;font:12px/1.6 system-ui,sans-serif;opacity:.9;pointer-events:none';
 document.body.appendChild(pill);
-
-// Three one-tap demo buttons under the real login form.
 new MutationObserver(() => {
   const card = document.querySelector('.login-card');
   if (!card || card.querySelector('.pv-demo')) return;
@@ -64,5 +54,4 @@ new MutationObserver(() => {
   }
   card.appendChild(box);
 }).observe(document.body, { childList: true, subtree: true });
-
 await import('../src/main.js');
