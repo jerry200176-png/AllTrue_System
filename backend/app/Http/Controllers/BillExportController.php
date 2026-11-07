@@ -5,25 +5,19 @@ namespace App\Http\Controllers;
 use App\Exports\BillListExport;
 use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
+use App\Services\Billing\BillRowText;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * 帳務中心 Excel export (in-app #520), view only. The rows are the ones /alerts/tuition returns for the campus (same
- * service, same role and campus checks); the client names which of them its current filter/search/tab shows, and the
- * 狀態/期間/到期/未收 cells it displays. Money columns 應收/已收 come from the server rows.
- * ponytail: the status labels live in billRows.js; port them to PHP if the cells ever need to be server-derived.
+ * service, same role and campus checks); the client names only which of them its current filter/search/tab shows.
+ * Every cell is computed here (BillRowText mirrors billRows.js).
  */
 class BillExportController extends Controller
 {
     public const CAP = 2000;
-
-    /** Spreadsheet formula injection: a text cell starting with = + - @ (or tab/CR) gets a leading quote. */
-    public static function safeCell(mixed $v): mixed
-    {
-        return is_string($v) && preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v;
-    }
 
     public function export(Request $request, AlertController $alerts)
     {
@@ -37,10 +31,6 @@ class BillExportController extends Controller
             'rows' => 'required|array|min:1',
             'rows.*.id' => 'nullable|integer',
             'rows.*.package_id' => 'nullable|integer',
-            'rows.*.status' => 'nullable|string|max:60',
-            'rows.*.period' => 'nullable|string|max:60',
-            'rows.*.due' => 'nullable|string|max:60',
-            'rows.*.owed' => 'nullable|integer|min:0',
         ]);
 
         $sub = Request::create('/', 'GET', ['branch_id' => $data['branch_id']]);
@@ -53,16 +43,18 @@ class BillExportController extends Controller
         $byId = $source->filter(fn ($r) => $r['id'] !== null)->keyBy(fn ($r) => (int) $r['id']);
         $byPkg = $source->filter(fn ($r) => ($r['package_id'] ?? null) !== null)->keyBy(fn ($r) => (int) $r['package_id']);
 
+        $today = now('Asia/Taipei')->toDateString();
         $out = [];
         foreach ($data['rows'] as $want) {
             $src = isset($want['id']) ? $byId->get((int) $want['id']) : $byPkg->get((int) ($want['package_id'] ?? 0));
             if (!$src) {
                 continue; // gone since the list loaded
             }
-            $out[] = array_map([self::class, 'safeCell'], [
-                $src['student_name'] ?? '', $src['subject'] ?? '', $want['period'] ?? '', $want['status'] ?? '', $want['due'] ?? '',
-                $src['payable_amount'] ?? '', (int) ($src['paid_amount'] ?? 0), (int) ($want['owed'] ?? 0),
-            ]);
+            $t = BillRowText::describe($src, $today);
+            $out[] = [
+                (string) ($src['student_name'] ?? ''), (string) ($src['subject'] ?? ''), $t['period'], $t['status'], $t['due'],
+                isset($src['payable_amount']) ? (int) $src['payable_amount'] : null, (int) ($src['paid_amount'] ?? 0), $t['owed'],
+            ];
         }
         if (!$out) {
             return response()->json(['message' => '清單已更新，請重新整理後再匯出。'], 404);

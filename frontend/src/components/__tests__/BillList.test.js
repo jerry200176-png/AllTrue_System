@@ -25,7 +25,7 @@ describe('BillList', () => {
     const [payload] = w.emitted('export')[0];
     expect(w.get('[data-testid="bill-export"]').text()).toBe('匯出 Excel');
     expect(payload).toMatchObject({ filter: 'all', search: '乙' });
-    expect(payload.items).toEqual([{ id: 2, package_id: null, status: '未繳', period: '剩 4 堂', due: '—', owed: 1000 }]);
+    expect(payload.items).toEqual([{ id: 2, package_id: null }]);
   });
 
   it('opens on 要處理 with counts, hiding paid rows', () => {

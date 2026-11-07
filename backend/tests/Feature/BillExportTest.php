@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Exports\BillListExport;
 use App\Models\AuthToken;
+use App\Services\Billing\BillRowText;
 use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -60,13 +61,14 @@ class BillExportTest extends TestCase
         $this->owing('被篩掉乙');
         Excel::fake();
 
-        $this->export($this->token([1]), $this->body([['id' => $shown->ID, 'status' => '未繳', 'period' => '剩 5 堂', 'due' => '—', 'owed' => 5000]], ['search' => '顯示']))->assertOk();
+        $this->export($this->token([1]), $this->body([['id' => $shown->ID]], ['search' => '顯示']))->assertOk();
 
         Excel::assertDownloaded('帳務-daan-' . now('Asia/Taipei')->format('Ymd') . '.xlsx', function (BillListExport $e) {
             $this->assertSame(['學生', '科目', '期間／剩幾堂', '狀態', '到期／逾期', '應收', '已收', '未收'], $e->headings());
             $this->assertCount(1, $e->array());
             $this->assertSame('顯示甲', $e->array()[0][0]);
-            $this->assertSame(5000, $e->array()[0][7]);
+            $this->assertSame('要開帳單', $e->array()[0][3]);
+            $this->assertSame(0, $e->array()[0][7]);
 
             return true;
         });
@@ -78,12 +80,34 @@ class BillExportTest extends TestCase
         $this->assertStringNotContainsString('顯示', (string) $row->metadata);
     }
 
-    public function test_formula_looking_text_is_escaped(): void
+    public function test_text_cells_are_literal_strings_and_numbers_stay_numeric(): void
     {
-        $this->assertSame("'=HYPERLINK(1)", BillExportController::safeCell('=HYPERLINK(1)'));
-        $this->assertSame("'-1", BillExportController::safeCell('-1'));
-        $this->assertSame('王小明', BillExportController::safeCell('王小明'));
-        $this->assertSame(5000, BillExportController::safeCell(5000));
+        $xlsx = Excel::raw(new BillListExport([['=1+1', '@SUM(A1)', '剩 5 堂', '未繳', '—', 5000, 0, 5000]]), \Maatwebsite\Excel\Excel::XLSX);
+        $path = tempnam(sys_get_temp_dir(), 'bx');
+        file_put_contents($path, $xlsx);
+        $zip = new \ZipArchive();
+        $zip->open($path);
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $strings = $zip->getFromName('xl/sharedStrings.xml');
+        unlink($path);
+
+        // Text is a shared/inline string cell (t="s"/"inlineStr"), never a formula (<f>); the amounts are plain numbers.
+        $this->assertStringNotContainsString('<f>', $sheet);
+        $this->assertStringContainsString('=1+1', $strings);
+        $this->assertStringContainsString('@SUM(A1)', $strings);
+        $this->assertMatchesRegularExpression('#<c r="H2"(?: s="\d+")?><v>5000</v></c>#', $sheet);
+        $this->assertMatchesRegularExpression('#<c r="G2"[^>]*><v>0</v></c>#', $sheet);
+    }
+
+    /** Same fixtures as frontend/src/lib/__tests__/billRowsParity.test.js: the PHP cells equal what billRows.js shows. */
+    public function test_cells_match_the_list_rules_on_the_shared_fixtures(): void
+    {
+        $fx = json_decode(file_get_contents(__DIR__ . '/../fixtures/bill_rows_parity.json'), true);
+        foreach ($fx['cases'] as $c) {
+            $this->assertSame($c['expect']['kind'], BillRowText::describe($c['row'], $fx['today'])['kind'], 'kind of #' . $c['row']['id']);
+            $got = BillRowText::describe($c['row'], $fx['today']);
+            $this->assertEquals($c['expect'], $got, 'row #' . $c['row']['id']);
+        }
     }
 
     public function test_a_row_of_another_campus_is_never_exported(): void
@@ -91,7 +115,7 @@ class BillExportTest extends TestCase
         $other = $this->owing('他校丙', 2);
         Excel::fake();
 
-        $this->export($this->token([1]), $this->body([['id' => $other->ID, 'status' => '未繳', 'owed' => 5000]]))->assertNotFound();
+        $this->export($this->token([1]), $this->body([['id' => $other->ID]]))->assertNotFound();
     }
 
     public function test_teacher_and_other_campus_are_refused(): void

@@ -116,7 +116,7 @@ import AtButton from '../design-system/AtButton.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import AtSkeleton from '../design-system/AtSkeleton.vue';
-import { billCounts, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
+import { billCounts, billDueText as dueText, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 
 const props = defineProps({
@@ -203,14 +203,12 @@ const noRowStudents = computed(() => {
 });
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
-const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
-const dueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.due_date && b.kind === 'owing' ? `${md(b.due_date)} 到期` : '—');
 
-// Exactly what is on screen (filter, search, tab): the server re-reads the rows and writes these cells.
+// Exactly what is on screen (filter, search, tab): the ids only; the server re-reads the rows and writes every cell.
 const exportPayload = () => ({
   filter: activeFilter.value,
   search: query.value.trim(),
-  items: visible.value.map((b) => ({ id: b.class_id, package_id: b.package_id, status: b.label, period: b.period, due: dueText(b), owed: Math.round(b.owed) })),
+  items: visible.value.map((b) => ({ id: b.class_id, package_id: b.package_id })),
 });
 
 const menuGroups = (b) => billMenuGroups(b, props);

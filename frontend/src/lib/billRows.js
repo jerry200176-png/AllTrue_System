@@ -93,6 +93,10 @@ export function billRows(alertRows, today = ymdInTaipei()) {
     || a.student_name.localeCompare(b.student_name, 'zh-Hant'));
 }
 
+const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
+/** The 到期／逾期 cell of a row (the server export has a PHP twin, BillRowText; fixtures keep them equal). */
+export const billDueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.due_date && b.kind === 'owing' ? `${md(b.due_date)} 到期` : '—');
+
 /** Per-kind counts, plus `todo` (the 要處理 union). */
 export function billCounts(rows) {
   const c = Object.fromEntries(BILL_KINDS.map((k) => [k, 0]));
