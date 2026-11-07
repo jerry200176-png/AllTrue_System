@@ -3800,6 +3800,7 @@ table th { font-size: 12.5px; }
 .search-input-wrap input { padding-left: 36px; }
 .filter-toggles {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: flex-end;
 }

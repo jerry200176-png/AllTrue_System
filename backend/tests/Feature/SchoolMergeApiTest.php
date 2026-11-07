@@ -137,4 +137,50 @@ class SchoolMergeApiTest extends TestCase
         $this->assertSame('乙測國中', $sp->fresh()->SchoolName);
         $this->assertSame('乙測國中', $p->fresh()->school_name);
     }
+
+    public function test_undo_leaves_a_merged_student_edited_afterwards(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $s = $this->student($a, '在興國中');
+        $id = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '再興國中', 'variants' => ['在興國中']])->json('data.request_id');
+        $s->update(['SchoolName' => '丁測國中']);
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
+        $this->assertSame('丁測國中', $s->fresh()->SchoolName);
+    }
+
+    public function test_merge_and_undo_never_touch_another_campus(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $b = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $sa = $this->student($a, '在興國中');
+        $sb = $this->student($b, '在興國中');
+        $pb = $this->period($b, '在興國中', 1);
+        $id = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '再興國中', 'variants' => ['在興國中']])
+            ->assertCreated()->json('data.request_id');
+        $this->assertSame('在興國中', $sb->fresh()->SchoolName);
+        $this->assertSame('在興國中', $pb->fresh()->school_name);
+
+        // Same canonical name now sits in campus B; undo for campus A must not "restore" it.
+        $sb->update(['SchoolName' => '再興國中']);
+        $pb->update(['school_name' => '再興國中']);
+        DB::table('Student')->where('id', $sa->id)->update(['CampusID' => $b]); // forged/moved row in the payload
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
+        $this->assertSame('再興國中', $sa->fresh()->SchoolName);
+        $this->assertSame('再興國中', $sb->fresh()->SchoolName);
+        $this->assertSame('再興國中', $pb->fresh()->school_name);
+    }
+
+    public function test_oversized_restore_payload_is_refused_and_nothing_is_written(): void
+    {
+        config(['audit.restore_payload_max' => 20]);
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $s = $this->student($a, '在興國中');
+        $this->student($a, '在興國中');
+        $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '再興國中', 'variants' => ['在興國中']])->assertStatus(422);
+        $this->assertSame('在興國中', $s->fresh()->SchoolName);
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'school.merge.applied')->count());
+    }
 }

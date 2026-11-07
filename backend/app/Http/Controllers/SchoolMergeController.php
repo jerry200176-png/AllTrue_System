@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Services\SchoolMergeService;
 use App\Services\SchoolNameSuggester;
-use RuntimeException;
+use App\Services\SchoolMergeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -88,7 +88,7 @@ class SchoolMergeController extends Controller
     {
         try {
             $result = $fn();
-        } catch (RuntimeException $e) {
+        } catch (SchoolMergeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 

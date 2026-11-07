@@ -7,7 +7,6 @@ use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 /**
  * 學校整理 (#517): rename school spellings to one canonical name in one transaction.
@@ -38,13 +37,13 @@ class SchoolMergeService
             }
             [$p, $skipped] = $this->renamePeriods($campusId, $canonical, $variants);
             if ($s === [] && $p === []) {
-                throw new RuntimeException('沒有需要整理的學生');
+                throw new SchoolMergeException('沒有需要整理的學生');
             }
             Student::query()->whereIn('id', $students->pluck('id'))->update(['SchoolName' => $canonical]);
 
             $payload = json_encode(['s' => $s, 'p' => $p], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-            if (strlen($payload) > SecurityAuditEvent::LONG_METADATA['restore_payload']) {
-                throw new RuntimeException('一次整理的學生太多，請分批');
+            if (strlen($payload) > (int) config('audit.restore_payload_max', SecurityAuditEvent::LONG_METADATA['restore_payload'])) {
+                throw new SchoolMergeException('一次整理的學生太多，請分批');
             }
             $requestId = (string) Str::uuid();
             SecurityAuditEvent::append(self::APPLIED, 'success', [
@@ -70,10 +69,10 @@ class SchoolMergeService
                 return null;
             }
             if ($event->retention_until && now()->gt($event->retention_until)) {
-                throw new RuntimeException('已超過 180 天，無法復原');
+                throw new SchoolMergeException('已超過 180 天，無法復原');
             }
             if (DB::table('security_audit_events')->where('event_type', self::UNDONE)->where('correlation_id', $requestId)->exists()) {
-                throw new RuntimeException('這次整理已經復原過了');
+                throw new SchoolMergeException('這次整理已經復原過了');
             }
             $meta = json_decode((string) $event->metadata, true) ?: [];
             $canonical = (string) ($meta['canonical_name'] ?? '');
