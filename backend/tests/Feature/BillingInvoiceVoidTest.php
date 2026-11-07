@@ -60,7 +60,7 @@ class BillingInvoiceVoidTest extends TestCase
             'Note' => str_repeat('長', 200) . ' [invno_period:2026-04]',
         ]);
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->postJson("/api/v1/invoices/{$invoice->id}/void", ['reason' => str_repeat('因', 30)])->assertOk();
+            ->postJson("/api/v1/invoices/{$invoice->id}/void", ['reason' => str_repeat('因', 200)])->assertOk(); // longer than the column can hold beside both tags
         $fresh = Invoice::findOrFail($invoice->id);
         $this->assertLessThanOrEqual(255, mb_strlen((string) $fresh->Note));
         $this->assertStringContainsString('[invno_period:2026-04]', (string) $fresh->Note);
