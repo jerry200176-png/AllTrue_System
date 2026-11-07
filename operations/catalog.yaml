@@ -264,6 +264,35 @@ operations:
     tags: [repair, billing, github-4850]
     notes: Exact guards on current values (abort on any drift; an item on another invoice fails). Writes Invoice.TotalAmount, InvoiceItem.Amount and InvoiceItem.StudentClassID only; PaidAmount, Status, payments and StudentClass are never written. Pi-local POP only.
 
+  legacy-void-link-20261107:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-legacy-void-link
+    founder_approval_required: true
+    runbook: docs/incidents/RM-LEGACY-VOID-LINK-20261107.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: two_exact_legacy_void_rows
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\LegacyVoidLinkStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, inapp-521]
+    notes: Exact guards on current values (abort on any drift). Writes Payment.payment_report_id of two exact legacy void rows only (NULL to the receipt they reversed); amounts, methods, invoices, statuses and receipts are never written. Pi-local POP only.
+
   reviewed-monthly-accounting-correction:
     lifecycle: active
     domain: billing-entitlement
