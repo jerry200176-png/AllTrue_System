@@ -1056,8 +1056,22 @@ class ClassSessionController extends Controller
     {
         $anchorId = (int) ($schedule->original_schedule_id ?? 0);
 
-        return $anchorId > 0
-            && Schedule::query()->whereKey($anchorId)->where('status', 'rescheduled')->exists();
+        if ($anchorId <= 0) {
+            return false;
+        }
+        $anchor = Schedule::query()->whereKey($anchorId)->where('status', 'rescheduled')->first();
+        if (!$anchor) {
+            return false;
+        }
+
+        // Partial legacy move: the source ClassSession was not moved yet. Creating the destination now would
+        // leave two actionable sessions for one lesson, so keep refusing until the source is cancelled/moved.
+        return !ClassSession::query()
+            ->where('StudentClassID', (int) $schedule->student_course_id)
+            ->whereDate('SessionDate', Carbon::parse((string) $anchor->schedule_date)->toDateString())
+            ->where('StartTime', 'like', substr((string) $anchor->start_time, 0, 5) . '%')
+            ->whereRaw("LOWER(COALESCE(Status, '')) <> 'cancelled'")
+            ->exists();
     }
 
     private function isMaterializableScheduledException(
