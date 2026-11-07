@@ -35,7 +35,7 @@ class SchoolMergeService
             foreach ($students as $row) {
                 $s[(string) $row->SchoolName][] = (int) $row->id;
             }
-            [$p, $skipped] = $this->renamePeriods($campusId, $canonical, $variants);
+            [$p, $skipped] = $this->renamePeriods($campusId, $canonical, $variants, array_keys($s));
             if ($s === [] && $p === []) {
                 throw new SchoolMergeException('沒有需要整理的學生');
             }
@@ -122,7 +122,7 @@ class SchoolMergeService
     }
 
     /** @return array{0: array<string,list<int>>, 1: int} renamed period ids by old name, skipped count */
-    private function renamePeriods(int $campusId, string $canonical, array $variants): array
+    private function renamePeriods(int $campusId, string $canonical, array $variants, array $mergedNames): array
     {
         $renamed = [];
         $skipped = 0;
@@ -130,8 +130,13 @@ class SchoolMergeService
         $keys = array_map(fn ($v) => $this->grouper->key($v), $variants);
         $periods = SchoolExamPeriod::query()->where('campus_id', $campusId)->lockForUpdate()->orderBy('id')->get()
             ->filter(fn ($p) => $p->school_name !== $canonical && in_array($this->grouper->key($p->school_name), $keys, true));
+        // A period is shared by every spelling of its school: only move it when no student outside the merge uses it.
+        $staying = Student::query()->where('CampusID', $campusId)->where('enable', 1)->whereNotNull('SchoolName')
+            ->distinct()->pluck('SchoolName')
+            ->reject(fn ($n) => $n === $canonical || in_array($n, array_map('strval', $mergedNames), true))
+            ->map(fn ($n) => $this->grouper->key((string) $n))->all();
         foreach ($periods as $period) {
-            if ($this->conflicts($period, $canonical)) {
+            if (in_array($this->grouper->key($period->school_name), $staying, true) || $this->conflicts($period, $canonical)) {
                 $skipped++;
                 continue;
             }

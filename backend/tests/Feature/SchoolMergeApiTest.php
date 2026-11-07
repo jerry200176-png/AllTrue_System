@@ -183,4 +183,19 @@ class SchoolMergeApiTest extends TestCase
         $this->assertSame('在興國中', $s->fresh()->SchoolName);
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'school.merge.applied')->count());
     }
+
+    public function test_shared_period_stays_when_a_student_outside_the_merge_uses_it(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        // Two directory aliases of one school share a period (stored under the directory's full name).
+        $this->student($a, '台北市大安國中');
+        $this->student($a, '大安國中'); // not selected: still needs the period
+        $p = $this->period($a, '臺北市立大安國民中學', 1);
+        $this->student($a, '甲測國中');
+        $res = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '甲測國中', 'variants' => ['台北市大安國中']])->assertCreated();
+        $this->assertSame(1, $res->json('data.periods_skipped'));
+        $this->assertSame(0, $res->json('data.periods_renamed'));
+        $this->assertSame('臺北市立大安國民中學', $p->fresh()->school_name);
+    }
 }
