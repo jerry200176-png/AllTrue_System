@@ -93,6 +93,31 @@ class AvailabilityCapacityTest extends TestCase
     }
 
     /**
+     * in-app #515: a group class with a free seat at ANOTHER campus is still the teacher's whereabouts. The response keeps
+     * campus_id with remaining_capacity > 0; callers must decide cross-campus busy by campus, never by remaining seats.
+     */
+    public function test_other_campus_group_slot_with_free_seat_is_returned_with_its_campus(): void
+    {
+        $teacher = $this->createTeacher('teacher-avail515@example.com');
+        $student = Student::create([
+            'name' => '跨校學生', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $sc = $this->createStudentClass($student->id, $teacher->id, 'one_on_two');
+        ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => '2026-11-07',
+            'StartTime' => '17:00:00', 'EndTime' => '19:00:00', 'Status' => 'scheduled',
+        ]);
+
+        $slot = collect($this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date=2026-11-07")
+            ->assertOk()->json('busy_slots'))->first(fn ($s) => $s['start_time'] === '17:00');
+
+        $this->assertNotNull($slot);
+        $this->assertSame(2, $slot['campus_id']);
+        $this->assertSame(1, $slot['remaining_capacity']);
+    }
+
+    /**
      * Case 2: one_on_one 課程に 1 学生 → remaining_capacity = 0（満員）
      * FR-006 のフロントエンドが「已滿 ✗」と表示し選択不可にするための基盤。
      */

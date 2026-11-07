@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-cross-campus-busy-group
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 跨校忙碌更完整
+    summary: 老師在別校上小班課時，日曆也會標示忙碌。
+    items:
+      - category: fixed
+        text: 別校小班課即使還有空位，日曆「跨校忙碌」也會標示。
+    source_refs:
+      - "changelog:2026-11-07:cross-campus-busy-group"
