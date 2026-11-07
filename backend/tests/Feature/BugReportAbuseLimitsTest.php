@@ -10,6 +10,7 @@ use App\Providers\AppServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -115,5 +116,15 @@ class BugReportAbuseLimitsTest extends TestCase
         $send()->assertOk(); // a double tap with the same screenshot is not stored twice
         $this->assertDatabaseCount('bug_report_attachments', 1);
         $this->assertSame(1, BugReport::count());
+    }
+
+    public function test_submit_releases_the_per_reporter_lock(): void
+    {
+        [$h, $user] = $this->actor('a@x');
+        $this->report($h, 1)->assertCreated();
+        $this->report($h, 1)->assertOk();
+        $lock = Cache::lock("bug-submit:{$user->id}", 5);
+        $this->assertTrue($lock->get(), 'each submit must release its lock, or the next one waits and gets a 429');
+        $lock->release();
     }
 }
