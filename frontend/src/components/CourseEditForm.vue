@@ -202,7 +202,11 @@
 
         <div v-if="showRemaining && !packageInfo" class="form-group">
           <label>剩餘堂數</label>
-          <Input :model-value="form.remaining_sessions" type="number" min="0" step="1" inputmode="numeric" aria-label="剩餘堂數" @update:model-value="(v) => (form.remaining_sessions = v === '' ? v : Number(v))" />
+          <div class="tw:flex tw:items-center tw:gap-2">
+            <Button type="button" variant="secondary" class="tw:size-14 tw:text-2xl" aria-label="減少" data-testid="remaining-minus" :disabled="!(Number(form.remaining_sessions) > 0)" @click="bumpRemaining(-1)">−</Button>
+            <Input :model-value="form.remaining_sessions" type="number" min="0" step="1" inputmode="numeric" aria-label="剩餘堂數" class="tw:h-14 tw:text-center tw:text-[length:var(--tpl-text-list)]" @update:model-value="(v) => (form.remaining_sessions = v === '' ? v : Number(v))" />
+            <Button type="button" variant="secondary" class="tw:size-14 tw:text-2xl" aria-label="增加" data-testid="remaining-plus" @click="bumpRemaining(1)">＋</Button>
+          </div>
         </div>
       </div>
     </section>
@@ -322,6 +326,7 @@ import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
 import { TRIAL_TARGET_CLASS_TYPE_OPTIONS } from '../lib/trialTarget.js';
 import { trackedFetch } from '../lib/loadingBar';
@@ -376,6 +381,8 @@ const defaultForm = {
 };
 
 const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
+// 剩餘堂數 −/+ : one tap, step 1, never below 0 (same as the old AtNumberStepper).
+const bumpRemaining = (d) => { form.remaining_sessions = Math.max(0, (Number(form.remaining_sessions) || 0) + d); };
 const monthlyOverride = ref(false);
 const monthlyPlan = computed(() => form.payment_type === 'monthly' && form.scheduling_policy !== 'manual_occurrence'
   ? monthlyScheduleEstimate({ startDate: form.first_class_date, endDate: form.end_date, slots: form.day_time_slots || [], weekdays: form.days_of_week || [] })

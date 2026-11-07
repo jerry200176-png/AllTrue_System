@@ -18,7 +18,7 @@ const TONES = {
 
 <template>
   <div
-    role="alert"
+    :role="props.tone === 'warning' || props.tone === 'danger' ? 'alert' : 'status'"
     data-slot="alert"
     :class="cn('tw:relative tw:w-full tw:rounded-xl tw:border tw:px-4 tw:py-3 tw:text-foreground', TONES[props.tone], props.class)"
   >
