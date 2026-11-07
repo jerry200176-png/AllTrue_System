@@ -121,8 +121,11 @@ export async function installApiMocks(page, mode, pageName = '', authProfile = n
       });
     }
 
-    if (pageName === 'teacher') {
+    if (pageName === 'teacher' || pageName === 'attendance') {
       const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      if (pageName === 'attendance') {
+        if (/\/(attendance|attendance\/ended-sessions|pending-swipes|teacher-attendance|teacher-attendance\/unclosed)$/.test(p)) return json({ data: [], total: 0 });
+      }
       if (p.endsWith('/teacher-attendance/today')) return json({ status: 'normal', sign_in_dt: '2026-01-01 15:02:00', sign_out_dt: null });
       if (p.endsWith('/me/awaiting-reply-count')) return json({ awaiting_reply_count: 1 });
       if (p.endsWith('/me/exam-pending-summary')) return json({ data: { rounds: [] } });

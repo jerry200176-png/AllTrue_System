@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src 'self'" />
     <title>AllTrue UI 預覽（假資料）</title>
     <style>
-      body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;max-width:560px}
+      body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;max-width:640px}
       h1{font-size:20px} p{color:#555;margin:.25rem 0 1rem}
       li{list-style:none;display:flex;gap:8px;margin:8px 0}
       a{flex:1;display:block;padding:14px;border:1px solid #ccc;border-radius:10px;text-align:center;text-decoration:none;color:#111;min-height:44px;box-sizing:border-box}
@@ -22,6 +22,7 @@
     <script>
       const screens = [['login', 'Login 登入'], ['parent', '家長首頁'], ['director', '主任首頁'], ['teacher', '老師首頁'], ['course', '課程管理'], ['attendance', '出缺勤'], ['tuition', '帳務']];
       const q = new URLSearchParams(location.search);
+      const wide = innerWidth >= 1024; // wide screen: main tap opens the 電腦 (1280) frame
       const link = (page, w) => `?${w ? 'w=' + w + '&' : ''}page=${page}`;
       if (q.get('w') && q.get('page')) {
         // Framed view: render the screen in an iframe of the chosen width, scaled to fit.
@@ -30,7 +31,7 @@
         document.body.style.maxWidth = 'none';
       } else {
         list.innerHTML = screens.map(([p, n]) =>
-          `<li><a class="main" href="ui-preview-screen.html?page=${p}">${n}</a><a href="${link(p, 390)}">手機框</a><a href="${link(p, 768)}">平板框</a></li>`).join('');
+          `<li><a class="main" href="${wide ? link(p, 1280) : 'ui-preview-screen.html?page=' + p}">${n}</a><a href="${link(p, 390)}">手機框</a><a href="${link(p, 768)}">平板框</a><a href="${link(p, 1280)}">電腦框</a></li>`).join('');
       }
     </script>
   </body>
