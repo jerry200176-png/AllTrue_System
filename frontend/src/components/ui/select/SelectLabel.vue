@@ -1,4 +1,5 @@
 <script setup>
+import { reactiveOmit } from "@vueuse/core";
 import { cn } from "@/lib/utils";
 import { SelectLabel } from "reka-ui";
 
@@ -12,11 +13,14 @@ const props = defineProps({
     skipCheck: true,
   },
 });
+
+const delegatedProps = reactiveOmit(props, "class");
 </script>
 
 <template>
   <SelectLabel
     data-slot="select-label"
+    v-bind="delegatedProps"
     :class="cn('tw:text-muted-foreground tw:px-2 tw:py-1.5 tw:text-xs', props.class)"
   >
     <slot />
