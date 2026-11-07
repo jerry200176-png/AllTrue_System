@@ -786,6 +786,11 @@ class MonthlyRenewTest extends TestCase
             'student_course_id' => $course->ID, 'original_schedule_id' => $anchor->id,
         ]);
 
+        // The same shared projection must not label the chip with the contract fallback time (20:00).
+        $projected = app(\App\Services\SessionProjectionReadService::class)
+            ->buildProjectedFromEffectiveDates((int) $course->ID, ['2026-04-11'], [], $course);
+        $this->assertSame('17:00', $projected[0]['start_time']);
+
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/class-sessions/ensure-projected', [
                 'student_class_id' => (int) $course->ID,
