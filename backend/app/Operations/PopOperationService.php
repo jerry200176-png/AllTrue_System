@@ -178,6 +178,7 @@ final class PopOperationService
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && !$this->isExactMuzhaChenBillingCatchup($entry)
             && !$this->isExactUnbilledBacklogCatchup($entry)
+            && !$this->isExactBillingPeriodRekey($entry)
             && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactForwardExtraCancel($entry)
             && !$this->isExactDuplicateHistoryPinRepair($entry)
@@ -418,8 +419,9 @@ final class PopOperationService
         }
         $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
-        $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
-            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+        $executed = in_array($phase, ['verify', 'rollback'], true) && (DB::table('pop_execution_records')
+            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+            || ($phase === 'rollback' && $this->hasRekeyJournal($request)));
         if (!(bool) ($plan['ok'] ?? false) && !$executed) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
@@ -449,10 +451,11 @@ final class PopOperationService
                     : $executeAndRecord();
             }
             $execution = $this->latest($request, 'execute');
-            if (!$execution) {
+            if (!$execution && !($phase === 'rollback' && $this->hasRekeyJournal($request))) {
                 throw new RuntimeException('POP cannot verify or rollback without an execution record.');
             }
-            $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
+            $payload = $execution ? json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR) : [];
+            if ($phase === 'rollback' && $this->hasRekeyJournal($request)) $payload['snapshot'] = ['rows' => []];
             $strategy = app((string) $entry['strategy_class']);
             $complete = fn () => $this->record($request, $entry, $parameters, $phase,
                 $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
@@ -470,13 +473,26 @@ final class PopOperationService
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
     private function coCommitsWithRecord(object|string $strategy): bool
     {
+        if ($this->isRekeyStrategy($strategy)) return false;
+
         return $this->atomicFinancialRepair($strategy)
             || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
     }
 
+    private function isRekeyStrategy(object|string $strategy): bool
+    {
+        return (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class;
+    }
+
+    private function hasRekeyJournal(object $request): bool
+    {
+        return $this->isRekeyStrategy((string) $request->strategy_id)
+            && DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rekey-row')->exists();
+    }
+
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /**
@@ -537,7 +553,7 @@ final class PopOperationService
             $retry = $requestId !== null && $this->retryableFinancialExecute($request);
             $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
             $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
-                && (clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists() || ($phase === 'rollback' && $this->hasRekeyJournal($request)))
                 && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
             if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
@@ -900,10 +916,11 @@ final class PopOperationService
             return $roles;
         }
 
-        if ($this->isExactUnbilledBacklogCatchup($entry)
+        if (($this->isExactUnbilledBacklogCatchup($entry) || $this->isExactBillingPeriodRekey($entry))
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
-            && ($entry['blast_radius'] ?? null) === 'new_contract_invoice_item_per_uncovered_contract_month'
+            && ($entry['blast_radius'] ?? null) === (['unbilled-backlog-catchup-20261006' => 'new_contract_invoice_item_per_uncovered_contract_month',
+                'billing-period-rekey-20261107' => 'invoice_billing_period_and_note_tag_only'][$entry['id'] ?? ''] ?? null)
             && ($entry['reversible'] ?? false) === true
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
@@ -1230,6 +1247,14 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'unbilled-backlog-catchup-20261006'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
+            && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    private function isExactBillingPeriodRekey(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'billing-period-rekey-20261107'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-billing-period-rekey'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
     }
 
