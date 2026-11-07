@@ -367,6 +367,8 @@ class BillingPayableResolver
                 'payable_source' => 'invoice',
                 'payable_invoice_id' => (int) $invoice->getAttribute('id'),
                 'payable_billing_period' => $projection['billing_period'],
+                'payable_period_start' => $projection['period_start'] ?? null,
+                'payable_period_end' => $projection['period_end'] ?? null,
                 'payable_amount_source' => $projection['amount_source'],
             ];
         }
@@ -561,6 +563,8 @@ class BillingPayableResolver
             'payable_source' => null,
             'payable_invoice_id' => null,
             'payable_billing_period' => null,
+            'payable_period_start' => null,
+            'payable_period_end' => null,
             'payable_amount_source' => null,
         ];
     }

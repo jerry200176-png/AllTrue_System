@@ -46,7 +46,7 @@ final class MonthlyRenewalPeriodService
         if ($open->count()) $blockers[] = ['code' => 'monthly_completed_sessions_outside_contract',
             'message' => "有 {$open->count()} 堂上課日在合約日期之外，先處理這幾堂才能開下一期。"];
         if ($reason && str_starts_with($reason, 'adopt_')) $blockers[] = ['code' => $reason, 'message' => '合約之外的上課要併入新合約，但舊合約不是單價乘堂數的單一未付帳單，請先請會計處理。'];
-        return ['start_date' => $start->toDateString(), 'billing_period' => $end ? $start->format('Y-m') : null,
+        return ['start_date' => $start->toDateString(), 'billing_period' => $end ? \App\Services\Billing\BillingPeriod::forCycle($course, $start->toDateString(), $end) : null,
             'due_date' => $end ? $month->day(min($day, $month->daysInMonth))->toDateString() : null,
             'blockers' => $blockers, 'adoptable' => $reason === null ? $inNew->pluck('id')->values()->all() : []];
     }

@@ -1158,8 +1158,7 @@ class AccountingController extends Controller
 
     private function invoiceNo(Invoice $invoice): string
     {
-        $period = preg_replace('/[^0-9]/', '', (string) ($invoice->billing_period ?: substr((string) $invoice->IssueDate, 0, 7)));
-        return 'INV-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT);
+        return \App\Services\Billing\InvoiceNumber::for($invoice);
     }
 
     private function paymentNo(int $paymentId, ?string $paidPeriod): string
