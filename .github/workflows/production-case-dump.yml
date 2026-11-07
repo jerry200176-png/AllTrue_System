@@ -211,6 +211,9 @@ jobs:
             foreach ($cs as $r) {{ if ((int) $r->campus === 15 && in_array((int) $r->room, [2, 4], true)) {{ foreach ([(int) $r->sc_t] as $t) {{ if ($t > 0) $cand[$t] = true; }} }} }}
             foreach ($sch as $r) {{ if ((int) $r->campus === 15 && (int) $r->t > 0) $cand[(int) $r->t] = true; }}
             $teachers = [];
+            $campusTeachers = $db::table('UserCampus as uc')->join('User as u', 'u.id', '=', 'uc.UserID')->where('uc.CampusID', 15)->where('u.type', 'T')->get(['u.id', 'u.Name']);
+            $out['campus15_teachers'] = $campusTeachers->map(fn ($u) => ['id' => (int) $u->id, 'name' => (string) $u->Name])->values()->all();
+            foreach ($campusTeachers as $u) {{ $cand[(int) $u->id] = true; }}
             foreach (array_keys($cand) as $t) {{
               $mineCs = $cs->filter(fn ($r) => (int) $r->sc_t === $t);
               $mineSch = $sch->filter(fn ($r) => (int) $r->t === $t);
