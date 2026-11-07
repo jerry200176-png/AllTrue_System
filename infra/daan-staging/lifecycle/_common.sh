@@ -23,6 +23,8 @@ fi
 
 export STAGING_HTPASSWD="${STAGING_HTPASSWD:-${HOME}/alltrue-stage/state/htpasswd}"
 
+export STAGING_GATE_CONF="${STAGING_GATE_CONF:-${HOME}/alltrue-stage/state/gate.conf}"
+
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
 
 compose() {

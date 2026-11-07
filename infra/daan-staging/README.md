@@ -87,12 +87,13 @@ Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` instal
 One-time: `cloudflared tunnel login`, `tunnel create alltrue-staging`, `~/.cloudflared/config.yml` with ingress
 `alltrue-staging.lifenet.com.tw` -> `http://127.0.0.1:18080`, user service `systemd/alltrue-staging-tunnel.service`.
 
-**Basic auth (no Cloudflare Access / Zero Trust):** `lifecycle/gen-basic-auth.sh` creates `~/alltrue-stage/state/htpasswd`
-(users `founder`, `preview-proxy`) and the plaintext `pw-founder`, `pw-preview-proxy` (mode 600, outside git).
-`preflight.sh` refuses to start without the htpasswd file. nginx gates everything except `/api/v1/health`.
-The SPA sends `Authorization: Bearer` on API calls, so API paths that need a login token skip basic auth only when a Bearer
-header is present; login, branches, webhooks and other unauthenticated API entry points always require basic auth.
-Only after basic auth works, publish DNS: `cloudflared tunnel route dns alltrue-staging alltrue-staging.lifenet.com.tw`.
+**Cookie gate (no Cloudflare Access / Zero Trust):** the app sends its own `Authorization: Bearer` on API calls, which
+would override browser Basic credentials, so nginx uses a cookie instead. `/__gate` is protected by basic auth (user `founder`);
+success sets `alltrue_staging_gate=<secret>` (30 days, Secure, HttpOnly) and redirects to `/`. Everything else returns 302 to `/__gate`
+(HTML) or 401 (`/api`) without the cookie; only `/api/v1/health` is open. The preview proxy sends `Cookie: alltrue_staging_gate=<secret>`.
+`lifecycle/gen-basic-auth.sh` creates, outside git in `~/alltrue-stage/state/`: `pw-founder`, `gate-secret` (plaintext, mode 600),
+`htpasswd`, `gate.conf` (secret map, mode 600). `preflight.sh` refuses to start without them.
+Only after the gate works, publish DNS: `cloudflared tunnel route dns alltrue-staging alltrue-staging.lifenet.com.tw`.
 `cert.pem` and tunnel credentials stay on the host.
 
 ## Non-goals

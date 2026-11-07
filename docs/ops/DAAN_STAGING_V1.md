@@ -12,7 +12,7 @@ Pattern: dev → staging → prod, GitOps **pull** model (Argo CD / Flux style).
 | Data | synthetic only (`infra/daan-staging/seed-demo.php`); never a production dump or backup mirror |
 | Memory | mysql 512m, app 512m, nginx 64m; `preflight.sh` refuses to start below 900 MB available |
 | Deploy | `systemd --user` timer every 15 min deploys the newest `main` commit whose push CI is green; rolls back on smoke failure |
-| Access | `127.0.0.1:18080` only. Public URL `alltrue-staging.lifenet.com.tw` via Cloudflare Tunnel (outbound only), protected by HTTP basic auth at staging nginx (users `founder`, `preview-proxy`; no Cloudflare Zero Trust plan needed) |
+| Access | `127.0.0.1:18080` only. Public URL `alltrue-staging.lifenet.com.tw` via Cloudflare Tunnel (outbound only), protected by an nginx cookie gate (basic auth for `founder` at `/__gate`, secret cookie for the preview proxy; no Cloudflare Zero Trust plan needed) |
 | Reset | nightly `migrate:fresh` + seed (03:30), so shared preview clicks cannot accumulate |
 | Secrets | generated on the host (`openssl rand`), kept in the git-ignored `.env`; nothing in GitHub |
 

@@ -49,7 +49,7 @@ if ss -lnt 2>/dev/null | grep -qE '127\.0\.0\.1:3306\s'; then
   echo "OK: host 127.0.0.1:3306 in use (expected host MySQL) — staging MySQL is Docker-internal only"
 fi
 
-[[ -s "${STAGING_HTPASSWD}" ]] || { echo "ERROR: ${STAGING_HTPASSWD} missing; run gen-basic-auth.sh (staging is never served without basic auth)" >&2; exit 2; }
+[[ -s "${STAGING_HTPASSWD}" && -s "${STAGING_GATE_CONF}" ]] || { echo "ERROR: ${STAGING_HTPASSWD} missing; run gen-basic-auth.sh (staging is never served without the gate)" >&2; exit 2; }
 echo "=== compose config validate ==="
 compose config -q
 echo "PREFLIGHT_OK"
