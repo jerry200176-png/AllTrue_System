@@ -89,7 +89,7 @@ class SchoolMergeController extends Controller
         try {
             $result = $fn();
         } catch (SchoolMergeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json(['message' => $e->getMessage()], $e->status);
         }
 
         return $result === null ? response()->json(['message' => 'Not found'], 404) : response()->json(['data' => $result], $ok);

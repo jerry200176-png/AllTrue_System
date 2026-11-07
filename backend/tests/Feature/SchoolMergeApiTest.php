@@ -211,4 +211,22 @@ class SchoolMergeApiTest extends TestCase
         $this->assertSame(1, $res->json('data.periods_skipped'));
         $this->assertSame('臺北市立大安國民中學', $p->fresh()->school_name);
     }
+
+    public function test_undo_must_go_newest_first_when_merges_overlap(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $s = $this->student($a, '甲測國中');
+        $first = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '乙測國中', 'variants' => ['甲測國中']])->json('data.request_id');
+        $second = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '丙測國中', 'variants' => ['乙測國中']])->json('data.request_id');
+
+        $this->as($dir)->postJson("/api/v1/school-merge/$first/undo", ['campus_id' => $a])
+            ->assertStatus(409)->assertJsonPath('message', '請先復原較新的合併');
+        $this->assertSame('丙測國中', $s->fresh()->SchoolName);
+        $this->as($dir)->getJson("/api/v1/school-merge/history?campus_id=$a")->assertJsonCount(2, 'data'); // first not consumed
+
+        $this->as($dir)->postJson("/api/v1/school-merge/$second/undo", ['campus_id' => $a])->assertOk();
+        $this->as($dir)->postJson("/api/v1/school-merge/$first/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 1);
+        $this->assertSame('甲測國中', $s->fresh()->SchoolName);
+    }
 }

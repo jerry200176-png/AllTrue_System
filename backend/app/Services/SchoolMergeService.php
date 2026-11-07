@@ -77,6 +77,7 @@ class SchoolMergeService
             $meta = json_decode((string) $event->metadata, true) ?: [];
             $canonical = (string) ($meta['canonical_name'] ?? '');
             $payload = json_decode((string) ($meta['restore_payload'] ?? ''), true) ?: [];
+            $this->assertNewestFirst($event, $payload);
 
             $students = 0;
             foreach ($payload['s'] ?? [] as $old => $ids) {
@@ -100,6 +101,25 @@ class SchoolMergeService
 
             return ['students_restored' => $students, 'periods_restored' => $periods];
         });
+    }
+
+    /** LIFO: a later, still-undoable merge that touched the same rows must be undone first (else this undo is wasted and can't be redone). */
+    private function assertNewestFirst(object $event, array $payload): void
+    {
+        $undone = DB::table('security_audit_events')->where('event_type', self::UNDONE)
+            ->where('campus_id', $event->campus_id)->pluck('correlation_id')->all();
+        $ids = fn (array $p, string $k) => array_merge([], ...array_values($p[$k] ?? []));
+        $mine = ['s' => $ids($payload, 's'), 'p' => $ids($payload, 'p')];
+        $later = DB::table('security_audit_events')->where('event_type', self::APPLIED)->where('campus_id', $event->campus_id)
+            ->where('id', '>', $event->id)->where('retention_until', '>', now())->whereNotIn('correlation_id', $undone)->get(['metadata']);
+        foreach ($later as $row) {
+            $theirs = json_decode((string) (json_decode((string) $row->metadata, true)['restore_payload'] ?? ''), true) ?: [];
+            foreach (['s', 'p'] as $k) {
+                if (array_intersect($mine[$k], $ids($theirs, $k)) !== []) {
+                    throw new SchoolMergeException('請先復原較新的合併', 409);
+                }
+            }
+        }
     }
 
     /** @return list<array{request_id:string,occurred_at:string,canonical_name:string,student_count:int}> */
