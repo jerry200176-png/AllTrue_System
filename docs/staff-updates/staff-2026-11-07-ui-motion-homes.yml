@@ -8,6 +8,6 @@ updates:
     summary: 登入頁和首頁更簡潔，數字會動，用詞更溫和。
     items:
       - category: improved
-        text: 登入頁維持橘色並加上緩慢動畫，主任首頁與家長首頁更簡潔，主要按鈕有金色流光；家長首頁用詞更溫和。系統設定為減少動態時不會動。
+        text: 登入頁加上緩慢動畫，主任與家長首頁更簡潔；家長首頁用詞更溫和。
     source_refs:
       - "changelog:2026-11-07:ui-motion-homes"
