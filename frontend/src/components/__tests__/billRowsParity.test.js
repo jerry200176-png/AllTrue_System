@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
-import { billDueText, billRows } from '../billRows.js';
+import { billDueText, billRows } from '../../lib/billRows.js';
 
 // The PHP twin (App\Services\Billing\BillRowText) runs the same file in BillExportTest.
-const fx = JSON.parse(readFileSync(new URL('../../../../backend/tests/fixtures/bill_rows_parity.json', import.meta.url), 'utf8'));
+const fx = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../backend/tests/fixtures/bill_rows_parity.json'), 'utf8'));
 
 it('billRows gives the cells the export fixtures expect', () => {
   const out = billRows(fx.cases.map((c) => c.row), fx.today);
