@@ -48,10 +48,21 @@ $L/validate-cycle.sh  # full cycle rehearsal; evidence in infra/daan-staging/run
 
 ## Demo data and logins
 
-`seed-demo.sh` (idempotent) creates one fake campus, a director, a teacher and three students.
-Passwords are generated on first run and written **only** to `~/alltrue-stage/DEMO_LOGINS.txt` (host, mode 0600).
-Director/teacher log in with `demo-director` / `demo-teacher` plus the generated password.
-Parents log in with a seeded StudentID plus phone (no password); the file lists them. Nothing here is committed.
+`seed-demo.sh` creates synthetic data only: 2 campuses (示範A/B分校), rooms, subjects, 3 staff users, 8 students with guardians,
+12 courses with 8 weeks of sessions around today (past completed/leave, future scheduled), attendance sign-ins,
+learning records (approved and pending), 12 bills (paid, unpaid, partial) with payments, and notifications.
+Payroll stays PIN-locked on purpose.
+
+| Role | Login |
+|---|---|
+| 主任 (director over both campuses) | `demo-director` + `DEMO_PW_DIRECTOR` |
+| 老師 | `demo-teacher` + `DEMO_PW_TEACHER` |
+| 家長 | StudentID + Phone from `~/alltrue-stage/DEMO_LOGINS.txt` (no password) |
+
+Passwords are generated on first run into the git-ignored host `.env` (`DEMO_PW_*`); never committed.
+
+**Nightly reset (03:30 Taipei):** `alltrue-staging-reset.timer` runs `seed-demo.sh --reset` (`migrate:fresh` + seed, staging only),
+under the same lock as the pull-deploy, so preview clicks cannot accumulate.
 
 ## Auto-update (pull, no inbound access, no GitHub secrets)
 
@@ -79,7 +90,7 @@ Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` instal
 ~/bin/cloudflared tunnel run alltrue-staging        # run as a user service
 ```
 
-Then in the Cloudflare dashboard add an Access application on that hostname with one Allow policy: the Founder's email.
+Then in the Cloudflare dashboard add an Access application on that hostname with two policies: Allow the Founder's email, and Service Auth for the preview Pages Function's service token (the token is created by the Founder; it is stored only in Cloudflare and the Pages project, never here).
 Never expose the hostname without that policy. `cert.pem` and the tunnel credentials stay on the host.
 
 ## Non-goals
