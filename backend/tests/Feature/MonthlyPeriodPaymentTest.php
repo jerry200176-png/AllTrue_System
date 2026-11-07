@@ -220,7 +220,10 @@ class MonthlyPeriodPaymentTest extends TestCase
         foreach (['2026-10-15', '2026-10-22'] as $date) {
             ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '23:00', 'EndTime' => '23:59', 'Status' => 'scheduled']);
         }
-        return [$course->fresh(), $this->invoice($course, '2026-10', 1000)];
+        // the bill covers the whole schedule: 2 scheduled lessons x NT$1000 (rate per session) = NT$2000 (in-app #518)
+        $invoice = $this->invoice($course, '2026-10', 1000);
+        $invoice->update(['TotalAmount' => 2000]);
+        return [$course->fresh(), $invoice];
     }
 
     public function test_prepaid_current_month_with_no_lessons_held_is_not_displayed_as_a_discrepancy(): void // in-app #510
@@ -243,13 +246,13 @@ class MonthlyPeriodPaymentTest extends TestCase
         \Illuminate\Support\Carbon::setTestNow('2026-10-10 12:00:00');
         [$course, $invoice] = $this->prepaidOctoberCourse();
         $invoice->payments()->delete();
-        $invoice->update(['TotalAmount' => 7200, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $invoice->update(['TotalAmount' => 2000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
         $svc = app(MonthlyPeriodPaymentService::class);
         $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
         \Illuminate\Support\Carbon::setTestNow();
         $this->assertFalse($shown['review_required']);
-        $this->assertSame(7200, $shown['periods'][0]['charge']);
-        $this->assertSame(7200, $shown['periods'][0]['outstanding_amount']);
+        $this->assertSame(2000, $shown['periods'][0]['charge']);
+        $this->assertSame(2000, $shown['periods'][0]['outstanding_amount']);
         $this->assertSame('unpaid', $shown['payment_status']);
     }
 
@@ -265,12 +268,11 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertTrue($shown['review_required']);
     }
 
-    public function test_running_month_with_some_lessons_held_and_more_scheduled_is_not_a_discrepancy(): void // in-app #518
+    public function test_running_month_with_some_lessons_held_and_the_bill_equal_to_the_full_schedule_is_not_a_discrepancy(): void // in-app #518
     {
         \Illuminate\Support\Carbon::setTestNow('2026-10-18 12:00:00');
-        [$course, $invoice] = $this->prepaidOctoberCourse();
+        [$course] = $this->prepaidOctoberCourse(); // bill NT$2000 = 1 held + 1 scheduled lesson, NT$1000 each
         ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-10-15')->update(['Status' => 'attended']);
-        $invoice->update(['TotalAmount' => 99000]);
         $svc = app(MonthlyPeriodPaymentService::class);
         $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
         $shown = $svc->forDisplay($summary);
@@ -278,16 +280,30 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertTrue($summary['periods'][0]['amount_discrepancy'], 'guards still see main behaviour');
         $this->assertFalse($shown['periods'][0]['amount_discrepancy']);
         $this->assertFalse($shown['review_required']);
-        $this->assertSame(99000, $shown['periods'][0]['charge']);
+        $this->assertSame(2000, $shown['periods'][0]['charge']);
     }
 
-    public function test_running_month_billed_below_its_held_lessons_still_displays_the_discrepancy(): void // in-app #518
+    public function test_running_month_overbilled_against_its_schedule_still_displays_the_discrepancy(): void // in-app #518 P1
     {
         \Illuminate\Support\Carbon::setTestNow('2026-10-18 12:00:00');
         [$course, $invoice] = $this->prepaidOctoberCourse();
         ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-10-15')->update(['Status' => 'attended']);
-        $invoice->update(['TotalAmount' => 1, 'PaidAmount' => 1]);
-        $invoice->payments()->update(['Amount' => 1]);
+        $invoice->payments()->delete();
+        $invoice->update(['TotalAmount' => 99000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($shown['periods'][0]['amount_discrepancy']);
+        $this->assertTrue($shown['review_required']);
+        $this->assertLessThan(99000, $shown['periods'][0]['charge'], 'parents are not shown the overbilled total as owed');
+    }
+
+    public function test_running_month_underbilled_against_its_schedule_still_displays_the_discrepancy(): void // in-app #518 P1
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-18 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse();
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-10-15')->update(['Status' => 'attended']);
+        $invoice->update(['TotalAmount' => 1500]);
         $svc = app(MonthlyPeriodPaymentService::class);
         $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
         \Illuminate\Support\Carbon::setTestNow();

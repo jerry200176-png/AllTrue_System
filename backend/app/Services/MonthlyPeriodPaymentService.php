@@ -90,13 +90,15 @@ final class MonthlyPeriodPaymentService
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
             $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) $amount['stored_total_amount'];
             // in-app #510 / #518: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
-            // A month still running whose held lessons price BELOW the bill (none held yet, or some held and more
-            // scheduled) is not a mismatch yet: the bill is the month's agreed total and later lessons close the gap.
-            // A bill below the held lessons can only grow apart, so it is never deferred.
+            // A month still running is not a mismatch only while the bill EQUALS what the month's schedule is worth:
+            // held lessons (computed) plus the lessons still scheduled, priced the same way. Overbilled or underbilled
+            // against the full schedule stays a mismatch; nothing here changes what a guard or a repricing reads.
             $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
                 && ($amount['computed_total_amount'] ?? null) !== null
-                && $amount['computed_total_amount'] < $amount['stored_total_amount']
-                && $this->hasUpcomingScheduledLesson($sessions, $start, $end));
+                && $amount['period_start'] && $amount['period_end']
+                && $this->hasUpcomingScheduledLesson($sessions, $start, $end)
+                && $amount['computed_total_amount'] + ($this->billing->remainingScheduledCharge($course, $amount['period_start'], $amount['period_end']) ?? PHP_INT_MAX)
+                    === $amount['stored_total_amount']);
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
             $existing['invoice_ids'][] = (int) $invoice->id;
