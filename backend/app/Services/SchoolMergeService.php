@@ -28,6 +28,7 @@ class SchoolMergeService
     public function merge(int $campusId, int $actorId, string $canonical, array $variants): array
     {
         return DB::transaction(function () use ($campusId, $actorId, $canonical, $variants) {
+            $this->lockCampus($campusId);
             $students = Student::query()->where('CampusID', $campusId)->where('enable', 1)
                 ->whereIn(DB::raw('TRIM(SchoolName)'), $variants)->whereRaw('BINARY SchoolName != ?', [$canonical])
                 ->lockForUpdate()->get(['id', 'SchoolName']);
@@ -63,6 +64,7 @@ class SchoolMergeService
     public function undo(int $campusId, int $actorId, string $requestId): ?array
     {
         return DB::transaction(function () use ($campusId, $actorId, $requestId) {
+            $this->lockCampus($campusId);
             $event = DB::table('security_audit_events')->where('event_type', self::APPLIED)
                 ->where('correlation_id', $requestId)->where('campus_id', $campusId)->lockForUpdate()->first();
             if (!$event) {
@@ -95,12 +97,22 @@ class SchoolMergeService
                     }
                 }
             }
+            if ($students + $periods === 0 && ($payload['s'] ?? []) + ($payload['p'] ?? []) !== []) {
+                // Nothing restorable (rows edited since): don't burn the undo.
+                throw new SchoolMergeException('這些資料之後已被修改，無法復原', 409);
+            }
             SecurityAuditEvent::append(self::UNDONE, 'success', [
                 'campus_id' => $campusId, 'actor_type' => 'user', 'actor_id' => $actorId, 'correlation_id' => $requestId,
             ], ['canonical_name' => $canonical, 'student_count' => $students], true);
 
             return ['students_restored' => $students, 'periods_restored' => $periods];
         });
+    }
+
+    /** Serialize all merges/undos of one campus: the newest-first check and the writes must not interleave. Take first. */
+    private function lockCampus(int $campusId): void
+    {
+        DB::table('Campus')->where('id', $campusId)->lockForUpdate()->first();
     }
 
     /** LIFO: a later, still-undoable merge that touched the same rows must be undone first (else this undo is wasted and can't be redone). */

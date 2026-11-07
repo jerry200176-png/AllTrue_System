@@ -145,7 +145,8 @@ class SchoolMergeApiTest extends TestCase
         $s = $this->student($a, '在興國中');
         $id = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '再興國中', 'variants' => ['在興國中']])->json('data.request_id');
         $s->update(['SchoolName' => '丁測國中']);
-        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertStatus(409);
+        $this->as($dir)->getJson("/api/v1/school-merge/history?campus_id=$a")->assertJsonCount(1, 'data'); // not burned
         $this->assertSame('丁測國中', $s->fresh()->SchoolName);
     }
 
@@ -166,7 +167,7 @@ class SchoolMergeApiTest extends TestCase
         $sb->update(['SchoolName' => '再興國中']);
         $pb->update(['school_name' => '再興國中']);
         DB::table('Student')->where('id', $sa->id)->update(['CampusID' => $b]); // forged/moved row in the payload
-        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertStatus(409);
         $this->assertSame('再興國中', $sa->fresh()->SchoolName);
         $this->assertSame('再興國中', $sb->fresh()->SchoolName);
         $this->assertSame('再興國中', $pb->fresh()->school_name);
@@ -228,5 +229,40 @@ class SchoolMergeApiTest extends TestCase
         $this->as($dir)->postJson("/api/v1/school-merge/$second/undo", ['campus_id' => $a])->assertOk();
         $this->as($dir)->postJson("/api/v1/school-merge/$first/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 1);
         $this->assertSame('甲測國中', $s->fresh()->SchoolName);
+    }
+
+    public function test_merge_and_undo_lock_the_campus_row_before_reading_anything(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $this->student($a, '甲測國中');
+        $first = null;
+        $log = [];
+        DB::listen(function ($q) use (&$log) {
+            $log[] = $q->sql;
+        });
+        $id = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '乙測國中', 'variants' => ['甲測國中']])->json('data.request_id');
+        $this->assertLockFirst($log);
+        $log = [];
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk();
+        $this->assertLockFirst($log);
+    }
+
+    /** After BEGIN, the first data read must be the campus row FOR UPDATE. */
+    private function assertLockFirst(array $log): void
+    {
+        $reads = array_values(array_filter($log, fn ($q) => stripos($q, 'select') === 0 && stripos($q, 'AuthToken') === false
+            && stripos($q, 'auth_tokens') === false && stripos($q, 'User') === false));
+        $i = null;
+        foreach ($reads as $k => $q) {
+            if (stripos($q, 'for update') !== false) {
+                $i = $k;
+                $this->assertStringContainsString('Campus', $q);
+                $this->assertStringNotContainsString('security_audit_events', $q);
+                break;
+            }
+        }
+        $this->assertNotNull($i, 'no FOR UPDATE read');
+        $this->assertSame(0, $i, 'campus lock must be the first locking read: ' . implode(' | ', array_slice($reads, 0, 3)));
     }
 }
