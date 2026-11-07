@@ -482,6 +482,7 @@ class SecurityHardeningTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->getJson('/api/v1/health/detailed')
             ->assertStatus(200)
-            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security']);
+            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security'])
+            ->assertJsonStructure(['business_today' => ['lessons_written_today', 'bills_created_today', 'sign_ins_today']]);
     }
 }

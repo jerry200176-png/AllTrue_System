@@ -274,6 +274,16 @@ Route::prefix('v1')->group(function () {
             $logPipeline['tmpfs_healthy']   = $logPipeline['tmpfs_usage_pct'] < 80;
         }
         $sentryDsn = config('sentry.dsn') ?: env('SENTRY_LARAVEL_DSN');
+        // #5070 gap 3: aggregate business counts for the daily health workflow. Numbers only, staff roles only.
+        $business = null;
+        if (in_array(request()->attributes->get('auth_role'), ['director', 'super_admin'], true)) {
+            $today = now()->startOfDay();
+            $business = [
+                'lessons_written_today' => \Illuminate\Support\Facades\DB::table('ClassSession')->where('updated_at', '>=', $today)->count(),
+                'bills_created_today'   => \Illuminate\Support\Facades\DB::table('Invoice')->where('created_at', '>=', $today)->count(),
+                'sign_ins_today'        => \Illuminate\Support\Facades\DB::table('user_login_activities')->where('login_at', '>=', $today)->where('success', 1)->count(),
+            ];
+        }
         return response()->json([
             'status'    => 'ok',
             'timestamp' => now()->toIso8601String(),
@@ -286,7 +296,7 @@ Route::prefix('v1')->group(function () {
             'log_pipeline' => $logPipeline,
             'sentry' => ['configured' => !empty($sentryDsn), 'sdk_bound' => app()->bound('sentry')],
             'security' => ['debug_mode' => config('app.debug')],
-        ]);
+        ] + ($business === null ? [] : ['business_today' => $business]));
     });
 
     // ── Engagement / Gamification ──

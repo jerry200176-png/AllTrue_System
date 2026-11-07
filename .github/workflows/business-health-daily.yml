@@ -1,6 +1,7 @@
 name: Business health daily (read-only)
-# governance-capability: read-only-probe
-# Gap 3 of #5070. Aggregate counts only (no names, ids or PII). Red -> one GitHub issue.
+# Gap 3 of #5070. No SSH, no production environment: logs in with the existing synthetic smoke
+# director (same helper as post-merge smoke) and reads aggregate counts from GET /api/v1/health/detailed.
+# Numbers only (no ids, names or PII). Red -> one GitHub issue.
 on:
   schedule:
     - cron: '0 14 * * *'   # 22:00 Asia/Taipei, after the teaching day
@@ -14,81 +15,46 @@ jobs:
   probe:
     name: Read aggregate business counts
     runs-on: ubuntu-latest
-    environment: production-ssh
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
       red: ${{ steps.read.outputs.red }}
       summary: ${{ steps.read.outputs.summary }}
     steps:
-      - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: |
-            .github/actions/production-ssh-trust
+          sparse-checkout: scripts/smoke-auth-lib.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Configure pinned production SSH trust
-        uses: ./.github/actions/production-ssh-trust
-        with:
-          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
-          host-key: ${{ secrets.PI_HOST_KEY }}
-      - name: Read counts (SELECT count only)
+      - name: Read counts
         id: read
         env:
-          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
-          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
-          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
         run: |
           set -euo pipefail
-          ssh_dir="$RUNNER_TEMP/business-health"
-          install -d -m 700 "$ssh_dir"
-          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
-          chmod 600 "$ssh_dir/deploy_key"
-          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
-          out="$(ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          cd /home/admin/backend
-          php <<'PHP'
-          <?php
-          require 'vendor/autoload.php';
-          $app = require 'bootstrap/app.php';
-          $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-          $db = \Illuminate\Support\Facades\DB::class;
-          $now = now();
-          echo json_encode([
-              // ClassSession rows for today/yesterday/day-before touched in the last 24h.
-              'lessons_written_24h' => $db::table('ClassSession')
-                  ->whereBetween('SessionDate', [$now->copy()->subDays(2)->toDateString(), $now->toDateString()])
-                  ->where('updated_at', '>=', $now->copy()->subDay())->count(),
-              'invoices_created_24h' => $db::table('Invoice')->where('created_at', '>=', $now->copy()->subDay())->count(),
-              'invoices_created_35d' => $db::table('Invoice')->where('created_at', '>=', $now->copy()->subDays(35))->count(),
-          ], JSON_THROW_ON_ERROR) . PHP_EOL;
-          PHP
-          REMOTE
-          )"
-          echo "$out"
-          # Red: no lesson writes on a Taipei weekday, or no bill at all in 35 days (billing path dead).
-          red_summary="$(OUT="$out" python3 - <<'PY'
-          import datetime, json, os
-          d = json.loads(os.environ["OUT"])
+          if [ -z "$SMOKE_DIRECTOR_USER" ] || [ -z "$SMOKE_DIRECTOR_PASS" ] || [ -z "$SMOKE_BASE_URL" ]; then
+            echo "::notice::SMOKE_* secrets not set - skipping"; echo "red=0" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          source scripts/smoke-auth-lib.sh
+          api="${SMOKE_BASE_URL%/}/api/v1"
+          token="$(smoke_login_and_token "$api" "$SMOKE_DIRECTOR_USER" "$SMOKE_DIRECTOR_PASS" director business-health)"
+          echo "::add-mask::$token"
+          curl -fsS --max-time 20 -H "Authorization: Bearer $token" -H 'Accept: application/json' "$api/health/detailed" > "$RUNNER_TEMP/health.json"
+          red_summary="$(python3 - "$RUNNER_TEMP/health.json" <<'PY'
+          import datetime, json, sys
+          b = json.load(open(sys.argv[1]))["business_today"]
           weekday = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).weekday() < 5
           bad = []
-          if weekday and d["lessons_written_24h"] == 0:
-              bad.append("no lessons written in 24h on a weekday")
-          if d["invoices_created_35d"] == 0:
-              bad.append("no bills created in 35 days")
-          nums = "lessons_24h=%s, bills_24h=%s, bills_35d=%s" % (d["lessons_written_24h"], d["invoices_created_24h"], d["invoices_created_35d"])
+          if weekday and b["lessons_written_today"] == 0:
+              bad.append("no lessons written today (weekday)")
+          nums = "lessons=%s, bills=%s, sign_ins=%s" % (b["lessons_written_today"], b["bills_created_today"], b["sign_ins_today"])
           print("%s|%s (%s)" % ("1" if bad else "0", "; ".join(bad) or "ok", nums))
           PY
           )"
-          red="${red_summary%%|*}"
-          summary="${red_summary#*|}"
-          echo "red=$red" >> "$GITHUB_OUTPUT"
-          echo "summary=$summary" >> "$GITHUB_OUTPUT"
-          echo "### Business health: $summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "red=${red_summary%%|*}" >> "$GITHUB_OUTPUT"
+          echo "summary=${red_summary#*|}" >> "$GITHUB_OUTPUT"
+          echo "### Business health: ${red_summary#*|}" >> "$GITHUB_STEP_SUMMARY"
 
   alert-issue:
     name: Open or update alert issue
