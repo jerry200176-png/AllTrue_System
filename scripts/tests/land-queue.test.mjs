@@ -644,6 +644,14 @@ test('TRIVIAL_REBASE: only an automatic merge of main carries; a hand-built merg
   assert.equal(sameDiff(diff(OLDC), diff(evil)), true);
 });
 
+test('TRIVIAL_REBASE: conflicting equal-timestamp Codex records on the carried SHA are ambiguous, not carried', () => {
+  const G = (cs) => reviewGate(cs, H, OWNER, 'lower', () => true);
+  const bad = codex(clean(OLD, { has_unresolved_findings: true }));
+  assert.equal(G([codex(clean(OLD)), bad]).ok, false);
+  assert.equal(G([bad, codex(clean(OLD))]).ok, false); // order independent
+  assert.equal(G([codex(clean(OLD)), codex(clean(OLD))]).ok, true); // agreeing duplicates are fine
+});
+
 test('TRIVIAL_REBASE: an owner fail marker on the old head or any in-between head blocks the Codex carry', () => {
   const owner = (body) => ({ user: { login: OWNER }, body });
   const MID = 'c'.repeat(40);

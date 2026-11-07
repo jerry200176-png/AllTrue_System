@@ -108,7 +108,10 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   // review. Otherwise the same head could merge before its pending findings arrive.
   if (onHead) return { ok: false, why: `Codex review ${cr.status ?? 'unknown'} on ${short}` };
   // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since.
-  const stale = cr && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
+  // Same per-SHA ambiguity rule as the current head: equal-timestamp records of that SHA must agree.
+  const ambiguous = cr && records.some((r) => r.cr.commit_sha === cr.commit_sha && r.at === records[0].at
+    && (r.cr.status !== cr.status || r.cr.has_unresolved_findings !== cr.has_unresolved_findings));
+  const stale = cr && !ambiguous && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
   // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
   // later) blocks the Codex carry, same as carried() does for markers.
   const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
@@ -183,6 +186,7 @@ function prGit(n, base) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trivial-rebase-'));
   const git = (...a) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
   git('init', '--bare', '-q');
+  git('config', 'credential.helper', '!gh auth git-credential'); // GH_TOKEN, also for the lazy blob fetches (private repo)
   git('fetch', '--no-tags', '--filter=blob:none', `https://github.com/${REPO}.git`, `refs/heads/${base}:refs/remotes/origin/${base}`, `refs/pull/${n}/head:refs/pull/${n}/head`);
   return git;
 }
