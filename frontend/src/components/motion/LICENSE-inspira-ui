@@ -1,4 +1,4 @@
-Portions of NumberTicker.vue, BlurFade.vue and ShineBorder.vue are adapted from Inspira UI
+Portions of NumberTicker.vue, BlurFade.vue, ShineBorder.vue, SlidingIndicator.vue (concept), AuroraBackground.vue and TextReveal.vue (concept) are adapted from Inspira UI
 (https://github.com/unovue/inspira-ui, commit eec920b047589058b4b02ba64deb614869e7237a).
 
 MIT License

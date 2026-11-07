@@ -514,7 +514,7 @@ onBeforeUnmount(() => {
 }
 .login-btn:hover:not(:disabled) { background: var(--ds-brand-gold); }
 .login-btn:active:not(:disabled) { transform: scale(0.96); }
-.login-btn:focus-visible { outline: 3px solid var(--ds-brand-ink); outline-offset: 3px; }
+.login-btn:focus-visible { outline: 3px solid var(--ds-ink); outline-offset: 3px; } /* theme-aware: 3:1+ on the light and the dark card */
 .login-btn:disabled {
   background: var(--ds-canvas-soft);
   color: var(--ds-ink-mute);
@@ -535,14 +535,6 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--ds-hairline);
   background: transparent;
 }
-.login-parent-hint {
-  width: 100%;
-  margin: 0;
-  font-size: 0.85rem;
-  color: #546e7a;
-  text-align: center;
-}
-
 .login-footer-btn {
   padding: 10px 20px;
   font-size: 1rem;

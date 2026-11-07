@@ -32,7 +32,7 @@ describe('pickAmountDue', () => {
       { StudentClassID: 2, Status: 'partial', TotalAmount: 3000, DueDate: '2026-11-05', payments: [{ Amount: 1000, Method: 'cash' }] },
       { Status: 'paid', TotalAmount: 9999, payments: [{ Amount: 9999 }] },
     ];
-    expect(pickAmountDue(inv, [])).toEqual({ amount: 9200, dueDateLabel: '11/5' });
+    expect(pickAmountDue(inv, [])).toEqual({ amount: 9200, dueDateLabel: '11/5', count: 2 });
   });
   it('stale-paid invoice with short payments is 確認中, never a lower amount or 都繳清了', () => {
     const stale = { Status: 'paid', TotalAmount: 10000, payments: [{ Amount: 4000, Method: 'cash' }] };
@@ -43,14 +43,14 @@ describe('pickAmountDue', () => {
   it('an alerted course with no open bill (unbilled) is 確認中, matched by course, never a short total', () => {
     const bill = (cls, amt) => ({ StudentClassID: cls, Status: 'unpaid', TotalAmount: amt, DueDate: '2026-11-10', payments: [] });
     expect(pickAmountDue([bill(1, 7200)], [{ class_id: 1 }, { class_id: 2 }])).toMatchObject({ amount: null, review: true, dueDateLabel: '11/10' });
-    expect(pickAmountDue([bill(1, 7200)], [{ class_id: 1 }])).toEqual({ amount: 7200, dueDateLabel: '11/10' });
+    expect(pickAmountDue([bill(1, 7200)], [{ class_id: 1 }])).toEqual({ amount: 7200, dueDateLabel: '11/10', count: 1 });
     // two open bills on one course + an unbilled course: still 確認中 (reviewer case)
     expect(pickAmountDue([bill(1, 3000), bill(1, 3000)], [{ class_id: 1 }, { class_id: 2 }])).toMatchObject({ amount: null, review: true });
     // a stopped course's bill (no alert) + an unbilled course: still 確認中
     expect(pickAmountDue([bill(3, 1000)], [{ class_id: 2 }])).toMatchObject({ amount: null, review: true });
   });
   it('falls back to unknown amount from payment alerts, and null when all paid', () => {
-    expect(pickAmountDue([], [{ class_id: 1 }])).toEqual({ amount: null, dueDateLabel: '' });
+    expect(pickAmountDue([], [{ class_id: 1 }])).toEqual({ amount: null, dueDateLabel: '', count: 0 });
     expect(pickAmountDue([{ Status: 'paid', TotalAmount: 5 }], [])).toBeNull();
     expect(pickAmountDue(undefined, undefined)).toBeNull();
   });
@@ -86,5 +86,14 @@ describe('ParentHome empty and filled states', () => {
     expect(out.match(/待繳/g)).toHaveLength(1);
     expect(out.match(/7,200/g)).toHaveLength(1);
     expect(out.match(/data-guide="parent-home-/g)).toHaveLength(3);
+  });
+  it('labels one open bill 本期學費, several 待繳學費 with 共 N 筆, and keeps decimals', async () => {
+    const one = await html({ nextLesson: null, due: { amount: 7200.5, dueDateLabel: '11/10', count: 1 }, feedback: null });
+    expect(one).toContain('本期學費');
+    expect(one).not.toContain('待繳學費');
+    expect(one.replace(/<[^>]+>/g, '')).toContain('$7,200.5');
+    const many = await html({ nextLesson: null, due: { amount: 9000, dueDateLabel: '11/10', count: 3 }, feedback: null });
+    expect(many).toContain('待繳學費');
+    expect(many).toContain('共 3 筆');
   });
 });

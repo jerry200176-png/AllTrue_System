@@ -7,7 +7,11 @@ export function fxAllowed({ needsWebGL = false } = {}) {
   if (nav.connection?.saveData) return false;
   if (typeof nav.deviceMemory === 'number' && nav.deviceMemory < 4) return false;
   if (needsWebGL) {
-    try { if (!document.createElement('canvas').getContext('webgl')) return false; } catch { return false; }
+    try {
+      const gl = document.createElement('canvas').getContext('webgl');
+      if (!gl) return false;
+      gl.getExtension('WEBGL_lose_context')?.loseContext(); // release the probe context
+    } catch { return false; }
   }
   return true;
 }

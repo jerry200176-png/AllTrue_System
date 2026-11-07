@@ -5,7 +5,7 @@
  *            app/components/inspira/ui/text-generate-effect) and Vue Bits SplitText (DavidHDev/vue-bits, MIT + Commons Clause).
  *            Both drive per-word / per-char motion with JS timelines (motion-v / GSAP); this re-implements the idea with one
  *            CSS animation and a per-character delay. Full licence text for Inspira: ./LICENSE-inspira-ui.
- * The whole title stays one readable string for screen readers. prefers-reduced-motion shows it at once.
+ * Screen readers get the whole title once (sr-only text); the animated characters sit in one aria-hidden wrapper. prefers-reduced-motion shows it at once.
  */
 defineProps({
   text: { type: String, required: true },
@@ -14,7 +14,7 @@ defineProps({
 </script>
 
 <template>
-  <span class="text-reveal" :aria-label="text"><span v-for="(c, i) in [...text]" :key="i" class="text-reveal__c" aria-hidden="true" :style="{ '--i': i, '--d': `${delay}ms` }">{{ c }}</span></span>
+  <span class="text-reveal"><span class="tw:sr-only">{{ text }}</span><span aria-hidden="true"><span v-for="(c, i) in [...text]" :key="i" class="text-reveal__c" :style="{ '--i': i, '--d': `${delay}ms` }">{{ c }}</span></span></span>
 </template>
 
 <style scoped>

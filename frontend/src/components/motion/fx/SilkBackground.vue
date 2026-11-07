@@ -4,7 +4,7 @@
  *   repo:    https://github.com/DavidHDev/vue-bits
  *   path:    src/content/Backgrounds/Silk/Silk.vue
  *   commit:  3766ebeeed37ec35bce29f001b6d101c7b17da35
- *   licence: MIT + Commons Clause (c) 2025 David Haz: use inside an application is allowed, selling the code itself is not.
+ *   licence: MIT + Commons Clause (c) 2025 David Haz (full text in ../LICENSE-vue-bits): use inside an application is allowed, selling the code itself is not.
  * Changes: the `ogl` dependency is replaced with raw WebGL (one full-screen triangle, same fragment maths); colours come
  * from design tokens (deep orange -> gold) instead of one hex; canvas pixel ratio capped at 1.5; the loop pauses while
  * the tab is hidden; the component emits `fail` when WebGL is missing or the context is lost so the parent keeps the
