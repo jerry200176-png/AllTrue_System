@@ -61,6 +61,7 @@ const pageModules = {
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
+const Ui = page === 'course-manager' && mode === 'confirm' ? await import('../../../src/components/ui/dialog/index.js') : null;
 const EditForm = page === 'course-manager' ? (await import('../../../src/components/CourseEditForm.vue')).default : null;
 
 void styles;
@@ -80,7 +81,7 @@ createApp({
       const d = (date, extra = {}) => ({ id: Number(date.slice(-2)), date, startTime: '19:00', start_time: '19:00', ...extra });
       const units = [d('2026-09-01'), d('2026-09-08'), d('2026-09-15'), d('2026-09-17', { id: 217 }), d('2026-09-22'), d('2026-09-24', { isProjected: true, kind: 'projected', id: 0 }), d('2026-09-29', { isProjected: true, kind: 'projected', id: 0 })];
       const label = (_c, date) => (date === '2026-09-17' ? '請假' : date < '2026-09-15' ? '已上' : '');
-      return () => h(PageComponent, {
+      const drawer = () => h(PageComponent, {
         course: { id: 7, student_name: '測試學生甲', subject: '數學', teacher_name: '測試老師', class_type: 'one_on_one', status: 'active', payment_type: 'session', room_name: 'A' },
         tab: tab.value, 'onUpdate:tab': (t) => { tab.value = t; },
         studentName: '測試學生甲', subjectLabel: '國中數學', classTypeLabel: '一對一', statusLabel: '進行中',
@@ -93,6 +94,12 @@ createApp({
         getSessionStateClass: () => '', getSessionStateLabel: label, getSessionNumber: () => null, sessionRowKey: (u) => `${u.date}-${u.id}`,
         isUserNote: () => false, formatMakeupDate: () => '', purchaseLabel: '續課', onClose: () => {},
       }, { settings: () => h(EditForm, { modelValue: { class_type: 'one_on_one', subject: 'Math', teacher_id: 3000, rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8, remaining_sessions: 5, payment_type: 'session' }, subjects: [{ value: 'Math', label: '數學' }], teachers: [{ id: 3000, name: '測試老師' }], showRemaining: true }) });
+      if (mode !== 'confirm') return drawer;
+      // A confirm (ui Dialog) opened over the open drawer: it must stack above it (in-app #518 review).
+      return () => [drawer(), h(Ui.Dialog, { open: true }, () => h(Ui.DialogContent, { showCloseButton: false }, () => [
+        h(Ui.DialogHeader, null, () => [h(Ui.DialogTitle, null, () => '暫停課程？'), h(Ui.DialogDescription, null, () => '確認後會立即更新課程狀態')]),
+        h(Ui.DialogFooter, null, () => h('button', { type: 'button', 'data-testid': 'confirm-cancel' }, '取消')),
+      ]))];
     }
     if (page === 'course-edit') {
       return () => h(PageComponent, {
