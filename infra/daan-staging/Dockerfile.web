@@ -1,13 +1,11 @@
 # Staging web tier: builds the Vue SPA (vite build only; CI already ran the lint/unit gates)
 # and serves it with nginx next to the PHP-FPM API. Own ignore file: Dockerfile.web.dockerignore.
 FROM node:22-slim AS fe
-WORKDIR /repo/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
 COPY . /repo
+WORKDIR /repo/frontend
 ENV NODE_OPTIONS=--max-old-space-size=1280
-RUN (cd /repo && for f in changelog-to-release-notes staff-updates-to-js parent-updates-to-js; do node scripts/$f.mjs; done) \
-    && npx vite build
+# postinstall (scripts/sync-generated.mjs) writes the generated release-note modules
+RUN npm ci --no-audit --no-fund && npx vite build
 
 FROM nginx:1.25-alpine
 COPY --from=fe /repo/frontend/dist_build /srv/web

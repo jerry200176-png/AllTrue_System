@@ -1,91 +1,87 @@
-# Daan staging V1 (isolated AllTrue staging)
+# Daan staging V1: operations
 
-Lifecycle states for this environment (never call these "production verified"):
-
-`CODE_WRITTEN` → `TESTED` → `STAGING_DEPLOYED` → `STAGING_RUNTIME_VERIFIED`
-
-## Host checkout immutability (STAGING_HOST_CHECKOUT_MUTATION)
-
-The staging app image bakes exact-SHA code under `/opt/alltrue-src`.
-Runtime syncs into the **named Docker volume** `alltrue-stage-app-code` at `/var/www`.
-
-**Forbidden:** bind-mounting the host Git `backend/` tree into `/var/www` (writable or otherwise for app).
-That previously let `docker-entrypoint` `chmod`/`chown` mutate tracked files as `www-data`.
-
-After every lifecycle step, `assert-host-checkout-clean.sh` requires empty `git status --short`.
+Policy and decisions: [`docs/ops/DAAN_STAGING_V1.md`](../../docs/ops/DAAN_STAGING_V1.md) (single source; this file is the how-to).
 
 ## Topology
 
 ```
-Daan host (alltrue.daan.lifenet.com.tw)
-├── Dify / Hermes / host Apache / host MySQL :3306 — unchanged
-└── Docker project `alltrue-stage`
-    ├── alltrue-stage-app   (PHP-FPM, image-baked code → named volume)
-    ├── alltrue-stage-nginx → 127.0.0.1:18080 only (named volume :ro)
-    └── alltrue-stage-mysql → Docker network only (no host 3306)
+Daan host (alltrue.daan.lifenet.com.tw) -- Dify / Hermes / Apache / host MySQL :3306 untouched
+└── rootless Docker (user `admin`), compose project `alltrue-stage`
+    ├── alltrue-stage-nginx -> 127.0.0.1:${STAGING_HTTP_PORT:-18080}  (SPA at /, API at /api -> app)
+    ├── alltrue-stage-app   (PHP 8.2-FPM, image-baked code -> named volume)
+    └── alltrue-stage-mysql (Docker network only, no host port)
 ```
 
-Access: `ssh -L 18080:127.0.0.1:18080 -i ~/.ssh/alltrue_daan_stage admin@alltrue.daan.lifenet.com.tw`
+Root `docker-compose.yml` is not used: it publishes host 8080/3306, which collide with Dify and host MySQL.
 
-## Why not root `docker-compose.yml`?
+## Host checkout immutability (STAGING_HOST_CHECKOUT_MUTATION)
 
-That file publishes host `8080` and `3306`, which collide with Dify and host MySQL on Daan.
-This tree is a dedicated composition under `infra/daan-staging/` so it does **not** classify as a Pi application runtime path (`backend/` / `frontend/` / `scripts/`).
+Exact-SHA code is baked into the image (`/opt/alltrue-src`) and synced into the named volume `alltrue-stage-app-code`.
+Never bind-mount the host Git `backend/` tree. `assert-host-checkout-clean.sh` must pass after every lifecycle step.
+The host checkout is `~/alltrue-stage/AllTrue_System`, always on a detached exact SHA.
 
-## PHP/MySQL parity
+## Rootless Docker (one-time, no sudo)
 
-`infra/daan-staging/Dockerfile` installs `pdo_mysql` (and keeps `pdo_pgsql`).
-Root `backend/Dockerfile` still lacks `pdo_mysql` — tracked separately as `INFRA-PDO-MYSQL-MISSING` and **not** fixed here, because editing `backend/Dockerfile` would mark production activation deployable.
-
-## Host bootstrap (Founder / interactive sudo — session scoped)
-
-`admin` can SSH passwordlessly but is **not** in the `docker` group and has **no** passwordless sudo.
-
-**Do not** add `admin` to the docker group or grant passwordless `sudo docker` in this phase.
-
-Session-scoped Docker (this shell only):
+Prereqs (Founder, done): `uidmap`, `slirp4netns`, `loginctl enable-linger admin`.
 
 ```bash
-export PATH="$HOME/alltrue-stage/session-docker-bin:$PATH"
-hash -r
-# first `docker` call prompts for sudo password once per session
+dockerd-rootless-setuptool.sh install
+systemctl --user enable --now docker
+# lifecycle scripts auto-use DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
+DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock docker info | grep -i rootless
 ```
 
-Packet on Daan: `~/alltrue-stage/FOUNDER_INTERACTIVE_DOCKER.txt`
+`preflight.sh` refuses a non-rootless daemon. Do not add `admin` to the docker group or grant passwordless sudo.
+A legacy rootful `alltrue-stage` stack holding the port is the only thing that needs sudo to remove
+(`sudo docker compose -p alltrue-stage down`); until then set `STAGING_HTTP_PORT` in `.env`.
 
-## Validation phases
-
-1. **DAAN_STAGING_V1 infra** at the SHA that includes the immutable-checkout fix (current `main` / HEAD)
-2. **Product rehearsal** (#3015 / in-app #296) at current `main` after infra ACCEPTED
+## Manual lifecycle
 
 ```bash
-# Phase 1 only (HEAD must include STAGING_HOST_CHECKOUT_MUTATION fix)
-infra/daan-staging/lifecycle/validate-cycle.sh
-
-# Phase 1 + #296 rehearsal
-PRODUCT_REHEARSAL=1 MAIN_SHA="$(git rev-parse origin/main)" infra/daan-staging/lifecycle/validate-cycle.sh
+cp infra/daan-staging/.env.example infra/daan-staging/.env   # then replace CHANGE_ME_* with `openssl rand -hex 24`
+L=infra/daan-staging/lifecycle
+$L/preflight.sh; $L/up.sh <sha>; $L/migrate.sh; $L/seed-demo.sh; $L/smoke.sh; $L/health.sh
+$L/down.sh            # keeps MySQL volume
+$L/rollback.sh <prior-sha>
+$L/validate-cycle.sh  # full cycle rehearsal; evidence in infra/daan-staging/runtime/evidence/
 ```
 
-Evidence lands in `infra/daan-staging/runtime/evidence/`. Bring staging **down** after validation unless actively testing.
+## Demo data and logins
 
-## Commands (from repo root on Daan checkout)
+`seed-demo.sh` (idempotent) creates one fake campus, a director, a teacher and three students.
+Passwords are generated on first run and written **only** to `~/alltrue-stage/DEMO_LOGINS.txt` (host, mode 0600).
+Director/teacher log in with `demo-director` / `demo-teacher` plus the generated password.
+Parents log in with a seeded StudentID plus phone (no password); the file lists them. Nothing here is committed.
+
+## Auto-update (pull, no inbound access, no GitHub secrets)
+
+`lifecycle/auto-update.sh` runs from a `systemd --user` timer every 15 minutes (`lifecycle/install-timer.sh`):
+
+1. One unauthenticated GitHub API call: newest successful `ci.yml` push run on `main` (4 calls/h, limit 60/h).
+2. Same as `~/alltrue-stage/state/last_good_sha`? Do nothing.
+3. Otherwise `redeploy.sh <sha>` (build, up, migrate, identity, health), then `smoke.sh` and the clean-checkout assert.
+4. Success records the new last-good SHA; failure redeploys the last good SHA.
+5. Everything is appended to `infra/daan-staging/runtime/evidence/auto-update.log`.
+
+Inspect: `systemctl --user list-timers alltrue-staging-update.timer`, `journalctl --user -u alltrue-staging-update`.
+Pause: `systemctl --user stop alltrue-staging-update.timer`.
+
+## Public URL (Cloudflare Tunnel + Access)
+
+Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` installs a pinned, checksum-verified
+`cloudflared` into `~/bin`. Then, once:
 
 ```bash
-cp infra/daan-staging/.env.example infra/daan-staging/.env
-# generate staging-only secrets; never paste production credentials
-openssl rand -hex 24  # use for STAGING_DB_PASSWORD / ROOT / APP_KEY
-
-infra/daan-staging/lifecycle/preflight.sh
-infra/daan-staging/lifecycle/up.sh <exact-sha>
-infra/daan-staging/lifecycle/migrate.sh
-infra/daan-staging/lifecycle/identity.sh
-infra/daan-staging/lifecycle/health.sh
-infra/daan-staging/lifecycle/smoke.sh
-infra/daan-staging/lifecycle/down.sh          # keeps MySQL volume
-infra/daan-staging/lifecycle/rollback.sh <prior-sha>
+~/bin/cloudflared tunnel login                      # Founder opens the printed URL and picks the zone
+~/bin/cloudflared tunnel create alltrue-staging
+~/bin/cloudflared tunnel route dns alltrue-staging <staging-hostname>
+# ~/.cloudflared/config.yml: ingress: [{hostname: <staging-hostname>, service: http://127.0.0.1:18080}, {service: http_status:404}]
+~/bin/cloudflared tunnel run alltrue-staging        # run as a user service
 ```
 
-## Explicit non-goals
+Then in the Cloudflare dashboard add an Access application on that hostname with one Allow policy: the Founder's email.
+Never expose the hostname without that policy. `cert.pem` and the tunnel credentials stay on the host.
 
-Pi production, production DNS, production DB sync, public TLS/DNS for staging,
-TrueFit ON, Temporal, self-hosted runners, Dify/Hermes changes.
+## Non-goals
+
+Pi production, production DNS, production DB sync, TrueFit ON, Temporal, self-hosted runners, Dify/Hermes changes.
