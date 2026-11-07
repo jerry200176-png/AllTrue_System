@@ -18,7 +18,7 @@ defineProps({
 </template>
 
 <style scoped>
-.text-reveal__c { display: inline-block; animation: text-reveal-in 360ms ease-out calc(var(--d) + var(--i) * 40ms) both; }
+.text-reveal__c { display: inline-block; white-space: pre; animation: text-reveal-in 360ms ease-out calc(var(--d) + var(--i) * 40ms) both; }
 @keyframes text-reveal-in { from { opacity: 0; filter: blur(6px); transform: translateY(8px); } to { opacity: 1; filter: none; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .text-reveal__c { animation: none; } }
 </style>

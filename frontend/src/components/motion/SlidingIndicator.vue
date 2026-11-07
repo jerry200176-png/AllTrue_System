@@ -34,13 +34,15 @@ onBeforeUnmount(() => ro?.disconnect());
 </script>
 
 <template>
-  <component :is="as" ref="root">
+  <component :is="as" ref="root" class="sliding-root">
     <slot />
     <i class="sliding-indicator" :class="{ 'is-ready': pos.ready }" :style="{ '--si-x': `${pos.x}px`, '--si-w': `${pos.w}px` }" aria-hidden="true" />
   </component>
 </template>
 
 <style scoped>
+/* Zero specificity, so a caller's own position wins. */
+:where(.sliding-root) { position: relative; }
 .sliding-indicator {
   position: absolute;
   top: 0;
