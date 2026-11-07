@@ -199,40 +199,6 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame(['ready', '2026-05'], [$row['status'], $row['to']]);
     }
 
-    public function test_state_change_between_dry_run_and_execute_aborts_in_the_transaction(): void
-    {
-        $s = new BillingPeriodRekeyStrategy;
-        $dry = $s->plan($this->params('all'));
-        $pinned = $s->plan($this->params('all', $dry['digest']));
-        $this->assertSame('pinned', $pinned['state']);
-        // a lesson appears after the dry-run: the manifest (and so the digest) moves under the row locks
-        DB::table('ClassSession')->insert(['StudentClassID' => 100, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']);
-        try {
-            $s->execute($pinned, ['operation_id' => 'req-drift']);
-            $this->fail('expected the digest re-check to abort');
-        } catch (\RuntimeException $e) {
-            $this->assertSame('billing_period_rekey_digest_drift', $e->getMessage());
-        }
-        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'nothing was written');
-        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->count());
-    }
-
-    public function test_a_bill_voided_after_the_snapshot_is_skipped_under_the_lock(): void
-    {
-        $stale = new class extends BillingPeriodRekeyStrategy {
-            public ?array $frozen = null;
-            protected function build(array $campuses): array { return $this->frozen ??= parent::build($campuses); }
-        };
-        $dry = $stale->plan($this->params('all')); // freezes the manifest: what an older snapshot would show
-        $pinned = $stale->plan($this->params('all', $dry['digest']));
-        DB::table('Invoice')->where('id', 1)->update(['Status' => 'void', 'Note' => '[void: x]']); // commits after the snapshot
-        $result = $stale->execute($pinned, ['operation_id' => 'req-void']);
-        $inv = DB::table('Invoice')->where('id', 1)->first();
-        $this->assertSame(['2026-04', '[void: x]'], [$inv->billing_period, $inv->Note], 'the voided bill and its audit text are untouched');
-        $this->assertNotContains(1, array_column($result['snapshot']['rows'], 'invoice_id'));
-        $this->assertSame('2026-05', DB::table('Invoice')->where('id', 8)->value('billing_period'), 'other bills still ran');
-    }
-
     public function test_a_voided_session_does_not_decide_the_target_month(): void
     {
         DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
@@ -252,81 +218,102 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertNotContains(601, $ids);
     }
 
-    public function test_a_bill_created_after_the_snapshot_blocks_the_target_month(): void
-    {
-        $stale = new class extends BillingPeriodRekeyStrategy {
-            public ?array $frozen = null;
-            protected function build(array $campuses): array { return $this->frozen ??= parent::build($campuses); }
-        };
-        $dry = $stale->plan($this->params('all'));
-        $pinned = $stale->plan($this->params('all', $dry['digest']));
-        // after the snapshot: another contract of student 1 + subject 1 gets a live May bill (the month invoice 1 would move to)
-        DB::table('StudentClass')->insert(['ID' => 800, 'StudentID' => 1, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4, 'Pay' => 0, 'Rate' => 0,
-            'TotalHours' => 4, 'StartDate' => '2026-05-28', 'EndDate' => '2026-05-31', 'ClassType' => 'one_on_one', 'ScheduleMode' => 'date', 'Stop' => 1, 'Paid' => 0, 'Charge' => 1]);
-        DB::table('Invoice')->insert(['id' => 900, 'StudentID' => 1, 'StudentClassID' => 800, 'IssueDate' => '2026-05-28', 'TotalAmount' => 1, 'PaidAmount' => 0, 'Status' => 'unpaid',
-            'Note' => '', 'billing_period' => '2026-05', 'created_at' => now(), 'updated_at' => now()]);
-        try {
-            $stale->execute($pinned, ['operation_id' => 'req-clash']);
-            $this->fail('expected the locked collision re-check to abort');
-        } catch (\RuntimeException $e) {
-            $this->assertStringStartsWith('billing_period_rekey_collision_drift_', $e->getMessage());
-        }
-        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'nothing was written');
-    }
 
-    public function test_locks_contracts_before_bills_and_the_clash_check_is_a_locking_read(): void
+    private function executed(callable $mutate): array
     {
         $s = new BillingPeriodRekeyStrategy;
         $dry = $s->plan($this->params('all'));
         $pinned = $s->plan($this->params('all', $dry['digest']));
-        $log = [];
-        DB::listen(function ($q) use (&$log) { if (stripos($q->sql, 'for update') !== false) $log[] = $q->sql; });
-        $s->execute($pinned, ['operation_id' => 'req-lock']);
-        $firstClass = null; $firstInvoice = null; $clashLocked = false;
-        foreach ($log as $i => $sql) {
-            if ($firstClass === null && preg_match('/from `StudentClass`/i', $sql) && !preg_match('/`Invoice`/', $sql)) $firstClass = $i;
-            if ($firstInvoice === null && preg_match('/from `Invoice`/i', $sql)) $firstInvoice = $i;
-            if (preg_match('/`o`\.`billing_period`/', $sql)) $clashLocked = true;
-        }
-        $this->assertNotNull($firstClass, 'contracts are locked');
-        $this->assertLessThan($firstInvoice, $firstClass, 'course before bill, as voidInvoice does');
-        $this->assertTrue($clashLocked, 'the collision check is a locking read');
+        $mutate(); // commits after the dry-run, before the bill's lock is taken
+        $result = $s->execute($pinned, ['operation_id' => 'req-x']);
+
+        return [$s, $pinned, $result];
     }
 
-    public function test_rollback_locks_contracts_then_bills_and_its_clash_check_is_a_locking_read(): void
+    public function test_a_bill_voided_after_the_dry_run_is_skipped_and_counted(): void
+    {
+        [, , $result] = $this->executed(fn () => DB::table('Invoice')->where('id', 1)->update(['Status' => 'void', 'Note' => '[void: x]']));
+        $inv = DB::table('Invoice')->where('id', 1)->first();
+        $this->assertSame(['2026-04', '[void: x]'], [$inv->billing_period, $inv->Note], 'the voided bill and its audit text are untouched');
+        $this->assertSame('drifted', $result['skipped'][1]);
+        $this->assertNotContains(1, array_column($result['snapshot']['rows'], 'invoice_id'));
+        $this->assertSame('2026-05', DB::table('Invoice')->where('id', 8)->value('billing_period'), 'other bills still ran');
+    }
+
+    public function test_a_lesson_added_after_the_dry_run_skips_that_bill_only(): void
+    {
+        [$s, $pinned, $result] = $this->executed(fn () => DB::table('ClassSession')->insert(['StudentClassID' => 100, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']));
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'no different value is written');
+        $this->assertSame('drifted', $result['skipped'][1]);
+        $this->assertSame('2026-05', DB::table('Invoice')->where('id', 8)->value('billing_period'));
+        $this->assertSame([], $s->verify($pinned, $result)['errors'], 'a skipped bill is reported, not a verification failure');
+    }
+
+    public function test_a_lesson_cancelled_after_the_dry_run_skips_the_bill(): void
+    {
+        // invoice 1 moves April -> May because its only lesson is in May; cancel that lesson and the cycle has none: start month = stored
+        [, , $result] = $this->executed(fn () => DB::table('ClassSession')->where('StudentClassID', 100)->update(['Status' => 'cancelled']));
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+        $this->assertSame('drifted', $result['skipped'][1]);
+    }
+
+    public function test_an_item_changed_after_the_dry_run_skips_the_bill(): void
+    {
+        [, , $result] = $this->executed(fn () => DB::table('InvoiceItem')->where('InvoiceID', 1)->update(['PeriodEnd' => '2026-05-10']));
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+        $this->assertSame('drifted', $result['skipped'][1]);
+    }
+
+    public function test_a_bill_created_after_the_dry_run_blocks_the_target_month(): void
+    {
+        [, , $result] = $this->executed(function () {
+            DB::table('StudentClass')->insert(['ID' => 800, 'StudentID' => 1, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4, 'Pay' => 0, 'Rate' => 0,
+                'TotalHours' => 4, 'StartDate' => '2026-05-28', 'EndDate' => '2026-05-31', 'ClassType' => 'one_on_one', 'ScheduleMode' => 'date', 'Stop' => 1, 'Paid' => 0, 'Charge' => 1]);
+            DB::table('Invoice')->insert(['id' => 900, 'StudentID' => 1, 'StudentClassID' => 800, 'IssueDate' => '2026-05-28', 'TotalAmount' => 1, 'PaidAmount' => 0, 'Status' => 'unpaid',
+                'Note' => '', 'billing_period' => '2026-05', 'created_at' => now(), 'updated_at' => now()]);
+        });
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+        $this->assertSame('period_taken', $result['skipped'][1]);
+    }
+
+    /** @return list<string> the locking statements taken while $run executes, in order */
+    private function lockLog(callable $run): array
+    {
+        $log = [];
+        DB::listen(function ($q) use (&$log) { if (preg_match('/for update|lock in share mode/i', $q->sql)) $log[] = $q->sql; });
+        $run();
+
+        return $log;
+    }
+
+    private function assertOnlyContractThenInvoiceLocks(array $log): void
+    {
+        $this->assertNotSame([], $log);
+        foreach ($log as $sql) {
+            $this->assertDoesNotMatchRegularExpression('/ClassSession|InvoiceItem|lock in share mode/i', $sql, 'lessons and items are plain reads: no lock-order conflict with leave / undo-leave');
+        }
+        $firstContract = $firstInvoice = null;
+        foreach ($log as $i => $sql) {
+            if ($firstContract === null && preg_match('/from `StudentClass`/i', $sql)) $firstContract = $i;
+            if ($firstInvoice === null && preg_match('/from `Invoice`/i', $sql)) $firstInvoice = $i;
+        }
+        $this->assertNotNull($firstContract, 'contracts are locked');
+        $this->assertLessThan($firstInvoice, $firstContract, 'contract before invoice, the voidInvoice order');
+    }
+
+    public function test_execute_takes_only_contract_then_invoice_locks(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $pinned = $s->plan($this->params('all', $dry['digest']));
+        $this->assertOnlyContractThenInvoiceLocks($this->lockLog(fn () => $s->execute($pinned, ['operation_id' => 'req-lock'])));
+    }
+
+    public function test_rollback_takes_only_contract_then_invoice_locks(): void
     {
         $s = new BillingPeriodRekeyStrategy;
         $dry = $s->plan($this->params('all'));
         $result = $s->execute($s->plan($this->params('all', $dry['digest'])), ['operation_id' => 'req-rb']);
-        $log = [];
-        DB::listen(function ($q) use (&$log) { if (stripos($q->sql, 'for update') !== false) $log[] = $q->sql; });
-        $s->rollback($result['snapshot'], ['operation_id' => 'req-rb']);
-        $firstClass = null; $firstInvoice = null; $clashLocked = false;
-        foreach ($log as $i => $sql) {
-            if ($firstClass === null && preg_match('/from `StudentClass`/i', $sql) && !preg_match('/`Invoice`/', $sql)) $firstClass = $i;
-            if ($firstInvoice === null && preg_match('/from `Invoice`/i', $sql)) $firstInvoice = $i;
-            if (preg_match('/`o`\.`billing_period`/', $sql)) $clashLocked = true;
-        }
-        $this->assertNotNull($firstClass);
-        $this->assertLessThan($firstInvoice, $firstClass, 'course before bill, as voidInvoice does');
-        $this->assertTrue($clashLocked, 'the rollback collision check is a locking read');
-    }
-
-    public function test_a_lesson_added_after_the_snapshot_aborts_the_run(): void
-    {
-        $stale = new class extends BillingPeriodRekeyStrategy {
-            public ?array $frozen = null;
-            protected function build(array $campuses): array { return $this->frozen ??= parent::build($campuses); }
-        };
-        $dry = $stale->plan($this->params('all'));
-        $pinned = $stale->plan($this->params('all', $dry['digest']));
-        DB::table('ClassSession')->insert(['StudentClassID' => 100, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']);
-        try {
-            $stale->execute($pinned, ['operation_id' => 'req-t']);
-            $this->fail('expected the in-lock target re-derivation to abort');
-        } catch (\RuntimeException $e) {
-            $this->assertStringStartsWith('billing_period_rekey_target_drift_', $e->getMessage());
-        }
-        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+        $this->assertOnlyContractThenInvoiceLocks($this->lockLog(fn () => $s->rollback($result['snapshot'], ['operation_id' => 'req-rb'])));
     }
 }

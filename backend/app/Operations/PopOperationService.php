@@ -471,7 +471,10 @@ final class PopOperationService
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
     private function coCommitsWithRecord(object|string $strategy): bool
     {
-        return $this->atomicFinancialRepair($strategy)
+        $class = is_object($strategy) ? get_class($strategy) : $strategy;
+
+        // The billing-period re-key runs one short READ COMMITTED transaction per bill itself (it cannot change its level inside an outer one).
+        return ($this->atomicFinancialRepair($strategy) && $class !== \App\Operations\Strategies\BillingPeriodRekeyStrategy::class)
             || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
     }
 
