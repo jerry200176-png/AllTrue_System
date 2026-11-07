@@ -804,7 +804,13 @@ class MonthlyRenewTest extends TestCase
                 'branch_id' => 1,
             ])->assertOk()
             ->assertJsonPath('session.start_time', '17:00')
-            ->assertJsonPath('session.end_time', '19:00');
+            ->assertJsonPath('session.end_time', '19:00')
+            ->assertJsonPath('created', true);
+
+        $sessionId = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-11')->value('id');
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->patchJson("/api/v1/class-sessions/{$sessionId}", ['status' => 'cancelled'])->assertOk();
+        $this->assertSame('cancelled', (string) Schedule::where('original_schedule_id', $anchor->id)->value('status'));
     }
 
     public function test_cross_date_destination_is_refused_while_source_session_is_still_active(): void

@@ -1733,7 +1733,8 @@ class ClassSessionController extends Controller
         ClassSession $session
     ): bool
     {
-        if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)) {
+        if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)
+            && !$this->isCrossDateRescheduleDestination($schedule)) {
             return false;
         }
 
