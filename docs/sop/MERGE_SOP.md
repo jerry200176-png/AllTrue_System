@@ -27,6 +27,21 @@ gh pr edit <PR-number> --add-label queue
 
 This SOP does not authorize a ruleset edit or a fake owner review marker. Never `--admin`. If a **code** merge to `main` starts `deploy.yml`, that is the product control plane (I1). Docs-only still skips deploy. Extra mutation uses committed `workflow_dispatch`, never SSH / artisan / phpunit on the Pi.
 
+## R3 control-plane self-check (author, before asking for R3 review)
+
+Seen on 2026-11-07: 18 R3 FAIL rounds, most of them "a guard mutant survives / a test is missing". Run this list on your own diff first; the reviewer should find new things, not these.
+
+1. **Fail closed.** For every input of a gate (comment, API field, flag, timestamp, list): missing, `null`, non-boolean and tied values must block, not pass. Compare with `=== false` / `=== true`, never truthiness; a tie never gets decided by sort order.
+2. **Cleanup in `finally`.** Temp dirs, repos and locks are removed on success, failure and throw.
+3. **One test per credential or security line.** Delete the line in a scratch copy: a test must go red (credential helper, token scope, ownership check, base-branch check).
+4. **Mutation-check each key line.** Flip or drop every guard line (a condition, a `!`, a veto, an early return) and confirm a test fails. The advisory sticky comment from the mutation workflow (Infection for PHP, StrykerJS for scripts and changed frontend logic) lists surviving mutants as file:line + mutator: every survivor on a guard line must get a test that fails for it before you ask for R3 review. Survivors on logging or message text may stay.
+5. **The sticky evidence is one record.** Codex keeps a single state comment per PR, so a late review of an older commit overwrites newer findings. Do not rely on it alone; also read `pulls/N/reviews` when a gate depends on findings of an earlier head.
+6. **Run it unset and set.** A test that reads the environment (`GITHUB_REPOSITORY`, `REPO`) passes with the variable unset, `x/y` and the real value.
+
+## Label `autoland` on every agent PR
+
+Add `autoland` when you open the PR. `autoland.yml` adds `queue` once the same gates land-queue uses are green (required checks, Codex on the head, all threads replied to and resolved, the R3 marker when the tier needs it), and adds it again after land-queue drops a PR for unresolved threads or failed checks once they are fixed. It never merges, approves or touches environments. R3 still waits for the independent review marker: `autoland` queues only when the gate says it is reviewed.
+
 ## Continue an approved task
 
 Apply [approval continuity](../governance/RISK_BASED_MERGE_POLICY.md#approval-continuity-within-the-authorized-task): after explicit Founder GO, execute the approved scope without asking again at every merge/deploy/verification step. Recheck exact-head evidence and the approved boundary; request a new decision only for a material scope change or a genuinely missing authorization. Existing platform gates remain mandatory.
