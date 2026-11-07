@@ -62,8 +62,9 @@ final class BillingPeriodRekeyStrategy
                 $n = DB::table('Invoice')->where('id', $r['invoice_id'])->where('billing_period', $r['from'])
                     ->update(['billing_period' => $r['to'], 'Note' => $added ? $tagged : $note, 'updated_at' => now()]);
                 if ($n !== 1) throw new RuntimeException('billing_period_rekey_update_' . $r['invoice_id']);
-                $reportIds = DB::table('payment_reports')->where('InvoiceID', $r['invoice_id'])->where('billing_period', $r['from'])->pluck('id')->map(fn ($v) => (int) $v)->all();
-                if ($reportIds !== []) DB::table('payment_reports')->whereIn('id', $reportIds)->update(['billing_period' => $r['to']]);
+                // current locking read (the outer POP transaction holds an older snapshot): a report registered meanwhile is not missed
+                $reportIds = DB::table('payment_reports')->where('InvoiceID', $r['invoice_id'])->where('billing_period', $r['from'])->lockForUpdate()->pluck('id')->map(fn ($v) => (int) $v)->all();
+                DB::table('payment_reports')->where('InvoiceID', $r['invoice_id'])->where('billing_period', $r['from'])->update(['billing_period' => $r['to']]);
                 $row = ['invoice_id' => $r['invoice_id'], 'class_id' => $r['class_id'], 'campus_id' => $r['campus_id'], 'from' => $r['from'], 'to' => $r['to'],
                     'report_ids' => $reportIds, 'tag_added' => $added];
                 $this->audit($r['invoice_id'], $r['campus_id'], ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
