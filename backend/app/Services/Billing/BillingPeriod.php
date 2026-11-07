@@ -59,36 +59,40 @@ final class BillingPeriod
     }
 
     /**
-     * Of $dates (Y-m-d lessons of this student+subject), those a live bill already covers: its dated item range holds the date, or
-     * (no dated item) its billing_period month does. The label alone never covers a date outside the bill's own range, so a bill
-     * labelled by lesson month cannot hide a lesson taught after its cycle ended.
+     * Of $dates (Y-m-d lessons of this student+subject), those a live bill already covers: the service range of its item(s) owned by
+     * one of this student+subject's contracts holds the date (MonthlyBillingService::serviceRangeForCourse, the single-unowned-item
+     * fallback included), or, when the bill has no dated item at all, its billing_period month does. The label alone never covers a
+     * date outside a bill's own range, and another subject's item on a shared bill never covers this subject's lesson.
      *
      * @param list<string> $dates @return list<string>
      */
-    public static function datesCoveredByBills(StudentClass|\Illuminate\Database\Eloquent\Model $course, array $dates): array
+    public static function datesCoveredByBills(\Illuminate\Database\Eloquent\Model $course, array $dates): array
     {
         if ($dates === []) {
             return [];
         }
-        $invoices = DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
-            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))->get(['inv.id', 'inv.billing_period']);
-        if ($invoices->isEmpty()) {
-            return [];
-        }
-        $ranges = DB::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')
-            ->get(['InvoiceID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
-
-        return array_values(array_filter($dates, function (string $d) use ($invoices, $ranges): bool {
-            foreach ($invoices as $inv) {
-                $own = $ranges->get($inv->id);
-                if ($own === null ? (string) $inv->billing_period === substr($d, 0, 7)
-                    : $own->contains(fn ($r) => substr((string) $r->PeriodStart, 0, 10) <= $d && $d <= substr((string) $r->PeriodEnd, 0, 10))) {
-                    return true;
+        $mine = StudentClass::query()->where('StudentID', $course->getAttribute('StudentID'))->where('SubjectID', $course->getAttribute('SubjectID'))
+            ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $invoices = \App\Models\Invoice::query()->notVoided()->with('items')
+            ->where(fn ($q) => $q->whereIn('StudentClassID', $mine)->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $mine)))->get();
+        $billing = app(\App\Services\MonthlyBillingService::class);
+        $spans = [];   // [from, to]
+        $labels = [];  // months of bills with no dated item
+        foreach ($invoices as $inv) {
+            $found = false;
+            foreach ($mine as $classId) {
+                [$from, $to] = $billing->serviceRangeForCourse($inv, $classId);
+                if ($from !== null && $to !== null) {
+                    $spans[] = [$from, $to];
+                    $found = true;
                 }
             }
+            if (!$found && !$inv->items->contains(fn ($i) => $i->PeriodStart && $i->PeriodEnd) && in_array((int) $inv->StudentClassID, $mine, true) && $inv->billing_period) {
+                $labels[(string) $inv->billing_period] = true;
+            }
+        }
 
-            return false;
-        }));
+        return array_values(array_filter($dates, fn (string $d): bool => isset($labels[substr($d, 0, 7)])
+            || collect($spans)->contains(fn ($r) => $r[0] <= $d && $d <= $r[1])));
     }
 }

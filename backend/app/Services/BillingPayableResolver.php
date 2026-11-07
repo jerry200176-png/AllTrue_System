@@ -360,6 +360,8 @@ class BillingPayableResolver
 
             $amount = max(0, (int) $projection['total_amount']);
             $applied = min($amount, max(0, (int) $projection['net_applied']));
+            $range = (string) ($courseMap[$classId]->ScheduleMode ?? '') === 'date'
+                ? app(MonthlyBillingService::class)->serviceRangeForCourse($invoice, (int) $classId) : [null, null];
             $resolved[$classId] = [
                 'payable_amount' => $amount,
                 'payable_outstanding' => max(0, $amount - $applied),
@@ -367,8 +369,9 @@ class BillingPayableResolver
                 'payable_source' => 'invoice',
                 'payable_invoice_id' => (int) $invoice->getAttribute('id'),
                 'payable_billing_period' => $projection['billing_period'],
-                'payable_period_start' => $projection['period_start'] ?? null,
-                'payable_period_end' => $projection['period_end'] ?? null,
+                // The bill's own service range (a cross-month cycle has none in the projection), as the ledger shows it.
+                'payable_period_start' => $projection['period_start'] ?? $range[0] ?? null,
+                'payable_period_end' => $projection['period_end'] ?? $range[1] ?? null,
                 'payable_amount_source' => $projection['amount_source'],
             ];
         }

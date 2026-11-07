@@ -231,6 +231,25 @@ class MonthlyRenewTest extends TestCase
             ->assertStatus(422)->assertJsonPath('blockers.0.code', 'monthly_completed_sessions_outside_contract');
     }
 
+    public function test_another_subjects_item_range_on_a_shared_bill_does_not_hide_a_lesson(): void
+    {
+        // in-app #514 review: a bill anchored on subject 1 with a subject-2 item covering 05-28 ~ 06-30 must not cover subject 1's 05-28 lesson.
+        Carbon::setTestNow('2026-05-29 08:00:00');
+        $token = $this->createDirectorToken([1], 'director-shared-514@example.com');
+        $student = $this->createStudent();
+        $one = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'SubjectID' => 1, 'StartDate' => '2026-04-29', 'EndDate' => '2026-05-27', 'settlement_day' => 15]);
+        $two = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'SubjectID' => 2, 'StartDate' => '2026-05-28', 'EndDate' => '2026-06-30', 'settlement_day' => 15]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $one->ID, 'IssueDate' => '2026-04-29', 'DueDate' => '2026-05-15', 'billing_period' => '2026-05', 'TotalAmount' => 9000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $one->ID, 'Description' => 'one', 'Amount' => 7500, 'PeriodStart' => '2026-04-29', 'PeriodEnd' => '2026-05-27']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $two->ID, 'Description' => 'two', 'Amount' => 1500, 'PeriodStart' => '2026-05-28', 'PeriodEnd' => '2026-06-30']);
+        ClassSession::create(['StudentClassID' => $one->ID, 'SessionDate' => '2026-05-28', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$one->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-06-26'])
+            ->assertStatus(422)->assertJsonPath('blockers.0.code', 'monthly_completed_sessions_outside_contract');
+        $resolved = app(\App\Services\BillingPayableResolver::class)->byStudentClassIds([(int) $one->ID], [$one])[(int) $one->ID];
+        $this->assertSame(['2026-04-29', '2026-05-27'], [$resolved['payable_period_start'], $resolved['payable_period_end']], 'cross-month cycle range reaches the payment form');
+    }
+
     public function test_unconfirmed_monthly_forecast_cannot_be_registered_as_received_cash(): void
     {
         Carbon::setTestNow('2026-09-29 08:00:00');
