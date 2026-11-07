@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-print-one-day
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 列印課表可只印當日
+    summary: 範圍選「當日」，一頁列出那天各老師的課。
+    items:
+      - category: added
+        text: 列印課表新增「當日」範圍，橫向一頁，老師為欄、時段為列。
+    source_refs:
+      - "changelog:2026-11-07:print-one-day"

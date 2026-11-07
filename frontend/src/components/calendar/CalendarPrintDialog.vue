@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { fetchCalendarCoursesAndSchedulesParallel, fetchCalendarStudentClassesApi, fetchCalendarSchedulesApi } from '../../lib/calendarCourseLoad';
 import { fetchClassSessionsProjection } from '../../lib/classSessionsApi';
-import { getRange, projectPrintRows, filterPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows, printPageStyle } from '../../lib/calendarPrint';
+import { getRange, buildDayGrid, projectPrintRows, filterPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows, printPageStyle } from '../../lib/calendarPrint';
 import { adoptionErrorType, trackAdoptionEvent } from '../../lib/adoptionTelemetry.js';
 
 const props = defineProps({
@@ -39,7 +39,10 @@ const printPalette = {
 const range = computed(() => getRange(period.value, currentDate.value));
 const rows = computed(() => filterPrintRows(allRows.value, filters.value));
 const summary = computed(() => summarizeRows(rows.value, range.value, period.value));
-const sheets = computed(() => chunkPrintRows(rows.value, orientation.value));
+const isDay = computed(() => period.value === 'day');
+const dayGrid = computed(() => buildDayGrid(rows.value, filters.value));
+const sheets = computed(() => (isDay.value ? [{ kind: 'day', page: 1, pages: 1 }] : chunkPrintRows(rows.value, orientation.value)));
+const periodLabel = computed(() => ({ day: '當日', week: '本週', month: '當月' })[period.value]);
 const activeFilterText = computed(() => {
   const values = [filters.value.teacher && `老師：${filters.value.teacher}`, filters.value.room && `教室：${filters.value.room}`, filters.value.student && `學生：${filters.value.student}`, filters.value.statuses.length < statusOptions.length && `狀態：${filters.value.statuses.join('、') || '無'}`].filter(Boolean);
   return values.length ? values.join('／') : '全部可見資料';
@@ -130,6 +133,7 @@ watch(() => props.open, (open) => {
   if (open) { opener.value = document.activeElement; nextTick(() => document.querySelector('[data-calendar-print-dialog] button')?.focus()); load(); window.addEventListener('keydown', onKeydown); }
   else { cleanupPrint(); window.removeEventListener('keydown', onKeydown); restoreFocus(); }
 });
+watch(period, (value) => { if (value === 'day') orientation.value = 'landscape'; });
 watch([period, currentDate], () => { if (props.open) load(); });
 onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', onKeydown); });
 </script>
@@ -143,7 +147,7 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', on
           <div class="calendar-print-actions"><button type="button" @click="close">取消</button><button type="button" :disabled="!canPrint" @click="printReport">列印／另存 PDF</button></div>
         </header>
         <section class="calendar-print-toolbar" aria-label="列印設定">
-          <label>範圍 <select v-model="period"><option value="week">本週</option><option value="month">當月</option></select></label>
+          <label>範圍 <select v-model="period"><option value="day">當日</option><option value="week">本週</option><option value="month">當月</option></select></label>
           <label>日期 <input v-model="currentDate" type="date" /></label>
           <label>方向 <select v-model="orientation"><option value="landscape">橫向</option><option value="portrait">直向</option></select></label>
           <label>老師 <input v-model="filters.teacher" type="search" placeholder="全部老師" /></label>
@@ -152,14 +156,15 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', on
           <fieldset class="calendar-print-statuses"><legend>狀態／異動（預設全選）</legend><label v-for="status in statusOptions" :key="status"><input v-model="filters.statuses" type="checkbox" :value="status" />{{ status }}</label></fieldset>
           <button type="button" @click="load">重新載入</button><button type="button" @click="clearFilters">清除篩選</button>
         </section>
-        <p v-if="loading" class="calendar-print-state">正在準備{{ period === 'week' ? '本週' : '當月' }}課表…</p>
+        <p v-if="loading" class="calendar-print-state">正在準備{{ periodLabel }}課表…</p>
         <div v-else-if="error" class="calendar-print-state" role="alert">{{ error }} <button type="button" @click="load">重試</button></div>
         <div v-else-if="!allRows.length" class="calendar-print-state">此範圍沒有可列印的課程。</div>
         <div v-else-if="!rows.length" class="calendar-print-state">沒有符合篩選的課程。<button type="button" @click="clearFilters">清除篩選</button></div>
         <main v-else class="calendar-print-preview">
           <div v-for="sheet in sheets" :key="sheet.page" class="calendar-print-sheet">
-            <div class="calendar-print-sheet__header"><strong>{{ branchName || `分校 #${branchId}` }}｜課表核對</strong><span>{{ range.start }} ～ {{ range.end }}｜{{ activeFilterText }}</span><span>內部人工核對用｜生成：{{ new Date().toLocaleString('zh-TW') }}｜第 {{ sheet.page }} / {{ sheet.pages }} 頁</span></div>
-            <section v-if="sheet.kind === 'summary'" class="calendar-print-summary"><h3>{{ period === 'week' ? '週總覽' : '月總覽' }}</h3><div class="calendar-print-days"><article v-for="day in summary.days" :key="day.date"><b>{{ day.date }} {{ day.weekday }}</b><span>{{ day.count }} 堂</span><small>{{ day.exceptions.length ? day.exceptions.join('、') : '無異常' }}</small></article></div><p>明細合計：{{ summary.total }} 堂</p></section>
+            <div class="calendar-print-sheet__header"><strong>{{ branchName || `分校 #${branchId}` }}｜課表核對</strong><span>{{ isDay ? `${range.start} ${summary.days[0]?.weekday || ''}` : `${range.start} ～ ${range.end}` }}｜{{ activeFilterText }}</span><span>內部人工核對用｜生成：{{ new Date().toLocaleString('zh-TW') }}｜第 {{ sheet.page }} / {{ sheet.pages }} 頁</span></div>
+            <section v-if="sheet.kind === 'day'" class="calendar-print-day"><table><thead><tr><th>時間</th><th v-for="col in dayGrid.columns" :key="col">{{ col }}</th></tr></thead><tbody><tr v-for="slot in dayGrid.slots" :key="slot.label"><th>{{ slot.label }}</th><td v-for="(cell, i) in slot.cells" :key="i"><div v-for="row in cell" :key="row.occurrenceKey" class="calendar-print-card"><b>{{ row.startTime }}–{{ row.endTime }}</b> {{ row.studentName }}<small>{{ row.subjectName }}／{{ dayGrid.by === '老師' ? row.roomLabel : row.effectiveTeacherName }}<template v-if="row.statusLabel !== '已排課' || row.markers.length">｜{{ row.markers.length ? row.markers.join('、') : row.statusLabel }}</template></small></div></td></tr></tbody></table></section>
+            <section v-else-if="sheet.kind === 'summary'" class="calendar-print-summary"><h3>{{ period === 'week' ? '週總覽' : '月總覽' }}</h3><div class="calendar-print-days"><article v-for="day in summary.days" :key="day.date"><b>{{ day.date }} {{ day.weekday }}</b><span>{{ day.count }} 堂</span><small>{{ day.exceptions.length ? day.exceptions.join('、') : '無異常' }}</small></article></div><p>明細合計：{{ summary.total }} 堂</p></section>
             <section v-else><h3>{{ sheet.date }} {{ sheet.continuation ? '（續）' : '' }}</h3><table><thead><tr><th>日期／星期</th><th>時間</th><th>學生</th><th>科目／班型</th><th>教師</th><th>教室</th><th>狀態／異動</th></tr></thead><tbody><tr v-for="row in sheet.rows" :key="row.occurrenceKey"><td>{{ row.date }} {{ row.weekday }}</td><td>{{ row.startTime }}–{{ row.endTime }}</td><td>{{ row.studentName }}</td><td>{{ row.subjectName }}／{{ row.classTypeLabel }}</td><td>{{ row.effectiveTeacherName }}<span v-if="row.markers.includes('代課')">（代課）</span></td><td>{{ row.roomLabel }}</td><td>{{ row.statusLabel }}<span v-if="row.markers.length">／{{ row.markers.join('、') }}</span></td></tr></tbody></table></section>
             <footer>本課表含學生姓名，僅供校內核對；列印後請妥善保管。</footer>
           </div>
@@ -190,6 +195,10 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', on
 .calendar-print-sheet table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .calendar-print-sheet th, .calendar-print-sheet td { border: 1px solid var(--calendar-print-border); padding: 5px; text-align: left; vertical-align: top; }
 .calendar-print-sheet thead { display: table-header-group; } .calendar-print-sheet tr { break-inside: avoid; page-break-inside: avoid; }
+.calendar-print-day table { table-layout: fixed; }
+.calendar-print-day th:first-child { width: 48px; }
+.calendar-print-card { border: 1px solid var(--calendar-print-border); border-radius: var(--ds-radius-sm); padding: 2px 4px; margin-bottom: 3px; line-height: 1.3; break-inside: avoid; }
+.calendar-print-card small { display: block; color: var(--calendar-print-muted); }
 .calendar-print-sheet footer { margin-top: 12px; font-size: 11px; color: var(--calendar-print-muted); }
 @media print { body.calendar-print-active > *:not(.calendar-print-dialog) { display: none !important; } body.calendar-print-active .calendar-print-dialog { position: static; padding: 0; background: white; overflow: visible; } body.calendar-print-active .calendar-print-dialog__panel { padding: 0; max-width: none; } body.calendar-print-active .calendar-print-controls, body.calendar-print-active .calendar-print-toolbar, body.calendar-print-active .calendar-print-state { display: none !important; } }
 </style>
