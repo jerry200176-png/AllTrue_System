@@ -250,6 +250,22 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame(['2026-04-29', '2026-05-27'], [$resolved['payable_period_start'], $resolved['payable_period_end']], 'cross-month cycle range reaches the payment form');
     }
 
+    public function test_a_lesson_in_the_gap_between_two_item_ranges_is_not_covered(): void
+    {
+        Carbon::setTestNow('2026-11-01 08:00:00');
+        $token = $this->createDirectorToken([1], 'director-gap-514@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31', 'settlement_day' => 15]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-01', 'DueDate' => '2026-08-15', 'billing_period' => '2026-08', 'TotalAmount' => 6000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        foreach ([['2026-08-01', '2026-08-31'], ['2026-10-01', '2026-10-31']] as [$a, $b]) {
+            InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => 'x', 'Amount' => 3000, 'PeriodStart' => $a, 'PeriodEnd' => $b]);
+        }
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-09-15', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-11-30'])
+            ->assertStatus(422)->assertJsonPath('blockers.0.code', 'monthly_completed_sessions_outside_contract');
+    }
+
     public function test_unconfirmed_monthly_forecast_cannot_be_registered_as_received_cash(): void
     {
         Carbon::setTestNow('2026-09-29 08:00:00');

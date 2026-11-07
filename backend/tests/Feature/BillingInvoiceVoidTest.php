@@ -52,6 +52,21 @@ class BillingInvoiceVoidTest extends TestCase
         $this->assertStringContainsString('user_id=', (string) $fresh->Note);
     }
 
+    public function test_void_keeps_the_original_invoice_number_tag_even_with_a_long_note(): void
+    {
+        $token = $this->createToken('A', [1]);
+        [, , $invoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid', 'PaidAmount' => 0, 'billing_period' => '2026-05',
+            'Note' => str_repeat('長', 200) . ' [invno_period:2026-04]',
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/invoices/{$invoice->id}/void", ['reason' => str_repeat('因', 30)])->assertOk();
+        $fresh = Invoice::findOrFail($invoice->id);
+        $this->assertLessThanOrEqual(255, mb_strlen((string) $fresh->Note));
+        $this->assertStringContainsString('[invno_period:2026-04]', (string) $fresh->Note);
+        $this->assertSame('INV-202604-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT), \App\Services\Billing\InvoiceNumber::for($fresh));
+    }
+
     public function test_voided_invoice_is_excluded_from_student_class_invoice_list(): void
     {
         $token = $this->createToken('A', [1]);
