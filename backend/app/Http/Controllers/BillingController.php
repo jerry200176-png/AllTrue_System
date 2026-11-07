@@ -383,14 +383,15 @@ class BillingController extends Controller
             // in-app #514: a re-keyed invoice carries [invno_period:YYYY-MM] (its issued number); VARCHAR(255) keeps it AND the audit tag,
             // so a long reason is cut to what is left, never the number tag.
             $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
-            $frame = sprintf('[void: ; user_id=%s; at=%s]', $authUser?->id ?? 'system', now()->format('Y-m-d H:i:s'));
+            $actor = $authUser?->id ?? 'system';
+            $frame = sprintf('[void: ; user_id=%s; at=%s]', $actor, now()->format('Y-m-d H:i:s'));
             if ($keep !== '') {
                 $reason = trim(mb_substr($reason, 0, max(0, 254 - mb_strlen($keep) - mb_strlen($frame) - 1)));
             }
             $audit = sprintf(
                 '[void: %s; user_id=%s; at=%s]',
                 str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a note tag
-                $authUser?->id ?? 'system',
+                $actor,
                 now()->format('Y-m-d H:i:s')
             );
 
