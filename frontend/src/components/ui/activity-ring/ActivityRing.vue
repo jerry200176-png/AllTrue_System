@@ -25,11 +25,11 @@ const offset = computed(() => (drawn.value ? C * (1 - ratio.value) : C));
   <svg :width="size" :height="size" viewBox="0 0 112 112" role="img" :aria-label="label" class="tw:shrink-0">
     <defs>
       <linearGradient :id="id" x1="0" x2="1">
-        <stop offset="0" style="stop-color: var(--ds-brand-sun)" />
-        <stop offset="1" style="stop-color: var(--ds-brand-amber)" />
+        <stop offset="0" style="stop-color: var(--ds-brand-ink-2)" />
+        <stop offset="1" style="stop-color: var(--ds-brand-ink)" />
       </linearGradient>
     </defs>
-    <circle cx="56" cy="56" r="44" fill="none" stroke-width="14" style="stroke: color-mix(in srgb, var(--ds-brand-amber) 18%, transparent)" />
+    <circle cx="56" cy="56" r="44" fill="none" stroke-width="14" style="stroke: color-mix(in srgb, var(--ds-ink) 8%, transparent)" />
     <circle
       cx="56" cy="56" r="44" fill="none" stroke-width="14" stroke-linecap="round"
       :stroke="`url(#${id})`" :stroke-dasharray="C" :stroke-dashoffset="reduced() ? C * (1 - ratio) : offset"

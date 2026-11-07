@@ -53,7 +53,7 @@
             autocomplete="current-password"
           />
         </div>
-        <ShineBorder class="login-btn-wrap" radius="var(--ds-radius-lg)" :colors="['var(--ds-brand-ink)', 'var(--ds-brand-amber)']">
+        <ShineBorder class="login-btn-wrap" radius="var(--ds-radius-lg)">
           <button type="submit" class="login-btn" :disabled="isLoginDisabled">
             {{ loginButtonText }}
           </button>
@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* 品牌：墨黑底 + 金色光暈（靜態，無背景動畫） */
+/* Founder 2026-11-07: premium minimal. Plain ink, gold only on the 登入 button. */
 .login-wrap {
   min-height: 100vh;
   min-height: 100dvh;
@@ -280,19 +280,16 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 32px 24px;
-  background:
-    radial-gradient(60% 50% at 18% 8%, color-mix(in srgb, var(--ds-brand-sun) 38%, transparent), transparent 70%),
-    radial-gradient(50% 45% at 92% 96%, color-mix(in srgb, var(--ds-brand-amber) 32%, transparent), transparent 70%),
-    var(--ds-brand-ink);
+  background: var(--ds-brand-ink);
 }
 .login-card-enter { width: 100%; max-width: 420px; }
 
 /* 玻璃擬態 (Glassmorphism) 卡片設計 */
 .login-card {
   background: var(--ds-canvas);
-  border: 1px solid color-mix(in srgb, var(--ds-brand-sun) 55%, transparent);
+  border: none;
   border-radius: 20px;
-  box-shadow: 0 24px 60px color-mix(in srgb, var(--ds-brand-ink) 55%, transparent), 0 0 0 1px color-mix(in srgb, var(--ds-brand-sun) 25%, transparent);
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--ds-brand-ink) 60%, transparent);
   width: 100%;
   max-width: 420px;
   overflow: hidden;
@@ -300,7 +297,7 @@ onBeforeUnmount(() => {
 
 /* 頂部區域與 Logo */
 .login-header {
-  padding: 36px 32px 24px;
+  padding: 44px 32px 28px;
   text-align: center;
   background: transparent;
   display: flex;
@@ -315,7 +312,7 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: var(--ds-canvas);
   padding: 0px; /* 移除白邊 */
-  box-shadow: 0 0 0 4px var(--ds-brand-sun);
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -377,7 +374,7 @@ onBeforeUnmount(() => {
 .login-first-time a:hover { text-decoration: underline; }
 
 .login-form {
-  padding: 24px 28px 32px;
+  padding: 24px 32px 36px;
 }
 
 .login-form .form-group {
@@ -484,8 +481,8 @@ onBeforeUnmount(() => {
 .login-form .form-group textarea:focus {
   outline: none;
   background: var(--ds-canvas);
-  border-color: var(--ds-brand-gold);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ds-brand-sun) 40%, transparent);
+  border-color: var(--ds-ink);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ds-ink) 8%, transparent);
 }
 
 .login-form .form-group textarea {
@@ -505,7 +502,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--ds-radius-lg);
   cursor: pointer;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--ds-brand-amber) 45%, transparent);
+  box-shadow: none;
   transition: background-color 0.2s ease-out, transform 0.15s ease-out;
   letter-spacing: 0.02em;
 }
@@ -529,8 +526,8 @@ onBeforeUnmount(() => {
   gap: 16px;
   justify-content: center;
   flex-wrap: wrap;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  background: rgba(255, 255, 255, 0.4);
+  border-top: 1px solid var(--ds-hairline);
+  background: transparent;
 }
 .login-parent-hint {
   width: 100%;
@@ -544,19 +541,17 @@ onBeforeUnmount(() => {
   padding: 10px 20px;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ds-brand-ink);
-  background: var(--ds-canvas);
-  border: 1px solid var(--ds-hairline-input);
+  color: var(--ds-ink-mute);
+  background: transparent;
+  border: none;
   border-radius: 10px;
   min-height: 44px;
   cursor: pointer;
-  transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  transition: background-color 0.2s ease-out, color 0.2s ease-out;
 }
 
 .login-footer-btn:hover {
-  background: var(--ds-primary-wash);
-  border-color: var(--ds-brand-gold);
+  background: var(--ds-canvas-soft);
   color: var(--ds-brand-ink);
 }
 @media (max-width: 560px) {

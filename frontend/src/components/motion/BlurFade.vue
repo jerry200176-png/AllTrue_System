@@ -31,9 +31,9 @@ onMounted(() => {
 <style scoped>
 .blur-fade {
   opacity: 0;
-  filter: blur(6px);
-  transform: translateY(10px);
-  transition: opacity 300ms ease-out var(--blur-fade-delay), filter 300ms ease-out var(--blur-fade-delay), transform 300ms ease-out var(--blur-fade-delay);
+  filter: blur(4px);
+  transform: translateY(6px);
+  transition: opacity 240ms ease-out var(--blur-fade-delay), filter 240ms ease-out var(--blur-fade-delay), transform 240ms ease-out var(--blur-fade-delay);
 }
 .blur-fade--in { opacity: 1; filter: none; transform: none; }
 @media (prefers-reduced-motion: reduce) {

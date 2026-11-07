@@ -29,7 +29,7 @@ describe('motion kit', () => {
   it('NumberTicker counts up and ends on the exact value', async () => {
     setReduced(false);
     const frame = installFrames();
-    const w = mount(NumberTicker, { props: { value: 1234, duration: 800 } });
+    const w = mount(NumberTicker, { props: { value: 1234, duration: 600 } });
     await nextTick(); // onMounted resets to 0 to start the count
     expect(w.text()).toBe('0');
     frame(400);

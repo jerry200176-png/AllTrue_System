@@ -6,14 +6,14 @@
  *   commit:  eec920b047589058b4b02ba64deb614869e7237a
  *   licence: MIT, Copyright (c) 2024-2026 rahulv.dev (full text in ./LICENSE-inspira-ui)
  * Changes: plain JS; the offset-path beam is a conic-gradient ring whose angle is a registered CSS property
- * (@property), so it is pure CSS with no JS or dependency; default colours are brand gold/amber tokens;
- * prefers-reduced-motion hides the ring. The ring never takes pointer events.
+ * (@property), so it is pure CSS with no JS or dependency; default colours are ink tokens;
+ * one quiet turn at low opacity on first paint (no loop); prefers-reduced-motion hides the ring. The ring never takes pointer events.
  */
 defineProps({
-  duration: { type: Number, default: 4 }, // seconds per turn
-  width: { type: Number, default: 2 }, // ring thickness in px
+  duration: { type: Number, default: 2.4 }, // seconds; the beam runs one turn on first paint, then fades out
+  width: { type: Number, default: 1.5 }, // ring thickness in px
   radius: { type: String, default: 'var(--ds-radius-pill)' }, // match the wrapped control's corner radius
-  colors: { type: Array, default: () => ['var(--ds-brand-sun)', 'var(--ds-brand-amber)'] },
+  colors: { type: Array, default: () => ['var(--ds-brand-ink)', 'var(--ds-brand-ink-2)'] },
 });
 </script>
 
@@ -48,9 +48,11 @@ defineProps({
   -webkit-mask-composite: xor;
   mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   mask-composite: exclude;
-  animation: shine-border-spin var(--sb-duration) linear infinite;
+  opacity: 0;
+  animation: shine-border-spin var(--sb-duration) ease-out 0.3s 1 both, shine-border-fade var(--sb-duration) ease-out 0.3s 1 both;
 }
 @keyframes shine-border-spin { to { --sb-angle: 360deg; } }
+@keyframes shine-border-fade { 0% { opacity: 0; } 25% { opacity: 0.55; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .shine-border__ring { display: none; } /* reduced motion = no ring at all */
 }

@@ -15,7 +15,7 @@ import { prefersReducedMotion } from './reduced';
 
 const props = defineProps({
   value: { type: Number, default: 0 },
-  duration: { type: Number, default: 800 }, // ms; count-up is a reveal, it never blocks input
+  duration: { type: Number, default: 600 }, // ms; count-up is a reveal, it never blocks input
   decimals: { type: Number, default: 0 },
   class: { type: [Boolean, null, String, Object, Array], required: false, skipCheck: true },
 });

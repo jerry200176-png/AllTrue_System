@@ -21,6 +21,8 @@ Founder 2026-11-06: every page, staff and parent, gets the look of the parent �
 - Migrated pages use `components/ui` with `--ds-*` tokens, never new literals. This section overrides the older "Radius low-medium / Elevation minimal" dials for migrated pages.
 - Migration order and definition of done: [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](UI_FOUNDATION_MIGRATION_SEQUENCING.md).
 
+Founder 2026-11-07：高級簡約——一個強調色、靠字級與留白分層、動效克制。In practice: gold only on the one primary action per page; ink, white and greys elsewhere; hairline or soft shadow, never both; neutral badges (red only for danger); motion plays once and quietly.
+
 ## Authority map
 
 For product and operations pages, use the documents in this order:

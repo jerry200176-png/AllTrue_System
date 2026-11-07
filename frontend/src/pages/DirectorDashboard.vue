@@ -9,7 +9,7 @@
     </template>
 
     <template v-else>
-      <main class="director-workbench-v2 tpl-mesh" aria-label="主任總覽">
+      <main class="director-workbench-v2" aria-label="主任總覽">
         <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:-mx-4 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-4 tw:py-3">
           <div class="tw:flex tw:items-center tw:gap-3.5">
             <img :src="logoUrl" alt="台北全真一對一" width="52" height="52" class="tw:size-13 tw:shrink-0 tw:rounded-full tw:bg-white tw:object-contain tw:shadow-md" />
@@ -73,7 +73,7 @@
           <BlurFade class="tw:lg:col-start-1" data-testid="director-hero">
             <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card">
               <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body tw:font-bold">
-                <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
                 今天的課
               </div>
               <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
@@ -83,14 +83,14 @@
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ heroLoading ? '載入中…' : pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
-              <ShineBorder class="tw:mt-4" radius="1rem" :width="3">
-                <Button class="tpl-btn-primary tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.96]" @click="goToAttendance">去點名</Button>
+              <ShineBorder class="tw:mt-4" radius="1rem">
+                <Button class="tw:h-14 tw:w-full tw:rounded-2xl tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:motion-safe:active:scale-[0.96]" @click="goToAttendance">去點名</Button>
               </ShineBorder>
             </Card>
           </BlurFade>
 
           <!-- 今天要處理: existing task queue as a grouped list -->
-          <BlurFade as="section" :delay="100" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
+          <BlurFade as="section" :delay="60" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
             <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-extrabold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
@@ -124,7 +124,7 @@
                   class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
                   @click="openDashboardTask(task)"
                 >
-                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
                   <span class="tw:flex-1">{{ plainTaskTitle(task) }}</span>
                   <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-extrabold">{{ task.count }}</span>
                   <ChevronRight :size="24" :stroke-width="2.4" class="tw:text-tpl-secondary" aria-hidden="true" />
@@ -147,18 +147,18 @@
             <BlurFade
               v-for="(kpi, i) in kpiCards"
               :key="kpi.key"
-              :delay="140 + 60 * i"
+              :delay="100 + 40 * i"
               :data-testid="`kpi-${kpi.key}`"
             >
               <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
                 <Card class="tpl-card tw:h-full tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-body tw:font-bold">
-                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
                     {{ kpi.label }}
                   </div>
                   <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-extrabold"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary">{{ kpi.sub }}</p>
-                  <Sparkline v-if="kpi.spark" :values="kpi.spark" :tone="kpi.tone" :label="kpi.sparkLabel" />
+                  <Sparkline v-if="kpi.spark" :values="kpi.spark" tone="ink-2" :label="kpi.sparkLabel" />
                 </Card>
               </button>
             </BlurFade>
@@ -167,7 +167,7 @@
           <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
             <details v-if="operationsTrust?.decision_center" class="director-trust-note tpl-card tw:rounded-3xl tw:px-5 tw:py-0 tw:text-tpl-body tw:shadow-tpl-card">
               <summary class="tw:min-h-18 tw:gap-4 tw:px-0 tw:text-tpl-body tw:font-semibold tw:text-foreground" title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
-                <span class="tpl-tile tpl-g-ink2 tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-ink2 tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
                 <span class="tw:flex-1">課表正確度</span>
                 <strong class="director-num tw:text-tpl-body" :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
