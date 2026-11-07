@@ -683,6 +683,16 @@ test('TRIVIAL_REBASE: the head\'s failed sticky Codex state keeps the old findin
   }
 });
 
+test('TRIVIAL_REBASE: a null, missing or non-boolean findings flag vetoes the marker carry (fail closed)', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    const rec = (flag) => { const cr = clean(OLD); if (flag === undefined) delete cr.has_unresolved_findings; else cr.has_unresolved_findings = flag; return codex(cr); };
+    for (const flag of [null, undefined, 'false', 0]) assert.equal(G([rec(flag), owner(reviewMarker(OLD))]).ok, false, `flag ${String(flag)}`);
+    assert.equal(G([rec(false), owner(reviewMarker(OLD))]).ok, true);
+  }
+});
+
 test('withCarryRepo removes the temp repo when the check passes, fails or throws', () => {
   const mk = () => { const dir = fs.mkdtempSync(join(os.tmpdir(), 'wcr-')); return { git: () => '', dir }; };
   for (const fn of [() => true, () => false, () => { throw new Error('boom'); }]) {

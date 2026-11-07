@@ -124,10 +124,10 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
   // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
   // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
-  // Findings on ANY record veto, including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
+  // Anything but an exact `false` findings flag on ANY record vetoes (null, missing or non-boolean fail closed), including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
   // comment for the head but keeps the old findings flag).
-  const codexVeto = records.some((r) => r.cr.has_unresolved_findings === true || (r.cr.commit_sha !== head
-    && ((r.cr.status === 'completed' && r.cr.has_unresolved_findings !== false) || !['completed', 'failed'].includes(r.cr.status))));
+  const codexVeto = records.some((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
+    && !['completed', 'failed'].includes(r.cr.status)));
   const old = codexVeto || tie ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
   if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
