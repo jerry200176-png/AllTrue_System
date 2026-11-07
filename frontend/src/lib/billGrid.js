@@ -12,7 +12,12 @@ export function billTotals(rows) {
   }), { count: 0, payable: 0, paid: 0, owed: 0 });
 }
 
-const clean = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
+// Text pasted into Excel must not run as a formula: a leading = + - @ (or tab/CR) gets a quote. Numbers are not text.
+const clean = (v) => {
+  if (typeof v === 'number') return String(v);
+  const t = String(v ?? '');
+  return (/^[=+\-@\t\r]/.test(t) ? "'" : '') + t.replace(/[\t\r\n]+/g, ' ');
+};
 
 /** Tab-separated text that pastes straight into Excel (header row first). */
 export function billTsv(rows, dueText) {
