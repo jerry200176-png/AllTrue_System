@@ -450,7 +450,7 @@ export default {
 </template>
 
 <style scoped>
-.cmw{position:fixed;inset:0;z-index:1200;display:flex;justify-content:flex-end}
+.cmw{position:fixed;inset:0;z-index:var(--ds-z-overlay);display:flex;justify-content:flex-end}
 .cmw__scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--ds-ink) 30%,transparent)}
 .cmw__panel{position:relative;display:flex;flex-direction:column;width:min(1120px,100vw);height:100%;background:var(--ds-canvas-soft);color:var(--ds-ink);box-shadow:var(--ds-shadow-2)}
 .cmw__head{padding:8px 20px 12px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}

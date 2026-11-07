@@ -19,6 +19,9 @@ const VIEWPORTS = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobil
 // Remaining color-contrast nodes are hardcoded hex / non-token colors (tokens now AA-safe).
 const BASELINE = {
   'course-manager': {},
+  'course-manager&tab=sessions': {},
+  'course-manager&tab=settings': {},
+  'course-manager&tab=billing': {},
   teacher: {},
   director: {},
   students: {},

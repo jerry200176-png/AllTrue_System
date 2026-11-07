@@ -832,6 +832,24 @@ test.describe('No horizontal overflow (director home, Login)', () => {
   }
 });
 
+// In-app #518 review: a confirm opened over the course drawer must stack above it and be clickable.
+test('course drawer: a confirm dialog is topmost and clickable @drawer-confirm', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/pilot-mount.html?page=course-manager&mode=confirm');
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await expect(page.locator('[data-testid="course-manager"]')).toBeVisible();
+  const confirm = page.getByRole('dialog', { name: '暫停課程？' });
+  await expect(confirm).toBeVisible();
+  const cancel = page.locator('[data-testid="confirm-cancel"]');
+  const topmost = await cancel.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === el || el.contains(hit));
+  });
+  expect(topmost).toBe(true);
+  await cancel.click({ timeout: 3000 });
+});
+
 // Visual regression (#4952). Tagged @visual: skipped by playwright.ui-foundation.config.js,
 // run only by playwright.visual.config.js inside the pinned Playwright Docker image (npm run test:visual).
 test.describe('Visual regression @visual', () => {
@@ -862,7 +880,7 @@ test.describe('Visual regression @visual', () => {
   }
   // #4918: 課程管理 drawer (overview, 月曆, 帳務) from fixture props, no API.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
-    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-billing', 'billing']]) {
+    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-settings', 'settings'], ['course-manager-billing', 'billing']]) {
       test(`${name} @${vp.name}`, async ({ page }) => {
         await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
         await page.setViewportSize({ width: vp.width, height: vp.height });
