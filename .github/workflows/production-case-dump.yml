@@ -216,14 +216,15 @@ jobs:
               $mineSch = $sch->filter(fn ($r) => (int) $r->t === $t);
               $other = $mineCs->filter(fn ($r) => (int) $r->campus !== 15)->count() + $mineSch->filter(fn ($r) => (int) $r->campus !== 15)->count();
               $own1315 = $mineCs->filter(fn ($r) => (int) $r->campus === 15 && $hm($r->s) === '13:00')->count() + $mineSch->filter(fn ($r) => (int) $r->campus === 15 && $hm($r->s) === '13:00')->count();
-              if ($other === 0 || $own1315 === 0) continue;
+              $matchedFilter = !($other === 0 || $own1315 === 0); // list every candidate; flag whether it matched
               $busy = app(\\App\\Services\\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($t, $date, [], null);
-              $teachers[] = ['teacher_id' => $t,
+              $teachers[] = ['teacher_id' => $t, 'matched' => $matchedFilter,
                 'class_sessions' => $mineCs->map(fn ($r) => ['id' => (int) $r->sid, 'class_id' => (int) $r->cid, 's' => $hm($r->s), 'e' => $hm($r->e), 'status' => (string) $r->status, 'sc_teacher' => (int) $r->sc_t, 'stop' => $r->stop, 'type' => (string) $r->ct, 'room' => $r->room, 'campus' => (int) $r->campus])->values()->all(),
                 'schedules' => $mineSch->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => $r->cid, 's' => $hm($r->s), 'e' => $hm($r->e), 'status' => (string) $r->status, 'type' => (string) $r->type, 'campus' => (int) $r->campus, 'orig' => $r->orig !== null])->values()->all(),
                 'service_busy' => array_map(fn ($b) => ['s' => $b['start_time'], 'e' => $b['end_time'], 'campus' => $b['campus_id'], 'ct' => $b['class_type'], 'remaining' => $b['remaining_capacity'], 'src' => $b['source_types']], $busy)];
             }}
             $out['teachers'] = $teachers;
+            $out['counts'] = ['cs_total' => $cs->count(), 'cs_by_campus' => $cs->groupBy(fn ($r) => (string) $r->campus)->map->count()->all(), 'sch_total' => $sch->count(), 'sch_by_campus' => $sch->groupBy(fn ($r) => (string) $r->campus)->map->count()->all(), 'candidates' => count($cand)];
           }} elseif ($case === 'schedule_241') {{
             $campusId = 9;
             $targetDate = '2026-08-29';
