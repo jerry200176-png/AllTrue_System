@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -138,11 +138,11 @@ test('decide: a head behind main updates even when GitHub stops reporting BEHIND
   assert.equal(decide(pr({ behindBy: 0 }), req).action, 'merge');
 });
 
-test('planBatch: oldest first, max 4, needs 2, serial-only head of queue goes alone', () => {
+test('planBatch: oldest first, max 4, one is enough, serial-only head of queue goes alone', () => {
   const c = (n, serial = false) => ({ n, serial });
   assert.deepEqual(planBatch([1, 2, 3, 4, 5, 6].map((n) => c(n))).map((x) => x.n), [1, 2, 3, 4]);
   assert.equal(BATCH_MAX, 4);
-  assert.deepEqual(planBatch([c(1)]), []);
+  assert.deepEqual(planBatch([c(1)]).map((x) => x.n), [1]); // a batch of one: test the merge, don't update the PR
   assert.deepEqual(planBatch([c(1, true), c(2), c(3)]), []);
   assert.deepEqual(planBatch([c(1), c(2), c(3, true), c(4)]).map((x) => x.n), [1, 2]);
 });
@@ -516,12 +516,12 @@ test('review gate refreshes withdrawn evidence through the deleted issue-comment
   assert.deepEqual(types?.sort(), ['created', 'deleted', 'edited']);
 });
 
-test('canonical merge policy and SOP describe the same final-head review gate', () => {
+test('merge SOP is the one owner of the final-head review gate; policy keeps approval continuity', () => {
   const policy = fs.readFileSync(new URL('../../docs/governance/RISK_BASED_MERGE_POLICY.md', import.meta.url), 'utf8');
   const sop = fs.readFileSync(new URL('../../docs/sop/MERGE_SOP.md', import.meta.url), 'utf8');
+  assert.ok(sop.includes(REVIEW_CHECK), 'SOP must identify the gate native auto-merge waits on');
+  assert.match(sop, /review-pending/, 'SOP must describe pending review as a wait');
   for (const [name, doc] of [['policy', policy], ['SOP', sop]]) {
-    assert.ok(doc.includes(REVIEW_CHECK), `${name} must identify the gate native auto-merge waits on`);
-    assert.match(doc, /review-pending/, `${name} must describe pending review as a wait`);
     assert.match(doc, /approval continuity/i, `${name} must preserve existing scoped approvals`);
   }
 });
@@ -623,4 +623,15 @@ test('classifyScope: lower only with a stable head and complete, non-R3 evidence
   assert.equal(classifyScope(H, pr(), [{ filename: 'docs/x.md' }], pr()), 'r3'); // missing patch
   assert.equal(classifyScope(H, pr(), Array.from({ length: 300 }, (_, i) => ({ filename: `docs/${i}.md`, patch: '+x' })), pr()), 'r3'); // 300-file cap
   assert.equal(classifyScope(H, pr(), [], pr()), 'r3');
+});
+
+test('serialDecision: batchable PRs are never updated; ready ones wait for the batch', () => {
+  const behind = pr({ mergeStateStatus: 'BEHIND', behindBy: 3 });
+  assert.equal(serialDecision(behind, req, false).action, 'update'); // serial-only / strict: update as before
+  assert.deepEqual(serialDecision(behind, req, true), { action: 'wait', reason: 'batch-next' }); // ready: no rewrite, no serial merge
+  assert.equal(serialDecision(pr({ behindBy: 2 }), req, true).action, 'wait');
+  assert.equal(serialDecision(pr({ behindBy: 0 }), req, true).action, 'merge'); // already contains main: merge now, no extra CI
+  assert.equal(serialDecision(pr({ behindBy: 2, unresolvedThreads: 1 }), req, true).action, 'reject'); // gates still apply
+  assert.equal(serialDecision(pr({ mergeStateStatus: 'DIRTY', behindBy: 2 }), req, true).reason, 'conflict');
+  assert.equal(serialDecision(pr({ behindBy: 2, rollup: [{ name: 'A', conclusion: 'FAILURE', startedAt: '1', checkSuite: { workflowRun: { databaseId: 9 } } }, ok[1]] }), req, true).action, 'rerun');
 });

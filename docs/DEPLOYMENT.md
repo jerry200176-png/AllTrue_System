@@ -20,7 +20,7 @@
 
 ### 部署前端到生產
 
-**正常流程（全自動）**：雲端 session push → PR（label `queue`）→ merge → `deploy.yml` 自動執行（發車班表＋最新綠燈 commit），無需手動操作。
+**正常流程**：只看 [`RUNBOOK_MERGE_TO_ACTIVATION.md`](RUNBOOK_MERGE_TO_ACTIVATION.md)（唯一出處；合併見 [`sop/MERGE_SOP.md`](sop/MERGE_SOP.md)）。需 Founder 批准的範圍，Founder 必須在 `production-activation` 按 Approve，不是無人操作。
 
 **緊急手動部署**（CI 掛掉時才用，需使用者明確批准並先讀 `docs/DANGEROUS_OPERATIONS.md`）：
 ```bash

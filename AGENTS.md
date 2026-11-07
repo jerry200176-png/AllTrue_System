@@ -122,15 +122,13 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - CI/deploy 狀態不明但要回報「完成」。
 - 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
 
-## Land queue (merge, don't race update-branch)
+## Land queue
 
-Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
-`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
-GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
+See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics).
 
 ## Parallel agents
 
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
 - Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).

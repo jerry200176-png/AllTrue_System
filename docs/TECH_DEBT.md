@@ -290,7 +290,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Deferred（2026-05-09） |
+| 狀態 | In progress（2026-11-07 Founder 決定啟用；Founder 執行 `scripts/pi-enable-binlog.sh --apply` 後生效。剩下：binlog 異地同步） |
 | 優先級 | P1 |
 | 發現日期 | 2026-04-27 |
 | 發現來源 | [SRE] 工程成熟度補強 |

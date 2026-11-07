@@ -10,7 +10,7 @@
 
 - 視覺 SSOT：`docs/RULE_DESIGN_SYSTEM.md`；白／冷灰底、navy 文字、單一橘色主行動、語意色只表達狀態、低裝飾高資訊層級。
 - 主任總覽與學習評量表：目前上線基準，只做跨頁導覽與契約驗收。
-- release SOP：`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`、`docs/OFFLINE_MERGE_SOP.md`、`docs/GUIDE_DESIGN_QA_SMOKE.md`。
+- release SOP：`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`、`docs/GUIDE_DESIGN_QA_SMOKE.md`。
 - regression SSOT：`docs/AI_REGRESSION_LESSONS.md`；高風險請假／補課優先回歸 F1、F3、F5、R10、Y5、Y6，以及 GitHub #1099、#1101、#1342。
 
 ## 角色／頁面／核心任務矩陣
