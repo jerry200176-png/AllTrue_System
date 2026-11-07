@@ -221,3 +221,5 @@ frontend/src/lib/parentUpdates.generated.js
 /.claude.json
 backend/storage/infection/
 test-results-visual/
+reports/
+.stryker-tmp/

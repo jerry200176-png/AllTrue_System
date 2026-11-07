@@ -1,0 +1,83 @@
+name: Mutation testing, JS (advisory)
+
+# W12 (#4953): diff-based StrykerJS on the control-plane scripts (review-gate, land-queue, autoland). Only the lines a
+# PR changes are mutated (scripts/ci/stryker-diff-ranges.mjs). Advisory: never required, never fails. PR events only,
+# no cron. Surviving mutants go to the same sticky comment as Infection (scripts/ci/mutation-comment.mjs).
+# StrykerJS 10.1.1 (Apache-2.0, published 2026-10-23) is installed with --no-save and --ignore-scripts, pinned.
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/**'
+      - 'scripts/ci/stryker-diff-ranges.mjs'
+      - 'stryker.config.json'
+      - '.github/workflows/mutation-js-advisory.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-js-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stryker:
+    name: StrykerJS diff mutants (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    outputs:
+      ran: ${{ steps.ranges.outputs.ran }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Changed control-plane line ranges
+        id: ranges
+        run: |
+          git fetch -q origin main
+          node scripts/ci/stryker-diff-ranges.mjs origin/main > "$RUNNER_TEMP/ranges.txt"
+          echo "ran=$([ -s "$RUNNER_TEMP/ranges.txt" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/ranges.txt"
+      - name: Run StrykerJS on the changed lines
+        if: ${{ steps.ranges.outputs.ran == 'true' }}
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund @stryker-mutator/core@10.1.1
+          args=(); while IFS= read -r r; do args+=(--mutate "$r"); done < "$RUNNER_TEMP/ranges.txt"
+          npx stryker run "${args[@]}" || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ always() && steps.ranges.outputs.ran == 'true' }}
+        with:
+          name: mutation-js
+          path: reports/mutation/
+          if-no-files-found: ignore
+
+  comment:
+    # The job with the write token never executes PR code: default branch checkout only, data-only parsing.
+    name: Sticky surviving-mutants comment (JS)
+    needs: stryker
+    if: ${{ always() && needs.stryker.outputs.ran == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mutation-js
+          path: mutation-out
+      - name: Post sticky comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: node scripts/ci/mutation-comment.mjs --section js --input mutation-out/mutation.json --pr "$PR" --repo "$REPO"
