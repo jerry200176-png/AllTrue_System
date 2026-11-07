@@ -32,6 +32,7 @@ final class MonthlyRenewalPeriodService
         // is not a blocker: the lessons stay on this contract but their money lives on the catch-up invoice.
         $billed = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $rows->pluck('date')->all());
         $open = $rows->reject(fn ($r) => in_array($r['date'], $billed, true));
+        // in-app #506: a lesson the old month wrongly holds past its end, but inside the new period, moves to the new contract.
         $inNew = $open->filter(fn ($r) => $oldEnd && $end && $r['date'] > $oldEnd && $r['date'] <= $end);
         $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course, $inNew, $oldEnd, $end);
         $blockers = [];
