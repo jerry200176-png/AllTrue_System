@@ -1,0 +1,9 @@
+[Unit]
+Description=AllTrue staging pull-deploy (latest green main)
+
+[Service]
+Type=oneshot
+# %h = admin's home. Checkout path is fixed: immutable host checkout (#3036).
+ExecStart=%h/alltrue-stage/AllTrue_System/infra/daan-staging/lifecycle/auto-update.sh
+TimeoutStartSec=40min
+Nice=10

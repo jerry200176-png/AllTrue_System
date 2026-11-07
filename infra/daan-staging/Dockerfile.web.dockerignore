@@ -1,0 +1,9 @@
+.git
+backend
+operations
+playwright-report
+test-results
+**/node_modules
+**/.agent-session
+frontend/dist_build
+infra

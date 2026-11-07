@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Start AllTrue Daan staging stack (on-demand).
 set -euo pipefail
-source "$(cd "$(dirname "$0")" && pwd)/_common.sh"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${DIR}/_common.sh"
 
 TARGET_SHA="${1:-}"
-bash "$(dirname "$0")/preflight.sh"
+bash "${DIR}/preflight.sh"
 
 if [[ -n "${TARGET_SHA}" ]]; then
   cd "${REPO_ROOT}"
@@ -16,11 +17,12 @@ if [[ -n "${TARGET_SHA}" ]]; then
   fi
 fi
 
+export GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 echo "=== build + up ==="
 mem_snapshot
-compose build app
+compose build app nginx
 compose up -d
 mkdir -p "${STAGE_ROOT}/runtime"
-bash "$(dirname "$0")/identity.sh"
+bash "${DIR}/identity.sh"
 echo "STAGING_UP"
-echo "Tunnel: ssh -L 18080:127.0.0.1:18080 admin@alltrue.daan.lifenet.com.tw"
+echo "Local: ${STAGING_HTTP} (ssh -L ${STAGING_PORT}:127.0.0.1:${STAGING_PORT} admin@alltrue.daan.lifenet.com.tw)"

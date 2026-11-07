@@ -1,0 +1,12 @@
+[Unit]
+Description=AllTrue staging interim quick tunnel (trycloudflare.com)
+After=network-online.target
+
+[Service]
+ExecStart=%h/alltrue-stage/AllTrue_System/infra/daan-staging/lifecycle/quick-tunnel.sh
+Restart=always
+RestartSec=10
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target
