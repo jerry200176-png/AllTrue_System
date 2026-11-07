@@ -52,6 +52,7 @@ on:
           - inapp_466_count_contract
           - billing_student_numbers
           - inapp_468_teacher_calendar
+          - inapp_516_projected_slot
           - inapp_460_payroll_teacher
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
@@ -149,14 +150,14 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar'}:
+          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar', 'inapp_516_projected_slot'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
               raise SystemExit('student_id must be numeric')
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
           # Every student-scoped case needs an id (no hard-coded names); three cases may use a StudentClass ID instead.
-          id_cases = {'billing_student_numbers', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
+          id_cases = {'billing_student_numbers', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang', 'inapp_516_projected_slot'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
           if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
@@ -2424,6 +2425,24 @@ jobs:
                 ->map(fn ($r) => $nums($r) + ['net_paid' => (int) $r->net_paid,
                   'item_amounts' => $db::table('InvoiceItem')->where('InvoiceID', (int) $r->id)->pluck('Amount')->map(fn ($v) => (int) $v)->all()])->values()->all();
             }}
+          }} elseif ($case === 'inapp_516_projected_slot') {{
+              // Read-only (in-app #516): why ensure-projected answers 422 for a date-mode course on 2026-11-07. Campus 16 only; IDs, dates, times, codes.
+              $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+              $ymd = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+              $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', strtolower(trim((string) $v))) ? strtolower(trim((string) $v)) : 'other');
+              $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('st.CampusID', 16)->where('sc.StudentID', $targetStudentId)->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+                ->orderBy('sc.ID')->get(['sc.ID', 'sc.ScheduleMode', 'sc.StartDate', 'sc.EndDate', 'sc.SessionDuration', 'sc.week', 'sc.time', 'sc.week1', 'sc.time1', 'sc.duration1',
+                  'sc.week2', 'sc.time2', 'sc.duration2', 'sc.week3', 'sc.time3', 'sc.duration3', 'sc.week4', 'sc.time4', 'sc.duration4']);
+              $ids = $courses->pluck('ID')->map(fn ($v) => (int) $v)->all();
+              $out['courses'] = $courses->map(fn ($c) => ['id' => (int) $c->ID, 'mode' => $code($c->ScheduleMode), 'start' => $ymd($c->StartDate), 'end' => $ymd($c->EndDate),
+                'dur' => $c->SessionDuration, 'slots' => [[$c->week, $hm($c->time)], [$c->week1, $hm($c->time1), $c->duration1], [$c->week2, $hm($c->time2), $c->duration2],
+                [$c->week3, $hm($c->time3), $c->duration3], [$c->week4, $hm($c->time4), $c->duration4]]])->values()->all();
+              $out['schedules'] = $db::table('schedules')->whereIn('student_course_id', $ids)->whereBetween('schedule_date', ['2026-11-02', '2026-11-16'])->orderBy('schedule_date')->orderBy('id')->get()
+                ->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => (int) $r->student_course_id, 'date' => $ymd($r->schedule_date), 'start' => $hm($r->start_time), 'end' => $hm($r->end_time),
+                  'status' => $code($r->status), 'type' => $code($r->type), 'orig_id' => $r->original_schedule_id, 'orig_date' => $ymd($r->original_schedule_date ?? null), 'orig_start' => $hm($r->original_start_time ?? null)])->values()->all();
+              $out['class_sessions'] = $db::table('ClassSession')->whereIn('StudentClassID', $ids)->whereBetween('SessionDate', ['2026-11-02', '2026-11-16'])->orderBy('SessionDate')->orderBy('StartTime')->get()
+                ->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => (int) $r->StudentClassID, 'date' => $ymd($r->SessionDate), 'start' => $hm($r->StartTime), 'end' => $hm($r->EndTime), 'status' => $code($r->Status), 'note' => $code($r->Note ?? null)])->values()->all();
           }} elseif ($case === 'inapp_468_teacher_calendar') {{
               // Read-only (in-app #468): the campus-9 student named in report 468 is matched on the server, so the text never leaves it.
               // For each of that student's courses, what the three calendar sources return to a director (branch 9) and to the course's
