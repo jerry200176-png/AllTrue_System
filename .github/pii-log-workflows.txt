@@ -93,3 +93,4 @@ xindian-capacity-diagnose.yml
 yang-1445-contract-repair.yml
 laravel-4504-metadata.yml
 forward-overdeduct-probe.yml
+phpunit-random-nightly.yml
