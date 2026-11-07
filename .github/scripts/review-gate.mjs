@@ -112,13 +112,10 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   const codexVeto = records.some((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
     && !['completed', 'failed'].includes(r.cr.status)));
   // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since,
-  // unless any Codex record (also an intermediate head's) vetoes. Same per-SHA ambiguity rule as the current head: equal-timestamp records of that SHA must agree.
-  const ambiguous = cr && records.some((r) => r.cr.commit_sha === cr.commit_sha && r.at === records[0].at
-    && (r.cr.status !== cr.status || r.cr.has_unresolved_findings !== cr.has_unresolved_findings));
-  // Records tied at the newest timestamp must agree whatever their SHA; sort order never decides a carry.
-  const tie = records.some((r) => r.at === records[0].at && (r.cr.status !== records[0].cr.status
-    || r.cr.has_unresolved_findings !== records[0].cr.has_unresolved_findings));
-  const stale = cr && !ambiguous && !tie && !codexVeto && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
+  // unless any Codex record vetoes (this also covers tied or ambiguous records: one of them has a non-false flag).
+  // Codex keeps one sticky comment, so findings on an intermediate head can already be overwritten; samePatch
+  // (trivialRebase) also vetoes on any Codex PR review of a commit added after the old head.
+  const stale = cr && !codexVeto && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
   // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
   // later) blocks the Codex carry, same as carried() does for markers.
   const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
@@ -128,7 +125,7 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
   // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
   // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
-  const old = codexVeto || tie ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
+  const old = codexVeto ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
   if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
   return { ok: false, why: onHead ? `Codex review ${cr.status ?? 'unknown'} on ${short}` : `Codex last reviewed ${String(cr.commit_sha).slice(0, 7)}, not head ${short}` };
@@ -163,12 +160,10 @@ export function patchId(diff) {
     return execFileSync('git', ['patch-id', '--verbatim'], { input: diff, encoding: 'utf8' }).split(' ')[0] || null;
   } catch { return null; }
 }
-// patch-id ignores whitespace, hunk line numbers and mode lines. Line numbers must be free (main shifts them); the rest
-// is pinned: every exact +/- line and every mode/rename line, order-free (patch-id already pins the order).
-const exactLines = (diff) => diff.split('\n').filter((l) => /^(\+(?!\+\+ )|-(?!-- )|(old|new|deleted file|new file) mode |(rename|copy) (from|to) )/.test(l)).sort().join('\n');
+// --verbatim patch-id pins whitespace, every +/- line and the mode/rename lines; hunk line numbers (which main shifts) are free.
 export const sameDiff = (a, b) => {
   const x = patchId(a), y = patchId(b);
-  return x !== null && x === y && exactLines(a) === exactLines(b);
+  return x !== null && x === y;
 };
 // commits: compare(base...sha).commits of old and head, [{sha, parents:[{sha}]}]. True only when head contains old and
 // every commit added since is a merge whose other parent is on main (outside the PR's own commit set).
@@ -179,6 +174,15 @@ export function onlyMainMerged(oldCommits, headCommits) {
   return headCommits.filter((c) => !before.has(c.sha)).every((c) => c.parents?.length === 2 && c.parents.filter((p) => own.has(p.sha)).length === 1);
 }
 
+// Commits added since old, or null when the carry must not happen. reviews: pulls/N/reviews. Codex keeps ONE sticky
+// state comment, so a late clean review of A overwrites B's findings; the durable trace is one PR review per commit_id.
+// Any Codex PR review on a commit added after old therefore vetoes the carry. Unreadable reviews (not an array) = null.
+export function carryChecks(oldCommits, headCommits, reviews) {
+  if (!Array.isArray(reviews) || !onlyMainMerged(oldCommits, headCommits)) return null;
+  const before = new Set(oldCommits.map((c) => c.sha));
+  const added = headCommits.map((c) => c.sha).filter((sha) => !before.has(sha));
+  return reviews.some((r) => r?.user?.login === CODEX_LOGIN && added.includes(r.commit_id)) ? null : added;
+}
 // TRIVIAL_REBASE proper: merge commit m must be the AUTOMATIC merge of its two parents (second parent on main), i.e.
 // `git merge-tree --write-tree p1 p2` is conflict-free and yields exactly m's tree. A hand-edited or conflict-resolved
 // merge (even one that keeps the same patch-id) is not. git: (...args) => stdout, throws on non-zero exit.
@@ -210,7 +214,7 @@ export function withCarryRepo(n, base, fn, open = carryRepo) {
 }
 
 // Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
-// (patch-id plus exact lines) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
+// (verbatim patch-id) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
 export function trivialRebase(n, head, old) {
   try {
     const base = api('').default_branch;
@@ -218,9 +222,9 @@ export function trivialRebase(n, head, old) {
     const commits = (sha) => JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.commits || []);
     const prShas = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/commits?per_page=100`, '--paginate', '--slurp')).flat().map((c) => c.sha);
     const oldC = commits(old), headC = commits(head);
-    if (!prShas.includes(old) || !prShas.includes(head) || !onlyMainMerged(oldC, headC)) return false;
-    const before = new Set(oldC.map((c) => c.sha));
-    const added = headC.map((c) => c.sha).filter((sha) => !before.has(sha));
+    const reviews = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/reviews?per_page=100`, '--paginate', '--slurp')).flat();
+    const added = prShas.includes(old) && prShas.includes(head) ? carryChecks(oldC, headC, reviews) : null;
+    if (!added) return false;
     if (added.length && !withCarryRepo(n, base, (git) => added.every((sha) => automaticMerge(git, sha, `origin/${base}`)))) return false;
     const diff = (sha) => gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
     return sameDiff(diff(old), diff(head));

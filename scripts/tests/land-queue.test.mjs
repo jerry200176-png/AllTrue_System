@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryRepo, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -703,6 +703,34 @@ test('TRIVIAL_REBASE: findings on an intermediate head B veto the Codex carry of
     assert.equal(G([at('2026-10-21T05:05:00Z', A), at('2026-10-21T05:00:00Z', B, { has_unresolved_findings: true })]).ok, false);
     if (scope === 'lower') assert.equal(G([at('2026-10-21T05:05:00Z', A)]).ok, true); // A alone still carries
   }
+});
+
+test('TRIVIAL_REBASE: Codex keeps ONE sticky state, so a Codex PR review on a commit after old vetoes the carry', () => {
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const A = 'a1'.repeat(20), B = 'b2'.repeat(20);
+  const oldC = [c(A, 'main0')];
+  const headC = [c(A, 'main0'), c(B, A, 'main1'), c(H, B, 'main2')]; // B and H are automatic merges of main
+  const review = (commit_id, login = CODEX_LOGIN) => ({ user: { login }, commit_id });
+  assert.deepEqual(carryChecks(oldC, headC, []), [B, H]);
+  assert.equal(carryChecks(oldC, headC, [review(B)]), null); // B's review survives the sticky overwrite
+  assert.equal(carryChecks(oldC, headC, [review(H)]), null);
+  assert.deepEqual(carryChecks(oldC, headC, [review(A), review('f'.repeat(40)), review(B, 'someone')]), [B, H]); // old's own, unrelated, non-Codex
+  assert.equal(carryChecks(oldC, headC, undefined), null); // unreadable reviews fail closed
+  // End to end through the gate: the sticky comment was overwritten by A's late clean review, B's findings are gone.
+  const sticky = codex(clean(A, { has_any_findings: false }));
+  for (const [reviews, expected] of [[[], true], [[review(B)], false]]) {
+    assert.equal(reviewGate([sticky], H, OWNER, 'lower', () => carryChecks(oldC, headC, reviews) !== null).ok, expected);
+  }
+});
+
+test('TRIVIAL_REBASE mutants: old not an ancestor of head; mode-only and rename-only differences', () => {
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const A = c('a1', 'm0'), B = c('b1', 'a1');
+  assert.equal(onlyMainMerged([A, B], [A, c('mg', 'a1', 'main9')]), false); // head is a merge of main into A, B is not an ancestor
+  const withLines = (extra) => DIFF('new').replace('index 111..222 100644', `${extra}index 111..222 100644`);
+  assert.equal(sameDiff(DIFF('new'), withLines('')), true);
+  assert.equal(sameDiff(DIFF('new'), withLines('old mode 100644\nnew mode 100755\n')), false); // mode-only
+  assert.equal(sameDiff(DIFF('new'), withLines('rename from y.js\nrename to x.js\n')), false); // rename-only
 });
 
 test('withCarryRepo removes the temp repo when the check passes, fails or throws', () => {
