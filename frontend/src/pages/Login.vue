@@ -6,7 +6,7 @@
       <div class="login-header">
         <LogoReveal>
           <div class="logo-wrapper">
-            <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" onerror="this.style.display='none'" />
+            <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" width="140" height="140" onerror="this.style.display='none'" />
           </div>
         </LogoReveal>
         <h1 class="login-title"><TextReveal text="台北全真一對一" :delay="900" /></h1>
@@ -43,7 +43,10 @@
             v-model="account"
             type="text"
             placeholder="請輸入登入帳號或姓名"
+            name="username"
             autocomplete="username"
+            spellcheck="false"
+            autocapitalize="none"
           />
         </div>
         <div class="form-group">
@@ -53,6 +56,7 @@
             v-model="password"
             type="password"
             placeholder="請輸入密碼"
+            name="password"
             autocomplete="current-password"
           />
         </div>
@@ -79,7 +83,7 @@
     <div class="login-card">
       <div class="login-header">
         <div class="logo-wrapper">
-          <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" onerror="this.style.display='none'" />
+          <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" width="140" height="140" onerror="this.style.display='none'" />
         </div>
         <h1 class="login-title">忘記密碼</h1>
         <p class="login-subtitle">送出申請後請由主任或管理員協助重設</p>
@@ -510,6 +514,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--ds-brand-gold-deep) 70%, transparent); /* soft lift so the gold reads on the glass */
   transition: background-color 0.2s ease-out, transform 220ms var(--ds-ease-ios);
   letter-spacing: 0.02em;
+  touch-action: manipulation;
 }
 .login-btn:hover:not(:disabled) { background: var(--ds-brand-gold); }
 .login-btn:active:not(:disabled) { transform: scale(0.97); }

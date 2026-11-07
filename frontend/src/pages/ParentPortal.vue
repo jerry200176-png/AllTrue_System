@@ -1883,7 +1883,7 @@ onMounted(async () => {
 }
 .pp-btn-logout {
   background: none; border: 0; border-radius: 50%;
-  min-width: 44px; min-height: 44px; padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
+  min-width: 44px; min-height: 44px; padding: 6px; cursor: pointer; color: var(--ds-ink);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .pp-btn-logout:hover, .pp-btn-logout.active { background: color-mix(in srgb, var(--ds-ink) 8%, transparent); }
@@ -1919,7 +1919,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 .pp-profile-info { flex: 1; min-width: 0; }
-.pp-student-name { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; color: var(--ds-ink); overflow-wrap: anywhere; } /* iOS large title */
+.pp-student-name { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; color: var(--ds-ink); overflow-wrap: anywhere; text-wrap: balance; } /* iOS large title */
 .pp-meta-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .pp-tag {
   display: inline-block; padding: 2px 8px; border-radius: 4px;
@@ -2191,7 +2191,7 @@ onMounted(async () => {
 .pp-tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; padding: 8px 4px; min-height: 56px; min-width: 44px; background: none; border: none;
-  cursor: pointer; font-size: var(--ds-font-size-xs); color: var(--ds-ink-mute); transition: color .2s, background .2s;
+  cursor: pointer; font-size: var(--ds-font-size-xs); color: color-mix(in srgb, var(--ds-ink) 80%, var(--ds-canvas)); touch-action: manipulation; /* AA over a dark card under the glass */
   position: relative;
 }
 .pp-tab:focus-visible {

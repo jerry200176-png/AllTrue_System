@@ -157,7 +157,10 @@ button[data-slot] {
   .ds-glass { background: var(--ds-glass-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 /* iOS press: springy scale-down on touch/click. Pair with a transform transition (.ds-press sets it). */
-.ds-press { transition: transform 220ms var(--ds-ease-ios); }
+.ds-press { transition: transform 220ms var(--ds-ease-ios); touch-action: manipulation; }
+/* sticky bars must not cover the focused element */
+:root:has(.glass-navbar) { scroll-padding-top: 56px; }
+:root:has(.pp-tab-bar) { scroll-padding-bottom: 80px; }
 @media (prefers-reduced-motion: no-preference) {
   .ds-press:active { transform: scale(0.97); }
 }

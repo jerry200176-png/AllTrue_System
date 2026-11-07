@@ -90,7 +90,7 @@
   --ds-cat-indigo-deep: #4a3fe0;
   /* Materials (Apple HIG thin / regular / thick). Glass is for fixed bars, overlays and the login card only; content cards stay solid. Blur <= 20px. */
   --ds-glass-thin-bg: color-mix(in srgb, var(--ds-canvas) 52%, transparent);
-  --ds-glass-regular-bg: color-mix(in srgb, var(--ds-canvas) 78%, transparent);
+  --ds-glass-regular-bg: color-mix(in srgb, var(--ds-canvas) 84%, transparent);
   --ds-glass-thick-bg: color-mix(in srgb, var(--ds-canvas) 86%, transparent);
   --ds-glass-thin-blur: 10px;
   --ds-glass-regular-blur: 16px;

@@ -26,14 +26,14 @@ const dueSubline = computed(() => [
       <CardContent class="tw:px-5">
         <p class="tw:text-sm tw:text-muted-foreground">下一堂課</p>
         <template v-if="home.nextLesson">
-          <p class="tw:text-3xl tw:font-bold tw:tracking-tight">
+          <p class="tw:text-3xl tw:font-bold tw:tracking-tight tw:tabular-nums">
             {{ home.nextLesson.dateLabel }}（{{ home.nextLesson.weekday }}）{{ home.nextLesson.time }}
           </p>
           <p class="tw:text-sm tw:text-muted-foreground">
             {{ [home.nextLesson.subject, home.nextLesson.teacher, home.nextLesson.daysLeft === 0 ? '今天' : `還有 ${home.nextLesson.daysLeft} 天`].filter(Boolean).join('・') }}
           </p>
           <Badge v-if="home.nextLesson.leaveRequested" variant="outline" class="tw:mt-2">請假確認中</Badge>
-          <Button v-else-if="home.nextLesson.canLeave" variant="secondary" class="tw:mt-4 tw:h-11 tw:w-full" @click="$emit('leave', home.nextLesson.session)">請假</Button>
+          <Button v-else-if="home.nextLesson.canLeave" variant="secondary" class="ds-press tw:mt-4 tw:h-11 tw:w-full" @click="$emit('leave', home.nextLesson.session)">請假</Button>
         </template>
         <p v-else class="tw:text-base">目前沒有排定的課，有安排會通知您</p>
       </CardContent>
@@ -46,7 +46,7 @@ const dueSubline = computed(() => [
         <p :class="['tw:text-sm', home.due ? 'tw:text-white/60' : 'tw:text-muted-foreground']">{{ home.due && (home.due.count > 1 || home.due.count === 0) ? '待繳學費' : '本期學費' }}</p>
         <template v-if="home.due">
           <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
-            <p :class="['tw:font-bold tw:leading-none tw:tracking-tighter', !home.due.review && home.due.amount != null ? 'tw:text-5xl tw:min-[400px]:text-6xl' : 'tw:text-4xl']">
+            <p :class="['tw:font-bold tw:leading-none tw:tracking-tighter', !home.due.review && home.due.amount != null ? 'tw:text-5xl tw:min-[400px]:text-6xl' : 'tw:text-4xl', 'tw:tabular-nums']">
               <template v-if="home.due.review">帳務確認中</template>
               <template v-else-if="home.due.amount == null">有課程待繳</template>
               <template v-else>$<NumberTicker :value="Number(home.due.amount)" :decimals="decimalsOf(home.due.amount)" /></template>
@@ -55,7 +55,7 @@ const dueSubline = computed(() => [
           </div>
           <p v-if="dueSubline" class="tw:text-sm tw:text-white/60">{{ dueSubline }}</p>
           <ShineBorder class="tw:mt-4" :colors="['white', 'var(--ds-brand-sun)']">
-            <Button class="tw:h-11 tw:w-full tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:transition-transform tw:motion-safe:active:scale-[0.96]" @click="$emit('pay')">繳費方式</Button>
+            <Button class="tw:h-11 tw:w-full tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:font-bold tw:text-[var(--ds-brand-glyph)] ds-press" @click="$emit('pay')">繳費方式</Button>
           </ShineBorder>
         </template>
         <p v-else class="tw:text-2xl tw:font-semibold">本期學費已繳清，謝謝您</p>
@@ -74,7 +74,7 @@ const dueSubline = computed(() => [
           {{ home.feedback.dateLabel }} {{ home.feedback.subject }}{{ home.feedback.text ? `：${home.feedback.text}` : '' }}
         </p>
         <p v-else class="tw:text-base">目前沒有新回饋</p>
-        <Button variant="secondary" class="tw:mt-4 tw:h-11 tw:w-full" @click="$emit('learning')">查看回饋並回覆老師</Button>
+        <Button variant="secondary" class="ds-press tw:mt-4 tw:h-11 tw:w-full" @click="$emit('learning')">查看回饋並回覆老師</Button>
       </CardContent>
     </Card>
     </BlurFade>

@@ -13,7 +13,7 @@
         <GlassNavBar class="dash-navbar" :collapsed="navCollapsed" title="今天">
           <template #trailing>
             <Button
-              class="director-workbench-v2__refresh tw:size-11 tw:border-0 tw:bg-transparent tw:shadow-none"
+              class="director-workbench-v2__refresh ds-press tw:size-11 tw:border-0 tw:bg-transparent tw:shadow-none"
               variant="outline"
               size="icon"
               aria-label="重新整理"
@@ -54,15 +54,18 @@
           </div>
         </div>
 
-        <AtTabs
-          :model-value="dashboardViewMode"
-          class="director-workbench-v2__nav tw:[&_[role=tab]]:min-h-12 tw:[&_[role=tab]]:px-5 tw:[&_[role=tab]]:text-tpl-caption tw:[&_[role=tab]]:font-bold"
-          label="總覽檢視模式"
-          id-prefix="director-workbench"
-          variant="ios"
-          :tabs="[{ value: 'focus', label: '今天' }, { value: 'full', label: '完整營運' }]"
-          @update:model-value="setDashboardViewMode"
-        />
+        <div class="dash-seg" :class="{ 'is-stuck': navCollapsed }">
+          <i class="dash-seg__bg ds-glass ds-glass--regular" aria-hidden="true" />
+          <AtTabs
+            :model-value="dashboardViewMode"
+            class="director-workbench-v2__nav tw:[&_[role=tab]]:min-h-12 tw:[&_[role=tab]]:px-5 tw:[&_[role=tab]]:text-tpl-caption tw:[&_[role=tab]]:font-bold"
+            label="總覽檢視模式"
+            id-prefix="director-workbench"
+            variant="ios"
+            :tabs="[{ value: 'focus', label: '今天' }, { value: 'full', label: '完整營運' }]"
+            @update:model-value="setDashboardViewMode"
+          />
+        </div>
 
                 <section
           v-if="dashboardViewMode === 'focus'"
@@ -88,7 +91,7 @@
                 </div>
               </div>
               <ShineBorder class="tw:mt-4" radius="1rem">
-                <Button class="tw:h-14 tw:w-full tw:rounded-2xl tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:motion-safe:active:scale-[0.96]" @click="goToAttendance">去點名</Button>
+                <Button class="tw:h-14 tw:w-full tw:rounded-2xl tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:motion-safe:active:scale-[0.97]" @click="goToAttendance">去點名</Button>
               </ShineBorder>
             </Card>
           </BlurFade>
@@ -110,7 +113,7 @@
             <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
               <strong>今日資料暫時無法載入</strong>
               <span>{{ dashboardPrimaryError }}</span>
-              <Button variant="secondary" class="tw:h-14 tw:text-[length:var(--tpl-text-body)]" @click="refreshDashboard">再試一次</Button>
+              <Button variant="secondary" class="ds-press tw:h-14 tw:text-[length:var(--tpl-text-body)]" @click="refreshDashboard">再試一次</Button>
             </div>
             <div v-else-if="!dashboardPrimaryTasks.length" class="director-state">
               <strong>今天沒有需要主任處理的事</strong>
@@ -125,7 +128,7 @@
               >
                 <button
                   type="button"
-                  class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.97] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
+                  class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-colors tw:duration-100 tw:active:bg-[color-mix(in_srgb,var(--ds-ink)_7%,transparent)] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
                   @click="openDashboardTask(task)"
                 >
                   <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
@@ -1642,6 +1645,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 今天 / 完整營運 switch sticks under the nav bar; its glass fades in once the large title has collapsed, so content blurs under it instead of showing a hard strip. */
+.dash-seg { position: sticky; top: calc(48px + env(safe-area-inset-top)); z-index: 9; padding: 6px 0; }
+.dash-seg__bg { position: absolute; inset: 0; z-index: -1; opacity: 0; pointer-events: none; box-shadow: 0 0.5px 0 var(--ds-glass-hairline); transition: opacity 200ms var(--ds-ease-ios); }
+.dash-seg.is-stuck .dash-seg__bg { opacity: 1; }
+.dash-navbar :deep(.glass-navbar__bg) { box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .dash-seg__bg { transition: none; } }
+
 .director-num { letter-spacing: -0.04em; font-variant-numeric: tabular-nums; line-height: 1; }
 .director-workbench-v2__focus > * { min-width: 0; }
 /* ===== Schedule Discrepancy card ===== */
