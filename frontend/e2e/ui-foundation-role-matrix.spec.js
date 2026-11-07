@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { PARENT_DASHBOARD } from './fixtures/ui-foundation/apiMocks.js';
 
 /**
  * #983 role matrix: deterministic parent portal coverage.
@@ -23,29 +24,7 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          student: { id: 2000, name: '測試學生甲', grade: 'J1', school: '測試國中', campus_id: 1, campus_name: '測試分校', line_linked: false },
-          enrollments: [],
-          cross_campus_access: 'actions',
-          progress_summary: {
-            week_label: '8/24–8/30',
-            week_progress: { attended: 1, scheduled: 2 },
-            next_session: { date: '2026-09-01', start_time: '10:00', end_time: '11:00', subject: '數學', is_today: false },
-            payment: { paid_courses: 1, total_courses: 2, status: 'partial' },
-            pending_total: 1,
-          },
-          announcements: [{ id: 9001, Title: '測試公告', Content: '這是給家長看的公告。', campus_name: '測試分校', created_at: '2026-08-28T09:00:00+08:00' }],
-          learning_records: [],
-          learning_records_meta: { total: 0, has_more: false },
-          attendance_history: [],
-          upcoming_sessions: [],
-          classes: [{ id: 9401, subject: '數學', sessions_purchased: 8, used_sessions: 6, remaining_sessions: 2, paid: false, payment_status_label: '待繳費', status: 'active' }],
-          remaining_sessions_total: 2,
-          remaining_by_subject: { 數學: 2 },
-          payment_alerts: [{ class_id: 9401, subject: '數學', remaining_sessions: 2, paid: false }],
-          invoices: [],
-          assessment_progress: { items: [] },
-        }),
+        body: JSON.stringify(PARENT_DASHBOARD),
       });
     }
     if (url.pathname.includes('/parent/notification-preferences')) {

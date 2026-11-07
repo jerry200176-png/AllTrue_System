@@ -2,6 +2,8 @@
 
 Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) (look and rules) and [`UI_AUDIT_2026-07-26.md`](UI_AUDIT_2026-07-26.md). Decision: #4659 (shadcn-vue template, Apple-style look). This is the single order; the older At*-pilot wave tables are retired.
 
+Every PR touching `frontend/` gets a preview of the whole app (demo logins 主任/老師/家長, fake data) from the `ui-preview` workflow's sticky PR comment; review there instead of screenshots.
+
 ## Order
 
 | # | Step | Status |
