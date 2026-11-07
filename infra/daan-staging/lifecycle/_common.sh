@@ -7,9 +7,19 @@ REPO_ROOT="$(cd "${STAGE_ROOT}/../.." && pwd)"
 COMPOSE_FILE="${STAGE_ROOT}/docker-compose.yml"
 ENV_FILE="${STAGE_ROOT}/.env"
 PROJECT_NAME="alltrue-stage"
-STAGING_HTTP="http://127.0.0.1:18080"
+if [[ -z "${STAGING_HTTP_PORT:-}" && -f "${ENV_FILE}" ]]; then
+  STAGING_HTTP_PORT="$(sed -n 's/^STAGING_HTTP_PORT=//p' "${ENV_FILE}" | tail -1)"
+fi
+STAGING_PORT="${STAGING_HTTP_PORT:-18080}"
+STAGING_HTTP="http://127.0.0.1:${STAGING_PORT}"
+export STAGING_HTTP_PORT="${STAGING_PORT}"
 IDENTITY_FILE="${STAGE_ROOT}/runtime/deployment.json"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
+
+# Rootless Docker (no docker group, no sudo): talk to the per-user daemon.
+if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/$(id -u)/docker.sock" ]]; then
+  export DOCKER_HOST="unix:///run/user/$(id -u)/docker.sock"
+fi
 
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
 

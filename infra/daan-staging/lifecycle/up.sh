@@ -23,4 +23,4 @@ compose up -d
 mkdir -p "${STAGE_ROOT}/runtime"
 bash "$(dirname "$0")/identity.sh"
 echo "STAGING_UP"
-echo "Tunnel: ssh -L 18080:127.0.0.1:18080 admin@alltrue.daan.lifenet.com.tw"
+echo "Local: ${STAGING_HTTP} (ssh -L ${STAGING_PORT}:127.0.0.1:${STAGING_PORT} admin@alltrue.daan.lifenet.com.tw)"
