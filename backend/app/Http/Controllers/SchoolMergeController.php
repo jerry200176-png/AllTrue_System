@@ -3,14 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Student;
+use App\Services\SchoolMergeService;
 use App\Services\SchoolNameSuggester;
+use App\Services\SchoolMergeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /** 學校整理 (#517). Reads: campus staff (combobox); suggestions: director. Campus-scoped. */
 class SchoolMergeController extends Controller
 {
-    public function __construct(private SchoolNameSuggester $suggester)
+    public function __construct(private SchoolNameSuggester $suggester, private SchoolMergeService $merger)
     {
     }
 
@@ -36,6 +38,61 @@ class SchoolMergeController extends Controller
         }
 
         return response()->json(['data' => $this->suggester->groups($counts)]);
+    }
+
+    public function history(Request $request): JsonResponse
+    {
+        $campusId = (int) $request->input('campus_id');
+        if (!$this->isDirector($request) || !$this->campusAllowed($request, $campusId)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return response()->json(['data' => $this->merger->history($campusId)]);
+    }
+
+    public function merge(Request $request): JsonResponse
+    {
+        $campusId = (int) $request->input('campus_id');
+        if (!$this->isDirector($request) || !$this->campusAllowed($request, $campusId)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $data = $request->validate([
+            'canonical' => ['required', 'string', 'max:32'],
+            'variants' => ['required', 'array', 'min:1', 'max:100'], // ponytail: one campus never has 100 spellings of a school; paginate if it does
+            'variants.*' => ['required', 'string', 'max:32'],
+        ]);
+        $canonical = trim($data['canonical']);
+        // Keep raw spellings (the service matches TRIM(SchoolName) and skips the exact canonical value).
+        $variants = array_values(array_unique(array_filter(array_map('trim', $data['variants']), fn ($v) => $v !== '')));
+        if ($canonical === '' || $variants === []) {
+            return response()->json(['message' => '請選一個保留的校名和至少一個要合併的寫法'], 422);
+        }
+
+        return $this->run(fn () => $this->merger->merge($campusId, (int) $request->attributes->get('auth_user')->id, $canonical, $variants), 201);
+    }
+
+    public function undo(Request $request, string $requestId): JsonResponse
+    {
+        $campusId = (int) $request->input('campus_id');
+        if (!$this->isDirector($request) || !$this->campusAllowed($request, $campusId)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        if (!\Illuminate\Support\Str::isUuid($requestId)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        return $this->run(fn () => $this->merger->undo($campusId, (int) $request->attributes->get('auth_user')->id, $requestId));
+    }
+
+    private function run(\Closure $fn, int $ok = 200): JsonResponse
+    {
+        try {
+            $result = $fn();
+        } catch (SchoolMergeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return $result === null ? response()->json(['message' => 'Not found'], 404) : response()->json(['data' => $result], $ok);
     }
 
     /** @return list<array{name:string,count:int}> */
