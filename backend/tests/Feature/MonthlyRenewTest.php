@@ -192,6 +192,7 @@ class MonthlyRenewTest extends TestCase
         $invoice = Invoice::where('StudentClassID', $first->json('new_course.id'))->firstOrFail();
         $this->assertSame('2026-05', $invoice->billing_period);
         $this->assertSame(7500, (int) $invoice->TotalAmount, 'the label moves, the amount does not');
+        $this->assertSame('月結費用 2026年5月', $invoice->items()->firstOrFail()->Description, 'the slip line names the billed month, not the start month');
 
         Carbon::setTestNow('2026-05-27 08:00:00');
         $headers['Authorization'] = 'Bearer ' . $this->createDirectorToken([1], 'director-period-514b@example.com');

@@ -218,6 +218,9 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertStringContainsString('founder:fixture:6000', $replacement->note);
         $this->assertNull($replacement->confirmed_by);
         $this->assertSame('2026-08', $invoice->fresh()->billing_period);
+        // in-app #514: re-keying an issued bill freezes its number on the original period (same path as the POP re-key)
+        $this->assertStringContainsString('[invno_period:2026-07]', (string) $invoice->fresh()->Note);
+        $this->assertSame('INV-202607-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT), \App\Services\Billing\InvoiceNumber::for($invoice->fresh()));
         $this->assertSame(6000, (int) $invoice->fresh()->TotalAmount);
         $this->assertSame(6000, (int) $invoice->fresh()->PaidAmount);
         $this->assertSame('2026-08-31', substr((string) $source->fresh()->EndDate, 0, 10));

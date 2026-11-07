@@ -107,7 +107,7 @@ class BillingNoteController extends Controller
     private function resolveSubject(string $type, int $id): ?array
     {
         [$studentId, $legacy] = match ($type) {
-            'invoice' => ($m = Invoice::query()->whereKey($id)->first()) instanceof Invoice ? [$this->invoiceStudent($m), (string) ($m->Note ?? '')] : [0, ''],
+            'invoice' => ($m = Invoice::query()->whereKey($id)->first()) instanceof Invoice ? [$this->invoiceStudent($m), \App\Services\Billing\InvoiceNumber::visibleNote($m->Note)] : [0, ''],
             'payment' => ($m = Payment::query()->find($id))
                 ? [$this->invoiceStudent(Invoice::query()->whereKey((int) $m->getAttribute('InvoiceID'))->first()), (string) ($m->getAttribute('Note') ?? '')]
                 : [0, ''],
