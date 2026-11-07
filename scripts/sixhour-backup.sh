@@ -30,6 +30,15 @@ DUMP_FILE="$BACKUP_DIR/alltrue_6h_${TIMESTAMP}.sql.gz"
 log "=== 6-hour backup start ==="
 log "Dumping '$DB_DATABASE' → $DUMP_FILE ..."
 
+# PITR anchor (#881): once binlog is on, record its position in the dump. Probe on schema only, so a server
+# without binlog (or a missing privilege) keeps the old dump instead of failing the backup.
+PITR_ARGS=()
+if mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD" --single-transaction \
+  --master-data=2 --no-data --no-tablespaces "$DB_DATABASE" >/dev/null 2>&1; then
+  PITR_ARGS=(--master-data=2)
+else
+  log "PITR anchor unavailable (binlog off or no privilege); dumping without it"
+fi
 mysqldump \
   -h "$DB_HOST" \
   -P "$DB_PORT" \
@@ -38,6 +47,7 @@ mysqldump \
   --single-transaction \
   --quick \
   --no-tablespaces \
+  "${PITR_ARGS[@]}" \
   "$DB_DATABASE" | gzip > "$DUMP_FILE"
 
 log "Dump complete: $(du -sh "$DUMP_FILE" | cut -f1)"

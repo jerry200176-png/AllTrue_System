@@ -168,7 +168,7 @@ CI broken?
 DB issue?
   └─ Backup → migrate:rollback if deploy migration (RUNBOOK §3c)
   └─ Restore from sixhour/nightly if data corrupt (OPERATIONS_RUNBOOK §P)
-  └─ PITR: NOT AVAILABLE (RPO ≈ 6h, TECH_DEBT TD-015)
+  └─ PITR: only if `SELECT @@log_bin` = 1 on the Pi (enabled by scripts/pi-enable-binlog.sh) → runbooks/MYSQL_PITR_DRILL_RUNBOOK.md steps 4–5 into a scratch DB; else RPO ≈ 6h
 ```
 
 ### Deploy-related → rollback via `deploy.yml` path

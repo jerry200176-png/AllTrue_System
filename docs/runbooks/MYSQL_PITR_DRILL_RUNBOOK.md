@@ -1,12 +1,9 @@
 # MySQL PITR drill runbook (#881 / TD-015)
 
-> **Drill-only. Do not run any step here against production `AllTrue`.**
-> `docs/OPERATIONS_RUNBOOK.md` §P's 2026-05-09 decision record defers enabling
-> production binlog until one of its three trigger conditions is met. This
-> runbook exists so that when that trigger fires, the drill SOP the decision
-> record calls for already exists — it does not itself decide to enable
-> anything. Run every step below only against the staging host from #868
-> (`docs/STAGING_ENVIRONMENT.md`) or a disposable local/drill database.
+> **Never restore into production `AllTrue`.** Production binlog is enabled by
+> `scripts/pi-enable-binlog.sh` (Founder decision 2026-11-07, `docs/OPERATIONS_RUNBOOK.md` §P).
+> For a real incident, run steps 4–5 below into a new scratch DB on the Pi, verify, then decide
+> the minimal repair through the normal reviewed data-change path.
 
 ## What this proves
 
@@ -44,10 +41,8 @@ mysql -u root -p -e "SHOW BINARY LOGS;"
 ## 2. Take a full backup (the PITR baseline)
 
 The production backup scripts (`scripts/nightly-backup.sh`,
-`scripts/sixhour-backup.sh`) run `mysqldump --single-transaction --quick
---no-tablespaces` **without** `--master-data=2`, so their dumps carry no binlog
-anchor and cannot seed a replay. Before PITR is enabled they must add
-`--master-data=2` (MariaDB: `--master-data=2` still works in `mariadb-dump`).
+`scripts/sixhour-backup.sh`) add `--master-data=2` automatically once binlog is
+on (a schema-only probe decides), so every dump carries the replay anchor.
 
 ```bash
 TS=$(date '+%Y-%m-%d_%H%M%S')
@@ -83,8 +78,8 @@ inserted row should exist afterward, the delete should not have replayed.
 ## 4. Restore: baseline + binlog replay to the target time
 
 ```bash
-SOURCE_DB=AllTrue_staging
-DRILL_DB=AllTrue_pitr_drill
+SOURCE_DB=AllTrue_staging        # real incident on the Pi: SOURCE_DB=AllTrue
+DRILL_DB=AllTrue_pitr_drill      # real incident: a NEW name, e.g. AllTrue_pitr_$(date +%Y%m%d_%H%M)
 mysql -u root -p -e "CREATE DATABASE \`${DRILL_DB}\`;"
 
 # mysqldump contains a USE for SOURCE_DB. Rewrite that context before loading
@@ -92,21 +87,34 @@ mysql -u root -p -e "CREATE DATABASE \`${DRILL_DB}\`;"
 # the source database instead of the drill database.
 zcat "pitr_baseline_${TS}.sql.gz" \
   | sed "s/\\\`${SOURCE_DB}\\\`/\\\`${DRILL_DB}\\\`/g" \
-  | mysql -u root -p "${DRILL_DB}"
+  | mysql -u root -p --init-command="SET sql_log_bin=0" "${DRILL_DB}"
 
 BINLOG_FILE=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
   | sed -n "s/.*MASTER_LOG_FILE='\([^']*\)'.*/\1/p")
 BINLOG_POS=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
   | sed -n "s/.*MASTER_LOG_POS=\([0-9]*\).*/\1/p")
 
-# Do NOT add --database=${DRILL_DB} here: the filter matches the *original*
-# (source) name, so every event is skipped and the replay silently applies
-# nothing (drill 2026-11-06: baseline-only rows came back, exit status 0).
-mysqlbinlog --rewrite-db="${SOURCE_DB}->${DRILL_DB}" \
+# --database=${SOURCE_DB} keeps only the source database's events (no other schema, no account
+# statements); --rewrite-db alone is not a filter. Use the SOURCE name: the filter matches the
+# original name, so --database=${DRILL_DB} skips every event and replays nothing (drill 2026-11-06).
+# Replay every binlog file from the anchor file onward. Restarts and 100M rotation split the binlog, and
+# --start-position applies to the first file only. Production keeps binlogs in the datadir
+# (log_bin = mysql-bin); the drill cnf in step 1 uses /var/log/mysql/.
+BINLOG_DIR=$(mysql -N -u root -p -e 'SELECT @@datadir')   # drill host: BINLOG_DIR=/var/log/mysql/
+BINLOG_PREFIX="${BINLOG_FILE%.*}"   # mysql-bin (production) or mysql-bin.log (drill cnf in step 1)
+BINLOG_FILES=$(ls "${BINLOG_DIR}${BINLOG_PREFIX}".[0-9]* | sort | awk -v f="${BINLOG_FILE}" '$0 ~ "/" f "$" {on=1} on')
+[ -n "$BINLOG_FILES" ] || { echo "anchor ${BINLOG_FILE} not found in ${BINLOG_DIR}"; exit 1; }
+# Write the replay to a file and refuse it if any event still targets SOURCE_DB: ROW events carry their
+# database, so a wrong --rewrite-db would replay into the source (in production: the live AllTrue).
+mysqlbinlog --database="${SOURCE_DB}" --rewrite-db="${SOURCE_DB}->${DRILL_DB}" \
   --start-position="$BINLOG_POS" \
   --stop-datetime="$TARGET_TIME" \
-  "/var/log/mysql/${BINLOG_FILE}" \
-  | mysql -u root -p "${DRILL_DB}"
+  $BINLOG_FILES > pitr_replay.sql
+if grep -qE "(use|USE) \`${SOURCE_DB}\`|\`${SOURCE_DB}\`\.\`" pitr_replay.sql; then
+  echo "STOP: replay still references ${SOURCE_DB}; check SOURCE_DB/DRILL_DB"; exit 1
+fi
+# sql_log_bin=0: the restore itself is not written to the live binlog (no extra disk, nothing to replay later).
+mysql -u root -p --init-command="SET sql_log_bin=0" "${DRILL_DB}" < pitr_replay.sql
 ```
 
 ## 5. Verify

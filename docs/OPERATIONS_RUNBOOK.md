@@ -959,12 +959,14 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | 項目 | 目前口徑 | 下一步 |
 |---|---|---|
 | RPO / RTO | 目前可承諾：RPO ≤ 6 小時（sixhour + Drive），RTO 目標 ≤ 30 分鐘（依近幾次還原經驗）| 每季演練一次「從 Drive 取備份 → 還原到 drill DB → 驗核心表 row count」 |
-| MySQL PITR / binlog | 尚未啟用明確的 point-in-time recovery；若事故發生在兩次 sixhour 中間，仍可能損失數小時資料 | 登記 TD-015，另走 DBA/OPS 流程評估 binlog retention、磁碟壓力、restore SOP |
+| MySQL PITR / binlog | 2026-11-07 Founder 決定啟用；Founder 在 Pi 跑 `scripts/pi-enable-binlog.sh --apply` 之後才生效（`SELECT @@log_bin` = 1）。binlog 只存在本機，硬碟壞掉時退回 sixhour 快照 | TD-015；見下方 Update 2026-11-07 |
 | Full server DR | 目前有 DB 備份與 GitHub code backup，但沒有完整記錄「全新 Pi 從零重建到可服務」耗時 | 每半年做一次 tabletop drill，驗證 secrets、rclone、nginx、PHP/MySQL、deploy key 都可重建 |
 
 ### PITR / Binlog Decision（2026-05-09）
 
 **Decision**：目前先 **defer**（不在當前維運窗口直接啟用 production binlog）。
+
+**Update 2026-11-07（Founder 決定啟用）**：drill 已 PASS（#881、#5009），所以正式機改為啟用 binlog（ROW、保留 7 天）。Founder 在 Pi 上自己跑 `sudo bash /home/admin/scripts/pi-enable-binlog.sh`：先 dry run，安靜時段再加 `--apply`；要撤回用 `--rollback`。之後 nightly/sixhour 備份會自動寫入 binlog 位置（`--master-data=2`）。還原步驟見 [`runbooks/MYSQL_PITR_DRILL_RUNBOOK.md`](runbooks/MYSQL_PITR_DRILL_RUNBOOK.md)，一律還原到 scratch DB，不直接覆蓋 `AllTrue`。binlog 目前只存在本機，異地同步是後續工作。以下是 2026-05-09 的原始紀錄。
 
 **Why defer now**
 - 現行快照備份鏈（nightly + sixhour + Drive + manifest + restore drill）健康，已覆蓋大部分事故恢復需求。
