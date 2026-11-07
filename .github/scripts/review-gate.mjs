@@ -111,7 +111,10 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   // Same per-SHA ambiguity rule as the current head: equal-timestamp records of that SHA must agree.
   const ambiguous = cr && records.some((r) => r.cr.commit_sha === cr.commit_sha && r.at === records[0].at
     && (r.cr.status !== cr.status || r.cr.has_unresolved_findings !== cr.has_unresolved_findings));
-  const stale = cr && !ambiguous && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
+  // Records tied at the newest timestamp must agree whatever their SHA; sort order never decides a carry.
+  const tie = records.some((r) => r.at === records[0].at && (r.cr.status !== records[0].cr.status
+    || r.cr.has_unresolved_findings !== records[0].cr.has_unresolved_findings));
+  const stale = cr && !ambiguous && !tie && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
   // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
   // later) blocks the Codex carry, same as carried() does for markers.
   const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
@@ -119,7 +122,11 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   const lower = owner.toLowerCase();
   const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
-  const old = carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
+  // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
+  // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
+  const codexVeto = records.some((r) => r.cr.commit_sha !== head && (r.cr.has_unresolved_findings === true
+    || (r.cr.status === 'completed' && r.cr.has_unresolved_findings !== false) || !['completed', 'failed'].includes(r.cr.status)));
+  const old = codexVeto || tie ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
   if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
   return { ok: false, why: onHead ? `Codex review ${cr.status ?? 'unknown'} on ${short}` : `Codex last reviewed ${String(cr.commit_sha).slice(0, 7)}, not head ${short}` };
@@ -182,13 +189,16 @@ export function automaticMerge(git, m, main = 'origin/main') {
   } catch { return false; }
 }
 // Blobless throwaway bare repo with main and the PR head fetched (fetch only: nothing from the PR is checked out or run).
-function prGit(n, base) {
+// exec(args) runs git with those args (injectable for tests). Caller removes dir.
+export function carryRepo(n, base, repo = REPO, exec = (a) => execFileSync('git', a, { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] })) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trivial-rebase-'));
-  const git = (...a) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
-  git('init', '--bare', '-q');
-  git('config', 'credential.helper', '!gh auth git-credential'); // GH_TOKEN, also for the lazy blob fetches (private repo)
-  git('fetch', '--no-tags', '--filter=blob:none', `https://github.com/${REPO}.git`, `refs/heads/${base}:refs/remotes/origin/${base}`, `refs/pull/${n}/head:refs/pull/${n}/head`);
-  return git;
+  const git = (...a) => exec(['-C', dir, ...a]);
+  try {
+    git('init', '--bare', '-q');
+    git('config', 'credential.helper', '!gh auth git-credential'); // GH_TOKEN for the fetch and the lazy blob fetches
+    git('fetch', '--no-tags', '--filter=blob:none', `https://github.com/${repo}.git`, `refs/heads/${base}:refs/remotes/origin/${base}`, `refs/pull/${n}/head:refs/pull/${n}/head`);
+  } catch (e) { fs.rmSync(dir, { recursive: true, force: true }); throw e; }
+  return { git, dir };
 }
 
 // Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
@@ -203,8 +213,11 @@ export function trivialRebase(n, head, old) {
     if (!prShas.includes(old) || !prShas.includes(head) || !onlyMainMerged(oldC, headC)) return false;
     const before = new Set(oldC.map((c) => c.sha));
     const added = headC.map((c) => c.sha).filter((sha) => !before.has(sha));
-    const git = added.length ? prGit(n, base) : null;
-    if (!added.every((sha) => automaticMerge(git, sha, `origin/${base}`))) return false;
+    let repo = null;
+    try {
+      if (added.length) repo = carryRepo(n, base);
+      if (!added.every((sha) => automaticMerge(repo.git, sha, `origin/${base}`))) return false;
+    } finally { if (repo) fs.rmSync(repo.dir, { recursive: true, force: true }); }
     const diff = (sha) => gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
     return sameDiff(diff(old), diff(head));
   } catch { return false; }

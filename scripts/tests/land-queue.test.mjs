@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -650,6 +650,40 @@ test('TRIVIAL_REBASE: conflicting equal-timestamp Codex records on the carried S
   assert.equal(G([codex(clean(OLD)), bad]).ok, false);
   assert.equal(G([bad, codex(clean(OLD))]).ok, false); // order independent
   assert.equal(G([codex(clean(OLD)), codex(clean(OLD))]).ok, true); // agreeing duplicates are fine
+});
+
+test('TRIVIAL_REBASE: Codex findings on the old SHA veto every carry of its marker (lower tier and R3)', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const MID = 'c'.repeat(40);
+  const found = (sha) => codex(clean(sha, { has_unresolved_findings: true }));
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    assert.equal(G([found(OLD), owner(reviewMarker(OLD))]).ok, false);
+    assert.equal(G([found(MID), owner(reviewMarker(OLD))]).ok, false); // newer record with findings on an in-between head
+    assert.equal(G([codex(clean(OLD, { status: 'in_progress' })), owner(reviewMarker(OLD))]).ok, false); // unfinished
+    assert.equal(G([codex(clean(OLD)), owner(reviewMarker(OLD))]).ok, true); // clean old head still carries
+  }
+});
+
+test('TRIVIAL_REBASE: a tie between different SHAs fails closed whatever the SHA sort order', () => {
+  const G = (cs) => reviewGate(cs, H, OWNER, 'lower', () => true);
+  for (const other of ['0'.repeat(40), 'c'.repeat(40)]) {
+    assert.equal(G([codex(clean(OLD)), codex(clean(other, { has_unresolved_findings: true }))]).ok, false);
+    assert.equal(G([codex(clean(other, { has_unresolved_findings: true })), codex(clean(OLD))]).ok, false);
+  }
+});
+
+test('carryRepo: sets the gh credential helper before fetching, and cleans up when the fetch fails', () => {
+  const calls = [];
+  const { git, dir } = carryRepo(7, 'main', 'o/r', (a) => { calls.push(a.slice(2)); return ''; });
+  assert.ok(fs.existsSync(dir));
+  fs.rmSync(dir, { recursive: true, force: true });
+  const names = calls.map((a) => a[0]);
+  assert.ok(names.indexOf('config') >= 0 && names.indexOf('config') < names.indexOf('fetch'));
+  assert.deepEqual(calls.find((a) => a[0] === 'config'), ['config', 'credential.helper', '!gh auth git-credential']);
+  let made;
+  assert.throws(() => carryRepo(7, 'main', 'o/r', (a) => { made = a[1]; if (a[2] === 'fetch') throw new Error('net'); return ''; }), /net/);
+  assert.equal(fs.existsSync(made), false); // temp repo removed on failure
 });
 
 test('TRIVIAL_REBASE: an owner fail marker on the old head or any in-between head blocks the Codex carry', () => {
