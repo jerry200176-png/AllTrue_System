@@ -22,16 +22,19 @@ const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 
 
 function main() {
   const { required } = requiredChecks();
-  const prs = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'autoland', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository,labels'));
+  let queued = 0;
+  const prs = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'autoland', '--state', 'open', '--base', 'main', '--limit', '200', '--json', 'number,isDraft,baseRefName,isCrossRepository,labels'));
   for (const p of prs) {
     try {
       const meta = { labels: p.labels.map((l) => l.name), isDraft: p.isDraft, base: p.baseRefName, isCrossRepository: p.isCrossRepository };
       const pr = load(p.number);
       const d = autolandDecision({ ...meta, labels: pr.labels }, pr, required);
       console.log(`#${p.number} autoland -> ${d.action} (${d.reason})`);
-      if (d.action === 'queue') gh('pr', 'edit', String(p.number), '--repo', REPO, '--add-label', 'queue');
+      if (d.action === 'queue') { gh('pr', 'edit', String(p.number), '--repo', REPO, '--add-label', 'queue'); queued++; }
     } catch (e) { console.log(`#${p.number} autoland: unreadable, not queueing (${String(e.message).split('\n')[0]})`); }
   }
+  // A label added with GITHUB_TOKEN triggers no workflow; workflow_dispatch is the exception, so start the queue explicitly.
+  if (queued) gh('workflow', 'run', 'land-queue.yml', '--repo', REPO, '--ref', 'main');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

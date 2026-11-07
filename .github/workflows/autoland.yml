@@ -1,7 +1,8 @@
 name: Autoland
 
 # Kodiak-style `autoland` label (#4953 W1): adds `queue` server-side once the land-queue / review-gate gates are green,
-# replacing local polling loops. It only adds a label; land-queue.yml still does the update-branch and merge, and
+# replacing local polling loops. It only adds a label and then dispatches land-queue.yml, which still does the
+# update-branch and merge. The run reads no event payload (every trigger is just a prompt for a full sweep), and
 # nothing here approves a deployment or environment. pull_request_target + default-branch checkout only: PR code is
 # never checked out or executed (same trust model as land-queue.yml and review-gate.yml).
 on:
@@ -32,6 +33,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write  # add the `queue` label
+      issues: write         # labels are issue labels
+      actions: write        # gh workflow run land-queue.yml (a GITHUB_TOKEN label event starts no workflow)
       checks: read
       statuses: read
     runs-on: ubuntu-latest
@@ -45,8 +48,7 @@ jobs:
 
       - name: Queue autoland PRs whose gates are green
         env:
-          # LAND_QUEUE_TOKEN (when set) makes the label event fire land-queue.yml at once; otherwise land-queue's
-          # 5-minute schedule picks it up.
-          GH_TOKEN: ${{ secrets.LAND_QUEUE_TOKEN || github.token }}
+          # Only the job's own least-privilege token: no PAT, so comment/review/check_suite triggers never hold one.
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: node .github/scripts/autoland.mjs

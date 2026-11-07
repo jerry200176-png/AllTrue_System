@@ -37,7 +37,12 @@ test('workflow: least privilege, default-branch checkout, no deployment or appro
   const fs = await import('node:fs');
   const wf = fs.readFileSync(new URL('../../.github/workflows/autoland.yml', import.meta.url), 'utf8');
   assert.match(wf, /^permissions:\n  contents: read\n/m);
-  assert.doesNotMatch(wf, /deployments:|id-token:|environment:|actions: write|contents: write|\bgh (pr merge|api[^\n]*approv)/i);
+  assert.doesNotMatch(wf, /deployments:|id-token:|environment:|contents: write|\bgh (pr merge|api[^\n]*approv)/i);
+  assert.doesNotMatch(wf, /secrets\./); // no PAT: permissions: must bound the token actually used
+  assert.match(wf, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  for (const perm of ['pull-requests: write', 'issues: write', 'actions: write', 'contents: read']) assert.ok(wf.includes(perm), perm);
+  // Comment/review/check_suite triggers only prompt a sweep: no event payload reaches a run: step or env.
+  assert.doesNotMatch(wf.replace(/^\s*if: .*$/gm, ''), /github\.event\.(?!repository\.default_branch)/);
   assert.match(wf, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
   assert.match(wf, /persist-credentials: false/);
   for (const ev of ['pull_request_target:', 'issue_comment:', 'pull_request_review:', 'check_suite:', 'schedule:', 'workflow_dispatch:']) assert.ok(wf.includes(`  ${ev}`), ev);
