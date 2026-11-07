@@ -31,12 +31,18 @@ class BillingPeriodRekeyStrategy
         if ($want !== '' && !preg_match('/^[0-9a-f]{64}$/', $want)) $errors[] = 'digest_format';
         if ($errors !== []) return ['ok' => false, 'errors' => $errors, 'state' => 'invalid'];
         $rows = $this->build($campuses);
-        $digest = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
+        // Resume: bills an interrupted run already re-keyed (journal rows still on their new period) count as part of the dry-run's manifest,
+        // so the digest the Founder approved still matches and a re-run only does what is left.
+        $done = $this->doneRows($campuses, array_column($rows, 'invoice_id'));
+        $basis = array_merge($rows, $done);
+        usort($basis, fn ($a, $b) => [$a['campus_id'], $a['class_id'], $a['invoice_id']] <=> [$b['campus_id'], $b['class_id'], $b['invoice_id']]);
+        $digest = hash('sha256', json_encode($basis, JSON_THROW_ON_ERROR));
         $ready = array_values(array_filter($rows, fn ($r) => $r['status'] === 'ready'));
-        $state = $want === '' ? 'unpinned' : ($ready === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
+        $shown = array_map(fn ($r) => in_array($r['invoice_id'], array_column($done, 'invoice_id'), true) ? ['status' => 'done'] + $r : $r, $basis);
+        $state = $want === '' ? 'unpinned' : ($ready === [] && $done === [] ? 'after' : ($want === $digest ? 'pinned' : 'digest_mismatch'));
 
         return ['ok' => $state !== 'digest_mismatch', 'errors' => $state === 'digest_mismatch' ? ['digest_mismatch'] : [],
-            'state' => $state, 'campus_ids' => $campuses, 'digest' => $digest, 'totals' => $this->totals($rows), 'manifest' => $rows];
+            'state' => $state, 'campus_ids' => $campuses, 'digest' => $digest, 'totals' => $this->totals($rows), 'manifest' => $shown, 'resumed_done' => count($done)];
     }
 
     public function execute(array $plan, array $context): array
@@ -52,12 +58,14 @@ class BillingPeriodRekeyStrategy
         // its lock is held is skipped and counted; a different value is never written.
         $operationId = (string) ($context['operation_id'] ?? '');
         $pending = array_values(array_filter($plan['manifest'], fn ($r) => $r['status'] === 'ready'));
-        $done = []; $skipped = [];
+        $done = $this->journalRows($operationId); $skipped = [];  // rows an earlier, interrupted run of this request already committed
+        $index = 0;
         do {
             $progress = false;
             foreach ($pending as $i => $r) {
+                $this->beforeRow($index++, $r);
                 try {
-                    $res = $this->rekeyOne($r, $operationId);
+                    $res = $this->rekeyOne($r, $operationId, (string) ($context['actor'] ?? 'pop-runner'));
                 } catch (\Throwable) {
                     $res = 'error';
                 }
@@ -68,6 +76,11 @@ class BillingPeriodRekeyStrategy
         foreach ($pending as $r) $skipped[(int) $r['invoice_id']] = 'period_taken';
 
         return ['ok' => true, 'updated' => count($done), 'skipped' => $skipped, 'snapshot' => ['rows' => $done]];
+    }
+
+    /** Test seam: called before each bill is attempted (a process that dies here leaves the earlier bills committed with their journal rows). */
+    protected function beforeRow(int $index, array $row): void
+    {
     }
 
     /** READ COMMITTED for the next transaction only (a no-op inside an outer transaction, which cannot change its level). */
@@ -88,12 +101,14 @@ class BillingPeriodRekeyStrategy
     }
 
     /** @param array<string,mixed> $r @return array<string,mixed>|string snapshot row when re-keyed, else the skip reason ('retry' = a month still held) */
-    private function rekeyOne(array $r, string $operationId): array|string
+    private function rekeyOne(array $r, string $operationId, string $actor): array|string
     {
         $this->readCommitted();
 
-        return DB::transaction(function () use ($r, $operationId): array|string {
+        return DB::transaction(function () use ($r, $operationId, $actor): array|string {
             $invoice = $this->lockContractThenBill((int) $r['invoice_id']);
+            $journaled = collect($this->journalRows($operationId))->firstWhere('invoice_id', $r['invoice_id']);
+            if ($journaled) return $journaled; // idempotent: this request already re-keyed this bill
             if (!$invoice || strtolower((string) $invoice->Status) === 'void' || $invoice->billing_period !== $r['from']) return 'drifted';
             $fresh = collect($this->build([], [(int) $r['invoice_id']]))->first();
             if (!$fresh || $fresh['from'] !== $r['from'] || $fresh['to'] !== $r['to'] || $fresh['class_id'] !== $r['class_id']) return 'drifted';
@@ -108,9 +123,53 @@ class BillingPeriodRekeyStrategy
             $this->audit($r['invoice_id'], $r['campus_id'], ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
                 'period_from' => $r['from'], 'period_to' => $r['to'], 'report_count' => count($reportIds), 'outcome' => 'success']);
 
-            return ['invoice_id' => $r['invoice_id'], 'class_id' => $r['class_id'], 'campus_id' => $r['campus_id'], 'from' => $r['from'], 'to' => $r['to'],
+            $row = ['invoice_id' => $r['invoice_id'], 'class_id' => $r['class_id'], 'campus_id' => $r['campus_id'], 'from' => $r['from'], 'to' => $r['to'],
                 'report_ids' => $reportIds, 'tag_added' => $added];
+            $this->journal('rekey-row', $operationId, $row, $actor); // same transaction as the write: both commit, or neither
+
+            return $row;
         });
+    }
+
+    /** Write-ahead journal = one pop_execution_records row per bill (no new table); attempt_key makes it unique per request and bill. */
+    private function journal(string $phase, string $operationId, array $row, string $actor): void
+    {
+        $id = (string) \Illuminate\Support\Str::uuid();
+        DB::table('pop_execution_records')->insert(['id' => $id, 'execution_id' => $id, 'operation_id' => $operationId, 'phase' => $phase, 'result' => 'succeeded',
+            'idempotency_key' => $operationId . ':' . $phase . ':' . $row['invoice_id'], 'attempt_key' => $operationId . ':' . $phase . ':' . $row['invoice_id'],
+            'correlation_id' => (string) \Illuminate\Support\Str::uuid(), 'snapshot' => json_encode($row, JSON_THROW_ON_ERROR),
+            'payload' => json_encode(['kind' => 'billing-period-rekey'], JSON_THROW_ON_ERROR), 'actor' => substr($actor, 0, 128), 'created_at' => now()]);
+    }
+
+    /** @return list<array<string,mixed>> journaled bills still re-keyed (not undone) for one request, or for every request when null */
+    private function journalRows(?string $operationId): array
+    {
+        $q = DB::table('pop_execution_records')->whereIn('phase', ['rekey-row', 'rekey-row-undone'])->orderBy('created_at')->orderBy('id');
+        if ($operationId !== null) $q->where('operation_id', $operationId);
+        $undone = [];
+        $rows = [];
+        foreach ($q->get(['operation_id', 'phase', 'snapshot']) as $rec) {
+            $snap = json_decode((string) $rec->snapshot, true);
+            if (!is_array($snap) || !isset($snap['invoice_id'])) continue;
+            $key = $rec->operation_id . ':' . $snap['invoice_id'];
+            if ($rec->phase === 'rekey-row-undone') $undone[$key] = true; else $rows[$key] = $snap;
+        }
+
+        return array_values(array_diff_key($rows, $undone));
+    }
+
+    /** @param list<int> $campuses @param list<int> $exclude @return list<array<string,mixed>> journaled bills still on their new period, as manifest rows */
+    private function doneRows(array $campuses, array $exclude): array
+    {
+        $out = [];
+        foreach ($this->journalRows(null) as $j) {
+            if (in_array($j['invoice_id'], $exclude, true) || ($campuses && !in_array((int) $j['campus_id'], $campuses, true))) continue;
+            if (DB::table('Invoice')->where('id', $j['invoice_id'])->value('billing_period') !== $j['to']) continue;
+            $out[] = ['invoice_id' => (int) $j['invoice_id'], 'class_id' => (int) $j['class_id'], 'campus_id' => (int) $j['campus_id'],
+                'from' => $j['from'], 'to' => $j['to'], 'status' => 'ready', 'reason' => null];
+        }
+
+        return $out;
     }
 
     public function verify(array $plan, array $result): array
@@ -138,6 +197,9 @@ class BillingPeriodRekeyStrategy
     public function rollback(array $snapshot, array $context): array
     {
         $rows = $snapshot['rows'] ?? null;
+        // The journal, not the end-of-run snapshot, says which bills committed: a run that died part-way is still fully undoable.
+        $journal = $this->journalRows((string) ($context['operation_id'] ?? ''));
+        if ($journal !== []) { $rows = $journal; $snapshot['incomplete'] = false; }
         if (($snapshot['incomplete'] ?? false) === true) return ['ok' => false, 'partial' => true, 'restored' => 0, 'errors' => ['snapshot_incomplete_manual_resolution']];
         if (!is_array($rows)) throw new RuntimeException('billing_period_rekey_rollback_snapshot_invalid');
 
@@ -148,7 +210,7 @@ class BillingPeriodRekeyStrategy
             $progress = false;
             foreach ($pending as $i => $r) {
                 try {
-                    $res = $this->restoreOne($r, (string) ($context['operation_id'] ?? ''));
+                    $res = $this->restoreOne($r, (string) ($context['operation_id'] ?? ''), (string) ($context['actor'] ?? 'pop-runner'));
                 } catch (\Throwable) {
                     $res = false;
                 }
@@ -161,11 +223,11 @@ class BillingPeriodRekeyStrategy
     }
 
     /** @return bool|null true = restored now, null = already restored earlier, false = cannot restore (changed, void, or the month is held) */
-    private function restoreOne(array $r, string $operationId): ?bool
+    private function restoreOne(array $r, string $operationId, string $actor): ?bool
     {
         $this->readCommitted();
 
-        return DB::transaction(function () use ($r, $operationId): ?bool {
+        return DB::transaction(function () use ($r, $operationId, $actor): ?bool {
             $inv = $this->lockContractThenBill((int) $r['invoice_id']);
             $added = $r['tag_added'] ?? true;
             $tag = ' [' . self::TAG . ':' . $r['from'] . ']';
@@ -186,6 +248,7 @@ class BillingPeriodRekeyStrategy
             DB::table('payment_reports')->where('InvoiceID', $inv->id)->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
             $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
                 'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
+            $this->journal('rekey-row-undone', $operationId, $r, $actor);
 
             return true;
         });

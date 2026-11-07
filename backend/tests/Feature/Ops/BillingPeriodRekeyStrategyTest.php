@@ -316,4 +316,55 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $result = $s->execute($s->plan($this->params('all', $dry['digest'])), ['operation_id' => 'req-rb']);
         $this->assertOnlyContractThenInvoiceLocks($this->lockLog(fn () => $s->rollback($result['snapshot'], ['operation_id' => 'req-rb'])));
     }
+
+    public function test_a_crash_after_two_rows_is_undoable_from_the_journal_and_resumable(): void
+    {
+        $crashing = new class extends BillingPeriodRekeyStrategy {
+            public int $dieAt = 2;
+            protected function beforeRow(int $index, array $row): void { if ($index === $this->dieAt) throw new \LogicException('process died'); }
+        };
+        $dry = $crashing->plan($this->params('all'));
+        $ready = array_values(array_filter($dry['manifest'], fn ($r) => $r['status'] === 'ready'));
+        $this->assertGreaterThanOrEqual(3, count($ready));
+        $pinned = $crashing->plan($this->params('all', $dry['digest']));
+        try {
+            $crashing->execute($pinned, ['operation_id' => 'req-crash']);
+            $this->fail('expected the simulated crash');
+        } catch (\LogicException) {
+        }
+        $moved = fn () => collect([$ready[0], $ready[1]])->filter(fn ($r) => DB::table('Invoice')->where('id', $r['invoice_id'])->value('billing_period') === $r['to'])->count();
+        $this->assertSame(2, $moved(), 'rows 1 and 2 committed before the crash');
+        $this->assertSame($ready[2]['from'], DB::table('Invoice')->where('id', $ready[2]['invoice_id'])->value('billing_period'), 'row 3 never ran');
+
+        // (b) re-execute with the same approved digest finishes row 3 (and the rest) only; rows 1-2 are not touched twice
+        $s = new BillingPeriodRekeyStrategy;
+        $resume = $s->plan($this->params('all', $dry['digest']));
+        $this->assertSame('pinned', $resume['state'], 'the approved digest still matches after a partial run');
+        $audits = fn () => DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->count();
+        $before = $audits();
+        $result = $s->execute($resume, ['operation_id' => 'req-crash']);
+        $this->assertSame(count($ready), count($result['snapshot']['rows']), 'journal rows plus the resumed ones');
+        $this->assertSame(count($ready) - 2, $audits() - $before, 'only the unfinished rows wrote');
+        foreach ($ready as $r) $this->assertSame($r['to'], DB::table('Invoice')->where('id', $r['invoice_id'])->value('billing_period'));
+        $this->assertSame([], $s->verify($resume, $result)['errors']);
+    }
+
+    public function test_rollback_after_a_crash_restores_exactly_the_committed_rows(): void
+    {
+        $crashing = new class extends BillingPeriodRekeyStrategy {
+            protected function beforeRow(int $index, array $row): void { if ($index === 2) throw new \LogicException('process died'); }
+        };
+        $dry = $crashing->plan($this->params('all'));
+        $ready = array_values(array_filter($dry['manifest'], fn ($r) => $r['status'] === 'ready'));
+        try {
+            $crashing->execute($crashing->plan($this->params('all', $dry['digest'])), ['operation_id' => 'req-crash2']);
+        } catch (\LogicException) {
+        }
+        // no end-of-run snapshot exists: rollback reads the journal
+        $res = (new BillingPeriodRekeyStrategy)->rollback(['rows' => []], ['operation_id' => 'req-crash2']);
+        $this->assertSame([true, 2], [$res['ok'], $res['restored']]);
+        foreach ($ready as $r) $this->assertSame($r['from'], DB::table('Invoice')->where('id', $r['invoice_id'])->value('billing_period'));
+        $again = (new BillingPeriodRekeyStrategy)->rollback(['rows' => []], ['operation_id' => 'req-crash2']);
+        $this->assertSame(0, $again['restored'], 'journal entries are marked undone: nothing is restored twice');
+    }
 }
