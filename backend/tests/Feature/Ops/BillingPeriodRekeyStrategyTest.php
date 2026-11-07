@@ -198,4 +198,22 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $row = collect((new BillingPeriodRekeyStrategy)->plan($this->params([16]))['manifest'])->firstWhere('invoice_id', 401);
         $this->assertSame(['ready', '2026-05'], [$row['status'], $row['to']]);
     }
+
+    public function test_state_change_between_dry_run_and_execute_aborts_in_the_transaction(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $pinned = $s->plan($this->params('all', $dry['digest']));
+        $this->assertSame('pinned', $pinned['state']);
+        // a lesson appears after the dry-run: the manifest (and so the digest) moves under the row locks
+        DB::table('ClassSession')->insert(['StudentClassID' => 100, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']);
+        try {
+            $s->execute($pinned, ['operation_id' => 'req-drift']);
+            $this->fail('expected the digest re-check to abort');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('billing_period_rekey_digest_drift', $e->getMessage());
+        }
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'nothing was written');
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->count());
+    }
 }
