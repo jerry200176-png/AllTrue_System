@@ -215,18 +215,23 @@ export function withCarryRepo(n, base, fn, open = carryRepo) {
 
 // Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
 // (verbatim patch-id) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
-export function trivialRebase(n, head, old) {
+// io = { gh, open } are injectable for tests (default: the gh CLI and carryRepo).
+export function trivialRebase(n, head, old, io = {}) {
+  const run = io.gh || gh;
+  const get = (path, ...extra) => run('api', `/repos/${REPO}${path}`, ...extra);
+  const json = (path, ...extra) => JSON.parse(get(path, ...extra) || 'null');
+  const pages = (path) => JSON.parse(get(path, '--paginate', '--slurp'));
   try {
-    const base = api('').default_branch;
-    if (!base || api(`pulls/${n}`).base?.ref !== base) return false;
-    const commits = (sha) => JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.commits || []);
-    const prShas = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/commits?per_page=100`, '--paginate', '--slurp')).flat().map((c) => c.sha);
+    const base = json('').default_branch;
+    if (!base || json(`/pulls/${n}`).base?.ref !== base) return false;
+    const commits = (sha) => pages(`/compare/${encodeURIComponent(base)}...${sha}?per_page=100`).flatMap((p) => p.commits || []);
+    const prShas = pages(`/pulls/${n}/commits?per_page=100`).flat().map((c) => c.sha);
     const oldC = commits(old), headC = commits(head);
-    const reviews = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/reviews?per_page=100`, '--paginate', '--slurp')).flat();
+    const reviews = pages(`/pulls/${n}/reviews?per_page=100`).flat();
     const added = prShas.includes(old) && prShas.includes(head) ? carryChecks(oldC, headC, reviews) : null;
     if (!added) return false;
-    if (added.length && !withCarryRepo(n, base, (git) => added.every((sha) => automaticMerge(git, sha, `origin/${base}`)))) return false;
-    const diff = (sha) => gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
+    if (added.length && !withCarryRepo(n, base, (git) => added.every((sha) => automaticMerge(git, sha, `origin/${base}`)), io.open)) return false;
+    const diff = (sha) => get(`/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
     return sameDiff(diff(old), diff(head));
   } catch { return false; }
 }

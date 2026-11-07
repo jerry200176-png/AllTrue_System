@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -731,6 +731,42 @@ test('TRIVIAL_REBASE mutants: old not an ancestor of head; mode-only and rename-
   assert.equal(sameDiff(DIFF('new'), withLines('')), true);
   assert.equal(sameDiff(DIFF('new'), withLines('old mode 100644\nnew mode 100755\n')), false); // mode-only
   assert.equal(sameDiff(DIFF('new'), withLines('rename from y.js\nrename to x.js\n')), false); // rename-only
+});
+
+test('trivialRebase end to end (fake gh + fake git): each guard is load-bearing', () => {
+  const A = 'a1'.repeat(20), M = 'd4'.repeat(20);
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const base = {
+    base: 'main', prShas: [A, M], oldC: [c(A, 'main0')], headC: [c(A, 'main0'), c(M, A, 'main1')], reviews: [],
+    diffOld: DIFF('new'), diffHead: DIFF('new', '@@ -40,2 +45,2 @@'), automatic: true,
+  };
+  const run = (o = {}) => {
+    const w = { ...base, ...o };
+    const gh = (_api, url, ...rest) => {
+      if (/\/repos\/[^/]*$/.test(url) || url.endsWith('/repos/undefined')) return JSON.stringify({ default_branch: 'main' });
+      if (/\/pulls\/7$/.test(url)) return JSON.stringify({ base: { ref: w.base } });
+      if (url.includes('/pulls/7/commits')) return JSON.stringify([w.prShas.map((sha) => ({ sha }))]);
+      if (url.includes('/pulls/7/reviews')) return JSON.stringify([w.reviews]);
+      if (rest.includes('Accept: application/vnd.github.diff')) return url.endsWith(`...${A}`) ? w.diffOld : w.diffHead;
+      if (url.includes('/compare/')) return JSON.stringify([{ commits: url.includes(`...${A}?`) ? w.oldC : w.headC }]);
+      throw new Error(`unexpected ${url}`);
+    };
+    const open = () => ({ dir: fs.mkdtempSync(join(os.tmpdir(), 'tr-')), git: (...a) => {
+      if (a[0] === 'rev-list') return `${M} ${A} main1\n`;
+      if (a[0] === 'merge-base') return '';
+      if (a[0] === 'merge-tree') return 'TREE\n';
+      if (a[0] === 'rev-parse') return w.automatic ? 'TREE\n' : 'OTHER\n';
+      throw new Error(`unexpected git ${a[0]}`);
+    } });
+    return trivialRebase(7, M, A, { gh, open });
+  };
+  assert.equal(run(), true);
+  assert.equal(run({ automatic: false }), false); // hand-edited merge (kills: drop automaticMerge)
+  assert.equal(run({ reviews: [{ user: { login: CODEX_LOGIN }, commit_id: M }] }), false); // Codex review after old (kills: drop veto)
+  assert.equal(run({ diffHead: DIFF('different') }), false); // changed line (kills: old diff compared to itself)
+  assert.equal(run({ prShas: [M] }), false); // old not a PR commit (kills: drop PR-commit check)
+  assert.equal(run({ base: 'evil' }), false); // retargeted base (kills: drop base check)
+  assert.equal(run({ headC: [c(A, 'main0'), c('e5'.repeat(20), A)] , prShas: [A, M, 'e5'.repeat(20)] }), false); // non-merge added commit
 });
 
 test('withCarryRepo removes the temp repo when the check passes, fails or throws', () => {
