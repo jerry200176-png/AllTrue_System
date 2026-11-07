@@ -18,7 +18,7 @@ use RuntimeException;
 final class BillingPeriodRekeyStrategy
 {
     private const REF = 'repair-billing-period-rekey-20261107';
-    private const TAG = 'invno_period'; // keep equal to Billing\InvoiceNumber::TAG
+    private const TAG = \App\Services\Billing\InvoiceNumber::TAG;
     private const EVENT = 'pop.billing_period_rekey';
 
     public function plan(array $parameters): array
@@ -58,7 +58,7 @@ final class BillingPeriodRekeyStrategy
                 $invoice = DB::table('Invoice')->where('id', $r['invoice_id'])->first();
                 $note = (string) $invoice->Note;
                 $added = !str_contains($note, '[' . self::TAG . ':'); // a bill re-keyed before keeps its first (original) number tag
-                $tagged = trim($note . ' [' . self::TAG . ':' . $r['from'] . ']');
+                $tagged = \App\Services\Billing\InvoiceNumber::withTag($note, $r['from']) ?? throw new RuntimeException('billing_period_rekey_note_full_' . $r['invoice_id']); // the one freeze path
                 $n = DB::table('Invoice')->where('id', $r['invoice_id'])->where('billing_period', $r['from'])
                     ->update(['billing_period' => $r['to'], 'Note' => $added ? $tagged : $note, 'updated_at' => now()]);
                 if ($n !== 1) throw new RuntimeException('billing_period_rekey_update_' . $r['invoice_id']);
@@ -227,8 +227,7 @@ final class BillingPeriodRekeyStrategy
                 $key = $inv->StudentID . '|' . $inv->SubjectID . '|' . $to;
                 $reason = match (true) {
                     isset($taken[$key]) => 'period_taken',
-                    mb_strlen(trim((string) $inv->Note . ' [' . self::TAG . ':' . $inv->billing_period . ']')) > 255
-                        && !str_contains((string) $inv->Note, '[' . self::TAG . ':') => 'note_full',
+                    \App\Services\Billing\InvoiceNumber::withTag((string) $inv->Note, (string) $inv->billing_period) === null => 'note_full',
                     default => null,
                 };
                 if (!$reason) { $taken[$key] = true; $now[(int) $inv->id] = true; }
