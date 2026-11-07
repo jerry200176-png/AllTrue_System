@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-billing-period-lesson-month
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 跨月帳單期別看上課月份
+    summary: 新帳單的期別改看上課的月份，並顯示完整期間。
+    items:
+      - category: fixed
+        text: 月結週期從月底開始時，新開的帳單期別會顯示上課所在的月份，登記收款會一併列出完整起迄日，金額不變。
+    source_refs:
+      - "changelog:2026-11-07:billing-period-first-lesson-month"

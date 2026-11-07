@@ -30,15 +30,8 @@ final class MonthlyRenewalPeriodService
             })->get(['id', 'SessionDate', 'StartTime'])->map(fn ($r) => ['id' => (int) $r->id, 'date' => Carbon::parse($r->SessionDate)->toDateString(), 'start' => substr((string) $r->StartTime, 0, 5)]);
         // A month already billed by a catch-up (same student + subject, non-void invoice for that billing_period)
         // is not a blocker: the lessons stay on this contract but their money lives on the catch-up invoice.
-        $months = $rows->map(fn ($r) => substr($r['date'], 0, 7))->unique()->values()->all();
-        $billedMonths = $months === [] ? collect() : DB::table('Invoice as inv')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
-            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->whereIn('inv.billing_period', $months)
-            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))
-            ->pluck('inv.billing_period')->unique();
-        $open = $rows->reject(fn ($r) => $billedMonths->contains(substr($r['date'], 0, 7)));
-        // in-app #506: a lesson the old month wrongly holds past its end, but inside the new period, moves to the new contract.
+        $billed = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $rows->pluck('date')->all());
+        $open = $rows->reject(fn ($r) => in_array($r['date'], $billed, true));
         $inNew = $open->filter(fn ($r) => $oldEnd && $end && $r['date'] > $oldEnd && $r['date'] <= $end);
         $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course, $inNew, $oldEnd, $end);
         $blockers = [];
@@ -46,7 +39,7 @@ final class MonthlyRenewalPeriodService
         if ($open->count()) $blockers[] = ['code' => 'monthly_completed_sessions_outside_contract',
             'message' => "有 {$open->count()} 堂上課日在合約日期之外，先處理這幾堂才能開下一期。"];
         if ($reason && str_starts_with($reason, 'adopt_')) $blockers[] = ['code' => $reason, 'message' => '合約之外的上課要併入新合約，但舊合約不是單價乘堂數的單一未付帳單，請先請會計處理。'];
-        return ['start_date' => $start->toDateString(), 'billing_period' => $end ? $start->format('Y-m') : null,
+        return ['start_date' => $start->toDateString(), 'billing_period' => $end ? \App\Services\Billing\BillingPeriod::forCycle($course, $start->toDateString(), $end) : null,
             'due_date' => $end ? $month->day(min($day, $month->daysInMonth))->toDateString() : null,
             'blockers' => $blockers, 'adoptable' => $reason === null ? $inNew->pluck('id')->values()->all() : []];
     }

@@ -107,11 +107,7 @@ class MonthlyBillingService
     public function lessonsOnlyOutsideContract(Model $course): array
     {
         $outside = $this->taughtLessonsOutsideContract($course);
-        $billed = $outside === [] ? [] : DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
-            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->whereIn('inv.billing_period', array_values(array_unique(array_map(fn (string $d) => substr($d, 0, 7), $outside))))
-            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))->pluck('inv.billing_period')->all();
-        $covered = array_values(array_filter($outside, fn (string $d) => in_array(substr($d, 0, 7), $billed, true)));
+        $covered = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $outside);
         $open = array_values(array_diff($outside, $covered));
         $rest = $this->countableLessonDates($course)->reject(fn (string $d) => in_array($d, $covered, true));
 

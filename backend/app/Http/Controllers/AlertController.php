@@ -358,6 +358,8 @@ class AlertController extends Controller
                 'payable_source'     => $payable['payable_source'],
                 'payable_invoice_id' => $payable['payable_invoice_id'],
                 'billing_period'    => $payable['payable_billing_period'],
+                'billing_period_start' => $payable['payable_period_start'] ?? null,
+                'billing_period_end' => $payable['payable_period_end'] ?? null,
                 'paid_amount'        => $paidAmount,
                 // F7 S3b: one outstanding answer = the resolver's course-level value; no invoice => estimate.
                 'outstanding'        => $this->courseOutstanding($courseStatuses[$anchorId] ?? null) ?? ($isPaid ? 0 : max(0, $charge - $paidAmount)),
@@ -467,6 +469,8 @@ class AlertController extends Controller
                     'payable_source'           => $payable['payable_source'],
                     'payable_invoice_id'       => $payable['payable_invoice_id'],
                     'billing_period'           => $payable['payable_billing_period'],
+                    'billing_period_start'     => $payable['payable_period_start'] ?? null,
+                    'billing_period_end'       => $payable['payable_period_end'] ?? null,
                     'payable_amount_source'    => $payable['payable_amount_source'],
                     'paid_amount'              => $paidAmount,
                     'outstanding'              => $outstanding,
