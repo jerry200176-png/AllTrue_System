@@ -63,8 +63,8 @@ jobs:
           # environment (never argv/echo) and are sent as secret_text.
           # Unset/missing values are sent as null, which deletes them from the project, so removing
           # the GitHub secret/variable restores the mock fallback. Staging needs both origin and cookie.
-          [ -n "$PREVIEW_API_ORIGIN" ] && [ -n "$PREVIEW_API_GATE_COOKIE" ] || { PREVIEW_API_ORIGIN=; PREVIEW_API_GATE_COOKIE=; }
-          export PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE
+          [ -n "$PREVIEW_API_ORIGIN" ] && [ -n "$PREVIEW_API_GATE_COOKIE" ] || { PREVIEW_API_ORIGIN=; PREVIEW_API_GATE_COOKIE=; PREVIEW_DEMO_DIRECTOR_PASSWORD=; PREVIEW_DEMO_TEACHER_PASSWORD=; PREVIEW_DEMO_PARENT_STUDENT_ID=; PREVIEW_DEMO_PARENT_PHONE=; }
+          export PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE
           for k in PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE; do
             v="${!k}"; [ -n "$v" ] && echo "::add-mask::$v"
           done

@@ -121,7 +121,9 @@ export async function installApiMocks(page, mode, pageName = '', authProfile = n
       });
     }
 
-    if (pageName === 'teacher' || pageName === 'attendance') {
+    // Preview-only data (route.unmocked is defined by the preview shim): keeps the Playwright
+    // visual baselines for teacher-home/attendance unchanged.
+    if (route.unmocked && (pageName === 'teacher' || pageName === 'attendance')) {
       const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       if (pageName === 'attendance') {
         if (/\/(attendance|attendance\/ended-sessions|pending-swipes|teacher-attendance|teacher-attendance\/unclosed)$/.test(p)) return json({ data: [], total: 0 });

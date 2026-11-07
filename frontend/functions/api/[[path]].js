@@ -13,7 +13,7 @@ function upstream(env, path, init = {}) {
   if (target.origin !== origin.origin || !target.pathname.startsWith('/api/v1/')) return null;
   const headers = new Headers(init.headers);
   // Browser Authorization (Bearer) passes through unchanged; browser cookies never do.
-  for (const k of [...headers.keys()]) if (/^(cf-|x-forwarded|x-real-ip|host$|cookie$)/i.test(k)) headers.delete(k);
+  for (const k of [...headers.keys()]) if (/^(cf-|x-forwarded|x-real-ip|x-user-|host$|cookie$)/i.test(k)) headers.delete(k);
   headers.set('Cookie', `alltrue_staging_gate=${env.PREVIEW_API_GATE_COOKIE || ''}`);
   return fetch(target, { ...init, headers, redirect: 'manual' });
 }
@@ -31,7 +31,7 @@ export async function onRequest({ request, env }) {
       const j = res && res.ok ? await res.json().catch(() => null) : null;
       return j?.token ? json({ token: j.token }) : json({ message: 'demo login unavailable' }, 502);
     }
-    const account = DEMO_ACCOUNT[role];
+    const account = Object.hasOwn(DEMO_ACCOUNT, role) ? DEMO_ACCOUNT[role] : null;
     const password = role === 'director' ? env.PREVIEW_DEMO_DIRECTOR_PASSWORD : env.PREVIEW_DEMO_TEACHER_PASSWORD;
     if (!account || !password) return json({ message: 'unknown role' }, 400);
     const res = await upstream(env, '/api/v1/auth/login', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ account, password }) });
@@ -40,7 +40,9 @@ export async function onRequest({ request, env }) {
   }
 
   if (!url.pathname.startsWith('/api/v1/')) return json({ message: 'not found' }, 404);
-  const res = await upstream(env, url.pathname + url.search, { method: request.method, headers: request.headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body });
+  // Read-only proxy: the preview is reachable by anyone with the URL, so it must never write to staging.
+  if (!['GET', 'HEAD'].includes(request.method)) return new Response(JSON.stringify({ message: 'preview is read-only' }), { status: 405, headers: { 'Content-Type': 'application/json', Allow: 'GET, HEAD' } });
+  const res = await upstream(env, url.pathname + url.search, { method: request.method, headers: request.headers, body: undefined });
   if (!res) return json({ message: 'not found' }, 404);
   const out = new Headers(res.headers);
   out.delete('set-cookie');

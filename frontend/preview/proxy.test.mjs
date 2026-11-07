@@ -24,6 +24,24 @@ test('only /api/v1 is proxied; gate cookie is injected, browser cookies dropped,
     assert.equal(seen[0].headers.get('cf-access-client-id'), null);
   });
 });
+test('generic proxy is read-only: POST/PATCH/DELETE/PUT => 405, nothing reaches staging', async () => {
+  await withFetch(async (seen) => {
+    for (const method of ['POST', 'PATCH', 'DELETE', 'PUT']) {
+      const r = await call('/api/v1/students/1', { method, body: method === 'DELETE' ? undefined : '{}' });
+      assert.equal(r.status, 405, method);
+    }
+    assert.equal((await call('/api/v1/students/1', { method: 'HEAD' })).status, 200);
+    assert.equal(seen.length, 1);
+  });
+});
+test('demo login rejects prototype-key roles', async () => {
+  await withFetch(async (seen) => {
+    for (const role of ['__proto__', 'constructor']) {
+      assert.equal((await call('/api/preview-demo-login', { method: 'POST', body: JSON.stringify({ role }) })).status, 400);
+    }
+    assert.equal(seen.length, 0);
+  });
+});
 test('demo login runs server-side and never returns the password', async () => {
   await withFetch(async (seen) => {
     const r = await call('/api/preview-demo-login', { method: 'POST', body: JSON.stringify({ role: 'director' }) });
