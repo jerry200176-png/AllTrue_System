@@ -1326,7 +1326,9 @@ test.describe('No horizontal overflow (director home, Login)', () => {
         await dismissOverlays(page);
         await page.waitForLoadState('networkidle');
         const wide = await page.evaluate(() => [...document.querySelectorAll('body *')]
-          .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('[class*="overflow"]'))
+          .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
+          // ignore content clipped by an ancestor (decorative layers such as the Login aurora)
+          .filter((e) => { for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (o === 'hidden' || o === 'clip' || o === 'auto' || o === 'scroll') return false; } return true; })
           .map((e) => `${e.tagName}.${String(e.className).slice(0, 40)}`));
         expect(wide).toEqual([]);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
