@@ -1,0 +1,117 @@
+name: Business health daily (read-only)
+# governance-capability: read-only-probe
+# Gap 3 of #5070. Aggregate counts only (no names, ids or PII). Red -> one GitHub issue.
+on:
+  schedule:
+    - cron: '0 14 * * *'   # 22:00 Asia/Taipei, after the teaching day
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: business-health-daily
+  cancel-in-progress: false
+jobs:
+  probe:
+    name: Read aggregate business counts
+    runs-on: ubuntu-latest
+    environment: production-ssh
+    timeout-minutes: 10
+    outputs:
+      red: ${{ steps.read.outputs.red }}
+      summary: ${{ steps.read.outputs.summary }}
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Read counts (SELECT count only)
+        id: read
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/business-health"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          out="$(ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $app = require 'bootstrap/app.php';
+          $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+          $db = \Illuminate\Support\Facades\DB::class;
+          $now = now();
+          echo json_encode([
+              // ClassSession rows for today/yesterday/day-before touched in the last 24h.
+              'lessons_written_24h' => $db::table('ClassSession')
+                  ->whereBetween('SessionDate', [$now->copy()->subDays(2)->toDateString(), $now->toDateString()])
+                  ->where('updated_at', '>=', $now->copy()->subDay())->count(),
+              'invoices_created_24h' => $db::table('Invoice')->where('created_at', '>=', $now->copy()->subDay())->count(),
+              'invoices_created_35d' => $db::table('Invoice')->where('created_at', '>=', $now->copy()->subDays(35))->count(),
+          ], JSON_THROW_ON_ERROR) . PHP_EOL;
+          PHP
+          REMOTE
+          )"
+          echo "$out"
+          # Red: no lesson writes on a Taipei weekday, or no bill at all in 35 days (billing path dead).
+          red_summary="$(OUT="$out" python3 - <<'PY'
+          import datetime, json, os
+          d = json.loads(os.environ["OUT"])
+          weekday = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).weekday() < 5
+          bad = []
+          if weekday and d["lessons_written_24h"] == 0:
+              bad.append("no lessons written in 24h on a weekday")
+          if d["invoices_created_35d"] == 0:
+              bad.append("no bills created in 35 days")
+          nums = "lessons_24h=%s, bills_24h=%s, bills_35d=%s" % (d["lessons_written_24h"], d["invoices_created_24h"], d["invoices_created_35d"])
+          print("%s|%s (%s)" % ("1" if bad else "0", "; ".join(bad) or "ok", nums))
+          PY
+          )"
+          red="${red_summary%%|*}"
+          summary="${red_summary#*|}"
+          echo "red=$red" >> "$GITHUB_OUTPUT"
+          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          echo "### Business health: $summary" >> "$GITHUB_STEP_SUMMARY"
+
+  alert-issue:
+    name: Open or update alert issue
+    needs: probe
+    if: ${{ always() && (needs.probe.result == 'failure' || needs.probe.outputs.red == '1') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or comment on the single alert issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUMMARY: ${{ needs.probe.outputs.summary || 'probe itself failed' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="[ops-alert] Business health check red"
+          n="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label area:ops --search "\"$title\" in:title" --json number -q '.[0].number // empty')"
+          msg="${SUMMARY} - ${RUN_URL} (aggregate counts only)"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$msg"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label "area:ops,priority:p1" --body "$msg"
+          fi
