@@ -1,13 +1,15 @@
 <template>
   <div v-if="mode === 'login'" class="login-wrap">
-    <AuroraBackground />
+    <LoginFx />
     <BlurFade class="login-card-enter">
     <div class="login-card">
       <div class="login-header">
-        <div class="logo-wrapper">
-          <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" onerror="this.style.display='none'" />
-        </div>
-        <h1 class="login-title">台北全真一對一</h1>
+        <LogoReveal>
+          <div class="logo-wrapper">
+            <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" onerror="this.style.display='none'" />
+          </div>
+        </LogoReveal>
+        <h1 class="login-title"><TextReveal text="台北全真一對一" :delay="900" /></h1>
         <p class="login-subtitle">教務管理系統</p>
       </div>
 
@@ -137,7 +139,7 @@ import { supabase } from '../supabase';
 import Register from './Register.vue';
 import DirectorRegister from './DirectorRegister.vue';
 import logoUrl from '../assets/logo.png';
-import { AuroraBackground, BlurFade, ShineBorder } from '../components/motion';
+import { AuroraBackground, BlurFade, LoginFx, LogoReveal, ShineBorder, TextReveal } from '../components/motion';
 
 const mode = ref('login');
 const account = ref('');

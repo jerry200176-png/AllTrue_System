@@ -37,6 +37,13 @@
   --tpl-g-amber: linear-gradient(145deg, var(--ds-brand-amber-light), var(--ds-brand-amber));
   /* logo palette only: 'red' tile = amber -> orange; red is kept for real danger states */
   --tpl-g-red: linear-gradient(145deg, var(--ds-brand-amber), var(--ds-primary));
+  --tpl-g-orange: linear-gradient(145deg, var(--ds-cat-orange), var(--ds-cat-orange-deep));
+  --tpl-g-green: linear-gradient(145deg, var(--ds-cat-green), var(--ds-cat-green-deep));
+  --tpl-g-blue: linear-gradient(145deg, var(--ds-cat-blue), var(--ds-cat-blue-deep));
+  --tpl-g-violet: linear-gradient(145deg, var(--ds-cat-violet), var(--ds-cat-violet-deep));
+  --tpl-g-pink: linear-gradient(145deg, var(--ds-cat-pink), var(--ds-cat-pink-deep));
+  --tpl-g-teal: linear-gradient(145deg, var(--ds-cat-teal), var(--ds-cat-teal-deep));
+  --tpl-g-indigo: linear-gradient(145deg, var(--ds-cat-indigo), var(--ds-cat-indigo-deep));
   --tpl-g-btn: linear-gradient(180deg, #2b2b2e, var(--ds-brand-ink));
   --tpl-glass-bg: color-mix(in srgb, var(--ds-canvas) 86%, transparent);
   --tpl-bar-bg: color-mix(in srgb, var(--ds-canvas-soft) 55%, transparent);
@@ -130,6 +137,13 @@ button[data-slot] {
 .tpl-card { background: var(--tpl-glass-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--tpl-line); }
 .tpl-bar { background: var(--tpl-bar-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid var(--tpl-line); }
 .tpl-tile { display: grid; place-items: center; flex: none; width: 2.5rem; height: 2.5rem; color: white; }
+.tpl-g-orange { background: var(--tpl-g-orange); color: white; }
+.tpl-g-green { background: var(--tpl-g-green); color: white; }
+.tpl-g-blue { background: var(--tpl-g-blue); color: white; }
+.tpl-g-violet { background: var(--tpl-g-violet); color: white; }
+.tpl-g-pink { background: var(--tpl-g-pink); color: white; }
+.tpl-g-teal { background: var(--tpl-g-teal); color: white; }
+.tpl-g-indigo { background: var(--tpl-g-indigo); color: white; }
 .tpl-g-ink { background: var(--tpl-g-ink); color: var(--ds-brand-gold); } .tpl-g-ink2 { background: var(--tpl-g-ink2); color: var(--ds-brand-gold); }
 .tpl-g-sun { background: var(--tpl-g-sun); color: var(--ds-brand-glyph); } .tpl-g-gold { background: var(--tpl-g-gold); color: var(--ds-brand-glyph); }
 .tpl-g-amber { background: var(--tpl-g-amber); color: var(--ds-brand-glyph); } .tpl-g-red { background: var(--tpl-g-red); color: var(--ds-brand-glyph); }
