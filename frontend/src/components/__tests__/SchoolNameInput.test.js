@@ -31,4 +31,21 @@ describe('SchoolNameInput campus names (#517)', () => {
     await opts[0].trigger('mousedown');
     expect(w.emitted('update:modelValue').at(-1)).toEqual(['甲測國中']);
   });
+
+  it('refreshes an open dropdown when names finish loading late', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (String(url).includes('school-names')) await gate;
+      return { ok: true, json: async () => (String(url).includes('school-names') ? { data: [{ name: '丙測國中', count: 2 }] } : { data: [] }) };
+    }));
+    const w = mount(SchoolNameInput, { props: { authToken: 't', campusId: 1, modelValue: '' } });
+    await w.find('input').trigger('focus');
+    await new Promise((r) => setTimeout(r, 250));
+    expect(w.findAll('li[role="option"]')).toHaveLength(0);
+    release();
+    await flushPromises();
+    await flushPromises();
+    expect(w.findAll('li[role="option"]').map((l) => l.text())).toEqual([expect.stringContaining('丙測國中')]);
+  });
 });

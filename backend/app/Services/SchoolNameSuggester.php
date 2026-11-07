@@ -28,7 +28,7 @@ class SchoolNameSuggester
      */
     public function groups(array $counts): array
     {
-        $names = array_keys($counts);
+        $names = array_map('strval', array_keys($counts)); // numeric names ("123") come back as int keys
         $parent = array_combine($names, $names);
         $find = function (string $n) use (&$parent, &$find): string {
             return $parent[$n] === $n ? $n : ($parent[$n] = $find($parent[$n]));

@@ -48,6 +48,14 @@ class SchoolMergeSuggestionsTest extends TestCase
         $this->assertNotSame($s->key('甲測國中'), $s->key('甲測國小'));
     }
 
+    public function test_numeric_school_names_do_not_break_grouping(): void
+    {
+        $g = app(SchoolNameSuggester::class)->groups(['123' => 2, '1234' => 1, '甲測國中' => 1, '甲測國二' => 1]);
+        $this->assertCount(1, $g);
+        $this->assertSame('甲測國中', $g[0]['names'][0]['name']);
+        $this->assertSame([], app(SchoolNameSuggester::class)->groups(['123' => 2, '456' => 1]));
+    }
+
     public function test_groups_are_suggested_per_campus_and_director_only(): void
     {
         $a = (int) CampusFactory::new()->create()->id;

@@ -101,6 +101,10 @@ async function loadCampusNames() {
 }
 onMounted(loadCampusNames);
 watch(() => [props.campusId, props.authToken], loadCampusNames);
+// Names may arrive after the field already has focus: refresh the open dropdown.
+watch(campusNames, () => {
+  if (open.value) runSearch();
+});
 
 function campusMatches(q) {
   return campusNames.value
