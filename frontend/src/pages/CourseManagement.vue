@@ -1350,6 +1350,7 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ymdInTaipei } from '@/lib/sessionDates.js';
+import { fetchAllPages } from '@/lib/pagedFetchAll.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -4789,24 +4790,16 @@ const loadStudents = async () => {
   try {
     const token = await getAccessToken();
     if (token) {
-      const params = new URLSearchParams({
-        branch_id: branchId,
-        per_page: '500',
+      // Every page: the 新增課程 scheduler searches only these options, so a campus over 500 students needs them all.
+      const { data: arr } = await fetchAllPages(`/api/v1/students?branch_id=${encodeURIComponent(branchId)}`, token, {
+        perPage: 500,
+        fetcher: (url, init) => authedFetch(url, { ...init, credentials: 'include' }, token),
       });
-      const res = await authedFetch(`/api/v1/students?${params.toString()}`, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      }, token);
-      if (res.ok) {
-        const json = await res.json().catch(() => ({}));
-        const list = json?.data ?? json;
-        const arr = Array.isArray(list) ? list : (Array.isArray(list?.data) ? list.data : []);
-        allStudents.value = arr.map((s) => ({
-          id: Number(s?.id ?? 0),
-          name: String(s?.name ?? '').trim(),
-        })).filter((s) => s.id > 0 && s.name);
-        return;
-      }
+      allStudents.value = arr.map((s) => ({
+        id: Number(s?.id ?? 0),
+        name: String(s?.name ?? '').trim(),
+      })).filter((s) => s.id > 0 && s.name);
+      return;
     }
   } catch (_) {
     // fallback below
