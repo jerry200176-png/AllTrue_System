@@ -34,7 +34,7 @@ defineEmits(['leave', 'pay', 'learning']);
     </BlurFade>
 
     <BlurFade :delay="80">
-    <Card :class="['tw:gap-2 tw:py-4', home.due && 'tw:border-0 tw:bg-[var(--ds-brand-ink)] tw:text-[var(--ds-canvas)]']" data-guide="parent-home-money">
+    <Card :class="['tw:gap-2 tw:py-4', home.due && 'tw:border-[var(--ds-brand-ink)] tw:bg-[var(--ds-brand-ink)] tw:text-[var(--ds-canvas)]']" data-guide="parent-home-money">
       <CardContent class="tw:px-4">
         <p :class="['tw:text-sm', home.due ? 'tw:text-[var(--ds-brand-sun)]' : 'tw:text-muted-foreground']">要繳的錢</p>
         <template v-if="home.due">
