@@ -2059,6 +2059,26 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count(), 'no second reversal row');
     }
 
+    public function test_inapp_521_void_matches_its_own_receipts_reversal_not_any_linked_reversal(): void
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid']);
+        $payA = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        $payB = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-06-27', 'Method' => 'transfer']);
+        $a = $this->confirmedReportOn($student, $sc, $invoice, $payA, 4000, 'r521-match-a');
+        $b = $this->confirmedReportOn($student, $sc, $invoice, $payB, 4000, 'r521-match-b');
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$a->id}/void", ['void_reason' => 'x'])->assertOk();
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$b->id}/void", ['void_reason' => 'x'])->assertOk();
+
+        foreach ([$a, $b] as $report) {
+            $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->where('payment_report_id', $report->id)->where('Amount', -4000)->count(), 'each receipt gets its own reversal');
+        }
+        $this->assertSame('unpaid', $invoice->fresh()->Status);
+    }
+
     public function test_inapp_521_a_confirmed_transfer_is_not_collected_a_second_time(): void
     {
         [$h, $sc, $invoice] = $this->receiptReversedByUnlinkedRowFixture();
