@@ -192,7 +192,7 @@ const apiPages = (path) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, '--pag
 
 // strict: the ruleset still demands up-to-date branches. Batching only runs when it is off
 // (a batch merges PR heads that are behind main, which strict would refuse).
-function requiredChecks() {
+export function requiredChecks() {
   const rules = api('rules/branches/main').filter((r) => r.type === 'required_status_checks');
   const checks = rules.flatMap((r) => r.parameters.required_status_checks);
   // REVIEW_CHECK is evaluated in-process by reviewGate (same module); batch branches have no PR and never get it.
@@ -237,7 +237,7 @@ function unresolvedThreads(n) {
   } catch (e) { console.log(`#${n}: review threads unknown (${e.message}); not merging`); return null; }
 }
 
-function load(n) {
+export function load(n) {
   const [o, r] = REPO.split('/');
   const p = JSON.parse(gh('api', 'graphql', '-f', `query=${Q}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).data.repository.pullRequest;
   return {
