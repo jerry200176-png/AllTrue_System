@@ -101,7 +101,8 @@ BINLOG_POS=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
 # --start-position applies to the first file only. Production keeps binlogs in the datadir
 # (log_bin = mysql-bin); the drill cnf in step 1 uses /var/log/mysql/.
 BINLOG_DIR=$(mysql -N -u root -p -e 'SELECT @@datadir')   # drill host: BINLOG_DIR=/var/log/mysql/
-BINLOG_FILES=$(ls "${BINLOG_DIR}"mysql-bin.[0-9]* | sort | awk -v f="${BINLOG_FILE}" '$0 ~ "/" f "$" {on=1} on')
+BINLOG_PREFIX="${BINLOG_FILE%.*}"   # mysql-bin (production) or mysql-bin.log (drill cnf in step 1)
+BINLOG_FILES=$(ls "${BINLOG_DIR}${BINLOG_PREFIX}".[0-9]* | sort | awk -v f="${BINLOG_FILE}" '$0 ~ "/" f "$" {on=1} on')
 [ -n "$BINLOG_FILES" ] || { echo "anchor ${BINLOG_FILE} not found in ${BINLOG_DIR}"; exit 1; }
 # Write the replay to a file and refuse it if any event still targets SOURCE_DB: ROW events carry their
 # database, so a wrong --rewrite-db would replay into the source (in production: the live AllTrue).
