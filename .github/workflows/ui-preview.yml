@@ -45,6 +45,35 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.154.0"
           command: pages project create alltrue-preview --production-branch=main
+      - name: Configure staging proxy (optional; mocks are the fallback)
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_API_ORIGIN: ${{ vars.PREVIEW_API_ORIGIN }}
+          PREVIEW_API_BASIC_AUTH: ${{ secrets.STAGING_BASIC_AUTH }}
+          PREVIEW_DEMO_DIRECTOR_PASSWORD: ${{ secrets.PREVIEW_DEMO_DIRECTOR_PASSWORD }}
+          PREVIEW_DEMO_TEACHER_PASSWORD: ${{ secrets.PREVIEW_DEMO_TEACHER_PASSWORD }}
+          PREVIEW_DEMO_PARENT_STUDENT_ID: ${{ secrets.PREVIEW_DEMO_PARENT_STUDENT_ID }}
+          PREVIEW_DEMO_PARENT_PHONE: ${{ secrets.PREVIEW_DEMO_PARENT_PHONE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PREVIEW_API_ORIGIN" ] || [ -z "$PREVIEW_API_BASIC_AUTH" ]; then
+            echo "No staging configured: preview runs on in-browser mocks."; exit 0
+          fi
+          # Branch deployments (pr-<n>) use the Pages *preview* environment, which `pages secret put`
+          # cannot target, so write its env vars through the Pages API. Values come from the
+          # environment (never argv/echo) and are sent as secret_text.
+          for k in PREVIEW_API_ORIGIN PREVIEW_API_BASIC_AUTH PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE; do
+            v="${!k}"; [ -n "$v" ] && echo "::add-mask::$v"
+          done
+          jq -n '[["PREVIEW_API_ORIGIN","PREVIEW_API_BASIC_AUTH","PREVIEW_DEMO_DIRECTOR_PASSWORD","PREVIEW_DEMO_TEACHER_PASSWORD","PREVIEW_DEMO_PARENT_STUDENT_ID","PREVIEW_DEMO_PARENT_PHONE"][] | select((env[.] // "") != "") | {key: ., value: {type: "secret_text", value: env[.]}}] | from_entries | {deployment_configs: {preview: {env_vars: .}}}' > "$RUNNER_TEMP/pages-env.json"
+          code=$(curl -sS -o "$RUNNER_TEMP/pages-env.out" -w '%{http_code}' -X PATCH \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            --data @"$RUNNER_TEMP/pages-env.json" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/alltrue-preview")
+          rm -f "$RUNNER_TEMP/pages-env.json"
+          [ "$code" = 200 ] || { echo "::warning::Pages env update failed (HTTP $code); preview may fall back to mocks"; }
       - name: Deploy
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
