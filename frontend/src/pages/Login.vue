@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
 .login-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--ds-brand-ink);
+  color: var(--ds-ink);
   text-wrap: balance;
   margin: 0 0 6px;
   letter-spacing: 0.03em;
@@ -558,7 +558,7 @@ onBeforeUnmount(() => {
 
 .login-footer-btn:hover {
   background: var(--ds-canvas-soft);
-  color: var(--ds-brand-ink);
+  color: var(--ds-ink);
 }
 @media (max-width: 560px) {
   .login-role-switch {
