@@ -89,9 +89,14 @@ final class MonthlyPeriodPaymentService
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
             $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) $amount['stored_total_amount'];
-            // in-app #510: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
+            // in-app #510 / #518: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.
+            // A month still running whose held lessons price BELOW the bill (none held yet, or some held and more
+            // scheduled) is not a mismatch yet: the bill is the month's agreed total and later lessons close the gap.
+            // A bill below the held lessons can only grow apart, so it is never deferred.
             $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
-                && ($amount['computed_total_amount'] ?? null) === 0 && $this->hasUpcomingScheduledLesson($sessions, $start, $end));
+                && ($amount['computed_total_amount'] ?? null) !== null
+                && $amount['computed_total_amount'] < $amount['stored_total_amount']
+                && $this->hasUpcomingScheduledLesson($sessions, $start, $end));
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
             $existing['invoice_ids'][] = (int) $invoice->id;
@@ -175,8 +180,8 @@ final class MonthlyPeriodPaymentService
     }
 
     /**
-     * in-app #510, DISPLAY ONLY (course list / course manager; never feed this to a money guard): a running period whose
-     * lesson total is 0 only because every lesson is still scheduled is not 需核對. batch() itself is unchanged.
+     * in-app #510 / #518, DISPLAY ONLY (course list / course manager; never feed this to a money guard): a running period
+     * whose held-lesson total is still below the bill because lessons remain scheduled is not 需核對. batch() itself is unchanged.
      *
      * @param array<string, mixed> $summary one batch() entry
      * @return array<string, mixed>

@@ -265,6 +265,36 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertTrue($shown['review_required']);
     }
 
+    public function test_running_month_with_some_lessons_held_and_more_scheduled_is_not_a_discrepancy(): void // in-app #518
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-18 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse();
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-10-15')->update(['Status' => 'attended']);
+        $invoice->update(['TotalAmount' => 99000]);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
+        $shown = $svc->forDisplay($summary);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($summary['periods'][0]['amount_discrepancy'], 'guards still see main behaviour');
+        $this->assertFalse($shown['periods'][0]['amount_discrepancy']);
+        $this->assertFalse($shown['review_required']);
+        $this->assertSame(99000, $shown['periods'][0]['charge']);
+    }
+
+    public function test_running_month_billed_below_its_held_lessons_still_displays_the_discrepancy(): void // in-app #518
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-18 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse();
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-10-15')->update(['Status' => 'attended']);
+        $invoice->update(['TotalAmount' => 1, 'PaidAmount' => 1]);
+        $invoice->payments()->update(['Amount' => 1]);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $shown = $svc->forDisplay($svc->batch(collect([$course->fresh()]))[$course->ID]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($shown['periods'][0]['amount_discrepancy']);
+        $this->assertTrue($shown['review_required']);
+    }
+
     public function test_same_prepaid_month_is_displayed_as_a_discrepancy_after_the_period_ends(): void // in-app #510
     {
         \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');
