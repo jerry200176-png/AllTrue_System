@@ -56,4 +56,35 @@ final class BillingPeriodRekeyServiceTest extends TestCase
         $this->assertSame('rolled_back', $rb['result'], json_encode($rb));
         $this->assertSame(0, DB::table('Invoice')->where('billing_period', '2026-05')->count(), 'both committed bills are back on April');
     }
+
+    public function test_pi_local_rollback_runs_with_journal_rows_and_no_execute_record(): void
+    {
+        foreach ([1, 2, 3] as $n) $this->cycle(100 + $n, $n);
+        $sha = str_repeat('c', 40);
+        $manifest = sys_get_temp_dir() . '/deployment-' . bin2hex(random_bytes(4)) . '.json';
+        file_put_contents($manifest, json_encode(['backend_sha' => $sha]));
+        $service = new PopOperationService(new PopOperationCatalog(dirname(base_path()) . '/operations/catalog.yaml'), null, $manifest);
+        $ctx = ['production_sha' => str_repeat('a', 40), 'source' => 'github-actions:test'];
+        $plan = (new BillingPeriodRekeyStrategy)->plan(['campus_ids' => ['all'], 'decision_reference' => self::REF, 'expected_digest' => '']);
+        $params = ['campus_ids' => ['all'], 'decision_reference' => self::REF, 'expected_digest' => $plan['digest']];
+        $id = (string) $service->createDraft('billing-period-rekey-20261107', $params, 'rekey-local-test', 'machine:test', 'super_admin', [16], 1, $ctx)['id'];
+        $service->runDryRun($id, 'machine:test', 1, 'super_admin', [16], $ctx);
+        $service->approve($id, 'founder-go-rekey-local-test', 'user:2', 'super_admin', $sha, 2, [16], 15);
+
+        // the executor died after two bills: journal rows exist, no execute record at all
+        $dying = new class extends BillingPeriodRekeyStrategy {
+            protected function beforeRow(int $index, array $row): void { if ($index === 2) throw new \LogicException('process died'); }
+        };
+        try {
+            $dying->execute($dying->plan($params), ['operation_id' => $id]);
+        } catch (\LogicException) {
+        }
+        $this->assertSame(0, DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->count());
+        $this->assertSame(2, DB::table('Invoice')->where('billing_period', '2026-05')->count());
+
+        $res = $service->runApprovedLocally($id, 'rollback');
+        $this->assertNotSame('skipped', $res['status'] ?? null, 'the Pi claim accepts a journal-backed rollback');
+        $this->assertSame(0, DB::table('Invoice')->where('billing_period', '2026-05')->count());
+        @unlink($manifest);
+    }
 }

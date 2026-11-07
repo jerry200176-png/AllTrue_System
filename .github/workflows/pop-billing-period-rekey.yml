@@ -62,7 +62,6 @@ jobs:
           fi
           echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA campuses=$CAMPUS digest_pinned=$([[ -n "$DIGEST" ]] && echo yes || echo no)"
   founder-approval:
-    # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
     name: Founder approval (approve mode only)
     needs: guard
     if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}
@@ -77,7 +76,6 @@ jobs:
   rekey:
     name: Pi-local short-lived POP billing-period re-key
     needs: [guard, founder-approval]
-    # dry-run: production-ssh with no click. approve: only after this attempt's Founder approval (a re-run needs a new click).
     if: ${{ !cancelled() && needs.guard.result == 'success' && ((inputs.mode == 'dry-run' && needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -111,7 +109,6 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
-          # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
           [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CAMPUS" == all || "$CAMPUS" =~ ^[1-9][0-9]{0,5}(,[1-9][0-9]{0,5}){0,40}$ ]] && test -n "$DUMP_ARTIFACT_KEY" && [[ "$DIGEST" =~ ^([0-9a-f]{64})?$ ]] && [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           SSH_DIR="$RUNNER_TEMP/pop-rekey-ssh"
@@ -161,7 +158,6 @@ jobs:
             curl -sS --proto '=https' --tlsv1.2 -H "Authorization: Bearer $TOKEN" \
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
-          # Exact catalog-bound parameters (campus_ids list); campus and digest were allowlisted by the guard job. The run id keeps each dry-run fresh.
           if [[ "$CAMPUS" == all ]]; then CAMPUS_JSON='["all"]'; else CAMPUS_JSON="[$CAMPUS]"; fi
           PARAMETERS_JSON="{\"parameters\":{\"campus_ids\":$CAMPUS_JSON,\"decision_reference\":\"$REF\",\"expected_digest\":\"$DIGEST\"},\"idempotency_key\":\"rekey-${CAMPUS//,/-}-${DIGEST:0:12}-$RUN_ID\"}"
           draft="$WORK_DIR/draft.json"
@@ -186,7 +182,6 @@ jobs:
           plan = data.get('plan', data.get('result', data)) if isinstance(data, dict) else {}
           errs = [str(e) for e in (plan.get('errors') or []) if re.fullmatch(r'[A-Za-z0-9_:-]{1,96}', str(e))][:64]
           print('dry_run ok=%s state=%s errors=%s' % (plan.get('ok'), plan.get('state'), ','.join(errs) or '-'))
-          # ids only, no names: whitelist scalar fields per row; the repo and logs must stay PII-free.
           print('digest=%s totals=%s' % (plan.get('digest'), json.dumps(plan.get('totals'), sort_keys=True)))
           # ids-only manifest (invoice/class/campus ids and period months) goes ONLY to the encrypted evidence artifact.
           import base64
@@ -214,7 +209,6 @@ jobs:
           print('approval=ready status=%s ttl=15m' % data.get('status', 'unknown'))
           PY
           unset TOKEN
-          # Observe only. The Pi scheduler consumes the approved request and records execute+verify.
           status_file="$WORK_DIR/status.json"
           for attempt in $(seq 1 45); do
             REQUEST_ID="$REQUEST_ID" AUDIT="$AUDIT" php artisan tinker --no-ansi --execute='
@@ -259,7 +253,6 @@ jobs:
           import base64, json, sys
           d = json.load(open(sys.argv[1]))
           rows = (d.get('snapshot', d) or {}).get('rows', [])
-          # note_before is free text and stays in the database snapshot: never copied out.
           keep = ('invoice_id', 'class_id', 'campus_id', 'from', 'to', 'report_ids')
           print('EVIDENCE:' + base64.b64encode(json.dumps({'phase': 'after', 'rows': [{k: r.get(k) for k in keep} for r in rows]}, sort_keys=True).encode()).decode())
           PY

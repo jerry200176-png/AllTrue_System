@@ -454,7 +454,6 @@ final class PopOperationService
             if (!$execution && !($phase === 'rollback' && $this->hasRekeyJournal($request))) {
                 throw new RuntimeException('POP cannot verify or rollback without an execution record.');
             }
-            // Re-key only: no (or a failed) execute record, but journaled bills exist: rollback() reads the journal, so an empty snapshot is enough.
             $payload = $execution ? json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR) : [];
             if ($phase === 'rollback' && $this->hasRekeyJournal($request)) $payload['snapshot'] = ['rows' => []];
             $strategy = app((string) $entry['strategy_class']);
@@ -474,7 +473,6 @@ final class PopOperationService
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
     private function coCommitsWithRecord(object|string $strategy): bool
     {
-        // The billing-period re-key runs one short READ COMMITTED transaction per bill itself (it cannot change its level inside an outer one).
         if ($this->isRekeyStrategy($strategy)) return false;
 
         return $this->atomicFinancialRepair($strategy)
@@ -486,7 +484,6 @@ final class PopOperationService
         return (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class;
     }
 
-    /** The re-key journals each bill in its own transaction, so an approved rollback is valid for bills that committed before a crash. */
     private function hasRekeyJournal(object $request): bool
     {
         return $this->isRekeyStrategy((string) $request->strategy_id)
@@ -919,25 +916,10 @@ final class PopOperationService
             return $roles;
         }
 
-        if ($this->isExactUnbilledBacklogCatchup($entry)
+        if (($this->isExactUnbilledBacklogCatchup($entry) || $this->isExactBillingPeriodRekey($entry))
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
-            && ($entry['blast_radius'] ?? null) === 'new_contract_invoice_item_per_uncovered_contract_month'
-            && ($entry['reversible'] ?? false) === true
-            && ($entry['snapshot_required'] ?? false) === true
-            && ($entry['transaction_required'] ?? false) === true
-            && ($entry['rollback_supported'] ?? false) === true
-            && ($entry['verification_required'] ?? false) === true
-            && ($entry['approval_required'] ?? false) === true
-            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
-            && $roles === ['super_admin']) {
-            return $roles;
-        }
-
-        if ($this->isExactBillingPeriodRekey($entry)
-            && ($entry['founder_approval_required'] ?? false) === true
-            && ($entry['risk'] ?? null) === 'critical'
-            && ($entry['blast_radius'] ?? null) === 'invoice_billing_period_and_note_tag_only'
+            && in_array($entry['blast_radius'] ?? null, ['new_contract_invoice_item_per_uncovered_contract_month', 'invoice_billing_period_and_note_tag_only'], true)
             && ($entry['reversible'] ?? false) === true
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
@@ -1267,7 +1249,6 @@ final class PopOperationService
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
     }
 
-    /** in-app #514 period re-key: same Founder-exact shape as the unbilled backlog catch-up (campus_ids + expected_digest). */
     private function isExactBillingPeriodRekey(array $entry): bool
     {
         return ($entry['id'] ?? null) === 'billing-period-rekey-20261107'
