@@ -1021,6 +1021,16 @@ class ClassSessionController extends Controller
             }
         }
 
+        // A valid recurring slot at the requested time is its own occurrence (e.g. a moved-in lesson
+        // lands on a contract weekday at another time): do not let the exception override it.
+        if ($requestedStart && $this->resolveProjectedMonthlySlot(
+            $studentClass,
+            (int) Carbon::parse($sessionDate)->dayOfWeekIso,
+            $requestedStart
+        )) {
+            return null;
+        }
+
         // Without an exact requested-time match, only a single eligible row is
         // safe to materialize. Multiple exceptions require an explicit slot.
         if ($schedules->count() !== 1) {
