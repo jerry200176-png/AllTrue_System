@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -613,6 +613,47 @@ test('TRIVIAL_REBASE: Codex state and independent-review marker carry only throu
   assert.equal(G([owner(reviewMarker(OLD))], () => false).ok, false);
   assert.equal(G([owner(reviewMarker(OLD)), owner(`<!-- independent-review:v1 sha=${OLD} verdict=fail -->`)], () => true).ok, false);
   assert.equal(G([{ user: { login: 'someone' }, body: reviewMarker(OLD) }], () => true).ok, false); // non-owner
+});
+
+test('TRIVIAL_REBASE: only an automatic merge of main carries; a hand-built merge moving a reviewed hunk does not', () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), 'evil-merge-'));
+  const git = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const body = (name, check) => `function ${name}(user) {\n  log(1);\n  log(2);\n  log(3);\n${check ? '  if (!user.isAdmin) throw new Error("no");\n' : ''}  log(4);\n  log(5);\n  log(6);\n}\n`;
+  const write = (f, txt) => fs.writeFileSync(join(dir, f), txt);
+  const both = (a, b) => body('deleteStudent', a) + '\n' + body('legacyDeleteDraft', b);
+  git('init', '-q', '-b', 'main');
+  write('h.js', both(true, true)); write('other.txt', 'a\n');
+  git('add', '-A'); git('commit', '-q', '-m', 'base');
+  git('checkout', '-q', '-b', 'pr');
+  write('h.js', both(true, false)); git('commit', '-qam', 'reviewed: drop check in legacyDeleteDraft');
+  const OLDC = git('rev-parse', 'HEAD').trim();
+  git('checkout', '-q', 'main'); write('other.txt', 'a\nb\n'); git('commit', '-qam', 'main moves');
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  git('checkout', '-q', 'pr');
+  git('merge', '-q', '--no-edit', 'main');
+  const auto = git('rev-parse', 'HEAD').trim();
+  assert.equal(automaticMerge(git, auto), true); // plain merge of main
+  // Hand-built merge: same parents, but the removal is moved to the other (identical-looking) function.
+  const tree = (() => { git('checkout', '-q', auto); write('h.js', both(false, true)); git('add', '-A'); return git('write-tree').trim(); })();
+  const evil = git('commit-tree', tree, '-p', OLDC, '-p', 'refs/remotes/origin/main', '-m', 'evil').trim();
+  assert.equal(automaticMerge(git, evil), false);
+  assert.equal(automaticMerge(git, OLDC), false); // not a merge
+  assert.equal(automaticMerge(git, auto, `${OLDC}`), false); // second parent not on the given main
+  // The evil diff is still "the same" to patch-id --verbatim + exact lines: only the merge-tree check stops it.
+  const diff = (c) => git('diff', `origin/main...${c}`.replace('origin/main', 'refs/remotes/origin/main'));
+  assert.equal(sameDiff(diff(OLDC), diff(evil)), true);
+});
+
+test('TRIVIAL_REBASE: an owner fail marker on the old head or any in-between head blocks the Codex carry', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const MID = 'c'.repeat(40);
+  const G = (cs) => reviewGate(cs, H, OWNER, 'lower', () => true);
+  assert.equal(G([codex(clean(OLD))]).ok, true);
+  assert.equal(G([codex(clean(OLD)), owner(`<!-- independent-review:v1 sha=${OLD} verdict=fail -->`)]).ok, false);
+  assert.equal(G([codex(clean(OLD)), owner(gateMarker('security-data-reviewer', OLD, 'fail'))]).ok, false);
+  assert.equal(G([codex(clean(OLD)), owner(gateMarker('qa-lead', MID, 'fail'))]).ok, false); // in-between head
+  assert.equal(G([owner(reviewMarker(OLD)), owner(gateMarker('qa-lead', MID, 'fail'))]).ok, false); // marker lane too
+  assert.equal(G([{ user: { login: 'someone' }, body: gateMarker('qa-lead', OLD, 'fail') }, codex(clean(OLD))]).ok, true); // non-owner ignored
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {

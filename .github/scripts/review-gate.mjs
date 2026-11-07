@@ -13,7 +13,9 @@
 // Codex findings or an incomplete review on the head veto the fallback. Anything unknown or unparsable never passes.
 // Runs from the default branch only; never checks out or executes PR code.
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 export const REVIEW_CHECK = 'review/final-head';
 export const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
@@ -107,7 +109,10 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   if (onHead) return { ok: false, why: `Codex review ${cr.status ?? 'unknown'} on ${short}` };
   // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since.
   const stale = cr && cr.commit_sha !== head && cr.status === 'completed' && cr.has_unresolved_findings === false;
-  try { if (stale && samePatch(cr.commit_sha)) return { ok: true, via: `codex-carried:${cr.commit_sha.slice(0, 7)}` }; } catch { /* fail closed */ }
+  // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
+  // later) blocks the Codex carry, same as carried() does for markers.
+  const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
+  try { if (stale && !failed && samePatch(cr.commit_sha)) return { ok: true, via: `codex-carried:${cr.commit_sha.slice(0, 7)}` }; } catch { /* fail closed */ }
   const lower = owner.toLowerCase();
   const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
@@ -139,11 +144,11 @@ function prScope(n, head) {
 }
 
 // --- TRIVIAL_REBASE core (pure; unit-tested) ---
-// `git patch-id --stable` of a plain diff, or null when it cannot be computed (never throws).
+// `git patch-id --verbatim` (whitespace counts) of a plain diff, or null when it cannot be computed (never throws).
 export function patchId(diff) {
   try {
     if (!diff || /^(Binary files |GIT binary patch)/m.test(diff)) return null; // blobs are not hashed by patch-id
-    return execFileSync('git', ['patch-id', '--stable'], { input: diff, encoding: 'utf8' }).split(' ')[0] || null;
+    return execFileSync('git', ['patch-id', '--verbatim'], { input: diff, encoding: 'utf8' }).split(' ')[0] || null;
   } catch { return null; }
 }
 // patch-id ignores whitespace, hunk line numbers and mode lines. Line numbers must be free (main shifts them); the rest
@@ -162,15 +167,40 @@ export function onlyMainMerged(oldCommits, headCommits) {
   return headCommits.filter((c) => !before.has(c.sha)).every((c) => c.parents?.length === 2 && c.parents.filter((p) => own.has(p.sha)).length === 1);
 }
 
+// TRIVIAL_REBASE proper: merge commit m must be the AUTOMATIC merge of its two parents (second parent on main), i.e.
+// `git merge-tree --write-tree p1 p2` is conflict-free and yields exactly m's tree. A hand-edited or conflict-resolved
+// merge (even one that keeps the same patch-id) is not. git: (...args) => stdout, throws on non-zero exit.
+export function automaticMerge(git, m, main = 'origin/main') {
+  try {
+    const parents = git('rev-list', '--parents', '-n', '1', m).trim().split(' ').slice(1);
+    if (parents.length !== 2) return false;
+    git('merge-base', '--is-ancestor', parents[1], main);
+    return git('merge-tree', '--write-tree', parents[0], parents[1]).split('\n')[0].trim() === git('rev-parse', `${m}^{tree}`).trim();
+  } catch { return false; }
+}
+// Blobless throwaway bare repo with main and the PR head fetched (fetch only: nothing from the PR is checked out or run).
+function prGit(n, base) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trivial-rebase-'));
+  const git = (...a) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
+  git('init', '--bare', '-q');
+  git('fetch', '--no-tags', '--filter=blob:none', `https://github.com/${REPO}.git`, `refs/heads/${base}:refs/remotes/origin/${base}`, `refs/pull/${n}/head:refs/pull/${n}/head`);
+  return git;
+}
+
 // Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
-// (patch-id plus exact lines) and nothing but merges from main was added since. Reads the API only; any error = false.
+// (patch-id plus exact lines) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
 export function trivialRebase(n, head, old) {
   try {
     const base = api('').default_branch;
     if (!base || api(`pulls/${n}`).base?.ref !== base) return false;
     const commits = (sha) => JSON.parse(gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}?per_page=100`, '--paginate', '--slurp')).flatMap((p) => p.commits || []);
     const prShas = JSON.parse(gh('api', `/repos/${REPO}/pulls/${n}/commits?per_page=100`, '--paginate', '--slurp')).flat().map((c) => c.sha);
-    if (!prShas.includes(old) || !prShas.includes(head) || !onlyMainMerged(commits(old), commits(head))) return false;
+    const oldC = commits(old), headC = commits(head);
+    if (!prShas.includes(old) || !prShas.includes(head) || !onlyMainMerged(oldC, headC)) return false;
+    const before = new Set(oldC.map((c) => c.sha));
+    const added = headC.map((c) => c.sha).filter((sha) => !before.has(sha));
+    const git = added.length ? prGit(n, base) : null;
+    if (!added.every((sha) => automaticMerge(git, sha, `origin/${base}`))) return false;
     const diff = (sha) => gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
     return sameDiff(diff(old), diff(head));
   } catch { return false; }
