@@ -113,7 +113,7 @@ async function doUndo(h) {
   error.value = '';
   try {
     const r = await api(`/school-merge/${h.request_id}/undo`, { method: 'POST', body: JSON.stringify({ campus_id: Number(props.branchId) }) });
-    notice.value = `已復原 ${r.data.students_restored} 位學生。`;
+    notice.value = r.data.message || `已復原 ${r.data.students_restored} 位學生。`;
     emit('changed');
     await load();
   } catch (e) {

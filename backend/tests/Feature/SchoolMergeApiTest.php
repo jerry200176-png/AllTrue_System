@@ -145,8 +145,7 @@ class SchoolMergeApiTest extends TestCase
         $s = $this->student($a, '在興國中');
         $id = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '再興國中', 'variants' => ['在興國中']])->json('data.request_id');
         $s->update(['SchoolName' => '丁測國中']);
-        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertStatus(409);
-        $this->as($dir)->getJson("/api/v1/school-merge/history?campus_id=$a")->assertJsonCount(1, 'data'); // not burned
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
         $this->assertSame('丁測國中', $s->fresh()->SchoolName);
     }
 
@@ -167,7 +166,7 @@ class SchoolMergeApiTest extends TestCase
         $sb->update(['SchoolName' => '再興國中']);
         $pb->update(['school_name' => '再興國中']);
         DB::table('Student')->where('id', $sa->id)->update(['CampusID' => $b]); // forged/moved row in the payload
-        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertStatus(409);
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
         $this->assertSame('再興國中', $sa->fresh()->SchoolName);
         $this->assertSame('再興國中', $sb->fresh()->SchoolName);
         $this->assertSame('再興國中', $pb->fresh()->school_name);
@@ -264,5 +263,24 @@ class SchoolMergeApiTest extends TestCase
         }
         $this->assertNotNull($i, 'no FOR UPDATE read');
         $this->assertSame(0, $i, 'campus lock must be the first locking read: ' . implode(' | ', array_slice($reads, 0, 3)));
+    }
+
+    public function test_undo_chain_when_the_newer_merge_rows_were_all_edited_later(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $s3 = $this->student($a, '甲測國中');
+        $s4 = $this->student($a, '甲測國中');
+        $m1 = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '乙測國中', 'variants' => ['甲測國中']])->json('data.request_id');
+        $m2 = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '丙測國中', 'variants' => ['乙測國中']])->json('data.request_id');
+        $s3->update(['SchoolName' => '乙測國中']);
+        $s4->update(['SchoolName' => '丁測國中']);
+
+        $this->as($dir)->postJson("/api/v1/school-merge/$m2/undo", ['campus_id' => $a])
+            ->assertOk()->assertJsonPath('data.students_restored', 0)
+            ->assertJsonPath('data.message', '這次合併的學生後來都改過，沒有需要還原的');
+        $this->as($dir)->postJson("/api/v1/school-merge/$m1/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 1);
+        $this->assertSame('甲測國中', $s3->fresh()->SchoolName);
+        $this->assertSame('丁測國中', $s4->fresh()->SchoolName);
     }
 }

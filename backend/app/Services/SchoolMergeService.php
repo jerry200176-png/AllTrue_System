@@ -60,7 +60,7 @@ class SchoolMergeService
         });
     }
 
-    /** @return array{students_restored:int,periods_restored:int}|null null = unknown request for this campus */
+    /** @return array{students_restored:int,periods_restored:int,message?:string}|null null = unknown request for this campus */
     public function undo(int $campusId, int $actorId, string $requestId): ?array
     {
         return DB::transaction(function () use ($campusId, $actorId, $requestId) {
@@ -97,15 +97,14 @@ class SchoolMergeService
                     }
                 }
             }
-            if ($students + $periods === 0 && ($payload['s'] ?? []) + ($payload['p'] ?? []) !== []) {
-                // Nothing restorable (rows edited since): don't burn the undo.
-                throw new SchoolMergeException('這些資料之後已被修改，無法復原', 409);
-            }
             SecurityAuditEvent::append(self::UNDONE, 'success', [
                 'campus_id' => $campusId, 'actor_type' => 'user', 'actor_id' => $actorId, 'correlation_id' => $requestId,
             ], ['canonical_name' => $canonical, 'student_count' => $students], true);
 
-            return ['students_restored' => $students, 'periods_restored' => $periods];
+            $none = $students + $periods === 0 && ($payload['s'] ?? []) + ($payload['p'] ?? []) !== [];
+
+            return ['students_restored' => $students, 'periods_restored' => $periods]
+                + ($none ? ['message' => '這次合併的學生後來都改過，沒有需要還原的'] : []);
         });
     }
 
