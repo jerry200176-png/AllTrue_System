@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-inapp-518-month-bill-warning
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 月結帳單誤報修正
+    summary: 當月還有堂沒上時，不再誤報帳單金額不同。
+    items:
+      - category: fixed
+        text: 月結課程當月還有未上的預排堂時，不再顯示「帳單總額與堂次試算不同」；真的不一致時會提示到帳單更正。
+    source_refs:
+      - "changelog:2026-11-07:inapp-518-month-bill-warning"
