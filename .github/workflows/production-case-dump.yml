@@ -1335,7 +1335,7 @@ jobs:
             foreach ($courses as $c) {{
               $cid = (int)$c->ID; $mine = $mineBy->get($c->StudentID . '|' . $c->SubjectID, []);
               $start = substr((string)$c->StartDate, 0, 10); $end = substr((string)$c->EndDate, 0, 10);
-              $dates = ($lessons->get($cid, collect()))->map(fn ($s) => substr((string)$s->SessionDate, 0, 10))->filter(fn ($d) => $d < $start || $d > $end)->unique()->sort()->values()->all();
+              $dates = ($lessons->get($cid, collect()))->map(fn ($s) => substr((string)$s->SessionDate, 0, 10))->filter(fn ($d) => $d < $start || $d > $end)->sort()->values()->all(); // one entry per lesson (two sessions on a date count twice)
               if ($dates === []) continue;
               $spans = []; $labels = []; $oldMonths = [];
               foreach ($invoices as $inv) {{
