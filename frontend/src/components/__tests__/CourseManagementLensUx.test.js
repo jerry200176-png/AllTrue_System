@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue'), source = readFileSync(pagePath, 'utf8');
 describe('CourseManagement lens UX', () => {
   it('keeps the lens role, triage summary, and resettable accessible filters', () => {
-    for (const marker of ['course-lens-guidance', 'course-lens-summary', 'const courseLensMetrics = computed', '剩餘 2 堂以下', '堂數待對帳', 'usageReviewCount', 'tag-usage-review', 'for="course-filter-student"', 'id="course-filter-student"', 'data-testid="course-filter-clear"', '清除篩選', 'function clearCourseFilters()', ':focus-visible', 'class="course-lens-nav-action"', "@click=\"emit('navigate', 'students')\""]) {
+    for (const marker of ['course-lens-guidance', 'course-lens-summary', 'const courseLensMetrics = computed', '剩餘 2 堂以下', '堂數待對帳', 'usageReviewCount', 'tag-usage-review', 'for="course-filter-student"', 'id="course-filter-student"', 'data-testid="course-filter-clear"', '清除篩選', 'function clearCourseFilters()', ':focus-visible', 'course-lens-nav-action', "@click=\"emit('navigate', 'students')\""]) {
       expect(source).toContain(marker);
     }
     expect(source).not.toContain('唯讀營運視圖');

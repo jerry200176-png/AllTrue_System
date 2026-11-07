@@ -22,13 +22,13 @@
       ⚠️ {{ scopeWarning }}（仍可儲存）
     </div>
 
-    <!-- Section 1: 課程基本資訊 -->
+    <!-- Section 1: 基本資料 -->
     <section class="form-section">
-      <h4 class="form-section-title">課程基本資訊</h4>
+      <h4 class="form-section-title">基本資料</h4>
       <div class="form-section-grid">
         <div class="form-group" :class="{ 'field-has-error': fieldErrors.subject }">
           <label>科目 <span class="required-star">*</span></label>
-          <select v-model="form.subject">
+          <select aria-label="科目" v-model="form.subject">
             <option v-for="s in subjects" :key="s.value" :value="s.value">{{ s.label }}</option>
           </select>
           <span v-if="fieldErrors.subject" class="field-error">{{ fieldErrors.subject }}</span>
@@ -36,7 +36,7 @@
 
         <div class="form-group" :class="{ 'field-has-error': fieldErrors.teacher_id }">
           <label>老師 <span class="required-star">*</span></label>
-          <select v-model="form.teacher_id">
+          <select aria-label="老師" v-model="form.teacher_id">
             <option value="">請選擇</option>
             <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
           </select>
@@ -60,12 +60,12 @@
 
         <div class="form-group">
           <label>開課日</label>
-          <input v-model="form.first_class_date" type="date" />
+          <input aria-label="開課日" v-model="form.first_class_date" type="date" />
         </div>
 
         <div class="form-group">
           <label>類型</label>
-          <select v-model="form.class_type">
+          <select aria-label="類型" v-model="form.class_type">
             <option value="one_on_one">一對一</option>
             <option value="one_on_two">一對二</option>
             <option value="one_on_three">一對三</option>
@@ -83,8 +83,8 @@
         </div>
 
         <div class="form-group span-full">
-          <label>上課地點（教室）</label>
-          <select v-model="form.room_id">
+          <label>教室</label>
+          <select v-model="form.room_id" aria-label="教室">
             <option :value="null">請選擇教室</option>
             <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.name }}{{ r.memo ? ' — ' + r.memo : '' }}</option>
           </select>
@@ -98,7 +98,7 @@
       <p v-if="form.class_type === 'tutoring'" class="field-hint field-hint--info">參考單價供既有課務與核薪使用，不是向學生收費。延續下一期請用「延續輔導課（不收費）」。</p>
       <div class="form-section-grid">
         <div class="form-group">
-          <label>費率計算方式</label>
+          <label>計費方式</label>
           <div class="rate-unit-toggle">
             <button
               type="button"
@@ -123,8 +123,8 @@
         </div>
 
         <div class="form-group">
-          <label>預設上課時長（小時）</label>
-          <select v-model.number="form.duration_hours">
+          <label>每堂時數</label>
+          <select aria-label="每堂時數" v-model.number="form.duration_hours">
             <option :value="1">1 小時</option>
             <option :value="1.5">1.5 小時</option>
             <option :value="2">2 小時</option>
@@ -135,7 +135,7 @@
 
         <div class="form-group">
           <label>{{ form.class_type === 'tutoring' ? '課程期間計算方式' : '繳費方式' }}</label>
-          <select v-model="form.payment_type">
+          <select v-model="form.payment_type" aria-label="繳費方式">
             <option value="session">堂數制</option>
             <option value="monthly">月結</option>
           </select>
@@ -143,7 +143,7 @@
 
         <div class="form-group">
           <label>排課方式</label>
-          <select v-model="form.scheduling_policy">
+          <select aria-label="排課方式" v-model="form.scheduling_policy">
             <option value="auto_recurrence">自動固定排課</option>
             <option value="manual_occurrence">逐堂手動排課</option>
           </select>
@@ -167,13 +167,13 @@
 
         <template v-if="form.payment_type === 'monthly'">
           <div class="form-group">
-            <label>課程結束日 *</label>
-            <input v-model="form.end_date" type="date" :min="form.first_class_date || undefined" />
+            <label>結束日 *</label>
+            <input aria-label="結束日" v-model="form.end_date" type="date" :min="form.first_class_date || undefined" />
             <span v-if="fieldErrors.end_date" class="field-error">{{ fieldErrors.end_date }}</span>
           </div>
           <div class="form-group" :class="{ 'field-has-warning': fieldWarnings.settlement_day }">
-            <label>結算日（每月幾號）</label>
-            <select v-model.number="form.settlement_day">
+            <label>每月結算日</label>
+            <select aria-label="每月結算日" v-model.number="form.settlement_day">
               <option :value="null">請選擇</option>
               <option v-for="d in settlementDayOptions" :key="d" :value="d">每月 {{ d }} 號</option>
             </select>
@@ -202,17 +202,17 @@
 
         <div v-if="showRemaining && !packageInfo" class="form-group">
           <label>剩餘堂數</label>
-          <AtNumberStepper v-model.number="form.remaining_sessions" :min="0" aria-label="剩餘堂數" />
+          <Input :model-value="form.remaining_sessions" type="number" min="0" step="1" inputmode="numeric" aria-label="剩餘堂數" @update:model-value="(v) => (form.remaining_sessions = v === '' ? v : Number(v))" />
         </div>
       </div>
     </section>
 
     <!-- Section 3: 排課時段 -->
     <section class="form-section">
-      <h4 class="form-section-title">排課時段</h4>
+      <h4 class="form-section-title">上課時段</h4>
       <div class="form-section-grid">
         <div class="form-group span-full">
-          <label>固定排課日（可多選）</label>
+          <label>固定上課日</label>
           <div class="day-checkbox-group">
             <label
               v-for="d in dayOptions"
@@ -252,12 +252,14 @@
             >
               <select
                 class="day-inline-select"
+                :aria-label="`第${idx + 1}天星期`"
                 :value="Number(slot.day)"
                 @change="updateSlotDay(idx, $event.target.value)"
               >
                 <option v-for="d in dayOptions" :key="`opt-${idx}-${d.value}`" :value="d.value">週{{ d.label }}</option>
               </select>
               <select
+                :aria-label="`第${idx + 1}天開始時間`"
                 :value="String(slot.start_time || form.start_time).slice(0, 5)"
                 @change="updateSlotTime(idx, $event.target.value)"
               >
@@ -266,6 +268,7 @@
               <input
                 type="number"
                 class="per-day-dur"
+                :aria-label="`第${idx + 1}天時數`"
                 :value="Number(slot.duration_hours ?? form.duration_hours)"
                 min="0.5"
                 step="0.5"
@@ -297,7 +300,7 @@
         </div>
 
         <div class="form-group span-full">
-          <label>備註（選填）</label>
+          <label>備註</label>
           <textarea
             v-model="form.memo"
             rows="2"
@@ -318,7 +321,7 @@ import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constan
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
-import AtNumberStepper from './design-system/AtNumberStepper.vue';
+import { Input } from '@/components/ui/input';
 import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
 import { TRIAL_TARGET_CLASS_TYPE_OPTIONS } from '../lib/trialTarget.js';
 import { trackedFetch } from '../lib/loadingBar';
@@ -769,7 +772,7 @@ function computeEndTime(startRaw, durHours) {
   color: var(--ds-ink);
   transition: background 0.15s, color 0.15s;
   &:first-child { border-right: 1px solid var(--border-main, var(--ds-canvas-soft)); }
-  &.active { background: var(--ds-primary, var(--ds-primary)); color: var(--ds-canvas); }
+  &.active { background: var(--ds-ink); color: var(--ds-canvas); }
   &:disabled { opacity: 0.5; cursor: default; }
 }
 .rate-unit-hint {

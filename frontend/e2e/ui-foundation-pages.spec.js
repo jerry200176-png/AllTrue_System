@@ -862,7 +862,7 @@ test.describe('Visual regression @visual', () => {
   }
   // #4918: 課程管理 drawer (overview, 月曆, 帳務) from fixture props, no API.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
-    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-billing', 'billing']]) {
+    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-settings', 'settings'], ['course-manager-billing', 'billing']]) {
       test(`${name} @${vp.name}`, async ({ page }) => {
         await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
         await page.setViewportSize({ width: vp.width, height: vp.height });
