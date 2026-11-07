@@ -906,6 +906,37 @@ class MonthlyRenewTest extends TestCase
             ->assertJsonPath('session.start_time', '14:30');
     }
 
+    public function test_same_day_reschedule_wins_over_moved_in_lesson_on_contract_weekday(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-same-day-and-moved-in@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'SessionCount' => 0, 'RemainingSessions' => 0, 'week' => 5, 'time' => '20:00:00', 'SessionDuration' => 120,
+        ]);
+        $mk = fn (string $date, string $start, string $end, string $status, ?int $orig = null) => Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 5, 'start_time' => $start, 'end_time' => $end, 'branch_id' => 1,
+            'schedule_date' => $date, 'status' => $status, 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $orig,
+        ]);
+        $a1 = $mk('2026-04-10', '20:00', '22:00', 'rescheduled');
+        $mk('2026-04-10', '17:00', '19:00', 'scheduled', $a1->id);
+        $a2 = $mk('2026-04-03', '20:00', '22:00', 'rescheduled');
+        ClassSession::create([
+            'StudentClassID' => $course->ID, 'SubjectID' => $course->SubjectID, 'SessionDate' => '2026-04-03',
+            'StartTime' => '20:00:00', 'EndTime' => '22:00:00', 'Status' => 'cancelled',
+        ]);
+        $mk('2026-04-10', '15:00', '16:00', 'scheduled', $a2->id);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID, 'session_date' => '2026-04-10',
+                'start_time' => '20:00', 'branch_id' => 1,
+            ])->assertOk()
+            ->assertJsonPath('session.start_time', '17:00');
+    }
+
     public function test_materializing_projected_session_rejects_inactive_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-materialize-inactive@example.com');

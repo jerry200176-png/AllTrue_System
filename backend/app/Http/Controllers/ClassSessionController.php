@@ -1036,13 +1036,14 @@ class ClassSessionController extends Controller
 
         // Without an exact requested-time match, only a single eligible row is
         // safe to materialize. Multiple exceptions require an explicit slot.
-        if ($schedules->count() !== 1) {
+        // Same-day rows (base behaviour) take precedence over moved-in rows from another date.
+        $sameDay = $schedules->filter(fn (Schedule $sc): bool => $this->isMaterializableScheduledException($sc, $sessionDate))->values();
+        $pool = $sameDay->isNotEmpty() ? $sameDay : $schedules;
+        if ($pool->count() !== 1) {
             return null;
         }
 
-        $schedule = $schedules->first();
-
-        return $this->scheduleExceptionSlot($schedule);
+        return $this->scheduleExceptionSlot($pool->first());
     }
 
     /**
@@ -1072,7 +1073,7 @@ class ClassSessionController extends Controller
         if ($anchorId <= 0) {
             return false;
         }
-        $anchor = Schedule::query()->whereKey($anchorId)->where('status', 'rescheduled')->first();
+        $anchor = Schedule::query()->whereKey($anchorId)->where('student_course_id', $schedule->student_course_id)->where('status', 'rescheduled')->first();
         if (!$anchor) {
             return false;
         }
