@@ -30,6 +30,12 @@ main() {
     || { log "ERROR github api unreachable/rate-limited"; return 1; }
   [[ "${sha}" =~ ^[0-9a-f]{40}$ ]] || { log "ERROR bad sha '${sha}'"; return 1; }
   good="$(cat "${STATE}/last_good_sha" 2>/dev/null || true)"
+  git -C "${REPO_ROOT}" fetch -q origin main >>"${EVID}" 2>&1 || true
+  # Monotonic: never move backwards. The newest *green* run can lag the tip of main (e.g. the run for a just-merged
+  # commit is still going), so ignore a SHA unless the last good one is its ancestor. Bootstrap: seed last_good_sha.
+  if [[ -n "${good}" && "${sha}" != "${good}" ]] && ! git -C "${REPO_ROOT}" merge-base --is-ancestor "${good}" "${sha}" 2>/dev/null; then
+    log "NOOP green main=${sha:0:12} is not a descendant of deployed ${good:0:12}"; return 0
+  fi
   if [[ "${sha}" == "${good}" ]]; then
     # Containers use restart:"no"; after a host reboot the SHA matches but nothing runs. Heal by redeploying it.
     if bash "${DIR}/health.sh" >/dev/null 2>&1; then log "NOOP green main=${sha:0:12} already deployed"; return 0; fi
@@ -38,7 +44,6 @@ main() {
   fi
 
   log "DEPLOY ${good:0:12} -> ${sha:0:12}"
-  git -C "${REPO_ROOT}" fetch -q origin main >>"${EVID}" 2>&1
   if run_cycle "${sha}"; then
     echo "${sha}" >"${STATE}/last_good_sha"; log "OK ${sha:0:12}"; return 0
   fi

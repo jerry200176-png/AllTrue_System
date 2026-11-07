@@ -12,6 +12,9 @@ Daan host (alltrue.daan.lifenet.com.tw) -- Dify / Hermes / Apache / host MySQL :
     └── alltrue-stage-mysql (Docker network only, no host port)
 ```
 
+Known gap (tracker `INFRA-PDO-MYSQL-MISSING`): root `backend/Dockerfile` lacks `pdo_mysql`; staging uses its own Dockerfile, so Pi production images are not affected here.
+Secrets in `.env` (`DEMO_PW_*`) and `~/alltrue-stage/state/` must stay mode 600 (`chmod 600 infra/daan-staging/.env`).
+
 Root `docker-compose.yml` is not used: it publishes host 8080/3306, which collide with Dify and host MySQL.
 
 ## Host checkout immutability (STAGING_HOST_CHECKOUT_MUTATION)
