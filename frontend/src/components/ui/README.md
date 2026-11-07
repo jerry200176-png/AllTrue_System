@@ -8,12 +8,9 @@ Add a component: `npx shadcn-vue@latest add <name>`, then pin any new dependency
 
 ## Third-party pieces
 
-- `number-ticker/` is adapted from [Inspira UI](https://github.com/unovue/inspira-ui) `NumberTicker` (MIT, Copyright (c) 2024-2026 rahulv.dev): plain JS, `tw:` prefix, count-up through `motion-v`, reduced-motion safe. The MIT header is kept in the file.
-- `motion-v` (MIT, pinned in `package.json`) drives the count-up and the card enter on pages that use it.
 - `lucide-vue-next` (icons used by template pages) is ISC licensed, pinned in `package.json`.
-
+- `../motion/` is the copy-paste motion kit (`NumberTicker`, `ShineBorder`, `BlurFade`; Inspira UI, MIT; CSS/rAF, no dependency). Each file header names the upstream path and commit.
 ## Overlay and data parts (K1b, #4989)
-
 Direction (Founder 2026-11-07, 高級簡約): hairline borders, soft `bg-foreground/30` overlay, motion 200 ms or less, none under `prefers-reduced-motion`.
 
 - `select/`: Reka Select (trigger, content, item, group, label, separator, scroll buttons); keyboard and typeahead from Reka.

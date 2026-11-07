@@ -15,7 +15,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   outputDir: 'test-results-visual',
-  use: { baseURL: 'http://127.0.0.1:5177' },
+  use: { baseURL: 'http://127.0.0.1:5177', reducedMotion: 'reduce' }, // baselines are captured with motion off
   webServer: {
     command: 'npx vite --config vite.ui-foundation.config.js',
     url: 'http://127.0.0.1:5177/pilot-mount.html',

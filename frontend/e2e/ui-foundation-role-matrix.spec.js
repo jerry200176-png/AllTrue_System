@@ -62,10 +62,10 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   await expect(page.locator('[data-guide="parent-student-card"]')).toContainText('測試學生甲');
   const home = page.locator('[data-guide="parent-home"]');
   await expect(home.locator('[data-slot="card"]')).toHaveCount(3);
-  await expect(home).toContainText('近期沒有排課');
+  await expect(home).toContainText('目前沒有排定的課，有安排會通知您');
   await expect(home).toContainText('有課程待繳');
-  await expect(home.getByRole('button', { name: '怎麼繳費', exact: true })).toBeVisible();
-  await expect(home).toContainText('還沒有回饋');
+  await expect(home.getByRole('button', { name: '繳費方式', exact: true })).toBeVisible();
+  await expect(home).toContainText('目前沒有新回饋');
   for (const gone of ['進度中心', '本次學習重點', '需要留意']) await expect(page.getByText(gone)).toHaveCount(0);
   await page.getByRole('tab', { name: /學習/ }).click();
   await expect(page.getByText('公告', { exact: true })).toBeVisible();
@@ -271,7 +271,7 @@ async function runPopulatedParentPortal(page, viewport) {
   const home = page.locator('[data-guide="parent-home"]');
   await expect(home.locator('[data-slot="card"]')).toHaveCount(3);
   await expect(home.locator('[data-guide="parent-home-next-lesson"]')).toContainText('數學');
-  await expect(home.locator('[data-guide="parent-home-money"]')).toContainText('都繳清了');
+  await expect(home.locator('[data-guide="parent-home-money"]')).toContainText('本期學費已繳清，謝謝您');
   await expect(home.locator('[data-guide="parent-home-feedback"]')).toContainText('收到，謝謝家長回饋。');
   await expect(home.locator('[data-guide="parent-home-feedback"]')).toContainText('新');
   const homeButtons = home.getByRole('button');
@@ -289,7 +289,7 @@ async function runPopulatedParentPortal(page, viewport) {
     expect(ring.outlineStyle === 'solid' || ring.boxShadow !== 'none', `home button ${index} focus ring at ${viewport.width}`).toBe(true);
   }
   await page.screenshot({ path: `/tmp/parent-home-after-${viewport.width}.png`, fullPage: true });
-  await home.getByRole('button', { name: '看全部・回覆老師', exact: true }).click();
+  await home.getByRole('button', { name: '查看回饋並回覆老師', exact: true }).click();
   await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
   const attendance = page.locator('#pp-attendance-section');
   await expect(attendance).toHaveAttribute('aria-labelledby', 'parent-attendance-title');
@@ -424,7 +424,7 @@ test('parent portal: header remains clear for empty and long Traditional Chinese
   await expect(page.locator('#parent-student-switcher-label')).toHaveText(/切換學生/);
   await expect(page.locator('#parent-campus-switcher-label')).toHaveText(/分校範圍/);
   await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
-  await expect(page.locator('[data-guide="parent-home"]')).toContainText('都繳清了');
+  await expect(page.locator('[data-guide="parent-home"]')).toContainText('本期學費已繳清，謝謝您');
   for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
     const box = await page.locator(selector).first().boundingBox();
     expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44);

@@ -47,6 +47,7 @@ const pageModules = {
   classroom: () => import('../../../src/pages/ClassroomManagement.vue'),
   'course-edit': () => import('../../../src/components/CourseEditForm.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
+  login: () => import('../../../src/pages/Login.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
   'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),

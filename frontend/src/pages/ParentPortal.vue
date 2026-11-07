@@ -837,7 +837,7 @@
       </div>
 
       <!-- ═══ Bottom tab bar ═══ -->
-      <div class="pp-tab-bar" role="tablist" aria-label="家長入口分頁">
+      <SlidingIndicator class="pp-tab-bar" role="tablist" aria-label="家長入口分頁" :active="activeTab">
         <button id="parent-tab-home" type="button" role="tab" aria-controls="parent-panel-home" :aria-selected="activeTab === 'home'" :tabindex="activeTab === 'home' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'home' }]" @click="activeTab = 'home'" @keydown="onParentTabKeydown($event, 'home')">
           <span class="material-symbols-outlined" aria-hidden="true">home</span>
           首頁
@@ -856,7 +856,7 @@
           繳費
           <span v-if="billingBadgeCount > 0" class="pp-tab-badge">{{ billingBadgeCount }}</span>
         </button>
-      </div>
+      </SlidingIndicator>
 
     </template>
   </div>
@@ -869,6 +869,7 @@ import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, 
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { notesForRole } from '../lib/releaseNotes';
 import ParentHome from '../components/parent/ParentHome.vue';
+import { SlidingIndicator } from '../components/motion';
 import { pickNextLesson, pickAmountDue, pickLatestFeedback } from '../lib/parentHome';
 import { lessonStatusLabel, courseTypeLabel, moneyStatusLabel, outOfLessonsLabel } from '../lib/parentLabels';
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
@@ -2189,7 +2190,7 @@ onMounted(async () => {
   outline-offset: -3px;
 }
 .pp-tab .material-symbols-outlined { font-size: 20px; }
-.pp-tab.active { color: var(--ds-primary-text); font-weight: 700; }
+.pp-tab.active { color: var(--ds-ink); font-weight: 700; }
 .pp-tab:not(.active):hover { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 .pp-tab-badge {
   position: absolute; top: 6px; right: calc(50% - 18px);
