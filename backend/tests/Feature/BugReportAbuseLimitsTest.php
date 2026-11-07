@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Providers\AppServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /** 意見與建議 anti-abuse: per-user limits with one Chinese answer, and a 10-minute soft dedupe. */
@@ -97,5 +99,21 @@ class BugReportAbuseLimitsTest extends TestCase
         $this->report($b, 1)->assertCreated(); // another user's identical text is a separate report
         $this->withHeaders($a)->postJson('/api/v1/bugs', ['title' => 't1', 'description' => 'different', 'branch_id' => 1])->assertCreated();
         $this->assertSame(3, BugReport::count());
+    }
+
+    public function test_retry_keeps_screenshots_when_the_first_save_had_none(): void
+    {
+        Storage::fake('public');
+        [$h] = $this->actor('a@x');
+        $first = $this->report($h, 1)->assertCreated(); // row saved, screenshot storage failed
+        $send = fn () => $this->withHeaders($h)->post('/api/v1/bugs', ['title' => 't1', 'description' => 'd1', 'branch_id' => 1,
+            'attachments' => [UploadedFile::fake()->image('screen.png', 80, 60)]]);
+        $retry = $send()->assertOk();
+        $this->assertSame($first->json('id'), $retry->json('id'));
+        $this->assertSame(0, $retry->json('attachment_errors'));
+        $this->assertDatabaseCount('bug_report_attachments', 1);
+        $send()->assertOk(); // a double tap with the same screenshot is not stored twice
+        $this->assertDatabaseCount('bug_report_attachments', 1);
+        $this->assertSame(1, BugReport::count());
     }
 }

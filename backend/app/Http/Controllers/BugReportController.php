@@ -64,8 +64,15 @@ class BugReportController extends Controller
             ->where('title', $request->input('title'))->where('description', $request->input('description'))
             ->where('created_at', '>=', now()->subMinutes(10))->orderByDesc('id')->first();
         if ($same) {
+            // A retry after the row saved but screenshot storage failed: keep the evidence. Only a report with no
+            // attachments yet takes them, so a double tap never stores the same screenshots twice.
+            $attachmentErrors = 0;
+            if (is_array($uploaded) && $uploaded !== [] && !$same->attachments()->exists()) {
+                $attachmentErrors = BugReportService::attachUploadedFiles($same, $uploaded);
+            }
+
             return response()->json(['id' => $same->id, 'status' => $same->status, 'created_at' => $same->created_at?->toIso8601String(),
-                'attachment_errors' => 0, 'duplicate' => true], 200);
+                'attachment_errors' => $attachmentErrors, 'duplicate' => true], 200);
         }
 
         $bug = BugReportService::create([
