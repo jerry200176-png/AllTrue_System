@@ -379,6 +379,14 @@ class BillingController extends Controller
 
             $authUser = $request->attributes->get('auth_user');
             $reason = trim((string) $data['reason']);
+            $note = trim((string) ($invoice->Note ?? ''));
+            // in-app #514: a re-keyed invoice carries [invno_period:YYYY-MM] (its issued number); VARCHAR(255) keeps it AND the audit tag,
+            // so a long reason is cut to what is left, never the number tag.
+            $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
+            $frame = sprintf('[void: ; user_id=%s; at=%s]', $authUser?->id ?? 'system', now()->format('Y-m-d H:i:s'));
+            if ($keep !== '') {
+                $reason = trim(mb_substr($reason, 0, max(0, 254 - mb_strlen($keep) - mb_strlen($frame) - 1)));
+            }
             $audit = sprintf(
                 '[void: %s; user_id=%s; at=%s]',
                 str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a note tag
@@ -386,10 +394,8 @@ class BillingController extends Controller
                 now()->format('Y-m-d H:i:s')
             );
 
-            $note = trim((string) ($invoice->Note ?? ''));
             $invoice->Status = 'void';
-            // VARCHAR(255): keep the whole audit tag and the invoice-number tag (in-app #514: an issued number never changes)
-            $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
+            // VARCHAR(255): keep the whole audit tag and the invoice-number tag
             $free = trim(str_replace($keep, '', $note));
             $invoice->Note = trim(mb_substr($free, 0, max(0, 253 - mb_strlen($audit) - mb_strlen($keep))) . ' ' . $keep . ' ' . $audit);
             $invoice->save();
