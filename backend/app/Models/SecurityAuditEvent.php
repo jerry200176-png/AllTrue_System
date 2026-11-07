@@ -34,6 +34,8 @@ final class SecurityAuditEvent
         'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
         // 帳務中心 export (#5099): the chip key (an enum) and whether a name search was on, never the search text.
         'filter', 'has_search',
+        // POP billing-period re-key (in-app #514): request id, YYYY-MM periods and a count; no names.
+        'pop_operation_id', 'period_from', 'period_to', 'report_count',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string
