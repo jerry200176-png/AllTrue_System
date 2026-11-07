@@ -9,12 +9,12 @@
     </template>
 
     <template v-else>
-      <main class="director-workbench-v2 tpl-mesh" aria-label="主任總覽">
-        <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:-mx-4 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-4 tw:py-3">
+      <main class="director-workbench-v2" aria-label="主任總覽">
+        <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-0 tw:py-3">
           <div class="tw:flex tw:items-center tw:gap-3.5">
             <img :src="logoUrl" alt="台北全真一對一" width="52" height="52" class="tw:size-13 tw:shrink-0 tw:rounded-full tw:bg-white tw:object-contain tw:shadow-md" />
             <div>
-            <h1 class="tw:text-tpl-page tw:font-extrabold tw:tracking-tight">今天</h1>
+            <h1 class="tw:text-tpl-page tw:font-bold tw:tracking-tight">今天</h1>
             <p class="director-workbench-v2__updated tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary" role="status">
               {{ branchName }}・{{ todayDisplay }}・{{ dashboardLoading ? '更新中…' : `更新 ${dashboardLastUpdated || '--:--'}` }}
             </p>
@@ -60,8 +60,7 @@
           @update:model-value="setDashboardViewMode"
         />
 
-        <MotionConfig reduced-motion="user">
-        <section
+                <section
           v-if="dashboardViewMode === 'focus'"
           id="director-workbench-panel-focus"
           class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:gap-4 tw:text-tpl-body tw:lg:grid-cols-[1.1fr_1fr] tw:lg:grid-rows-[auto_1fr]"
@@ -71,26 +70,28 @@
           tabindex="0"
         >
           <!-- 今天的課 -->
-          <Motion as="div" :initial="enterFrom" :animate="enterTo" class="tw:lg:col-start-1" data-testid="director-hero">
-            <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card">
+          <BlurFade class="tw:lg:col-start-1" data-testid="director-hero">
+            <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card tw:bg-[linear-gradient(160deg,color-mix(in_srgb,var(--ds-brand-sun)_14%,var(--ds-canvas)),var(--ds-canvas)_55%)]">
               <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body tw:font-bold">
-                <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-orange tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                 今天的課
               </div>
               <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
                 <ActivityRing :done="attendedCount" :total="todaySchedules.length" :label="`${todaySchedules.length} 堂已點名 ${attendedCount} 堂`" />
                 <div>
-                  <p class="director-num tw:text-tpl-num tw:font-extrabold" data-testid="hero-total"><template v-if="heroLoading"><span aria-hidden="true">—</span><span class="tw:sr-only">載入中</span></template><NumberTicker v-else :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
+                  <p class="director-num tw:text-tpl-num tw:font-bold tw:leading-none tw:tracking-tighter" data-testid="hero-total"><template v-if="heroLoading"><span aria-hidden="true">—</span><span class="tw:sr-only">載入中</span></template><NumberTicker v-else :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ heroLoading ? '載入中…' : pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
-              <Button class="tpl-btn-primary tw:mt-4 tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.98]" @click="goToAttendance">去點名</Button>
+              <ShineBorder class="tw:mt-4" radius="1rem">
+                <Button class="tw:h-14 tw:w-full tw:rounded-2xl tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:motion-safe:active:scale-[0.96]" @click="goToAttendance">去點名</Button>
+              </ShineBorder>
             </Card>
-          </Motion>
+          </BlurFade>
 
           <!-- 今天要處理: existing task queue as a grouped list -->
-          <Motion as="section" :initial="enterFrom" :animate="enterTo" :transition="{ delay: 0.1 }" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
-            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-extrabold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
+          <BlurFade as="section" :delay="60" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
+            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-bold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
                 <span class="director-skeleton__index"></span>
@@ -123,9 +124,9 @@
                   class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
                   @click="openDashboardTask(task)"
                 >
-                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                   <span class="tw:flex-1">{{ plainTaskTitle(task) }}</span>
-                  <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-extrabold">{{ task.count }}</span>
+                  <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-bold">{{ task.count }}</span>
                   <ChevronRight :size="24" :stroke-width="2.4" class="tw:text-tpl-secondary" aria-hidden="true" />
                 </button>
               </li>
@@ -138,38 +139,35 @@
             >
               查看其他 {{ dashboardAdditionalTaskCount }} 項營運工作
             </button>
-          </Motion>
+          </BlurFade>
 
           <!-- KPI cards: the whole card is a link to its list -->
           <div class="tw:grid tw:grid-cols-2 tw:gap-4 tw:lg:col-start-1 tw:lg:self-start" data-guide="director-summary">
             <h2 class="tw:sr-only">今日摘要</h2>
-            <Motion
+            <BlurFade
               v-for="(kpi, i) in kpiCards"
               :key="kpi.key"
-              as="div"
-              :initial="enterFrom"
-              :animate="enterTo"
-              :transition="{ delay: 0.14 + 0.06 * i }"
+              :delay="100 + 40 * i"
               :data-testid="`kpi-${kpi.key}`"
             >
-              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
+              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:motion-safe:lg:hover:-translate-y-0.5 tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
                 <Card class="tpl-card tw:h-full tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-body tw:font-bold">
-                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                     {{ kpi.label }}
                   </div>
-                  <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-extrabold"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
+                  <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-bold tw:leading-none tw:tracking-tighter"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary">{{ kpi.sub }}</p>
                   <Sparkline v-if="kpi.spark" :values="kpi.spark" :tone="kpi.tone" :label="kpi.sparkLabel" />
                 </Card>
               </button>
-            </Motion>
+            </BlurFade>
           </div>
 
           <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
             <details v-if="operationsTrust?.decision_center" class="director-trust-note tpl-card tw:rounded-3xl tw:px-5 tw:py-0 tw:text-tpl-body tw:shadow-tpl-card">
               <summary class="tw:min-h-18 tw:gap-4 tw:px-0 tw:text-tpl-body tw:font-semibold tw:text-foreground" title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
-                <span class="tpl-tile tpl-g-ink2 tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-green tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                 <span class="tw:flex-1">課表正確度</span>
                 <strong class="director-num tw:text-tpl-body" :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
@@ -332,7 +330,6 @@
             </aside>
           </div>
         </section>
-        </MotionConfig>
 
         <div v-if="workflowDecisionModal" class="director-modal-backdrop" role="presentation" @click.self="closeWorkflowDecision">
           <section class="director-modal" role="dialog" aria-modal="true" aria-labelledby="director-modal-title">
@@ -369,14 +366,13 @@ import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import AtTabs from '../components/design-system/AtTabs.vue';
-import { Motion, MotionConfig } from 'motion-v';
 import logoUrl from '../assets/logo.png';
 import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks, ShieldCheck } from 'lucide-vue-next';
 import { Card } from '@/components/ui/card';
 import { ActivityRing } from '@/components/ui/activity-ring';
 import { Sparkline } from '@/components/ui/sparkline';
 import { Button } from '@/components/ui/button';
-import { NumberTicker } from '@/components/ui/number-ticker';
+import { BlurFade, NumberTicker, ShineBorder } from '@/components/motion';
 import { owedCard, renewalCount, oldestEvaluationAge, plainTaskTitle, sevenDayEvalCounts } from '../lib/directorHomeCards.js';
 import { useTextScale } from '../composables/useTextScale.js';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
@@ -663,14 +659,10 @@ const attendedCount = computed(() =>
 const { steps: textScaleSteps, current: textScale, setScale: setTextScale } = useTextScale();
 const owed = computed(() => owedCard(tuitionAlertRows.value));
 const oldestEvalDays = computed(() => oldestEvaluationAge(pendingEvaluations.value, localTodayYmd()));
-// Card enter: blur-fade, staggered by the caller; off under prefers-reduced-motion.
-const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-const enterFrom = prefersReducedMotion ? false : { opacity: 0, y: 10, filter: 'blur(6px)' };
-const enterTo = { opacity: 1, y: 0, filter: 'blur(0px)' };
 const TASK_LOOK = {
-  attendance: [Clock, 'tpl-g-ink'], makeup: [RotateCcw, 'tpl-g-ink'], 'parent-leave': [UserRound, 'tpl-g-ink2'],
-  'schedule-discrepancy': [CalendarDays, 'tpl-g-sun'], tuition: [Wallet, 'tpl-g-red'], evaluations: [ClipboardCheck, 'tpl-g-gold'],
-  inbox: [Bell, 'tpl-g-amber'], 'duplicate-review': [Copy, 'tpl-g-sun'], 'parent-feedback': [MessageCircle, 'tpl-g-ink2'],
+  attendance: [Clock, 'tpl-g-orange'], makeup: [RotateCcw, 'tpl-g-blue'], 'parent-leave': [UserRound, 'tpl-g-teal'],
+  'schedule-discrepancy': [CalendarDays, 'tpl-g-indigo'], tuition: [Wallet, 'tpl-g-green'], evaluations: [ClipboardCheck, 'tpl-g-violet'],
+  inbox: [Bell, 'tpl-g-pink'], 'duplicate-review': [Copy, 'tpl-g-gold'], 'parent-feedback': [MessageCircle, 'tpl-g-teal'],
 };
 const taskIcon = (task) => (TASK_LOOK[task.id] || [ListChecks])[0];
 const taskGrad = (task) => (TASK_LOOK[task.id] || [null, 'tpl-g-ink'])[1];
@@ -684,25 +676,25 @@ const heroLoading = computed(() => dashboardLoading.value && !todaySchedules.val
 const evalSpark = computed(() => sevenDayEvalCounts(pendingEvaluations.value, localTodayYmd()));
 const kpiCards = computed(() => [
   {
-    key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', grad: 'tpl-g-red', icon: Wallet,
+    key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', grad: 'tpl-g-green', icon: Wallet,
     sub: owed.value.waiting ? `${owed.value.unpaid} 筆未繳、${owed.value.waiting} 筆待確認` : `${owed.value.unpaid} 筆未繳`,
     definition: '未繳、月結逾期，以及家長已回報待確認入帳的筆數。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: owed.value.intent }),
   },
   {
-    key: 'renewal', label: '快上完', value: renewalCount(tuitionAlertRows.value), unit: '筆', grad: 'tpl-g-sun', icon: RefreshCw,
+    key: 'renewal', label: '快上完', value: renewalCount(tuitionAlertRows.value), unit: '筆', grad: 'tpl-g-blue', icon: RefreshCw,
     sub: '要提醒續課',
     definition: '已繳費但堂數快用完，或月結即將到繳費日的課程。',
     open: () => emit('navigate', { target: 'tuition-collect', intent: 'renewal' }),
   },
   {
-    key: 'evals', label: '評量要審', value: pendingEvaluationsTotal.value, unit: '份', tone: 'bronze', grad: 'tpl-g-gold', icon: ClipboardCheck, spark: evalSpark.value, sparkLabel: '近 7 天上課日的待審評量數',
+    key: 'evals', label: '評量要審', value: pendingEvaluationsTotal.value, unit: '份', tone: 'bronze', grad: 'tpl-g-violet', icon: ClipboardCheck, spark: evalSpark.value, sparkLabel: '近 7 天上課日的待審評量數',
     sub: evalAgeLabel.value,
     definition: DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations,
     open: () => emit('navigate', { target: 'learning' }),
   },
   {
-    key: 'notifications', label: '新通知', value: unreadNotificationCount.value, unit: '則', grad: 'tpl-g-amber', icon: Bell,
+    key: 'notifications', label: '新通知', value: unreadNotificationCount.value, unit: '則', grad: 'tpl-g-pink', icon: Bell,
     sub: '點開看',
     definition: DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications,
     open: goToNotifications,

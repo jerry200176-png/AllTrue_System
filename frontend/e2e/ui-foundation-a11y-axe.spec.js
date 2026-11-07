@@ -27,6 +27,7 @@ const BASELINE = {
   parent: { 'color-contrast': 1 },
   attendance: { 'color-contrast': 2 },
   profile: {},
+  login: {},
   'attendance&role=teacher': { 'color-contrast': 2 },
 };
 

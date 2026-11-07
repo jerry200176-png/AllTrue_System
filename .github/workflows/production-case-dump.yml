@@ -24,6 +24,7 @@ on:
           - unpaid_months_muzha
           - unpaid_hidden_candidates
           - unbilled_monthly_sessions
+          - inapp_514_coverage_impact
           - f7_prod_discrepancy
           - paid_flag_open_invoice
           - charge_vs_rate_count
@@ -150,7 +151,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar', 'inapp_516_projected_slot'}:
+          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'inapp_514_coverage_impact', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar', 'inapp_516_projected_slot'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -160,7 +161,7 @@ jobs:
           id_cases = {'billing_student_numbers', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang', 'inapp_516_projected_slot'}
           if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
               raise SystemExit(f'{case} requires student_id')
-          if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
+          if case in {'migration_4283_preconditions', 'inapp_514_coverage_impact', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
               raise SystemExit('migration precondition probe takes no target')
           if case == 'xinzhuang_fee_cases':
               if target_student_id or target_student_class_id not in {'4064', '3753', '3693'}:
@@ -1307,6 +1308,70 @@ jobs:
             $out['courses_with_unbilled_lessons'] = count($rows);
             $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_billable_by_month']), $rows));
             $out['by_campus_month'] = array_values($summary);
+            $out['rows'] = $rows;
+          }} elseif ($case === 'inapp_514_coverage_impact') {{
+            // Read-only (in-app #514, Founder 2026-11-07 condition for stricter coverage). Active date-mode contracts only. For each
+            // billable lesson taught OUTSIDE its contract's dates (the lessons the renewal blocker and the lessons_outside_contract 422
+            // look at): OLD rule = a live bill of the same student+subject (anchored on any of their contracts) whose billing_period month
+            // equals the lesson month; NEW rule = a dated item range of such a bill holds the date (item owner = a contract of the same
+            // student+subject, or a lone unowned item), the label month counting only for a bill with no dated item. Newly affected =
+            // covered by OLD, not by NEW. IDs, campus, dates and counts only; no names, no writes.
+            $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where('sc.ScheduleMode', 'date')->where(fn ($q) => $q->whereNull('sc.Stop')->orWhere('sc.Stop', 0))
+              ->whereNotNull('sc.StartDate')->whereNotNull('sc.EndDate')
+              ->get(['sc.ID', 'sc.StudentID', 'sc.SubjectID', 'st.CampusID', 'sc.StartDate', 'sc.EndDate']);
+            $students = $courses->pluck('StudentID')->unique()->values()->all();
+            $mineAll = $students === [] ? collect() : $db::table('StudentClass')->whereIn('StudentID', $students)->get(['ID', 'StudentID', 'SubjectID']);
+            $mineBy = $mineAll->groupBy(fn ($c) => $c->StudentID . '|' . $c->SubjectID)->map(fn ($g) => $g->pluck('ID')->map(fn ($v) => (int)$v)->all());
+            $mineIds = $mineAll->pluck('ID')->map(fn ($v) => (int)$v)->all();
+            $invoices = $mineIds === [] ? collect() : $db::table('Invoice')->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+              ->where(fn ($q) => $q->whereIn('StudentClassID', $mineIds)->orWhereIn('id', $db::table('InvoiceItem')->whereIn('StudentClassID', $mineIds)->select('InvoiceID')))
+              ->get(['id', 'StudentClassID', 'billing_period']);
+            $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
+              ->get(['InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
+            $ids = $courses->pluck('ID')->map(fn ($v) => (int)$v)->all();
+            $lessons = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)->whereRaw("LOWER(Status) IN ('attended', 'completed', 'late')")
+              ->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
+            $rows = []; $reverse = 0; $outside = 0;
+            foreach ($courses as $c) {{
+              $cid = (int)$c->ID; $mine = $mineBy->get($c->StudentID . '|' . $c->SubjectID, []);
+              $start = substr((string)$c->StartDate, 0, 10); $end = substr((string)$c->EndDate, 0, 10);
+              $dates = ($lessons->get($cid, collect()))->map(fn ($s) => substr((string)$s->SessionDate, 0, 10))->filter(fn ($d) => $d < $start || $d > $end)->sort()->values()->all(); // one entry per lesson (two sessions on a date count twice)
+              if ($dates === []) continue;
+              $spans = []; $labels = []; $oldMonths = [];
+              foreach ($invoices as $inv) {{
+                $its = $items->get($inv->id, collect());
+                $anchorMine = in_array((int)$inv->StudentClassID, $mine, true);
+                $hasItemMine = $its->contains(fn ($i) => in_array((int)$i->StudentClassID, $mine, true));
+                if (!$anchorMine && !$hasItemMine) continue;
+                if ($anchorMine && $inv->billing_period) $oldMonths[(string)$inv->billing_period] = true;
+                $bounded = $its->filter(fn ($i) => $i->PeriodStart && $i->PeriodEnd); $found = false;
+                foreach ($mine as $classId) {{
+                  $linked = $bounded->filter(fn ($i) => (int)$i->StudentClassID === $classId);
+                  $src = $linked->isNotEmpty() ? $linked : ($its->count() === 1 ? $bounded->filter(fn ($i) => !(int)$i->StudentClassID) : collect());
+                  foreach ($src as $i) {{ $spans[] = [substr((string)$i->PeriodStart, 0, 10), substr((string)$i->PeriodEnd, 0, 10)]; $found = true; }}
+                }}
+                if (!$found && $bounded->isEmpty() && $anchorMine && $inv->billing_period) $labels[(string)$inv->billing_period] = true;
+              }}
+              $affected = [];
+              foreach ($dates as $d) {{
+                $outside++;
+                $old = isset($oldMonths[substr($d, 0, 7)]);
+                $new = isset($labels[substr($d, 0, 7)]) || collect($spans)->contains(fn ($r) => $r[0] <= $d && $d <= $r[1]);
+                if ($old && !$new) $affected[] = $d; elseif (!$old && $new) $reverse++;
+              }}
+              if ($affected !== []) $rows[] = ['campus_id' => (int)$c->CampusID, 'contract_id' => $cid, 'first_affected_lesson' => $affected[0], 'affected_lessons' => count($affected)];
+            }}
+            usort($rows, fn ($a, $b) => [$a['campus_id'], $a['contract_id']] <=> [$b['campus_id'], $b['contract_id']]);
+            $byCampus = [];
+            foreach ($rows as $r) {{ $k = $r['campus_id']; $byCampus[$k] = ['campus_id' => $k, 'contracts' => ($byCampus[$k]['contracts'] ?? 0) + 1, 'lessons' => ($byCampus[$k]['lessons'] ?? 0) + $r['affected_lessons']]; }}
+            ksort($byCampus);
+            $out['active_date_mode_contracts'] = $courses->count();
+            $out['outside_contract_lessons_examined'] = $outside;
+            $out['newly_affected_contracts'] = count($rows);
+            $out['newly_affected_lessons'] = array_sum(array_column($rows, 'affected_lessons'));
+            $out['newly_covered_lessons_info'] = $reverse;
+            $out['by_campus'] = array_values($byCampus);
             $out['rows'] = $rows;
           }} elseif ($case === 'paid_flag_open_invoice') {{
             // Read-only (Founder Q2, 2026-10-11): contracts flagged paid (Paid=1 or paid package) whose invoices still owe.

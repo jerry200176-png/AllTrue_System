@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-ui-motion-homes
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 登入與首頁換新外觀
+    summary: 登入頁和首頁更簡潔，數字會動，用詞更溫和。
+    items:
+      - category: improved
+        text: 登入頁加上緩慢動畫，主任與家長首頁更簡潔；家長首頁用詞更溫和。
+    source_refs:
+      - "changelog:2026-11-07:ui-motion-homes"
