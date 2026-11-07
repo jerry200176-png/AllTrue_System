@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-billing-grid
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單清單更好用
+    summary: 點標題可排序，下方顯示合計，也能複製列貼到 Excel。
+    items:
+      - category: improved
+        text: 帳單清單可點標題排序、顯示合計、複製列貼到 Excel。
+    source_refs:
+      - "changelog:2026-11-07:billing-grid"

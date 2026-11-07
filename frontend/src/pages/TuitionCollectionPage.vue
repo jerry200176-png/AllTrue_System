@@ -72,6 +72,7 @@
         :row-actions="ledgerRowActions"
         :can-docs="canWaive"
         :export-disabled="csvExporting"
+        :user-id="sessionUserId"
         @batch="onBillBatch"
         @export="exportCSV"
         @student="(b) => openBillLedger(b, null)"
@@ -900,6 +901,8 @@ function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
   return session?.access_token;
 }
+
+const sessionUserId = (() => { try { return JSON.parse(localStorage.getItem('alltrue_session') || 'null')?.user?.id ?? null; } catch { return null; } })();
 
 function getAuthRole() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');

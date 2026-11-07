@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,8 @@ const ROWS = [
 const mountList = (props = {}) => mount(BillList, { props: { alertRows: ROWS, today: '2026-11-05', batchModes: { 1: 'confirm', 2: 'report', 6: 'report' }, ...props }, global: { stubs: { teleport: true } } });
 
 describe('BillList', () => {
+  beforeEach(() => localStorage.clear());
+
   it('opens on 要處理 with counts, hiding paid rows', () => {
     const w = mountList();
     expect(w.get('[data-testid="bill-filter-todo"]').attributes('aria-pressed')).toBe('true');
@@ -118,6 +120,7 @@ describe('BillList', () => {
     expect(w.find('[data-testid="bill-batch"]').exists()).toBe(true);
     await w.get('[data-testid="bill-filter-owing"]').trigger('click');
     expect(w.find('[data-testid="bill-batch"]').exists()).toBe(false);
+    localStorage.clear(); // the chip just picked is remembered for the next visit
     const empty = mountList({ alertRows: [] });
     expect(empty.get('[data-testid="bill-empty"]').text()).toContain('要處理');
   });
@@ -202,5 +205,50 @@ describe('BillList', () => {
     expect(btn.text()).toBe('看帳務');
     btn.trigger('click');
     expect(w.emitted('action')[0][1]).toBe('open');
+  });
+
+  it('clicking a column header sorts the rows it shows, and clicking again reverses', async () => {
+    const w = mountList({ alertRows: [
+      row({ id: 1, student_name: '甲', payable_outstanding: 500 }),
+      row({ id: 2, student_id: 2, student_name: '乙', payable_outstanding: 900 }),
+    ] });
+    const order = () => w.findAll('[data-testid^="bill-name-"]').map((e) => e.text());
+    expect(order()).toEqual(['乙', '甲']); // 未收金額 big to small
+    await w.get('[data-testid="bill-th-owed"]').trigger('click');
+    expect(order()).toEqual(['甲', '乙']);
+    expect(w.get('[data-testid="bill-th-owed"]').attributes('aria-sort')).toBe('ascending');
+    await w.get('[data-testid="bill-th-owed"]').trigger('click');
+    expect(order()).toEqual(['乙', '甲']);
+  });
+
+  it('totals row follows the filter and search', async () => {
+    const w = mountList();
+    expect(w.get('[data-testid="bill-totals"]').text()).toContain('這 5 筆');
+    await w.get('[data-testid="bill-filter-owing"]').trigger('click');
+    expect(w.get('[data-testid="bill-totals"]').text()).toContain('這 2 筆');
+    expect(w.get('[data-testid="bill-totals"]').text()).toContain('未繳 NT$ 2,000');
+    await w.get('[data-testid="bill-search"]').setValue('乙');
+    expect(w.get('[data-testid="bill-totals"]').text()).toContain('這 1 筆');
+  });
+
+  it('複製 puts the rows on screen on the clipboard as TSV', async () => {
+    const writeText = vi.fn().mockResolvedValue();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const w = mountList();
+    await w.get('[data-testid="bill-filter-owing"]').trigger('click');
+    await w.get('[data-testid="bill-copy"]').trigger('click');
+    const lines = writeText.mock.calls[0][0].split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0].startsWith('學生\t科目')).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('remembers the last chip, and a deep link to another chip wins', async () => {
+    const a = mountList({ userId: 5 });
+    await a.get('[data-testid="bill-filter-owing"]').trigger('click');
+    a.unmount();
+    expect(mountList({ userId: 5 }).get('[data-testid="bill-filter-owing"]').attributes('aria-pressed')).toBe('true');
+    expect(mountList({ userId: 6 }).get('[data-testid="bill-filter-todo"]').attributes('aria-pressed')).toBe('true');
+    expect(mountList({ userId: 5, presetFilter: { key: 'confirm' } }).get('[data-testid="bill-filter-confirm"]').attributes('aria-pressed')).toBe('true');
   });
 });

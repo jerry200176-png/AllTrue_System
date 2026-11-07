@@ -51,6 +51,7 @@
           <AtButton size="sm" shape="rect" data-testid="bill-batch" @click="$emit('batch', pickedMode, picked.map((b) => b.class_id))">{{ pickedMode === 'confirm' ? '確認入帳' : '登記' }} {{ picked.length }} 筆</AtButton>
           <AtButton variant="secondary" size="sm" shape="rect" data-testid="bill-clear-picked" @click="clearSelection">取消選取</AtButton>
         </template>
+        <AtButton variant="secondary" size="sm" shape="rect" :disabled="!visible.length" data-testid="bill-copy" @click="copyRows">{{ copied ? '已複製' : picked.length ? `複製選取列（${picked.length}）` : '複製這些列' }}</AtButton>
         <AtButton class="bl__csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', visible.map((b) => b.src))">匯出 CSV</AtButton>
       </div>
       <AtEmpty v-if="!visible.length && !noRowStudents.length" icon="search_off" :title="query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單`" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。'" data-testid="bill-empty" data-guide="tuition-rows" />
@@ -61,8 +62,10 @@
             <span class="bl__subject">沒有待收款項</span>
           </li>
         </ul>
-        <div v-if="visible.length" class="bl__head" aria-hidden="true">
-          <div class="bl__cols"><span>學生・科目</span><span>期間／剩幾堂</span><span>狀態</span><span>到期／逾期</span><span class="bl__num">未收</span></div>
+        <div v-if="visible.length" class="bl__head" role="row" aria-label="欄位（點標題排序）">
+          <div class="bl__cols">
+            <button v-for="c in HEADS" :key="c.id" type="button" :class="['bl__th', { 'bl__num': c.num }]" :aria-sort="ariaSort(c.id)" :data-testid="`bill-th-${c.id}`" @click="table.getColumn(c.id).toggleSorting()">{{ c.label }}<span aria-hidden="true">{{ arrow(c.id) }}</span></button>
+          </div>
         </div>
         <ul v-if="visible.length" class="bl__list" data-guide="tuition-rows">
           <li v-for="b in visible" :key="b.key" :data-testid="`bill-row-${b.key}`" :data-kind="b.kind">
@@ -103,6 +106,9 @@
             </div>
           </li>
         </ul>
+        <div v-if="visible.length" class="bl__totals" role="status" data-testid="bill-totals">
+          這 {{ totals.count }} 筆合計：應收 <strong>{{ money(totals.payable) }}</strong>　已收 <strong>{{ money(totals.paid) }}</strong>　未繳 <strong>{{ money(totals.owed) }}</strong>
+        </div>
       </template>
     </template>
   </section>
@@ -110,13 +116,15 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { getCoreRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table';
 import ActionMenu from '../ActionMenu.vue';
 import AtBadge from '../design-system/AtBadge.vue';
 import AtButton from '../design-system/AtButton.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
 import AtInlineAlert from '../design-system/AtInlineAlert.vue';
 import AtSkeleton from '../design-system/AtSkeleton.vue';
-import { billCounts, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
+import { BILL_KINDS, billCounts, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
+import { billTotals, billTsv, copyText, loadGridPrefs, saveGridPrefs } from '../../lib/billGrid.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 
 const props = defineProps({
@@ -134,6 +142,7 @@ const props = defineProps({
   rowActions: { type: Object, default: () => ({}) },
   canDocs: { type: Boolean, default: false },
   exportDisabled: { type: Boolean, default: false },
+  userId: { type: [Number, String], default: null },
 });
 defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
 
@@ -173,7 +182,9 @@ const overdueCount = computed(() => rows.value.filter((b) => b.overdue_days > 0)
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
 const query = ref('');
-const filter = ref(FILTERS.includes(props.presetFilter?.key) ? props.presetFilter.key : 'todo');
+const remembered = props.presetFilter?.key === 'todo' ? loadGridPrefs(props.userId).filter : null; // a deep link to another chip wins
+const filter = ref(FILTERS.includes(remembered) ? remembered : FILTERS.includes(props.presetFilter?.key) ? props.presetFilter.key : 'todo');
+watch(filter, (f) => saveGridPrefs(props.userId, { filter: f }));
 watch(() => props.presetFilter, (p) => { if (FILTERS.includes(p?.key)) filter.value = p.key; });
 const setFilter = (key) => { filter.value = key; };
 // A name search looks through every status, so a paid student is still findable.
@@ -188,12 +199,49 @@ const TESTS = {
 const sortKey = ref(filter.value === 'issue' ? 'remaining' : 'amount');
 watch(filter, (f) => { sortKey.value = f === 'issue' ? 'remaining' : 'amount'; });
 watch([activeFilter, query], () => clearSelection());
-const visible = computed(() => {
+const base = computed(() => {
   const list = rows.value.filter((b) => (TESTS[activeFilter.value] || ((x) => x.kind === activeFilter.value))(b)
     && (!query.value.trim() || b.student_name.includes(query.value.trim())));
   const cmp = SORTS[sortKey.value].cmp;
   return cmp ? [...list].sort(cmp) : list;
 });
+// Header click sorting (TanStack Table, view only). Picking a preset in 排序 hands the order back to it.
+const sorting = ref([]);
+watch(sortKey, () => { sorting.value = []; });
+const BY = (f) => (a, b) => f(a.original) - f(b.original);
+const table = useVueTable({
+  get data() { return base.value; },
+  columns: [
+    { id: 'student', accessorFn: (b) => b.student_name, sortingFn: (a, b) => a.original.student_name.localeCompare(b.original.student_name, 'zh-Hant') },
+    { id: 'period', accessorFn: (b) => b.sort_remaining, sortingFn: BY((b) => b.sort_remaining ?? Infinity) },
+    { id: 'status', accessorFn: (b) => b.kind, sortingFn: BY((b) => BILL_KINDS.indexOf(b.kind)) },
+    { id: 'due', accessorFn: (b) => b.overdue_days, sortingFn: BY((b) => b.overdue_days) },
+    { id: 'owed', accessorFn: (b) => b.owed, sortingFn: BY((b) => b.owed) },
+  ],
+  state: { get sorting() { return sorting.value; } },
+  onSortingChange: (u) => { sorting.value = typeof u === 'function' ? u(sorting.value) : u; },
+  getCoreRowModel: getCoreRowModel(),
+  getSortedRowModel: getSortedRowModel(),
+  enableSortingRemoval: true,
+  sortDescFirst: false,
+});
+const visible = computed(() => table.getRowModel().rows.map((r) => r.original));
+const HEADS = [
+  { id: 'student', label: '學生・科目' }, { id: 'period', label: '期間／剩幾堂' }, { id: 'status', label: '狀態' },
+  { id: 'due', label: '到期／逾期' }, { id: 'owed', label: '未收', num: true },
+];
+const ariaSort = (id) => ({ asc: 'ascending', desc: 'descending' }[table.getColumn(id).getIsSorted()] || 'none');
+const arrow = (id) => ({ asc: ' ▲', desc: ' ▼' }[table.getColumn(id).getIsSorted()] || '');
+const totals = computed(() => billTotals(visible.value));
+const copied = ref(false);
+async function copyRows() {
+  const list = picked.value.length ? picked.value : visible.value;
+  try {
+    await copyText(billTsv(list, dueText));
+    copied.value = true;
+    setTimeout(() => { copied.value = false; }, 1500);
+  } catch { /* clipboard blocked: nothing was copied, the button keeps its label */ }
+}
 const chipLabel = computed(() => [...CHIPS, ...MORE, { key: 'overdue', label: '逾期' }].find((c) => c.key === activeFilter.value)?.label || '');
 const noRowStudents = computed(() => {
   const q = query.value.trim();
@@ -257,7 +305,11 @@ defineExpose({ neighbor, clearSelection, owingQueue });
 .bl.has-checks{--bl-check:32px}
 .bl__head,.bl__list>li{display:grid;grid-template-columns:var(--bl-check) minmax(0,1fr) 9.5em;align-items:center;column-gap:4px}
 .bl__cols,.bl__row{grid-column:2;display:grid;grid-template-columns:minmax(9em,1.4fr) minmax(8em,1.2fr) 8em 7em 7em;gap:4px 12px;align-items:center}
+.bl__head{position:sticky;top:0;z-index:var(--ds-z-sticky);background:var(--ds-canvas)}
 .bl__cols{padding:0 13px;color:var(--ds-ink-mute)}
+.bl__th{background:none;border:0;padding:4px 0;font:inherit;font-size:var(--ds-font-size-sm);color:inherit;text-align:left;cursor:pointer;min-height:28px}
+.bl__th.bl__num{text-align:right}
+.bl__totals{position:sticky;bottom:0;background:var(--ds-canvas);border-top:1px solid var(--ds-border);padding:8px 12px;font-variant-numeric:tabular-nums}
 .bl__cols>span{font-size:var(--ds-font-size-sm)}
 .bl__row{border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;min-height:52px}
 .bl__check{grid-column:1;width:20px;height:20px;margin:0}
