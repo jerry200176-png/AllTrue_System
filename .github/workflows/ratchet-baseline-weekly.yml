@@ -1,0 +1,51 @@
+name: Ratchet baseline weekly
+
+# W4 (#4953): feature PRs never rewrite ratchet baselines (presubmit CHECK 2b); this job locks in gains
+# once a week as one PR. Uses LAND_QUEUE_TOKEN when set so the PR's own CI runs (GITHUB_TOKEN pushes don't).
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ratchet-baseline-weekly
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Update ratchet baselines (update commands of each ratchet)
+        run: |
+          set -euo pipefail
+          node scripts/design-style-ratchet.mjs --update-baseline
+          node scripts/controller-db-ratchet.mjs --write
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.LAND_QUEUE_TOKEN || github.token }}
+          branch: chore/ratchet-baseline-weekly
+          base: main
+          add-paths: |
+            docs/design-style-baseline.json
+            scripts/controller-db-baseline.json
+          commit-message: "chore(ratchet): lock in weekly baseline gains"
+          title: "chore(ratchet): lock in weekly baseline gains"
+          labels: release-note-none
+          body: |
+            Rollback: revert this PR
+
+            Release-Impact: none
+
+            Automated weekly run of the ratchet update commands (`design-style-ratchet.mjs --update-baseline`,
+            `controller-db-ratchet.mjs --write`). Baselines only tighten.
