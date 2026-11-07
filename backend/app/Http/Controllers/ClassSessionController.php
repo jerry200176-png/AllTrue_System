@@ -1004,7 +1004,8 @@ class ClassSessionController extends Controller
             });
 
         $schedules = $query->orderBy('id')->get()
-            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $sessionDate))
+            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $sessionDate)
+                || $this->isCrossDateRescheduleDestination($schedule))
             ->values();
         if ($schedules->isEmpty()) {
             return null;
@@ -1043,6 +1044,20 @@ class ClassSessionController extends Controller
         }
 
         return ['start_time' => $start, 'end_time' => $end];
+    }
+
+    /**
+     * in-app #516: the destination of a cross-date reschedule (anchor row is 'rescheduled' on another day)
+     * is a real one-off occurrence. An explicit ensure-projected must be able to materialize it, otherwise
+     * a destination that was never materialized shows a chip the API rejects with 422. The read-repair
+     * path keeps skipping it (the reschedule flow owns materialization there).
+     */
+    private function isCrossDateRescheduleDestination(Schedule $schedule): bool
+    {
+        $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+
+        return $anchorId > 0
+            && Schedule::query()->whereKey($anchorId)->where('status', 'rescheduled')->exists();
     }
 
     private function isMaterializableScheduledException(
