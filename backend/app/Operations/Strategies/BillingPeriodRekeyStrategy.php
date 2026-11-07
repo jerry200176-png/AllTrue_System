@@ -15,7 +15,7 @@ use RuntimeException;
  * Scope: every campus in campus_ids ('all' = every campus). Execute is pinned to the dry-run by expected_digest (Td076 pattern).
  * A re-key that would collide with a live bill of the same student+subject (stored or planned in this run) is refused, never forced.
  */
-final class BillingPeriodRekeyStrategy
+class BillingPeriodRekeyStrategy
 {
     private const REF = 'repair-billing-period-rekey-20261107';
     private const TAG = \App\Services\Billing\InvoiceNumber::TAG;
@@ -55,7 +55,9 @@ final class BillingPeriodRekeyStrategy
             $operationId = (string) ($context['operation_id'] ?? '');
             $snapshot = [];
             foreach (array_filter($rows, fn ($r) => $r['status'] === 'ready') as $r) {
-                $invoice = DB::table('Invoice')->where('id', $r['invoice_id'])->first();
+                // The current locked row (a read after the lock sees what committed since the snapshot): a bill voided or moved meanwhile is skipped.
+                $invoice = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
+                if (!$invoice || strtolower((string) $invoice->Status) === 'void' || $invoice->billing_period !== $r['from']) continue;
                 $note = (string) $invoice->Note;
                 $added = !str_contains($note, '[' . self::TAG . ':'); // a bill re-keyed before keeps its first (original) number tag
                 $tagged = \App\Services\Billing\InvoiceNumber::withTag($note, $r['from']) ?? throw new RuntimeException('billing_period_rekey_note_full_' . $r['invoice_id']); // the one freeze path
@@ -184,7 +186,7 @@ final class BillingPeriodRekeyStrategy
      *
      * @param list<int> $campuses [] = every campus @return list<array<string,mixed>>
      */
-    private function build(array $campuses): array
+    protected function build(array $campuses): array
     {
         $q = DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.ScheduleMode', 'date')->whereNotNull('sc.StartDate')->whereNotNull('sc.EndDate')
@@ -195,9 +197,9 @@ final class BillingPeriodRekeyStrategy
             'sc.StartDate', 'sc.EndDate', 'st.CampusID as campus_id']);
         if ($invoices->isEmpty()) return [];
         $ids = $invoices->pluck('id')->all();
-        $items = DB::table('InvoiceItem')->whereIn('InvoiceID', $ids)->get(['InvoiceID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
+        $items = DB::table('InvoiceItem')->whereIn('InvoiceID', $ids)->get(['InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
         $lessons = DB::table('ClassSession')->whereIn('StudentClassID', $invoices->pluck('class_id')->unique()->all())
-            ->whereNotIn(DB::raw('LOWER(TRIM(Status))'), ['cancelled', 'canceled'])->orderBy('SessionDate')->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
+            ->whereNotIn(DB::raw('LOWER(TRIM(Status))'), ['cancelled', 'canceled', 'voided', 'void'])->orderBy('SessionDate')->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
         // Live bills of the same student+subject, for the collision check (also against what this run plans).
         $live = DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
             ->whereIn('c.StudentID', $invoices->pluck('StudentID')->unique()->all())->whereNotNull('o.billing_period')
@@ -209,6 +211,7 @@ final class BillingPeriodRekeyStrategy
             $own = $items->get($inv->id, collect());
             $one = $own->count() === 1 ? $own->first() : null;
             if (!$one || substr((string) $one->PeriodStart, 0, 10) !== $start || substr((string) $one->PeriodEnd, 0, 10) !== $end) continue; // not a whole-cycle bill
+            if ((int) $one->StudentClassID > 0 && (int) $one->StudentClassID !== (int) $inv->class_id) continue; // the item belongs to another course: not this contract's renewal
             $dates = ($lessons->get($inv->class_id) ?? collect())->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->filter(fn ($d) => $d >= $start && $d <= $end);
             $to = substr((string) ($dates->min() ?? $start), 0, 7);
             if ($to !== $inv->billing_period) $candidates[] = [$inv, $to];

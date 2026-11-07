@@ -216,4 +216,39 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'nothing was written');
         $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->count());
     }
+
+    public function test_a_bill_voided_after_the_snapshot_is_skipped_under_the_lock(): void
+    {
+        $stale = new class extends BillingPeriodRekeyStrategy {
+            public ?array $frozen = null;
+            protected function build(array $campuses): array { return $this->frozen ??= parent::build($campuses); }
+        };
+        $dry = $stale->plan($this->params('all')); // freezes the manifest: what an older snapshot would show
+        $pinned = $stale->plan($this->params('all', $dry['digest']));
+        DB::table('Invoice')->where('id', 1)->update(['Status' => 'void', 'Note' => '[void: x]']); // commits after the snapshot
+        $result = $stale->execute($pinned, ['operation_id' => 'req-void']);
+        $inv = DB::table('Invoice')->where('id', 1)->first();
+        $this->assertSame(['2026-04', '[void: x]'], [$inv->billing_period, $inv->Note], 'the voided bill and its audit text are untouched');
+        $this->assertNotContains(1, array_column($result['snapshot']['rows'], 'invoice_id'));
+        $this->assertSame('2026-05', DB::table('Invoice')->where('id', 8)->value('billing_period'), 'other bills still ran');
+    }
+
+    public function test_a_voided_session_does_not_decide_the_target_month(): void
+    {
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
+        $this->cycle(600, 8, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);
+        DB::table('ClassSession')->insert(['StudentClassID' => 600, 'SessionDate' => '2026-04-29', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'voided']);
+        $row = collect((new BillingPeriodRekeyStrategy)->plan($this->params([16]))['manifest'])->firstWhere('invoice_id', 501);
+        $this->assertSame(['ready', '2026-05'], [$row['status'], $row['to']]);
+    }
+
+    public function test_an_item_owned_by_another_course_is_not_this_contracts_renewal(): void
+    {
+        DB::table('Student')->insert(['id' => 9, 'name' => 's9', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
+        $this->cycle(700, 9, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);
+        $this->cycle(701, 9, 2, '2026-04-29', '2026-05-27', '2026-04', ['2026-04-30']);
+        DB::table('InvoiceItem')->where('InvoiceID', 601)->update(['StudentClassID' => 701]); // invoice 601 is anchored on 700, its only item belongs to 701
+        $ids = array_column((new BillingPeriodRekeyStrategy)->plan($this->params([16]))['manifest'], 'invoice_id');
+        $this->assertNotContains(601, $ids);
+    }
 }
