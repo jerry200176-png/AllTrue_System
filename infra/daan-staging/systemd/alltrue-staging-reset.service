@@ -1,0 +1,8 @@
+[Unit]
+Description=AllTrue staging nightly reset to synthetic seed
+
+[Service]
+Type=oneshot
+# Same lock as the pull-deploy so a reset never overlaps a redeploy.
+ExecStart=/usr/bin/flock %h/alltrue-stage/state/lock %h/alltrue-stage/AllTrue_System/infra/daan-staging/lifecycle/seed-demo.sh --reset
+TimeoutStartSec=15min

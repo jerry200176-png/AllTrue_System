@@ -38,6 +38,7 @@ export function getMonthRange(value) {
 }
 
 export function getRange(period, value) {
+  if (period === 'day') { const day = dateValue(value || formatDate(new Date())); return { start: day, end: day }; }
   return period === 'month' ? getMonthRange(value) : getWeekRange(value);
 }
 
@@ -179,6 +180,23 @@ export function summarizeRows(rows, range, period) {
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return { period, range, days, total: rows.length, exceptionCount: days.reduce((sum, day) => sum + day.exceptions.length, 0) };
+}
+
+// One-day sheet (in-app #513): columns = teachers, or classrooms when only the room filter is set; rows = hours.
+// A card sits in the hour it starts and shows its own time span.
+export function buildDayGrid(rows, filters = {}) {
+  const byRoom = !!String(filters.room || '').trim() && !String(filters.teacher || '').trim();
+  const colOf = (row) => (byRoom ? row.roomLabel : row.effectiveTeacherName);
+  const columns = [...new Set(rows.map(colOf))].sort((a, b) => String(a).localeCompare(String(b), 'zh-Hant'));
+  const hour = (t) => Number(String(t).slice(0, 2)) || 0;
+  const first = Math.min(...rows.map((row) => hour(row.startTime)));
+  const last = Math.max(...rows.map((row) => Math.max(hour(row.startTime), hour(row.endTime) - (/:00$/.test(row.endTime) ? 1 : 0))));
+  const slots = [];
+  for (let h = first; rows.length && h <= last; h += 1) {
+    const label = `${String(h).padStart(2, '0')}:00`;
+    slots.push({ label, cells: columns.map((c) => rows.filter((row) => colOf(row) === c && hour(row.startTime) === h)) });
+  }
+  return { by: byRoom ? '教室' : '老師', columns, slots };
 }
 
 export function chunkPrintRows(rows, orientation = 'landscape') {
