@@ -850,6 +850,17 @@ test('course drawer: a confirm dialog is topmost and clickable @drawer-confirm',
   await cancel.click({ timeout: 3000 });
 });
 
+// In-app #519: 新增課程 on 課程查找 opens the shared scheduler with the student still to be picked.
+test('course page: 新增課程 opens the shared create-course form @create-course', async ({ page }) => {
+  await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1280, height: 900 } });
+  await dismissOverlays(page);
+  await page.locator('[data-testid="course-header-create"]').click();
+  const form = page.locator('.universal-scheduler-modal').first();
+  await expect(form).toBeVisible();
+  await form.getByText('一般課程').first().click(); // same type step as from 學生管理
+  await expect(form.locator('label:visible', { hasText: '學生 *' }).first()).toBeVisible();
+});
+
 // Visual regression (#4952). Tagged @visual: skipped by playwright.ui-foundation.config.js,
 // run only by playwright.visual.config.js inside the pinned Playwright Docker image (npm run test:visual).
 test.describe('Visual regression @visual', () => {

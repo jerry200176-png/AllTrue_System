@@ -11,7 +11,7 @@ describe('CourseManagement lens UX', () => {
       expect(source).toContain(marker);
     }
     expect(source).not.toContain('唯讀營運視圖');
-    expect(source).toContain('course-header-goto-students-create');
+    expect(source).toContain('course-header-create');
   });
 
   it('keeps the usage reconciliation warning visible in history cards', () => {

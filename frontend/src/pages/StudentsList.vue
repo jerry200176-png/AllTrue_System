@@ -2,7 +2,7 @@
   <div class="students-page at-ops-page at-page">
       <AtPageHeader
         title="學生管理"
-        description="搜尋、篩選與管理本分校學生資料與課程安排。"
+        description="管理「人」：學生資料、家長與聯絡方式。"
         icon="groups"
         data-guide="students-header"
       >
