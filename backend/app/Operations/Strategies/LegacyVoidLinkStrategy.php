@@ -160,6 +160,7 @@ final class LegacyVoidLinkStrategy
         if ($l['amount'] !== $c['amount'] || $l['report_amount'] !== abs($c['amount'])) $e[] = "void_{$id}_amount";
         if ($l['report_payment_id'] !== $c['payment_id']) $e[] = "void_{$id}_receipt_payment";
         if ($l['invoice_status'] === 'void') $e[] = "void_{$id}_invoice_void";
+        if (in_array($l['method'], ['transfer_out', 'refund'], true)) $e[] = "void_{$id}_method"; // not a legacy void row
         if ($l['other_linked_reversals'] !== 0) $e[] = "void_{$id}_receipt_has_other_reversal";
         if ($e !== []) return ['drift', $e];
         if ($l['report_link'] === null) return ['before', []];

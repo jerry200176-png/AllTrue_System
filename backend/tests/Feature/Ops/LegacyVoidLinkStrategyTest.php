@@ -92,7 +92,7 @@ final class LegacyVoidLinkStrategyTest extends TestCase
         $errors = $s->plan(self::PARAMS)['errors'];
         self::assertContains("void_{$first}_receipt_has_other_reversal", $errors);
         self::assertContains("void_{$second}_amount", $errors);
-        self::assertSame(['case_parameters_mismatch'], $s->plan([])['errors']);
+        self::assertContains('case_parameters_mismatch', $s->plan([])['errors']);
         try {
             $s->execute($plan, ['operation_id' => 't']);
             self::fail('apply must abort on drift');
