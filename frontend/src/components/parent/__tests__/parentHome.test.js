@@ -68,14 +68,14 @@ describe('pickLatestFeedback', () => {
 
 describe('ParentHome empty and filled states', () => {
   const html = (home) => renderToString(createSSRApp(ParentHome, { home }));
-  it('renders 都繳清了 and empty copy', async () => {
+  it('renders 本期學費已繳清 and empty copy', async () => {
     const out = await html({ nextLesson: null, due: null, feedback: null });
-    expect(out).toContain('都繳清了');
-    expect(out).toContain('近期沒有排課');
-    expect(out).toContain('還沒有回饋');
-    expect(out).not.toContain('怎麼繳費');
+    expect(out).toContain('本期學費已繳清，謝謝您');
+    expect(out).toContain('目前沒有排定的課，有安排會通知您');
+    expect(out).toContain('目前沒有新回饋');
+    expect(out).not.toContain('繳費方式');
   });
-  it('renders each fact once with 未繳 chip and 還有 N 天', async () => {
+  it('renders each fact once with 待繳 chip and 還有 N 天', async () => {
     const out = await html({
       nextLesson: pickNextLesson([sess()], '2026-11-06'),
       due: { amount: 7200, dueDateLabel: '11/10' },
@@ -83,7 +83,7 @@ describe('ParentHome empty and filled states', () => {
     });
     expect(out).toContain('還有 2 天');
     expect(out.replace(/<[^>]+>/g, '')).toContain('$7,200'); // amount is wrapped in the NumberTicker span
-    expect(out.match(/未繳/g)).toHaveLength(1);
+    expect(out.match(/待繳/g)).toHaveLength(1);
     expect(out.match(/7,200/g)).toHaveLength(1);
     expect(out.match(/data-guide="parent-home-/g)).toHaveLength(3);
   });

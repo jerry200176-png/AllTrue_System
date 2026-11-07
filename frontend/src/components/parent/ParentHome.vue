@@ -28,7 +28,7 @@ defineEmits(['leave', 'pay', 'learning']);
           <Badge v-if="home.nextLesson.leaveRequested" variant="outline" class="tw:mt-2">請假確認中</Badge>
           <Button v-else-if="home.nextLesson.canLeave" variant="secondary" class="tw:mt-4 tw:h-11 tw:w-full" @click="$emit('leave', home.nextLesson.session)">請假</Button>
         </template>
-        <p v-else class="tw:text-base">近期沒有排課</p>
+        <p v-else class="tw:text-base">目前沒有排定的課，有安排會通知您</p>
       </CardContent>
     </Card>
     </BlurFade>
@@ -36,7 +36,7 @@ defineEmits(['leave', 'pay', 'learning']);
     <BlurFade :delay="60">
     <Card :class="['tw:gap-2 tw:py-5 tw:shadow-none', home.due && 'tw:border-[var(--ds-brand-ink)] tw:bg-[var(--ds-brand-ink)] tw:text-[var(--ds-canvas)]']" data-guide="parent-home-money">
       <CardContent class="tw:px-5">
-        <p :class="['tw:text-sm', home.due ? 'tw:text-[var(--ds-canvas)]/60' : 'tw:text-muted-foreground']">要繳的錢</p>
+        <p :class="['tw:text-sm', home.due ? 'tw:text-[var(--ds-canvas)]/60' : 'tw:text-muted-foreground']">本期學費</p>
         <template v-if="home.due">
           <div class="tw:flex tw:items-center tw:justify-between tw:gap-2">
             <p :class="['tw:font-bold tw:leading-none tw:tracking-tighter', !home.due.review && home.due.amount != null ? 'tw:text-6xl' : 'tw:text-4xl']">
@@ -44,14 +44,14 @@ defineEmits(['leave', 'pay', 'learning']);
               <template v-else-if="home.due.amount == null">有課程待繳</template>
               <template v-else>$<NumberTicker :value="Number(home.due.amount)" /></template>
             </p>
-            <Badge variant="outline" class="tw:border-[var(--ds-canvas)]/30 tw:text-[var(--ds-canvas)]/80">{{ moneyStatusLabel(home.due.review ? 'review_required' : 'unpaid') }}</Badge>
+            <Badge variant="outline" class="tw:border-[var(--ds-canvas)]/30 tw:text-[var(--ds-canvas)]/80">{{ home.due.review ? moneyStatusLabel('review_required') : '待繳' }}</Badge>
           </div>
-          <p v-if="home.due.dueDateLabel" class="tw:text-sm tw:text-[var(--ds-canvas)]/60">{{ home.due.dueDateLabel }} 前</p>
+          <p v-if="home.due.dueDateLabel" class="tw:text-sm tw:text-[var(--ds-canvas)]/60">繳費期限 {{ home.due.dueDateLabel }}</p>
           <ShineBorder class="tw:mt-4" :colors="['var(--ds-canvas)', 'var(--ds-brand-sun)']">
-            <Button class="tw:h-11 tw:w-full tw:bg-[var(--ds-brand-sun)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:transition-transform tw:motion-safe:active:scale-[0.96]" @click="$emit('pay')">怎麼繳費</Button>
+            <Button class="tw:h-11 tw:w-full tw:bg-[var(--ds-brand-sun)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:transition-transform tw:motion-safe:active:scale-[0.96]" @click="$emit('pay')">繳費方式</Button>
           </ShineBorder>
         </template>
-        <p v-else class="tw:text-2xl tw:font-semibold">都繳清了</p>
+        <p v-else class="tw:text-2xl tw:font-semibold">本期學費已繳清，謝謝您</p>
       </CardContent>
     </Card>
     </BlurFade>
@@ -66,8 +66,8 @@ defineEmits(['leave', 'pay', 'learning']);
         <p v-if="home.feedback" class="tw:text-base">
           {{ home.feedback.dateLabel }} {{ home.feedback.subject }}{{ home.feedback.text ? `：${home.feedback.text}` : '' }}
         </p>
-        <p v-else class="tw:text-base">還沒有回饋</p>
-        <Button variant="secondary" class="tw:mt-4 tw:h-11 tw:w-full" @click="$emit('learning')">看全部・回覆老師</Button>
+        <p v-else class="tw:text-base">目前沒有新回饋</p>
+        <Button variant="secondary" class="tw:mt-4 tw:h-11 tw:w-full" @click="$emit('learning')">查看回饋並回覆老師</Button>
       </CardContent>
     </Card>
     </BlurFade>

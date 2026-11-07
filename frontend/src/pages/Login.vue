@@ -1,5 +1,6 @@
 <template>
   <div v-if="mode === 'login'" class="login-wrap">
+    <AuroraBackground />
     <BlurFade class="login-card-enter">
     <div class="login-card">
       <div class="login-header">
@@ -72,6 +73,7 @@
   <Register v-else-if="mode === 'register'" @switch-mode="mode = $event" />
   <DirectorRegister v-else-if="mode === 'director-register'" @switch-mode="mode = $event" />
   <div v-else-if="mode === 'forgot-password'" class="login-wrap">
+    <AuroraBackground />
     <div class="login-card">
       <div class="login-header">
         <div class="logo-wrapper">
@@ -135,7 +137,7 @@ import { supabase } from '../supabase';
 import Register from './Register.vue';
 import DirectorRegister from './DirectorRegister.vue';
 import logoUrl from '../assets/logo.png';
-import { BlurFade, ShineBorder } from '../components/motion';
+import { AuroraBackground, BlurFade, ShineBorder } from '../components/motion';
 
 const mode = ref('login');
 const account = ref('');
@@ -272,7 +274,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* Founder 2026-11-07: premium minimal. Plain ink, gold only on the 登入 button. */
+/* Founder 2026-11-07: original orange back, slow aurora drift (AuroraBackground); clean white card, gold 登入 button. */
 .login-wrap {
   min-height: 100vh;
   min-height: 100dvh;
@@ -280,16 +282,18 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 32px 24px;
-  background: var(--ds-brand-ink);
+  position: relative;
+  overflow: hidden;
 }
-.login-card-enter { width: 100%; max-width: 420px; }
+.login-card-enter { position: relative; width: 100%; max-width: 420px; }
 
 /* 玻璃擬態 (Glassmorphism) 卡片設計 */
 .login-card {
+  position: relative;
   background: var(--ds-canvas);
   border: none;
   border-radius: 20px;
-  box-shadow: 0 24px 60px color-mix(in srgb, var(--ds-brand-ink) 60%, transparent);
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--ds-brand-ink) 28%, transparent);
   width: 100%;
   max-width: 420px;
   overflow: hidden;

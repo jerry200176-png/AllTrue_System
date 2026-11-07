@@ -71,9 +71,9 @@
         >
           <!-- 今天的課 -->
           <BlurFade class="tw:lg:col-start-1" data-testid="director-hero">
-            <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card">
+            <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card tw:bg-[linear-gradient(160deg,color-mix(in_srgb,var(--ds-brand-sun)_14%,var(--ds-canvas)),var(--ds-canvas)_55%)]">
               <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body tw:font-bold">
-                <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                 今天的課
               </div>
               <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
@@ -124,7 +124,7 @@
                   class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
                   @click="openDashboardTask(task)"
                 >
-                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
+                  <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                   <span class="tw:flex-1">{{ plainTaskTitle(task) }}</span>
                   <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-bold">{{ task.count }}</span>
                   <ChevronRight :size="24" :stroke-width="2.4" class="tw:text-tpl-secondary" aria-hidden="true" />
@@ -153,12 +153,12 @@
               <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:motion-safe:lg:hover:-translate-y-0.5 tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
                 <Card class="tpl-card tw:h-full tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-body tw:font-bold">
-                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
+                    <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                     {{ kpi.label }}
                   </div>
                   <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-bold tw:leading-none tw:tracking-tighter"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary">{{ kpi.sub }}</p>
-                  <Sparkline v-if="kpi.spark" :values="kpi.spark" tone="ink-2" :label="kpi.sparkLabel" />
+                  <Sparkline v-if="kpi.spark" :values="kpi.spark" :tone="kpi.tone" :label="kpi.sparkLabel" />
                 </Card>
               </button>
             </BlurFade>
@@ -167,7 +167,7 @@
           <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
             <details v-if="operationsTrust?.decision_center" class="director-trust-note tpl-card tw:rounded-3xl tw:px-5 tw:py-0 tw:text-tpl-body tw:shadow-tpl-card">
               <summary class="tw:min-h-18 tw:gap-4 tw:px-0 tw:text-tpl-body tw:font-semibold tw:text-foreground" title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
-                <span class="tpl-tile tpl-g-ink2 tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
+                <span class="tpl-tile tpl-g-ink2 tw:rounded-[0.6875rem] tw:shadow-tpl-tile"><ShieldCheck :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
                 <span class="tw:flex-1">課表正確度</span>
                 <strong class="director-num tw:text-tpl-body" :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
