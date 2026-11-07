@@ -21,6 +21,8 @@ if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/$(id -u)/docker.sock" ]]; then
   export DOCKER_HOST="unix:///run/user/$(id -u)/docker.sock"
 fi
 
+export STAGING_HTPASSWD="${STAGING_HTPASSWD:-${HOME}/alltrue-stage/state/htpasswd}"
+
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
 
 compose() {

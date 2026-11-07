@@ -81,22 +81,19 @@ and `api.telegram.org` to 127.0.0.1.
 Inspect: `systemctl --user list-timers alltrue-staging-update.timer`, `journalctl --user -u alltrue-staging-update`.
 Pause: `touch ~/alltrue-stage/state/pause` (resume: remove it) or `systemctl --user stop alltrue-staging-update.timer`.
 
-## Public URL (Cloudflare Tunnel + Access)
+## Public URL (Cloudflare Tunnel + nginx basic auth)
 
-Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` installs a pinned, checksum-verified
-`cloudflared` into `~/bin`. Then, once:
+Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` installs a pinned, checksum-verified `cloudflared` into `~/bin`.
+One-time: `cloudflared tunnel login`, `tunnel create alltrue-staging`, `~/.cloudflared/config.yml` with ingress
+`alltrue-staging.lifenet.com.tw` -> `http://127.0.0.1:18080`, user service `systemd/alltrue-staging-tunnel.service`.
 
-```bash
-~/bin/cloudflared tunnel login                      # Founder opens the printed URL and picks the zone
-~/bin/cloudflared tunnel create alltrue-staging
-# DNS route only AFTER the Cloudflare Access application exists (never public without Access):
-~/bin/cloudflared tunnel route dns alltrue-staging alltrue-staging.lifenet.com.tw
-# ~/.cloudflared/config.yml: ingress: [{hostname: alltrue-staging.lifenet.com.tw, service: http://127.0.0.1:18080}, {service: http_status:404}]
-~/bin/cloudflared tunnel run alltrue-staging        # user service: systemd/alltrue-staging-tunnel.service
-```
-
-Then in the Cloudflare dashboard add an Access application on that hostname with two policies: Allow the Founder's email, and Service Auth for the preview Pages Function's service token (the token is created by the Founder; it is stored only in Cloudflare and the Pages project, never here).
-Never expose the hostname without that policy. `cert.pem` and the tunnel credentials stay on the host.
+**Basic auth (no Cloudflare Access / Zero Trust):** `lifecycle/gen-basic-auth.sh` creates `~/alltrue-stage/state/htpasswd`
+(users `founder`, `preview-proxy`) and the plaintext `pw-founder`, `pw-preview-proxy` (mode 600, outside git).
+`preflight.sh` refuses to start without the htpasswd file. nginx gates everything except `/api/v1/health`.
+The SPA sends `Authorization: Bearer` on API calls, so API paths that need a login token skip basic auth only when a Bearer
+header is present; login, branches, webhooks and other unauthenticated API entry points always require basic auth.
+Only after basic auth works, publish DNS: `cloudflared tunnel route dns alltrue-staging alltrue-staging.lifenet.com.tw`.
+`cert.pem` and tunnel credentials stay on the host.
 
 ## Non-goals
 

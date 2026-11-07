@@ -67,6 +67,7 @@ services:
       - "127.0.0.1:${STAGING_HTTP_PORT:-18080}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${STAGING_HTPASSWD:?run lifecycle/gen-basic-auth.sh}:/etc/nginx/htpasswd:ro
     depends_on:
       - app
     networks:
