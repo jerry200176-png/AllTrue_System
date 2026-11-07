@@ -178,6 +178,7 @@ final class PopOperationService
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && !$this->isExactMuzhaChenBillingCatchup($entry)
             && !$this->isExactUnbilledBacklogCatchup($entry)
+            && !$this->isExactBillingPeriodRekey($entry)
             && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactForwardExtraCancel($entry)
             && !$this->isExactDuplicateHistoryPinRepair($entry)
@@ -476,7 +477,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /**
@@ -915,6 +916,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactBillingPeriodRekey($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'invoice_billing_period_and_note_tag_only'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactInvoice1997StaleValues($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1230,6 +1246,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'unbilled-backlog-catchup-20261006'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnbilledBacklogCatchupStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-unbilled-backlog-catchup'
+            && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
+    /** in-app #514 period re-key: same Founder-exact shape as the unbilled backlog catch-up (campus_ids + expected_digest). */
+    private function isExactBillingPeriodRekey(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'billing-period-rekey-20261107'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-billing-period-rekey'
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
     }
 
