@@ -24,6 +24,7 @@ main() {
   mkdir -p "${STATE}"
   exec 9>"${STATE}/lock"; flock -n 9 || { log "SKIP another run active"; return 0; }
 
+  [[ -e "${STATE}/pause" ]] && { log "SKIP paused (rm ${STATE}/pause to resume)"; return 0; }
   local sha good
   sha="$(curl -fsS --max-time 20 "${API}" | python3 -c 'import json,sys; r=json.load(sys.stdin)["workflow_runs"]; print(r[0]["head_sha"] if r else "")')" \
     || { log "ERROR github api unreachable/rate-limited"; return 1; }

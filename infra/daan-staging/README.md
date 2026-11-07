@@ -64,7 +64,7 @@ Parents log in with a seeded StudentID plus phone (no password); the file lists 
 5. Everything is appended to `infra/daan-staging/runtime/evidence/auto-update.log`.
 
 Inspect: `systemctl --user list-timers alltrue-staging-update.timer`, `journalctl --user -u alltrue-staging-update`.
-Pause: `systemctl --user stop alltrue-staging-update.timer`.
+Pause: `touch ~/alltrue-stage/state/pause` (resume: remove it) or `systemctl --user stop alltrue-staging-update.timer`.
 
 ## Public URL (Cloudflare Tunnel + Access)
 
