@@ -1879,6 +1879,15 @@ class PaymentReportController extends Controller
                         return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
                     }
                     $alreadyReversed = true;
+                } else {
+                    // In-app #521: a legacy reversal row has no payment_report_id, so this receipt can still read 'confirmed'
+                    // after its money was already taken back. A second -amount row would then cancel another receipt's money
+                    // (a real transfer reads 未繳, staff collect again, the bill ends 多收). The bill keeps at least what its
+                    // other confirmed receipts reported: below that floor, the money is gone already; only the status changes.
+                    $net = max(0, $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount)));
+                    $backedByOthers = (int) PaymentReport::query()->where('InvoiceID', $invoice->id)->where('status', 'confirmed')
+                        ->where('id', '!=', $report->getKey())->whereNotNull('payment_id')->sum('reported_amount');
+                    $alreadyReversed = $net - $originalAmount < $backedByOthers;
                 }
             }
 

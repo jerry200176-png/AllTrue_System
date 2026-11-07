@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-inapp-521-transfer-void-double-reversal
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 撤銷收款不再重複扣
+    summary: 收據的錢已被沖掉時，撤銷不會再多扣另一筆匯款。
+    items:
+      - category: fixed
+        text: 撤銷收款時，若這張收據的錢早已被沖掉，不再多扣一次，避免有匯款卻顯示未繳、再收變多收。
+    source_refs:
+      - "changelog:2026-11-07:inapp-521-transfer-void-double-reversal"
