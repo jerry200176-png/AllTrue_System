@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Http\Middleware\ThrottleRequestsByIp;
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
+use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Cache\ArrayStore;
@@ -484,5 +487,33 @@ class SecurityHardeningTest extends TestCase
             ->assertStatus(200)
             ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security'])
             ->assertJsonStructure(['business_today' => ['lessons_written_today', 'bills_created_today', 'sign_ins_today']]);
+    }
+
+    private function todaySessionOnCampus(int $campusId): void
+    {
+        $student = Student::create(['name' => 'iso', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $course = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => now()->toDateString(), 'EndDate' => now()->toDateString(), 'TotalHours' => 1, 'Charge' => 1, 'Paid' => 0,
+            'Rate' => 1, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionCount' => 1, 'SessionDuration' => 120,
+            'RemainingSessions' => 0, 'ClassType' => 'one_on_one', 'UsedSessions' => 0, 'monthly_sessions' => 1, 'rate_unit' => 'session',
+        ]);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+    }
+
+    /** @test */
+    public function health_detailed_business_counts_are_campus_scoped_for_directors(): void
+    {
+        $campusB = Campus::create(['name' => 'SecCampusB', 'Token' => 'sec-b', 'code' => 'secb', 'Current' => 0, 'LineNotifyID' => '',
+            'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramToken' => '',
+            'TelegramChatID' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
+        [$token] = $this->makeDirectorToken(); // director of campus A only
+        $get = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)->json('business_today.lessons_written_today');
+
+        $this->todaySessionOnCampus($campusB->id);
+        $this->assertSame(0, $get(), 'campus A director must not see campus B counts');
+        $this->todaySessionOnCampus($this->campus->id);
+        $this->assertSame(1, $get());
     }
 }
