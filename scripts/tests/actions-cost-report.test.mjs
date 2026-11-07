@@ -281,3 +281,8 @@ test('workflow: schedule and manual runs serialize across refs without cancellin
   assert.match(concurrency, /^  cancel-in-progress: false$/m);
   assert.equal(concurrency.includes('${{'), false, 'the group must not vary by event, ref or run');
 });
+
+test('render: AI usage proxy line appears only when a count is supplied', () => {
+  assert.match(render([], { date: '2026-11-07', aiCommits: 12 }), /AI usage proxy: 12 commits/);
+  assert.doesNotMatch(render([], { date: '2026-11-07' }), /AI usage proxy/);
+});
