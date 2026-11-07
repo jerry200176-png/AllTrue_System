@@ -1329,6 +1329,7 @@ test.describe('Visual regression @visual', () => {
     ['students', 'students', 'normal'],
     ['course-management', 'course', 'normal'],
     ['billing-center', 'tuition', 'normal'],
+    ['login', 'login', 'normal'],
   ];
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
     for (const [name, pageName, mode] of pages) {

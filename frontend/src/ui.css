@@ -133,11 +133,6 @@ button[data-slot] {
 .tpl-g-sun { background: var(--tpl-g-sun); color: var(--ds-brand-glyph); } .tpl-g-gold { background: var(--tpl-g-gold); color: var(--ds-brand-glyph); }
 .tpl-g-amber { background: var(--tpl-g-amber); color: var(--ds-brand-glyph); } .tpl-g-red { background: var(--tpl-g-red); color: white; }
 .tpl-btn-primary { position: relative; overflow: hidden; background: var(--tpl-g-btn); color: white; }
-.tpl-btn-primary::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(110deg, transparent 35%, color-mix(in srgb, var(--ds-brand-gold) 45%, transparent) 50%, transparent 65%); }
 .tpl-mesh { position: relative; isolation: isolate; }
 .tpl-mesh::before { content: ""; position: absolute; inset: -2rem -1rem auto; height: 26rem; z-index: -1; pointer-events: none; filter: blur(40px); opacity: 0.4;
   background: radial-gradient(40% 60% at 15% 30%, var(--ds-brand-sun), transparent 70%), radial-gradient(35% 55% at 55% 10%, var(--ds-brand-amber-light), transparent 70%), radial-gradient(35% 55% at 90% 30%, var(--ds-primary-wash), transparent 70%); }
-@media (prefers-reduced-motion: no-preference) {
-  .tpl-btn-primary::after { animation: tpl-shine 3.2s ease-in-out infinite 1s; }
-}
-@keyframes tpl-shine { to { transform: translateX(100%); } }

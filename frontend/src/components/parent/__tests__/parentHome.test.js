@@ -82,7 +82,7 @@ describe('ParentHome empty and filled states', () => {
       feedback: { isNew: true, dateLabel: '11/1', subject: '數學', text: '好' },
     });
     expect(out).toContain('還有 2 天');
-    expect(out).toContain('$7,200');
+    expect(out.replace(/<[^>]+>/g, '')).toContain('$7,200'); // amount is wrapped in the NumberTicker span
     expect(out.match(/未繳/g)).toHaveLength(1);
     expect(out.match(/7,200/g)).toHaveLength(1);
     expect(out.match(/data-guide="parent-home-/g)).toHaveLength(3);

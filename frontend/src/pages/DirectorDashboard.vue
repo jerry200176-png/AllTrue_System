@@ -60,8 +60,7 @@
           @update:model-value="setDashboardViewMode"
         />
 
-        <MotionConfig reduced-motion="user">
-        <section
+                <section
           v-if="dashboardViewMode === 'focus'"
           id="director-workbench-panel-focus"
           class="director-workbench-v2__focus tw:grid tw:grid-cols-1 tw:gap-4 tw:text-tpl-body tw:lg:grid-cols-[1.1fr_1fr] tw:lg:grid-rows-[auto_1fr]"
@@ -71,7 +70,7 @@
           tabindex="0"
         >
           <!-- 今天的課 -->
-          <Motion as="div" :initial="enterFrom" :animate="enterTo" class="tw:lg:col-start-1" data-testid="director-hero">
+          <BlurFade class="tw:lg:col-start-1" data-testid="director-hero">
             <Card class="tpl-card tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card">
               <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body tw:font-bold">
                 <span class="tpl-tile tpl-g-ink tw:rounded-[0.6875rem]"><Clock :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
@@ -84,12 +83,14 @@
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ heroLoading ? '載入中…' : pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
-              <Button class="tpl-btn-primary tw:mt-4 tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.98]" @click="goToAttendance">去點名</Button>
+              <ShineBorder class="tw:mt-4" radius="1rem" :width="3">
+                <Button class="tpl-btn-primary tw:h-14 tw:w-full tw:rounded-2xl tw:bg-transparent tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-white tw:shadow-tpl-glow tw:motion-safe:active:scale-[0.96]" @click="goToAttendance">去點名</Button>
+              </ShineBorder>
             </Card>
-          </Motion>
+          </BlurFade>
 
           <!-- 今天要處理: existing task queue as a grouped list -->
-          <Motion as="section" :initial="enterFrom" :animate="enterTo" :transition="{ delay: 0.1 }" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
+          <BlurFade as="section" :delay="100" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
             <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-extrabold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
@@ -138,18 +139,15 @@
             >
               查看其他 {{ dashboardAdditionalTaskCount }} 項營運工作
             </button>
-          </Motion>
+          </BlurFade>
 
           <!-- KPI cards: the whole card is a link to its list -->
           <div class="tw:grid tw:grid-cols-2 tw:gap-4 tw:lg:col-start-1 tw:lg:self-start" data-guide="director-summary">
             <h2 class="tw:sr-only">今日摘要</h2>
-            <Motion
+            <BlurFade
               v-for="(kpi, i) in kpiCards"
               :key="kpi.key"
-              as="div"
-              :initial="enterFrom"
-              :animate="enterTo"
-              :transition="{ delay: 0.14 + 0.06 * i }"
+              :delay="140 + 60 * i"
               :data-testid="`kpi-${kpi.key}`"
             >
               <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
@@ -163,7 +161,7 @@
                   <Sparkline v-if="kpi.spark" :values="kpi.spark" :tone="kpi.tone" :label="kpi.sparkLabel" />
                 </Card>
               </button>
-            </Motion>
+            </BlurFade>
           </div>
 
           <aside class="director-workbench-v2__aside tw:lg:col-span-2" aria-label="課表正確度">
@@ -332,7 +330,6 @@
             </aside>
           </div>
         </section>
-        </MotionConfig>
 
         <div v-if="workflowDecisionModal" class="director-modal-backdrop" role="presentation" @click.self="closeWorkflowDecision">
           <section class="director-modal" role="dialog" aria-modal="true" aria-labelledby="director-modal-title">
@@ -369,14 +366,13 @@ import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import AtTabs from '../components/design-system/AtTabs.vue';
-import { Motion, MotionConfig } from 'motion-v';
 import logoUrl from '../assets/logo.png';
 import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks, ShieldCheck } from 'lucide-vue-next';
 import { Card } from '@/components/ui/card';
 import { ActivityRing } from '@/components/ui/activity-ring';
 import { Sparkline } from '@/components/ui/sparkline';
 import { Button } from '@/components/ui/button';
-import { NumberTicker } from '@/components/ui/number-ticker';
+import { BlurFade, NumberTicker, ShineBorder } from '@/components/motion';
 import { owedCard, renewalCount, oldestEvaluationAge, plainTaskTitle, sevenDayEvalCounts } from '../lib/directorHomeCards.js';
 import { useTextScale } from '../composables/useTextScale.js';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
@@ -663,10 +659,6 @@ const attendedCount = computed(() =>
 const { steps: textScaleSteps, current: textScale, setScale: setTextScale } = useTextScale();
 const owed = computed(() => owedCard(tuitionAlertRows.value));
 const oldestEvalDays = computed(() => oldestEvaluationAge(pendingEvaluations.value, localTodayYmd()));
-// Card enter: blur-fade, staggered by the caller; off under prefers-reduced-motion.
-const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-const enterFrom = prefersReducedMotion ? false : { opacity: 0, y: 10, filter: 'blur(6px)' };
-const enterTo = { opacity: 1, y: 0, filter: 'blur(0px)' };
 const TASK_LOOK = {
   attendance: [Clock, 'tpl-g-ink'], makeup: [RotateCcw, 'tpl-g-ink'], 'parent-leave': [UserRound, 'tpl-g-ink2'],
   'schedule-discrepancy': [CalendarDays, 'tpl-g-sun'], tuition: [Wallet, 'tpl-g-red'], evaluations: [ClipboardCheck, 'tpl-g-gold'],
