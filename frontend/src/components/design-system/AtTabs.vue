@@ -9,7 +9,7 @@ const props = defineProps({
   tabs: { type: Array, required: true },
   label: { type: String, default: '' },
   idPrefix: { type: String, default: '' },
-  variant: { type: String, default: 'underline' }, // 'underline' | 'segmented'
+  variant: { type: String, default: 'underline' }, // 'underline' | 'segmented' | 'ios' (full-width iOS segmented control, springy thumb)
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -121,7 +121,19 @@ onBeforeUnmount(() => ro?.disconnect());
   background: var(--ds-surface); box-shadow: var(--ds-shadow-1);
 }
 
+/* iOS segmented control: full width, grey track, white thumb that springs between segments (same sliding mechanism). */
+.at-tabs-slide--ios {
+  display: flex; width: 100%; padding: 2px; gap: 0; border: 0; border-radius: 10px;
+  background: color-mix(in srgb, var(--ds-ink) 8%, transparent); overflow: hidden;
+}
+.at-tabs-slide--ios .at-tab { flex: 1; justify-content: center; margin-bottom: 0; border-radius: 8px; color: var(--ds-ink); } /* ink, not ink-mute: AA on the grey track */
+.at-tabs-slide--ios .at-tabs-slide__indicator {
+  top: 2px; bottom: 2px; left: 0; border-radius: 8px; background: var(--ds-canvas);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--ds-ink) 12%, transparent), 0 1px 1px color-mix(in srgb, var(--ds-ink) 8%, transparent);
+}
+.at-tabs-slide--ios .at-tabs-slide__indicator.is-ready { transition: transform 320ms var(--ds-ease-ios), width 320ms var(--ds-ease-ios); }
+
 @media (prefers-reduced-motion: reduce) {
-  .at-tabs-slide__indicator.is-ready { transition: none; }
+  .at-tabs-slide__indicator.is-ready, .at-tabs-slide--ios .at-tabs-slide__indicator.is-ready { transition: none; }
 }
 </style>

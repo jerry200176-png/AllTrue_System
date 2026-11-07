@@ -133,9 +133,34 @@ button[data-slot] {
 }
 
 /* ---- premium layer classes (template pages) ---- */
-.tpl-glass { background: var(--tpl-glass-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-.tpl-card { background: var(--tpl-glass-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--tpl-line); }
-.tpl-bar { background: var(--tpl-bar-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid var(--tpl-line); }
+.tpl-card { background: var(--ds-canvas); border: 1px solid var(--tpl-line); } /* content cards are solid, glass is for bars and overlays (.ds-glass) */
+/* ---- Material utility: one class, three levels (--thin / --regular / --thick). Fixed bars, overlays and the login card only; never nest. ---- */
+.ds-glass {
+  background: var(--_g-bg, var(--ds-glass-regular-bg));
+  -webkit-backdrop-filter: blur(var(--_g-blur, var(--ds-glass-regular-blur))) saturate(var(--ds-glass-saturate));
+  backdrop-filter: blur(var(--_g-blur, var(--ds-glass-regular-blur))) saturate(var(--ds-glass-saturate));
+  box-shadow: var(--ds-glass-highlight);
+}
+.ds-glass--thin { --_g-bg: var(--ds-glass-thin-bg); --_g-blur: var(--ds-glass-thin-blur); }
+.ds-glass--regular { --_g-bg: var(--ds-glass-regular-bg); --_g-blur: var(--ds-glass-regular-blur); }
+.ds-glass--thick { --_g-bg: var(--ds-glass-thick-bg); --_g-blur: var(--ds-glass-thick-blur); }
+/* Liquid Glass rim (concept from Vue Bits GlassSurface's inset light stack, CSS only, no SVG filter so it works in every browser) */
+.ds-glass--rim {
+  border: 1px solid var(--ds-glass-border);
+  box-shadow: var(--ds-glass-highlight), inset 0 0 0 1px color-mix(in srgb, var(--ds-canvas) 30%, transparent), inset 0 -10px 24px -14px color-mix(in srgb, var(--ds-ink) 14%, transparent), 0 24px 60px color-mix(in srgb, var(--ds-brand-ink) 28%, transparent);
+}
+/* Fallbacks: no backdrop-filter, or the user asked for less transparency -> a solid surface. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .ds-glass { background: var(--ds-glass-solid); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ds-glass { background: var(--ds-glass-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* iOS press: springy scale-down on touch/click. Pair with a transform transition (.ds-press sets it). */
+.ds-press { transition: transform 220ms var(--ds-ease-ios); }
+@media (prefers-reduced-motion: no-preference) {
+  .ds-press:active { transform: scale(0.97); }
+}
 .tpl-tile { display: grid; place-items: center; flex: none; width: 2.5rem; height: 2.5rem; color: white; }
 .tpl-g-orange { background: var(--tpl-g-orange); color: white; }
 .tpl-g-green { background: var(--tpl-g-green); color: white; }

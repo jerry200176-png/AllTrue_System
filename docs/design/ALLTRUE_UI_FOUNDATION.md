@@ -23,6 +23,8 @@ Founder 2026-11-06: every page, staff and parent, gets the look of the parent �
 
 分類 icon 用繽紛漸層（iOS 風），主要按鈕金色，紅色只給危險（Founder 2026-11-07）。Category hues are `--ds-cat-*` tokens (orange, green, blue, violet, pink, teal, indigo); the hero stays warm and the primary button gold. 登入：橘金流動絲綢（Vue Bits Silk 移植，WebGL，舊機自動退回 CSS）（Founder 2026-11-07）。Elsewhere (parent home): one accent on the primary action, hierarchy by type and whitespace, hairline or soft shadow (never both), neutral badges, motion once and quiet. Parent-facing copy is gentle and polite (您, no blame words such as 欠, 逾期, 未繳).
 
+Glass (Founder 2026-11-07, prototype): translucent materials only on fixed bars (`GlassNavBar`, parent tab bar), overlays and the Login card, via `.ds-glass` with `--thin`/`--regular`/`--thick` (`--ds-glass-*` tokens, blur <= 20px, never nested). Content cards stay solid white. Fallbacks: `@supports not (backdrop-filter)` and `prefers-reduced-transparency` give a solid surface; reduced motion gives an instant collapse. Large titles collapse into a sticky bar (`useCollapse`).
+
 ## Authority map
 
 For product and operations pages, use the documents in this order:

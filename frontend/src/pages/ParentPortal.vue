@@ -93,19 +93,23 @@
     <!-- ═══ Dashboard (logged in) ═══ -->
     <template v-if="token && dashboard">
 
-      <!-- Shell header: who, where, settings (#4986 step 1) -->
-      <div class="pp-card pp-profile-card" data-guide="parent-student-card">
+      <!-- Shell header: sticky translucent bar (settings) + iOS large title (who) (#4986 step 1) -->
+      <GlassNavBar class="pp-navbar" :collapsed="navCollapsed" :title="dashboard.student?.name || '學生'">
+        <template #trailing>
+          <button type="button" class="pp-btn-logout ds-press" :class="{ active: activeTab === 'settings' }" data-guide="parent-settings-button" aria-label="設定" :aria-pressed="activeTab === 'settings'" @click="activeTab = activeTab === 'settings' ? 'home' : 'settings'">
+            <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+          </button>
+        </template>
+      </GlassNavBar>
+      <div class="pp-profile-card" data-guide="parent-student-card">
         <div class="pp-profile-top">
           <div class="pp-profile-info">
-            <h2 class="pp-student-name">{{ dashboard.student?.name || '學生' }}</h2>
+            <h2 ref="largeTitle" class="pp-student-name">{{ dashboard.student?.name || '學生' }}</h2>
             <div class="pp-meta-row">
               <span v-if="dashboard.student?.grade" class="pp-tag pp-tag-grade">{{ dashboard.student.grade }}</span>
               <span v-if="dashboard.student?.campus_name" class="pp-tag pp-tag-campus">{{ dashboard.student.campus_name }}</span>
             </div>
           </div>
-          <button type="button" class="pp-btn-logout" :class="{ active: activeTab === 'settings' }" data-guide="parent-settings-button" aria-label="設定" :aria-pressed="activeTab === 'settings'" @click="activeTab = activeTab === 'settings' ? 'home' : 'settings'">
-            <span class="material-symbols-outlined" aria-hidden="true">settings</span>
-          </button>
         </div>
         <!-- Student Switcher (multi-child) -->
         <div class="pp-student-switcher" v-if="students && students.length > 1" role="group" aria-labelledby="parent-student-switcher-label">
@@ -837,7 +841,7 @@
       </div>
 
       <!-- ═══ Bottom tab bar ═══ -->
-      <SlidingIndicator class="pp-tab-bar" role="tablist" aria-label="家長入口分頁" :active="activeTab">
+      <SlidingIndicator class="pp-tab-bar ds-glass ds-glass--regular" role="tablist" aria-label="家長入口分頁" :active="activeTab">
         <button id="parent-tab-home" type="button" role="tab" aria-controls="parent-panel-home" :aria-selected="activeTab === 'home'" :tabindex="activeTab === 'home' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'home' }]" @click="activeTab = 'home'" @keydown="onParentTabKeydown($event, 'home')">
           <span class="material-symbols-outlined" aria-hidden="true">home</span>
           首頁
@@ -869,6 +873,10 @@ import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, 
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { notesForRole } from '../lib/releaseNotes';
 import ParentHome from '../components/parent/ParentHome.vue';
+import GlassNavBar from '../components/glass/GlassNavBar.vue';
+import { useCollapse } from '../components/glass/useCollapse';
+const largeTitle = ref(null);
+const navCollapsed = useCollapse(largeTitle);
 import { SlidingIndicator } from '../components/motion';
 import { pickNextLesson, pickAmountDue, pickLatestFeedback } from '../lib/parentHome';
 import { lessonStatusLabel, courseTypeLabel, moneyStatusLabel, outOfLessonsLabel } from '../lib/parentLabels';
@@ -1791,8 +1799,9 @@ onMounted(async () => {
 .pp {
   max-width: 520px;
   margin: 0 auto;
-  padding: 12px 12px 88px;
-  font-family: 'Inter', 'Noto Sans TC', -apple-system, sans-serif;
+  --pp-x: 12px; --pp-y: 12px;
+  padding: var(--pp-y) var(--pp-x) 88px;
+  font-family: var(--font-sans);
   color: var(--ds-ink);
   min-height: 100vh;
   min-height: 100dvh;
@@ -1873,11 +1882,11 @@ onMounted(async () => {
   font-weight: 700; cursor: pointer;
 }
 .pp-btn-logout {
-  background: none; border: 1px solid var(--ds-canvas-soft); border-radius: 8px;
+  background: none; border: 0; border-radius: 50%;
   min-width: 44px; min-height: 44px; padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.pp-btn-logout:hover, .pp-btn-logout.active { background: var(--ds-canvas); }
+.pp-btn-logout:hover, .pp-btn-logout.active { background: color-mix(in srgb, var(--ds-ink) 8%, transparent); }
 .pp-profile-info { flex: 1; min-width: 0; }
 .pp-btn-logout:focus-visible,
 .pp-chip:focus-visible,
@@ -1899,7 +1908,8 @@ onMounted(async () => {
 }
 
 /* ═══ Profile Card ═══ */
-.pp-profile-card { padding: 18px; }
+.pp-navbar { margin: calc(-1 * var(--pp-y)) calc(-1 * var(--pp-x)) 0; }
+.pp-profile-card { padding: 4px 4px 12px; margin-bottom: 4px; } /* flat: the large title sits on the page, not in a card */
 .pp-profile-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .pp-avatar {
   width: 48px; height: 48px; border-radius: 50%;
@@ -1909,7 +1919,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 .pp-profile-info { flex: 1; min-width: 0; }
-.pp-student-name { margin: 0; font-size: 1.2em; color: var(--ds-ink); overflow-wrap: anywhere; }
+.pp-student-name { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; color: var(--ds-ink); overflow-wrap: anywhere; } /* iOS large title */
 .pp-meta-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .pp-tag {
   display: inline-block; padding: 2px 8px; border-radius: 4px;
@@ -2175,7 +2185,7 @@ onMounted(async () => {
 .pp-tab-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--ds-z-sticky, 10);
   display: flex; max-width: 520px; margin: 0 auto;
-  background: var(--ds-canvas); border-top: 1px solid var(--ds-canvas-soft);
+  box-shadow: 0 -0.5px 0 var(--ds-glass-hairline), var(--ds-glass-highlight);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .pp-tab {
@@ -2191,7 +2201,9 @@ onMounted(async () => {
 }
 .pp-tab .material-symbols-outlined { font-size: 20px; }
 .pp-tab.active { color: var(--ds-ink); font-weight: 700; }
-.pp-tab:not(.active):hover { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
+.pp-tab:not(.active):hover { color: var(--ds-ink-mute); }
+.pp-tab { transition: color .2s, transform 220ms var(--ds-ease-ios); }
+@media (prefers-reduced-motion: no-preference) { .pp-tab:active { transform: scale(0.97); } }
 .pp-tab-badge {
   position: absolute; top: 6px; right: calc(50% - 18px);
   background: var(--ds-danger); color: var(--ds-canvas); border-radius: 10px;
@@ -2941,7 +2953,7 @@ onMounted(async () => {
 }
 
 /* ═══ Fade In Animation on dashboard render ═══ */
-.pp-profile-card, .pp-alert-card { animation: pp-card-fade-in 0.25s ease-out; }
+.pp-alert-card { animation: pp-card-fade-in 0.25s ease-out; }
 @keyframes pp-card-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ═══ Announcements ═══ */
@@ -3008,14 +3020,14 @@ onMounted(async () => {
 
 /* ═══ Responsive ═══ */
 @media (max-width: 640px) {
-  .pp { padding: 8px 8px 88px; }
+  .pp { --pp-x: 8px; --pp-y: 8px; }
   .pp-card { padding: 14px; border-radius: 10px; }
   .pp-login-card { padding: 20px 16px; }
   .pp-sessions-summary { flex-direction: column; text-align: center; gap: 8px; }
 }
 
 @media (min-width: 521px) {
-  .pp { padding: 20px 20px 88px; }
+  .pp { --pp-x: 20px; --pp-y: 20px; }
   .pp-card { padding: 20px 24px; }
   .pp-course-grid { display: grid; grid-template-columns: repeat(2, 1fr); }
 }

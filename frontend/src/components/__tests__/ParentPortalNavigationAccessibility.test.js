@@ -16,7 +16,7 @@ describe('parent portal navigation accessibility contract', () => {
   });
 
   it('exposes the primary tabs and their panels as a connected tablist', () => {
-    expect(source).toMatch(/class="pp-tab-bar" role="tablist" aria-label="家長入口分頁"/);
+    expect(source).toMatch(/class="pp-tab-bar[^"]*" role="tablist" aria-label="家長入口分頁"/);
     for (const tab of ['home', 'schedule', 'learning', 'billing']) {
       expect(source).toMatch(new RegExp(`id="parent-tab-${tab}"[^>]*type="button"[^>]*role="tab"`));
       expect(source).toMatch(new RegExp(`aria-controls="parent-panel-${tab}"`));
