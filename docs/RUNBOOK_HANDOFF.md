@@ -26,6 +26,7 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 | #5038 per-PR 預覽 | 已 merge。proxy 只放行 GET/HEAD（其他回 405）；staging gate cookie 11/7 已換過。 | quick-tunnel 網址換了，就要更新 repo variable `PREVIEW_API_ORIGIN`（見 `docs/ops/DAAN_STAGING_V1.md`） | PR #5038 |
 | #4995 property tests | R3 FAIL：只檢查邊界，6/8 mutant 活著。 | 套用 reviewer 留言裡的斷言，並加閏日 seed | PR #4995 留言 |
 | #5054 staging pull-deploy | 已 queue | 等 land-queue | PR #5054 |
+| AI 維運閉環 (#5070) gap 5 | gap 5 PITR 演練排程：`881-pitr-disposable-drill.yml` 加每月 15 日 cron（備份還原測試在 1 日）。PR 進行中。 | 等 R3 批次 review；合併後在 #5070 勾選 | #5070 |
 | Flow W7–W11 | 計畫在 #4953 的 2026-11-07 留言 | 每項一個 PR | #4953 |
 | N+1 告警 | 9 張重複的 Sentry 單已併成 #5061 | 照事件量由高到低修，每個修正都要附 query-count 測試 | #5061 |
 
