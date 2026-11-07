@@ -73,6 +73,21 @@
   --ds-brand-glyph: #1a1206;
   --ds-brand-red: #c8102e;
   --ds-brand-red-light: #ff7a6b;
+  /* Category icon hues (director home tiles, iOS-style): each is a light -> deep pair. Red stays for danger only. */
+  --ds-cat-orange: #ff9f2e;
+  --ds-cat-orange-deep: #f26a00;
+  --ds-cat-green: #43d17b;
+  --ds-cat-green-deep: #12a150;
+  --ds-cat-blue: #4fb3ff;
+  --ds-cat-blue-deep: #1c6ef2;
+  --ds-cat-violet: #b58cff;
+  --ds-cat-violet-deep: #7a3fe0;
+  --ds-cat-pink: #ff8fb1;
+  --ds-cat-pink-deep: #f0467c;
+  --ds-cat-teal: #3fd6cf;
+  --ds-cat-teal-deep: #0e9aa7;
+  --ds-cat-indigo: #8c93ff;
+  --ds-cat-indigo-deep: #4a3fe0;
   --ds-success: #1a8245;
   --ds-success-wash: #e7f4ec;
   --ds-success-line: #86efac; /* soft border on --ds-success-wash */

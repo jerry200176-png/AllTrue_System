@@ -812,6 +812,26 @@ test.describe('UI foundation — real Vue page evidence', () => {
   });
 });
 
+// Sequencing doc item 6: no horizontal overflow on the motion pages at 375 and 390.
+test.describe('No horizontal overflow (director home, Login)', () => {
+  for (const width of [375, 390]) {
+    for (const [name, pageName, mode] of [['director-home', 'director', 'dashboard'], ['login', 'login', 'normal']]) {
+      test(`${name} @${width}`, async ({ page }) => {
+        await openPilot(page, { pageName, mode, viewport: { width, height: 812 } });
+        await dismissOverlays(page);
+        await page.waitForLoadState('networkidle');
+        const wide = await page.evaluate(() => [...document.querySelectorAll('body *')]
+          .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
+          // ignore content clipped by an ancestor (decorative layers such as the Login aurora)
+          .filter((e) => { for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (o === 'hidden' || o === 'clip' || o === 'auto' || o === 'scroll') return false; } return true; })
+          .map((e) => `${e.tagName}.${String(e.className).slice(0, 40)}`));
+        expect(wide).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      });
+    }
+  }
+});
+
 // Visual regression (#4952). Tagged @visual: skipped by playwright.ui-foundation.config.js,
 // run only by playwright.visual.config.js inside the pinned Playwright Docker image (npm run test:visual).
 test.describe('Visual regression @visual', () => {
@@ -824,6 +844,7 @@ test.describe('Visual regression @visual', () => {
     ['students', 'students', 'normal'],
     ['course-management', 'course', 'normal'],
     ['billing-center', 'tuition', 'normal'],
+    ['login', 'login', 'normal'],
   ];
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
     for (const [name, pageName, mode] of pages) {
