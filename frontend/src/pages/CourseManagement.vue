@@ -3,7 +3,7 @@
     <header class="tw:mb-4 tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4" data-guide="course-mgmt-header">
       <div class="tw:min-w-0 tw:flex-1">
         <h2 class="tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight">課程查找</h2>
-        <p class="tw:mt-1 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary">查找課程、編輯月結日期、新增堂次。</p>
+        <p class="tw:mt-1 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary">管理「課」：查找課程、排課、堂次與續課。</p>
         <p class="tw:mt-1 tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary">
           <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
           <span v-if="pagination.lastPage > 1"> · 第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
@@ -29,7 +29,7 @@
         </details>
       </div>
       <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
-        <Button type="button" variant="secondary" class="course-lens-add-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="course-header-goto-students-create" @click="emit('navigate', 'students')"><UserPlus :size="22" aria-hidden="true" />到學生管理新增課程</Button>
+        <Button type="button" class="course-lens-add-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="course-header-create" @click="openCreateCourse"><Plus :size="22" aria-hidden="true" />新增課程</Button>
         <Button type="button" variant="ghost" class="course-lens-nav-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" @click="emit('navigate', 'students')"><UserSearch :size="22" aria-hidden="true" />前往學生管理</Button>
         <details class="course-tools-menu">
           <summary class="btn-soft course-tools-menu__summary">
@@ -769,8 +769,8 @@
 
     <UniversalClassScheduler
       v-if="showBackfillModal"
-      title="新增課程（統一排課介面）"
-      submit-label="建立課程"
+      :title="schedulerMode === 'create' ? '新增排課（統一排課介面）' : '新增課程（統一排課介面）'"
+      :submit-label="schedulerMode === 'create' ? '建立課程並寫入堂次' : '建立課程'"
       :branch-id="props.branchId"
       :students="schedulerStudents"
       :teachers="schedulerTeachers"
@@ -778,7 +778,7 @@
       :initial-student-id="schedulerInitialStudentId"
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
-      mode="backfill"
+      :mode="schedulerMode"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -1353,7 +1353,7 @@ import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Info, UserPlus, UserSearch } from 'lucide-vue-next';
+import { Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
@@ -1844,6 +1844,8 @@ const bulkLeaveImpactPreview = computed(() => {
 const showBackfillModal = ref(false);
 /** Preset for UniversalClassScheduler when opened from this page */
 const schedulerInitialStudentId = ref('');
+// Same scheduler and flow as 學生管理 (mode 'create'); 'backfill' stays for 複製課程 (雙師).
+const schedulerMode = ref('backfill');
 const schedulerInitialTeacherId = ref('');
 const backfillForm = ref({
   student_id: '', subject: 'Math', teacher_id: '', class_type: 'one_on_one',
@@ -2905,6 +2907,15 @@ function canCloseCourse(c) {
     && c.closed_reason !== 'settled_pending';
 }
 
+// 新增課程: pick the student inside the same UniversalClassScheduler 學生管理 uses, then the same form.
+function openCreateCourse() {
+  schedulerInitialStudentId.value = '';
+  schedulerInitialTeacherId.value = '';
+  schedulerMode.value = 'create';
+  showBackfillModal.value = true;
+  loadRoomsForBranch();
+}
+
 async function duplicateCourseForTeacher(course) {
   const teacherName = course.teacher_name || '目前老師';
   const studentName = course.student_name || '學生';
@@ -2927,6 +2938,7 @@ async function duplicateCourseForTeacher(course) {
   const sid = Number(course.student_id ?? course.StudentID) || '';
   schedulerInitialStudentId.value = sid;
   schedulerInitialTeacherId.value = '';
+  schedulerMode.value = 'backfill';
   showBackfillModal.value = true;
   loadRoomsForBranch();
 }
