@@ -1,0 +1,28 @@
+# W3 (#4953): local pre-push runs the same presubmit checks CI runs, scoped to changed paths.
+# Install: `npm ci` at the repo root (prepare script) or `npm run hooks:install`. Skip once: LEFTHOOK=0 git push.
+# Heavy suites (PHPUnit, vitest, vite build) stay in CI. CI reuse: bodies come from presubmit.yml via
+# scripts/presubmit-step.py, so the two cannot drift.
+pre-push:
+  # Changed paths vs main (glob filters below); the default pushed-files list is empty for a new branch.
+  files: git diff --name-only "$(git merge-base origin/main HEAD)"..HEAD
+  commands:
+    preflight:
+      run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
+    size-gate:
+      run: |
+        # Extract first so a missing PyYAML (pip install pyyaml) fails the hook instead of skipping the gate.
+        step="$(python3 scripts/presubmit-step.py '[CHECK 2] PR size')" || exit 1
+        GITHUB_HEAD_REF="$(git branch --show-current)" GITHUB_ENV=/dev/null bash -e -c "$step"
+    ui-ratchet:
+      glob: "{frontend/**,scripts/ui-legacy-pages.json,scripts/check-ui-ratchet.mjs}"
+      run: node scripts/check-ui-ratchet.mjs --vs-base "$(git merge-base origin/main HEAD)"
+    ratchet-baselines:
+      glob: "{docs/design-style-baseline.json,scripts/controller-db-baseline.json}"
+      run: node scripts/check-ratchet-baseline-touch.mjs --base "$(git merge-base origin/main HEAD)" --branch "$(git branch --show-current)"
+    eslint-unused-baseline:
+      glob: "{frontend/src/**,frontend/eslint-unused-baseline.json,frontend/eslint.config.js}"
+      run: |
+        if [ -d frontend/node_modules ]; then node scripts/check-eslint-unused-baseline.mjs
+        else echo "skip: frontend/node_modules missing (npm --prefix frontend ci)"; fi
+    pr-declaration:
+      run: bash scripts/presubmit-local-declaration.sh

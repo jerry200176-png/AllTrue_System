@@ -122,7 +122,7 @@ describe('CourseManager polish', () => {
   it('opens with four tabs and no Records tab', async () => {
     const w = mountCm()
     await flushPromises()
-    expect(w.findAll('.cmw__tab').map((x) => x.text())).toEqual(['總覽', '排課與堂次', '課程設定', '帳務與合約'])
+    expect(w.findAll('.cmw__tab').map((x) => x.text())).toEqual(['總覽', '堂次', '設定', '帳務'])
     expect(w.find('[data-testid="course-manager-tab-records"]').exists()).toBe(false)
     expect(w.find('[data-testid="course-manager-status"]').classes()).toContain('cmw__badge--ok')
     expect(w.text()).not.toContain('這門課')

@@ -1,0 +1,12 @@
+[Unit]
+Description=AllTrue staging Cloudflare Tunnel (outbound only)
+After=network-online.target
+
+[Service]
+ExecStart=%h/bin/cloudflared --no-autoupdate tunnel --config %h/.cloudflared/config.yml run alltrue-staging
+Restart=on-failure
+RestartSec=10
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

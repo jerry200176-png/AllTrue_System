@@ -74,6 +74,24 @@ describe('CalendarPrintDialog acceptance contract', () => {
     wrapper.unmount();
   });
 
+  it('prints one day as a teacher-by-hour grid (in-app #513)', async () => {
+    const wrapper = mount(CalendarPrintDialog, { attachTo: document.body, props: { open: false, branchId: 11, initialDate: '2026-09-15', rooms: [{ id: 3, name: 'A101' }], teachers: [{ id: 9, username: '林老師' }] } });
+    await wrapper.setProps({ open: true });
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+    const select = document.body.querySelector('.calendar-print-toolbar select');
+    select.value = 'day';
+    select.dispatchEvent(new Event('change'));
+    await flushPromises();
+    expect(api.projectionOptions).toMatchObject({ start: '2026-09-15', end: '2026-09-15' });
+    expect(document.body.querySelector('.calendar-print-summary')).toBeNull();
+    const heads = [...document.body.querySelectorAll('.calendar-print-day thead th')].map((th) => th.textContent);
+    expect(heads).toEqual(['時間', '林老師']);
+    expect(document.body.querySelector('.calendar-print-day .calendar-print-card')?.textContent).toContain('王小明');
+    expect(document.body.querySelectorAll('.calendar-print-sheet')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
   it('switches to month overview and keeps daily details', async () => {
     const wrapper = mount(CalendarPrintDialog, { attachTo: document.body, props: { open: false, branchId: 11, initialDate: '2026-09-15' } });
     await wrapper.setProps({ open: true });

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-ui-course-manager
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理換新外觀
+    summary: 字更大、按鈕更好按，月曆看起來像班級行事曆。
+    items:
+      - category: improved
+        text: 課程管理的總覽、堂次月曆、帳務分頁改成大字、大按鈕；分頁改叫「總覽／堂次／設定／帳務」。
+    source_refs:
+      - "changelog:2026-11-07:ui-course-manager"

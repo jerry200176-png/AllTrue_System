@@ -24,7 +24,7 @@ localStorage.setItem(
 localStorage.setItem('app_branch', '1');
 localStorage.setItem('notifications_sound_enabled', '0');
 
-const [{ createApp, h }, styles] = await Promise.all([
+const [{ createApp, h, ref }, styles] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
   import('../../../src/ui.css'),
@@ -45,8 +45,10 @@ const pageModules = {
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
   classroom: () => import('../../../src/pages/ClassroomManagement.vue'),
+  'course-manager': () => import('../../../src/components/course-management/CourseManager.vue'),
   'course-edit': () => import('../../../src/components/CourseEditForm.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
+  login: () => import('../../../src/pages/Login.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
   'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
@@ -70,6 +72,26 @@ createApp({
     }
     if (page === 'truefit-app') {
       return () => h(PageComponent, { token: 'e2e-foundation-token', branchId: 1 });
+    }
+    if (page === 'course-manager') {
+      // Fixture data only (#4918): CourseManager drawer with a fixed set of September 2026 lessons.
+      const tab = ref(params.get('tab') || 'overview');
+      const d = (date, extra = {}) => ({ id: Number(date.slice(-2)), date, startTime: '19:00', start_time: '19:00', ...extra });
+      const units = [d('2026-09-01'), d('2026-09-08'), d('2026-09-15'), d('2026-09-17', { id: 217 }), d('2026-09-22'), d('2026-09-24', { isProjected: true, kind: 'projected', id: 0 }), d('2026-09-29', { isProjected: true, kind: 'projected', id: 0 })];
+      const label = (_c, date) => (date === '2026-09-17' ? '請假' : date < '2026-09-15' ? '已上' : '');
+      return () => h(PageComponent, {
+        course: { id: 7, student_name: '測試學生甲', subject: '數學', teacher_name: '測試老師', class_type: 'one_on_one', status: 'active', payment_type: 'session', room_name: 'A' },
+        tab: tab.value, 'onUpdate:tab': (t) => { tab.value = t; },
+        studentName: '測試學生甲', subjectLabel: '國中數學', classTypeLabel: '一對一', statusLabel: '進行中',
+        scheduleSummary: '每週二 19:00–20:00', remainingLabel: '剩 5 堂', nextSessionLabel: '9/15（二）19:00', paymentLabel: '已繳費',
+        overviewNeeds: mode === 'needs' ? [{ id: 'n1', title: '續課提醒', detail: '剩 5 堂，快用完了。', action: 'purchase', actionLabel: '續課' }] : [],
+        actionModel: { primary: { id: 'leave', label: '請假／調課' }, groups: [{ id: 'more', label: '更多', items: [{ id: 'substitute', label: '代課' }] }] },
+        canMoveLesson: () => true, calendarEnabled: true, createEnabled: true, canQuickAdd: true, canClose: true, isSessionMode: true,
+        sessionUnits: units, cancelledUnits: [], pendingMakeups: [],
+        formatSessionChipDate: (u) => `${u.date.slice(5).replace('-', '/')}（${'日一二三四五六'[new Date(`${u.date}T12:00:00`).getDay()]}）19:00`,
+        getSessionStateClass: () => '', getSessionStateLabel: label, getSessionNumber: () => null, sessionRowKey: (u) => `${u.date}-${u.id}`,
+        isUserNote: () => false, formatMakeupDate: () => '', purchaseLabel: '續課', onClose: () => {},
+      }, { settings: () => h('p', '設定內容在下一個 PR 改版') });
     }
     if (page === 'course-edit') {
       return () => h(PageComponent, {

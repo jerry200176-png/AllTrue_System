@@ -1,91 +1,101 @@
-# Daan staging V1 (isolated AllTrue staging)
+# Daan staging V1: operations
 
-Lifecycle states for this environment (never call these "production verified"):
-
-`CODE_WRITTEN` → `TESTED` → `STAGING_DEPLOYED` → `STAGING_RUNTIME_VERIFIED`
-
-## Host checkout immutability (STAGING_HOST_CHECKOUT_MUTATION)
-
-The staging app image bakes exact-SHA code under `/opt/alltrue-src`.
-Runtime syncs into the **named Docker volume** `alltrue-stage-app-code` at `/var/www`.
-
-**Forbidden:** bind-mounting the host Git `backend/` tree into `/var/www` (writable or otherwise for app).
-That previously let `docker-entrypoint` `chmod`/`chown` mutate tracked files as `www-data`.
-
-After every lifecycle step, `assert-host-checkout-clean.sh` requires empty `git status --short`.
+Policy and decisions: [`docs/ops/DAAN_STAGING_V1.md`](../../docs/ops/DAAN_STAGING_V1.md) (single source; this file is the how-to).
 
 ## Topology
 
 ```
-Daan host (alltrue.daan.lifenet.com.tw)
-├── Dify / Hermes / host Apache / host MySQL :3306 — unchanged
-└── Docker project `alltrue-stage`
-    ├── alltrue-stage-app   (PHP-FPM, image-baked code → named volume)
-    ├── alltrue-stage-nginx → 127.0.0.1:18080 only (named volume :ro)
-    └── alltrue-stage-mysql → Docker network only (no host 3306)
+Daan host (alltrue.daan.lifenet.com.tw) -- Dify / Hermes / Apache / host MySQL :3306 untouched
+└── rootless Docker (user `admin`), compose project `alltrue-stage`
+    ├── alltrue-stage-nginx -> 127.0.0.1:${STAGING_HTTP_PORT:-18080}  (SPA at /, API at /api -> app)
+    ├── alltrue-stage-app   (PHP 8.2-FPM, image-baked code -> named volume)
+    └── alltrue-stage-mysql (Docker network only, no host port)
 ```
 
-Access: `ssh -L 18080:127.0.0.1:18080 -i ~/.ssh/alltrue_daan_stage admin@alltrue.daan.lifenet.com.tw`
+Root `docker-compose.yml` is not used: it publishes host 8080/3306, which collide with Dify and host MySQL.
 
-## Why not root `docker-compose.yml`?
+## Host checkout immutability (STAGING_HOST_CHECKOUT_MUTATION)
 
-That file publishes host `8080` and `3306`, which collide with Dify and host MySQL on Daan.
-This tree is a dedicated composition under `infra/daan-staging/` so it does **not** classify as a Pi application runtime path (`backend/` / `frontend/` / `scripts/`).
+Exact-SHA code is baked into the image (`/opt/alltrue-src`) and synced into the named volume `alltrue-stage-app-code`.
+Never bind-mount the host Git `backend/` tree. `assert-host-checkout-clean.sh` must pass after every lifecycle step.
+The host checkout is `~/alltrue-stage/AllTrue_System`, always on a detached exact SHA.
 
-## PHP/MySQL parity
+## Rootless Docker (one-time, no sudo)
 
-`infra/daan-staging/Dockerfile` installs `pdo_mysql` (and keeps `pdo_pgsql`).
-Root `backend/Dockerfile` still lacks `pdo_mysql` — tracked separately as `INFRA-PDO-MYSQL-MISSING` and **not** fixed here, because editing `backend/Dockerfile` would mark production activation deployable.
-
-## Host bootstrap (Founder / interactive sudo — session scoped)
-
-`admin` can SSH passwordlessly but is **not** in the `docker` group and has **no** passwordless sudo.
-
-**Do not** add `admin` to the docker group or grant passwordless `sudo docker` in this phase.
-
-Session-scoped Docker (this shell only):
+Prereqs (Founder, done): `uidmap`, `slirp4netns`, `loginctl enable-linger admin`.
 
 ```bash
-export PATH="$HOME/alltrue-stage/session-docker-bin:$PATH"
-hash -r
-# first `docker` call prompts for sudo password once per session
+dockerd-rootless-setuptool.sh install
+systemctl --user enable --now docker
+# lifecycle scripts auto-use DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
+DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock docker info | grep -i rootless
 ```
 
-Packet on Daan: `~/alltrue-stage/FOUNDER_INTERACTIVE_DOCKER.txt`
+`preflight.sh` refuses a non-rootless daemon. Do not add `admin` to the docker group or grant passwordless sudo.
+A legacy rootful `alltrue-stage` stack holding the port is the only thing that needs sudo to remove
+(`sudo docker compose -p alltrue-stage down`); until then set `STAGING_HTTP_PORT` in `.env`.
 
-## Validation phases
-
-1. **DAAN_STAGING_V1 infra** at the SHA that includes the immutable-checkout fix (current `main` / HEAD)
-2. **Product rehearsal** (#3015 / in-app #296) at current `main` after infra ACCEPTED
+## Manual lifecycle
 
 ```bash
-# Phase 1 only (HEAD must include STAGING_HOST_CHECKOUT_MUTATION fix)
-infra/daan-staging/lifecycle/validate-cycle.sh
-
-# Phase 1 + #296 rehearsal
-PRODUCT_REHEARSAL=1 MAIN_SHA="$(git rev-parse origin/main)" infra/daan-staging/lifecycle/validate-cycle.sh
+cp infra/daan-staging/.env.example infra/daan-staging/.env   # then replace CHANGE_ME_* with `openssl rand -hex 24`
+L=infra/daan-staging/lifecycle
+$L/preflight.sh; $L/up.sh <sha>; $L/migrate.sh; $L/seed-demo.sh; $L/smoke.sh; $L/health.sh
+$L/down.sh            # keeps MySQL volume
+$L/rollback.sh <prior-sha>
+$L/validate-cycle.sh  # full cycle rehearsal; evidence in infra/daan-staging/runtime/evidence/
 ```
 
-Evidence lands in `infra/daan-staging/runtime/evidence/`. Bring staging **down** after validation unless actively testing.
+## Demo data and logins
 
-## Commands (from repo root on Daan checkout)
+`seed-demo.sh` creates synthetic data only: 2 campuses (示範A/B分校), rooms, subjects, 3 staff users, 8 students with guardians,
+12 courses with 8 weeks of sessions around today (past completed/leave, future scheduled), attendance sign-ins,
+learning records (approved and pending), 12 bills (paid, unpaid, partial) with payments, and notifications.
+Payroll stays PIN-locked on purpose.
 
-```bash
-cp infra/daan-staging/.env.example infra/daan-staging/.env
-# generate staging-only secrets; never paste production credentials
-openssl rand -hex 24  # use for STAGING_DB_PASSWORD / ROOT / APP_KEY
+| Role | Login |
+|---|---|
+| 主任 (director over both campuses) | `demo-director` + `DEMO_PW_DIRECTOR` |
+| 老師 | `demo-teacher` + `DEMO_PW_TEACHER` |
+| 家長 | StudentID + Phone from `~/alltrue-stage/DEMO_LOGINS.txt` (no password) |
 
-infra/daan-staging/lifecycle/preflight.sh
-infra/daan-staging/lifecycle/up.sh <exact-sha>
-infra/daan-staging/lifecycle/migrate.sh
-infra/daan-staging/lifecycle/identity.sh
-infra/daan-staging/lifecycle/health.sh
-infra/daan-staging/lifecycle/smoke.sh
-infra/daan-staging/lifecycle/down.sh          # keeps MySQL volume
-infra/daan-staging/lifecycle/rollback.sh <prior-sha>
-```
+Passwords are generated on first run into the git-ignored host `.env` (`DEMO_PW_*`); never committed.
 
-## Explicit non-goals
+**Nightly reset (03:30 Taipei):** `alltrue-staging-reset.timer` runs `seed-demo.sh --reset` (`migrate:fresh` + seed, staging only),
+under the same lock as the pull-deploy, so preview clicks cannot accumulate.
 
-Pi production, production DNS, production DB sync, public TLS/DNS for staging,
-TrueFit ON, Temporal, self-hosted runners, Dify/Hermes changes.
+**No outbound messaging:** no LINE/Telegram credentials exist in staging, seeded students and campuses have no chat IDs,
+`MAIL_MAILER=log`, there is no SMS integration, and the app container resolves `api.line.me`, `notify-api.line.me`
+and `api.telegram.org` to 127.0.0.1.
+
+## Auto-update (pull, no inbound access, no GitHub secrets)
+
+`lifecycle/auto-update.sh` runs from a `systemd --user` timer every 15 minutes (`lifecycle/install-timer.sh`):
+
+1. One unauthenticated GitHub API call: newest successful `ci.yml` push run on `main` (4 calls/h, limit 60/h).
+2. Same as `~/alltrue-stage/state/last_good_sha`? Do nothing.
+3. Otherwise `redeploy.sh <sha>` (build, up, migrate, identity, health), then `smoke.sh` and the clean-checkout assert.
+4. Success records the new last-good SHA; failure redeploys the last good SHA.
+5. Everything is appended to `infra/daan-staging/runtime/evidence/auto-update.log`.
+
+Inspect: `systemctl --user list-timers alltrue-staging-update.timer`, `journalctl --user -u alltrue-staging-update`.
+Pause: `touch ~/alltrue-stage/state/pause` (resume: remove it) or `systemctl --user stop alltrue-staging-update.timer`.
+
+## Public URL (Cloudflare Tunnel + nginx basic auth)
+
+Outbound-only; the host opens no port. `lifecycle/install-cloudflared.sh` installs a pinned, checksum-verified `cloudflared` into `~/bin`.
+One-time: `cloudflared tunnel login`, `tunnel create alltrue-staging`, `~/.cloudflared/config.yml` with ingress
+`alltrue-staging.lifenet.com.tw` -> `http://127.0.0.1:18080`, user service `systemd/alltrue-staging-tunnel.service`.
+
+**Cookie gate (no Cloudflare Access / Zero Trust):** the app sends its own `Authorization: Bearer` on API calls, which
+would override browser Basic credentials, so nginx uses a cookie instead. `/__gate` is protected by basic auth (user `founder`);
+success sets `alltrue_staging_gate=<secret>` (30 days, Secure, HttpOnly) and redirects to `/`. Everything else returns 302 to `/__gate`
+(HTML) or 401 (`/api`) without the cookie; only `/api/v1/health` is open. The preview proxy sends `Cookie: alltrue_staging_gate=<secret>`.
+`lifecycle/gen-basic-auth.sh` creates, outside git in `~/alltrue-stage/state/`: `pw-founder`, `gate-secret` (plaintext, mode 600),
+`htpasswd`, `gate.conf` (secret map, mode 600). `preflight.sh` refuses to start without them.
+Only after the gate works, publish DNS: `cloudflared tunnel route dns alltrue-staging alltrue-staging.lifenet.com.tw`.
+`cert.pem` and tunnel credentials stay on the host.
+
+## Non-goals
+
+Pi production, production DNS, production DB sync, TrueFit ON, Temporal, self-hosted runners, Dify/Hermes changes.

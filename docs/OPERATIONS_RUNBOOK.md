@@ -1175,33 +1175,9 @@ sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
 
 ---
 
-## U. Staging Environment — Issue #475（v1 plan，未實作）
+## U. Staging Environment — Issue #475 / #868
 
-### U1. 為什麼
-
-目前 WSL2 dev → production Pi 直接 cut over，缺少 production-like 驗證層。
-歷史事故：D（.htaccess）、E（cache permission）若有 staging 都能提前發現。
-
-### U2. v1 設計（low cost）
-
-- **基礎設施**：第 2 台 Raspberry Pi 4（或 4GB VM）+ 獨立 hostname `staging.daan.lifenet.com.tw`
-- **DB**：獨立 MySQL `AllTrue_staging`，每週日凌晨從 production sixhour 備份**脫敏**還原（移除 phone / LineID）
-- **部署觸發**：`deploy-staging.yml` manual `workflow_dispatch`（不自動跟 main）
-- **資料同步**：僅 staging 寫入測試資料，不回 production
-
-### U3. 流程定位
-
-| 變更類型 | 必須走 staging？ |
-|---------|------------------|
-| migration（新增表/欄位 + backfill） | **必須** |
-| auth / session / RBAC 變更 | **必須** |
-| public endpoint 新增 | 建議 |
-| UI-only / docs | 不需要 |
-
-### U4. 為什麼還沒做（gating decision）
-
-- 多一台 Pi 硬體 / 月度電費 / SSL cert 維護
-- 等 CEO 決定預算 → 開 `feat/staging-env-v1` PR
+已實作於大安主機（非第 2 台 Pi）。唯一說明：[`docs/ops/DAAN_STAGING_V1.md`](ops/DAAN_STAGING_V1.md) 與 [`infra/daan-staging/README.md`](../infra/daan-staging/README.md)。
 
 ---
 

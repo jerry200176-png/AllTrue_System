@@ -17,7 +17,7 @@ payload = {
   "frontend_sha": "${SHA}",
   "deployed_at": "${NOW}",
   "source": "infra/daan-staging",
-  "http_bind": "127.0.0.1:18080",
+  "http_bind": "127.0.0.1:${STAGING_PORT}",
   "not_production": True,
 }
 Path("${IDENTITY_FILE}").write_text(json.dumps(payload, indent=2) + "\n")

@@ -18,6 +18,7 @@ const VIEWPORTS = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobil
 // Baseline 2026-10-03 (axe-core 4.13 via @axe-core/playwright 4.13).
 // Remaining color-contrast nodes are hardcoded hex / non-token colors (tokens now AA-safe).
 const BASELINE = {
+  'course-manager': {},
   teacher: {},
   director: {},
   students: {},
@@ -27,6 +28,7 @@ const BASELINE = {
   parent: { 'color-contrast': 1 },
   attendance: { 'color-contrast': 2 },
   profile: {},
+  login: {},
   'attendance&role=teacher': { 'color-contrast': 2 },
 };
 

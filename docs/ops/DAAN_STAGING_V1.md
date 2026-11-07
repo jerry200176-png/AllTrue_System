@@ -1,8 +1,29 @@
-# Daan staging V1
+# Daan staging V1 (single source with `infra/daan-staging/README.md`)
 
-Program: `DAAN_STAGING_BOOTSTRAP` / `DAAN_STAGING_V1`
+This is **staging**, not production. Staging health is never production verification.
+Pi production stays on `deploy.yml` → Environment `production-activation`; staging never connects to it.
 
-Operational entrypoint: [`infra/daan-staging/README.md`](../../infra/daan-staging/README.md)
+Pattern: dev → staging → prod, GitOps **pull** model (Argo CD / Flux style). Issues #868, #875.
 
-This is **staging**, not production. Do not treat staging health as production verification.
-Pi production remains on `deploy.yml` → Environment `production-activation` only.
+| Item | Decision |
+|---|---|
+| Host | idle Daan machine (`daan-ai`, 3.4 GB shared with Dify, Hermes, host MySQL, Apache) |
+| Docker | **rootless**, per-user daemon (`systemctl --user`); no docker group, no passwordless sudo |
+| Data | synthetic only (`infra/daan-staging/seed-demo.php`); never a production dump or backup mirror |
+| Memory | mysql 512m, app 512m, nginx 64m; `preflight.sh` refuses to start below 900 MB available |
+| Deploy | `systemd --user` timer every 15 min deploys the newest `main` commit whose push CI is green; rolls back on smoke failure |
+| Access | `127.0.0.1:18080` only. Public URL `alltrue-staging.lifenet.com.tw` via Cloudflare Tunnel (outbound only), protected by an nginx cookie gate (basic auth for `founder` at `/__gate`, secret cookie for the preview proxy; no Cloudflare Zero Trust plan needed) |
+| Reset | nightly `migrate:fresh` + seed (03:30), so shared preview clicks cannot accumulate |
+| Secrets | generated on the host (`openssl rand`), kept in the git-ignored `.env`; nothing in GitHub |
+
+Lifecycle states (never say "production verified"):
+`CODE_WRITTEN` → `TESTED` → `STAGING_DEPLOYED` → `STAGING_RUNTIME_VERIFIED`
+
+Operations (commands, rootless setup, timer, tunnel, demo logins): [`infra/daan-staging/README.md`](../../infra/daan-staging/README.md).
+Out of scope: Pi production, production DNS, production DB sync, TrueFit ON, Temporal, self-hosted runners, any Dify/Hermes change.
+
+**Interim public URL:** until the `alltrue-staging.lifenet.com.tw` CNAME exists in the live zone, the user service
+`alltrue-staging-quick` runs a Cloudflare quick tunnel (`*.trycloudflare.com`, URL changes on restart, current value in
+`~/alltrue-stage/state/public-url`). It sits behind the same cookie gate. The named tunnel service stays disabled until the switch.
+
+**PR preview:** the `ui-preview` workflow proxies to staging via the repo variable `PREVIEW_API_ORIGIN`; when the quick-tunnel URL changes, update that variable until the named tunnel exists.

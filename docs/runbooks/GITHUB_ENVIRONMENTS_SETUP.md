@@ -24,7 +24,7 @@ SMOKE_*                                                                — produ
 UPTIMEROBOT_API_KEY                                                   — monitoring, not deploy
 ```
 
-The `STAGING_*` secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_DB_USERNAME`, `STAGING_DB_PASSWORD`) from #868's `scripts/infra/setup-staging-env.sh` don't exist yet until that setup runs — create them directly in the `staging` environment below rather than at repo level, so this doesn't need to be redone.
+Staging needs no GitHub secrets: it pulls `main` itself (see [`DAAN_STAGING_V1.md`](../ops/DAAN_STAGING_V1.md)). Ignore any `STAGING_*` repo secrets.
 
 ## 1. Create the two environments
 
@@ -53,17 +53,9 @@ gh secret set SMOKE_BASE_URL         --env production --repo jerry200176-png/All
 
 (`gh secret set` without `--body` prompts you to paste the value interactively — it does not print existing values, so have them ready from wherever you originally stored them, e.g. your password manager, not from this repo.)
 
-## 3. Set the staging secrets directly in the `staging` environment
+## 3. Staging secrets
 
-After running #868's `scripts/infra/setup-staging-env.sh` on the new host:
-
-```bash
-gh secret set STAGING_SSH_HOST     --env staging --repo jerry200176-png/AllTrue_System
-gh secret set STAGING_SSH_USER     --env staging --repo jerry200176-png/AllTrue_System
-gh secret set STAGING_SSH_KEY      --env staging --repo jerry200176-png/AllTrue_System
-gh secret set STAGING_DB_USERNAME  --env staging --repo jerry200176-png/AllTrue_System
-gh secret set STAGING_DB_PASSWORD  --env staging --repo jerry200176-png/AllTrue_System
-```
+None. Staging pulls from public GitHub ([`DAAN_STAGING_V1.md`](../ops/DAAN_STAGING_V1.md)); nothing is pushed to it.
 
 ## 4. Wire the workflows to their environment (separate PR, review carefully)
 

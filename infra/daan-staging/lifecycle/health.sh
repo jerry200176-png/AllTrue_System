@@ -9,7 +9,13 @@ source "${DIR}/_common.sh"
 
 URL="${STAGING_HTTP}/api/v1/health"
 echo "GET ${URL}"
-BODY="$(curl -fsS --max-time 15 "${URL}")"
+# php-fpm/nginx need a few seconds after `up`; retry before declaring failure.
+BODY=""
+for _ in $(seq 1 30); do
+  BODY="$(curl -fsS --max-time 15 "${URL}" 2>/dev/null)" && break
+  sleep 2
+done
+[[ -n "${BODY}" ]] || { echo "ERROR: ${URL} not healthy after 60s" >&2; exit 1; }
 echo "${BODY}"
 printf '%s' "${BODY}" | python3 "${DIR}/health_contract.py" || {
   echo "ERROR: health verifier rejected payload (expected status=ok)" >&2

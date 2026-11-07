@@ -114,6 +114,17 @@ jobs:
           node --test scripts/check-ui-ratchet.test.mjs
           node scripts/check-ui-ratchet.mjs --vs-base "$(git merge-base origin/main HEAD)"
 
+      # W4 (#4953): feature PRs must not rewrite ratchet baselines to lock in gains (they conflict across
+      # parallel PRs); the weekly baseline PR (chore/ branch) does it. Counts going up is still allowed.
+      - name: "[CHECK 0c3] Ratchet baselines are locked in by the weekly PR"
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          node --test scripts/check-ratchet-baseline-touch.test.mjs
+          node scripts/check-ratchet-baseline-touch.mjs --base "$(git merge-base origin/main HEAD)" --branch "$GITHUB_HEAD_REF"
+
       # Stale-copy guard: a PR may not delete lines another PR merged to main in the last 7 days.
       # Declare an intended rewrite with a PR body line `Rewrites: #N — reason` (re-runs on edit). The older
       # `intentional-revert` label still skips the check, but needs a manual re-run (no label trigger).

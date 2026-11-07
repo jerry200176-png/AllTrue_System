@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  getWeekRange, getMonthRange, exceptionMarkers, projectPrintRows, filterPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows,
+  getWeekRange, getMonthRange, getRange, buildDayGrid, exceptionMarkers, projectPrintRows, filterPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows,
 } from './calendarPrint.js';
 
 assert.deepEqual(getWeekRange('2026-09-20'), { start: '2026-09-14', end: '2026-09-20' });
@@ -68,3 +68,18 @@ assert.deepEqual(kept.map((r) => r.occurrenceKey), [codeRows[0].occurrenceKey, '
 assert.equal(filterPrintRows([codeRows[0], cancelled], { statuses: [] }).length, 1, 'no ticks = plain rows only');
 assert.equal(filterPrintRows([codeRows[0], cancelled], {}).length, 2, 'no filter = everything');
 console.log('calendarPrint tests passed');
+
+assert.deepEqual(getRange('day', '2026-11-07'), { start: '2026-11-07', end: '2026-11-07' });
+const dayRows = [
+  { startTime: '13:00', endTime: '15:00', effectiveTeacherName: '乙', roomLabel: 'R1', studentName: 'a' },
+  { startTime: '14:30', endTime: '15:30', effectiveTeacherName: '甲', roomLabel: 'R1', studentName: 'b' },
+  { startTime: '14:00', endTime: '15:00', effectiveTeacherName: '乙', roomLabel: 'R2', studentName: 'c' },
+];
+const byTeacher = buildDayGrid(dayRows, {});
+assert.equal(byTeacher.by, '老師');
+assert.equal(byTeacher.columns.length, 2);
+assert.deepEqual(byTeacher.slots.map((slot) => slot.label), ['13:00', '14:00', '15:00']);
+assert.equal(byTeacher.slots[1].cells.flat().length, 2, 'cards sit in their start hour');
+assert.equal(buildDayGrid(dayRows, { room: 'R' }).by, '教室');
+assert.equal(buildDayGrid(dayRows, { room: 'R', teacher: '乙' }).by, '老師');
+assert.deepEqual(buildDayGrid([], {}).slots, []);

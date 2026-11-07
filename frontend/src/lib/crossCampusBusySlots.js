@@ -27,13 +27,10 @@ export function normalizeCrossCampusBusySlots(slots, currentCampusId) {
       const start = toMinutes(slot?.start_time);
       const end = toMinutes(slot?.end_time);
       const slotCampus = Number(slot?.campus_id);
-      const remaining = Number(slot?.remaining_capacity ?? 0);
       if (!Number.isInteger(slotCampus) || slotCampus <= 0 || slotCampus === campus) return null;
       if (start == null || end == null || end <= start) return null;
-      // A group class with an available seat is not an unavailable teacher
-      // slot.  The endpoint defaults missing capacity to zero (full), so this
-      // remains fail-safe for older responses.
-      if (!Number.isFinite(remaining) || remaining > 0) return null;
+      // in-app #515: capacity is irrelevant here. A group class with a free seat at another campus still
+      // has the teacher on site there (same rule as slotOccupancy's other-campus conflict).
       return { start, end, campusId: slotCampus };
     })
     .filter(Boolean)

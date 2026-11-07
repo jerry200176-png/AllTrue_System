@@ -351,7 +351,7 @@
 
 | TD | 來源 issue | 標題 | 狀態 | 優先級 | 備註 |
 |----|----------|------|------|------|------|
-| TD-019 | #475 | Staging / pre-production 環境 | Deferred — 需 CEO 預算決策 | P2 | 設計 → `OPERATIONS_RUNBOOK.md` §U |
+| TD-019 | #475 | Staging / pre-production 環境 | Done — 大安主機 staging（無額外費用） | P2 | `docs/ops/DAAN_STAGING_V1.md` |
 | TD-020 | #488 | Feature flags lite framework | Deferred — 等第一個試點 feature 出現再實作 | P2 | 設計 → `OPERATIONS_RUNBOOK.md` §V |
 | TD-021 | #479 | Playwright visual regression（5 頁） | Deferred — #461 進維護期再啟動 | P3 | 設計 → `OPERATIONS_RUNBOOK.md` §W |
 | TD-022 | #478 | Core API contract / golden tests | Deferred — 等 `route:list` snapshot 工具確定 | P2 | 既有 `QA_GOLDEN_SCENARIOS.md` 已涵蓋部分 |

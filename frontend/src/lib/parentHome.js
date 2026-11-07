@@ -56,9 +56,9 @@ export function pickAmountDue(invoices, paymentAlerts) {
   const billed = new Set(open.map((i) => i.classId));
   const unbilled = (Array.isArray(paymentAlerts) ? paymentAlerts : []).some((a) => !billed.has(Number(a?.class_id)));
   // Nothing billed yet: owed but amount unknown (有課程待繳). Some billed, some not: 確認中 rather than a short sum.
-  if (staleSuspect || (unbilled && open.length)) return { amount: null, dueDateLabel, review: true };
-  if (open.length) return { amount: open.reduce((sum, i) => sum + i.due, 0), dueDateLabel };
-  return unbilled ? { amount: null, dueDateLabel: '' } : null;
+  if (staleSuspect || (unbilled && open.length)) return { amount: null, dueDateLabel, review: true, count: open.length };
+  if (open.length) return { amount: open.reduce((sum, i) => sum + i.due, 0), dueDateLabel, count: open.length };
+  return unbilled ? { amount: null, dueDateLabel: '', count: 0 } : null;
 }
 
 /** 老師的新回饋: latest record with an unread teacher reply, else the latest record. */
