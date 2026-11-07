@@ -1,0 +1,8 @@
+{
+  "name": "alltrue-stryker-tools",
+  "private": true,
+  "description": "Advisory StrykerJS mutation testing (W12 of #4953). Kept out of the root lockfile; installed with npm ci.",
+  "devDependencies": {
+    "@stryker-mutator/core": "10.1.1"
+  }
+}

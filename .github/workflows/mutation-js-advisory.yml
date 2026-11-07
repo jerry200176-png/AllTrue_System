@@ -3,11 +3,13 @@ name: Mutation testing, JS (advisory)
 # W12 (#4953): diff-based StrykerJS on the control-plane scripts (review-gate, land-queue, autoland). Only the lines a
 # PR changes are mutated (scripts/ci/stryker-diff-ranges.mjs). Advisory: never required, never fails. PR events only,
 # no cron. Surviving mutants go to the same sticky comment as Infection (scripts/ci/mutation-comment.mjs).
-# StrykerJS 10.1.1 (Apache-2.0, published 2026-10-23) is installed with --no-save and --ignore-scripts, pinned.
+# StrykerJS 10.1.1 (Apache-2.0, published 2026-10-23): tools/stryker/package-lock.json pins every transitive package with
+# its integrity hash; installed with `npm ci --ignore-scripts`. No npx fallback.
 on:
   pull_request:
     paths:
       - '.github/scripts/**'
+      - 'tools/stryker/**'
       - 'scripts/ci/stryker-diff-ranges.mjs'
       - 'stryker.config.json'
       - '.github/workflows/mutation-js-advisory.yml'
@@ -45,9 +47,9 @@ jobs:
       - name: Run StrykerJS on the changed lines
         if: ${{ steps.ranges.outputs.ran == 'true' }}
         run: |
-          npm install --no-save --ignore-scripts --no-audit --no-fund @stryker-mutator/core@10.1.1
+          npm ci --prefix tools/stryker --ignore-scripts --no-audit --no-fund
           args=(); while IFS= read -r r; do args+=(--mutate "$r"); done < "$RUNNER_TEMP/ranges.txt"
-          npx stryker run "${args[@]}" || true
+          tools/stryker/node_modules/.bin/stryker run "${args[@]}" || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ always() && steps.ranges.outputs.ran == 'true' }}
         with:
