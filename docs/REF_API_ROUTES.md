@@ -782,7 +782,10 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| POST | `api/v1/school-merge` | `SchoolMergeController@merge` | role+campus |
+| GET | `api/v1/school-merge/history` | `SchoolMergeController@history` | role+campus |
 | GET | `api/v1/school-merge/suggestions` | `SchoolMergeController@suggestions` | role+campus |
+| POST | `api/v1/school-merge/{requestId}/undo` | `SchoolMergeController@undo` | role+campus |
 
 ## /api/v1/school-names
 

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-inapp-521-transfer-void-double-reversal
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 撤銷收款不再重複沖
+    summary: 舊沖銷未對帳的帳單，撤銷會停下請管理員處理。
+    items:
+      - category: fixed
+        text: 撤銷收款的沖銷紀錄改為對應到那張收據，同一張不會沖兩次；帳單有舊的未對帳沖銷紀錄時會停下，請找系統管理員處理。
+    source_refs:
+      - "changelog:2026-11-07:inapp-521-transfer-void-double-reversal"
