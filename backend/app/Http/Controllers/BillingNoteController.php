@@ -125,7 +125,7 @@ class BillingNoteController extends Controller
         $invoice = BillingNote::deletedCourseVoidInvoices()->whereKey($id)->first();
         $campusId = $invoice ? (int) Student::query()->whereKey((int) $invoice->StudentID)->value('CampusID') : 0;
 
-        return $invoice && $campusId > 0 ? ['campus_id' => $campusId, 'legacy_note' => trim((string) ($invoice->Note ?? ''))] : null;
+        return $invoice && $campusId > 0 ? ['campus_id' => $campusId, 'legacy_note' => \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note)] : null;
     }
 
     /** #3978 review: a linked payment outside the report's student never lends its note (another campus's text). */

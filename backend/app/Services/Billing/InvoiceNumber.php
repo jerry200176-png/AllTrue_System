@@ -48,7 +48,8 @@ final class InvoiceNumber
     {
         $old = (string) $invoice->billing_period;
         if ($old !== '' && $old !== $newPeriod && preg_match('/^\d{4}-\d{2}$/', $old)) {
-            $invoice->Note = self::withTag((string) $invoice->Note, $old) ?? $invoice->Note;
+            // An issued number never changes: with no room for the tag the re-key is refused, not done without it.
+            $invoice->Note = self::withTag((string) $invoice->Note, $old) ?? throw new \RuntimeException('invoice_number_tag_no_room');
         }
         $invoice->billing_period = $newPeriod;
     }

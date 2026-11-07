@@ -27,7 +27,7 @@ class BillingNoteVoidedInvoiceTest extends TestCase
         $kept = $this->course((int) $student->id);
         $invoice = Invoice::create([
             'StudentID' => $student->id, 'StudentClassID' => $deleted->ID, 'IssueDate' => now()->toDateString(),
-            'DueDate' => now()->addDays(7)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '',
+            'DueDate' => now()->addDays(7)->toDateString(), 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '[invno_period:2026-04]', 'billing_period' => '2026-05',
         ]);
         $director = $this->staff($campus->id, 'Director');
         $this->postJson('/api/v1/accounting/notes', ['subject_type' => 'invoice', 'subject_id' => $invoice->id, 'body' => '家長要求先暫停'], $director)
@@ -43,6 +43,7 @@ class BillingNoteVoidedInvoiceTest extends TestCase
             ->assertJsonPath('read_only', true)
             ->assertJsonPath('read_only_label', BillingNote::VOIDED_INVOICE_LABEL);
         $this->assertContains('家長要求先暫停', array_column($res->json('notes'), 'body'));
+        $this->assertStringNotContainsString('invno_period', json_encode($res->json(), JSON_UNESCAPED_UNICODE), 'the number tag is never shown in the note thread (in-app #514)');
         $this->postJson('/api/v1/accounting/notes', ['subject_type' => 'invoice', 'subject_id' => $invoice->id, 'body' => '再加'], $director)
             ->assertNotFound();
         $this->assertSame(1, BillingNote::query()->count());
@@ -56,6 +57,7 @@ class BillingNoteVoidedInvoiceTest extends TestCase
             ->assertJsonPath('voided_invoice_notes.0.notes.0.legacy', true)
             ->assertJsonPath('voided_invoice_notes.0.notes.1.body', '家長要求先暫停');
         $this->assertStringContainsString("合約 #{$deleted->ID} 刪除", (string) $ledger->json('voided_invoice_notes.0.notes.0.body'));
+        $this->assertStringNotContainsString('invno_period', json_encode($ledger->json('voided_invoice_notes'), JSON_UNESCAPED_UNICODE));
 
         // Another campus's director gets nothing.
         $other = $this->staff(Campus::factory()->create()->id, 'Other');
