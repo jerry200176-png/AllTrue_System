@@ -8,6 +8,7 @@ on:
         required: true
         type: choice
         options:
+          - inapp_515
           - schedule_241
           - billing_campus9_student
           - fixed_slot_campus9_student
@@ -148,7 +149,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar'}:
+          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -198,7 +199,32 @@ jobs:
             'prod_head' => trim((string)@shell_exec('git rev-parse HEAD'))];
             $billingStudentNumbers = $case === 'billing_student_numbers';
             if ($billingStudentNumbers) {{ $case = 'inapp_466_count_contract'; }} // same probe body, scoped to one student ID
-          if ($case === 'schedule_241') {{
+          if ($case === 'inapp_515') {{
+            $date = '2026-11-07';
+            $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+            $cs = $db::table('ClassSession as cs')->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
+              ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')->whereDate('cs.SessionDate', $date)
+              ->get(['cs.id as sid', 'cs.StudentClassID as cid', 'cs.StartTime as s', 'cs.EndTime as e', 'cs.Status as status', 'sc.TeacherID as sc_t', 'sc.Stop as stop', 'sc.ClassType as ct', 'sc.room_id as room', 'st.CampusID as campus']);
+            $sch = $db::table('schedules')->whereDate('schedule_date', $date)
+              ->get(['id', 'start_time as s', 'end_time as e', 'status', 'type', 'teacher_id as t', 'branch_id as campus', 'student_course_id as cid', 'original_schedule_id as orig']);
+            $cand = [];
+            foreach ($cs as $r) {{ if ((int) $r->campus === 15 && in_array((int) $r->room, [2, 4], true)) {{ foreach ([(int) $r->sc_t] as $t) {{ if ($t > 0) $cand[$t] = true; }} }} }}
+            foreach ($sch as $r) {{ if ((int) $r->campus === 15 && (int) $r->t > 0) $cand[(int) $r->t] = true; }}
+            $teachers = [];
+            foreach (array_keys($cand) as $t) {{
+              $mineCs = $cs->filter(fn ($r) => (int) $r->sc_t === $t);
+              $mineSch = $sch->filter(fn ($r) => (int) $r->t === $t);
+              $other = $mineCs->filter(fn ($r) => (int) $r->campus !== 15)->count() + $mineSch->filter(fn ($r) => (int) $r->campus !== 15)->count();
+              $own1315 = $mineCs->filter(fn ($r) => (int) $r->campus === 15 && $hm($r->s) === '13:00')->count() + $mineSch->filter(fn ($r) => (int) $r->campus === 15 && $hm($r->s) === '13:00')->count();
+              if ($other === 0 || $own1315 === 0) continue;
+              $busy = app(\\App\\Services\\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($t, $date, [], null);
+              $teachers[] = ['teacher_id' => $t,
+                'class_sessions' => $mineCs->map(fn ($r) => ['id' => (int) $r->sid, 'class_id' => (int) $r->cid, 's' => $hm($r->s), 'e' => $hm($r->e), 'status' => (string) $r->status, 'sc_teacher' => (int) $r->sc_t, 'stop' => $r->stop, 'type' => (string) $r->ct, 'room' => $r->room, 'campus' => (int) $r->campus])->values()->all(),
+                'schedules' => $mineSch->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => $r->cid, 's' => $hm($r->s), 'e' => $hm($r->e), 'status' => (string) $r->status, 'type' => (string) $r->type, 'campus' => (int) $r->campus, 'orig' => $r->orig !== null])->values()->all(),
+                'service_busy' => array_map(fn ($b) => ['s' => $b['start_time'], 'e' => $b['end_time'], 'campus' => $b['campus_id'], 'ct' => $b['class_type'], 'remaining' => $b['remaining_capacity'], 'src' => $b['source_types']], $busy)];
+            }}
+            $out['teachers'] = $teachers;
+          }} elseif ($case === 'schedule_241') {{
             $campusId = 9;
             $targetDate = '2026-08-29';
             $targetStudentIds = $db::table('Student')->where('CampusID', $campusId)
