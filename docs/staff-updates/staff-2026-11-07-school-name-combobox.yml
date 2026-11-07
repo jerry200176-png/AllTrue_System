@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-07-school-name-combobox
+    published_at: "2026-11-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學校名稱可直接選
+    summary: 學生的就讀學校可從本校已有的名稱中選，不再打出不同寫法。
+    items:
+      - category: improved
+        text: 填就讀學校時，先列出本校已有的學校名稱，點選即可。
+    source_refs:
+      - "changelog:2026-11-07:school-name-combobox-517"

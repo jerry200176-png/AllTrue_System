@@ -622,6 +622,7 @@
               input-id="student-school"
               v-model="studentForm.school"
               :auth-token="schoolAuthToken"
+              :campus-id="props.branchId"
               placeholder="例：大安國中"
             />
           </div>
