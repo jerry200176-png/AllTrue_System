@@ -21,3 +21,7 @@ Lifecycle states (never say "production verified"):
 
 Operations (commands, rootless setup, timer, tunnel, demo logins): [`infra/daan-staging/README.md`](../../infra/daan-staging/README.md).
 Out of scope: Pi production, production DNS, production DB sync, TrueFit ON, Temporal, self-hosted runners, any Dify/Hermes change.
+
+**Interim public URL:** until the `alltrue-staging.lifenet.com.tw` CNAME exists in the live zone, the user service
+`alltrue-staging-quick` runs a Cloudflare quick tunnel (`*.trycloudflare.com`, URL changes on restart, current value in
+`~/alltrue-stage/state/public-url`). It sits behind the same cookie gate. The named tunnel service stays disabled until the switch.
