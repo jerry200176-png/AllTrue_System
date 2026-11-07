@@ -13,7 +13,9 @@ code() { curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -m 10 "$@" || tr
 [[ "$(code "${B}/")" == "302 "*"/__gate" ]] || { echo "REFUSE: / is not gated (expected 302 -> /__gate)" >&2; exit 1; }
 [[ "$(code "${B}/api/v1/students")" == "401 "* ]] || { echo "REFUSE: /api/v1/students is not gated (expected 401)" >&2; exit 1; }
 
-exec "${HOME}/bin/cloudflared" tunnel --url "${B}" --no-autoupdate 2>&1 \
+# An existing ~/.cloudflared/config.yml (named-tunnel ingress) would turn every quick-tunnel request into 404: use an empty one.
+: >"${HOME}/alltrue-stage/state/quick.yml"
+exec "${HOME}/bin/cloudflared" --config "${HOME}/alltrue-stage/state/quick.yml" tunnel --url "${B}" --no-autoupdate 2>&1 \
   | while IFS= read -r line; do
       echo "${line}"
       if [[ "${line}" =~ (https://[a-z0-9-]+\.trycloudflare\.com) ]]; then echo "${BASH_REMATCH[1]}" >"${OUT}"; fi
