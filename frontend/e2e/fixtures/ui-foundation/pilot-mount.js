@@ -61,6 +61,7 @@ const pageModules = {
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
+const EditForm = page === 'course-manager' ? (await import('../../../src/components/CourseEditForm.vue')).default : null;
 
 void styles;
 
@@ -91,7 +92,7 @@ createApp({
         formatSessionChipDate: (u) => `${u.date.slice(5).replace('-', '/')}（${'日一二三四五六'[new Date(`${u.date}T12:00:00`).getDay()]}）19:00`,
         getSessionStateClass: () => '', getSessionStateLabel: label, getSessionNumber: () => null, sessionRowKey: (u) => `${u.date}-${u.id}`,
         isUserNote: () => false, formatMakeupDate: () => '', purchaseLabel: '續課', onClose: () => {},
-      }, { settings: () => h('p', '設定內容在下一個 PR 改版') });
+      }, { settings: () => h(EditForm, { modelValue: { class_type: 'one_on_one', subject: 'Math', teacher_id: 3000, rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8, remaining_sessions: 5, payment_type: 'session' }, subjects: [{ value: 'Math', label: '數學' }], teachers: [{ id: 3000, name: '測試老師' }], showRemaining: true }) });
     }
     if (page === 'course-edit') {
       return () => h(PageComponent, {

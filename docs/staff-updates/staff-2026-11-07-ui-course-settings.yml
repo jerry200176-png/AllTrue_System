@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-ui-course-settings
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 課程設定欄位更精簡
+    summary: 設定表單標籤縮短，頁首與確認視窗字更大。
+    items:
+      - category: improved
+        text: 課程設定的欄位名稱更短、更好讀；課程查找頁首和暫停／刪除確認視窗改成大字、大按鈕。
+    source_refs:
+      - "changelog:2026-11-07:ui-course-settings"
