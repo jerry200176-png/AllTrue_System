@@ -743,7 +743,7 @@ test('trivialRebase end to end (fake gh + fake git): each guard is load-bearing'
   const run = (o = {}) => {
     const w = { ...base, ...o };
     const gh = (_api, url, ...rest) => {
-      if (/\/repos\/[^/]*$/.test(url) || url.endsWith('/repos/undefined')) return JSON.stringify({ default_branch: 'main' });
+      if (/^\/repos(\/[^/]+){0,2}$/.test(url)) return JSON.stringify({ default_branch: 'main' });
       if (/\/pulls\/7$/.test(url)) return JSON.stringify({ base: { ref: w.base } });
       if (url.includes('/pulls/7/commits')) return JSON.stringify([w.prShas.map((sha) => ({ sha }))]);
       if (url.includes('/pulls/7/reviews')) return JSON.stringify([w.reviews]);
