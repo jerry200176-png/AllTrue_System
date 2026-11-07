@@ -1884,7 +1884,7 @@ class PaymentReportController extends Controller
                     // Both reads are of the locked rows above. A reversal already linked to this report: skip (idempotent).
                     $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';
                     $reportId = (int) $report->getKey();
-                    $alreadyReversed = $payments->contains(fn ($p) => $isReversal($p) && (int) $p->payment_report_id === $reportId);
+                    $alreadyReversed = $payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id !== null);
                     // A legacy unlinked void row (negative or void, no report, not a transfer_out/refund) cannot be matched to its
                     // receipt: a second reversal might cancel another receipt's money. Refuse until the repair links it.
                     $legacyUnlinked = $payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id === null
