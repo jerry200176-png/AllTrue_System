@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
@@ -49,6 +49,7 @@ const props = defineProps({
   placeholder: { type: String, default: '例：大安國中' },
   inputId: { type: String, default: 'student-school' },
   authToken: { type: String, default: '' },
+  campusId: { type: [Number, String], default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -84,11 +85,37 @@ function closeSuggestions() {
   highlight.value = -1;
 }
 
-function onFocus() {
-  if (text.value.trim().length >= 1) {
-    open.value = true;
-    queueSearch();
+// This campus's existing spellings first, so directors pick one instead of typing a new variant (#517).
+const campusNames = ref([]);
+async function loadCampusNames() {
+  if (!props.campusId || !props.authToken) return;
+  try {
+    const res = await trackedFetch(`/api/v1/school-names?campus_id=${encodeURIComponent(props.campusId)}`, {
+      headers: { Authorization: `Bearer ${props.authToken}`, Accept: 'application/json' },
+    });
+    const json = res.ok ? await res.json() : null;
+    campusNames.value = Array.isArray(json?.data) ? json.data : [];
+  } catch {
+    campusNames.value = [];
   }
+}
+onMounted(loadCampusNames);
+watch(() => [props.campusId, props.authToken], loadCampusNames);
+// Names may arrive after the field already has focus: refresh the open dropdown.
+watch(campusNames, () => {
+  if (open.value) runSearch();
+});
+
+function campusMatches(q) {
+  return campusNames.value
+    .filter((n) => !q || n.name.toLowerCase().includes(q.toLowerCase()))
+    .slice(0, 8)
+    .map((n) => ({ id: `campus:${n.name}`, canonical_name: n.name, municipality: `本校已有 ${n.count} 人` }));
+}
+
+function onFocus() {
+  open.value = true;
+  queueSearch();
 }
 
 function onInput() {
@@ -103,8 +130,10 @@ function queueSearch() {
 
 async function runSearch() {
   const q = text.value.trim();
+  const mine = campusMatches(q);
   if (q.length < 1 || !props.authToken) {
-    suggestions.value = [];
+    suggestions.value = mine;
+    highlight.value = -1;
     return;
   }
   const my = ++seq;
@@ -118,10 +147,12 @@ async function runSearch() {
     if (!res.ok || my !== seq) return;
     const json = await res.json();
     if (my !== seq) return;
-    suggestions.value = Array.isArray(json?.data) ? json.data : [];
+    const taken = new Set(mine.map((m) => m.canonical_name));
+    const dir = Array.isArray(json?.data) ? json.data.filter((d) => !taken.has(d.canonical_name)) : [];
+    suggestions.value = [...mine, ...dir];
     highlight.value = suggestions.value.length ? 0 : -1;
   } catch {
-    if (my === seq) suggestions.value = [];
+    if (my === seq) suggestions.value = mine;
   }
 }
 
