@@ -26,4 +26,19 @@ class InvoiceNumberTest extends TestCase
     {
         $this->assertSame('INV-202604-000123', InvoiceNumber::for($this->invoice(['billing_period' => '2026-05', 'Note' => 'x [invno_period:2026-04]'])));
     }
+
+    public function test_rekey_is_refused_when_the_note_has_no_room_for_the_tag(): void
+    {
+        $inv = $this->invoice(['billing_period' => '2026-04', 'Note' => str_repeat('a', 250)]);
+        try {
+            InvoiceNumber::rekey($inv, '2026-05');
+            $this->fail('expected refusal');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('invoice_number_tag_no_room', $e->getMessage());
+        }
+        $this->assertSame('INV-202604-000123', InvoiceNumber::for($inv), 'the issued number did not change');
+        $ok = $this->invoice(['billing_period' => '2026-04', 'Note' => 'x']);
+        InvoiceNumber::rekey($ok, '2026-05');
+        $this->assertSame('INV-202604-000123', InvoiceNumber::for($ok));
+    }
 }
