@@ -445,3 +445,29 @@ jobs:
         run: |
           echo "### 🖥️ Pi Health Check — $(date '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
           echo "Checks: 磁碟空間 / CPU 雙感測器與 throttling / 備份年齡 / scheduler / UptimeRobot" >> "$GITHUB_STEP_SUMMARY"
+
+  # Gap 1 of #5070: red scheduled run -> one GitHub issue (comment if already open). LINE notify above stays.
+  alert-issue:
+    name: Open or update alert issue
+    needs: health-check
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or comment on the single alert issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="[ops-alert] Pi Health Monitor failing"
+          n="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label area:ops --search "\"$title\" in:title" --json number -q '.[0].number // empty')"
+          msg="Scheduled run failed: ${RUN_URL} (see SEVERITY_MATRIX.md, INCIDENT_START_HERE.md). Aggregate status only; no secrets or PII."
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$msg"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label "area:ops,priority:p1" --body "$msg"
+          fi
