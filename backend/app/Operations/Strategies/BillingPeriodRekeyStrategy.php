@@ -130,7 +130,8 @@ final class BillingPeriodRekeyStrategy
                     DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'],
                         // only the tag this run added leaves the Note: anything appended since (void / correction audit) stays
                         'Note' => $added ? trim(str_replace([$tag, trim($tag)], '', (string) $inv->Note)) : (string) $inv->Note, 'updated_at' => now()]);
-                    if ($r['report_ids']) DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
+                    // every report of this bill on the repaired period goes back, including ones registered after the run (confirm() compares both)
+                    DB::table('payment_reports')->where('InvoiceID', $inv->id)->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
                     $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => (string) ($context['operation_id'] ?? ''),
                         'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
                     $restored++;

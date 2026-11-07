@@ -167,4 +167,15 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame([true, []], [$two['ok'], $two['skipped_ids']], 'rows restored by the first pass are recognised, the freed one restores');
         $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
     }
+
+    public function test_rollback_also_moves_a_report_registered_after_the_run(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $first = $s->plan($this->params('all'));
+        $result = $s->execute($s->plan($this->params('all', $first['digest'])), ['operation_id' => 'req-6']);
+        DB::table('payment_reports')->insert(['id' => 2, 'StudentID' => 1, 'StudentClassID' => 100, 'InvoiceID' => 1, 'billing_period' => '2026-05',
+            'reported_by_name' => 'x', 'payment_date' => '2026-05-02', 'reported_amount' => 100, 'report_token_hash' => 'h2', 'token_expires_at' => now()]);
+        $s->rollback($result['snapshot'], ['operation_id' => 'req-6']);
+        $this->assertSame(['2026-04', '2026-04'], [DB::table('payment_reports')->where('id', 1)->value('billing_period'), DB::table('payment_reports')->where('id', 2)->value('billing_period')]);
+    }
 }
