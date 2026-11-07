@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-school-merge
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 學校整理
+    summary: 把寫法不同的同一所學校合併成一個名稱，可復原。
+    items:
+      - category: added
+        text: 學生管理新增「學校整理」，列出可能重複的校名，選一個名稱即可合併，180 天內可復原。
+    source_refs:
+      - "changelog:2026-11-07:school-merge-517"
