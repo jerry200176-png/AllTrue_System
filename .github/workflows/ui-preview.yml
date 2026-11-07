@@ -1,4 +1,5 @@
-# Per-PR UI preview (fake data, in-browser mocks) on Cloudflare Pages.
+# Per-PR preview of the whole app on Cloudflare Pages. Data: staging via the Pages Function
+# (frontend/functions/api) when PREVIEW_API_ORIGIN is set on the Pages project, else in-browser mocks.
 # Informational only: not a required check, no relation to the land queue.
 name: ui-preview
 
@@ -63,12 +64,10 @@ jobs:
           set -euo pipefail
           {
             echo "<!-- ui-preview -->"
-            echo "**UI preview** (fake data, read-only) for \`${SHA:0:7}\`"
+            echo "**UI preview** for \`${SHA:0:7}\` (whole app, fake data)"
             echo
-            echo "- [Index]($URL/)"
-            for s in "login:Login" "parent:家長首頁" "director:主任首頁" "teacher:老師首頁" "course:課程管理" "attendance:出缺勤" "tuition:帳務"; do
-              echo "- [${s#*:}]($URL/ui-preview-screen.html?page=${s%%:*})"
-            done
+            echo "- [Open the app]($URL/)"
+            echo "- Demo logins: [主任]($URL/?demo=director) · [老師]($URL/?demo=teacher) · [家長]($URL/?demo=parent)"
           } > body.md
           id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
             --jq '[.[] | select(.body | startswith("<!-- ui-preview -->"))][0].id // empty')

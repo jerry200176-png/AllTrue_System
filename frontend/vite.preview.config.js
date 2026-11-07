@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 /** PR preview build (fake data, in-browser mocks). Separate from production: outputs dist-preview/. */
 export default defineConfig({
   root: path.resolve(__dirname, 'preview'),
-  base: './',
+  base: '/',
   cacheDir: path.resolve(__dirname, '.vite_cache_preview'),
   publicDir: path.resolve(__dirname, 'public'),
   plugins: [
@@ -35,10 +35,7 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dist-preview'),
     emptyOutDir: true,
     rollupOptions: {
-      input: [
-        path.resolve(__dirname, 'preview/index.html'),
-        path.resolve(__dirname, 'preview/ui-preview-screen.html'),
-      ],
+      input: path.resolve(__dirname, 'preview/index.html'),
     },
   },
 });
