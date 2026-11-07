@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -574,43 +574,45 @@ test('review gate: R3 marker carries across update-branch only when samePatch', 
   assert.equal(reviewGate([codex(clean())], H, OWNER, 'lower', () => assert.fail('called')).via, 'codex'); // lower unaffected
 });
 
-test('samePrPatch: identical patch needs identical tree mode/blob; truncated tree fails closed', () => {
-  const dir = fs.mkdtempSync(join(os.tmpdir(), 'fakegh-'));
-  const A = 'a'.repeat(40), B = 'b'.repeat(40);
-  fs.writeFileSync(join(dir, 'gh'), `#!/usr/bin/env node
-const u = process.argv[3], m = JSON.parse(process.env.FAKE);
-if (u.endsWith('/o/r/')) process.exit(1); // real GitHub 404s the trailing slash
-if (u.endsWith('/o/r')) { console.log(JSON.stringify({ default_branch: 'main' })); process.exit(0); }
-const key = Object.keys(m).find((k) => u.includes(k));
-if (!key) process.exit(1);
-console.log(JSON.stringify(m[key]));
-`, { mode: 0o755 });
-  const M1 = '1'.repeat(40), M2 = '2'.repeat(40);
-  const run = (tree, f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }]) => {
-    const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: tree.base || 'main' } },
-      [`compare/main...${A}`]: [{ files: f, merge_base_commit: { sha: M1 } }], [`compare/main...${B}`]: [{ files: f, merge_base_commit: { sha: M2 } }],
-      [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b, [`trees/${M1}`]: tree.m1 ?? { tree: [] }, [`trees/${M2}`]: tree.m2 ?? { tree: [] } };
-    const out = execFileSync(process.execPath, ['--input-type=module', '-e',
-      `import { samePrPatch } from ${JSON.stringify(new URL('../../.github/scripts/review-gate.mjs', import.meta.url).href)}; console.log(samePrPatch(7, '${B}', '${A}'));`],
-    { encoding: 'utf8', env: { ...process.env, REPO: 'o/r', FAKE: JSON.stringify(fake), PATH: `${dir}:${process.env.PATH}` } });
-    return out.trim() === 'true';
-  };
-  const ent = (mode, sha = 'c'.repeat(40)) => ({ tree: [{ path: 'x.sh', mode, type: 'blob', sha }] });
-  assert.equal(run({ a: ent('100644'), b: ent('100644') }), true);
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), base: 'evil' }), false); // retargeted base never carries
-  assert.equal(run({ a: ent('100644'), b: ent('100755') }), false); // mode change
-  assert.equal(run({ a: ent('100644'), b: ent('120000') }), false); // symlink swap
-  assert.equal(run({ a: ent('100644'), b: { tree: [] } }), false); // deleted at head only
-  assert.equal(run({ a: ent('100644'), b: { ...ent('100644'), truncated: true } }), false);
-  // A binary file (e.g. a visual baseline PNG) has no patch: its blob sha stands in, and the tree check still applies.
-  const png = [{ filename: 'x.sh', status: 'modified', sha: 'c'.repeat(40) }];
-  assert.equal(run({ a: ent('100644'), b: ent('100644') }, png), true);
-  assert.equal(run({ a: ent('100644'), b: ent('100644', 'e'.repeat(40)) }, png), false); // content changed at head
-  assert.equal(run({ a: ent('100644'), b: ent('100644') }, [{ filename: 'x.sh', status: 'modified' }]), false); // no patch, no sha
-  // main moved the same binary under the PR (the PR now reverts main's PNG): the base-side entry differs -> no carry.
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), m1: ent('100644', '1'.repeat(40)), m2: ent('100644', '2'.repeat(40)) }, png), false);
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), m1: ent('100644', '1'.repeat(40)), m2: ent('100644', '1'.repeat(40)) }, png), true);
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), m2: { tree: [], truncated: true } }, png), false); // fail closed
+const DIFF = (line, hunk = '@@ -1,2 +1,2 @@') => `diff --git a/x.js b/x.js\nindex 111..222 100644\n--- a/x.js\n+++ b/x.js\n${hunk}\n ctx\n-old\n+${line}\n`;
+
+test('TRIVIAL_REBASE: identical patch-id carries (hunk line numbers may shift); a changed line does not', () => {
+  assert.ok(patchId(DIFF('new')));
+  assert.equal(sameDiff(DIFF('new'), DIFF('new', '@@ -40,2 +45,2 @@')), true); // main shifted the lines
+  assert.equal(sameDiff(DIFF('new'), DIFF('newer')), false); // conflict-resolution edit
+  assert.equal(sameDiff(DIFF('new'), DIFF('new ')), false); // whitespace-only edit: patch-id ignores it, exact lines do not
+  assert.equal(sameDiff(DIFF('new'), 'Binary files a/x and b/x differ\n'), false);
+  assert.equal(sameDiff('', ''), false); // unreadable diff fails closed
+  assert.equal(sameDiff(DIFF('new'), DIFF('new').replace('100644', '100755').replace('index', 'old mode 100644\nnew mode 100755\nindex')), false); // mode change
+});
+
+test('TRIVIAL_REBASE: only merges from main may sit between old and head', () => {
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const A = c('a1', 'main0'), B = c('b1', 'a1');
+  const merge = c('m1', 'b1', 'main9'); // second parent is on main (not a PR commit)
+  assert.equal(onlyMainMerged([A, B], [A, B, merge]), true);
+  assert.equal(onlyMainMerged([A, B], [A, B]), true);
+  assert.equal(onlyMainMerged([A, B], [A, B, c('n1', 'b1')]), false); // non-merge commit
+  assert.equal(onlyMainMerged([A, B], [A, B, c('m2', 'b1', 'other', 'x')]), false); // octopus
+  assert.equal(onlyMainMerged([A, B], [A, B, c('m3', 'b1', 'n9'), c('n9', 'a1')]), false); // merges another PR-side branch
+  assert.equal(onlyMainMerged([A, B], [A, c('b2', 'a1')]), false); // old not an ancestor of head
+});
+
+test('TRIVIAL_REBASE: Codex state and independent-review marker carry only through samePatch', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const G = (cs, same) => reviewGate(cs, H, OWNER, 'lower', same);
+  assert.deepEqual(G([codex(clean(OLD))], () => true), { ok: true, via: `codex-carried:${OLD.slice(0, 7)}` });
+  assert.equal(G([codex(clean(OLD))], () => false).ok, false);
+  assert.equal(G([codex(clean(OLD))]).ok, false); // default fails closed
+  assert.equal(G([codex(clean(OLD))], () => { throw new Error('api'); }).ok, false);
+  assert.equal(G([codex(clean(OLD, { has_unresolved_findings: true }))], () => true).ok, false); // findings never carry
+  assert.equal(G([codex(clean(OLD, { status: 'in_progress' }))], () => true).ok, false);
+  assert.equal(G([codex(clean(H, { has_unresolved_findings: true }))], () => true).ok, false); // head findings veto
+  assert.equal(G([codex(clean(OLD)), owner(`<!-- independent-review:v1 sha=${H} verdict=fail -->`)], () => true).ok, false);
+  assert.equal(G([owner(reviewMarker(OLD))], () => true).via, `independent-review-carried:${OLD.slice(0, 7)}`);
+  assert.equal(G([owner(reviewMarker(OLD))], () => false).ok, false);
+  assert.equal(G([owner(reviewMarker(OLD)), owner(`<!-- independent-review:v1 sha=${OLD} verdict=fail -->`)], () => true).ok, false);
+  assert.equal(G([{ user: { login: 'someone' }, body: reviewMarker(OLD) }], () => true).ok, false); // non-owner
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {
