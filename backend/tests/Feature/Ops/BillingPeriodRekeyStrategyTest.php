@@ -1,0 +1,100 @@
+<?php
+
+namespace Tests\Feature\Ops;
+
+use App\Operations\Strategies\BillingPeriodRekeyStrategy;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+final class BillingPeriodRekeyStrategyTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private const REF = 'repair-billing-period-rekey-20261107';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        foreach ([[1, 16], [2, 16], [3, 9], [4, 16], [5, 9]] as [$id, $campus]) {
+            DB::table('Student')->insert(['id' => $id, 'name' => "s{$id}", 'CampusID' => $campus, 'ClassID' => 1, 'enable' => 1]);
+        }
+        // 100: cycle 04-29 ~ 05-27, lessons in May, stored 2026-04 (the #514 case) -> 2026-05, paid report follows.
+        $this->cycle(100, 1, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05', '2026-05-12']);
+        DB::table('payment_reports')->insert(['id' => 1, 'StudentID' => 1, 'StudentClassID' => 100, 'InvoiceID' => 1, 'billing_period' => '2026-04',
+            'reported_by_name' => 'x', 'payment_date' => '2026-05-01', 'reported_amount' => 100, 'report_token_hash' => 'h', 'token_expires_at' => now()]);
+        $this->cycle(101, 2, 1, '2026-05-01', '2026-05-31', '2026-05', ['2026-05-04']);        // already right
+        $this->cycle(102, 3, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);        // other campus
+        $this->cycle(106, 3, 1, '2026-05-01', '2026-05-31', '2026-05', ['2026-05-04']);        // holds May for student 3 -> 102 is refused
+        $this->cycle(107, 5, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);        // other campus, ready
+        $this->cycle(103, 4, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);        // same student+subject already bills May
+        DB::table('StudentClass')->where('ID', 103)->update(['StudentID' => 4]);
+        $this->cycle(104, 4, 1, '2026-05-28', '2026-06-26', '2026-05', ['2026-06-02']);
+        $this->cycle(105, 2, 2, '2026-04-29', '2026-05-27', '2026-04', []);                    // no lessons: start month, already right
+    }
+
+    private function cycle(int $class, int $student, int $subject, string $start, string $end, string $period, array $lessons): void
+    {
+        DB::table('StudentClass')->insert(['ID' => $class, 'StudentID' => $student, 'GradeID' => 1, 'SubjectID' => $subject, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4,
+            'Pay' => 0, 'Rate' => 0, 'TotalHours' => 4, 'StartDate' => $start, 'EndDate' => $end, 'ClassType' => 'one_on_one', 'ScheduleMode' => 'date',
+            'Stop' => 0, 'Paid' => 0, 'Charge' => 7500]);
+        $id = $class - 99;
+        DB::table('Invoice')->insert(['id' => $id, 'StudentID' => $student, 'StudentClassID' => $class, 'IssueDate' => $start, 'TotalAmount' => 7500, 'PaidAmount' => 0,
+            'Status' => 'unpaid', 'Note' => '', 'billing_period' => $period, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => $id, 'StudentClassID' => $class, 'Description' => 'x', 'Amount' => 7500, 'PeriodStart' => $start, 'PeriodEnd' => $end]);
+        foreach ($lessons as $d) {
+            DB::table('ClassSession')->insert(['StudentClassID' => $class, 'SessionDate' => $d, 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'attended']);
+        }
+    }
+
+    private function params(array|string $campuses, string $digest = ''): array
+    {
+        return ['campus_ids' => $campuses, 'decision_reference' => self::REF, 'expected_digest' => $digest];
+    }
+
+    public function test_dry_run_lists_every_misfiled_cycle_by_ids_and_refuses_collisions(): void
+    {
+        $plan = (new BillingPeriodRekeyStrategy)->plan($this->params('all'));
+        $this->assertSame('unpinned', $plan['state']);
+        $byInvoice = array_column($plan['manifest'], null, 'invoice_id');
+        $this->assertSame(['ready', '2026-04', '2026-05'], [$byInvoice[1]['status'], $byInvoice[1]['from'], $byInvoice[1]['to']]);
+        $this->assertSame(['skipped', 'period_taken'], [$byInvoice[3]['status'], $byInvoice[3]['reason']], 'never two bills in one period');
+        $this->assertSame('ready', $byInvoice[8]['status'], 'other campus is covered by all');
+        $this->assertSame('ready', $byInvoice[4]['status'], 'May is freed by the next cycle moving to June in the same run');
+        $this->assertSame('2026-06', $byInvoice[5]['to']);
+        $this->assertArrayNotHasKey(2, $byInvoice);
+        $this->assertArrayNotHasKey(6, $byInvoice);
+        $this->assertSame(['9' => 1, '16' => 3], array_map('intval', $plan['totals']['ready_by_campus']) + [], 'counts per campus');
+        $one = (new BillingPeriodRekeyStrategy)->plan($this->params([9]));
+        $this->assertSame([3, 8], array_column($one['manifest'], 'invoice_id'));
+    }
+
+    public function test_execute_rekeys_period_and_reports_keeps_amounts_audits_and_restores(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $digest = $s->plan($this->params('all'))['digest'];
+        $plan = $s->plan($this->params('all', $digest));
+        $this->assertSame('pinned', $plan['state']);
+        $result = $s->execute($plan, ['operation_id' => 'req-1']);
+        $inv = DB::table('Invoice')->where('id', 1)->first();
+        $this->assertSame(['2026-05', 7500], [$inv->billing_period, (int) $inv->TotalAmount]);
+        $this->assertStringContainsString('[invno_period:2026-04]', $inv->Note);
+        $this->assertSame('2026-05', DB::table('payment_reports')->where('id', 1)->value('billing_period'));
+        $this->assertSame(4, DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->count());
+        $this->assertTrue($s->verify($plan, $result)['ok']);
+
+        $restore = $s->rollback($result['snapshot'], ['operation_id' => 'req-1']);
+        $this->assertSame(['ok' => true, 'restored' => 4], ['ok' => $restore['ok'], 'restored' => $restore['restored']]);
+        $this->assertSame(['2026-04', ''], [DB::table('Invoice')->where('id', 1)->value('billing_period'), (string) DB::table('Invoice')->where('id', 1)->value('Note')]);
+        $this->assertSame('2026-04', DB::table('payment_reports')->where('id', 1)->value('billing_period'));
+    }
+
+    public function test_changed_state_or_wrong_digest_never_executes(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $plan = $s->plan($this->params('all', str_repeat('a', 64)));
+        $this->assertFalse($plan['ok']);
+        $this->expectException(\RuntimeException::class);
+        $s->execute($plan, []);
+    }
+}
