@@ -198,4 +198,17 @@ class SchoolMergeApiTest extends TestCase
         $this->assertSame(0, $res->json('data.periods_renamed'));
         $this->assertSame('臺北市立大安國民中學', $p->fresh()->school_name);
     }
+
+    public function test_shared_period_stays_for_ideographic_space_spelling(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $this->student($a, '台北市大安國中');
+        $this->student($a, "\u{3000}大安國中"); // U+3000 prefix: SQL folds it with a plain space, but it is not selected
+        $p = $this->period($a, '臺北市立大安國民中學', 1);
+        $this->student($a, '甲測國中');
+        $res = $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '甲測國中', 'variants' => ['台北市大安國中']])->assertCreated();
+        $this->assertSame(1, $res->json('data.periods_skipped'));
+        $this->assertSame('臺北市立大安國民中學', $p->fresh()->school_name);
+    }
 }
