@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { BlurFade, NumberTicker, ShineBorder } from '..';
+import { BlurFade, NumberTicker, ShineBorder, SlidingIndicator } from '..';
 
 const setReduced = (on) => {
   window.matchMedia = vi.fn().mockReturnValue({ matches: on, addEventListener() {}, removeEventListener() {} });
@@ -71,5 +71,11 @@ describe('motion kit', () => {
     const w = mount(ShineBorder, { slots: { default: '<button>go</button>' } });
     expect(w.find('button').exists()).toBe(true);
     expect(w.find('.shine-border__ring').attributes('aria-hidden')).toBe('true');
+  });
+
+  it('SlidingIndicator renders the tabs plus one decorative marker', () => {
+    const w = mount(SlidingIndicator, { props: { active: 'a' }, slots: { default: '<button role="tab" aria-selected="true">a</button>' } });
+    expect(w.find('[role="tab"]').exists()).toBe(true);
+    expect(w.find('.sliding-indicator').attributes('aria-hidden')).toBe('true');
   });
 });

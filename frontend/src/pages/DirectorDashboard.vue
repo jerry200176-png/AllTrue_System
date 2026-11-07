@@ -10,11 +10,11 @@
 
     <template v-else>
       <main class="director-workbench-v2" aria-label="主任總覽">
-        <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:-mx-4 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-4 tw:py-3">
+        <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-0 tw:py-3">
           <div class="tw:flex tw:items-center tw:gap-3.5">
             <img :src="logoUrl" alt="台北全真一對一" width="52" height="52" class="tw:size-13 tw:shrink-0 tw:rounded-full tw:bg-white tw:object-contain tw:shadow-md" />
             <div>
-            <h1 class="tw:text-tpl-page tw:font-extrabold tw:tracking-tight">今天</h1>
+            <h1 class="tw:text-tpl-page tw:font-bold tw:tracking-tight">今天</h1>
             <p class="director-workbench-v2__updated tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary" role="status">
               {{ branchName }}・{{ todayDisplay }}・{{ dashboardLoading ? '更新中…' : `更新 ${dashboardLastUpdated || '--:--'}` }}
             </p>
@@ -79,7 +79,7 @@
               <div class="tw:mt-3 tw:flex tw:items-center tw:gap-5">
                 <ActivityRing :done="attendedCount" :total="todaySchedules.length" :label="`${todaySchedules.length} 堂已點名 ${attendedCount} 堂`" />
                 <div>
-                  <p class="director-num tw:text-tpl-num tw:font-extrabold" data-testid="hero-total"><template v-if="heroLoading"><span aria-hidden="true">—</span><span class="tw:sr-only">載入中</span></template><NumberTicker v-else :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
+                  <p class="director-num tw:text-tpl-num tw:font-bold tw:leading-none tw:tracking-tighter" data-testid="hero-total"><template v-if="heroLoading"><span aria-hidden="true">—</span><span class="tw:sr-only">載入中</span></template><NumberTicker v-else :value="todaySchedules.length" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">堂</span></p>
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="hero-marked">{{ heroLoading ? '載入中…' : pendingAttendanceCount ? `還有 ${pendingAttendanceCount} 堂沒點名` : (todaySchedules.length ? '都點名了' : '今天沒有課') }}</p>
                 </div>
               </div>
@@ -91,7 +91,7 @@
 
           <!-- 今天要處理: existing task queue as a grouped list -->
           <BlurFade as="section" :delay="60" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
-            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-extrabold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
+            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-bold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
                 <span class="director-skeleton__index"></span>
@@ -126,7 +126,7 @@
                 >
                   <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
                   <span class="tw:flex-1">{{ plainTaskTitle(task) }}</span>
-                  <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-extrabold">{{ task.count }}</span>
+                  <span v-if="task.count" class="director-task__count director-num tw:grid tw:h-9 tw:min-w-10 tw:place-items-center tw:rounded-full tw:bg-muted tw:px-3 tw:text-tpl-body tw:font-bold">{{ task.count }}</span>
                   <ChevronRight :size="24" :stroke-width="2.4" class="tw:text-tpl-secondary" aria-hidden="true" />
                 </button>
               </li>
@@ -150,13 +150,13 @@
               :delay="100 + 40 * i"
               :data-testid="`kpi-${kpi.key}`"
             >
-              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
+              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:motion-safe:lg:hover:-translate-y-0.5 tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
                 <Card class="tpl-card tw:h-full tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-body tw:font-bold">
                     <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="1.75" aria-hidden="true" /></span>
                     {{ kpi.label }}
                   </div>
-                  <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-extrabold"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
+                  <p class="director-num tw:mt-3 tw:text-tpl-num-sm tw:font-bold tw:leading-none tw:tracking-tighter"><NumberTicker :value="kpi.value" /><span class="tw:ml-1 tw:text-tpl-unit tw:font-bold">{{ kpi.unit }}</span></p>
                   <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary">{{ kpi.sub }}</p>
                   <Sparkline v-if="kpi.spark" :values="kpi.spark" tone="ink-2" :label="kpi.sparkLabel" />
                 </Card>

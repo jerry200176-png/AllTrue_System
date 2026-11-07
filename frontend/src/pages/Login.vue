@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
 
 .login-title {
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--ds-brand-ink);
   text-wrap: balance;
   margin: 0 0 6px;
@@ -433,7 +433,7 @@ onBeforeUnmount(() => {
 }
 .role-title {
   font-size: 0.95rem;
-  font-weight: 800;
+  font-weight: 700;
   color: #37474f;
 }
 .role-subtitle {
@@ -496,7 +496,7 @@ onBeforeUnmount(() => {
   min-height: 48px;
   padding: 14px;
   font-size: 1.05rem;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--ds-brand-glyph);
   background: var(--ds-brand-sun);
   border: none;

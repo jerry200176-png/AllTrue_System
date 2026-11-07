@@ -19,7 +19,7 @@ defineEmits(['leave', 'pay', 'learning']);
       <CardContent class="tw:px-5">
         <p class="tw:text-sm tw:text-muted-foreground">下一堂課</p>
         <template v-if="home.nextLesson">
-          <p class="tw:text-2xl tw:font-semibold tw:tracking-tight">
+          <p class="tw:text-3xl tw:font-bold tw:tracking-tight">
             {{ home.nextLesson.dateLabel }}（{{ home.nextLesson.weekday }}）{{ home.nextLesson.time }}
           </p>
           <p class="tw:text-sm tw:text-muted-foreground">
@@ -39,7 +39,7 @@ defineEmits(['leave', 'pay', 'learning']);
         <p :class="['tw:text-sm', home.due ? 'tw:text-[var(--ds-canvas)]/60' : 'tw:text-muted-foreground']">要繳的錢</p>
         <template v-if="home.due">
           <div class="tw:flex tw:items-center tw:justify-between tw:gap-2">
-            <p class="tw:text-4xl tw:font-semibold tw:tracking-tight">
+            <p :class="['tw:font-bold tw:leading-none tw:tracking-tighter', !home.due.review && home.due.amount != null ? 'tw:text-6xl' : 'tw:text-4xl']">
               <template v-if="home.due.review">帳務確認中</template>
               <template v-else-if="home.due.amount == null">有課程待繳</template>
               <template v-else>$<NumberTicker :value="Number(home.due.amount)" /></template>

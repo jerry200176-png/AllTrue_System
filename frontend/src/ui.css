@@ -25,9 +25,9 @@
   --tpl-text-body: calc(1.1875rem * var(--tpl-scale));
   --tpl-text-list: calc(1.375rem * var(--tpl-scale));
   --tpl-text-unit: calc(1.5rem * var(--tpl-scale));
-  --tpl-text-page: calc(2.125rem * var(--tpl-scale));
-  --tpl-text-num-sm: calc(3rem * var(--tpl-scale));
-  --tpl-text-num: calc(3.5rem * var(--tpl-scale));
+  --tpl-text-page: calc(2.5rem * var(--tpl-scale));
+  --tpl-text-num-sm: calc(3.25rem * var(--tpl-scale));
+  --tpl-text-num: calc(5rem * var(--tpl-scale));
   --tpl-control-height: 3.5rem;
   /* premium layer: gradient icon tiles, glass, shadow, glow (reuse on every template page) */
   --tpl-g-ink: linear-gradient(145deg, var(--ds-brand-ink-2), var(--ds-brand-ink));
