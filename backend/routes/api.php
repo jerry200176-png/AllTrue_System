@@ -846,6 +846,9 @@ Route::prefix('v1')->group(function () {
         Route::delete('exam-rounds/{examRound}', [ExamRoundController::class, 'destroy'])->whereNumber('examRound');
         Route::post('exam-rounds/{examRound}/restore', [ExamRoundController::class, 'restore'])->whereNumber('examRound');
         Route::get('school-merge/suggestions', [SchoolMergeController::class, 'suggestions']);
+        Route::get('school-merge/history', [SchoolMergeController::class, 'history']);
+        Route::post('school-merge', [SchoolMergeController::class, 'merge']);
+        Route::post('school-merge/{requestId}/undo', [SchoolMergeController::class, 'undo']);
         Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
         Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
         Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');

@@ -28,6 +28,7 @@ SPLIT = {
     "pop-past-scheduled-cancel.yml": "repair",
     "pop-shared-pool-trim.yml": "trim",
     "pop-unbilled-backlog-catchup.yml": "catchup",
+    "pop-billing-period-rekey.yml": "rekey",
     "pop-unpaid-hidden-closures.yml": "repair",
 }
 GATE_IF = "if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}"

@@ -52,6 +52,7 @@
     "test:students-guardian-ssot-ui": "node src/lib/studentsGuardianSsotUi.test.js",
     "test:teacher-queue-focus-a11y": "node src/lib/teacherQueueFocusA11y.test.js",
     "test:course-management-tabs-a11y": "node src/lib/courseManagementTabsA11y.test.js",
+    "test:lib-node": "node scripts/run-node-tests.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:cov": "vitest run --coverage",

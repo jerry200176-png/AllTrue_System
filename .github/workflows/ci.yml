@@ -769,6 +769,10 @@ jobs:
         working-directory: frontend
         run: npm run test:exception-workflow-focus
 
+      - name: "All plain-node frontend tests (node --test; guard fails on any test file that never runs, W14)"
+        working-directory: frontend
+        run: npm run test:lib-node
+
       - name: "Component unit tests + coverage gate (Vitest, #731)"
         working-directory: frontend
         run: npm run test:unit:cov
