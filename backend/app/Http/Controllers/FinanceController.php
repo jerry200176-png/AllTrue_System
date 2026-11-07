@@ -1048,27 +1048,26 @@ class FinanceController extends Controller
             $gap = collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains(
                 fn ($r) => ($r['calendar_month'] ?? null) === $period && (($r['uncovered_sessions'] ?? 0) > 0 || ($r['outside_contract_sessions'] ?? 0) > 0)
             );
-            // An invoice whose service range spans months counts once, in the month its range starts (Founder 2026-10-31);
+            // An invoice whose service range spans months counts once, in its billing_period month = the month of its first lesson (in-app #514, Founder 2026-11-07; was the range start month, 2026-10-31);
             // later covered months show its status with nothing due, so totals never double-count it.
             $spans = collect($coverage[(int) $c->ID]['periods'] ?? [])->filter(
                 fn ($r) => ($r['invoice_ids'] ?? []) !== [] && substr((string) $r['period_start'], 0, 7) !== substr((string) $r['period_end'], 0, 7)
                     && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
             );
-            // Only the clean case follows the rule: label month = start month and the period engine sees no ambiguity.
+            // Only the clean case follows the rule: the label month has lessons and the period engine sees no ambiguity.
             // Otherwise keep 待確認 in each covered month, uncounted, so nothing is double-counted or shown paid.
             $spanReview = $monthlyBilled && $spans->isNotEmpty() && (
                 (bool) ($coverage[(int) $c->ID]['review_required'] ?? false)
                 // #4803: a paid shared/multi-line bill is settled but still cannot be placed in one month.
                 || (bool) ($coverage[(int) $c->ID]['attribution_ambiguous'] ?? false)
-                || $spans->contains(fn ($r) => substr((string) $r['billing_period'], 0, 7) !== substr((string) $r['period_start'], 0, 7))
-                // the start month's row only exists when it has lessons; else nothing would carry the invoice amount
-                || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['period_start'], 0, 7)))
+                // the label month's row only exists when it has lessons; else nothing would carry the invoice amount
+                || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['billing_period'], 0, 7)))
             );
             if ($spanReview) {
                 $spans = collect();
             }
-            $own = $spans->first(fn ($r) => substr((string) $r['period_start'], 0, 7) === $period);
-            // a separate invoice that starts in the selected month keeps its own status and amounts
+            $own = $spans->first(fn ($r) => substr((string) $r['billing_period'], 0, 7) === $period);
+            // a separate invoice labelled for the selected month keeps its own status and amounts
             $carried = ($own === null && ($p === null || ($p['invoice_ids'] ?? []) === [])) ? $spans->first() : null;
             if ($monthlyBilled && ($own ?? $carried) !== null) {
                 $p = collect($v->periods ?? [])->first(fn ($x) => ($x['billing_period'] ?? null) === ($own ?? $carried)['billing_period']);
@@ -1082,7 +1081,7 @@ class FinanceController extends Controller
             } elseif ($spanReview) {
                 $st = 'review';
             } elseif ($monthlyBilled && $carried !== null) {
-                // counted in the month the range starts: due and outstanding stay 0 here
+                // counted in its label month: due and outstanding stay 0 here
                 $st = ($p === null || $gap || $p['status'] === 'review_required' || !empty($p['amount_discrepancy'])) ? 'review' : $p['status'];
             } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
                 $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy']) || $gap) ? 'review' : $p['status'];

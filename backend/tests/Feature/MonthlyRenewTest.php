@@ -216,6 +216,21 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame('attended', ClassSession::firstOrFail()->Status); $this->assertSame(0, (int) $course->fresh()->Stop);
     }
 
+    public function test_lesson_after_a_lesson_month_labelled_cycle_is_not_hidden_by_its_label(): void
+    {
+        // in-app #514 review: cycle 04-29 ~ 05-27 is labelled 2026-05, yet a 05-28 lesson is outside its range and still needs handling.
+        Carbon::setTestNow('2026-05-29 08:00:00');
+        $token = $this->createDirectorToken([1], 'director-outside-514@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'StartDate' => '2026-04-29', 'EndDate' => '2026-05-27', 'settlement_day' => 15]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-04-29', 'DueDate' => '2026-05-15', 'billing_period' => '2026-05', 'TotalAmount' => 7500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => 'cycle', 'Amount' => 7500, 'PeriodStart' => '2026-04-29', 'PeriodEnd' => '2026-05-27']);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-28', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-06-26'])
+            ->assertStatus(422)->assertJsonPath('blockers.0.code', 'monthly_completed_sessions_outside_contract');
+    }
+
     public function test_unconfirmed_monthly_forecast_cannot_be_registered_as_received_cash(): void
     {
         Carbon::setTestNow('2026-09-29 08:00:00');

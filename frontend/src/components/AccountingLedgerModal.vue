@@ -935,6 +935,8 @@ function openEntry(course, mode = 'record') {
     subject: course.subject,
     invoice_id: oldest?.id,
     billing_period: oldest ? oldest.billing_period : collect?.billing_period,
+    billing_period_start: oldest?.period_start || undefined,
+    billing_period_end: oldest?.period_end || undefined,
     ...(collect ? { estimated_amount: Number(collect.amount) } : {}),
     payable_status: oldest ? 'invoiced' : 'unbilled',
     payable_amount: oldest ? Number(oldest.outstanding_amount) : null,

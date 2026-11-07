@@ -30,15 +30,8 @@ final class MonthlyRenewalPeriodService
             })->get(['id', 'SessionDate', 'StartTime'])->map(fn ($r) => ['id' => (int) $r->id, 'date' => Carbon::parse($r->SessionDate)->toDateString(), 'start' => substr((string) $r->StartTime, 0, 5)]);
         // A month already billed by a catch-up (same student + subject, non-void invoice for that billing_period)
         // is not a blocker: the lessons stay on this contract but their money lives on the catch-up invoice.
-        $months = $rows->map(fn ($r) => substr($r['date'], 0, 7))->unique()->values()->all();
-        $billedMonths = $months === [] ? collect() : DB::table('Invoice as inv')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
-            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->whereIn('inv.billing_period', $months)
-            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))
-            ->pluck('inv.billing_period')->unique();
-        $open = $rows->reject(fn ($r) => $billedMonths->contains(substr($r['date'], 0, 7)));
-        // in-app #506: a lesson the old month wrongly holds past its end, but inside the new period, moves to the new contract.
+        $billed = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $rows->pluck('date')->all());
+        $open = $rows->reject(fn ($r) => in_array($r['date'], $billed, true));
         $inNew = $open->filter(fn ($r) => $oldEnd && $end && $r['date'] > $oldEnd && $r['date'] <= $end);
         $reason = $inNew->isEmpty() ? null : $this->adoptionBlocker($course, $inNew, $oldEnd, $end);
         $blockers = [];

@@ -259,18 +259,19 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertSame([10000, 1000], [(int) $row['due_amount'], (int) $row['outstanding_amount']]);
     }
 
-    /** #4727(a): label month differs from the range start month => review in each covered month, uncounted. */
-    public function test_cross_month_invoice_with_other_label_month_stays_review(): void
+    /** in-app #514: a cycle labelled by its first-lesson month (here 2026-09, range 08-30 ~ 09-29) counts once, in that label month. */
+    public function test_cross_month_invoice_counts_once_in_its_label_month(): void
     {
-        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-15', 'EndDate' => '2026-09-14'];
-        $c = $this->course([['2026-09', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-08-17', '2026-08-24', '2026-09-07', '2026-09-14']);
+        $date = ['ScheduleMode' => 'date', 'Charge' => 6000, 'StartDate' => '2026-08-30', 'EndDate' => '2026-09-29'];
+        $c = $this->course([['2026-09', 6000, 'paid', 6000, [[6000, 'cash']]]], $date, ['2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28']);
         \App\Models\InvoiceItem::query()->where('StudentClassID', $c->ID)->delete();
         \App\Models\InvoiceItem::create(['InvoiceID' => \App\Models\Invoice::where('StudentClassID', $c->ID)->value('id'), 'StudentClassID' => $c->ID,
-            'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-14']);
-        foreach ([8, 9] as $m) {
+            'Description' => 'cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-30', 'PeriodEnd' => '2026-09-29']);
+        foreach ([8 => [0, 0], 9 => [6000, 6000]] as $m => [$due, $collected]) {
             $res = $this->fetchReport("&month={$m}")->assertOk();
-            $this->assertSame('review', collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID)['pay_status'], "month {$m}");
-            $this->assertSame([0, 0], [(int) $res->json('summary.total_due'), (int) $res->json('summary.total_collected')], "month {$m}");
+            $row = collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID); // August has no lessons: no row at all
+            $this->assertSame($m === 8 ? null : ['paid', $due], $row === null ? null : [$row['pay_status'], (int) $row['due_amount']], "month {$m}");
+            $this->assertSame([$due, $collected], [(int) $res->json('summary.total_due'), (int) $res->json('summary.total_collected')], "month {$m}");
         }
     }
 
