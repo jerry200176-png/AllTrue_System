@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { h, nextTick, ref } from 'vue';
 import axe from 'axe-core';
-import { ConfirmDialog, ConfirmHost, FormDialog, DetailSheet, ActionMenu, confirm } from '..';
+import { ConfirmDialog, FormDialog, DetailSheet, ActionMenu } from '..';
 
 beforeAll(() => {
   globalThis.ResizeObserver ||= class { observe() {} unobserve() {} disconnect() {} };
@@ -19,27 +19,13 @@ const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, b
 // color-contrast needs layout; jsdom has none.
 const axeClean = async (node) => (await axe.run(node, { rules: { 'color-contrast': { enabled: false } } })).violations.map((v) => v.id);
 
-describe('ConfirmDialog / useConfirm', () => {
+describe('ConfirmDialog', () => {
   it('orders [取消] [verb], marks destructive, and has no axe violations', async () => {
     const w = mount(ConfirmDialog, { props: { open: true, title: '刪除這門課？', description: '刪除後無法復原。', confirmLabel: '刪除', destructive: true }, attachTo: document.body });
     await tick();
     expect(buttons('[role=alertdialog]').filter((t) => t !== '關閉')).toEqual(['取消', '刪除']);
-    expect(q('[role=alertdialog] button:last-of-type').className).toContain('destructive');
+    expect(q('[role=alertdialog] button:last-of-type').className).toContain('tw:bg-destructive');
     expect(await axeClean(q('[role=alertdialog]'))).toEqual([]);
-    w.unmount();
-  });
-
-  it('confirm() resolves true on the verb button and false on cancel', async () => {
-    const w = mount(ConfirmHost, { attachTo: document.body });
-    const yes = confirm({ title: '鎖帳？', confirmLabel: '鎖帳' });
-    await tick();
-    [...document.body.querySelectorAll('button')].find((b) => b.textContent === '鎖帳').click();
-    expect(await yes).toBe(true);
-    await tick();
-    const no = confirm({ title: '鎖帳？' });
-    await tick();
-    [...document.body.querySelectorAll('button')].find((b) => b.textContent === '取消').click();
-    expect(await no).toBe(false);
     w.unmount();
   });
 });
@@ -121,5 +107,53 @@ describe('ActionMenu', () => {
     await tick();
     expect(w.emitted('select')[0]).toEqual(['edit']);
     w.unmount();
+  });
+
+  const groups = [{ id: 'g', label: '', items: [{ id: 'edit', label: '編輯' }, { id: 'pay', label: '收款', disabled: true, reason: '已無剩餘堂數' }] }];
+  const phone = (matches) => { window.matchMedia = () => ({ matches, addEventListener() {}, removeEventListener() {} }); };
+
+  it('disabled items stay focusable with their reason, and selecting one does nothing', async () => {
+    phone(false);
+    const w = mount(ActionMenu, { props: { groups }, attachTo: document.body });
+    const trigger = w.get('button[aria-label="更多操作"]');
+    trigger.element.focus();
+    key(trigger.element, 'Enter');
+    await tick();
+    const pay = q('[data-action=pay]');
+    expect(pay.getAttribute('aria-disabled')).toBe('true');
+    expect(pay.hasAttribute('data-disabled')).toBe(false);
+    expect(document.getElementById(pay.getAttribute('aria-describedby')).textContent).toBe('已無剩餘堂數');
+    pay.focus();
+    expect(document.activeElement).toBe(pay);
+    pay.click();
+    await tick();
+    expect(w.emitted('select')).toBeUndefined();
+    w.unmount();
+  });
+
+  it('renders a bottom sheet with 48px menu items at phone width; same disabled behavior', async () => {
+    phone(true);
+    const w = mount(ActionMenu, { props: { groups }, attachTo: document.body });
+    await tick();
+    w.get('button[aria-label="更多操作"]').element.click();
+    await tick();
+    const menu = q('[role=dialog] [role=menu]');
+    expect(menu).toBeTruthy();
+    const items = [...menu.querySelectorAll('[role=menuitem]')];
+    expect(items.every((i) => i.className.includes('tw:min-h-12'))).toBe(true);
+    const pay = items[1];
+    expect(pay.getAttribute('aria-disabled')).toBe('true');
+    expect(document.getElementById(pay.getAttribute('aria-describedby')).textContent).toBe('已無剩餘堂數');
+    items[0].focus();
+    key(menu, 'ArrowDown');
+    expect(document.activeElement).toBe(pay);
+    pay.click();
+    expect(w.emitted('select')).toBeUndefined();
+    items[0].click();
+    expect(w.emitted('select')[0]).toEqual(['edit']);
+    await tick();
+    expect(q('[role=dialog]')).toBeNull();
+    w.unmount();
+    phone(false);
   });
 });

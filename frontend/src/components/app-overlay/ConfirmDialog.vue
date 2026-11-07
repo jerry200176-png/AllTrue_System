@@ -23,11 +23,12 @@ const emit = defineEmits(['update:open', 'confirm']);
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>{{ title }}</AlertDialogTitle>
-        <AlertDialogDescription>{{ description }}</AlertDialogDescription>
+        <AlertDialogDescription data-testid="confirm-dialog-message">{{ description }}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel :disabled="loading">{{ cancelLabel }}</AlertDialogCancel>
+        <AlertDialogCancel data-testid="confirm-dialog-cancel" :disabled="loading">{{ cancelLabel }}</AlertDialogCancel>
         <AlertDialogAction
+          data-testid="confirm-dialog-confirm"
           :variant="destructive ? 'destructive' : 'default'"
           :disabled="loading"
           :aria-busy="loading || undefined"
