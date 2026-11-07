@@ -10,11 +10,26 @@
 
     <template v-else>
       <main class="director-workbench-v2" aria-label="主任總覽">
-        <header class="tpl-bar tw:sticky tw:top-0 tw:z-10 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:px-0 tw:py-3">
+        <GlassNavBar class="dash-navbar" :collapsed="navCollapsed" title="今天">
+          <template #trailing>
+            <Button
+              class="director-workbench-v2__refresh tw:size-11 tw:border-0 tw:bg-transparent tw:shadow-none"
+              variant="outline"
+              size="icon"
+              aria-label="重新整理"
+              :aria-busy="dashboardLoading"
+              :disabled="dashboardLoading"
+              @click="refreshDashboard"
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" :class="{ 'tw:animate-spin': dashboardLoading }"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
+            </Button>
+          </template>
+        </GlassNavBar>
+        <div class="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:pb-3">
           <div class="tw:flex tw:items-center tw:gap-3.5">
             <img :src="logoUrl" alt="台北全真一對一" width="52" height="52" class="tw:size-13 tw:shrink-0 tw:rounded-full tw:bg-white tw:object-contain tw:shadow-md" />
             <div>
-            <h1 class="tw:text-tpl-page tw:font-bold tw:tracking-tight">今天</h1>
+            <h1 ref="largeTitle" class="tw:text-tpl-page tw:font-bold tw:tracking-tight">今天</h1>
             <p class="director-workbench-v2__updated tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary" role="status">
               {{ branchName }}・{{ todayDisplay }}・{{ dashboardLoading ? '更新中…' : `更新 ${dashboardLastUpdated || '--:--'}` }}
             </p>
@@ -36,26 +51,15 @@
                 @click="setTextScale(step.key)"
               >{{ step.label }}</button>
             </div>
-            <Button
-              class="director-workbench-v2__refresh tw:size-11"
-              variant="outline"
-              size="icon"
-              aria-label="重新整理"
-              :aria-busy="dashboardLoading"
-              :disabled="dashboardLoading"
-              @click="refreshDashboard"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" :class="{ 'tw:animate-spin': dashboardLoading }"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
-            </Button>
           </div>
-        </header>
+        </div>
 
         <AtTabs
           :model-value="dashboardViewMode"
           class="director-workbench-v2__nav tw:[&_[role=tab]]:min-h-12 tw:[&_[role=tab]]:px-5 tw:[&_[role=tab]]:text-tpl-caption tw:[&_[role=tab]]:font-bold"
           label="總覽檢視模式"
           id-prefix="director-workbench"
-          variant="segmented"
+          variant="ios"
           :tabs="[{ value: 'focus', label: '今天' }, { value: 'full', label: '完整營運' }]"
           @update:model-value="setDashboardViewMode"
         />
@@ -91,7 +95,7 @@
 
           <!-- 今天要處理: existing task queue as a grouped list -->
           <BlurFade as="section" :delay="60" class="director-workbench-v2__primary tw:lg:col-start-2 tw:lg:row-start-1 tw:lg:row-span-2" aria-labelledby="director-focus-title">
-            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-1 tw:text-tpl-list tw:font-bold">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
+            <h2 id="director-focus-title" class="tw:mb-3 tw:ml-4 tw:text-tpl-list tw:font-semibold tw:text-tpl-secondary">今天要處理（{{ dashboardPrimaryTasks.length }}）</h2>
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
                 <span class="director-skeleton__index"></span>
@@ -121,7 +125,7 @@
               >
                 <button
                   type="button"
-                  class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
+                  class="director-task__action tw:flex tw:min-h-18 tw:w-full tw:cursor-pointer tw:transition-transform tw:motion-safe:active:scale-[0.97] tw:items-center tw:gap-4 tw:border-0 tw:bg-transparent tw:px-5 tw:py-4 tw:text-left tw:text-tpl-body tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50"
                   @click="openDashboardTask(task)"
                 >
                   <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="taskGrad(task)"><component :is="taskIcon(task)" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
@@ -150,7 +154,7 @@
               :delay="100 + 40 * i"
               :data-testid="`kpi-${kpi.key}`"
             >
-              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.98] tw:motion-safe:lg:hover:-translate-y-0.5 tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
+              <button type="button" class="tw:block tw:h-full tw:w-full tw:cursor-pointer tw:appearance-none tw:rounded-3xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:transition-transform tw:motion-safe:active:scale-[0.97] tw:motion-safe:lg:hover:-translate-y-0.5 tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" @click="kpi.open()">
                 <Card class="tpl-card tw:h-full tw:gap-0 tw:rounded-3xl tw:p-5 tw:shadow-tpl-card" :title="kpi.definition">
                   <div class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-body tw:font-bold">
                     <span class="tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile" :class="kpi.grad"><component :is="kpi.icon" :size="22" :stroke-width="1.5" aria-hidden="true" /></span>
@@ -366,6 +370,8 @@ import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import { fetchP2ReviewGroups } from '../lib/duplicateReviewApi';
 import { authedFetchRetry401 } from '../lib/authedFetch';
 import AtTabs from '../components/design-system/AtTabs.vue';
+import GlassNavBar from '../components/glass/GlassNavBar.vue';
+import { useCollapse } from '../components/glass/useCollapse';
 import logoUrl from '../assets/logo.png';
 import { Clock, Wallet, RefreshCw, ClipboardCheck, Bell, UserRound, CalendarDays, ChevronRight, RotateCcw, Copy, MessageCircle, ListChecks, ShieldCheck } from 'lucide-vue-next';
 import { Card } from '@/components/ui/card';
@@ -375,6 +381,8 @@ import { Button } from '@/components/ui/button';
 import { BlurFade, NumberTicker, ShineBorder } from '@/components/motion';
 import { owedCard, renewalCount, oldestEvaluationAge, plainTaskTitle, sevenDayEvalCounts } from '../lib/directorHomeCards.js';
 import { useTextScale } from '../composables/useTextScale.js';
+const largeTitle = ref(null);
+const navCollapsed = useCollapse(largeTitle);
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';

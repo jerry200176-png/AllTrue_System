@@ -2,7 +2,7 @@
   <div v-if="mode === 'login'" class="login-wrap">
     <LoginFx />
     <BlurFade class="login-card-enter">
-    <div class="login-card">
+    <div class="login-card ds-glass ds-glass--thick ds-glass--rim">
       <div class="login-header">
         <LogoReveal>
           <div class="logo-wrapper">
@@ -292,10 +292,8 @@ onBeforeUnmount(() => {
 /* 玻璃擬態 (Glassmorphism) 卡片設計 */
 .login-card {
   position: relative;
-  background: var(--ds-canvas);
-  border: none;
-  border-radius: 20px;
-  box-shadow: 0 24px 60px color-mix(in srgb, var(--ds-brand-ink) 28%, transparent);
+  --_g-bg: color-mix(in srgb, var(--ds-canvas) 76%, transparent); /* a bit more see-through than --thick so the silk reads; text stays AA */
+  border-radius: 28px; /* iOS continuous-corner feel; material, rim and shadow come from .ds-glass */
   width: 100%;
   max-width: 420px;
   overflow: hidden;
@@ -344,7 +342,7 @@ onBeforeUnmount(() => {
 .login-subtitle {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ds-ink-mute);
+  color: var(--ds-ink); /* ink, not ink-mute: AA over the glass even where the silk is deepest orange */
   margin: 0;
   letter-spacing: 0.01em;
 }
@@ -464,7 +462,8 @@ onBeforeUnmount(() => {
   border: 2px solid transparent;
   border-radius: 12px;
   font-size: 1rem;
-  background: rgba(55, 71, 79, 0.04);
+  background: color-mix(in srgb, var(--ds-canvas) 62%, transparent);
+  border-color: var(--ds-glass-hairline);
   color: var(--ds-ink);
   font-weight: 500;
   transition: background-color 0.2s ease-out, border-color 0.2s ease-out, box-shadow 0.2s ease-out;
@@ -472,14 +471,14 @@ onBeforeUnmount(() => {
 
 .login-form .form-group input::placeholder,
 .login-form .form-group textarea::placeholder {
-  color: #90a4ae;
+  color: var(--ds-ink-mute);
   font-weight: 400;
 }
 
 .login-form .form-group input:hover,
 .login-form .form-group select:hover,
 .login-form .form-group textarea:hover {
-  background: rgba(55, 71, 79, 0.08);
+  background: color-mix(in srgb, var(--ds-canvas) 80%, transparent);
 }
 
 .login-form .form-group input:focus,
@@ -508,12 +507,12 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--ds-radius-lg);
   cursor: pointer;
-  box-shadow: none;
-  transition: background-color 0.2s ease-out, transform 0.15s ease-out;
+  box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--ds-brand-gold-deep) 70%, transparent); /* soft lift so the gold reads on the glass */
+  transition: background-color 0.2s ease-out, transform 220ms var(--ds-ease-ios);
   letter-spacing: 0.02em;
 }
 .login-btn:hover:not(:disabled) { background: var(--ds-brand-gold); }
-.login-btn:active:not(:disabled) { transform: scale(0.96); }
+.login-btn:active:not(:disabled) { transform: scale(0.97); }
 .login-btn:focus-visible { outline: 3px solid var(--ds-brand-ink); outline-offset: 3px; }
 .login-btn:disabled {
   background: var(--ds-canvas-soft);
@@ -547,7 +546,7 @@ onBeforeUnmount(() => {
   padding: 10px 20px;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ds-ink-mute);
+  color: var(--ds-ink);
   background: transparent;
   border: none;
   border-radius: 10px;
