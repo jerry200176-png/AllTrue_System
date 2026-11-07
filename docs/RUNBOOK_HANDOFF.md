@@ -1,7 +1,7 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-07 19:20 Asia/Taipei
-Source SHA: 09af4fd11 (origin/main at write time)
+Updated: 2026-11-08 00:10 Asia/Taipei
+Source SHA: 944ecc35e (origin/main at write time; live = 221a8566a)
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
 **規則**：本檔超過 7 天 → 視為 STALE，先對 GitHub（issue / PR / `gh run list`）驗證再用；新 SHA 勝舊 SHA；
@@ -18,17 +18,16 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| in-app 516 (#5056)：調課顯示錯 | **完成**：#5064 已上線（`4c46626b3`），回報已 resolved，#5056 已關。 | 後續：#5069（換老師後晶片又出現）、#5072（重調後舊目的地）；都是 P3 | #5069、#5072 |
-| in-app 514：帳單期間標籤 | 主修正 #5043 已上線（`4c46626b3`），影響數 0。 | 舊帳單 re-key 的 POP 在 PR #5046：R3 FAIL，鎖順序要跟 `voidInvoice` 一樣先課程後帳單（會 deadlock）。修好後交 R3 → `queue` → 上線 → POP dry-run → **Founder 按**。回報要等 POP 跑完才 resolve。 | PR #5046 |
-| in-app 517 (#5057)：學校名稱合併 | PR1 #5060 已上線。 | PR2 #5068（合併與 180 天內復原）：R3 delta review 中，用學生 id 排除、U+3000 測試。merge 後要補 students 頁的 visual baseline PR。 | PR #5068 |
-| in-app 501 (#4918)：課程管理改版 | Part 1 #5063 已上線。 | Part 2 #5080 已通過 R3，有 `autoland` 標籤（CI 綠就自動進 `queue`）。之後換 `StudentsList`。 | PR #5080 |
-| UI 改版 waves | 登入、家長首頁、主任首頁（#5027）已上線。Founder 11/7 已核可外觀，之後每波只給一次 before/after。 | 接著：課程管理 part 2 → 學生管理 → App shell → 老師首頁 → 出缺勤。同時最多 2 個頁面 PR，要用 `.claude/skills/` 的 UI 工具。 | #4989 |
-| #5038 per-PR 預覽 | 已 merge。proxy 只放行 GET/HEAD（其他回 405）；staging gate cookie 11/7 已換過。 | quick-tunnel 網址換了，就要更新 repo variable `PREVIEW_API_ORIGIN`（見 `docs/ops/DAAN_STAGING_V1.md`） | PR #5038 |
-| #4995 property tests | R3 FAIL：只檢查邊界，6/8 mutant 活著。 | 套用 reviewer 留言裡的斷言，並加閏日 seed | PR #4995 留言 |
-| #5054 staging pull-deploy | 已 queue。P2 的後續在 #5067 | 等 land-queue | PR #5054 |
-| Flow W7–W11 | #5048（review-gate 標記沿用）已通過 R3 並 queue。 | #5048 merge 後由 flow agent 做 W8–W11 | #4953、PR #5048 |
-| AI 維運閉環 (#5070) | 盤點完成；8 個缺口依風險排序。 | PR #5076（告警開 issue）、#5077（每日營運數字，依校區限制）、#5078（PITR 每月演練）、#5079（AI／Actions 用量）都是 R3，一起交給 reviewer。之後做缺口 2、4、7、8。全校監控帳號待 Founder 決定。 | #5070 |
-| N+1 告警 | 9 張重複的 Sentry 單已併成 #5061 | 照事件量由高到低修，每個修正都要附 query-count 測試 | #5061 |
+| Release `221a8566a` | **已上線**（run 42385019151，health 200）。含 #5046 #5048 #5068 #5080 #5085 #5087 #5092 #5093 #5102 #5105。 | 下一班：#5090 #5101 #5103 #5106 #5107 #5109 #5110 merge 後 dispatch release-train（Founder Approve） | `gh run list --workflow deploy.yml` |
+| in-app 518 (#5097) | #5085（月結誤報）+ #5087（字級 標準／大）已上線；triage 回覆已送。 | smoke run 42387205840 綠了 → POP resolve（spec `inapp-518-resolve-1`） | #5097 |
+| in-app 517 (#5057) | PR1 #5060 + PR2 #5068（合併＋復原）已上線；回報已 closed，follow-up 留言已送。 | 後續：#5104（binary collation 比對）、lock 測試 PR | #5057、#5104 |
+| in-app 519 (#5098) | #5101 R3 PASS（>500 學生分頁已修），`autoland`；triage 回覆已送。 | 上線後 POP resolve | PR #5101 |
+| in-app 521 (#5111) | 根因：收款撤銷兩次。#5106（reversal 綁 `payment_report_id`，舊資料 409）+ #5109 測試已 merge；#5107 收款標課程（R1）。triage 回覆已送。 | #5110 repair POP（只綁 2 筆）R3 PASS → 上線後 dry-run → Founder approve；void 940 / bill 960 另案更正（`docs/incidents/RM-LEGACY-VOID-LINK-20261107.md`） | #5111 |
+| in-app 514 (#5035) | re-key POP #5046 已上線。 | dry-run → Founder approve | PR #5046 |
+| 帳務中心「比 Excel 好用」 | #5103 Excel 匯出（只看、無匯入；應收＝已收＋未收）delta R3 中。PR-B TanStack 表格已做好在 `feat/billing-grid`，等 #5103 merge。 | PR-B → PR-C（點擊數量測） | PR #5103 |
+| 流程改善 W12–W14 | W13 autoland 已驗證；W14 #5105（28 個沒跑的前端測試，現在全跑）已上線。#5082/#5084 mutation testing、#5083 自檢 待 Codex 乾淨。 | W9–W11 由 flow agent | #4953 |
+| Overlay 樣板 | census #5093 已上線；樣板 #5094、ratchet #5095 等 Codex 乾淨。 | 之後一頁一 PR，before/after 貼 #4989 | #4989 |
+| AI 維運閉環 (#5070) | #5076–#5079 等 R3（#5078/#5079 需 security-data-reviewer marker）。 | 一次 R3 pass | #5070 |
 
 **Founder-only：**
 - production Approve（release train 的 run 頁面）
@@ -46,6 +45,9 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 **11/7 學到的：**
 - 子 agent 會改錯 PR 的 body：#5058 被 517 的內文覆蓋過，已從編輯歷史還原。改 body 前先核對 PR 編號。
 - `Release-Impact: none` 會擋 CHECK 4B，只能填 `user-visible`、`internal` 或 `no-user-facing-note`。
+- review-gate 會被「Codex 在 head 上有未解 finding」擋住，就算有 R3 marker 也一樣：看 PR 上 Codex sticky comment 的 `has_unresolved_findings`，修掉或回覆並 resolve thread 後重跑 `@codex review`。
+- autoland 的 PR 卡住時先看 `review/final-head` check 的標題，不要只看 land-queue。
+- 本機磁碟：過期副本直接刪，真要留的放 Google Drive；C: 的 WSL vhdx 要 Founder 跑桌面的 `shrink-wsl.ps1` 才會縮。
 - 同一個 Claude 帳號 5 小時額度會用完。agent 一律回報 3 行以內，用單一 CI wait loop，並發不超過 3 個。
 
 ## Deploy / POP 常見坑
